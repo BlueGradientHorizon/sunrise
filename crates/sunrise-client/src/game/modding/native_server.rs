@@ -1364,14 +1364,15 @@ impl Game<'_> {
     }
 
     pub(super) fn cloning_guest(&self, uuid: u128) -> Option<&Guest> {
-        let &(_, conn, _) = self
+        let pending = self
             .player_state
             .cloning_players
             .iter()
             .rev()
-            .find(|&&(player, _, _)| player == uuid)?;
-        self.command_guest(conn)
-            .filter(|_| !self.lan_guest_swaps.contains(&conn))
+            .find(|player| player.uuid == uuid)
+            .filter(|player| player.entity.is_some())?;
+        self.command_guest(pending.conn)
+            .filter(|_| !self.lan_guest_swaps.contains(&pending.conn))
     }
 
     /// The stable name of a connected or acting player. None for a stale or

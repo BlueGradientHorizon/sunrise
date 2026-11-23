@@ -10,11 +10,23 @@ use sunrise_core::nbt::Compound;
 use sunrise_items::equipment::Equipment;
 use sunrise_items::items::ItemStack;
 
-/// Per-player attachment state and active replacement player UUIDs during clone hooks.
+/// Per-player attachment state and the active player scopes during respawn.
 #[derive(Default)]
 pub(super) struct PlayerState {
     pub(super) attachments: sunrise_mod_runtime::attachments::ResidentAttachments,
-    pub(super) cloning_players: Vec<(u128, u32, u32)>,
+    pub(super) cloning_players: Vec<ScopedPlayer>,
+}
+
+pub(super) struct ScopedPlayer {
+    pub(super) uuid: u128,
+    pub(super) conn: u32,
+    /// No whole body is lent while the replacement's attachments are being constructed.
+    pub(super) entity: Option<u32>,
+}
+
+pub(super) enum CloneScope {
+    Constructing,
+    LendBody,
 }
 
 /// Retained original-player attachment storage tied to `Game::transactions` so mutations,
@@ -231,15 +243,20 @@ impl OriginalPlayerAccess for RetainedOriginalPlayer {
 }
 
 impl Game<'_> {
-    /// Make the callback's player addressable without publishing it in a level's player list
-    /// or entity table. This also covers construction and the post-clone set-spawn event.
+    /// Mark a callback as being in the respawn sequence. Lend the player without publishing
+    /// it in a level when there is a body to read (original or restored replacement).
     pub(super) fn with_cloning_player<R>(
         &mut self,
         conn: u32,
+        scope: CloneScope,
         run: impl FnOnce(&mut Self) -> R,
     ) -> Option<R> {
         let guest = self.command_guest(conn)?;
-        let identity = (guest.uuid, conn, guest.entity_id as u32);
+        let identity = ScopedPlayer {
+            uuid: guest.uuid,
+            conn,
+            entity: matches!(scope, CloneScope::LendBody).then_some(guest.entity_id as u32),
+        };
         self.player_state.cloning_players.push(identity);
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| run(self)));
         self.player_state.cloning_players.pop();
@@ -253,11 +270,10 @@ impl Game<'_> {
     /// and End credits return (`was_death = false`).
     ///
     /// Expects old-player removal/menu-close work to have completed against the old state
-    /// and the destination level to be open (`self.enter_level`). Copies eligible
-    /// attachments into a fresh replacement map unconditionally, retains the old player
-    /// when `player_clone` is listened, assigns the replacement's destination dimension
-    /// without placing it, reinitializes the replacement `ServerPlayer`, and dispatches
-    /// `player_clone` with both holders journaled to `host.transaction`.
+    /// and the destination level to be open (`self.enter_level`). Constructs the replacement
+    /// attachments before copying eligible original entries or restoring vanilla state.
+    /// Dispatches `player_clone` after restoring that data and before placement, with both
+    /// holders journaled to `host.transaction`.
     pub(in crate::game) fn restore_cloned_player(
         &mut self,
         conn: u32,
@@ -266,11 +282,7 @@ impl Game<'_> {
         restore_replacement: impl FnOnce(&mut sunrise_client::lan::guest::Guest),
         after_clone: impl FnOnce(&mut Self),
     ) -> bool {
-        let Some((i, uuid, name)) = self.lan.as_ref().and_then(|host| {
-            let i = host.hub.guests.iter().position(|g| g.conn == conn)?;
-            let g = &host.hub.guests[i];
-            Some((i, g.uuid, g.name.clone()))
-        }) else {
+        let Some((uuid, name)) = self.command_guest(conn).map(|g| (g.uuid, g.name.clone())) else {
             return false;
         };
         debug_assert!(
@@ -285,21 +297,27 @@ impl Game<'_> {
             return false;
         };
         let previous = std::mem::take(&mut **map);
-        let replacement = previous.copy_for_clone(was_death);
+        let _ = self.with_cloning_player(conn, CloneScope::Constructing, |game| {
+            game.reinitialize_server_player(uuid, conn);
+        });
+        let Some(map) = self
+            .lan
+            .as_mut()
+            .and_then(|host| host.hub.guests.attachments_mut(conn))
+        else {
+            return false;
+        };
+        map.copy_clone_attachments_from(&previous, was_death);
         let mut original = self.retain_original_player(conn, previous);
         // NeoForge's clone keeps only the `PlayerPersisted` part of a mod's saved compound.
         self.keep_only_player_persisted(conn);
         if let Some(host) = self.lan.as_mut() {
-            host.hub.guests.update(i, |g| {
+            host.hub.update_guest(conn, |g| {
                 g.dimension = destination.id().to_owned();
                 restore_replacement(g);
             });
-            if let Some(map) = host.hub.guests.attachments_mut(conn) {
-                **map = replacement;
-            }
         }
-        self.with_cloning_player(conn, |game| {
-            game.reinitialize_server_player(uuid, conn);
+        self.with_cloning_player(conn, CloneScope::LendBody, |game| {
             if let Some(original) = &mut original {
                 game.transactions
                     .push_retained_original(Arc::clone(&original.attachments.slot));

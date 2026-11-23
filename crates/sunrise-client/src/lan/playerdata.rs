@@ -127,7 +127,7 @@ pub fn load(guest: &mut Guest, world: &Path) -> bool {
     };
     level.read_player(&tag);
     level.player_extra = Some(tag);
-    apply(guest, &level);
+    apply_loaded(guest, &level);
     true
 }
 
@@ -141,14 +141,14 @@ pub fn load(guest: &mut Guest, world: &Path) -> bool {
 /// been in this world before.
 pub fn load_owner(guest: &mut Guest, world: &Path, saved: Option<&Level>) -> bool {
     if let Some(level) = saved.filter(|l| l.singleplayer_file) {
-        apply(guest, level);
+        apply_loaded(guest, level);
         return level.position.is_some();
     }
     if load(guest, world) {
         return true;
     }
     saved.is_some_and(|level| {
-        apply(guest, level);
+        apply_loaded(guest, level);
         level.position.is_some()
     })
 }
@@ -271,8 +271,35 @@ pub fn face_world_spawn(guest: &mut Guest, known: bool, [yaw, pitch]: [f32; 2]) 
     guest.head_yaw = yaw;
 }
 
-/// Give a guest the player state read into `level`.
+fn saved_attachments(level: &Level) -> Option<&sunrise_core::nbt::Compound> {
+    attachment_compound(
+        level
+            .player_extra
+            .as_ref()
+            .and_then(|tag| tag.get(ATTACHMENTS_KEY)),
+    )
+    .ok()
+    .flatten()
+}
+
+/// `Entity.load` overlays entries from disk on the newly constructed player's attachments.
+fn apply_loaded(guest: &mut Guest, level: &Level) {
+    apply_player_fields(guest, level);
+    if let Some(data) = saved_attachments(level) {
+        guest.attachments.read_saved_over(data.clone());
+    }
+}
+
+/// Apply an imported player record, replacing the held player's attachment contents.
 pub fn apply(guest: &mut Guest, level: &Level) {
+    apply_player_fields(guest, level);
+    let attachments = saved_attachments(level).map_or_else(Default::default, |data| {
+        sunrise_mod_runtime::attachments::Attachments::from_nbt(data.clone())
+    });
+    guest.attachments.replace_contents(attachments);
+}
+
+fn apply_player_fields(guest: &mut Guest, level: &Level) {
     if let Some(p) = level.position {
         guest.place(p);
     }
@@ -316,16 +343,6 @@ pub fn apply(guest: &mut Guest, level: &Level) {
         .map(|s| [s[0] + 0.5, s[1], s[2] + 0.5]);
     guest.respawn_elsewhere = level.respawn_elsewhere.clone();
     guest.saved = level.player_extra.clone();
-    let attachments = match attachment_compound(
-        guest
-            .saved
-            .as_ref()
-            .and_then(|tag| tag.get(ATTACHMENTS_KEY)),
-    ) {
-        Ok(Some(data)) => sunrise_mod_runtime::attachments::Attachments::from_nbt(data.clone()),
-        _ => Default::default(),
-    };
-    guest.attachments.replace_contents(attachments);
     guest.seen_credits = level.seen_credits;
     guest.post_effects.clone_from(&level.post_effects);
     guest.last_death = level.last_death.clone();

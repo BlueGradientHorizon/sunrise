@@ -1069,7 +1069,14 @@ impl Attachments {
     /// `Arc` bindings with the source map.
     pub fn copy_for_clone(&self, is_death: bool) -> Self {
         let mut copy = Self::default();
-        for (key, entry) in &self.entries {
+        copy.copy_clone_attachments_from(self, is_death);
+        copy
+    }
+
+    /// Apply the original's clone-eligible entries over the replacement's constructor values.
+    #[doc(hidden)]
+    pub fn copy_clone_attachments_from(&mut self, original: &Self, is_death: bool) {
+        for (key, entry) in &original.entries {
             let encoded = match &entry.state {
                 Entry::Raw { saved, .. }
                     if !is_death
@@ -1084,11 +1091,9 @@ impl Attachments {
                 _ => None,
             };
             if let Some(encoded) = encoded {
-                copy.entries
-                    .insert(key.clone(), Arc::new(AttachmentEntry::raw(encoded)));
+                self.write_entry(key, Some(Arc::new(AttachmentEntry::raw(encoded))));
             }
         }
-        copy
     }
     /// Copy opted-in values through their disk encoding for a player respawn.
     pub fn copy_on_death(&self) -> Result<Self, AttachmentError> {

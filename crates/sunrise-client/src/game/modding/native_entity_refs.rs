@@ -161,13 +161,14 @@ impl Game<'_> {
         let EntityLookup::Found { location, value } = self.server_resident_entity(entity.id())
         else {
             // A lifecycle event lends the body without admitting it to the level.
-            let &(_, conn, _) = self
+            let conn = self
                 .player_state
                 .cloning_players
                 .iter()
                 .rev()
-                .find(|&&(_, _, id)| id == entity.id())
-                .ok_or(EntityReadError::Stale)?;
+                .find(|player| player.entity == Some(entity.id()))
+                .ok_or(EntityReadError::Stale)?
+                .conn;
             return if self.lan_acting == Some(conn) {
                 Ok((Target::Player, None))
             } else if self.lan_guest_swaps.contains(&conn) {

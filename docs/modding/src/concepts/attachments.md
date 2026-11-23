@@ -88,6 +88,15 @@ reconfigurations, see `AttachmentType::sync` and `AttachmentType::sync_data` in 
 [generated API reference](../reference/api.md). See
 [Block entity attachment](attachments/block-entity-attachment.md) for a worked sync example.
 
+## Player construction and saved data
+
+On the server, `entity_constructing` runs with a fresh player attachment map. Set
+initial values there without reading the player's saved state. On join, disk entries
+overwrite matching constructor entries before `player_load_from_file`. On death or End
+credits respawn, the eligible entries from the old player overwrite matching constructor
+entries before `player_clone`. Entries set by the constructor that the load or copy does
+not replace stay on the new player, including entries without a codec.
+
 ## Copying on respawn and conversion
 
 | Replacement | What is copied |

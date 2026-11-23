@@ -3355,24 +3355,14 @@ impl<'g> Game<'g> {
     }
 
     /// Resolves which player body `attachment_slot(Holder::Player(uuid), _)` addresses now:
-    /// the acting body when its UUID matches, else the exact guest `conn` resolved in `self.dim`
-    /// (online real player across dimensions, or the per-level fake player in `self.dim`).
+    /// the acting body when its UUID matches, else the exact parked player, including the
+    /// replacement before placement.
     fn attachment_player_body(&self, uuid: u128) -> Option<PlayerBodyKey> {
         if self.lan_acting_uuid == Some(uuid) {
             return Some(self.acting_player_body());
         }
-        let conn = self
-            .cloning_guest(uuid)
-            .or_else(|| {
-                let host = self.lan.as_ref()?;
-                if self.entity_initialization.active == Some(Holder::Player(uuid)) {
-                    host.hub.guests.iter().find(|guest| guest.uuid == uuid)
-                } else {
-                    host.hub.holder_guest(uuid, self.dim.id())
-                }
-            })
-            .map(|guest| guest.conn)?;
-        (!self.lan_guest_swaps.contains(&conn)).then_some(PlayerBodyKey::Guest(conn))
+        self.attachment_player_connection(uuid)
+            .map(PlayerBodyKey::Guest)
     }
 
     /// Restore a player body's attachment map directly wherever that exact body's state lives

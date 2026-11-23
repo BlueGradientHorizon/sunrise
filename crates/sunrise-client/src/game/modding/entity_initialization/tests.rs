@@ -456,6 +456,186 @@ const SAVED: AttachmentType<i32> = AttachmentType {
 };
 type Kinds = Arc<Mutex<Vec<(Holder, String)>>>;
 
+#[test]
+#[ignore = "daily"]
+fn player_construction_precedes_disk_load_and_clone() {
+    use crate::game::{
+        native_entity_refs::tests::{run_fresh_cases, run_with_game_stack},
+        native_guest_turn_tests::with_guests,
+    };
+    use mod_api::{
+        HostTransaction, PlayerCloneEvent, PlayerLoadFromFileEvent, PlayerRespawnedEvent,
+        ServerHost,
+    };
+    use sunrise_client::{lan::playerdata, save::write_dat};
+    use sunrise_mod_runtime::attachments::{ATTACHMENTS_KEY, Attachments};
+
+    const PLAYER: Holder = Holder::Player(12);
+    const COPIED: AttachmentType<i32> = AttachmentType {
+        name: "copied",
+        copy_on_death: true,
+        ..SAVED
+    };
+    const FLAG: &str = "SUNRISE_PLAYER_CONSTRUCTION_CASE";
+    if run_fresh_cases(
+        "game::entity_initialization::tests::player_construction_precedes_disk_load_and_clone",
+        FLAG,
+        &["death", "credits"],
+    ) {
+        return;
+    }
+
+    #[derive(Debug, PartialEq, Eq)]
+    enum Notice {
+        Constructed,
+        Loaded,
+        Cloned { was_death: bool },
+        Respawned { end_conquered: bool },
+    }
+    struct Lifecycle(Arc<Mutex<Vec<Notice>>>);
+    #[mod_api::__subscriptions]
+    impl Hooks for Lifecycle {
+        fn register(&self, r: &mut dyn mod_api::Registrar, _: &mod_api::RegistrationContext) {
+            r.register_attachment_type("constructing:value", false)
+                .unwrap();
+            r.register_attachment_type("constructing:saved", false)
+                .unwrap();
+            r.register_attachment_type("constructing:copied", false)
+                .unwrap();
+        }
+
+        fn entity_constructing(&self, host: HostSide<'_>, event: &mut EntityConstructingEvent) {
+            let HostSide::Server(host) = host else {
+                return;
+            };
+            if event.holder != PLAYER {
+                return;
+            }
+            assert_eq!(event.kind, "minecraft:player");
+            if self.0.lock().unwrap().last() == Some(&Notice::Loaded) {
+                // The old row has been removed; constructor storage doesn't lend its body.
+                assert!(host.player(12).is_none());
+            }
+            assert_eq!(VALUE.has(host, PLAYER), Ok(false));
+            assert_eq!(SAVED.has(host, PLAYER), Ok(false));
+            assert_eq!(COPIED.has(host, PLAYER), Ok(false));
+            // The unplaced player's constructor still uses the ordinary attachment journal.
+            let aborted: Result<(), ()> = host.transaction(|host, _| {
+                VALUE.set(host, PLAYER, 99).unwrap();
+                Err(())
+            });
+            assert_eq!(aborted, Err(()));
+            assert_eq!(VALUE.has(host, PLAYER), Ok(false));
+            VALUE.set(host, PLAYER, 41).unwrap();
+            SAVED.set(host, PLAYER, 42).unwrap();
+            COPIED.set(host, PLAYER, 43).unwrap();
+            self.0.lock().unwrap().push(Notice::Constructed);
+        }
+
+        fn player_load_from_file(
+            &self,
+            _: &mut dyn ServerHost,
+            event: &mut PlayerLoadFromFileEvent<'_>,
+        ) {
+            assert_eq!(event.player, 12);
+            self.0.lock().unwrap().push(Notice::Loaded);
+        }
+
+        fn player_clone(&self, host: &mut dyn ServerHost, event: &mut PlayerCloneEvent<'_>) {
+            assert_eq!(event.player, 12);
+            assert_eq!(event.original.attachment(&VALUE), Ok(91));
+            assert_eq!(event.original.attachment(&SAVED), Ok(7));
+            assert_eq!(VALUE.get(host, PLAYER), Ok(41));
+            assert_eq!(
+                SAVED.with_decoded(host, PLAYER, |value| value.copied()),
+                Ok(event.was_death.then_some(42))
+            );
+            assert_eq!(
+                SAVED.get(host, PLAYER),
+                Ok(if event.was_death { 42 } else { 7 })
+            );
+            assert_eq!(COPIED.get(host, PLAYER), Ok(8));
+            self.0.lock().unwrap().push(Notice::Cloned {
+                was_death: event.was_death,
+            });
+        }
+
+        fn player_respawned(&self, _: &mut dyn ServerHost, event: &mut PlayerRespawnedEvent<'_>) {
+            assert_eq!(event.player, 12);
+            self.0.lock().unwrap().push(Notice::Respawned {
+                end_conquered: event.end_conquered,
+            });
+        }
+    }
+
+    let notices = Arc::new(Mutex::new(Vec::new()));
+    let mods = vec![mod_api::ModEntry::new(
+        "constructing",
+        Box::new(Lifecycle(notices.clone())),
+    )]
+    .into();
+    let death = std::env::var(FLAG).unwrap() == "death";
+    run_with_game_stack(move || {
+        mod_platform::testing::with_mods(mods, || {
+            with_guests(|game| {
+                game.options.dedicated = Some(Vec::new());
+                game.world_root = game.save.root.clone();
+                let mut saved = Attachments::default();
+                SAVED.set(&mut saved, Holder::Level, 7).unwrap();
+                COPIED.set(&mut saved, Holder::Level, 8).unwrap();
+                playerdata::directory(&game.world_root);
+                write_dat(
+                    &playerdata::path(&game.world_root, 12),
+                    Tag::compound([
+                        (ATTACHMENTS_KEY, Tag::Compound(saved.to_nbt())),
+                        ("XpLevel", Tag::Int(19)),
+                    ]),
+                )
+                .unwrap();
+                game.lan
+                    .as_mut()
+                    .unwrap()
+                    .hub
+                    .update_guest(12, |guest| guest.placed = false);
+                game.lan_guest_joined(12, &[], [0.5, 64.0, 0.5]);
+                assert_eq!(
+                    notices.lock().unwrap().as_slice(),
+                    &[Notice::Constructed, Notice::Loaded]
+                );
+                assert_eq!(game.command_guest(12).unwrap().xp_level, 19);
+                assert_eq!(SAVED.get(game, PLAYER), Ok(7));
+                assert_eq!(COPIED.get(game, PLAYER), Ok(8));
+                assert_eq!(VALUE.get(game, PLAYER), Ok(41));
+                VALUE.set(game, PLAYER, 91).unwrap();
+
+                let source = if death { Dim::Overworld } else { Dim::End };
+                game.enter_level(source).unwrap();
+                let host = game.lan.as_mut().unwrap();
+                host.hub.update_guest(12, |guest| {
+                    guest.dimension = source.id().to_owned();
+                    guest.spawn = Some([3.5, 64.0, 5.5]);
+                    guest.dead = death;
+                });
+                host.play.entry(12).or_default().won_game = !death;
+                game.guest_respawn(12);
+                assert_eq!(
+                    notices.lock().unwrap().as_slice(),
+                    &[
+                        Notice::Constructed,
+                        Notice::Loaded,
+                        Notice::Constructed,
+                        Notice::Cloned { was_death: death },
+                        Notice::Respawned {
+                            end_conquered: !death
+                        },
+                    ]
+                );
+                assert_eq!(VALUE.get(game, PLAYER), Ok(41));
+            });
+        })
+    });
+}
+
 struct Saving(Kinds);
 
 #[mod_api::__subscriptions]

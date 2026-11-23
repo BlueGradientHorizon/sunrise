@@ -212,6 +212,20 @@ impl Game<'_> {
         Ok(())
     }
 
+    /// The exact parked player addressed by a holder, including before placement. Shared
+    /// with the journal so rollback restores the map used by the attachment operation.
+    pub(super) fn attachment_player_connection(&self, uuid: u128) -> Option<u32> {
+        let conn = self
+            .entity_initialization
+            .constructing_player_connection(uuid)
+            .or_else(|| self.cloning_guest(uuid).map(|guest| guest.conn))
+            .or_else(|| {
+                let host = self.lan.as_ref()?;
+                Some(host.hub.holder_guest(uuid, self.dim.id())?.conn)
+            })?;
+        (!self.lan_guest_swaps.contains(&conn)).then_some(conn)
+    }
+
     /// Where `holder`'s attachment map lives now: an entity's by its object ID, a player's where
     /// their state is (swapped in for a guest's turn, or kept beside), the world's others.
     pub(super) fn attachment_slot(
@@ -221,7 +235,7 @@ impl Game<'_> {
     ) -> Result<&mut mod_api::Attachments, mod_api::AttachmentError> {
         use mod_api::AttachmentError;
         if let mod_api::Holder::Entity(id) = holder {
-            if self.entity_initialization.active != Some(holder) {
+            if !self.entity_initialization.is_constructing(holder) {
                 use super::entity_residency::SlotAccess;
                 use sunrise_client::join_seq::residency::Kind;
                 let id = std::num::NonZeroU32::new(id).ok_or(AttachmentError::MissingHolder)?;
@@ -261,7 +275,7 @@ impl Game<'_> {
                     }
                 }
             }
-            if self.entity_initialization.active != Some(holder)
+            if !self.entity_initialization.is_constructing(holder)
                 && !self.attachment_entity_exists(id)
             {
                 return Err(AttachmentError::MissingHolder);
@@ -282,7 +296,7 @@ impl Game<'_> {
                 return Err(AttachmentError::MissingHolder);
             }
             if access == AttachmentAccess::Store
-                && self.entity_initialization.active != Some(holder)
+                && !self.entity_initialization.is_constructing(holder)
             {
                 self.entity_attachments.entry(id).or_default();
                 self.bind_resident_entity_attachments(id)?;
@@ -290,20 +304,8 @@ impl Game<'_> {
             return Ok(self.entity_attachments.entry(id).or_default());
         }
         if let mod_api::Holder::Player(uuid) = holder {
-            let cloning = self.cloning_guest(uuid).map(|guest| guest.conn);
-            if self.entity_initialization.active != Some(holder)
-                && cloning.is_none()
-                && self.lan_acting_uuid != Some(uuid)
-                && self
-                    .lan
-                    .as_ref()
-                    .and_then(|host| host.hub.holder_guest(uuid, self.dim.id()))
-                    .is_none()
-            {
-                return Err(AttachmentError::MissingHolder);
-            }
-            self.initialize_entity_on_access(holder);
             if self.lan_acting_uuid == Some(uuid) {
+                self.initialize_entity_on_access(holder);
                 if access == AttachmentAccess::Store
                     && let Some(conn) = self.lan_acting
                 {
@@ -311,20 +313,10 @@ impl Game<'_> {
                 }
                 return Ok(&mut self.player_state.attachments);
             }
-            let conn = cloning
-                .or_else(|| {
-                    let host = self.lan.as_ref()?;
-                    let guest = if self.entity_initialization.active == Some(holder) {
-                        host.hub.guests.iter().find(|guest| guest.uuid == uuid)
-                    } else {
-                        host.hub.holder_guest(uuid, self.dim.id())
-                    }?;
-                    Some(guest.conn)
-                })
+            let conn = self
+                .attachment_player_connection(uuid)
                 .ok_or(AttachmentError::MissingHolder)?;
-            if self.lan_guest_swaps.contains(&conn) {
-                return Err(AttachmentError::MissingHolder);
-            }
+            self.initialize_entity_on_access(holder);
             if access == AttachmentAccess::Store {
                 self.bind_player_attachments(conn, true);
             }
@@ -1695,7 +1687,9 @@ mod attachment_membership_tests {
             check(game);
             game.enter_level(crate::game::Dim::Overworld).unwrap();
             let holder = mod_api::Holder::Entity(999);
-            game.entity_initialization.active = Some(holder);
+            game.entity_initialization.active = Some(
+                crate::game::entity_initialization::Construction::Holder(holder),
+            );
             assert!(
                 game.attachment_slot(holder, AttachmentAccess::Existing)
                     .is_ok()
