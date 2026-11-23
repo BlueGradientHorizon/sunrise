@@ -12,7 +12,7 @@ build before you have the [prepared resources](#prepared-resources) needed to pl
 ## 1. Install the mod tool
 
 Follow [Install the mod tool](install-tool.md) for your computer and check `cargo sunrise-mod --version` as described
-there (it reports a commit SHA or `dev`). When it works, come back here.
+there (it reports a commit SHA, or `commit local` for an unstamped local build). When it works, come back here.
 
 ## 2. Make the project
 
@@ -83,7 +83,7 @@ with the library it made, the build log's path and the packed `.smod` path:
 Compiling greeter (1/1)
 Built …/sunrise-mod/work/greeter/prebuilt-build/…/libmod_greeter.so
 Build log: …/sunrise-mod/work/greeter/build.log
-Built target/sunrise-mod/greeter.smod
+Built ./target/sunrise-mod/greeter.smod
 ```
 
 On a cache miss for that pinned build and target, `build` downloads the compiled slices, checks Sunrise's signature on
@@ -119,8 +119,8 @@ the greeting appears in chat, and the mod is listed on the game's **Mods** scree
 
 ### Prepared resources
 
-The game needs resources prepared from your own Minecraft: Java Edition 26.3, using Java 25 or newer on
-`PATH`. The tool never downloads or bundles
+The game needs resources prepared from your own Minecraft: Java Edition 26.3, using Java 25 or newer
+(on `PATH`, via `JAVA_HOME`, or with `--java-home <path>`). The tool never downloads or bundles
 Mojang's files. `sunrise-prepare` is in the game download for your computer in the
 [Nightly release](https://github.com/sunrise-org/sunrise/releases/tag/nightly). Make the resources once and pass the
 folder to `--resources`:
@@ -133,8 +133,8 @@ folder to `--resources`:
      non-default location, `sunrise-prepare --help` explains how to point the tool at them.
 - **Prism Launcher or MultiMC:**
   - Run `sunrise-prepare --prepare --prism-dir <path> --output <folder>`. `--prism-dir` locates the installed
-    client jar (so it needs no separate server jar download); it does not locate Prism's Java runtime, so Java 25
-    or newer is still required on `PATH`.
+    client jar (so it needs no separate server jar download); it does not select Prism's Java runtime, so Java 25
+    or newer is still needed via `PATH`, `JAVA_HOME`, or `--java-home <path>`.
 
 ## 7. Test it
 
