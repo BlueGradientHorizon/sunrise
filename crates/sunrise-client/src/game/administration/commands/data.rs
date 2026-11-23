@@ -307,10 +307,7 @@ impl Game<'_> {
             }
             Target::Crystal(id) => {
                 let c = self.crystals.iter().find(|c| c.id == id)?;
-                let raw = self.persist_anon("minecraft:end_crystal", c.position);
-                let uuid = self.persist.uuids.get(&id).copied();
-                let tag = c.to_nbt(uuid.unwrap_or_else(random_uuid), raw);
-                crate::game::persist::with_raw(tag, self.persist.raw.get(&id))
+                self.crystal_nbt(c)
             }
             Target::Dragon(id) => {
                 let d = self.dragon.as_ref().filter(|d| d.id == id)?;
@@ -371,6 +368,7 @@ impl Game<'_> {
                 // the raw compound alone does not contain generated clouds.
                 let mut tag = self.other_to_nbt(
                     &super::OtherEntity {
+                        size_answer: None,
                         attachment_lifetime: Default::default(),
                         join: Default::default(),
                         id,
@@ -453,6 +451,7 @@ impl Game<'_> {
                 let fence = self.natural_knot(id)?;
                 let uuid = *self.persist.uuids.get(&id)?;
                 let knot = super::OtherEntity {
+                    size_answer: None,
                     attachment_lifetime: Default::default(),
                     // A serialization view, not a second resident entity.
                     join: sunrise_client::join_seq::JoinSeq::UNJOINED,
@@ -492,6 +491,8 @@ impl Game<'_> {
         // `TypedEntityData.loadInto`). `sunrise:finalize` is worldgen's, and
         // `Game::load_mob` would run the finalize it asks for on the next load.
         strip_finalize_tree(&mut tag);
+        // `Entity.load`'s `setPos` moves the entity in its section storage like any other write.
+        let before = self.target_position(t);
         // Entity.load does not read Passengers: the riders stay, and so do the
         // passengers the load kept raw (none, when it kept none).
         let kept_passengers = match t {
@@ -955,6 +956,9 @@ impl Game<'_> {
                 }
             }
             self.persist.raw.insert(id, tag);
+            if let (Some(from), Some(to)) = (before, self.target_position(t)) {
+                self.entity_section_moved(id, Some(from), to);
+            }
         }
         Ok(())
     }
@@ -2026,6 +2030,7 @@ mod tests {
             game.persist.raw.insert(12, Tag::Compound(raw));
             game.persist.uuids.insert(12, [1, 2, 3, 4]);
             game.others.push(super::super::OtherEntity {
+                size_answer: None,
                 attachment_lifetime: Default::default(),
                 join: Default::default(),
                 item_transformation: None,

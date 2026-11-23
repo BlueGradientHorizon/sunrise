@@ -283,6 +283,26 @@ impl ProjectileKind {
             Self::LargeFireball { .. } | Self::DragonFireball => 1.0,
         }
     }
+    /// Its type's `getDimensions()`: [`Self::size`] square, with the type's eye height.
+    pub fn dimensions(&self) -> [f32; 3] {
+        let eye = match self {
+            Self::Arrow { .. } | Self::Trident => 0.13,
+            Self::Snowball
+            | Self::Egg
+            | Self::EnderPearl
+            | Self::LlamaSpit
+            | Self::Potion(..)
+            | Self::ExperienceBottle
+            | Self::Thrown(_) => 0.2125,
+            Self::SmallFireball | Self::ShulkerBullet { .. } | Self::WitherSkull { .. } => {
+                0.265_625
+            }
+            Self::WindCharge | Self::BreezeWindCharge => 0.0,
+            Self::LargeFireball { .. } | Self::DragonFireball => 0.85,
+        };
+        let size = self.size() as f32;
+        [size, size, eye]
+    }
     /// Its entity type.
     pub fn id(&self) -> &'static str {
         match self {
@@ -415,6 +435,9 @@ pub struct Projectile {
     /// kind's when it is shot (`shoot_own`), which is the same stream since
     /// nothing else draws from it between.
     pub uuid: Option<[i32; 4]>,
+    /// What `entity_size` answered at its last size refresh (`EntityEvent.Size`): its box takes
+    /// the answer while it holds for its vanilla size.
+    pub size_answer: Option<crate::pose::SizeAnswer>,
 }
 /// A new projectile's own random (`Entity.random`) and the UUID its first two
 /// draws make (`Mth.createInsecureUUID`).
@@ -753,10 +776,11 @@ impl Projectile {
             }
             _ => p.y,
         };
-        Aabb::new(
+        let vanilla = Aabb::new(
             Vec3::new(p.x - half, bottom, p.z - half),
             Vec3::new(p.x + half, bottom + height, p.z + half),
-        )
+        );
+        crate::pose::SizeAnswer::sized_box(self.size_answer, self.kind.dimensions(), p, vanilla)
     }
     /// The collision target of the owner, independent of living damage credit.
     pub fn collision_owner(&self) -> Option<Who> {
@@ -785,6 +809,7 @@ impl Projectile {
         // An arrow keeps its own random (`Entity.random`) for its later draws.
         let (random, uuid) = new_own_random();
         Self {
+            size_answer: None,
             attachment_lifetime: Default::default(),
             join: Default::default(),
             id: 0,
