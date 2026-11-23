@@ -228,6 +228,12 @@ fn fluid_shape(fluid: EngineFluidState, above: Option<EngineFluidState>) -> Opti
 }
 
 /// The fluid a registry id names, with or without `minecraft:`.
+/// The bucket `sound` of a tank-only fluid, as a mod world fluid has it: none when the fluid
+/// names no bucket.
+fn tank_bucket_sound(fluid: &str, sound: &'static str) -> Option<&'static str> {
+    sunrise_client::mod_content::fluid_bucket(fluid).map(|_| sound)
+}
+
 fn fluid_kind(fluid: &str) -> Option<FluidKind> {
     FluidKind::from_name(&sunrise_client::command::args::normalized(fluid))
 }
@@ -435,24 +441,38 @@ impl Game<'_> {
     }
 
     /// The bucket item that picks `fluid` up (`Fluid.getBucket`), `minecraft:water_bucket` for
-    /// water and flowing water. None for `minecraft:empty`, whose bucket is air, and for a name
-    /// no fluid has.
+    /// water and flowing water, the bucket a mod's fluid names, a tank-only one's too. None for
+    /// `minecraft:empty`, whose bucket is air, for a fluid with no bucket, and for a name no
+    /// fluid or item has.
     pub(super) fn fluid_bucket(&self, fluid: &str) -> Option<mod_api::ItemKey> {
-        mod_api::__private::item_key(sunrise_world::level::fluid_bucket(fluid_kind(fluid)?)?)
+        match fluid_kind(fluid) {
+            Some(kind) => mod_api::__private::item_key(sunrise_world::level::fluid_bucket(kind)?),
+            None => {
+                mod_api::__private::item_key(&sunrise_client::mod_content::fluid_bucket(fluid)?)
+            }
+        }
     }
 
     /// The sound event a bucket plays as it picks `fluid` up (`Fluid.getPickupSound`),
-    /// `minecraft:item.bucket.fill_lava` for lava and flowing lava. None for
-    /// `minecraft:empty`, which has none, and for a name no fluid has.
+    /// `minecraft:item.bucket.fill_lava` for lava and flowing lava, `minecraft:item.bucket.fill`
+    /// for water and a mod's fluid with a bucket. None for `minecraft:empty`, which has none,
+    /// for a tank-only fluid with no bucket and for a name no fluid has.
     pub(super) fn fluid_pickup_sound(&self, fluid: &str) -> Option<&'static str> {
-        sunrise_world::level::fluid_pickup_sound(fluid_kind(fluid)?)
+        match fluid_kind(fluid) {
+            Some(kind) => sunrise_world::level::fluid_pickup_sound(kind),
+            None => tank_bucket_sound(fluid, "minecraft:item.bucket.fill"),
+        }
     }
 
     /// The sound event a bucket plays as it empties `fluid` (`BucketItem.playEmptySound`),
-    /// `minecraft:item.bucket.empty_lava` for lava and flowing lava. None for
-    /// `minecraft:empty`, for a tank-only fluid and for a name no fluid has.
+    /// `minecraft:item.bucket.empty_lava` for lava and flowing lava, `minecraft:item.bucket.empty`
+    /// for water and a mod's fluid with a bucket. None for `minecraft:empty`, for a tank-only
+    /// fluid with no bucket and for a name no fluid has.
     pub(super) fn fluid_empty_sound(&self, fluid: &str) -> Option<&'static str> {
-        sunrise_world::level::fluid_empty_sound(fluid_kind(fluid)?)
+        match fluid_kind(fluid) {
+            Some(kind) => sunrise_world::level::fluid_empty_sound(kind),
+            None => tank_bucket_sound(fluid, "minecraft:item.bucket.empty"),
+        }
     }
 
     /// Read a loaded block in a server tick hook, without loading a chunk.

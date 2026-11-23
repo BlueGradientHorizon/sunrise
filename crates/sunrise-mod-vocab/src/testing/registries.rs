@@ -12,6 +12,7 @@ pub struct FakeRegistries {
     containers: HashMap<String, usize>,
     loaded: HashSet<String>,
     fluid_sounds: HashMap<String, (&'static str, &'static str)>,
+    fluid_buckets: HashMap<String, String>,
 }
 
 impl FakeRegistries {
@@ -71,6 +72,12 @@ impl FakeRegistries {
         self.fluid_sounds.insert(fluid.to_owned(), (pickup, empty));
         self
     }
+    /// Gives fluid `fluid` the bucket `item`, as `fluid_bucket` answers; a fluid not given one
+    /// has none.
+    pub fn fluid_bucket(&mut self, fluid: &str, item: &str) -> &mut Self {
+        self.fluid_buckets.insert(fluid.to_owned(), item.to_owned());
+        self
+    }
     /// Marks mod `id` as loaded.
     pub fn loaded(&mut self, id: &str) -> &mut Self {
         self.loaded.insert(id.to_owned());
@@ -103,6 +110,10 @@ impl FakeRegistries {
     pub(super) fn fluid_sound(&self, fluid: &str, pickup: bool) -> Option<&'static str> {
         let (fill, empty) = self.fluid_sounds.get(fluid)?;
         Some(if pickup { fill } else { empty })
+    }
+    /// The bucket `fluid` was given, resolved.
+    pub(super) fn bucket_of(&self, fluid: &str) -> Option<crate::ItemKey> {
+        crate::content::registry_keys::item_key(self.fluid_buckets.get(fluid)?)
     }
     pub(super) fn is_loaded(&self, id: &str) -> bool {
         self.loaded.contains(id)
