@@ -2935,6 +2935,7 @@ mod destroyed_bundle_environment_tests {
     fn test_item_entity(health: i32, fire_ticks: i32, stack: ItemStack) -> ItemEntity {
         let at = Vec3::new(0.5, 64.5, 0.5);
         ItemEntity {
+            size_answer: None,
             random: sunrise_core::random::LegacyRandom::new(1),
             attachment_lifetime: Default::default(),
             fall_distance: 0.0,
