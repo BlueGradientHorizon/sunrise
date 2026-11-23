@@ -155,17 +155,25 @@ pub fn load_owner(guest: &mut Guest, world: &Path, saved: Option<&Level>) -> boo
 
 /// Save the world's single-player owner: its state into `level` (`store`),
 /// then to its own file, which level.dat names and [`load_owner`] reads.
-pub fn save_owner(guest: &Guest, level: &mut Level, world: &Path, items: &crate::items::Items) {
+/// Returns whether the player file was replaced; world metadata is saved separately.
+pub fn save_owner(
+    guest: &Guest,
+    level: &mut Level,
+    world: &Path,
+    items: &crate::items::Items,
+) -> bool {
     // `MinecraftServer.saveAllChunks`: `saveDataTag(worldData, getSingleplayerProfile().id())`
     // — the server's own profile on every save, never the stale `singleplayer_uuid` a
     // world arrived with (a Realms download, a server world). The player file written is
     // then the owner's own, not another player's the world happened to name.
     level.player_uuid = Some(uuid_ints(guest.uuid));
     store(guest, level, None);
-    // `saveDataTag`: level.dat carries the profile the player file is named after, so the
-    // file the owner loads next is the one just written.
-    if let Err(e) = level.write(world, items) {
-        log::warn!("Sunrise: the owner's playerdata is not saved: {e}");
+    match level.write_player(world, items) {
+        Ok(()) => true,
+        Err(e) => {
+            log::warn!("Sunrise: the owner's playerdata is not saved: {e}");
+            false
+        }
     }
 }
 
@@ -393,11 +401,15 @@ pub fn player_tag(guest: &Guest, items: &crate::items::Items) -> Tag {
     level.player_tag(items)
 }
 
-/// Save a leaving guest, including its saved vehicle tree.
-pub fn save(guest: &Guest, world: &Path, items: &crate::items::Items) {
+/// Save a leaving guest, including its saved vehicle tree. Returns whether the file was replaced.
+pub fn save(guest: &Guest, world: &Path, items: &crate::items::Items) -> bool {
     let file = path(world, guest.uuid);
-    if let Err(e) = write_dat(&file, player_tag(guest, items)) {
-        log::warn!("Sunrise: {} is not saved: {e}", file.display());
+    match write_dat(&file, player_tag(guest, items)) {
+        Ok(()) => true,
+        Err(e) => {
+            log::warn!("Sunrise: {} is not saved: {e}", file.display());
+            false
+        }
     }
 }
 
@@ -498,18 +510,6 @@ impl Autosaves {
                 self.error = Some(error);
             }
         }
-    }
-
-    /// Serialize a newer logout snapshot after every queued autosave.
-    pub fn save_after(
-        &mut self,
-        guest: &Guest,
-        world: &Path,
-        items: &crate::items::Items,
-    ) -> Vec<SavedPlayer> {
-        let saved = self.completed(true);
-        save(guest, world, items);
-        saved
     }
 
     /// Drain completions on the tick thread; `wait` is the durability barrier
@@ -924,11 +924,12 @@ mod tests {
                 &Default::default(),
             );
         }
-        saves.save_after(
+        assert_eq!(saves.completed(true).len(), 150);
+        assert!(save(
             &holding(1, "minecraft:iron_ingot", 11),
             &dir,
             &Default::default(),
-        );
+        ));
         drop(saves);
         assert!(load(&mut loaded, &dir));
         assert_eq!(first_item(&loaded), Some(("minecraft:iron_ingot", 11)));
@@ -1190,6 +1191,7 @@ mod tests {
         let owner = sunrise_protocol::crypto::offline_uuid("Player46606");
         let dir = world("leave");
         let mut level = Level::default();
+        level.player_uuid = Some(uuid_ints(owner));
         store(&holding(owner, "minecraft:diamond", 5), &mut level, None);
         level.write(&dir, &Default::default()).unwrap();
         save(

@@ -1043,7 +1043,9 @@ impl Game<'_> {
         // IntegratedServer.initServer calls saveEverything(false, true, true)
         // before ServerLifecycleHooks.handleServerStarting(this).
         // The owner has not joined the player list. Save levels and metadata only.
-        startup::time("server.initial_save", || self.save_world_with(true, false))?;
+        startup::time("server.initial_save", || {
+            self.save_world_after_players(false)
+        })?;
         Ok((pipe, self.level.name.clone()))
     }
 

@@ -1399,10 +1399,11 @@ impl Game<'_> {
     }
 
     /// `PlayerList.removeAll`: every guest leaves in turn, the vehicle it
-    /// alone rides with it (`PlayerList.remove`), and is saved.
-    pub(super) fn save_leaving_guests(&mut self) {
+    /// alone rides with it (`PlayerList.remove`), and is saved. Returns whether
+    /// the integrated owner's file was replaced, for the later metadata save.
+    pub(super) fn save_leaving_guests(&mut self) -> bool {
         let Some(host) = self.lan.as_ref() else {
-            return;
+            return false;
         };
         // Remove the open menu and window 0 in the guest's own level before
         // saving, so held stacks and inputs return to their inventory or drop
@@ -1428,35 +1429,39 @@ impl Game<'_> {
             log::error!("could not reopen {}: {e}", back.id());
         }
         let Some(host) = self.lan.as_ref() else {
-            return;
+            return false;
         };
         let count = host.hub.guests.len();
+        let owner = host.owner.as_ref().map(|owner| owner.uuid);
+        let mut owner_saved = false;
         for i in 0..count {
             let Some(host) = self.lan.as_mut() else {
-                return;
+                break;
             };
             if !host.hub.guests[i].participates_in_player_simulation() {
                 continue;
             }
             let mut g = host.hub.guests.take_for_save(i);
             self.take_parent_vehicle(&mut g);
-            self.save_guest(&mut g);
+            if self.save_guest(&mut g) && owner == Some(g.uuid) {
+                owner_saved = true;
+            }
             let Some(host) = self.lan.as_mut() else {
-                return;
+                break;
             };
             host.hub.guests.insert(i, g);
         }
+        owner_saved
     }
-    /// Save a guest when they leave or the world closes (after
-    /// `take_parent_vehicle`, `PlayerList.save`): an integrated server's owner
-    /// into the level (`/data`) and the file it names (`playerdata::save_owner`),
-    /// anyone else into their own file.
-    pub(super) fn save_guest(&mut self, guest: &mut sunrise_client::lan::guest::Guest) {
+    /// Save a guest after `take_parent_vehicle` (`PlayerList.save`). Returns
+    /// whether their player file was replaced; the owner's state also goes
+    /// into the in-memory level data, without writing level.dat here.
+    pub(super) fn save_guest(&mut self, guest: &mut sunrise_client::lan::guest::Guest) -> bool {
         if !guest.participates_in_player_simulation() {
-            return;
+            return false;
         }
         // A proxy released this record to another server, which now owns saving it.
-        if guest.joined() && !guest.released && !self.crash_save.excludes(guest.conn) {
+        let saved = if guest.joined() && !guest.released && !self.crash_save.excludes(guest.conn) {
             let _ = self.finish_player_autosaves(true);
             if self
                 .lan
@@ -1464,17 +1469,21 @@ impl Game<'_> {
                 .and_then(|host| host.owner.as_ref())
                 .is_some_and(|o| o.uuid == guest.uuid)
             {
-                playerdata::save_owner(guest, &mut self.level, &self.world_root, self.res.items());
+                playerdata::save_owner(guest, &mut self.level, &self.world_root, self.res.items())
             } else {
-                self.player_autosaves
-                    .save_after(guest, &self.world_root, self.res.items());
+                playerdata::save(guest, &self.world_root, self.res.items())
             }
+        } else {
+            false
+        };
+        if saved {
             let directory = playerdata::directory(&self.world_root);
             self.native_player_save_to_file(guest.uuid, &guest.name, &directory);
         }
         if let Some(host) = self.lan.as_ref() {
             self.save_guest_records(host, guest);
         }
+        saved
     }
     /// The vehicles the other players in level `dim` ride, all but the
     /// guest `but` (`Entity.hasExactlyOnePlayerPassenger`); `host` adds the

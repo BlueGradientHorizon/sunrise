@@ -153,15 +153,22 @@ impl Game<'_> {
     /// generated chunk is saved, hundreds at a time, encoded and written on
     /// the region writer meanwhile.
     pub(super) fn save_game_with(&mut self, wait: bool) -> Result<()> {
-        self.save_world_with(wait, true)
-    }
-
-    pub(super) fn save_world_with(&mut self, wait: bool, save_players: bool) -> Result<()> {
         if self.remote.is_some() {
             return Ok(());
         }
         self.admit_level_save()?;
-        let owner_saved = save_players && self.save_placed_players();
+        let owner_saved = self.save_placed_players();
+        self.write_world(wait, owner_saved)
+    }
+
+    /// Startup has no placed players; at shutdown PlayerList has already
+    /// finished its writes. Do not serialize the integrated server's shell.
+    pub(super) fn save_world_after_players(&mut self, owner_saved: bool) -> Result<()> {
+        self.admit_level_save()?;
+        self.write_world(true, owner_saved)
+    }
+
+    fn write_world(&mut self, wait: bool, owner_saved: bool) -> Result<()> {
         // `DedicatedServer.saveAllChunks` tells the management protocol's clients when a save starts and when
         // it ends without failing, for every save: the command, the autosave, the pause.
         let dedicated = self.is_dedicated_server();

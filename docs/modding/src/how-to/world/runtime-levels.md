@@ -65,7 +65,9 @@ through `event.validation`. The callback sees its removals immediately. As with
 refusal discards those edits before the saved tickets take hold. Other controllers still validate.
 
 On a full server save, `player_save_to_file` notifications for successfully saved placed players
-come before `level_save`, then `world_saved` follows the world metadata write. Startup's integrated
+come before `level_save`, then `world_saved` follows the world metadata write. During shutdown,
+a failed player file write emits no `player_save_to_file` for that player; it does not prevent the
+world metadata save. Startup's integrated
 save completes before `server_starting` and `server_started`. It writes levels and world metadata,
 naming a known profile for a new world without creating or overwriting the owner's player file.
 The initial save is outside the `server_started` listener's transaction journal.

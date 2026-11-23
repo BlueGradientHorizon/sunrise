@@ -8,3 +8,4 @@ sunrise-client game::server_lifecycle::tests::integrated_shutdown_reopens_the_au
 sunrise-client game::server_lifecycle::tests::per_level_close_failure_skips_only_that_levels_unload lib daily resources
 sunrise-client game::server_lifecycle::tests::debug_world_uses_fixed_spawn_without_create_spawn_position lib daily resources
 sunrise-client game::server_lifecycle::tests::full_saves_write_live_players_before_saving_levels lib daily resources
+sunrise-client game::server_lifecycle::tests::shutdown_notifies_only_for_replaced_player_files lib daily child-process
