@@ -531,7 +531,10 @@ impl Game<'_> {
             return false;
         };
         let at = [p.position.x, p.position.y, p.position.z];
-        let (owner, eye_y) = (p.position, p.position.y + f64::from(p.dimensions.eye_height));
+        let (owner, eye_y) = (
+            p.position,
+            p.position.y + f64::from(p.dimensions.eye_height),
+        );
         if self.hook.is_some() {
             let damage = self.retrieve_hook(stack);
             self.damage_held(damage);

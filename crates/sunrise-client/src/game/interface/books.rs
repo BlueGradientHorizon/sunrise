@@ -1287,9 +1287,7 @@ impl Game<'_> {
         self.book_last_click = Some(now);
         let inside =
             |x: f32, y: f32, bw: f32, bh: f32| mx >= x && my >= y && mx < x + bw && my < y + bh;
-        let click = |game: &mut Self| {
-            game.play_audio("minecraft:ui.button.click", None, 0.25, 1.0)
-        };
+        let click = |game: &mut Self| game.play_audio("minecraft:ui.button.click", None, 0.25, 1.0);
         match &self.book {
             Some(BookScreen::Edit {
                 signing: true,

@@ -1225,11 +1225,12 @@ impl Game<'_> {
             View::Options => {}
             View::GameRules => {
                 let atlas = &self.gui.atlas;
-                let (clicked, exit, handled) = o.rules.as_mut().map_or((false, None, false), |rules| {
-                    let clicked = rules.clicks_button(atlas, self.cursor, (w, h));
-                    let (exit, handled) = rules.click(atlas, self.cursor, (w, h));
-                    (clicked, exit, handled)
-                });
+                let (clicked, exit, handled) =
+                    o.rules.as_mut().map_or((false, None, false), |rules| {
+                        let clicked = rules.clicks_button(atlas, self.cursor, (w, h));
+                        let (exit, handled) = rules.click(atlas, self.cursor, (w, h));
+                        (clicked, exit, handled)
+                    });
                 self.world_options = Some(o);
                 if clicked {
                     self.play_audio_button_click();

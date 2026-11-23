@@ -171,6 +171,5 @@ pub fn result_name(r: PlayResult) -> &'static str {
         PlayResult::Started => "STARTED",
         PlayResult::StartedSilently => "STARTED_SILENTLY",
         PlayResult::NotStarted => "NOT_STARTED",
-        PlayResult::Pending => "PENDING",
     }
 }

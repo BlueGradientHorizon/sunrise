@@ -190,7 +190,12 @@ impl Game<'_> {
     fn bucket_sulfur_cube(&mut self, index: usize) {
         let held = self.held().cloned();
         let center = self.mobs[index].center();
-        self.play_audio("minecraft:item.bucket.fill_sulfur_cube", Some(center), 1.0, 1.0);
+        self.play_audio(
+            "minecraft:item.bucket.fill_sulfur_cube",
+            Some(center),
+            1.0,
+            1.0,
+        );
         let m = &self.mobs[index];
         // getBucketItemStack, then saveToBucketTag.
         let mut filled = ItemStack::new("minecraft:sulfur_cube_bucket", 1);
