@@ -332,6 +332,10 @@ playsunrise.net", and the console says which client it was. The check reads the 
 by (`minecraft:brand`), which any client can fake: it keeps out players who didn't install Sunrise, not
 cheaters. The server's own checks (reach, movement) are what protect it.
 
+Set `sunrise-protect-bubble-particles = true` under `[properties]` to skip new bubble-column surface
+particles for players whose connection is backlogged. Effects resume as their outgoing queue drains.
+The setting is off by default. Entity movement and other packets use their regular delivery path.
+
 Sunrise clients can get their far terrain (Sunrise Graphics → LOD Distance) from the server: set
 `sunrise-lod-distance` under `[properties]` to how far, in chunks (1024 at most), and the server samples the
 tiles each player's client asks for out to there. It is off (0) by default: far tiles show the world's terrain

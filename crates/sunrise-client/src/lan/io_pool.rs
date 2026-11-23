@@ -13,7 +13,7 @@ use std::{
     io::{ErrorKind, Read, Write},
     sync::{
         Arc, Mutex, MutexGuard, OnceLock, PoisonError,
-        atomic::{AtomicUsize, Ordering},
+        atomic::{AtomicBool, AtomicUsize, Ordering},
     },
     time::{Duration, Instant},
 };
@@ -121,6 +121,8 @@ pub(super) struct Outbox {
     droppable: OnceLock<Arc<crate::raw_payloads::droppable::Queue>>,
     /// The bytes queued and not framed yet (`PlayerSender::pending`).
     pending: Arc<AtomicUsize>,
+    /// The socket could not accept the connection's framed output.
+    pub(super) write_blocked: AtomicBool,
     /// Whether [`MAX_PENDING`] applies. A client in this process (a memory connection) reads
     /// what it is sent as it comes, and a join's first view can pass the limit in one burst.
     /// The reader is this process: if it stopped reading, that would be a bug of its own.
@@ -163,6 +165,7 @@ impl Outbox {
             queue: Mutex::default(),
             droppable: OnceLock::new(),
             pending,
+            write_blocked: AtomicBool::new(false),
             capped,
             worker: worker.clone(),
         }))
@@ -757,6 +760,7 @@ impl Conn {
         if self.close_at.is_some_and(|at| at <= now) {
             return false;
         }
+        let was_blocked = self.stalled.is_some();
         #[cfg(any(test, feature = "test-payload-probe"))]
         let had_output = self.written < self.out.len();
         while self.written < self.out.len() {
@@ -782,6 +786,9 @@ impl Conn {
                     #[cfg(any(test, feature = "test-payload-probe"))]
                     self.outbox.probe[3].fetch_add(1, Ordering::Relaxed);
                     self.stalled.get_or_insert(now);
+                    if !was_blocked {
+                        self.outbox.write_blocked.store(true, Ordering::Relaxed);
+                    }
                     return true;
                 }
                 Err(e) if e.kind() == ErrorKind::Interrupted => {}
@@ -801,6 +808,9 @@ impl Conn {
         self.out.clear();
         self.written = 0;
         self.stalled = None;
+        if was_blocked {
+            self.outbox.write_blocked.store(false, Ordering::Relaxed);
+        }
         if self.out.capacity() > 4 * AHEAD {
             self.out.shrink_to(AHEAD);
         }
@@ -1166,6 +1176,7 @@ mod tests {
             assert!(i < u8::MAX, "the socket took everything");
             served.send(vec![body(i, 1 << 20)], None);
         }
+        assert!(served.outbox.write_blocked.load(Ordering::Relaxed));
         served.send(Vec::new(), Some(End::Disconnect));
         std::thread::sleep(Duration::from_millis(300));
         assert!(served.seen.try_recv().is_err(), "still writing");

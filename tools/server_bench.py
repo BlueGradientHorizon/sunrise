@@ -281,16 +281,16 @@ def pumpkin_defaults(exe, out):
     return files
 
 
-def pumpkin_config(text, port, args):
-    """Pumpkin's default configuration with the benchmark's settings (PROPERTIES), listening on 127.0.0.1 only,
+def pumpkin_config(text, port, args, properties=PROPERTIES):
+    """Pumpkin's default configuration with the benchmark's settings, listening on 127.0.0.1 only,
     with no Bedrock or LAN listener, query, plugins or telemetry."""
     top = {'seed': f'"{args.seed}"', 'default_difficulty': '"Easy"', 'default_gamemode': '"Creative"',
            'force_gamemode': 'true', 'spawn_protection': '0', 'white_list': 'false', 'use_tty': 'false'}
     sections = {
         'logging': {'color': 'false'},
         'networking.java': {'address': f'"127.0.0.1:{port}"', 'online_mode': 'false', 'encryption': 'false',
-                            'max_players': '200', 'view_distance': PROPERTIES['view-distance'],
-                            'simulation_distance': PROPERTIES['simulation-distance']},
+                            'max_players': '200', 'view_distance': properties['view-distance'],
+                            'simulation_distance': properties['simulation-distance']},
         'networking.java.authentication': {'enabled': 'false'},
         'networking.java.authentication.textures': {'enabled': 'false'},
         'networking.query': {'enabled': 'false', 'address': f'"127.0.0.1:{port + 1}"'},
@@ -336,7 +336,7 @@ def tick_query(server):
     return {'average': average, 'p50': percentiles[0], 'p95': percentiles[1], 'p99': percentiles[2]}
 
 
-def server_command(kind, directory, args):
+def server_command(kind, directory, args, properties=PROPERTIES):
     java = ['java', f'-Xms{args.heap}', f'-Xmx{args.heap}', '-Duser.timezone=UTC']
     if kind == 'vanilla':
         _, jars, libraries = base.verify_artifacts()
@@ -378,7 +378,8 @@ def server_command(kind, directory, args):
             args.pumpkin_files = pumpkin_defaults(args.pumpkin, directory.parent)
         for name, text in args.pumpkin_files.items():
             (directory / name).parent.mkdir(parents=True, exist_ok=True)
-            (directory / name).write_text(pumpkin_config(text, args.port, args) if '[networking.java]' in text else text)
+            (directory / name).write_text(pumpkin_config(text, args.port, args, properties)
+                                          if '[networking.java]' in text else text)
         return [args.pumpkin]
     server = BIN / f'sunrise-server{EXE}'
     subprocess.run([server, '--dir', directory, 'import', directory / 'server.properties'], check=True,
@@ -515,11 +516,18 @@ def run_once(kind, bots, behaviour, args, out):
     directory.mkdir(parents=True)
     port = args.port = lab.free_port()
     props = dict(PROPERTIES, **{'server-port': str(port), 'level-seed': str(args.seed)})
+    props['view-distance'] = str(args.view_distance)
+    props['simulation-distance'] = str(args.simulation_distance)
     if args.ground:
         props.update({'level-type': 'minecraft\\:flat', 'generate-structures': 'false', 'gamemode': 'survival'})
+    if args.spread_bots:
+        # A fixed spawn Y may be above the ground at some of the teleports.
+        props['allow-flight'] = 'true'
+    if args.protect_bubble_particles:
+        props['sunrise-protect-bubble-particles'] = 'true'
     (directory / 'server.properties').write_text(''.join(f'{k}={v}\n' for k, v in props.items()))
     (directory / 'eula.txt').write_text('eula=true\n')
-    command = server_command(kind, directory, args)
+    command = server_command(kind, directory, args, props)
     if args.nice:
         command = ['nice', '-n', str(args.nice), *command]
     started = time.time()
@@ -597,8 +605,14 @@ def run_once(kind, bots, behaviour, args, out):
                             'tps': game['tps'],
                             'mspt': game['mspt'],
                             'levels': game.get('levels', []),
-                            'players': {p['name']: {'ping_ms': p['ping_ms'], 'position': p['position']}
-                                        for p in game['players']},
+                            'players': {
+                                p['name']: {
+                                    'ping_ms': p['ping_ms'],
+                                    'position': p['position'],
+                                    'pending_send_bytes': p.get('pending_send_bytes'),
+                                }
+                                for p in game['players']
+                            },
                         })
                 elif (t := tick_query(server)) is not None:
                     ticks.append(t)
@@ -723,6 +737,10 @@ def main():
     parser.add_argument('--warmup', type=int, default=60)
     parser.add_argument('--seconds', type=int, default=300)
     parser.add_argument('--seed', type=int, default=12345)
+    parser.add_argument('--view-distance', type=int, default=int(PROPERTIES['view-distance']),
+                        help='server view distance in chunks')
+    parser.add_argument('--simulation-distance', type=int, default=int(PROPERTIES['simulation-distance']),
+                        help='server simulation distance in chunks')
     parser.add_argument('--explore-speed', type=float, default=0,
                         help='blocks a second the explore bots fly (default: the bots\' 22, as fast as chunks '
                              'come); a speed both servers keep up with makes the explore pass equal work')
@@ -741,6 +759,8 @@ def main():
                            help='teleport idle bots onto a grid in a flat world for natural spawning')
     scenarios.add_argument('--water-stands', type=int, default=0, metavar='COUNT',
                            help='summon armor stands into a bubble-column tank near idle bots')
+    parser.add_argument('--protect-bubble-particles', action='store_true',
+                        help='enable the server\'s bubble-column particle backpressure protection')
     parser.add_argument('--ground', action='store_true',
                         help='a flat survival world, the bots walking on its ground and saying so in every move')
     parser.add_argument('--bots-via', default='', help="a command prefix to run the bots elsewhere ('ssh host')")
@@ -753,8 +773,12 @@ def main():
     parser.add_argument('--repeat', type=int, default=1,
                         help='rounds: every server and bot count once per round, the servers alternated')
     args = parser.parse_args()
+    if not 2 <= args.view_distance <= 32 or not 2 <= args.simulation_distance <= 32:
+        parser.error('view and simulation distances must be between 2 and 32 chunks')
     if args.spread_bots < 0 or args.water_stands < 0:
         parser.error('entity load scenario values must be nonnegative')
+    if args.protect_bubble_particles and not args.water_stands:
+        parser.error('--protect-bubble-particles requires --water-stands')
     if args.spread_bots or args.water_stands:
         if args.servers != 'sunrise' or args.behaviour != 'idle' or not args.ground:
             parser.error('entity load scenarios require --servers sunrise --behaviour idle --ground')
@@ -782,7 +806,9 @@ def main():
         'versions': versions(args.servers.split(',')),
         'settings': {**{k: v for k, v in vars(args).items() if k != 'pumpkin_files'}, 'out': str(args.out),
                      'pumpkin': str(args.pumpkin) if args.pumpkin else None,
-                     'capture': str(args.capture) if args.capture else None, 'properties': PROPERTIES},
+                     'capture': str(args.capture) if args.capture else None,
+                     'properties': {**PROPERTIES, 'view-distance': str(args.view_distance),
+                                    'simulation-distance': str(args.simulation_distance)}},
         'runs': runs,
         'work': work(runs),
     }

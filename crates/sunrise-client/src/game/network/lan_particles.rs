@@ -3,8 +3,7 @@
 //! `/particle` uses) and `ClientboundExplodePacket` (`ServerLevel.explode`).
 use super::{Game, explosion_settings::BlastEffects, lan::LanHost, level_sounds::LevelSound};
 use mod_api::{SoundSource, client::particles::PositionSource};
-use sunrise_client::lan::containers::within_range;
-use sunrise_client::lan::hub::Hub;
+use sunrise_client::lan::{Body, containers::within_range, hub::Hub};
 use sunrise_client::particles::{ExplosionParticle, ParticleOptions, ParticleType};
 use sunrise_core::{
     geometry::{Aabb, Vec3},
@@ -16,6 +15,10 @@ use sunrise_protocol::{
     packets::play::{self, Clientbound as C},
 };
 use sunrise_world::registry::BlockStateId;
+
+/// Charged outbound bytes, including queue overhead. Once the queue reaches this
+/// size, skip new bubble-column effects until the queue drains below it.
+const BUBBLE_PARTICLE_BACKLOG: usize = 16 << 10;
 
 /// An explosion packet a guest's turn put off (`lan_explode`).
 pub(super) struct LanExplosion {
@@ -174,7 +177,69 @@ pub(super) fn send_snowflake_particle(
 }
 
 /// `ServerLevel.sendParticles`: sends a `ClientboundLevelParticlesPacket` to each player within 32 blocks.
-pub(super) fn send_hub_level_particles(
+fn hub_level_particle_packet(
+    hub: &Hub,
+    options: &ParticleOptions,
+    at: [f64; 3],
+    spread: [f64; 3],
+    speed: f64,
+    count: u32,
+    state: Option<BlockStateId>,
+) -> Option<play::LevelParticles> {
+    Some(play::LevelParticles {
+        particle: hub.particle(options, state)?,
+        override_limiter: false,
+        always_show: false,
+        pos: at,
+        dist: spread.map(|d| d as f32),
+        max_speed: [speed as f32; 3],
+        count: count as i32,
+        randomization: 0,
+    })
+}
+
+fn broadcast_hub_level_particles(hub: &Hub, packet: play::LevelParticles, protect: bool) {
+    let at = packet.pos;
+    let sunrise_only = packet.particle.sunrise_only();
+    let mut recipients = hub
+        .guests
+        .iter()
+        .filter(|guest| {
+            if !hub.here(guest)
+                || !guest.participates_online()
+                || sunrise_only && !guest.is_sunrise()
+            {
+                return false;
+            }
+            // ServerLevel compares the player's block centre, strictly within 32.
+            let distance: f64 = (0..3)
+                .map(|k| (guest.position[k].floor() + 0.5 - at[k]).powi(2))
+                .sum();
+            distance < 32.0 * 32.0
+                && (!protect || !guest.sender.output_backlogged(BUBBLE_PARTICLE_BACKLOG))
+        })
+        .peekable();
+    let Some(first) = recipients.next() else {
+        return;
+    };
+    let body = match C::LevelParticles(packet).try_encode() {
+        Ok(body) => body,
+        Err(error) => {
+            eprintln!("[lan] send refused: {error}");
+            return;
+        }
+    };
+    if recipients.peek().is_none() {
+        first.sender.send(body);
+        return;
+    }
+    let shared = Body::shared(body);
+    for guest in std::iter::once(first).chain(recipients) {
+        guest.sender.send_many([shared.clone()]);
+    }
+}
+
+fn send_hub_level_particles(
     hub: &Hub,
     options: &ParticleOptions,
     at: [f64; 3],
@@ -183,31 +248,8 @@ pub(super) fn send_hub_level_particles(
     count: u32,
     state: Option<BlockStateId>,
 ) {
-    let Some(particle) = hub.particle(options, state) else {
-        return;
-    };
-    let sunrise_only = particle.sunrise_only();
-    let packet = C::LevelParticles(play::LevelParticles {
-        particle,
-        override_limiter: false,
-        always_show: false,
-        pos: at,
-        dist: spread.map(|d| d as f32),
-        max_speed: [speed as f32; 3],
-        count: count as i32,
-        randomization: 0,
-    });
-    for g in hub.guests.iter().filter(|g| hub.here(g)) {
-        if sunrise_only && !g.is_sunrise() {
-            continue;
-        }
-        // ServerLevel compares the player's block centre, strictly within 32.
-        let distance: f64 = (0..3)
-            .map(|k| (g.position[k].floor() + 0.5 - at[k]).powi(2))
-            .sum();
-        if distance < 32.0 * 32.0 {
-            g.send(&packet);
-        }
+    if let Some(packet) = hub_level_particle_packet(hub, options, at, spread, speed, count, state) {
+        broadcast_hub_level_particles(hub, packet, false);
     }
 }
 
@@ -255,6 +297,23 @@ impl Game<'_> {
             return;
         };
         send_hub_level_particles(hub, options, at, spread, speed, count, state);
+    }
+
+    /// The two surface effects from `Entity.sendBubbleColumnParticles` may be
+    /// dropped for a backlogged connection if the dedicated server opts in.
+    pub(super) fn lan_bubble_column_particles(
+        &self,
+        options: &ParticleOptions,
+        at: [f64; 3],
+        spread: [f64; 3],
+        speed: f64,
+    ) {
+        let Some(hub) = self.lan.as_ref().map(|host| &host.hub) else {
+            return;
+        };
+        if let Some(packet) = hub_level_particle_packet(hub, options, at, spread, speed, 1, None) {
+            broadcast_hub_level_particles(hub, packet, hub.protect_bubble_particles);
+        }
     }
 
     /// `LivingEntity.checkFallDamage`'s `ServerLevel.sendParticles` of the
@@ -1082,6 +1141,40 @@ pub(in crate::game) mod tests {
             play::Clientbound::LevelParticles(p) => p,
             other => panic!("expected LevelParticles packet, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn bubble_particle_protection_only_skips_backlogged_recipients() {
+        use std::sync::atomic::Ordering::Relaxed;
+
+        let (mut hub, first, second) = test_hub(
+            "BackloggedBubbleParticles",
+            vec!["minecraft:splash".into()],
+            None,
+        );
+        hub.update_guest(2, |guest| guest.position = [7.0, 64.0, 7.0]);
+        let pending = hub.guest(1).unwrap().sender.pending.clone();
+        let at = [5.5, 64.0, 5.5];
+        let options = ParticleOptions::simple(ParticleType::Splash);
+        let send_bubbles = |protect| {
+            let packet =
+                hub_level_particle_packet(&hub, &options, at, [0.0; 3], 1.0, 1, None).unwrap();
+            broadcast_hub_level_particles(&hub, packet, protect);
+        };
+
+        pending.store(BUBBLE_PARTICLE_BACKLOG, Relaxed);
+        send_bubbles(true);
+        assert!(first.try_recv().is_err());
+        assert_eq!(level_particles(&second).pos, at);
+
+        send_bubbles(false);
+        assert_eq!(level_particles(&first).pos, at);
+        assert_eq!(level_particles(&second).pos, at);
+
+        pending.store(0, Relaxed);
+        send_bubbles(true);
+        assert_eq!(level_particles(&first).pos, at);
+        assert_eq!(level_particles(&second).pos, at);
     }
 
     thread_local! {
