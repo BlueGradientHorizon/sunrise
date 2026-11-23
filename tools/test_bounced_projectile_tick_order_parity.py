@@ -20,6 +20,8 @@ Pass `--record-wind-witness` to record the vanilla 26.3 wind-charge continuation
 import os
 from pathlib import Path
 import re
+import shutil
+import subprocess
 import sys
 import time
 
@@ -36,6 +38,11 @@ NAME = 'bounced-projectile-tick-order-parity'
 TICKS = 5
 ARROW_TAGS = ['arrow', 'c2']
 WIND_TAGS = ['w6_main', 'a2_main', 'w6_ctrl4', 'w6_rev', 'a2_rev']
+BOAT_SPECS = [
+    ('boat_main', (4.5, -60.0, 8.5)),
+    ('boat_ctrl4', (4.5, -60.0, 24.5)),
+    ('boat_rev', (4.5, -60.0, 40.5)),
+]
 TAGS = [*ARROW_TAGS, *WIND_TAGS]
 ARROW_SETUP = [
     'summon minecraft:arrow 4.5 -50.0 4.5 {Motion:[0.0d,-0.2d,0.0d],pickup:0b,Tags:["arrow"]}',
@@ -60,42 +67,133 @@ WIND_WITNESS = lab.ROOT / 'tools/witness/26.3/wind_charge_continuation_tick_orde
 NUMBER = re.compile(r'(-?[0-9][0-9.E-]*)d')
 
 
-def run(label, command, world, build, *, setup=SETUP, tags=TAGS, ticks=TICKS):
+def compile_client(lock, jars, libraries, build):
+    """Compile LocatorBarClient without building Sunrise (used by --record-wind-witness)."""
+    oracle = lab.ROOT / 'mods/sunrise/src/test/java/dev/sunriselab/parity/LocatorBarClient.java'
+    classes = build / 'classes'
+    shutil.rmtree(classes, ignore_errors=True)
+    classes.mkdir(parents=True, exist_ok=True)
+    dependencies = os.pathsep.join(map(str, [jars['server'], *libraries]))
+    subprocess.run(['javac', '--release', str(lock['minecraft']['java_major']), '-proc:none', '-nowarn', '-sourcepath',
+                    lab.ROOT / 'mods/sunrise/src/test/java', '-cp', dependencies, '-d', classes, oracle],
+                   cwd=lab.ROOT, check=True, capture_output=True)
+    return ['java', '-Xmx1g', '-cp', str(classes) + os.pathsep + dependencies, 'dev.sunriselab.parity.LocatorBarClient']
+
+
+def run(label, command, client_command, world, build, *, setup=SETUP, tags=TAGS, boats=BOAT_SPECS, ticks=TICKS):
     directory = build / label
-    locator.server_dir(directory, world)
+    port = locator.server_dir(directory, world)
+    out = build / f'{label}-boats.txt'
+    out.unlink(missing_ok=True)
     server = Server(command, directory, label)
-    lines = []
+    tick_proj_lines = {}
+    tick_boat_console_alive = {}
     try:
         server.wait_for(r'Done \(', timeout=600)
-        server.console('tick freeze')
         server.console('forceload add 0 0 31 63')
-        server.console('say READY')
-        server.wait_for(r'READY', timeout=120)
-        time.sleep(3)
-        for command_line in setup:
-            server.console(command_line)
-        time.sleep(1)
-        for tick in range(ticks + 1):
-            if tick:
-                server.console('tick step 1')
-                time.sleep(1.0)
-            start = len(server.lines)
-            for tag in tags:
-                for path in ('Pos', 'Motion'):
-                    server.console(f'data get entity @e[tag={tag},limit=1] {path}')
-            server.console(f'say END {tick}')
-            server.wait_for(rf'END {tick}\b', timeout=120)
-            answers = [l.split('INFO]: ', 1)[-1] for l in server.lines[start:]
-                       if 'entity data:' in l or 'No entity was found' in l or 'Found no' in l]
-            for i, tag in enumerate(tags):
-                pos, motion = answers[2 * i:2 * i + 2] if len(answers) >= 2 * i + 2 else ('', '')
-                if 'entity data:' not in pos:
-                    lines.append(f'tick {tick} {tag} gone')
-                else:
-                    lines.append(f'tick {tick} {tag} pos {" ".join(NUMBER.findall(pos))}'
-                                 f' motion {" ".join(NUMBER.findall(motion))}')
+        with (build / f'{label}-client.log').open('w', encoding='utf-8') as log:
+            client = locator.Client(client_command, port, out, log)
+            try:
+                client.tell('boat-damage on')
+                client.tell('step setup')
+                client.tell('join Alice')
+                server.wait_for(r'Alice joined the game', timeout=120)
+                client.tell('cmd Alice gamemode spectator')
+                client.tell('cmd Alice tp @s 4.5 -40 24.5')
+                client.sync(['Alice'])
+                server.console('tick freeze')
+                server.console('say READY')
+                server.wait_for(r'READY', timeout=120)
+                time.sleep(3)
+                for command_line in setup:
+                    server.console(command_line)
+                time.sleep(1)
+                client.sync(['Alice'])
+                for tick in range(ticks + 1):
+                    client.tell(f'step tick_{tick}')
+                    if tick:
+                        server.console('tick step 1')
+                        time.sleep(1.0)
+                    client.sync(['Alice'])
+                    start = len(server.lines)
+                    for tag in tags:
+                        for path in ('Pos', 'Motion'):
+                            server.console(f'data get entity @e[tag={tag},limit=1] {path}')
+                    for boat_tag, _pos in boats:
+                        server.console(f'data get entity @e[tag={boat_tag},limit=1] Pos')
+                    server.console(f'say END {tick}')
+                    server.wait_for(rf'END {tick}\b', timeout=120)
+                    answers = [l.split('INFO]: ', 1)[-1] for l in server.lines[start:]
+                               if 'entity data:' in l or 'No entity was found' in l or 'Found no' in l]
+                    proj_lines = []
+                    for i, tag in enumerate(tags):
+                        pos, motion = answers[2 * i:2 * i + 2] if len(answers) >= 2 * i + 2 else ('', '')
+                        if 'entity data:' not in pos:
+                            proj_lines.append(f'tick {tick} {tag} gone')
+                        else:
+                            proj_lines.append(f'tick {tick} {tag} pos {" ".join(NUMBER.findall(pos))}'
+                                              f' motion {" ".join(NUMBER.findall(motion))}')
+                    tick_proj_lines[tick] = proj_lines
+                    boat_offset = 2 * len(tags)
+                    console_alive = {}
+                    for i, (boat_tag, _pos) in enumerate(boats):
+                        ans = answers[boat_offset + i] if len(answers) > boat_offset + i else ''
+                        console_alive[boat_tag] = 'entity data:' in ans
+                    tick_boat_console_alive[tick] = console_alive
+                client.end()
+            finally:
+                client.kill()
     finally:
         server.stop()
+    if not out.exists():
+        raise AssertionError(f'{label}: the client wrote no boat transcript (see {build}/{label}-client.log)')
+    client_lines = out.read_text(encoding='utf-8').splitlines()
+    errors = [l for l in client_lines if ' error ' in f' {l} ' or 'disconnected' in l]
+    if errors:
+        raise AssertionError(f'{label}: client errors:\n' + '\n'.join(errors[:10]))
+    pos_to_tag = {pos: tag for tag, pos in boats}
+    events_by_step = {}
+    for line in client_lines:
+        parts = line.split()
+        if len(parts) < 3:
+            continue
+        step = parts[1].removeprefix('step=')
+        events_by_step.setdefault(step, []).append(parts[2:])
+    boat_alive = {tag: False for tag, _pos in boats}
+    boat_damage = {tag: '0.0' for tag, _pos in boats}
+
+    def apply_step(step_name):
+        for event in events_by_step.get(step_name, ()):
+            kind = event[0]
+            if kind in ('boat-add', 'boat-damage', 'boat-remove'):
+                pos = (float(event[1]), float(event[2]), float(event[3]))
+                tag = pos_to_tag.get(pos)
+                if tag is None:
+                    continue
+                if kind == 'boat-add':
+                    boat_alive[tag] = True
+                    boat_damage[tag] = '0.0'
+                elif kind == 'boat-damage':
+                    boat_damage[tag] = event[4]
+                elif kind == 'boat-remove':
+                    boat_alive[tag] = False
+
+    apply_step('setup')
+    lines = []
+    for tick in range(ticks + 1):
+        apply_step(f'tick_{tick}')
+        lines.extend(tick_proj_lines[tick])
+        for boat_tag, _pos in boats:
+            console_is_alive = tick_boat_console_alive[tick][boat_tag]
+            if boat_alive[boat_tag] != console_is_alive:
+                raise AssertionError(
+                    f'{label}: tick {tick} {boat_tag} client alive={boat_alive[boat_tag]} '
+                    f'disagrees with server console alive={console_is_alive}'
+                )
+            if console_is_alive:
+                lines.append(f'tick {tick} {boat_tag} alive damage {boat_damage[boat_tag]}')
+            else:
+                lines.append(f'tick {tick} {boat_tag} gone')
     return lines
 
 
@@ -111,6 +209,9 @@ def motion_y(lines, tick, tag):
 
 def proves_wind(vanilla):
     """Why vanilla's wind-charge continuation lanes do not prove tick order, or None."""
+    for boat_tag, _pos in BOAT_SPECS:
+        if f'tick 0 {boat_tag} alive damage 0.0' not in vanilla:
+            return f'{boat_tag} was not recorded alive with 0.0 damage at tick 0'
     if motion(vanilla, 1, 'w6_ctrl4') is not None:
         return 'the four-charge control did not burst on the intact boat'
     main_v = motion(vanilla, 4, 'w6_main')
@@ -145,8 +246,10 @@ def record_wind_witness():
     vanilla_server = ['java', '-Xmx2g', '-Duser.timezone=UTC', '-cp', deps, 'net.minecraft.server.Main', 'nogui']
     build = lab.LOCAL / f'{NAME}-record'
     build.mkdir(parents=True, exist_ok=True)
+    client = compile_client(lock, jars, libraries, build)
     world = locator.generate_world(vanilla_server, build)
-    vanilla = run('vanilla', vanilla_server, world, build, setup=['time set 6000', *WIND_SETUP], tags=WIND_TAGS, ticks=4)
+    vanilla = run('vanilla', vanilla_server, client, world, build,
+                  setup=['time set 6000', *WIND_SETUP], tags=WIND_TAGS, boats=BOAT_SPECS, ticks=4)
     why = proves_wind(vanilla)
     if why:
         raise AssertionError(f'vanilla is no proof: {why}:\n' + '\n'.join(vanilla))
@@ -163,14 +266,14 @@ def main():
     if '--record-wind-witness' in sys.argv[1:]:
         record_wind_witness()
         return
-    lock, build, vanilla_server, sunrise_server, _client = locator.sides(NAME)
+    lock, build, vanilla_server, sunrise_server, client = locator.sides(NAME)
     world = locator.generate_world(vanilla_server, build)
-    vanilla = run('vanilla', vanilla_server, world, build)
+    vanilla = run('vanilla', vanilla_server, client, world, build)
     (build / 'vanilla.txt').write_text('\n'.join(vanilla) + '\n', encoding='utf-8')
     why = proves(vanilla)
     if why:
         raise AssertionError(f'vanilla is no proof: {why}:\n' + '\n'.join(vanilla))
-    sunrise = run('sunrise', sunrise_server, world, build)
+    sunrise = run('sunrise', sunrise_server, client, world, build)
     (build / 'sunrise.txt').write_text('\n'.join(sunrise) + '\n', encoding='utf-8')
     if vanilla != sunrise:
         differ = [f'- {v}\n+ {h}' for v, h in zip(vanilla, sunrise) if v != h]

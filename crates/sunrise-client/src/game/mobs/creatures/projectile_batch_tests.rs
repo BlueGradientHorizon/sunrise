@@ -746,6 +746,7 @@ struct WindContinuationObserved {
 
 struct WindContinuationObserver {
     spawn_on_shoot: bool,
+    watch_breeze_each: bool,
     observed: Arc<WindContinuationObserved>,
 }
 
@@ -801,20 +802,26 @@ impl Hooks for WindContinuationObserver {
     }
 
     fn register(&self, r: &mut dyn mod_api::Registrar, _: &mod_api::RegistrationContext) {
-        r.entity_tick_each("minecraft:breeze_wind_charge");
+        if self.watch_breeze_each {
+            r.entity_tick_each("minecraft:breeze_wind_charge");
+        }
     }
 }
 
-fn wind_continuation_witness_26_3(tick: usize, tag: &str) -> Option<([f64; 3], [f64; 3])> {
-    const WITNESS: &str = include_str!(
-        "../../../../../../tools/witness/26.3/wind_charge_continuation_tick_order.txt"
-    );
+const WIND_CONTINUATION_WITNESS_26_3: &str =
+    include_str!("../../../../../../tools/witness/26.3/wind_charge_continuation_tick_order.txt");
+
+fn wind_continuation_witness_row_26_3(tick: usize, tag: &str) -> &'static str {
     let prefix = format!("tick {tick} {tag} ");
-    let line = WITNESS
+    let line = WIND_CONTINUATION_WITNESS_26_3
         .lines()
         .find(|line| line.starts_with(&prefix))
         .unwrap_or_else(|| panic!("missing 26.3 witness row for {prefix}"));
-    let rest = &line[prefix.len()..];
+    &line[prefix.len()..]
+}
+
+fn wind_continuation_witness_26_3(tick: usize, tag: &str) -> Option<([f64; 3], [f64; 3])> {
+    let rest = wind_continuation_witness_row_26_3(tick, tag);
     if rest == "gone" {
         return None;
     }
@@ -827,6 +834,34 @@ fn wind_continuation_witness_26_3(tick: usize, tag: &str) -> Option<([f64; 3], [
         [it.next().unwrap(), it.next().unwrap(), it.next().unwrap()]
     };
     Some((parse3(pos_str), parse3(mot_str)))
+}
+
+fn wind_continuation_boat_witness_26_3(tick: usize, tag: &str) -> Option<f32> {
+    let rest = wind_continuation_witness_row_26_3(tick, tag);
+    if rest == "gone" {
+        return None;
+    }
+    let damage = rest
+        .strip_prefix("alive damage ")
+        .expect("alive damage prefix")
+        .parse::<f32>()
+        .expect("witness boat damage float");
+    Some(damage)
+}
+
+fn assert_boat_matches_witness(game: &Game<'_>, tick: usize, tag: &str) {
+    let actual = game.boats.iter().find(|b| b.id == 71).map(|b| b.damage);
+    let expected = wind_continuation_boat_witness_26_3(tick, tag);
+    assert_eq!(
+        actual.map(f32::to_bits),
+        expected.map(f32::to_bits),
+        "tick {tick} {tag}: boat state got {actual:?} expected {expected:?}"
+    );
+    assert_eq!(
+        game.boats.len(),
+        usize::from(expected.is_some()),
+        "tick {tick} {tag}: boat count mismatch"
+    );
 }
 
 fn assert_vec3_bits(actual: Vec3, expected: [f64; 3], label: &str) {
@@ -846,7 +881,7 @@ fn continuing_wind_charge_keeps_tick_order_and_skips_relaunch_in_batched_pass() 
     if run_fresh_cases(
         "game::creatures::projectile_batch_tests::continuing_wind_charge_keeps_tick_order_and_skips_relaunch_in_batched_pass",
         CASE,
-        &["main", "ctrl4", "mixed-batch"],
+        &["main", "ctrl4", "reversed", "mixed-batch"],
     ) {
         return;
     }
@@ -856,6 +891,7 @@ fn continuing_wind_charge_keeps_tick_order_and_skips_relaunch_in_batched_pass() 
         "wind-continuation-observer",
         Box::new(WindContinuationObserver {
             spawn_on_shoot: case == "mixed-batch",
+            watch_breeze_each: case != "reversed",
             observed: observed.clone(),
         }),
     )]
@@ -875,10 +911,10 @@ fn continuing_wind_charge_keeps_tick_order_and_skips_relaunch_in_batched_pass() 
             game.set_allow_commands(true);
             assert!(game.run_command("forceload add 0 0 15 47"));
             game.next_entity = 100;
-            let (z, breakers) = if case == "ctrl4" {
-                (24.5, 4_u32)
-            } else {
-                (8.5, 5_u32)
+            let (z, breakers, boat_tag, w6_tag, a2_tag) = match case.as_str() {
+                "ctrl4" => (24.5, 4_u32, "boat_ctrl4", "w6_ctrl4", None),
+                "reversed" => (40.5, 5_u32, "boat_rev", "w6_rev", Some("a2_rev")),
+                _ => (8.5, 5_u32, "boat_main", "w6_main", Some("a2_main")),
             };
             game.boats.push(crate::game::boats::Boat::new(
                 71,
@@ -894,17 +930,18 @@ fn continuing_wind_charge_keeps_tick_order_and_skips_relaunch_in_batched_pass() 
                 p.acceleration = 0.0;
                 game.creatures.projectiles.push(p);
             }
-            let mut w6 = Projectile::new(
-                ProjectileKind::BreezeWindCharge,
-                Vec3::new(3.5, -59.7, z),
-                None,
-            );
-            w6.id = 85;
-            w6.velocity = Vec3::new(1.5, 0.0, 0.0);
-            w6.acceleration = 0.0;
-            game.creatures.projectiles.push(w6);
-            let w6_join = game.creatures.projectiles.last().unwrap().join;
-            let a2_join = if case != "ctrl4" {
+            let make_w6 = || {
+                let mut w6 = Projectile::new(
+                    ProjectileKind::BreezeWindCharge,
+                    Vec3::new(3.5, -59.7, z),
+                    None,
+                );
+                w6.id = 85;
+                w6.velocity = Vec3::new(1.5, 0.0, 0.0);
+                w6.acceleration = 0.0;
+                w6
+            };
+            let make_a2 = || {
                 let mut a2 = Projectile::new(
                     ProjectileKind::Arrow {
                         base_damage: 2.0,
@@ -916,28 +953,47 @@ fn continuing_wind_charge_keeps_tick_order_and_skips_relaunch_in_batched_pass() 
                 );
                 a2.id = 86;
                 a2.velocity = Vec3::new(0.0, -0.2, 0.0);
-                game.creatures.projectiles.push(a2);
-                Some(game.creatures.projectiles.last().unwrap().join)
+                a2
+            };
+            let (w6_join, a2_join) = if case == "reversed" {
+                game.creatures.projectiles.push(make_a2());
+                let a2_join = game.creatures.projectiles.last().unwrap().join;
+                game.creatures.projectiles.push(make_w6());
+                let w6_join = game.creatures.projectiles.last().unwrap().join;
+                (w6_join, Some(a2_join))
             } else {
-                None
+                game.creatures.projectiles.push(make_w6());
+                let w6_join = game.creatures.projectiles.last().unwrap().join;
+                let a2_join = a2_tag.map(|_| {
+                    game.creatures.projectiles.push(make_a2());
+                    game.creatures.projectiles.last().unwrap().join
+                });
+                (w6_join, a2_join)
             };
             game.native_joins_skip();
+            assert_boat_matches_witness(game, 0, boat_tag);
             game.ticked_entities_through = u32::MAX;
             game.tick_projectiles().unwrap();
-            assert!(
-                observed.alone_ticks.lock().unwrap().contains(&85),
-                "w6 must run through the batched entity_tick_each pass"
-            );
+            if case != "reversed" {
+                assert!(
+                    observed.alone_ticks.lock().unwrap().contains(&85),
+                    "w6 must run through the batched entity_tick_each pass"
+                );
+            }
             if case == "ctrl4" {
-                assert!(wind_continuation_witness_26_3(1, "w6_ctrl4").is_none());
+                assert!(wind_continuation_witness_26_3(1, w6_tag).is_none());
                 assert!(game.creatures.projectiles.is_empty());
-                // Four breakers take the boat to 40 damage (still intact when w6 hits),
-                // and w6's own hit is the fifth (50 > 40), destroying the boat as it bursts.
-                assert!(game.boats.is_empty());
+                assert_boat_matches_witness(game, 1, boat_tag);
+                for tick in 2..=4 {
+                    game.ticked_entities_through = u32::MAX;
+                    game.tick_projectiles().unwrap();
+                    assert!(wind_continuation_witness_26_3(tick, w6_tag).is_none());
+                    assert!(game.creatures.projectiles.is_empty());
+                    assert_boat_matches_witness(game, tick, boat_tag);
+                }
                 assert!(observed.launches.lock().unwrap().is_empty());
                 return;
             }
-            assert!(game.boats.is_empty());
             let spawned = (case == "mixed-batch").then(|| {
                 assert!(*observed.buffered.lock().unwrap());
                 game.creatures
@@ -947,9 +1003,10 @@ fn continuing_wind_charge_keeps_tick_order_and_skips_relaunch_in_batched_pass() 
                     .expect("nested snowball restored ahead of survivors")
                     .id
             });
-            let expected_ids: Vec<u32> = match spawned {
-                Some(id) => vec![id, 85, 86],
-                None => vec![85, 86],
+            let expected_ids: Vec<u32> = match (case.as_str(), spawned) {
+                ("reversed", None) => vec![86, 85],
+                (_, Some(id)) => vec![id, 85, 86],
+                (_, None) => vec![85, 86],
             };
             let actual_ids: Vec<u32> = game.creatures.projectiles.iter().map(|p| p.id).collect();
             assert_eq!(actual_ids, expected_ids);
@@ -969,11 +1026,13 @@ fn continuing_wind_charge_keeps_tick_order_and_skips_relaunch_in_batched_pass() 
                 .unwrap();
             assert_eq!(w6_live.join, w6_join);
             assert_eq!(Some(a2_live.join), a2_join);
+            let a2_tag = a2_tag.unwrap();
             let check_tick = |game: &Game<'_>, tick: usize| {
+                assert_boat_matches_witness(game, tick, boat_tag);
                 let (w6_pos, w6_mot) =
-                    wind_continuation_witness_26_3(tick, "w6_main").expect("w6 alive");
+                    wind_continuation_witness_26_3(tick, w6_tag).expect("w6 alive");
                 let (a2_pos, a2_mot) =
-                    wind_continuation_witness_26_3(tick, "a2_main").expect("a2 alive");
+                    wind_continuation_witness_26_3(tick, a2_tag).expect("a2 alive");
                 let w6 = game
                     .creatures
                     .projectiles
