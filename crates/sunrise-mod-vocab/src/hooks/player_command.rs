@@ -20,7 +20,8 @@ pub trait Hooks {
         contract = "cancel",
         out = "canceled",
         neoforge = "CommandEvent",
-        cancellable = true
+        cancellable = true,
+        version = 2
     )]
     fn player_command(
         player: u128,

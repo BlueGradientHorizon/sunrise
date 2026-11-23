@@ -1,6 +1,6 @@
 #![cfg(test)]
 use super::*;
-use crate::testing::FakeHost;
+use crate::{HookList, HookListJournal, HookListStorage, testing::FakeHost};
 use std::sync::Mutex;
 
 #[test]
@@ -1129,7 +1129,7 @@ struct CodKeeper;
 
 #[mod_api::__subscriptions]
 impl Hooks for CodKeeper {
-    fn item_fished(&self, _host: &mut dyn ServerHost, event: &mut ItemFishedEvent<'_>) -> Flow {
+    fn item_fished(&self, _host: &mut dyn ServerHost, event: &mut ItemFishedEvent<'_, '_>) -> Flow {
         event.rod_damage = 4;
         let cod = event
             .drops
@@ -1144,7 +1144,11 @@ struct Unreached;
 
 #[mod_api::__subscriptions]
 impl Hooks for Unreached {
-    fn item_fished(&self, _host: &mut dyn ServerHost, _event: &mut ItemFishedEvent<'_>) -> Flow {
+    fn item_fished(
+        &self,
+        _host: &mut dyn ServerHost,
+        _event: &mut ItemFishedEvent<'_, '_>,
+    ) -> Flow {
         panic!("asked after a cancel");
     }
 }
@@ -1164,16 +1168,13 @@ fn a_fishing_catch_keeps_the_mods_rod_damage_and_its_cancel() {
         let mut drops = vec![crate::__private::part_tests::stack(item, 1, 0)];
         let fished = mod_vocab::__private::parts_installation::item_fished(9, [0.5, 62.0, 0.5]);
         let (mut rod_damage, mut cancel) = (1, false);
-        dispatch_item_fished(
-            host,
-            7,
-            3,
-            &fished,
-            &mut rod_damage,
-            &mut cancel,
-            &mut drops,
-            &mut |_: &Vec<crate::ItemStack>| -> Result<(), crate::StackWriteError> { Ok(()) },
+        let mut journal = HookListJournal::new(
+            HookListStorage::Resizable(&mut drops),
+            |value: &crate::ItemStack| Some(value.clone()),
+            |value| Ok(value.clone()),
         );
+        let mut list = HookList::new(&mut journal, "item_fished", "drops");
+        dispatch_item_fished(host, 7, 3, &fished, &mut rod_damage, &mut cancel, &mut list);
         (rod_damage, cancel)
     };
     assert_eq!(ask(&mut host, "minecraft:cod"), (4, true));
@@ -1186,6 +1187,12 @@ fn a_fishing_catch_keeps_the_mods_rod_damage_and_its_cancel() {
     )];
     let fished = mod_vocab::__private::parts_installation::item_fished(9, [0.5, 62.0, 0.5]);
     let (mut rod_damage, mut cancel) = (2, false);
+    let mut journal = HookListJournal::new(
+        HookListStorage::Resizable(&mut drops),
+        |value: &crate::ItemStack| Some(value.clone()),
+        |value| Ok(value.clone()),
+    );
+    let mut list = HookList::new(&mut journal, "item_fished", "drops");
     dispatch_item_fished(
         &mut host,
         7,
@@ -1193,8 +1200,7 @@ fn a_fishing_catch_keeps_the_mods_rod_damage_and_its_cancel() {
         &fished,
         &mut rod_damage,
         &mut cancel,
-        &mut drops,
-        &mut |_: &Vec<crate::ItemStack>| -> Result<(), crate::StackWriteError> { Ok(()) },
+        &mut list,
     );
     assert_eq!((rod_damage, cancel), (4, false));
 }

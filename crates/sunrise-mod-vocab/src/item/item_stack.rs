@@ -57,11 +57,11 @@ impl From<&Components> for Compound {
 /// of two stacks that still share it is a pointer comparison. An absent patch allocates nothing.
 ///
 /// An untouched mutable stack hook argument retains its engine value without
-/// write validation, even when the engine value exceeds effective maxima. Equality
-/// with the snapshot passed to the listener determines whether it changed; a changed
-/// argument is validated in full before committing any hook outputs.
-/// A refused hook output retains its captured engine value. The clicked-slot bridge also
-/// stages the slot, cursor and cancellation flags together. Independent host effects,
+/// write validation, even when the engine value exceeds effective maxima. Ordinary changed
+/// hook outputs are validated independently when the listener returns. A refused output
+/// keeps its last accepted value. A [`crate::HookList`] checks each edit that supplies a
+/// stack and leaves other edits intact on refusal. Atomic operations such as a stacked-item
+/// click still validate and apply their proposals together. Independent host effects,
 /// including storage writes, commands and messages, are not undone by output validation.
 // no wire: decoding rejects zero counts through new and validates component patches through set_components; damage is applied through set_damage.
 #[derive(Clone, Debug, PartialEq, Eq)]

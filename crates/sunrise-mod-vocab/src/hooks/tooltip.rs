@@ -25,7 +25,7 @@ pub trait Hooks {
         scope = "item",
         key = "stack",
         neoforge = "ItemTooltipEvent",
-        version = 2
+        version = 3
     )]
     fn tooltip(
         stack: &ItemStack,

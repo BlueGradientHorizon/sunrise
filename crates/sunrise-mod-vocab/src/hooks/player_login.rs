@@ -21,7 +21,8 @@ pub trait Hooks {
         contract = "cancel",
         out = "cancel",
         neoforge = "none (Bukkit's PlayerLoginEvent; NeoForge's PlayerNegotiationEvent is not cancellable)",
-        cancellable = true
+        cancellable = true,
+        version = 2
     )]
     fn player_login(player: u128, name: &str, cancel: &mut bool, reason: &mut Option<Text>);
 }

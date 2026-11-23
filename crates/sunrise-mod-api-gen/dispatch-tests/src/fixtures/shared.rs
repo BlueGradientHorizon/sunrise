@@ -24,11 +24,6 @@ impl ItemStack {
 #[derive(Debug)]
 enum StackWriteError {}
 mod content {
-    pub(super) mod crash {
-        pub fn current_native_mod() -> Option<&'static str> {
-            None
-        }
-    }
     pub(super) mod registry_keys {
         pub(in crate::tests) fn block_key(name: &str) -> Option<super::super::BlockKey> {
             match name {
@@ -58,8 +53,10 @@ struct ItemPlace;
 struct BlockEntityDraw(Vec<u32>);
 use serde_json::{Map, Value};
 use stubs::*;
-#[derive(Clone)]
+#[derive(Clone, PartialEq)]
 struct Text;
+#[derive(Debug)]
+enum TextFormError {}
 #[derive(Clone)]
 struct ScreenshotImage;
 enum Flow {
@@ -815,8 +812,8 @@ impl ItemPart for Mod {
     fn item_subscribed(&self) -> &'static [Option<HookId>] {
         &[]
     }
-    fn tooltip(&self, _: &dyn ClientHost, event: &mut TooltipEvent<'_>) {
-        event.lines.push((Text, self.id));
+    fn tooltip(&self, _: &dyn ClientHost, event: &mut TooltipEvent<'_, '_>) {
+        event.lines.push((Text, self.id)).unwrap();
     }
     fn use_on(&self, _: HostSide<'_>, _: &mut UseOnEvent<'_>) -> Option<InteractionResult> {
         self.calls.lock().unwrap().push(self.id);

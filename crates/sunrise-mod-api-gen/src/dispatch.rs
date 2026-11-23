@@ -546,42 +546,43 @@ pub(super) fn emit<'a>(
         let mut rollback: Vec<(String, bool)> = Vec::new();
         let mut cloned: Vec<String> = Vec::new();
         let mut surfaces: Vec<String> = Vec::new();
-        let stack_outputs: Vec<_> = args
-            .iter()
-            .chain(output.as_ref().filter(|_| contract == Contract::Collect))
-            .filter_map(|(name, ty)| match ty {
-                Type::Reference(reference)
-                    if reference.mutability.is_some() && stack_list_output(ty) =>
-                {
-                    Some((name, &reference.elem))
-                }
-                _ => None,
-            })
-            .collect();
-        // Keep the last accepted API value, not a new clone for every untouched listener.
-        let snapshot_mut = if single_part_slot { "" } else { "mut " };
-        let stack_snapshots = stack_outputs
-            .iter()
-            .map(|(name, _)| format!("let {snapshot_mut}__previous_{name} = {name}.clone();"))
-            .collect::<String>();
-        let stack_after = stack_outputs.iter().map(|(output, _)| {
-            let accepted = if single_part_slot {
-                "()".into()
-            } else {
-                format!("__previous_{output} = {event}.{output}.clone()")
-            };
-            format!(
-                "if *{event}.{output} != __previous_{output} {{ match __validate_{output}({event}.{output}) {{ Ok(()) => {accepted}, Err(error) => {{ *{event}.{output} = __previous_{output}.clone(); log::warn!(\"mod {{}} hook {name} output {output} refused: {{error:?}}\", super::content::crash::current_native_mod().unwrap_or(\"unknown\")); }} }} }}\n"
-            )
-        }).collect::<String>();
+        // Domain batches already have a deliberate atomic contract. Only ordinary
+        // engine conversions use per-output admission; direct and API-carrier owners
+        // (notably the resident menu routes) already own their writes.
+        let checked_crossing = in_game
+            && matches!(hook.dispatch, DispatchStyle::Carrier | DispatchStyle::Flat)
+            && !matches!(name, "fall_on" | "entity_inside");
+        let list_type = |ty: &Type| checked_crossing.then(|| reply_list(ty)).flatten();
         let collected = output
             .as_ref()
             .filter(|_| contract == Contract::Collect && !answered_return);
+        let checked_fields: Vec<_> = args
+            .iter()
+            .chain(collected)
+            .filter_map(|(field, ty)| {
+                (checked_crossing && list_type(ty).is_none() && boundary_kind(ty).is_some())
+                    .then(|| mutable_pointee(ty).map(|ty| (field, ty)))
+                    .flatten()
+            })
+            .collect();
+        let checked_replacement = output.as_ref().filter(|(_, ty)| {
+            checked_crossing && contract == Contract::Replace && boundary_kind(ty).is_some()
+        });
+        // Swapping hands is one operation. Keep its two proposed writes together,
+        // but do not make the independent veto depend on the validity of the pair.
+        let paired_hands = name == "player_swap_hands" && checked_crossing;
+        let mut lists = Vec::new();
         if attributed_append {
             fields.push_str("pub(super) mod_id: &'static str,\n");
             inits.push("mod_id: \"\"".to_owned());
         }
         for (name, ty) in args.iter().chain(collected) {
+            let projected_list = list_type(ty);
+            let dispatch_ty = projected_list.as_ref().map(ListReply::adapter_type);
+            let ty = dispatch_ty.as_ref().unwrap_or(ty);
+            if projected_list.is_some() {
+                lists.push(name.clone());
+            }
             let block_entity_scope = matches!(
                 ty,
                 Type::Path(path)
@@ -736,7 +737,20 @@ pub(super) fn emit<'a>(
         }
         if uses_carrier {
             dispatch_params.truncate(usize::from(host.is_some()));
-            let (fields, generics) = carrier_fields(&carried);
+            let api_carried = carried
+                .iter()
+                .map(|(field, ty)| {
+                    (
+                        field.clone(),
+                        list_type(ty).map_or_else(|| (*ty).clone(), |list| list.adapter_type()),
+                    )
+                })
+                .collect::<Vec<_>>();
+            let refs = api_carried
+                .iter()
+                .map(|(field, ty)| (field.clone(), ty))
+                .collect::<Vec<_>>();
+            let (fields, generics) = carrier_fields(&refs);
             dispatch_params.push(format!(
                 "call: calls::{carrier}{}",
                 if generics.is_empty() { "" } else { "<'_>" }
@@ -745,11 +759,19 @@ pub(super) fn emit<'a>(
                 "/// The hook's declared parameters at the engine boundary.\n#[doc(hidden)]\n#[allow(missing_docs)]\n// no wire: internal call carrier, not an owned boundary value.\npub struct {carrier}{generics} {{\n{fields}}}\n"
             ));
         }
-        for (name, ty) in &stack_outputs {
-            dispatch_params.push(format!(
-                "__validate_{name}: &mut dyn FnMut(&{ty}) -> Result<(), StackWriteError>",
-                ty = ty.to_token_stream()
-            ));
+        if paired_hands {
+            dispatch_params.push("__accept_hands: &mut dyn FnMut(Option<&Option<ItemStack>>, Option<&Option<ItemStack>>) -> Result<(), (&'static str, String)>".into());
+        } else {
+            for (field, ty) in checked_fields
+                .iter()
+                .copied()
+                .chain(checked_replacement.map(|(field, ty)| (field, mutable_pointee(ty).unwrap())))
+            {
+                dispatch_params.push(format!(
+                    "__accept_{field}: &mut dyn FnMut(&{}) -> Result<(), String>",
+                    ty.to_token_stream()
+                ));
+            }
         }
         if inert_signal {
             dispatch_params.push("inert: &mut bool".into());
@@ -931,7 +953,8 @@ pub(super) fn emit<'a>(
                 let crossing = stack_crossing_routed(
                     &args,
                     output.as_ref(),
-                    contract == Contract::Collect,
+                    checked_crossing,
+                    paired_hands,
                     hook_id,
                     scoped.is_some(),
                     hook.scope.as_ref().and_then(|scope| match scope.kind {
@@ -1080,6 +1103,9 @@ pub(super) fn emit<'a>(
             (Contract::Cancel, Some(out)) => method_source.push_str(&format!(
                 "///\n/// Return `Flow::Cancel` to take it: this sets `{out}`, and later {callee}s are skipped.\n"
             )),
+            (Contract::Replace, Some(out)) if checked_replacement.is_some() => method_source.push_str(&format!(
+                "///\n/// Return `Some` to propose `{out}`; the first accepted answer wins.\n"
+            )),
             (Contract::Replace, Some(out)) => method_source.push_str(&format!(
                 "///\n/// Return `Some` to set `{out}`; the first {callee} returning `Some` wins.\n"
             )),
@@ -1095,6 +1121,14 @@ pub(super) fn emit<'a>(
                 "///\n/// Every {callee} gets `{event}.{out}` in order and may add, change or remove {out}.\n"
             )),
             _ => {}
+        }
+        if !lists.is_empty() {
+            method_source.push_str("///\n/// Lists in this event are checked at each edit. A refused entry does not change\n/// another entry or cancel the operation; a panic discards the listener's own list edits.\n");
+        }
+        if paired_hands {
+            method_source.push_str("///\n/// A listener's two hand proposals are accepted together. A refused pair does not\n/// discard a veto.\n");
+        } else if !checked_fields.is_empty() {
+            method_source.push_str("///\n/// Each changed value is checked on return. A refused value leaves the prior\n/// value intact without discarding separate edits or a veto.\n");
         }
         method_source.push_str(&format!(
             "fn {name}({trait_params}){result} {{ {unused} {default} }}\n"
@@ -1193,7 +1227,7 @@ pub(super) fn emit<'a>(
             String::new()
         } else {
             format!(
-                "{stack_snapshots}{}let mut {event} = {event_type} {{ {} }};",
+                "{}let mut {event} = {event_type} {{ {} }};",
                 if answered && contract == Contract::Collect && !answered_return {
                     format!("let mut {batch} = Vec::new(); ")
                 } else {
@@ -1218,7 +1252,6 @@ pub(super) fn emit<'a>(
                 && hook.output_validator.is_none()
                 && surfaces.is_empty();
             if (!reply_outside_event && !shared_collect_output && !local_cancel_outputs)
-                || !stack_outputs.is_empty()
                 || hook.owner.is_some()
                 || hook.context == Some(PhaseContext::ChunkDisk)
             {
@@ -1241,6 +1274,11 @@ pub(super) fn emit<'a>(
         let saved = fresh_name("saved", &mut used);
         let mut snaps: Vec<String> = Vec::new();
         let mut restores: Vec<String> = Vec::new();
+        // The same restores for a listener's own transaction, which can refuse while the
+        // snapshots are still read after it: an owned one is borrowed there, not moved.
+        let mut restores_in_place: Vec<String> = Vec::new();
+        // The same snapshots serve panic rollback and changed-output detection.
+        let mut checked_indices = Vec::new();
         let answered_collect_batch =
             answered && contract == Contract::Collect && declaration.is_none() && !answered_return;
         // Trait-object fields have no whole value to copy. For a staged registrar the
@@ -1256,21 +1294,28 @@ pub(super) fn emit<'a>(
             if answered_collect_batch && Some(field.as_str()) == out {
                 continue;
             }
-            if stack_outputs.iter().any(|(name, _)| *name == field) {
+            if lists.contains(field) {
                 continue;
             }
             let index = snaps.len();
+            if checked_fields.iter().any(|(name, _)| *name == field) {
+                checked_indices.push((field, index));
+            }
             if (event_type == "RegisterConfigurationTasksEvent" && field == "registration")
                 || (event_type == "ModifyCustomSpawnersEvent" && field == "spawners")
             {
                 snaps.push(format!("{event}.{field}.checkpoint()"));
-                restores.push(format!("{event}.{field}.rollback({saved}.{index});"));
+                let restore = format!("{event}.{field}.rollback({saved}.{index});");
+                restores.push(restore.clone());
+                restores_in_place.push(restore);
                 continue;
             }
             if registration_append.is_some() && Some(field.as_str()) == out {
                 // Only the tail is writable; never clone or restore earlier registrations.
                 snaps.push(format!("{event}.{field}.len()"));
-                restores.push(format!("{event}.{field}.truncate({saved}.{index});"));
+                let restore = format!("{event}.{field}.truncate({saved}.{index});");
+                restores.push(restore.clone());
+                restores_in_place.push(restore);
                 continue;
             }
             snaps.push(if cloned.contains(field) {
@@ -1282,10 +1327,13 @@ pub(super) fn emit<'a>(
             } else {
                 format!("{event}.{field}")
             });
-            restores.push(format!(
-                "{}{event}.{field} = {saved}.{index};",
-                if *by_reference { "*" } else { "" }
-            ));
+            let target = format!("{}{event}.{field}", if *by_reference { "*" } else { "" });
+            restores.push(format!("{target} = {saved}.{index};"));
+            if cloned.contains(field) {
+                restores_in_place.push(format!("{target} = {saved}.{index}.clone();"));
+            } else {
+                restores_in_place.push(format!("{target} = {saved}.{index};"));
+            }
         }
         let previous_cancel = snaps.len();
         if mod_cancel && !local_cancel {
@@ -1302,13 +1350,49 @@ pub(super) fn emit<'a>(
         } else {
             format!("{} ", restores.join(" "))
         };
+        let restore_in_place = if snaps.is_empty() {
+            String::new()
+        } else {
+            format!("{} ", restores_in_place.join(" "))
+        };
         // Accepted batches are already in the caller's output. Detach only the failed
         // listener's private batch and run each destructor under its own panic fence.
         let discarded = fresh_name("discarded", &mut used);
-        let stack_restore = stack_outputs
-            .iter()
-            .map(|(output, _)| format!("*{event}.{output} = __previous_{output}.clone(); "))
-            .collect::<String>();
+        let list_enter = |owner: &str| {
+            lists
+                .iter()
+                .map(|field| format!("{event}.{field}.enter({owner});"))
+                .collect::<String>()
+        };
+        let list_finish = |accepted: bool| {
+            lists
+                .iter()
+                .map(|field| format!("{event}.{field}.finish({accepted});"))
+                .collect::<String>()
+        };
+        let refused = |owner: &str, field: &str| {
+            format!(
+                "log::warn!(\"mod {{}} hook {name} output {{}} refused: {{error}}\", {owner}, {field});"
+            )
+        };
+        let admit_fields = |owner: &str| {
+            if paired_hands {
+                let [(main, main_index), (off, off_index)] = checked_indices.as_slice() else {
+                    unreachable!("swap hands has exactly two stack proposals");
+                };
+                let refusal = refused(owner, "field");
+                format!("let main = (*{event}.{main} != {saved}.{main_index}).then_some(&*{event}.{main});
+                         let off = (*{event}.{off} != {saved}.{off_index}).then_some(&*{event}.{off});
+                         if (main.is_some() || off.is_some()) && let Err((field, error)) = __accept_hands(main, off) {{
+                            *{event}.{main} = {saved}.{main_index}; *{event}.{off} = {saved}.{off_index}; {refusal}
+                         }}")
+            } else {
+                checked_indices.iter().map(|(field, index)| {
+                    let refusal = refused(owner, &format!("\"{field}\""));
+                    format!("if *{event}.{field} != {saved}.{index} && let Err(error) = __accept_{field}(&*{event}.{field}) {{ *{event}.{field} = {saved}.{index}; {refusal} }}")
+                }).collect()
+            }
+        };
         let report_panic = if panic_signal {
             "*panicked = true; "
         } else {
@@ -1345,7 +1429,8 @@ pub(super) fn emit<'a>(
             };
             if restore_statement.is_empty()
                 && discard_batch.is_empty()
-                && stack_restore.is_empty()
+                && lists.is_empty()
+                && checked_indices.is_empty()
                 && report_panic.is_empty()
             {
                 match on_abort {
@@ -1354,8 +1439,12 @@ pub(super) fn emit<'a>(
                     _ => {}
                 }
             }
+            let enter = list_enter(mod_id_expr);
+            let finish = list_finish(true);
+            let rollback_lists = list_finish(false);
+            let admit = admit_fields(mod_id_expr);
             format!(
-                "match {invocation} {{ Some(answer) => answer, None => {{ {report_panic}{restore_statement}{discard_batch}{stack_restore}{on_abort} }} }}"
+                "{{ {enter} match {invocation} {{ Some(answer) => {{ {finish}{admit} answer }}, None => {{ {report_panic}{restore_statement}{discard_batch}{rollback_lists}{on_abort} }} }} }}"
             )
         };
         let listener_call = |callee: &str, mod_id_expr: &str| {
@@ -1377,7 +1466,7 @@ pub(super) fn emit<'a>(
                              Err(TransactionError::Aborted(never)) => match never {{}},\
                              Err(error @ (TransactionError::InvalidContext | TransactionError::Unavailable | TransactionError::CommitRefused)) => {{\
                                  log::warn!(\"mod {{}}: {name} callback refused: {{error:?}}\", {mod_id_expr});\
-                                 {stack_restore} Flow::Continue\
+                                 Flow::Continue\
                              }}\
                          }}\
                      }}"
@@ -1410,7 +1499,7 @@ pub(super) fn emit<'a>(
                              Err(TransactionError::Aborted(never)) => match never {{}},\
                              Err(error @ (TransactionError::InvalidContext | TransactionError::Unavailable | TransactionError::CommitRefused)) => {{\
                                  log::warn!(\"mod {{}}: {name} callback refused: {{error:?}}\", {mod_id_expr});\
-                                 {restore_statement} {no_answer}\
+                                 {restore_in_place} {no_answer}\
                              }}\
                          }}\
                      }}"
@@ -1437,8 +1526,6 @@ pub(super) fn emit<'a>(
                     "{stage}(&mut |{field}| {{ {local_event} {snapshot_statement}{accepted} }});"
                 );
             }
-            // Early exits must validate while the listener still owns the scope.
-            let exit = format!("{stack_after} {exit}");
             let answer_call = if scoped_write_replace {
                 run(
                     mod_id_expr,
@@ -1467,6 +1554,13 @@ pub(super) fn emit<'a>(
                     "if let Some({replacement}) = {answer_call} {{ *{o} = Some(Answered {{ answer: {replacement}, mod_id: {mod_id_expr} }}); {exit}; }}",
                     o = out.unwrap()
                 ),
+                Contract::Replace if checked_replacement.is_some() => {
+                    let o = out.unwrap();
+                    let refusal = refused(mod_id_expr, &format!("\"{o}\""));
+                    format!("let proposal = {answer_call}; if proposal.is_some() {{
+                        match __accept_{o}(&proposal) {{ Ok(()) => {{ *{o} = proposal; {exit}; }}, Err(error) => {{ {refusal} }} }}
+                    }}")
+                }
                 Contract::Replace => format!(
                     "if let Some({replacement}) = {answer_call} {{ *{o} = Some({replacement}); {exit}; }}",
                     o = out.unwrap()
@@ -1484,21 +1578,14 @@ pub(super) fn emit<'a>(
                 }
                 _ => format!("{plain_call};"),
             };
-            format!(
-                "{local_event} {snapshot_statement}{invocation} {local_write_back} {stack_after}"
-            )
+            format!("{local_event} {snapshot_statement}{invocation} {local_write_back}")
         };
         let cancel_invocation =
             |callee: &str, owner: &str| run(owner, "continue;", &listener_call(callee, owner));
         let plain_cancel_step = |invocation: &str| {
-            let cancel = format!(
+            format!(
                 "{snapshot_statement}if matches!({invocation}, Flow::Cancel) {{ {event}.cancelled = true; }}"
-            );
-            if stack_after.is_empty() {
-                cancel
-            } else {
-                format!("{cancel}; {stack_after}")
-            }
+            )
         };
         // Global cancel hooks use the same snapshot and invoke path even when they validate
         // outputs. Only a completed listener has a proposal for the validator to check.
@@ -1616,7 +1703,7 @@ pub(super) fn emit<'a>(
                                          log::warn!(\"mod {{}} hook {name} refused: {{error:?}}\", {listener_id});
                                      }}
                                  }} else if {outcome}.is_some() {{
-                                     {local_write_back} {stack_after}
+                                     {local_write_back}
                                      continue;
                                  }}
                                  {restore_statement}
@@ -1718,9 +1805,12 @@ pub(super) fn emit<'a>(
                     )
                 } else if let Some(inert) = &hook.inert {
                     let inert = if inert_signal {
-                        "*inert = true;"
+                        "*inert = true;".to_owned()
+                    } else if let Some((out, _)) = checked_replacement {
+                        // The inert assignment only changes the API slot. Admission writes the engine slot.
+                        format!("{inert} if {out}.is_some() {{ let _ = __accept_{out}(&*{out}); }}")
                     } else {
-                        inert
+                        inert.clone()
                     };
                     // The synthetic answer occupies the owner's original place in the chain.
                     // Earlier enabled Parts still get their regular call and can answer first.
@@ -1959,14 +2049,92 @@ fn stack_crossing(
     surfaces: &std::collections::HashMap<&str, String>,
 ) -> Option<StackCrossing> {
     stack_crossing_routed(
-        args, output, false, hook_id, scoped, None, false, surfaces, None,
+        args, output, false, false, hook_id, scoped, None, false, surfaces, None,
     )
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum ReplyBoundary {
+    Items,
+    Block,
+    Text,
+    Particle,
+}
+
+fn boundary_kind(ty: &Type) -> Option<ReplyBoundary> {
+    use ReplyBoundary::*;
+    [
+        (
+            Items,
+            &[
+                "ItemStack",
+                "ItemCost",
+                "MerchantOffer",
+                "Suggestion",
+                "GameRuleValue",
+                "PlacementContext",
+            ][..],
+        ),
+        (Block, &["BlockState", "LandingWrite", "InsideWrite"][..]),
+        (Text, &["Text"][..]),
+        (Particle, &["ParticleOptions"][..]),
+    ]
+    .into_iter()
+    .find_map(|(kind, names)| contains_boundary(ty, names).then_some(kind))
+}
+
+fn mutable_pointee(ty: &Type) -> Option<&Type> {
+    match ty {
+        Type::Reference(reference) if reference.mutability.is_some() => Some(&reference.elem),
+        _ => None,
+    }
+}
+
+struct ListReply {
+    element: Type,
+    fixed: bool,
+    error: &'static str,
+}
+
+impl ListReply {
+    fn adapter_type(&self) -> Type {
+        let Self {
+            element,
+            fixed,
+            error,
+        } = self;
+        let error = syn::Ident::new(error, proc_macro2::Span::call_site());
+        if *fixed {
+            syn::parse_quote!(&mut HookList<'_, #element, #error, true>)
+        } else {
+            syn::parse_quote!(&mut HookList<'_, #element, #error>)
+        }
+    }
+}
+
+fn reply_list(ty: &Type) -> Option<ListReply> {
+    let error = match boundary_kind(ty)? {
+        ReplyBoundary::Items => "StackWriteError",
+        ReplyBoundary::Text => "TextFormError",
+        _ => return None,
+    };
+    let pointee = mutable_pointee(ty)?;
+    let (element, fixed) = match pointee {
+        Type::Array(array) => (&*array.elem, true),
+        _ => (generic_of(pointee, "Vec")?, false),
+    };
+    Some(ListReply {
+        element: element.clone(),
+        fixed,
+        error,
+    })
 }
 
 fn stack_crossing_routed(
     args: &[(String, &Type)],
     output: Option<&(String, &Type)>,
-    listener_output: bool,
+    checked: bool,
+    paired_hands: bool,
     hook_id: &str,
     scoped: bool,
     block_scope: Option<&str>,
@@ -1974,23 +2142,8 @@ fn stack_crossing_routed(
     surfaces: &std::collections::HashMap<&str, String>,
     trim_count_output: Option<&str>,
 ) -> Option<StackCrossing> {
-    const STACK_VALUES: &[&str] = &[
-        "ItemStack",
-        "ItemCost",
-        "MerchantOffer",
-        "Suggestion",
-        "GameRuleValue",
-        "PlacementContext",
-        "ParticleOptions",
-    ];
-    const BLOCK_VALUES: &[&str] = &["BlockState", "LandingWrite", "InsideWrite"];
-    const INFALLIBLE_VALUES: &[&str] = &["Text"];
     let parameters = args.iter().chain(output).collect::<Vec<_>>();
-    if !parameters.iter().any(|(_, ty)| {
-        contains_boundary(ty, STACK_VALUES)
-            || contains_boundary(ty, INFALLIBLE_VALUES)
-            || contains_boundary(ty, BLOCK_VALUES)
-    }) {
+    if !parameters.iter().any(|(_, ty)| boundary_kind(ty).is_some()) {
         return None;
     }
     let guard = if scoped { "has_part_hook" } else { "listened" };
@@ -2004,56 +2157,72 @@ fn stack_crossing_routed(
         };
         before.push_str(&format!("if {source_route}!crate::game::api_values::block_state::block_listens(mod_api::HookId::{hook_id}, {key}) {{ return; }} "));
     }
+    // A list only projects a value if the listener requests that element.
     before.push_str("use crate::game::api_values::TryIntoApi; ");
-    if parameters.iter().any(|(name, ty)| {
-        trim_count_output != Some(name.as_str())
-            && (contains_boundary(ty, STACK_VALUES)
-                || contains_boundary(ty, INFALLIBLE_VALUES)
-                || contains_boundary(ty, BLOCK_VALUES))
-            && matches!(ty, Type::Reference(r) if r.mutability.is_some())
+    if parameters.iter().any(|(field, ty)| {
+        trim_count_output != Some(field.as_str())
+            && boundary_kind(ty).is_some()
+            && mutable_pointee(ty).is_some()
     }) {
         before.push_str("use crate::game::api_values::TryIntoEngine; ");
     }
     if trim_count_output.is_some() {
         before.push_str("use crate::game::api_values::TryIntoEnginePreservingCount; ");
     }
-    if parameters.iter().any(|(name, ty)| {
-        contains_boundary(ty, STACK_VALUES)
-            && !contains_boundary(ty, &["ParticleOptions"])
-            && (!stack_list_output(ty)
-                || (!listener_output && output.is_some_and(|(output, _)| output == name)))
-            && matches!(ty, Type::Reference(r) if r.mutability.is_some())
+    if parameters.iter().any(|(_, ty)| {
+        boundary_kind(ty) == Some(ReplyBoundary::Items) && mutable_pointee(ty).is_some()
     }) {
-        before.push_str("use crate::game::api_values::ItemBoundary; ");
-    }
-    if args
-        .iter()
-        .chain(output.filter(|_| listener_output))
-        .any(|(_, ty)| {
-            stack_list_output(ty)
-                && matches!(ty, Type::Reference(reference) if reference.mutability.is_some())
-        })
-    {
-        before.push_str("let __boundary_items = self.stack_boundary_items(); ");
+        before.push_str(if checked {
+            "let __boundary_items = self.stack_boundary_items(); "
+        } else {
+            "use crate::game::api_values::ItemBoundary; "
+        });
     }
     let mut arguments = Vec::new();
     let mut stack_validators = Vec::new();
     let mut validations = String::new();
     let mut writes = String::new();
     for (name, ty) in parameters {
-        let block = contains_boundary(ty, BLOCK_VALUES);
-        let stack = contains_boundary(ty, STACK_VALUES);
-        let infallible = contains_boundary(ty, INFALLIBLE_VALUES);
-        let mutable = matches!(ty, Type::Reference(r) if r.mutability.is_some());
+        let kind = boundary_kind(ty);
+        let block = kind == Some(ReplyBoundary::Block);
+        let stack = matches!(kind, Some(ReplyBoundary::Items | ReplyBoundary::Particle));
+        let text = kind == Some(ReplyBoundary::Text);
+        let mutable = mutable_pointee(ty).is_some();
+        let hook = hook_id.to_snake_case();
+        if checked && let Some(list) = reply_list(ty) {
+            let storage = if list.fixed { "Fixed" } else { "Resizable" };
+            let conversion = match (kind, trim_count_output == Some(name.as_str())) {
+                (Some(ReplyBoundary::Items), true) => {
+                    "value.try_into_engine_preserving_count(&**items)"
+                }
+                (Some(ReplyBoundary::Items), false) => "value.try_into_engine(&**items)",
+                _ => "value.try_into_engine(&())",
+            };
+            let context = if kind == Some(ReplyBoundary::Items) {
+                "let items = __boundary_items.as_ref().ok_or(mod_api::StackWriteError::Unavailable)?; "
+            } else {
+                ""
+            };
+            let fixed = if list.fixed { ", true" } else { "" };
+            let api_element = qualify_reply_type(&list.element);
+            let error = list.error;
+            before.push_str(&format!(
+                "let mut __journal_{name} = mod_api::HookListJournal::new(mod_api::HookListStorage::{storage}({name}), \
+                    |value| value.try_into_api().ok(), |value: &{api_element}| {{ {context}{conversion} }}); \
+                 let mut __editor_{name}: mod_api::HookList<'_, _, mod_api::{error}{fixed}> = mod_api::HookList::new(&mut __journal_{name}, \"{hook}\", \"{name}\"); "
+            ));
+            arguments.push(format!("&mut __editor_{name}"));
+            continue;
+        }
         if surfaces.contains_key(name.as_str())
             || matches!(ty, Type::Reference(r) if matches!(&*r.elem, Type::TraitObject(_)))
-            || (!stack && !block && !infallible && !mutable)
+            || (kind.is_none() && (!mutable || checked))
         {
             arguments.push(name.clone());
             continue;
         }
         let local = format!("__api_{name}");
-        let value = if infallible || stack || block {
+        let value = if kind.is_some() {
             format!("match {name}.try_into_api() {{ Ok(value) => value, Err(_) => return }}")
         } else {
             format!("(*{name}).to_owned()")
@@ -2071,39 +2240,24 @@ fn stack_crossing_routed(
             }
             _ => local.clone(),
         });
-        if mutable {
-            // Owned stack records have value equality. Other boundary records retain
-            // their existing validation path until they provide comparable snapshots.
-            let comparable = contains_boundary(ty, &["ItemStack"]);
-            let per_listener = stack_list_output(ty)
-                && (listener_output || !output.is_some_and(|(output, _)| output == name));
-            if comparable {
-                before.push_str(&format!("let __original_{name} = {local}.clone(); "));
-            }
-            if per_listener {
-                // Conversion belongs to the listener, not to the final event.
-                // Keep the converted candidate so committing does not convert twice.
-                let Type::Reference(reference) = ty else {
-                    unreachable!()
-                };
-                let api_type = reference
-                    .elem
-                    .to_token_stream()
-                    .to_string()
-                    .replace("ItemStack", "mod_api::ItemStack");
-                let conversion = if trim_count_output == Some(name.as_str()) {
-                    "value.try_into_engine_preserving_count(&**items)?"
+        if mutable && checked {
+            if !paired_hands {
+                let pointee = qualify_reply_type(mutable_pointee(ty).unwrap());
+                let conversion = if kind == Some(ReplyBoundary::Items) {
+                    "__boundary_items.as_ref().ok_or(mod_api::StackWriteError::Unavailable).and_then(|items| value.try_into_engine(&**items))"
                 } else {
-                    "value.try_into_engine(&**items)?"
+                    "value.try_into_engine(&())"
                 };
                 before.push_str(&format!(
-                    "let mut __accepted_{name} = None; let mut __validate_{name} = |value: &{api_type}| -> Result<(), mod_api::StackWriteError> {{ let items = __boundary_items.as_ref().ok_or(mod_api::StackWriteError::Unavailable)?; let candidate = {conversion}; __accepted_{name} = Some(candidate); Ok(()) }}; "
+                    "let mut __accept_{name} = |value: &{pointee}| -> Result<(), String> {{
+                    *{name} = {conversion}.map_err(|error| format!(\"{{error:?}}\"))?; Ok(()) }}; "
                 ));
-                stack_validators.push(format!("&mut __validate_{name}"));
-                writes.push_str(&format!(
-                    "if {local} != __original_{name} {{ if let Some(candidate) = __accepted_{name} {{ *{name} = candidate; }} }} "
-                ));
-                continue;
+                stack_validators.push(format!("&mut __accept_{name}"));
+            }
+        } else if mutable {
+            let comparable = contains_boundary(ty, &["ItemStack"]);
+            if comparable {
+                before.push_str(&format!("let __original_{name} = {local}.clone(); "));
             }
             if comparable {
                 validations.push_str(&format!(
@@ -2111,7 +2265,7 @@ fn stack_crossing_routed(
                 ));
             }
             let converted = format!("__engine_{name}");
-            let value = if infallible {
+            let value = if text {
                 format!(
                     "match {local}.try_into_engine(&()) {{ Ok(value) => value, Err(_) => return }}"
                 )
@@ -2143,6 +2297,24 @@ fn stack_crossing_routed(
                 writes.push_str(&format!("*{name} = {converted}; "));
             }
         }
+    }
+    if paired_hands {
+        before.push_str(r#"
+            let mut __accept_hands = |main: Option<&Option<mod_api::ItemStack>>, off: Option<&Option<mod_api::ItemStack>>| {
+                let convert = |value: Option<&Option<mod_api::ItemStack>>, field: &'static str| {
+                    value.map(|value| {
+                        let items = __boundary_items.as_ref().ok_or(mod_api::StackWriteError::Unavailable)?;
+                        value.try_into_engine(&**items)
+                    }).transpose().map_err(|error| (field, format!("{error:?}")))
+                };
+                let main = convert(main, "to_main_hand")?;
+                let off = convert(off, "to_off_hand")?;
+                if let Some(value) = main { *to_main_hand = value; }
+                if let Some(value) = off { *to_off_hand = value; }
+                Ok(())
+            };
+        "#);
+        stack_validators.push("&mut __accept_hands".to_owned());
     }
     Some(StackCrossing {
         before,
@@ -2363,6 +2535,7 @@ mod level { pub trait LevelAccess { fn block_state(&self,pos:crate::BlockPos)->c
             ],
             None,
             false,
+            false,
             "Proof",
             true,
             Some("state"),
@@ -2378,6 +2551,7 @@ mod level { pub trait LevelAccess { fn block_state(&self,pos:crate::BlockPos)->c
                 ("writes".into(), &writes),
             ],
             None,
+            false,
             false,
             "Proof",
             false,
@@ -3363,8 +3537,24 @@ fn contains_boundary(ty: &Type, names: &[&str]) -> bool {
     boundary.found
 }
 
-fn stack_list_output(ty: &Type) -> bool {
-    contains_boundary(ty, &["ItemStack"]) && contains_boundary(ty, &["Vec"])
+fn qualify_reply_type(ty: &Type) -> String {
+    struct Qualify;
+    impl VisitMut for Qualify {
+        fn visit_type_path_mut(&mut self, path: &mut syn::TypePath) {
+            if path.path.segments.len() == 1
+                && boundary_kind(&Type::Path(path.clone())).is_some()
+                && path.path.segments[0].arguments.is_empty()
+            {
+                let name = &path.path.segments[0].ident;
+                *path = syn::parse_quote!(mod_api::#name);
+            } else {
+                syn::visit_mut::visit_type_path_mut(self, path);
+            }
+        }
+    }
+    let mut ty = ty.clone();
+    Qualify.visit_type_mut(&mut ty);
+    ty.to_token_stream().to_string()
 }
 
 #[cfg(test)]

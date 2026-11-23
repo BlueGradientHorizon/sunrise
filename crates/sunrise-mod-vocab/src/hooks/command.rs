@@ -24,7 +24,8 @@ pub trait Hooks {
         scope = "block",
         key = "state",
         target = "sunrise_client::game::native_hooks::base::GameLevel<'_>::native_update_shape",
-        neoforge = "none (vanilla BlockBehaviour.updateShape; NeoForge adds no event or extension for it)"
+        neoforge = "none (vanilla BlockBehaviour.updateShape; NeoForge adds no event or extension for it)",
+        version = 2
     )]
     fn update_shape(
         dimension: LevelDimension,

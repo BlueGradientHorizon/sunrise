@@ -12,7 +12,7 @@ pub trait Hooks {
         out = "result",
         neoforge = "none (NeoForge has no such event)",
         paper = "PrepareItemCraftEvent",
-        version = 2
+        version = 3
     )]
     fn prepare_item_craft(
         player: u128,

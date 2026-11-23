@@ -2269,13 +2269,17 @@ mod tests {
             fn loot_drops(
                 &self,
                 _: &mut dyn mod_api::ServerHost,
-                event: &mut mod_api::LootDropsEvent<'_>,
+                event: &mut mod_api::LootDropsEvent<'_, '_>,
             ) {
                 if event.context.explosion.is_some()
                     && event.context.block.is_some_and(|(pos, _)| pos[0] == 3)
                 {
                     let diamond = mod_api::__private::item_key("minecraft:diamond").unwrap();
-                    *event.drops = vec![mod_api::ItemStack::new(diamond, 1).unwrap()];
+                    event.drops.clear();
+                    event
+                        .drops
+                        .push(mod_api::ItemStack::new(diamond, 1).unwrap())
+                        .unwrap();
                 }
             }
 
@@ -2402,10 +2406,14 @@ mod tests {
             fn loot_drops(
                 &self,
                 _: &mut dyn mod_api::ServerHost,
-                event: &mut mod_api::LootDropsEvent<'_>,
+                event: &mut mod_api::LootDropsEvent<'_, '_>,
             ) {
                 let diamond = mod_api::__private::item_key("minecraft:diamond").unwrap();
-                *event.drops = vec![mod_api::ItemStack::new(diamond, 1).unwrap()];
+                event.drops.clear();
+                event
+                    .drops
+                    .push(mod_api::ItemStack::new(diamond, 1).unwrap())
+                    .unwrap();
             }
 
             fn block_drops(

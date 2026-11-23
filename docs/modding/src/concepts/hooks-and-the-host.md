@@ -60,6 +60,7 @@ what you may read or edit; the struct is `#[non_exhaustive]`, so use `..` when d
 scalar fields are written back after dispatch, even after cancellation; mutable lists and other
 compound fields are borrowed. Later listeners see accepted edits. When an edited stack-list output
 is refused, that field keeps its preceding accepted value; valid scalar edits and cancellation still apply.
+ A refused replacement does not win a first-answer hook.
 
 Some events lend the live subject instead of handing out a snapshot. Borrow the view only while
 using it; a later borrow can fail if the subject is no longer resident. For journaled writes through

@@ -23,7 +23,7 @@ pub trait Hooks {
         side = "both",
         contract = "listen",
         neoforge = "LivingEntityUseItemEvent.Finish",
-        version = 2
+        version = 3
     )]
     fn living_entity_use_item_finish(
         stack: &ItemStack,

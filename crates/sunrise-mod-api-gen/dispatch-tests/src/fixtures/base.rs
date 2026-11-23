@@ -330,6 +330,7 @@ fn item_finish_can_clear_vanilla_result() {
             Hand::Main,
             0,
             &mut result,
+            &mut |_| Ok(()),
         );
         assert!(result.is_none(), "client={client}");
     }
@@ -423,6 +424,7 @@ fn placement_replacement_can_refuse_and_stops_later_mods() {
                 source: false,
             },
             &mut answer,
+            &mut |_| Ok(()),
         );
         assert_eq!(answer, None);
         assert!(calls.lock().unwrap().is_empty());
@@ -439,9 +441,16 @@ fn placement_replacement_can_refuse_and_stops_later_mods() {
             source: false,
         },
         &mut answer,
+        &mut |_| {
+            if calls.lock().unwrap().as_slice() == [1] {
+                Err("first proposal refused".into())
+            } else {
+                Ok(())
+            }
+        },
     );
     assert_eq!(answer, Some(None));
-    assert_eq!(*calls.lock().unwrap(), vec![1]);
+    assert_eq!(*calls.lock().unwrap(), vec![1, 2]);
     dispatch_state_for_placement(
         LevelSide::Server(&Level),
         LevelDimension,
@@ -454,8 +463,9 @@ fn placement_replacement_can_refuse_and_stops_later_mods() {
             source: false,
         },
         &mut answer,
+        &mut |_| Ok(()),
     );
-    assert_eq!(*calls.lock().unwrap(), vec![1]);
+    assert_eq!(*calls.lock().unwrap(), vec![1, 2]);
 }
 
 #[test]
@@ -647,7 +657,7 @@ fn dispatch_contracts() {
     assert_eq!(*calls.lock().unwrap(), [1, 2]);
     calls.lock().unwrap().clear();
     let mut crafted = None;
-    dispatch_prepare_item_craft(&mut host, 0, "alex", None, &mut crafted);
+    dispatch_prepare_item_craft(&mut host, 0, "alex", None, &mut crafted, &mut |_| Ok(()));
     assert_eq!(
         crafted,
         Some(ItemStack {
@@ -657,18 +667,24 @@ fn dispatch_contracts() {
     );
     assert_eq!(*calls.lock().unwrap(), [1]);
     calls.lock().unwrap().clear();
-    dispatch_prepare_item_craft(&mut host, 0, "alex", None, &mut crafted);
+    dispatch_prepare_item_craft(&mut host, 0, "alex", None, &mut crafted, &mut |_| Ok(()));
     assert!(calls.lock().unwrap().is_empty());
     install_parts(Parts {
         items: vec![part(1, &calls), part(2, &calls)],
         ..Parts::default()
     });
     let mut lines = Vec::new();
+    let mut journal = HookListJournal::new(
+        HookListStorage::Resizable(&mut lines),
+        |value: &(Text, u32)| Some(value.clone()),
+        |value| Ok(value.clone()),
+    );
+    let mut list = HookList::new(&mut journal, "tooltip", "lines");
     dispatch_tooltip(
         &host,
         &ItemStack::default(),
         &mod_api::mod_api::TooltipAppendContext,
-        &mut lines,
+        &mut list,
     );
     assert_eq!(lines.iter().map(|line| line.1).collect::<Vec<_>>(), [1, 2]);
     let source = HurtSource {

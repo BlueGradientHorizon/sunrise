@@ -10,7 +10,8 @@ pub trait Hooks {
         side = "server",
         contract = "collect",
         out = "suggestions",
-        neoforge = "none (NeoForge has no generic tab completion event)"
+        neoforge = "none (NeoForge has no generic tab completion event)",
+        version = 2
     )]
     fn tab_complete(
         player: u128,
