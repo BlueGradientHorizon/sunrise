@@ -88,9 +88,12 @@ value, including line breaks, without clipping or flattening them, and marks eve
 line with the registering mod's ID (`\t<mod id> | ` for headers, `\t\t<mod id> | ` for system
 details, including error text). That includes entries from the mod named in the crash itself.
 
-Callbacks run and appear in registration order on clients and dedicated servers, on a worker
-thread away from the crashing thread. The report waits for each callback to finish, so read your
-own diagnostic state and don't wait for locks the game thread may hold.
+Callbacks run and appear in registration order on clients and dedicated servers. A diagnostics
+thread calls them about once a second while the game runs, and a report carries what they said
+at the last reading: the crash path never calls a callback or waits for one, so a callback that is
+stuck cannot keep the report, the emergency save or the exit from happening. A crash in the first
+second of a run may carry no mod entries. Read your own diagnostic state, and keep a callback
+cheap: it runs on that thread without a game tick stopped around it.
 
 A failed callback's entry begins with `~~ERROR~~`. A panic logs the mod's ID, queues an error
 toast, and disables only that callback for the session. Other failures are reported on each

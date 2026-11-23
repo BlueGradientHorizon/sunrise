@@ -383,40 +383,62 @@ fn prefix_continuations(text: &str, prefix: &str) -> String {
     out
 }
 
-/// Append system details as in `SystemReport.setDetail`, or collect the headers separately.
-/// Run each callable off the panic hook's thread: a panic there would abort before it could be
-/// caught. Like FML's `CrashReportCallables` and vanilla's detail sink, wait for each
-/// registration in order; the shared callback boundary contains a panic on its own entry.
+/// What the mods' crash sections and headers last said: `(headers, details)` as
+/// [`publish_mod_details`] collected them.
+static MOD_DETAILS: Mutex<(Vec<(String, String)>, Vec<(String, String)>)> =
+    Mutex::new((Vec::new(), Vec::new()));
+
+/// How often the diagnostics thread reads the mods' crash sections again.
+const MOD_DETAILS_REFRESH: Duration = Duration::from_secs(1);
+
+/// Read every mod crash header and section now and keep what they said for a report. It waits
+/// for each callable in registration order, like FML's `CrashReportCallables` and vanilla's detail
+/// sink, so it runs only on the diagnostics thread (or a test): the crash path never calls a
+/// mod's callable, and reads what was last published, so a callable that waits on a lock the
+/// crashing thread holds cannot keep the report, the emergency save or the exit from happening.
+pub fn publish_mod_details() {
+    let details = collect_mod_lines(false);
+    let headers = collect_mod_lines(true);
+    *MOD_DETAILS.lock().unwrap_or_else(|e| e.into_inner()) = (headers, details);
+}
+
+/// Start the thread that keeps [`publish_mod_details`] current while the game runs.
+#[cfg(not(test))]
+fn spawn_mod_details_publisher() {
+    let started = std::thread::Builder::new()
+        .stack_size(sunrise_threads::GAME_THREAD_STACK_BYTES)
+        .name("Crash report details".into())
+        .spawn(|| {
+            loop {
+                publish_mod_details();
+                std::thread::sleep(MOD_DETAILS_REFRESH);
+            }
+        });
+    if let Err(error) = started {
+        log::warn!("Failed to start the crash report details thread: {error}");
+    }
+}
+
+/// The mod entries a report carries: what the diagnostics thread last published, read without
+/// waiting for it.
 fn mod_lines(headers: bool) -> Vec<(String, String)> {
+    let published = MOD_DETAILS.try_lock().ok();
+    published
+        .map(|published| if headers { &published.0 } else { &published.1 }.clone())
+        .unwrap_or_default()
+}
+
+/// Collect system details as in `SystemReport.setDetail`, or the headers, by calling each
+/// registered callable in order; the shared callback boundary contains a panic on its own entry.
+fn collect_mod_lines(headers: bool) -> Vec<(String, String)> {
     let lines: Vec<_> = mod_api::__private::game::mod_crash_lines(headers).collect();
     if lines.is_empty() {
         return Vec::new();
     }
-    let run = move |_: &()| {
-        lines
-            .into_iter()
-            .map(|(owner, label, call)| (owner, label, call()))
-            .collect::<Vec<_>>()
-    };
-    // The worker must queue panics on the caller's scoped mod installation in tests.
-    #[cfg(test)]
-    let run = mod_platform::testing::inherit_mods(run);
-    let replies = std::thread::Builder::new()
-        .stack_size(sunrise_threads::GAME_THREAD_STACK_BYTES)
-        .name("Crash report details".into())
-        .spawn(move || run(&()))
-        .and_then(|worker| {
-            worker
-                .join()
-                .map_err(|_| std::io::Error::other("crash report worker panicked"))
-        });
-    let replies = match replies {
-        Ok(replies) => replies,
-        Err(error) => {
-            log::warn!("Failed to collect mod crash report entries: {error}");
-            return Vec::new();
-        }
-    };
+    let replies: Vec<_> = lines
+        .into_iter()
+        .map(|(owner, label, call)| (owner, label, call()))
+        .collect();
     let mut out = Vec::with_capacity(replies.len());
     for (owner, label, reply) in replies {
         let raw_text = match reply {
@@ -762,6 +784,8 @@ pub fn install(
     side: &'static str,
     suppressed_exceptions: impl Fn() -> Option<String> + Send + Sync + 'static,
 ) {
+    #[cfg(not(test))]
+    spawn_mod_details_publisher();
     let default = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |info| {
         // A hook dispatch or retained owner reports its panic and returns control to the caller.
@@ -1551,6 +1575,7 @@ pub(crate) mod tests {
                     hook: "tick",
                     part: None,
                 });
+                publish_mod_details();
                 let report = Report {
                     headers: mod_headers(),
                     details: mod_lines(false),
@@ -1657,6 +1682,7 @@ pub(crate) mod tests {
                 ),
             ],
             || {
+                publish_mod_details();
                 let details = mod_lines(false);
                 let headers = mod_headers();
                 assert_eq!(
@@ -1681,6 +1707,45 @@ pub(crate) mod tests {
                         "diagnostics: captured-header".to_owned(),
                     ]
                 );
+            },
+        );
+    }
+
+    /// A section that waits on a lock the crashing thread holds never keeps a report from being
+    /// built: the report reads what was published, and the stuck reading stays on its own thread.
+    #[test]
+    fn a_crash_section_stuck_on_a_lock_does_not_hold_up_the_report() {
+        use std::sync::{Arc, atomic::AtomicBool};
+        let held = Arc::new(Mutex::new(()));
+        let stuck = Arc::new(AtomicBool::new(false));
+        let (lock, flag) = (held.clone(), stuck.clone());
+        with_crash_lines(
+            vec![(
+                Some("state".into()),
+                Arc::new(Line(move || {
+                    if flag.load(Ordering::SeqCst) {
+                        let _wait = lock.lock().unwrap();
+                    }
+                    Some("fine".into())
+                })),
+            )],
+            || {
+                publish_mod_details();
+                let guard = held.lock().unwrap();
+                stuck.store(true, Ordering::SeqCst);
+                let reader = mod_platform::testing::inherit_mods(|_: &()| publish_mod_details());
+                let reading = std::thread::spawn(move || reader(&()));
+                // The crashing thread holds the lock: the report is still built from what was
+                // published before it.
+                assert_eq!(
+                    system_details("client")
+                        .into_iter()
+                        .filter(|(name, _)| name == "diagnostics: state")
+                        .collect::<Vec<_>>(),
+                    [("diagnostics: state".to_owned(), "fine".to_owned())]
+                );
+                drop(guard);
+                reading.join().unwrap();
             },
         );
     }
@@ -1747,6 +1812,7 @@ pub(crate) mod tests {
                         (None, Arc::new(Line(|| Some("healthy header".into())))),
                     ],
                     || {
+                        publish_mod_details();
                         let _ = std::panic::catch_unwind(|| panic!("original crash"));
                         let (headers, details) = caught.lock().unwrap().clone();
                         let [bad_header, good_header] = headers.as_slice() else {
@@ -1780,14 +1846,16 @@ pub(crate) mod tests {
                             [
                                 mod_api::__private::HookPanicReport {
                                     mod_id: "diagnostics",
-                                    hook: "crash_header",
+                                    hook: "crash_section",
                                 },
                                 mod_api::__private::HookPanicReport {
                                     mod_id: "diagnostics",
-                                    hook: "crash_section",
+                                    hook: "crash_header",
                                 },
                             ]
                         );
+                        // The failed callables are disabled: the next reading has only the healthy ones.
+                        publish_mod_details();
                         assert_eq!(mod_headers().as_slice(), std::slice::from_ref(good_header));
                         assert_eq!(mod_lines(false).as_slice(), std::slice::from_ref(good));
                         assert!(mod_api::__private::take_hook_panics().is_empty());
