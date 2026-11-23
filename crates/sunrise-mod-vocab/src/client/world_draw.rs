@@ -194,10 +194,13 @@ pub enum RenderLevelStage {
     /// (`RenderLevelStageEvent.AfterOpaqueBlocks`).
     AfterOpaqueBlocks,
     /// After opaque entities, block entities and particles
-    /// (`RenderLevelStageEvent.AfterOpaqueFeatures`).
+    /// (`RenderLevelStageEvent.AfterOpaqueFeatures`). With a classic pack that owns
+    /// feature drawing, its opaque group owns this boundary.
     AfterOpaqueFeatures,
-    /// Classic transparency only: after translucent entities and block entities, before
-    /// translucent chunk geometry (`RenderLevelStageEvent.AfterTranslucentFeatures`).
+    /// Classic transparency only: after translucent entities and block entities
+    /// (`RenderLevelStageEvent.AfterTranslucentFeatures`). On the engine route this precedes
+    /// translucent chunk geometry. A classic pack supplies the boundary when its own
+    /// translucent feature drawing finishes.
     AfterTranslucentFeatures,
     /// Classic transparency only: after translucent chunk geometry such as water and stained
     /// glass, before translucent particles (`RenderLevelStageEvent.AfterTranslucentBlocks`).
@@ -220,7 +223,7 @@ pub enum RenderLevelStage {
 }
 impl RenderLevelStage {
     /// The engine's stage order when classic transparency is active (`!view.improved_transparency`).
-    /// A classic shader pack can skip engine stages or replace the sky boundary.
+    /// A classic shader pack can skip engine stages or provide its own sky and feature boundaries.
     pub const CLASSIC_ORDER: &[Self] = &[
         Self::AfterSky,
         Self::AfterOpaqueBlocks,
@@ -245,7 +248,7 @@ impl RenderLevelStage {
     ];
 
     /// The engine's stage order for the active transparency mode. Classic shader packs can
-    /// skip stages and can draw their replacement sky after the engine's main world pass.
+    /// skip stages or complete their sky and feature passes after the engine world pass.
     pub const fn frame_order(improved_transparency: bool) -> &'static [Self] {
         if improved_transparency {
             Self::OIT_ORDER

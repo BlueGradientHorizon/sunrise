@@ -14,6 +14,7 @@ use client::{
     render_geometry::Vertex,
     render_slots as native_render,
 };
+use mod_api::RenderLevelStage as Stage;
 use std::{
     path::Path,
     sync::{
@@ -163,6 +164,8 @@ fn read(path: &Path) -> Vec<u8> {
 #[derive(Default)]
 struct WorldStageProbe {
     copies: Vec<Vertex>,
+    feature_lines: Option<[[f32; 8]; 2]>,
+    feature_draws: [DrawRanges; 2],
     stages: Vec<mod_api::RenderLevelStage>,
     prepared_after_sky: Option<bool>,
 }
@@ -197,14 +200,180 @@ impl FrameHooks for WorldStageProbe {
         _: bool,
     ) -> &[DrawRanges] {
         self.stages.push(stage);
-        &[]
+        match stage {
+            Stage::AfterOpaqueFeatures if self.feature_lines.is_some() => &self.feature_draws[..1],
+            Stage::AfterTranslucentFeatures if self.feature_lines.is_some() => {
+                &self.feature_draws[1..]
+            }
+            _ => &[],
+        }
     }
     fn prepared_primitives(&self) -> Batch<'_> {
-        Batch::default()
+        let Some(lines) = &self.feature_lines else {
+            return Batch::default();
+        };
+        Batch {
+            lines_through: &lines[..1],
+            lines: &lines[1..],
+            ..Default::default()
+        }
     }
     fn on_after_level(&mut self, _: &[mod_api::RenderableSection], _: bool) {
         self.stages.push(mod_api::RenderLevelStage::AfterLevel);
     }
+}
+
+/// Draws actual translucent entities over an opaque-stage line, and checks that the
+/// translucent-stage line reaches the picture afterwards on both pack timings.
+fn feature_stage_order(
+    renderer: &mut Renderer,
+    frame: Frame<'_>,
+    out: &Path,
+) -> Result<(), Box<dyn std::error::Error>> {
+    use sunrise_render_core::TRANSLUCENT_ITEM_OVERLAY;
+
+    let quad = |x, y, z, layer, color| {
+        [[-x, -y, z], [-x, y, z], [x, y, z], [x, -y, z]].map(|pos| Vertex {
+            pos,
+            uv: [0.5; 2],
+            layer,
+            color,
+            light: 0xf0f0,
+            normal: [0, 0, 127, 0],
+            glint_uv: [0.0; 2],
+        })
+    };
+    let mut entities = Vec::from(quad(1.8_f32, 1.2_f32, 5.0, 0, u32::MAX));
+    entities.extend(quad(0.55, 1.0, 4.75, TRANSLUCENT_ITEM_OVERLAY, 0xff00_ff00));
+    let entity_stage = sunrise_shaders::render_stage("ENTITIES");
+    let spans = [
+        EntitySpan {
+            stage: entity_stage,
+            id: 200,
+            ..Default::default()
+        },
+        EntitySpan {
+            start: 4,
+            stage: entity_stage,
+            id: 37,
+            translucent: true,
+            ..Default::default()
+        },
+    ];
+    let frame = Frame {
+        skin: None,
+        entities: &entities,
+        entity_spans: &spans,
+        skybox: false,
+        sky_pass: false,
+        ..frame
+    };
+    for (name, separate) in [
+        ("engine", None),
+        ("pack-early", Some(false)),
+        ("pack-late", Some(true)),
+    ] {
+        if let Some(separate) = separate {
+            let folder = out.join("valid-pack");
+            std::fs::write(
+                folder.join("shaders/shaders.properties"),
+                format!(
+                    "oldLighting=false\nshadow.enabled=false\nseparateEntityDraws={separate}\n"
+                ),
+            )?;
+            load_pack(renderer, &folder, true);
+        }
+        let mut hooks = WorldStageProbe {
+            feature_lines: Some([
+                [
+                    -1.4,
+                    0.0,
+                    5.0,
+                    1.4,
+                    0.0,
+                    5.0,
+                    f32::from_bits(0xffff_0000),
+                    4.0,
+                ],
+                [
+                    -0.32,
+                    0.4,
+                    4.5,
+                    0.32,
+                    0.4,
+                    4.5,
+                    f32::from_bits(0xff00_00ff),
+                    4.0,
+                ],
+            ]),
+            feature_draws: [
+                DrawRanges {
+                    primitives: [0..0, 0..0, 0..0, 0..1],
+                },
+                DrawRanges {
+                    primitives: [0..0, 0..0, 0..1, 0..0],
+                },
+            ],
+            ..Default::default()
+        };
+        let path = out.join(format!("feature-order-{name}.png"));
+        renderer.screenshot = Some(ScreenshotRequest {
+            path: path.clone(),
+            size: None,
+            scaled: false,
+            background: false,
+        });
+        renderer.render(&frame, Some(&mut hooks))?;
+        renderer
+            .screenshot_result
+            .take()
+            .expect("feature order readback")?
+            .save()?;
+        let image = read(&path);
+        let pixels = image.as_chunks::<4>().0;
+        let center = pixels[90 * 320 + 160];
+        if separate.is_some() {
+            assert_eq!(
+                center[0], 37,
+                "{name}: translucent pack entity covers the opaque-stage line"
+            );
+        } else {
+            assert!(
+                center[1] > center[0] && center[1] > center[2],
+                "{name}: translucent item covers the opaque-stage line: {center:?}"
+            );
+        }
+        assert_eq!(
+            pixels[90 * 320 + 180][..3],
+            [255, 0, 0],
+            "{name}: opaque-stage line survives over the opaque entity outside the translucent item"
+        );
+        assert!(
+            pixels
+                .chunks_exact(320)
+                .skip(70)
+                .take(20)
+                .any(|row| row[160][..3] == [0, 0, 255]),
+            "{name}: translucent-stage line draws on top of the translucent entity"
+        );
+        let feature_stages: Vec<_> = hooks
+            .stages
+            .into_iter()
+            .filter(|s| {
+                matches!(
+                    s,
+                    Stage::AfterOpaqueFeatures | Stage::AfterTranslucentFeatures
+                )
+            })
+            .collect();
+        assert_eq!(
+            feature_stages,
+            [Stage::AfterOpaqueFeatures, Stage::AfterTranslucentFeatures],
+            "{name}"
+        );
+    }
+    renderer.drop_shader_packs();
+    Ok(())
 }
 
 fn fixture(window: Arc<Window>, out: &Path) -> Result<(), Box<dyn std::error::Error>> {
@@ -419,7 +588,6 @@ fn fixture(window: Arc<Window>, out: &Path) -> Result<(), Box<dyn std::error::Er
             .iter()
             .any(|p| p[2] == 123)
     );
-    use mod_api::RenderLevelStage as Stage;
     assert!(
         !hooks.stages.contains(&Stage::AfterSky),
         "a dimension with no skybox has no sky stage"
@@ -428,9 +596,12 @@ fn fixture(window: Arc<Window>, out: &Path) -> Result<(), Box<dyn std::error::Er
         !hooks.stages.contains(&Stage::AfterOpaqueBlocks),
         "the pack owns terrain"
     );
-    assert!(hooks.stages.contains(&Stage::AfterOpaqueFeatures));
     assert!(hooks.stages.contains(&Stage::AfterTranslucentParticles));
-    assert_eq!(hooks.stages.last(), Some(&Stage::AfterLevel));
+    assert!(hooks.stages.ends_with(&[
+        Stage::AfterOpaqueFeatures,
+        Stage::AfterTranslucentFeatures,
+        Stage::AfterLevel
+    ]));
     assert_eq!(hooks.prepared_after_sky, Some(false));
     // Reuse the same renderer without submitting the extra model a second time.
     renderer.screenshot = Some(ScreenshotRequest {
@@ -533,9 +704,12 @@ fn fixture(window: Arc<Window>, out: &Path) -> Result<(), Box<dyn std::error::Er
         "the pack's red sky must have exactly one AfterSky notification"
     );
     assert!(
-        classic
-            .stages
-            .ends_with(&[Stage::AfterSky, Stage::AfterLevel]),
+        classic.stages.ends_with(&[
+            Stage::AfterSky,
+            Stage::AfterOpaqueFeatures,
+            Stage::AfterTranslucentFeatures,
+            Stage::AfterLevel
+        ]),
         "the pack sky follows the engine world stages and precedes the end of the pack world: {:?}",
         classic.stages
     );
@@ -567,7 +741,12 @@ fn fixture(window: Arc<Window>, out: &Path) -> Result<(), Box<dyn std::error::Er
         );
         assert_eq!(end.prepared_after_sky, Some(false));
         if boss_world_fog {
-            assert!(end.stages.ends_with(&[Stage::AfterSky, Stage::AfterLevel]));
+            assert!(end.stages.ends_with(&[
+                Stage::AfterSky,
+                Stage::AfterOpaqueFeatures,
+                Stage::AfterTranslucentFeatures,
+                Stage::AfterLevel
+            ]));
         } else {
             assert_eq!(end.stages.first(), Some(&Stage::AfterSky));
         }
@@ -682,14 +861,23 @@ fn fixture(window: Arc<Window>, out: &Path) -> Result<(), Box<dyn std::error::Er
             .count(),
         1
     );
-    assert!(
-        celestial_hooks
-            .stages
-            .ends_with(&[Stage::AfterSky, Stage::AfterLevel])
-    );
+    assert!(celestial_hooks.stages.ends_with(&[
+        Stage::AfterSky,
+        Stage::AfterOpaqueFeatures,
+        Stage::AfterTranslucentFeatures,
+        Stage::AfterLevel,
+    ]));
     frame.celestial = &[];
     frame.celestial_bodies = &[];
     renderer.drop_shader_packs();
+
+    let mut ordering_frame = fixture_frame(&hud);
+    ordering_frame.title = false;
+    ordering_frame.camera = glam::DVec3::ZERO;
+    ordering_frame.eye = glam::DVec3::ZERO;
+    ordering_frame.pitch = 0.0;
+    ordering_frame.eye_rotation = [0.0; 2];
+    feature_stage_order(&mut renderer, ordering_frame, out)?;
 
     // A native sky uses the same no-pass notification boundary, even with its own timing pass.
     use sunrise_shader_api::{MANIFEST, Pack, check};

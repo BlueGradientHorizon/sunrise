@@ -96,7 +96,9 @@ World drawing follows vanilla 26.3 `GameRenderer.renderLevel`, `LevelRenderer.ad
   Lava or powder-snow fog, a sky-blocking camera effect and a dimension without a skybox exclude
   the pass; Sunrise's sky setting and dragon fog don't. A classic pack that draws the disc or
   celestial work finishes the logical sky after importing the engine world, while the engine
-  still draws the unclaimed parts. `AfterLevel` follows world drawing, including the classic
+  still draws the unclaimed parts. Pack-owned feature stages follow their opaque and translucent
+  draw groups on a compatible world target, not earlier in the imported engine passes.
+  `AfterLevel` follows world drawing, including the classic
   pack's own hand, before composite/final and the engine hand overlay.
 - Remove the fixed per-view draw capacities and usage counter. As with vanilla's
   `SubmitNodeStorage`, cull first and skip each invalid visible model copy individually; do

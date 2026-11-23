@@ -1719,6 +1719,8 @@ game `Host`, handle constructors or transactions. Declarations still go on each 
 
 - `register_debug_renderers(context, event)` (version 4, NeoForge `RegisterDebugRenderersEvent`) collects retained callbacks on renderer-list refresh. They run after custom geometry submission and share its deferred context, borrowing `WorldRenderView<'_>` with the frame camera and visible sections.
 
+- `submit_custom_geometry` (version 2) collects deferred world draws. `prepare_render_buffers` updates same-frame instance groups and prepares lines and quads for active passes. `render_level_stage` (version 4) runs at the actual engine or compatible classic pack boundary and draws only prepared geometry. Sky and level completion lend a view but no pass.
+
 - [explosions](#explosions) for server mods: `LevelRef::explode(host, source, center, radius, fire, interaction, settings)`
   sets one off as `Level.explode` does, with an optional source entity, `ExplosionInteraction::None`, `Block`, `Mob`, `Tnt`
   or `Trigger` for what it does to blocks, and `ExplosionSettings` for its damage type, calculator, particles and sound.

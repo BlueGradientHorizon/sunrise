@@ -380,7 +380,9 @@ fn client_tick_pre(&self, host: &mut dyn ClientHost, _: &mut ClientTickPreEvent)
   or `.quads(stage, &quads)`. Keep the returned `PreparedWorldDraw` for this view. At the matching
   `render_level_stage` callback, call `draw(batch)` on `event.context.world_pass()` or
   `event.context.oit_pass()` as appropriate. Draws run in call order, without uploading from the
-  pass; handles cannot be used in a different view or stage. `AfterSky` and `AfterLevel` lend no
+  pass; handles cannot be used in a different view or stage. With a classic pack that owns feature
+  drawing, the two feature stages follow the pack's own opaque and translucent groups. They run
+  only if the pack's world color buffer can blend engine geometry. `AfterSky` and `AfterLevel` lend no
   pass, and stages skipped by the renderer are not replayed later.
   Drawing values (`WorldLine`, `WorldQuad`, `WorldDepth`, `NameTagOptions`, and `DrawError`)
   and stage selectors (`RenderLevelStage` and `OitStage`) are client-local. To synchronize a

@@ -1386,6 +1386,13 @@ impl Renderer {
             pack_reads_world || fg,
         );
         let pack_world_runs = pack_post && scaled.is_some();
+        let after_pack_features = live_hooks
+            && pack_world_runs
+            && self
+                .pack_post
+                .as_ref()
+                .and_then(|(_, post)| post.as_ref())
+                .is_some_and(|post| post.owns_feature_stages());
         // Notification follows the last owner of the logical sky pass, independent of
         // whether any of that owner's geometry is visible. Drawing flags stay separate:
         // a celestial-only pack leaves the engine's disc, sunset, and stars intact.
@@ -3085,53 +3092,6 @@ impl Renderer {
                 }
                 pass.set_bind_group(0, &self.group, &[]);
             }
-            if text_quads > 0 && !oit_on {
-                pass.stage(self.own_timing.as_mut(), "entity text");
-                pass.set_pipeline(&self.text_polygon_offset_pipeline);
-                self.bind_world_text(&mut pass, true, false);
-                pass.set_vertex_buffer(0, self.entity_buffer.slice(..));
-                pass.draw_indexed(0..text_quads * 6, (entity_quads * 4) as i32, 0..1);
-                pass.set_bind_group(0, &self.group, &[]);
-            }
-            // FeatureRenderDispatcher.PreparedFrame.executeTranslucent: the shadows
-            // come before the translucent items, which then cover them (#7026).
-            if shadow_quads > 0 && !oit_on {
-                pass.stage(self.own_timing.as_mut(), "shadows");
-                pass.set_pipeline(&self.shadow_blob_pipeline);
-                pass.set_bind_group(0, &self.entity_group, &[]);
-                pass.set_vertex_buffer(0, self.entity_buffer.slice(..));
-                pass.draw_indexed(
-                    0..shadow_quads * 6,
-                    ((base_quads
-                        - translucent_item_quads
-                        - translucent_particle_quads
-                        - shadow_quads)
-                        * 4) as i32,
-                    0..1,
-                );
-                pass.set_bind_group(0, &self.group, &[]);
-            }
-            if translucent_item_quads > 0 && !oit_on {
-                pass.stage(self.own_timing.as_mut(), "translucent items");
-                pass.set_pipeline(&self.translucent_item_pipeline);
-                pass.set_bind_group(0, &self.entity_group, &[]);
-                pass.set_vertex_buffer(0, self.entity_buffer.slice(..));
-                pass.draw_indexed(
-                    0..translucent_item_quads * 6,
-                    ((base_quads - translucent_item_quads) * 4) as i32,
-                    0..1,
-                );
-                if light_marks(self.output.frame.format, self.hdr.is_some()) {
-                    // A glowing item in the world (Item sheet quads), as entities are.
-                    pass.set_pipeline(&self.hdr_mark_pipeline);
-                    pass.draw_indexed(
-                        0..translucent_item_quads * 6,
-                        ((base_quads - translucent_item_quads) * 4) as i32,
-                        0..1,
-                    );
-                }
-                pass.set_bind_group(0, &self.group, &[]);
-            }
             // Native terrain models use the block sprite arrays with their own
             // alpha/mipmap policies and ordinary opaque depth. Storage follows
             // the existing materials without moving their indices or frame tails.
@@ -3164,7 +3124,7 @@ impl Renderer {
             // RenderLevelStageEvent.AfterOpaqueFeatures: after the last opaque feature, including
             // the terrain-material model group. This pass owns those draws even when a pack
             // owns the blocks.
-            if world_primitives {
+            if world_primitives && !after_pack_features {
                 let drew = if let Some(hooks) = hooks.as_deref_mut() {
                     let data = hooks.on_render_stage(
                         mod_api::RenderLevelStage::AfterOpaqueFeatures,
@@ -3191,6 +3151,53 @@ impl Renderer {
                     pack_frame(&mut pass);
                     pass.set_index_buffer(self.indices.slice(..), wgpu::IndexFormat::Uint32);
                 }
+            }
+            // FeatureRenderDispatcher.PreparedFrame.executeTranslucent: the shadows
+            // come before the translucent items, which then cover them (#7026).
+            if shadow_quads > 0 && !oit_on {
+                pass.stage(self.own_timing.as_mut(), "shadows");
+                pass.set_pipeline(&self.shadow_blob_pipeline);
+                pass.set_bind_group(0, &self.entity_group, &[]);
+                pass.set_vertex_buffer(0, self.entity_buffer.slice(..));
+                pass.draw_indexed(
+                    0..shadow_quads * 6,
+                    ((base_quads
+                        - translucent_item_quads
+                        - translucent_particle_quads
+                        - shadow_quads)
+                        * 4) as i32,
+                    0..1,
+                );
+                pass.set_bind_group(0, &self.group, &[]);
+            }
+            if text_quads > 0 && !oit_on {
+                pass.stage(self.own_timing.as_mut(), "entity text");
+                pass.set_pipeline(&self.text_polygon_offset_pipeline);
+                self.bind_world_text(&mut pass, true, false);
+                pass.set_vertex_buffer(0, self.entity_buffer.slice(..));
+                pass.draw_indexed(0..text_quads * 6, (entity_quads * 4) as i32, 0..1);
+                pass.set_bind_group(0, &self.group, &[]);
+            }
+            if translucent_item_quads > 0 && !oit_on {
+                pass.stage(self.own_timing.as_mut(), "translucent items");
+                pass.set_pipeline(&self.translucent_item_pipeline);
+                pass.set_bind_group(0, &self.entity_group, &[]);
+                pass.set_vertex_buffer(0, self.entity_buffer.slice(..));
+                pass.draw_indexed(
+                    0..translucent_item_quads * 6,
+                    ((base_quads - translucent_item_quads) * 4) as i32,
+                    0..1,
+                );
+                if light_marks(self.output.frame.format, self.hdr.is_some()) {
+                    // A glowing item in the world (Item sheet quads), as entities are.
+                    pass.set_pipeline(&self.hdr_mark_pipeline);
+                    pass.draw_indexed(
+                        0..translucent_item_quads * 6,
+                        ((base_quads - translucent_item_quads) * 4) as i32,
+                        0..1,
+                    );
+                }
+                pass.set_bind_group(0, &self.group, &[]);
             }
             // Translucent moving blocks (`RenderTypes.translucentMovingBlock`): alpha blended,
             // depth written, quads far to near, before terrain transparency like fluids.
@@ -3361,7 +3368,7 @@ impl Renderer {
             }
             // RenderLevelStageEvent.AfterTranslucentFeatures: after translucent features, right
             // before translucent terrain (classic path).
-            if world_primitives && !oit_on {
+            if world_primitives && !oit_on && !after_pack_features {
                 let drew = if let Some(hooks) = hooks.as_deref_mut() {
                     let data = hooks.on_render_stage(
                         mod_api::RenderLevelStage::AfterTranslucentFeatures,
@@ -3979,6 +3986,7 @@ impl Renderer {
                 pack_post,
                 native_post,
                 after_pack_sky: sky_stage == Some(SkyStageOwner::ClassicPack),
+                after_pack_features,
                 pack_draws_weather,
                 pack_draws_terrain,
                 pack_draws_shadow,

@@ -58,7 +58,10 @@ stage. Both pass kinds draw prepared engine lines and quads in call order. `Rend
 and `OitStage` are process-local selectors, not `Wire` values.
 
 Stages that do not run on the active route are not synthesized. Classic packs can replace engine
-terrain, water, and weather passes.
+terrain, water, and weather passes. If a pack owns feature drawing, the feature stages follow
+its opaque and translucent groups after world import, at the pack's before- or after-deferred
+position. These stages are available when the pack's world color buffer can blend the prepared
+engine lines and quads; there is no earlier substitute on an incompatible target.
 
 A panic disables that mod's listener for this hook for the session, with an error log and toast.
 Draws already accepted are not rolled back."#]
