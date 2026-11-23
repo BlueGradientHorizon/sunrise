@@ -7,3 +7,4 @@ sunrise-client game::native_net::tests::waking_with_typed_chat_replaces_it_once_
 sunrise-client game::native_net::tests::overlay_redirected_to_chat_emits_init_post_once lib daily child-process
 sunrise-client game::native_net::tests::waking_bed_chat_dismisses_empty_or_draft_despite_veto_and_keeps_edited_draft lib daily child-process
 sunrise-client game::native_chat_recipients_tests::guest_public_command_selectors_change_display_not_the_signed_body lib daily resources
+sunrise-client game::remote::tests::chat_event_tests::a_client_chat_listener_that_resends_is_not_reentered lib daily child-process

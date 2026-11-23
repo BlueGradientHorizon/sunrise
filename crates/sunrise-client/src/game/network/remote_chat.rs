@@ -251,10 +251,20 @@ impl Game<'_> {
         // NeoForge fires ClientChatEvent here, before signing, for direct and UI sends.
         let outgoing;
         let content = if mod_api::__private::listened(mod_api::HookId::ClientChat) {
+            // A submission from inside a listener waits for the next event-loop wave: the
+            // hook is never re-entered synchronously, so a resend cannot recurse.
+            if self.native_client_commands.chat_dispatching {
+                self.native_client_commands
+                    .pending_chats
+                    .push(message.to_owned());
+                return Ok(());
+            }
             let (id, uuid) = (self.own_entity_id(), remote.profile);
             let mut text = message.to_owned();
             let mut cancel = false;
+            self.native_client_commands.chat_dispatching = true;
             self.native_client_chat(id, uuid, message, &mut text, &mut cancel);
+            self.native_client_commands.chat_dispatching = false;
             if cancel {
                 return Ok(());
             }

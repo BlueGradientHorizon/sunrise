@@ -4,7 +4,9 @@ pub trait Hooks {
     /// NeoForge's `ClientChatEvent`: the play listener is about to send a chat
     /// message, from the chat box or `NetworkClientHost::send_chat`. Edits are
     /// applied before signing. Return `Flow::Cancel` or clear `message` to send
-    /// nothing. `original_message` stays unchanged. Does not run for commands.
+    /// nothing. `original_message` stays unchanged. Does not run for commands. A message a
+    /// listener sends with `send_chat` is submitted on the next event-loop wave, so it reaches
+    /// this hook after the running one returns; use `message` to replace the running one.
     #[hook(
         dispatch = "flat",
         side = "client",

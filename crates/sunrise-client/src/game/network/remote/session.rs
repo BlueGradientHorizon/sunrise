@@ -226,6 +226,7 @@ impl Game<'_> {
         // The chat's tree until the server sends its own, or forever when it
         // sends none: the game's own, plus the commands native mods own.
         self.native_client_commands.pending_commands.clear();
+        self.native_client_commands.pending_chats.clear();
         let chat_tree = self.chat_tree_for(None);
         // Minecraft.services() has the keys wherever the game is played, single player's own
         // server included: its guests' chat keys are checked against them.
@@ -515,6 +516,7 @@ impl Game<'_> {
         self.boss_overlay.reset();
 
         self.native_client_commands.pending_commands.clear();
+        self.native_client_commands.pending_chats.clear();
         let chat_tree = self.chat_tree_for(None);
         let services_keys = Arc::new(std::sync::Mutex::new(ServicesKeys::Ready(Vec::new())));
 
@@ -754,6 +756,7 @@ impl Game<'_> {
         }
         self.native_net.holds.borrow_mut().clear();
         self.native_client_commands.pending_commands.clear();
+        self.native_client_commands.pending_chats.clear();
         if let Some(mut r) = self.remote.take() {
             r.session.disconnect();
             self.clear_spectated_entity_post_effect();

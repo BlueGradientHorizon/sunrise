@@ -2616,8 +2616,16 @@ impl Game<'_> {
     /// Dispatch one event-loop wave. The next submissions retain this wave's executor
     /// ancestry but cannot run until the event loop returns again.
     pub(in crate::game) fn drain_pending_client_commands(&mut self) {
-        if self.native_client_commands.active_chain.is_some() {
+        if self.native_client_commands.active_chain.is_some()
+            || self.native_client_commands.chat_dispatching
+        {
             return;
+        }
+        for message in std::mem::take(&mut self.native_client_commands.pending_chats) {
+            if self.remote.is_none() {
+                break;
+            }
+            let _ = self.send_chat(&message);
         }
         let pending = std::mem::take(&mut self.native_client_commands.pending_commands);
         for item in pending {

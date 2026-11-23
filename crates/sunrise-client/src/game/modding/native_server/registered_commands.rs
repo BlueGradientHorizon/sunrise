@@ -76,6 +76,10 @@ pub(in crate::game) struct NativeClientCommandState {
     /// for the client event loop instead of re-entering synchronously.
     pub(super) active_chain: Option<Arc<ClientCommandChain>>,
     pub(in crate::game) pending_commands: Vec<PendingClientCommand>,
+    /// Present while `client_chat` listeners run; a chat message a listener submits waits for
+    /// the next event-loop wave instead of re-entering the hook synchronously.
+    pub(in crate::game) chat_dispatching: bool,
+    pub(in crate::game) pending_chats: Vec<String>,
 }
 
 impl Default for NativeClientCommandState {
@@ -85,6 +89,8 @@ impl Default for NativeClientCommandState {
             executors: Vec::new(),
             active_chain: None,
             pending_commands: Vec::new(),
+            chat_dispatching: false,
+            pending_chats: Vec::new(),
         }
     }
 }
