@@ -75,6 +75,7 @@ OUT_DIR file checked by the generator before writing it.
 | `runtime.rs::MODS` | `OnceLock<Installed>` | dispatch table | Dependency-ordered hook routing and its per-mod enabled bits remain engine-owned. |
 | `runtime.rs::MODS_SWITCHED` | `std::sync::atomic::AtomicU64` | dispatch table | Counts changes to the per-mod enabled bits it sits beside; read through the host's capability provider table, never by a guest's own copy. |
 | `runtime.rs::TEST_MODS` | `std::cell::Cell<Option<&'staticInstalled>>` | dispatch table | Thread-local dispatch inventory for isolated engine tests. |
+| `world/inside_write.rs::SPARE_SWEEP` | `std::cell::RefCell<Option<Box<SweepScratch>>>` | scratch buffer | Per-thread reusable inside-block collector storage, lent exclusively to one sweep and returned empty; a nested sweep takes its own, and no callback runs under the borrow. |
 | `world/scheduler.rs::allocate::NEXT_ID` | `AtomicU64` | monotonic counter | Monotonic generator for TaskId cancellation handles so scheduled task IDs are unique across worlds and never reused. |
 | `world/server_reload.rs::functions_ref::ID` | `LazyLock<Identifier>` | immutable cache | Immutable vanilla reload-boundary identifier, allocated once and shared by anchor declarations. |
 | `world/startup_progress.rs::SCREEN` | `OnceLock<Arc<dynStartupScreen>>` | dispatch table | One engine-installed startup-screen service; registration contexts carry this same resource to mods, and retained progress handles use it after registration. |

@@ -35,7 +35,6 @@ struct EntityFluidWorld<'a> {
 /// block, the water's first (its first query fixes the shared cached shape);
 /// either one hitting ends the ray.
 pub fn fall_reset_hit(
-    context: &LoopContext,
     world: &World,
     fluids: &FluidResources,
     tagged: impl Fn(BlockPos) -> bool,
@@ -44,7 +43,7 @@ pub fn fall_reset_hit(
 ) -> bool {
     let to = from.add_vector(moved.normalize().scale(moved.length().min(8.0)));
     let hit = sunrise_core::geometry::traverse_blocks(from, to, 1_000_000, |p| {
-        let water = water_clip(context, world, fluids, from, to, p);
+        let water = water_clip(world, fluids, from, to, p);
         let reset = tagged(p)
             && sunrise_core::geometry::VoxelShape::block()
                 .clip(from, to, p)
@@ -57,7 +56,6 @@ pub fn fall_reset_hit(
 /// shape from the shared `FlowingFluid.shapes` cache (the first query of a
 /// fluid state fixes its height), as the player's own ray reads it.
 pub fn water_clip(
-    context: &LoopContext,
     world: &World,
     fluids: &FluidResources,
     from: Vec3,
@@ -68,16 +66,7 @@ pub fn water_clip(
     if !matches!(state.kind(), FluidKind::Water | FluidKind::FlowingWater) {
         return false;
     }
-    let mut velocity = Vec3::ZERO;
-    let mut scene = EntityFluidWorld {
-        bounds: Aabb::new(from, from),
-        position: from,
-        eye_y: from.y,
-        velocity: &mut velocity,
-        world,
-        fluids,
-        context,
-    };
+    let mut scene = FlowLevel { world, fluids };
     let Ok(mut shapes) = fluids.shapes.lock() else {
         return false;
     };

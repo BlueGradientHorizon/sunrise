@@ -82,7 +82,6 @@ impl ItemTables<'_> {
             }
             let reset = &self.motion.fall_reset;
             let hit = sunrise_client::entities::fall_reset_hit(
-                self.context,
                 self.world,
                 &self.motion.fluids,
                 |p| reset.contains(&*self.facts.get(self.world.block(p.x, p.y, p.z)).name),
