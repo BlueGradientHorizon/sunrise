@@ -1,4 +1,4 @@
-//! The callback's typed store: only encoded values cross the worker boundary.
+//! The callback's typed store: only encoded values cross into background encoding.
 use super::*;
 use std::sync::Arc;
 use sunrise_core::nbt::{self, Limits, NamedTag};

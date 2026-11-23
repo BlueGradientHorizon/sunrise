@@ -2,7 +2,7 @@
 
 pub trait Hooks {
     /// The disk record's attachments have decoded, before the chunk is published.
-    /// Runs on a chunk worker with a restricted Host. Read and edit `data` through
+    /// Runs on the owning server thread with a restricted Host. Read and edit `data` through
     /// its typed methods and borrow captured metadata from `host.job()`. Missing records
     /// and proto-to-full promotion do not fire this hook. Codec and key errors refuse
     /// only that operation. A listener that panics loses only its edits and is disabled

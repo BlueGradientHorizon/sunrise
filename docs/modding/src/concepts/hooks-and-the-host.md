@@ -273,9 +273,10 @@ Part methods run elsewhere, and each one's own documentation says where:
   phase refusal in registration discards only that callback's renderers. Each renderer's `SectionGeometry::add` then runs on the renderer's meshing workers every time a section is meshed. A
   block tint source is asked there too, and also outside meshing, for example for terrain particles and blocks a
   piston moves. Both get no host.
-- **Chunk workers.** `chunk_data_load` and `chunk_data_save` run where a chunk's record is decoded or encoded, with a
-  restricted host. `host.job()` borrows the captured `ChunkDiskContext`; the callback edits only its job-local
-  [attachment store](../how-to/chunk-data-save.md), never the live chunk.
+- **Chunk-disk callbacks.** `chunk_data_load` runs on the owning server thread after decode and before admission;
+  `chunk_data_save` runs there after capture and before background encoding. `host.job()` borrows the captured
+  `ChunkDiskContext`; the restricted host edits only its job-local [attachment store](../how-to/chunk-data-save.md),
+  never the live chunk.
 - **Loading threads.** Data-load hooks run on whichever thread loads the data.
 
 What follows for a mod's state:

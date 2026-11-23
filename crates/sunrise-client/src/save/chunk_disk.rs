@@ -1,5 +1,4 @@
-//! The chunk writer's isolated mod attachment callback boundary.
-//! Server code captures encoded envelopes; only workers execute mod code.
+//! Server-owned chunk-disk callbacks and the captured envelopes handed to region writers.
 use super::*;
 use mod_api::{ChunkDiskContext, ChunkDiskJob, ChunkDiskKind, ChunkDiskPhase, WorldEpoch};
 use sunrise_client_render::api_context::WorldgenReader;
@@ -9,6 +8,8 @@ pub(super) struct DiskRuntime {
     world: WorldEpoch,
     dimension: mod_api::Identifier,
     resources: Arc<sunrise_world::native_load_context::WorldgenContext>,
+    load: bool,
+    save: bool,
 }
 
 impl DiskRuntime {
@@ -49,8 +50,7 @@ impl DiskRuntime {
 
 pub(super) struct DiskRecord {
     pub(super) original: Record,
-    job: ChunkDiskJob,
-    runtime: Arc<DiskRuntime>,
+    entries: Compound,
     encoded: OnceLock<std::result::Result<Option<Arc<NamedTag>>, String>>,
 }
 impl DiskRecord {
@@ -63,14 +63,12 @@ impl DiskRecord {
     fn encode(&self) -> std::io::Result<Option<Arc<NamedTag>>> {
         self.encoded
             .get_or_init(|| {
-                // The writer can encode a captured callback before the compression pool. Cache
-                // panics as refusals here too, so pending readers are released by OnceLock.
+                // Cache the encoded record so pending readers share the writer's outcome.
                 super::compression_pool::catch_encoding_panic(|| {
-                    let entries = self.runtime.run(&self.job);
                     let mut tag = self.original.tag_for_write().ok_or_else(|| {
                         std::io::Error::other("captured chunk has no disk record")
                     })?;
-                    replace_entries(Arc::make_mut(&mut tag), entries)?;
+                    replace_entries(Arc::make_mut(&mut tag), self.entries.clone())?;
                     Ok(Some(tag))
                 })
                 .map_err(|e| e.to_string())
@@ -81,15 +79,7 @@ impl DiskRecord {
 
     pub(super) fn without_block_entity_edits(&self) -> Option<Arc<NamedTag>> {
         let mut tag = self.original.without_block_entity_edits()?;
-        // The original encoding has already run the chunk-data callback.
-        // Replay only its result, not the callback or its other writes.
-        if let Some(Ok(Some(encoded))) = self.encoded.get() {
-            let entries = match encoded.tag.get(ATTACHMENTS_KEY) {
-                Some(Tag::Compound(entries)) => entries.clone(),
-                _ => Compound::new(),
-            };
-            replace_entries(Arc::make_mut(&mut tag), entries).ok()?;
-        }
+        replace_entries(Arc::make_mut(&mut tag), self.entries.clone()).ok()?;
         Some(tag)
     }
 
@@ -132,15 +122,17 @@ impl SaveDir {
         dimension: mod_api::Identifier,
         resources: Arc<sunrise_world::native_load_context::WorldgenContext>,
     ) {
-        if !mod_api::__private::listened(mod_api::HookId::ChunkDataLoad)
-            && !mod_api::__private::listened(mod_api::HookId::ChunkDataSave)
-        {
+        let load = mod_api::__private::listened(mod_api::HookId::ChunkDataLoad);
+        let save = mod_api::__private::listened(mod_api::HookId::ChunkDataSave);
+        if !load && !save {
             return;
         }
         let _ = self.disk.set(Arc::new(DiskRuntime {
             world,
             dimension,
             resources,
+            load,
+            save,
         }));
     }
 
@@ -159,32 +151,32 @@ impl SaveDir {
         let Some(job) = runtime.capture(chunk, kind, ChunkDiskPhase::Save) else {
             return record;
         };
+        let entries = runtime.run(&job);
         Record::Disk(Arc::new(DiskRecord {
             original: record,
-            job,
-            runtime: runtime.clone(),
+            entries,
             encoded: OnceLock::new(),
         }))
     }
 
-    pub(super) fn load_disk_attachments(
-        &self,
-        chunk: &mut Chunk,
-        kind: ChunkDiskKind,
-    ) -> Result<()> {
-        if !mod_api::__private::listened(mod_api::HookId::ChunkDataLoad) {
-            return Ok(());
-        }
+    pub(super) fn has_chunk_disk_hook(&self, phase: ChunkDiskPhase) -> bool {
+        self.disk.get().is_some_and(|runtime| match phase {
+            ChunkDiskPhase::Load => runtime.load,
+            ChunkDiskPhase::Save => runtime.save,
+            _ => false,
+        })
+    }
+
+    /// Dispatch on the owner after disk decode and before publishing or restoring the chunk.
+    pub(super) fn load_disk_attachments(&self, chunk: &mut Chunk, kind: ChunkDiskKind) {
         let Some(runtime) = self.disk.get() else {
-            // This save directory can also be a non-authoritative remote cache.
-            return Ok(());
+            // Non-authoritative remote caches have no disk context.
+            return;
         };
-        let Some(job) = runtime.capture(chunk, kind, ChunkDiskPhase::Load) else {
-            return Ok(());
-        };
-        Arc::make_mut(chunk.saved.get_or_insert_with(Default::default)).attachments =
-            Attachments::from_nbt(runtime.run(&job));
-        Ok(())
+        if let Some(job) = runtime.capture(chunk, kind, ChunkDiskPhase::Load) {
+            Arc::make_mut(chunk.saved.get_or_insert_with(Default::default)).attachments =
+                Attachments::from_nbt(runtime.run(&job));
+        }
     }
 
     pub(super) fn save_disk_sync(
@@ -199,18 +191,21 @@ impl SaveDir {
         }
         let runtime = self.disk.get()?;
         Some((|| {
-            let jobs: Vec<_> = chunks
+            let edits: Vec<_> = chunks
                 .iter()
-                .map(|chunk| runtime.capture(chunk, ChunkDiskKind::Full, ChunkDiskPhase::Save))
+                .map(|chunk| {
+                    runtime
+                        .capture(chunk, ChunkDiskKind::Full, ChunkDiskPhase::Save)
+                        .map(|job| runtime.run(&job))
+                })
                 .collect();
             let work = || {
                 chunks
                     .iter()
-                    .zip(&jobs)
-                    .filter_map(|(chunk, job)| {
+                    .zip(edits)
+                    .filter_map(|(chunk, entries)| {
                         let key = (chunk.x, chunk.z);
                         let tag = compression_pool::catch_encoding_panic(|| {
-                            let entries = job.as_ref().map(|job| runtime.run(job));
                             let blending = self.calculated_blending(chunk.x, chunk.z);
                             let mut tag = encode_saved(
                                 chunk,

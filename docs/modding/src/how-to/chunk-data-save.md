@@ -17,14 +17,16 @@ stored envelopes or poisoning unrelated edits. Inspect `err.reason` for the type
 `ChunkDiskFailureKind`.
 Use `event.data.transaction(...)` and return an error to undo a group of edits.
 
-The callback runs on the persistence worker after capture and before encoding.
+The save callback runs on the owning server thread after capture, before handing
+the snapshot to background encoding. The load callback runs on that same owner
+after a saved full or proto record decodes and before admission.
 For example, capturing 7, writing 8 in the callback and later writing 9 in the
 live chunk produces disk value 8 without changing live value 9. The host's
 `job()` borrows a `&ChunkDiskContext` identifying the world epoch, dimension,
 coordinates, full/proto kind and phase. It grants no live chunk lookup,
 scheduling, packets or world writes.
 `registry(name)` lends `Option<&[String]>` in registry ID order from the frozen generation
-retained by the worker. `None` means that generation has no such registry. Use the slice within
+retained by the snapshot. `None` means that generation has no such registry. Use the slice within
 the callback, or copy it if it must outlive the callback. Neither metadata getter reads files;
 `ConfigHost::setting` still returns an owned `Option<String>` from the same snapshot.
 
@@ -34,8 +36,9 @@ its edits and is disabled for this hook for the session. The log and local error
 toast name the mod. Edits from the remaining listeners go to the ordinary writer;
 a callback panic does not stop the save.
 
-Every record the writer processes runs the callback exactly once, for full saves (explicit,
-forced, late, unload and closing) and proto saves alike. Saves are refused, with
+Every captured record runs the save callback once, for full saves (explicit,
+forced, late, unload and closing) and proto saves alike. The writer may coalesce
+older captures without writing them. Saves are refused, with
 no callback, while an action savepoint is open, and chunk unloading waits for
 it to close. A record that the writer cannot encode or write is reported with
 its coordinates and storage type. A flush

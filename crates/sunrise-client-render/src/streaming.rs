@@ -98,6 +98,8 @@ pub trait ChunkGenerator: Send + Sync + 'static {
     /// What a loaded chunk needs from the generator before the game uses it,
     /// on the worker that loaded it.
     fn prepare_loaded(&self, _worker: &mut Self::Worker, _chunk: &Chunk) {}
+    /// Finish a decoded full record on the owner before it enters the world.
+    fn accept_loaded_chunk(&self, _chunk: &mut Chunk) {}
     /// The worker has had nothing to do for [`IDLE_RELEASE`]: give back what
     /// it keeps between jobs only to go faster.
     fn idle(&self, _worker: &mut Self::Worker) {}
@@ -106,6 +108,19 @@ pub trait ChunkGenerator: Send + Sync + 'static {
     /// next to each other in a run. Results do not change.
     fn all_idle(&self) {}
     fn proto(&self, worker: &mut Self::Worker, x: i32, z: i32) -> Proto;
+    /// Build the proto and, when needed, return its decoded disk record to the owner.
+    fn worker_proto(
+        &self,
+        worker: &mut Self::Worker,
+        x: i32,
+        z: i32,
+    ) -> (Proto, Option<Box<crate::chunk::SavedProto>>) {
+        (self.proto(worker, x, z), None)
+    }
+    fn accept_loaded_proto(&self, proto: &mut Proto, saved: crate::chunk::SavedProto) -> bool {
+        self.restore_proto(proto, saved);
+        self.is_decorated(proto)
+    }
     fn decorates(&self) -> bool {
         false
     }
@@ -180,6 +195,10 @@ pub trait ChunkGenerator: Send + Sync + 'static {
     /// Save proto chunks decoration wrote to, so that they come back as they
     /// were: generating them again would lose those writes.
     fn save_protos(&self, _protos: &[&Proto]) {}
+    /// Whether proto snapshots must go through the owner before background encoding.
+    fn save_protos_on_owner(&self) -> bool {
+        false
+    }
     /// Save a column that finished after the player moved away: its
     /// neighbours' decoration is done, so it can't be generated again.
     fn save_finished(&self, _chunk: Chunk) {}
@@ -268,10 +287,22 @@ impl<G: ChunkGenerator> ProtoAccess for G {
     }
 }
 trait Saves: LodSource + ProtoAccess {
+    fn accept_loaded_chunk(&self, chunk: &mut Chunk);
+    fn accept_loaded_proto(&self, proto: &mut Proto, saved: crate::chunk::SavedProto) -> bool;
+    fn save_protos_on_owner(&self) -> bool;
     fn save_protos(&self, protos: &[&Proto]);
     fn save_finished(&self, chunk: Chunk);
 }
 impl<G: ChunkGenerator> Saves for G {
+    fn accept_loaded_chunk(&self, chunk: &mut Chunk) {
+        ChunkGenerator::accept_loaded_chunk(self, chunk);
+    }
+    fn accept_loaded_proto(&self, proto: &mut Proto, saved: crate::chunk::SavedProto) -> bool {
+        ChunkGenerator::accept_loaded_proto(self, proto, saved)
+    }
+    fn save_protos_on_owner(&self) -> bool {
+        ChunkGenerator::save_protos_on_owner(self)
+    }
     fn save_protos(&self, protos: &[&Proto]) {
         ChunkGenerator::save_protos(self, protos);
     }
@@ -325,8 +356,8 @@ pub struct FinalWrites {
 }
 pub enum Done {
     Generated(Chunk),
-    /// A proto chunk, and whether it was decorated (loaded so from the save).
-    Proto(i32, i32, Proto, bool),
+    /// A proto chunk, its decoration flag, and any record deferred to the owner.
+    Proto(i32, i32, Proto, bool, Option<Box<crate::chunk::SavedProto>>),
     /// A decorated region, the region indices of its final chunks and what
     /// decoration wrote into them.
     Decorated(i32, i32, Box<[Proto; 9]>, Vec<usize>, FinalWrites),
@@ -1121,9 +1152,9 @@ impl<G: ChunkGenerator> Jobs<G> {
                     Done::Generated(chunk)
                 }
                 None => {
-                    let proto = generator.proto(&mut *worker, x, z);
-                    let decorated = generator.is_decorated(&proto);
-                    Done::Proto(x, z, proto, decorated)
+                    let (proto, saved) = generator.worker_proto(&mut *worker, x, z);
+                    let decorated = saved.is_none() && generator.is_decorated(&proto);
+                    Done::Proto(x, z, proto, decorated, saved)
                 }
             },
             Job::Decorate(x, z, mut region, finals) => {
@@ -1626,8 +1657,13 @@ impl Streaming {
     /// Queue checked-out protos ahead of other generation work.
     pub fn submit_protos(&mut self, protos: Vec<ProtoSave>) -> bool {
         if !protos.is_empty() {
-            self.saving += 1;
-            self.submit(None, 0, Job::Save(protos));
+            if self.saves.save_protos_on_owner() {
+                // This only captures and queues the region records; encoding stays on workers.
+                self.finish_save(protos, true);
+            } else {
+                self.saving += 1;
+                self.submit(None, 0, Job::Save(protos));
+            }
         }
         self.saving == 0
     }
@@ -1654,6 +1690,9 @@ impl Streaming {
                 return Some(chunk);
             }
             return None;
+        }
+        if !chunk.generated {
+            self.saves.accept_loaded_chunk(&mut chunk);
         }
         // Generated columns are saved like edited ones, as vanilla saves
         // every chunk it generates.
@@ -2056,10 +2095,13 @@ impl Streaming {
                 self.decoration_changed = true;
             }
             match done {
-                Done::Proto(x, z, proto, decorated) => {
+                Done::Proto(x, z, mut proto, decorated, saved) => {
                     self.generation_scan.exhausted = false;
                     self.generating.remove(&(x, z));
                     if self.in_range(x, z, 4) || self.near_finished(x, z, 2) {
+                        let decorated = saved.map_or(decorated, |saved| {
+                            self.saves.accept_loaded_proto(&mut proto, *saved)
+                        });
                         self.light_views.remove(&(x, z));
                         self.protos.insert((x, z), Some(proto));
                         if decorated || !self.decorates {
@@ -4143,6 +4185,7 @@ mod tests {
             neighbour.1,
             Box::new(SectionMask::single(6)),
             true,
+            None,
         ));
         streaming.plan_update(&mut world);
 
