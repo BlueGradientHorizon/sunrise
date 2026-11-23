@@ -235,6 +235,14 @@ impl<T> Drop for RemainingActions<'_, T> {
     }
 }
 
+/// Scratch for one guest's linked-container refresh.
+#[derive(Default)]
+pub(super) struct LinkScratch {
+    pub asked: Vec<[i32; 3]>,
+    pub seen: std::collections::HashSet<(i32, i32, i32)>,
+    pub links: Vec<(i32, i32, i32)>,
+}
+
 /// Mob-system state owned by the game.
 #[derive(Default)]
 pub(super) struct Creatures {
@@ -245,6 +253,9 @@ pub(super) struct Creatures {
     /// What a family's Pre and Post are told from, kept between ticks
     /// (game/modding/native_ticks.rs).
     pub tick_hooks: super::native_ticks::TickBuffers,
+    /// The linked containers a mod menu's `menu_links` answered, deduplicated in first-seen
+    /// order each tick, kept between ticks (game/network/lan_crafting.rs).
+    pub link_scratch: LinkScratch,
     /// The guests (by connection) whose `ServerPlayer.tick` a mod's Pre canceled this tick:
     /// every part of it skips them (game/network/lan_actions/tick.rs).
     pub canceled_players: Vec<u32>,
@@ -5434,11 +5445,12 @@ impl Game<'_> {
                 self.creatures.projectiles.update(pos, |p| p.previous = at);
                 continue;
             }
-            let _save_lease = self
-                .creatures
-                .projectiles
-                .visibility_lease()
-                .ok_or_else(sunrise_client::join_seq::visibility::PassLease::enter);
+            let mut _save_lease = Some(
+                self.creatures
+                    .projectiles
+                    .visibility_lease()
+                    .ok_or_else(sunrise_client::join_seq::visibility::PassLease::enter),
+            );
             let Some(mut p) = self.creatures.projectiles.extract(join) else {
                 continue;
             };
@@ -5459,6 +5471,9 @@ impl Game<'_> {
                 continue;
             }
             let section_from = p.position;
+            // A listener may have been enabled since the last projectile: ask at each flight,
+            // and keep the flight's start to replay it if the impact is vetoed.
+            let before = (self.native_hears_impacts() && !p.stuck).then(|| p.clone());
             let mob_shot = !matches!(p.owner, Some(Who::Player));
             let pvp = !mob_shot && super::lan_pvp::meets_players(&p.kind);
             let shooter = p.guest.filter(|_| !mob_shot).and_then(|c| {
@@ -5524,6 +5539,74 @@ impl Game<'_> {
             if shooter.is_some() {
                 p.owner = Some(Who::Player);
             }
+            if hit != Hit::None
+                && let Some(mut before) = before
+            {
+                // The contact is told with its row back in the list, as in the batched pass.
+                let snapshot = p.clone();
+                let target = self.native_impact_target(hit);
+                drop(_save_lease.take());
+                let place = pos.min(self.creatures.projectiles.len());
+                self.creatures.projectiles.put_back(place, p);
+                let canceled = self.native_projectile_impact_canceled(&snapshot, hit);
+                _save_lease = Some(
+                    self.creatures
+                        .projectiles
+                        .visibility_lease()
+                        .ok_or_else(sunrise_client::join_seq::visibility::PassLease::enter),
+                );
+                let unchanged = !self.projectile_removal_pending(pid)
+                    && self
+                        .creatures
+                        .projectiles
+                        .locate(join)
+                        .is_some_and(|i| self.creatures.projectiles[i] == snapshot)
+                    && target.is_some()
+                    && target == self.native_impact_target(hit);
+                if !unchanged {
+                    drop(_save_lease.take());
+                    continue;
+                }
+                if canceled {
+                    // A veto alone replays the flight through what it hit.
+                    before.has_been_shot = snapshot.has_been_shot;
+                    if let (Some(arrow), Some(shot)) = (&mut before.arrow, &snapshot.arrow) {
+                        arrow.has_been_shot = shot.has_been_shot;
+                    }
+                    let (flown, flies, events) = self.native_projectile_through(before);
+                    let (owner, guest, to) = (flown.owner, flown.guest, flown.position);
+                    if let Some(i) = self.creatures.projectiles.locate(join) {
+                        if flies {
+                            self.creatures.projectiles.store_back(i, flown);
+                            if !keep && let Some(row) = self.creatures.projectiles.extract(join) {
+                                let end = self.creatures.projectiles.len();
+                                self.creatures.projectiles.put_back(end, row);
+                            }
+                        } else {
+                            self.creatures.projectiles.remove(i);
+                        }
+                    }
+                    drop(_save_lease.take());
+                    if flies {
+                        self.entity_section_step(pid, section_from.components(), to.components());
+                    }
+                    for (at, event) in events {
+                        if event == sunrise_client::arrows::ArrowEvent::ShootEvent
+                            && matches!(hit, Hit::Block { .. })
+                        {
+                            self.projectile_shoot_event(owner, guest, at.components());
+                        } else {
+                            self.arrow_event(at, event);
+                        }
+                    }
+                    continue;
+                }
+                let Some(row) = self.creatures.projectiles.extract(join) else {
+                    drop(_save_lease.take());
+                    continue;
+                };
+                p = row;
+            }
             for (block, position, movement) in snow_contacts {
                 self.powder_snow_particle(block, position, movement);
             }
@@ -5568,7 +5651,7 @@ impl Game<'_> {
                 && let Some(ceiling) = self.wind_ceiling_contact(&p)
             {
                 self.creatures.projectiles.retire_extracted(pid, join);
-                drop(_save_lease);
+                drop(_save_lease.take());
                 self.apply_projectile_hit(&p, ceiling)?;
                 continue;
             }
@@ -5589,13 +5672,13 @@ impl Game<'_> {
                 let place = pos.min(self.creatures.projectiles.len());
                 if hit == Hit::None {
                     self.creatures.projectiles.put_back(place, p);
-                    drop(_save_lease);
+                    drop(_save_lease.take());
                     self.entity_section_step(pid, section_from.components(), to.components());
                     continue;
                 }
                 let hit_snapshot = p.clone();
                 self.creatures.projectiles.put_back(place, p);
-                drop(_save_lease);
+                drop(_save_lease.take());
                 self.entity_section_step(pid, section_from.components(), to.components());
                 let result = self.apply_projectile_hit(&hit_snapshot, hit);
                 if result.is_ok() && shot_after_hit {
@@ -5623,7 +5706,7 @@ impl Game<'_> {
             } else {
                 self.creatures.projectiles.retire_extracted(pid, join);
             }
-            drop(_save_lease);
+            drop(_save_lease.take());
             if result.is_ok() && shot_after_hit {
                 self.projectile_shoot_event(p.owner, p.guest, p.position.components());
             }

@@ -1177,7 +1177,7 @@ impl Game<'_> {
     /// Shared current-window recipe placement router for vanilla `PlaceRecipe`
     /// and mod-book `Frame::Place` (`ServerGamePacketListenerImpl.handlePlaceRecipe`).
     pub(super) fn lan_route_place_recipe(&mut self, conn: u32, intent: RecipePlacementIntent<'_>) {
-        let Some((gi, player, name, creative, container, id, use_max)) = (|| {
+        let Some((player, name, container, id, use_max, generation, dimension)) = (|| {
             let host = self.lan.as_ref()?;
             let gi = host.hub.guests.iter().position(|g| g.conn == conn)?;
             let g = &host.hub.guests[gi];
@@ -1219,13 +1219,13 @@ impl Game<'_> {
                 return None;
             }
             Some((
-                gi,
                 g.uuid,
                 g.name.clone(),
-                g.creative(),
                 container,
                 id,
                 use_max,
+                g.menu_generation,
+                g.dimension.clone(),
             ))
         })() else {
             if let RecipePlacementIntent::ModBook { display, .. } = intent {
@@ -1285,18 +1285,48 @@ impl Game<'_> {
             },
             RecipePlacementIntent::Vanilla { display, .. } => {
                 self.native_player_recipe_book_click(player, &name, &id, use_max);
+                // The writable listener may have replaced the menu, moved the player or changed
+                // their mode: place only into the menu the click named, with the live mode.
+                let Some((gi, creative)) =
+                    self.recipe_click_menu_still_current(conn, container, generation, &dimension)
+                else {
+                    return;
+                };
                 let placed = self.lan_place_in_current_menu(gi, container, &id, use_max, creative);
                 if placed == Some(PostPlace::Ghost)
                     && self
-                        .lan
-                        .as_ref()
-                        .is_some_and(|host| container == guest_open_window(host, conn))
+                        .recipe_click_menu_still_current(conn, container, generation, &dimension)
+                        .is_some()
                     && let Some(host) = self.lan.as_mut()
                 {
                     host.hub.send_ghost_recipe(conn, container, display);
                 }
             }
         }
+    }
+
+    /// The guest's index and live creative mode if their open menu is still the instance
+    /// (`generation`) a recipe click named in `container`, in the level it was made in, and the
+    /// player may still place recipes.
+    fn recipe_click_menu_still_current(
+        &self,
+        conn: u32,
+        container: i32,
+        generation: u64,
+        dimension: &str,
+    ) -> Option<(usize, bool)> {
+        let host = self.lan.as_ref()?;
+        let gi = host.hub.guests.iter().position(|g| g.conn == conn)?;
+        let g = &host.hub.guests[gi];
+        (g.placed
+            && host.hub.here(g)
+            && !g.dead
+            && g.health > 0.0
+            && !g.spectator()
+            && g.menu_generation == generation
+            && g.dimension == dimension
+            && container == guest_open_window(host, conn))
+        .then(|| (gi, g.creative()))
     }
 
     fn lan_place_in_current_menu(
@@ -1932,24 +1962,46 @@ impl Game<'_> {
             else {
                 continue;
             };
-            let mut asked = Vec::new();
-            self.native_menu_links(g.uuid, t.id, [pos.0, pos.1, pos.2], &mut asked);
-            let mut links: Vec<(i32, i32, i32)> = Vec::new();
-            let mut seen = std::collections::HashSet::new();
-            for at in asked {
+            let (conn, uuid, window, generation) = (
+                g.conn,
+                g.uuid,
+                g.menu.as_ref().map_or(0, |m| m.window),
+                g.menu_generation,
+            );
+            let mut scratch = std::mem::take(&mut self.creatures.link_scratch);
+            scratch.asked.clear();
+            self.native_menu_links(uuid, t.id, [pos.0, pos.1, pos.2], &mut scratch.asked);
+            scratch.links.clear();
+            scratch.seen.clear();
+            for &at in &scratch.asked {
                 let at = (at[0], at[1], at[2]);
-                if at == pos || !seen.insert(at) {
+                if at == pos || !scratch.seen.insert(at) {
                     continue;
                 }
                 if self.linkable_container(at).is_some() {
-                    links.push(at);
+                    scratch.links.push(at);
                 }
             }
-            self.lan.as_mut().unwrap().hub.guests.update(gi, |g| {
-                if let Some(m) = g.menu.as_mut() {
-                    m.links = links;
-                }
-            });
+            // A writable listener may have replaced the menu while the answers were collected:
+            // they belong to the original level's menu instance only.
+            let still = self
+                .lan
+                .as_ref()
+                .and_then(|host| host.hub.guests.iter().position(|g| g.conn == conn))
+                .filter(|&gi| {
+                    let g = &self.lan.as_ref().unwrap().hub.guests[gi];
+                    g.menu_generation == generation
+                        && g.menu.as_ref().is_some_and(|m| m.window == window)
+                });
+            if let Some(gi) = still {
+                self.lan.as_mut().unwrap().hub.guests.update(gi, |g| {
+                    if let Some(m) = g.menu.as_mut() {
+                        m.links.clear();
+                        m.links.extend(scratch.links.iter().copied());
+                    }
+                });
+            }
+            self.creatures.link_scratch = scratch;
         }
     }
 
