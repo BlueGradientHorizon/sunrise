@@ -2498,7 +2498,7 @@ impl Game<'_> {
                 argument.range,
             );
             let value = self.resolve_client_safe_argument(
-                ty.as_ref(),
+                ty,
                 argument.value,
                 |coordinates| coordinates.position(position, rotation),
                 rotation,
@@ -2706,7 +2706,7 @@ impl Game<'_> {
                     dimension_value(&id, |dimension| self.level(dimension))?
                 }
                 other => self.resolve_client_safe_argument(
-                    ty.as_ref(),
+                    ty,
                     other,
                     |coordinates| self.resolve_coords(coordinates),
                     self.source_rotation(),
@@ -3539,7 +3539,7 @@ mod tests {
                 "{name}: the type comes from the parsed node"
             );
             positional_value(
-                ty.as_ref(),
+                ty,
                 coordinates,
                 coordinates.position(origin, rotation),
                 rotation,

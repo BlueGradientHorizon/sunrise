@@ -72,6 +72,9 @@ pub fn split_client_command_registration(
 /// Brigadier's `CommandNode.addChild`) and updates Sunrise's paired execution permission
 /// level for that node.
 ///
+/// A `resource:<registry>` usage requires a `namespace:path` registry name; an invalid name
+/// refuses the usage. There is no separate registration budget for registry names.
+///
 /// Side: server. Selector arguments use vanilla's source position, permissions,
 /// cardinality and selection order; `player`/`entity` require one result and
 /// `players`/`entities` require a nonempty result. Unresolvable entity handles are

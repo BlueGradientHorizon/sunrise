@@ -3,13 +3,10 @@
 
 use super::{ArgType, Text, TryIntoEngine};
 use serde_json::{Value, json};
-use std::{
-    collections::{HashMap, HashSet},
-    sync::{Arc, Mutex, OnceLock},
-};
+use std::{collections::HashMap, sync::Arc};
 use sunrise_client::command::{
     CommandError, Dispatcher, MAX_SUGGESTION_TEXT, MAX_SUGGESTION_TOOLTIP, NodeKind, Range, Reader,
-    args::Coordinates, snbt,
+    RegistryId, args::Coordinates, snbt,
 };
 
 /// The argument kinds a native usage may name, each with a [`parser`]; `resource:<registry>`
@@ -62,51 +59,16 @@ pub(in super::super) fn command_arguments() -> CommandArguments {
 /// never meets one.
 pub(super) const MOD_ID: &str = "mod_id";
 
-/// The most distinct registries native usages may name. Vanilla has about a hundred, so this
-/// leaves mods room while keeping the names kept for the game's life bounded.
-const MAX_REGISTRIES: usize = 256;
-/// The longest registry name, in bytes: what the network side keeps of a received tree's names.
-const MAX_REGISTRY_NAME: usize = 256;
-
-/// The brigadier parser and properties of `resource:<registry>`: `ResourceKeyArgument` on the
+/// The Brigadier parser and properties of `resource:<registry>`: `ResourceKeyArgument` on the
 /// wire, so vanilla clients complete it, and `ResourceArgument` on the server, which refuses an id
-/// the registry lacks before the mod runs. A name that is not a resource location, or a registry
-/// past the budget, refuses the usage with the reason.
+/// the registry lacks before the mod runs.
 pub(super) fn resource_parser(name: &str) -> Result<(&'static str, Value), String> {
-    let registry = registry(name)?;
-    Ok(("minecraft:resource_key", json!({ "registry": registry })))
-}
-
-/// A registry name a usage named, kept for the game's life (`ArgType::Res` holds
-/// `&'static str`), each name once. Its own set, apart from the interner the network fills from
-/// received trees, so neither spends the other's budget.
-fn registry(name: &str) -> Result<&'static str, String> {
-    static NAMES: OnceLock<Mutex<HashSet<&'static str>>> = OnceLock::new();
-    let mut names = NAMES
-        .get_or_init(Default::default)
-        .lock()
-        .unwrap_or_else(|e| e.into_inner());
-    registry_in(&mut names, name)
-}
-
-fn registry_in(names: &mut HashSet<&'static str>, name: &str) -> Result<&'static str, String> {
-    if let Some(&known) = names.get(name) {
-        return Ok(known);
-    }
-    if name.len() > MAX_REGISTRY_NAME || mod_api::Identifier::parse_namespaced(name).is_none() {
+    if mod_api::Identifier::parse_namespaced(name).is_none() {
         return Err(format!(
-            "registry `{name}` is not a `namespace:path` resource location of at most \
-             {MAX_REGISTRY_NAME} bytes"
+            "registry `{name}` is not a `namespace:path` resource location"
         ));
     }
-    if names.len() >= MAX_REGISTRIES {
-        return Err(format!(
-            "registry `{name}` is past the limit of {MAX_REGISTRIES} distinct registries"
-        ));
-    }
-    let name: &'static str = Box::leak(name.into());
-    names.insert(name);
-    Ok(name)
+    Ok(("minecraft:resource_key", json!({ "registry": name })))
 }
 
 /// What a mod receives for a custom argument: `mod_id` as the plain package id, a mod's own type
@@ -207,17 +169,17 @@ pub(super) fn parser(kind: &str) -> Option<(&'static str, Value, ArgType)> {
 
 /// The type of the argument node that parsed `range`: the parsed node, not the value, says which
 /// kind a position, id or string is.
-pub(super) fn parsed_type(
-    dispatcher: &Dispatcher,
+pub(super) fn parsed_type<'a>(
+    dispatcher: &'a Dispatcher,
     parsed_nodes: &[(usize, Range)],
     range: Range,
-) -> Option<ArgType> {
+) -> Option<&'a ArgType> {
     parsed_nodes.iter().find_map(|(node, parsed)| {
         if *parsed != range {
             return None;
         }
         match &dispatcher.nodes[*node].kind {
-            NodeKind::Argument { ty, .. } => Some(ty.clone()),
+            NodeKind::Argument { ty, .. } => Some(ty),
             _ => None,
         }
     })
@@ -344,7 +306,7 @@ pub(super) fn argument_type(node: &Value, arguments: &CommandArguments) -> ArgTy
     if node["parser"] == "minecraft:resource_key" {
         let registry = node["properties"]["registry"].as_str().unwrap_or_default();
         return ArgType::Res(
-            self::registry(registry).expect("native command tree names validated registries"),
+            RegistryId::parse(registry).expect("native command tree names validated registries"),
         );
     }
     if let Some(id) = node["custom_argument"].as_str() {
@@ -492,30 +454,34 @@ mod tests {
     }
 
     #[test]
-    fn registry_names_are_resource_locations_within_their_own_budget() {
-        let mut names = HashSet::new();
+    fn native_resource_arguments_own_registry_names_without_a_registration_budget() {
         for bad in [
             "a:b:c",
             "a/b:c",
-            "noNamespace",
+            "item",
             "minecraft:",
             ":x",
             "Minecraft:x",
+            "..:x",
         ] {
-            assert!(registry_in(&mut names, bad).is_err(), "{bad}");
+            let refusal = resource_parser(bad).unwrap_err();
+            assert!(
+                refusal.contains(bad) && refusal.contains("namespace:path"),
+                "{refusal}"
+            );
         }
-        let long = format!("a:{}", "b".repeat(MAX_REGISTRY_NAME));
-        assert!(registry_in(&mut names, &long).is_err());
-        let first = registry_in(&mut names, "minecraft:entity_type").unwrap();
-        assert!(std::ptr::eq(
-            first,
-            registry_in(&mut names, "minecraft:entity_type").unwrap()
-        ));
-        for n in 1..MAX_REGISTRIES {
-            registry_in(&mut names, &format!("mymod:r{n}")).unwrap();
+        let arguments = CommandArguments::new();
+        let names = (0..257).map(|n| format!("mymod:r{n}"));
+        let long = format!("mymod:registry/{}", "b".repeat(300));
+        for name in names.chain([long]) {
+            let (parser, properties) = resource_parser(&name).unwrap();
+            assert_eq!(parser, "minecraft:resource_key");
+            let node = json!({ "parser": parser, "properties": properties });
+            let ArgType::Res(registry) = argument_type(&node, &arguments) else {
+                panic!("the server must check the registry for resource arguments");
+            };
+            drop(node);
+            assert_eq!(registry.as_str(), name);
         }
-        let refusal = registry_in(&mut names, "mymod:one_more").unwrap_err();
-        assert!(refusal.contains("past the limit"), "{refusal}");
-        assert!(registry_in(&mut names, "minecraft:entity_type").is_ok());
     }
 }

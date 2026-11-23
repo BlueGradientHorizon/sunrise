@@ -65,9 +65,10 @@ delivers it as a string (NeoForge's `ModIdArgument`). `resource:<registry>`, suc
 from a data pack, and delivers `CommandArgumentValue::Id`; any other id is refused
 with vanilla's `argument.resource.not_found` before the executor runs. Clients see it
 as vanilla's `minecraft:resource_key`, so unmodded clients complete it too. The registry
-must be a `namespace:path` resource location of at most 256 bytes, and the server takes at
-most 256 distinct registries; a usage past either is left out, with the reason in the log. Block positions are resolved and floored
-from the source's world, relative or local coordinates without loading chunks.
+must be a valid `namespace:path` resource location. An invalid registry name refuses the
+usage with a reason in the log. Registry names have no separate registration budget; the
+vanilla command-tree string frame applies on the wire. Block positions are resolved and
+floored from the source's world, relative or local coordinates without loading chunks.
 
 `id` is a free identifier: vanilla's `minecraft:resource_location` argument, lowercase letters,
 digits and `_ - . : /`, canonicalised to `namespace:path` with `minecraft` when the namespace is
