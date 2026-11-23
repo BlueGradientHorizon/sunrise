@@ -31,7 +31,10 @@
 //! health and absorption, and the attribute modifier rows the effects own.
 //! An entity added inside one goes at an abort, one removed is only marked until the root
 //! commit, and mods hear of joins and leaves at the root commit (`transactions/entities.rs`).
-use super::{BlockEntity, BlockStateId, Dim, Game, machines::HopperState, maps::MapData};
+use super::{
+    BlockEntity, BlockStateId, Dim, Game, lan_mount_menu::MountClickWindow, machines::HopperState,
+    maps::MapData,
+};
 use mod_api::{
     __private::TransactionFrame, LevelRef, TransactionContext, TransactionLifecycle,
     TransactionScopeError,
@@ -43,6 +46,7 @@ use sunrise_client::{
     fast_hash::FxHashSet,
     items::ItemStack,
     living_attributes::ModifierChanges,
+    menu::QuickCraftDrag,
     mobs::{Mob, StoredEffect, finalize::EffectModifierUndo, gear::Gear},
     world::{BlockEntityExtras, ModifiedChunks, World},
 };
@@ -77,6 +81,15 @@ impl Drop for QuickMoveNotices<'_, '_> {
 }
 
 type Pos = (i32, i32, i32);
+
+/// A level-local save follows that level's block writes. A transaction save follows the
+/// dimension-keyed owner journal (e.g. an entity's equipment), even through a different level.
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+pub(super) enum SaveChunkScope {
+    Level,
+    Transaction,
+}
+
 /// The last pending value at this depth for a connection, menu generation and data index.
 type MenuDataJournal = BTreeMap<(u32, u64, usize), i32>;
 type ComposterRandoms =
@@ -228,7 +241,9 @@ impl OpenTransactions {
         modified: &mut ModifiedChunks,
     ) {
         if let Some(level) = entities::open_in(self, dim) {
-            level.save_chunks.insert((dim, chunk));
+            level
+                .save_chunks
+                .insert((dim, chunk, SaveChunkScope::Level));
         } else {
             modified.insert(chunk);
         }
@@ -420,6 +435,10 @@ pub(super) struct Level {
     menus: HashMap<u32, KeptMenus>,
     /// Drag, machine and preview state before a scoped default click.
     menu_clicks: HashMap<u64, KeptClick>,
+    /// The first drag state written in a guest's mount window.
+    mount_drags: HashMap<MountClickWindow, QuickCraftDrag>,
+    /// Mount window identities to reconcile once the outermost transaction has settled.
+    mount_replies: indexmap::IndexSet<MountClickWindow>,
     pub(super) menu_click_active: Option<u32>,
     /// Each native window's slots before the first write, by menu generation.
     native_menu_slots: HashMap<u64, Vec<Option<ItemStack>>>,
@@ -440,7 +459,7 @@ pub(super) struct Level {
     chunk_marks: HashMap<(i32, i32), sunrise_client::world::ChunkMark>,
     /// Chunks whose committed storage writes must be saved, in first-write order and in the
     /// levels written.
-    save_chunks: indexmap::IndexSet<(super::Dim, (i32, i32))>,
+    save_chunks: indexmap::IndexSet<(Dim, (i32, i32), SaveChunkScope)>,
     /// New map data and its reserved IDs. Neither enters the saved map table until root commit.
     pub(super) new_maps: BTreeMap<i32, MapData>,
     /// What the root commit does, in order.
@@ -649,6 +668,14 @@ pub(super) enum After {
         silent: bool,
     },
     GuestMenu(u32, Box<super::lan_crafting::GuestMenuEffects>),
+    /// Equipment transitions from a mount menu, with distinct sound and game event positions.
+    MountEquipment {
+        dim: Dim,
+        id: u32,
+        at: [f64; 3],
+        sound: Option<(String, [f64; 3])>,
+        equips: bool,
+    },
     MenuClick(Box<super::lan_menus::MenuClickReply>),
     MenuPlacesNotice(u32, u128, i32),
     FurnaceMenu(Box<super::lan_crafting::FurnaceMenuEffects>),
@@ -1242,6 +1269,7 @@ impl<'g> Game<'g> {
         let guard = ClosingPhase { game: self, outer };
         let mut merchant_corrections = std::mem::take(&mut level.trades.refused_clicks);
         merchant_corrections.append(&mut level.trades.correct_on_abort);
+        let mount_replies = std::mem::take(&mut level.mount_replies);
         let departed = std::mem::take(&mut level.departed);
         guard
             .game
@@ -1270,6 +1298,7 @@ impl<'g> Game<'g> {
                 guard.game.resend_merchant_take(conn, window);
             }
         }
+        guard.game.settle_mount_replies(mount_replies);
     }
     /// What closing `level` does, with the closing phase already set.
     fn close_level(&mut self, mut level: Level, commit: bool) {
@@ -1283,6 +1312,7 @@ impl<'g> Game<'g> {
         if !commit {
             merchant_corrections.append(&mut level.trades.correct_on_abort);
         }
+        let mount_replies = std::mem::take(&mut level.mount_replies);
         let departed = std::mem::take(&mut level.departed);
         debug_assert_eq!(
             level.dimension,
@@ -1329,11 +1359,11 @@ impl<'g> Game<'g> {
                         .collect(),
                     ..Level::default()
                 };
-                level.save_chunks.retain(|&(dim, chunk)| {
-                    if dim != self.dim {
+                level.save_chunks.retain(|&(dim, chunk, scope)| {
+                    if dim != self.dim || scope == SaveChunkScope::Transaction {
                         return true;
                     }
-                    local.save_chunks.insert((dim, chunk));
+                    local.save_chunks.insert((dim, chunk, scope));
                     false
                 });
                 if let Some(owner) = entities::open_in(&mut self.transactions, self.dim) {
@@ -1419,6 +1449,9 @@ impl<'g> Game<'g> {
                 for (generation, kept) in level.menu_clicks {
                     outer.menu_clicks.entry(generation).or_insert(kept);
                 }
+                for (window, kept) in level.mount_drags {
+                    outer.mount_drags.entry(window).or_insert(kept);
+                }
                 for (generation, kept) in level.native_menu_slots {
                     outer.native_menu_slots.entry(generation).or_insert(kept);
                 }
@@ -1477,6 +1510,7 @@ impl<'g> Game<'g> {
                 self.resend_merchant_take(conn, window);
             }
         }
+        self.settle_mount_replies(mount_replies);
     }
     /// Aborts abandoned frames before the next operation can join them. Call only when
     /// there is no caller-owned frame; the tick start also uses this as a backstop.
@@ -2021,6 +2055,26 @@ impl<'g> Game<'g> {
             });
     }
 
+    pub(super) fn journal_mount_drag(&mut self, window: MountClickWindow, before: QuickCraftDrag) {
+        if let Some(level) = self.transactions.last_mut() {
+            level.mount_drags.entry(window).or_insert(before);
+        }
+    }
+
+    /// On both commit and abort, defer a window's reply if any storage remains tentative.
+    pub(super) fn settle_mount_replies(
+        &mut self,
+        replies: impl IntoIterator<Item = MountClickWindow>,
+    ) {
+        if let Some(level) = self.transactions.last_mut() {
+            level.mount_replies.extend(replies);
+        } else {
+            for window in replies {
+                self.send_settled_mount_reply(window);
+            }
+        }
+    }
+
     /// Keeps entity `id`'s inventory as it is, if a transaction is open and hasn't yet.
     pub(super) fn journal_entity(&mut self, id: u32) {
         self.transactions.writes = self.transactions.writes.wrapping_add(1);
@@ -2234,11 +2288,15 @@ impl<'g> Game<'g> {
                 .or_insert(old);
         }
     }
-    /// Mark a written chunk unsaved at root commit, without issuing any notice.
-    pub(super) fn journal_chunk_save(&mut self, chunk: (i32, i32)) {
+    /// Mark a written chunk unsaved at commit, without issuing any notice.
+    pub(super) fn journal_chunk_save(&mut self, chunk: (i32, i32), scope: SaveChunkScope) {
         let dim = self.dim;
-        if let Some(level) = entities::open_in(&mut self.transactions, self.dim) {
-            level.save_chunks.insert((dim, chunk));
+        let level = match scope {
+            SaveChunkScope::Level => entities::open_in(&mut self.transactions, dim),
+            SaveChunkScope::Transaction => self.transactions.last_mut(),
+        };
+        if let Some(level) = level {
+            level.save_chunks.insert((dim, chunk, scope));
         }
     }
     /// Queue a reusable interaction effect for the outermost successful commit.
@@ -2377,6 +2435,20 @@ impl<'g> Game<'g> {
                 }
             }
             After::GuestMenu(conn, effects) => self.publish_guest_menu_effects(conn, *effects),
+            After::MountEquipment {
+                dim,
+                id,
+                at,
+                sound,
+                equips,
+            } => {
+                let _ = self.with_effect_level(dim, |game| {
+                    if let Some((sound, center)) = sound {
+                        game.audio.play(&sound, Some(center), 1.0, 1.0);
+                    }
+                    game.mob_equip_event(id, at, equips);
+                });
+            }
             After::MenuClick(reply) => self.publish_menu_click(*reply),
             After::MenuPlacesNotice(conn, uuid, window) => {
                 self.queue_menu_places_notice(conn, uuid, window);
@@ -2554,7 +2626,7 @@ impl<'g> Game<'g> {
 
     fn root_commit(&mut self, mut level: Level) {
         // Storage is final. Publish save marks before any callback can unwind or start a save.
-        for (dim, chunk) in level.save_chunks {
+        for (dim, chunk, _) in level.save_chunks {
             let world = if dim == self.dim {
                 Some(&mut self.world)
             } else {
@@ -3036,6 +3108,9 @@ impl<'g> Game<'g> {
                     (orb.value, orb.count, orb.age) = kept;
                 }
             });
+        }
+        for (window, drag) in level.mount_drags {
+            self.restore_mount_drag(window, drag);
         }
         if let Some(host) = self.lan.as_mut() {
             for ((conn, owner), kept) in level.stations {
