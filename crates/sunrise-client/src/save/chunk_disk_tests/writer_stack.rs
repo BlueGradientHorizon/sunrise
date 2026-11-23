@@ -35,18 +35,22 @@ fn chunk_disk_hooks_run_on_owner_while_region_io_runs_on_writer() {
             Some(Default::default()),
         );
         let writer_id = Arc::new(OnceLock::new());
-        *save.writer.lock().unwrap() = Some(save.start_writer(fs::File::sync_data, {
-            let writer_id = writer_id.clone();
-            move |region| {
-                let _ = writer_id.set(thread::current().id());
-                #[cfg(target_os = "linux")]
-                {
-                    let bounds = sunrise_threads::unwind::StackBounds::current().unwrap();
-                    assert!(bounds.hi - bounds.lo >= sunrise_threads::GAME_THREAD_STACK_BYTES);
+        // `sync_data` runs inside each region write; `flush` forces regions on its caller.
+        *save.writer.lock().unwrap() = Some(save.start_writer(
+            {
+                let writer_id = writer_id.clone();
+                move |file| {
+                    let _ = writer_id.set(thread::current().id());
+                    #[cfg(target_os = "linux")]
+                    {
+                        let bounds = sunrise_threads::unwind::StackBounds::current().unwrap();
+                        assert!(bounds.hi - bounds.lo >= sunrise_threads::GAME_THREAD_STACK_BYTES);
+                    }
+                    file.sync_data()
                 }
-                region.sync_all()
-            }
-        }));
+            },
+            RegionFile::sync_all,
+        ));
         context(&save);
         save.save_later(&[Arc::new(chunk(7))], registry, &biomes)
             .unwrap();
