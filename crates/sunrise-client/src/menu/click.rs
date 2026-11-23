@@ -10,20 +10,19 @@ pub struct ClickContinuation(ClickStep);
 
 impl ClickContinuation {
     /// Only a player-side write from a completed take survives the loss of its backing menu.
-    /// The mods' cursor edits survive only when nothing else is left: a cursor write after a
-    /// slot edit or take that can no longer apply could hand out items the slot never gave.
+    /// The mods' cursor edits that directly follow the completed take survive; the first slot
+    /// edit or take that can no longer apply ends them, since a cursor write after it could
+    /// hand out items the slot never gave.
     pub fn after_menu_closed(self) -> Option<Self> {
         match self.0 {
             ClickStep::SwapOverflow(_) => Some(self),
-            ClickStep::StackedEdits { carried, rest, .. }
-                if rest
-                    .iter()
-                    .all(|edit| matches!(edit, StackedEdit::Carried(_))) =>
-            {
-                (!rest.is_empty()).then_some(Self(ClickStep::StackedCursorOnly {
-                    carried,
-                    cursor: rest,
-                }))
+            ClickStep::StackedEdits { carried, rest, .. } => {
+                let cursor: Vec<_> = rest
+                    .into_iter()
+                    .take_while(|edit| matches!(edit, StackedEdit::Carried(_)))
+                    .collect();
+                (!cursor.is_empty())
+                    .then_some(Self(ClickStep::StackedCursorOnly { carried, cursor }))
             }
             _ => None,
         }
@@ -1494,11 +1493,20 @@ mod after_menu_closed_tests {
     }
 
     #[test]
-    fn cursor_edits_survive_a_closed_menu_only_when_nothing_else_is_left() {
+    fn a_closed_menu_keeps_only_the_cursor_edits_before_the_next_slot_edit() {
         let dirt = |count| Some(ItemStack::new("minecraft:dirt", count));
         // The take that suspended the click completed: its cursor write is owed.
         assert_eq!(
             owed(vec![StackedEdit::Carried(dirt(1))]),
+            Some(vec![StackedEdit::Carried(dirt(1))])
+        );
+        // A later take can no longer run, so neither it nor the cursor write after it applies.
+        assert_eq!(
+            owed(vec![
+                StackedEdit::Carried(dirt(1)),
+                StackedEdit::Take(1),
+                StackedEdit::Carried(dirt(2))
+            ]),
             Some(vec![StackedEdit::Carried(dirt(1))])
         );
         // A second take that can no longer run would leave the cursor holding items the slot
