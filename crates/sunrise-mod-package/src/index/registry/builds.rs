@@ -393,7 +393,10 @@ fn check_archive(
 /// keeps and the loader compares, fields separated by spaces:
 /// `<build> <mod id> <version> <rustc> <source> <dependencies> <panic strategy>`.
 ///
-/// `source` is the digest of the mod's files. `dependencies` names each native mod the library
+/// `source` is the digest of the mod's files; a library built with crates.io dependencies adds
+/// `+<graph>`, the digest of the crates.io packages it is compiled with as that build resolved
+/// them (version, source and enabled features), since one build unifies them across every mod it
+/// compiles. `dependencies` names each native mod the library
 /// links, as `<id>=<SHA-256 of that library's identity>`, sorted and joined by `,`, or `none`: a
 /// library built against another build of a dependency, or of a dependency's own dependency, has
 /// another identity, so the loader refuses the pair before any of their code runs.

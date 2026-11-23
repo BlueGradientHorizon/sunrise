@@ -50,6 +50,8 @@ struct Resolve {
 struct Node {
     id: String,
     deps: Vec<Dependency>,
+    #[serde(default)]
+    features: Vec<String>,
 }
 #[derive(Deserialize)]
 struct Dependency {
@@ -223,6 +225,101 @@ impl Metadata {
         Ok(uses)
     }
 
+    /// The digest of the crates each mod's library is compiled with from outside its own files,
+    /// as cargo resolved this workspace: every package its root reaches through normal and build
+    /// edges (a build script or proc macro shapes its code too), by name, version and source,
+    /// with the features the workspace enabled on it. One workspace unifies features and shares
+    /// one lock across the install set, so another mod in the set can change these under a mod
+    /// whose files did not. Another mod's root is left out: the identity names that library by
+    /// its own identity. A path package is named without its path, which differs between install
+    /// sets: its files are the mod's own (in the source digest) or the SDK's (in the build).
+    /// `mods` maps each mod to its staged folder.
+    pub fn graphs(
+        &self,
+        mods: &std::collections::BTreeMap<String, std::path::PathBuf>,
+    ) -> Result<std::collections::BTreeMap<String, String>, String> {
+        use sha2::{Digest, Sha256};
+        let canonical = |path: &std::path::Path| {
+            path.canonicalize()
+                .map_err(|e| format!("{}: {e}", path.display()))
+        };
+        let nodes: std::collections::BTreeMap<_, _> = self
+            .resolve
+            .nodes
+            .iter()
+            .map(|node| (node.id.as_str(), node))
+            .collect();
+        let packages: std::collections::BTreeMap<_, _> = self
+            .packages
+            .iter()
+            .map(|package| (package.id.as_str(), package))
+            .collect();
+        let mut folders = std::collections::BTreeMap::new();
+        for member in &self.workspace_members {
+            let package = packages
+                .get(member.as_str())
+                .ok_or("Cargo metadata: missing package")?;
+            let folder = package
+                .manifest_path
+                .parent()
+                .ok_or("Cargo metadata: invalid manifest path")?;
+            folders.insert(canonical(folder)?, member.as_str());
+        }
+        let mut roots = std::collections::BTreeMap::new();
+        for (id, folder) in mods {
+            let root = folders
+                .get(&canonical(folder)?)
+                .ok_or_else(|| format!("Cargo metadata: mod {id} is not a workspace member"))?;
+            roots.insert(id.as_str(), *root);
+        }
+        let other_roots: BTreeSet<&str> = roots.values().copied().collect();
+        let mut graphs = std::collections::BTreeMap::new();
+        for (id, root) in &roots {
+            let mut lines = BTreeSet::new();
+            let mut pending = vec![*root];
+            let mut seen = BTreeSet::new();
+            while let Some(current) = pending.pop() {
+                if !seen.insert(current) {
+                    continue;
+                }
+                let node = nodes
+                    .get(current)
+                    .ok_or("Cargo metadata: missing resolved node")?;
+                let package = packages
+                    .get(current)
+                    .ok_or("Cargo metadata: missing package")?;
+                lines.insert(format!(
+                    "{} {} {} {}",
+                    package.name,
+                    package.version,
+                    package.source.as_deref().unwrap_or("path"),
+                    node.features.join(",")
+                ));
+                pending.extend(
+                    node.deps
+                        .iter()
+                        .filter(|dep| {
+                            dep.dep_kinds
+                                .iter()
+                                .any(|kind| kind.kind.as_deref() != Some("dev"))
+                                && !other_roots.contains(dep.pkg.as_str())
+                        })
+                        .map(|dep| dep.pkg.as_str()),
+                );
+            }
+            let mut hash = Sha256::new();
+            for line in lines {
+                hash.update(line.as_bytes());
+                hash.update(b"\n");
+            }
+            graphs.insert(
+                (*id).to_owned(),
+                hash.finalize().iter().map(|b| format!("{b:02x}")).collect(),
+            );
+        }
+        Ok(graphs)
+    }
+
     /// The facade copies in the target graph, including ones reached only through other crates.
     /// The older 0.3 facade forwards to its dependency on 0.4.
     pub fn runtime_logs(&self) -> Result<BTreeSet<Used>, String> {
@@ -345,6 +442,79 @@ mod tests {
             ]
         })).unwrap()
     }
+    /// Mods `a` (on crates.io's `shared` at `version` with `features`, and on `tool` only as a
+    /// dev-dependency) and `b` (on `a`), staged under `stage`, as cargo metadata describes them.
+    fn two_mods(
+        stage: &std::path::Path,
+        version: &str,
+        features: &[&str],
+        tool: &str,
+    ) -> (
+        Metadata,
+        std::collections::BTreeMap<String, std::path::PathBuf>,
+    ) {
+        let crates_io = sunrise_addresses::CARGO_CRATES_IO_SOURCE;
+        let mods: std::collections::BTreeMap<_, _> = ["a", "b"]
+            .into_iter()
+            .map(|id| {
+                let folder = stage.join("native-api").join(id);
+                std::fs::create_dir_all(&folder).unwrap();
+                (id.to_owned(), folder)
+            })
+            .collect();
+        let path_id = |id: &str| format!("path+file://{}#{id}@0.1.0", mods[id].display());
+        let registry_id =
+            |name: &str, version: &str| format!("registry+{crates_io}#{name}@{version}");
+        let package = |id: String,
+                       name: &str,
+                       version: &str,
+                       source: Option<&str>,
+                       folder: Option<&std::path::PathBuf>| {
+            serde_json::json!({"id": id, "name": name, "version": version, "source": source, "links": null,
+                "manifest_path": folder.map_or_else(|| stage.join("registry").join(name).join("Cargo.toml"), |f| f.join("Cargo.toml")), "targets": [{"kind": ["lib"]}]})
+        };
+        let metadata = serde_json::from_value(serde_json::json!({
+            "workspace_members": [path_id("a"), path_id("b")],
+            "resolve": {"nodes": [
+                {"id": path_id("a"), "features": [], "deps": [
+                    {"pkg": registry_id("shared", version), "dep_kinds": [{"kind": null}]},
+                    {"pkg": registry_id("tool", tool), "dep_kinds": [{"kind": "dev"}]}]},
+                {"id": path_id("b"), "features": [], "deps": [{"pkg": path_id("a"), "dep_kinds": [{"kind": null}]}]},
+                {"id": registry_id("shared", version), "features": features, "deps": []},
+                {"id": registry_id("tool", tool), "features": [], "deps": []}
+            ]},
+            "packages": [
+                package(path_id("a"), "a", "0.1.0", None, Some(&mods["a"])),
+                package(path_id("b"), "b", "0.1.0", None, Some(&mods["b"])),
+                package(registry_id("shared", version), "shared", version, Some(crates_io), None),
+                package(registry_id("tool", tool), "tool", tool, Some(crates_io), None),
+            ]
+        }))
+        .unwrap();
+        (metadata, mods)
+    }
+
+    /// A mod's graph digest follows the version and features cargo resolved for the crates it
+    /// is compiled with, not where the install set is staged or what it only tests with; a
+    /// dependent's own digest leaves its dependency mod out (its identity names that one).
+    #[test]
+    fn a_graph_digest_follows_resolved_versions_and_features_only() {
+        let dir = tempfile::tempdir().unwrap();
+        let graphs = |stage: &str, version: &str, features: &[&str], tool: &str| {
+            let (metadata, mods) = two_mods(&dir.path().join(stage), version, features, tool);
+            metadata.graphs(&mods).unwrap()
+        };
+        let base = graphs("one", "1.2.0", &["std"], "1.0.0");
+        assert_eq!(base, graphs("two", "1.2.0", &["std"], "2.0.0"));
+        let moved = graphs("one", "1.1.0", &["std"], "1.0.0");
+        let unified = graphs("one", "1.2.0", &["alloc", "std"], "1.0.0");
+        for other in [&moved, &unified] {
+            assert_ne!(base["a"], other["a"]);
+            assert_eq!(base["b"], other["b"]);
+        }
+        assert_ne!(moved["a"], unified["a"]);
+    }
+
     /// A plan whose game locks no registry package.
     fn no_game() -> super::super::registry_plan::Plan {
         super::super::registry_plan::Plan::read("package = []", &[], &[]).unwrap()

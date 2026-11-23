@@ -870,6 +870,9 @@ pub fn dylib_name(krate: &str) -> String {
     )
 }
 
+/// Where a library's entry template takes the library's identity.
+pub(super) const IDENTITY_MARKER: &str = "/* NATIVE_BUILD */";
+
 /// The library's entry module, exporting `identity` (as [`super::library_record::Identities::next`]
 /// makes it) followed by the panic strategy the library is compiled with.
 pub fn library_entry(
@@ -880,7 +883,7 @@ pub fn library_entry(
 ) -> String {
     api::main_rs(template, mods)
         .replace("mod_0::", "crate::")
-        .replace("/* NATIVE_BUILD */", identity)
+        .replace(IDENTITY_MARKER, identity)
         .replace(
             "/* MOD_REDIRECTS */",
             &installs
