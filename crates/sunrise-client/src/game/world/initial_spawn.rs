@@ -346,7 +346,6 @@ impl Game<'_> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use crate::game::native_entity_refs::tests::{run_fresh_cases, with_game};
     use crate::game::world_loading::WorldRequest;
     use mod_api::{ChunkLoadEvent, Hooks, LevelLoadEvent, ModEntry, ServerHost};
