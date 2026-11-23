@@ -2334,7 +2334,11 @@ mod tests {
             );
             let mut want = HudBatch::scratch([640, 480]);
             want.text_styled(&atlas, &label.resolved(), -18.0, top, u32::MAX, true);
-            want.clip_since(0, 12.0, y, 48.0, y + h);
+            let end = want.vertices.len() as u32;
+            assert_eq!(
+                batch.scissors_in(0..end).collect::<Vec<_>>(),
+                [(0..end, Some([12.0, y, 48.0, y + h]))]
+            );
             assert_eq!(
                 bytemuck::cast_slice::<_, u8>(&batch.vertices),
                 bytemuck::cast_slice::<_, u8>(&want.vertices),

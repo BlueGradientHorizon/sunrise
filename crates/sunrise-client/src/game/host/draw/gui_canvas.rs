@@ -110,6 +110,7 @@ impl GameGuiCanvas<'_, '_> {
         } = self;
         head_skins.scope(|| {
             batch.draw_scope(&atlas.font, |batch| {
+                let start = batch.vertices.len();
                 draw(&mut GameGuiCanvas {
                     batch,
                     atlas,
@@ -118,7 +119,11 @@ impl GameGuiCanvas<'_, '_> {
                     pose,
                     scissor,
                     decorating,
-                })
+                })?;
+                if let Some([left, top, right, bottom]) = scissor {
+                    batch.clip_since(start, left, top, right, bottom);
+                }
+                Ok(())
             })
         })
     }
@@ -149,33 +154,15 @@ impl GameGuiCanvas<'_, '_> {
         pose: Pose,
         emit: impl FnOnce(&mut HudBatch, &HudAtlas) -> T,
     ) -> Result<T, GuiDrawError> {
-        let (atlas, scissor) = (self.atlas, self.scissor);
+        let atlas = self.atlas;
         self.batch.draw_scope(&atlas.font, |batch| {
             let start = batch.vertices.len();
             let output = emit(batch, atlas);
-            let mut needs_clip =
-                scissor.is_some_and(|[left, top, right, bottom]| left == right || top == bottom);
             for vertex in &mut batch.vertices[start..] {
                 if pose != IDENTITY {
                     vertex.pos = pose_point(pose, vertex.pos);
                 }
-                let [x, y] = vertex.pos;
                 if !vertex.pos.into_iter().chain(vertex.uv).all(f32::is_finite) {
-                    return Err(GuiDrawError::NotFinite);
-                }
-                if let Some([left, top, right, bottom]) = scissor {
-                    needs_clip |= x < left || y < top || x > right || y > bottom;
-                }
-            }
-            if let Some([left, top, right, bottom]) = scissor
-                && needs_clip
-                && start < batch.vertices.len()
-            {
-                batch.clip_since(start, left, top, right, bottom);
-                if !batch.vertices[start..]
-                    .iter()
-                    .all(|v| v.pos.into_iter().chain(v.uv).all(f32::is_finite))
-                {
                     return Err(GuiDrawError::NotFinite);
                 }
             }
@@ -564,9 +551,9 @@ mod tests {
         .unwrap();
         assert_eq!(batch.vertices.len(), 24);
         assert_eq!(batch.vertices[0].pos, [2.0, 3.0]);
-        assert_eq!(batch.vertices[6].pos, [12.0, 22.0]);
-        assert_eq!(batch.vertices[8].pos, [15.0, 25.0]);
-        assert_eq!(batch.vertices[6].uv, [0.265625, 0.15625]);
+        assert_eq!(batch.vertices[6].pos, [11.75, 21.25]);
+        assert_eq!(batch.vertices[8].pos, [19.75, 33.25]);
+        assert_eq!(batch.vertices[6].uv, [0.25, 0.125]);
         assert_eq!(batch.vertices[6].color, 0x8033_2211);
         assert_eq!(batch.vertices[12].pos, [12.75, 22.25]);
         assert_eq!(batch.vertices[12].color, 0x8034_12AA);
@@ -574,10 +561,17 @@ mod tests {
         assert_eq!(batch.vertices[18].pos, [30.0, 40.0]);
         assert_eq!(batch.blends, [(0..12, HudBlend::Invert)]);
 
+        let scissors = [
+            (0..6, None),
+            (6..12, Some([12.0, 22.0, 15.0, 25.0])),
+            (12..18, Some([10.0, 20.0, 15.0, 25.0])),
+            (18..24, None),
+        ];
+        assert_eq!(batch.scissors_in(0..24).collect::<Vec<_>>(), scissors);
         let before = bytemuck::cast_slice::<_, u8>(&batch.vertices).to_vec();
         assert_eq!(
             GameGuiCanvas::draw(&mut batch, &atlas, None, None, &mut |root| {
-                root.scope(&[], None, &mut |child| {
+                root.scope(&[], Some([4.0, 7.0, 1.0, 1.0]), &mut |child| {
                     crosshair(child, [4.0, 7.0, 1.0, 1.0])
                 })?;
                 Err(GuiDrawError::Abort)
@@ -589,6 +583,7 @@ mod tests {
             before.as_slice()
         );
         assert_eq!(batch.blends, [(0..12, HudBlend::Invert)]);
+        assert_eq!(batch.scissors_in(0..24).collect::<Vec<_>>(), scissors);
     }
 
     #[test]
@@ -860,7 +855,11 @@ mod tests {
             )
         })
         .unwrap();
-        assert!(batch.vertices.is_empty());
+        assert_eq!(batch.vertices.len(), 24);
+        assert_eq!(
+            batch.scissors_in(0..24).collect::<Vec<_>>(),
+            [(0..24, Some([0.0; 4]))]
+        );
         assert!(batch.blends.is_empty());
     }
 }

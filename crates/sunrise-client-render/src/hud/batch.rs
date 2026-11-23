@@ -1,4 +1,5 @@
 use super::*;
+use std::ops::Range;
 
 #[repr(C)]
 #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
@@ -13,44 +14,6 @@ pub struct HudVertex {
     /// 1 for the GUI's text (`RenderPipelines.GUI_TEXT`), which a resource
     /// pack's text shader draws when it has one.
     pub text: u32,
-}
-/// Sutherland-Hodgman against one half plane, interpolating every attribute.
-fn clip_polygon(poly: &[HudVertex], axis: usize, limit: f32, keep_below: bool) -> Vec<HudVertex> {
-    let inside = |v: &HudVertex| {
-        if keep_below {
-            v.pos[axis] < limit
-        } else {
-            v.pos[axis] >= limit
-        }
-    };
-    let lerp = |a: &HudVertex, b: &HudVertex, t: f32| {
-        let mix = |p: f32, q: f32| p + (q - p) * t;
-        let mut v = *a;
-        v.pos = [mix(a.pos[0], b.pos[0]), mix(a.pos[1], b.pos[1])];
-        v.uv = [mix(a.uv[0], b.uv[0]), mix(a.uv[1], b.uv[1])];
-        v.depth = mix(a.depth, b.depth);
-        // A shaded shape (a gradient, `hud_kit::shapes`) keeps its colours across the cut.
-        v.color = crate::hud_kit::shapes::mix_colour(a.color, b.color, t);
-        v.glint_uv = [
-            mix(a.glint_uv[0], b.glint_uv[0]),
-            mix(a.glint_uv[1], b.glint_uv[1]),
-        ];
-        v.pos[axis] = limit;
-        v
-    };
-    let mut out = Vec::with_capacity(poly.len() + 2);
-    for i in 0..poly.len() {
-        let (a, b) = (&poly[i], &poly[(i + 1) % poly.len()]);
-        let (ia, ib) = (inside(a), inside(b));
-        if ia {
-            out.push(*a);
-        }
-        if ia != ib {
-            let t = (limit - a.pos[axis]) / (b.pos[axis] - a.pos[axis]);
-            out.push(lerp(a, b, t));
-        }
-    }
-    out
 }
 /// Scale inputs for one view, copied from its owner's settings.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -72,7 +35,9 @@ pub struct HudBatch {
     /// the pixels the game keeps of them.
     pub image_patches: Vec<dynamic_textures::ImagePatch>,
     /// Vertex ranges with another blend or depth/scissor state, in order.
-    pub blends: Vec<(std::ops::Range<u32>, Blend)>,
+    pub blends: Vec<(Range<u32>, Blend)>,
+    /// Disjoint, ordered vertex ranges with a screen-space scissor in GUI pixels.
+    scissors: SmallVec<[(Range<u32>, [f32; 4]); 4]>,
     /// The textures and time of the `Blend::EndPortal` runs.
     pub end_portal: EndPortalFill,
     /// `options.glintStrength` for the glint pass (`GlintAlpha`).
@@ -108,7 +73,7 @@ struct HudDrawRollback<'a> {
 impl Drop for HudDrawRollback<'_> {
     fn drop(&mut self) {
         let Some(tail) = self.tail.take() else { return };
-        self.batch.vertices.truncate(tail.vertices);
+        self.batch.truncate_vertices(tail.vertices);
         self.batch.pictures.truncate(tail.pictures);
         self.batch.patches.truncate(tail.patches);
         self.batch.image_patches.truncate(tail.image_patches);
@@ -159,6 +124,11 @@ impl HudPaintCheckpoint {
                 *run = move_endpoint(run.start)..move_endpoint(run.end);
             }
             batch.blends.retain(|(run, _)| !run.is_empty());
+            let first = batch.scissors.partition_point(|(run, _)| run.end <= start);
+            for (run, _) in &mut batch.scissors[first..] {
+                *run = move_endpoint(run.start)..move_endpoint(run.end);
+            }
+            batch.scissors.retain(|(run, _)| !run.is_empty());
         }
         // Glyph atlas uploads are reusable by other painters. A delegated draw can also
         // share a picture or inline skin first seen by the wrapper. Picture references
@@ -243,6 +213,7 @@ impl HudBatch {
             patches: Vec::new(),
             image_patches: Vec::new(),
             blends: Vec::new(),
+            scissors: SmallVec::new(),
             end_portal: EndPortalFill::default(),
             glint_alpha: 0.75,
             glint_colour: 0,
@@ -546,114 +517,117 @@ impl HudBatch {
     /// Scale the vertices pushed since `start` about `(cx, cy)` (a GUI pose
     /// matrix of translate, scale, translate back).
     pub fn scale_since(&mut self, start: usize, cx: f32, cy: f32, sx: f32, sy: f32) {
+        let scale = |[x, y]: [f32; 2]| [cx + (x - cx) * sx, cy + (y - cy) * sy];
         for v in &mut self.vertices[start..] {
-            v.pos[0] = cx + (v.pos[0] - cx) * sx;
-            v.pos[1] = cy + (v.pos[1] - cy) * sy;
+            v.pos = scale(v.pos);
+        }
+        // A legacy size parameter can scale a whole item draw, including clips added by
+        // its decorator. The enclosing screen's scissor is not on this tail yet.
+        let start = start as u32;
+        let mut first = self
+            .scissors
+            .partition_point(|(range, _)| range.end <= start);
+        if let Some((range, rect)) = self.scissors.get_mut(first)
+            && range.start < start
+        {
+            let tail = (start..range.end, *rect);
+            range.end = start;
+            first += 1;
+            self.scissors.insert(first, tail);
+        }
+        for (_, rect) in &mut self.scissors[first..] {
+            let [l, t, r, b] = *rect;
+            *rect = if l < r && t < b {
+                let [x0, y0] = scale([l, t]);
+                let [x1, y1] = scale([r, b]);
+                [x0.min(x1), y0.min(y1), x0.max(x1), y0.max(y1)]
+            } else {
+                [0.0; 4]
+            };
         }
     }
-    /// Clip the quads drawn since `start` to `[x0, x1) x [y0, y1)` (the
-    /// GUI scissor): axis-aligned quads are cut with their UVs, others (item
-    /// triangles) are clipped as polygons.
+    /// Intersect `[x0, x1) × [y0, y1)` with the scissor of the draws since `start`.
+    /// Like `GuiRenderer.executeDraw`, leave triangles and their attributes untouched: the
+    /// rasterizer's scissor gates fragments without changing interpolation inside the rectangle.
     pub fn clip_since(&mut self, start: usize, x0: f32, y0: f32, x1: f32, y1: f32) {
-        let contains = |v: &HudVertex| {
-            let [x, y] = v.pos;
-            x >= x0 && x <= x1 && y >= y0 && y <= y1
-        };
-        let empty = x0 >= x1 || y0 >= y1;
-        if !empty && self.vertices[start..].iter().all(contains) {
-            return;
-        }
-        let quads: Vec<[HudVertex; 6]> = self.vertices[start..].as_chunks::<6>().0.to_vec();
-        self.vertices.truncate(start);
-        // Where each source quad now begins, to move the blend ranges (foil
-        // items are an additive run) along with their vertices.
-        let mut moved = Vec::with_capacity(quads.len() + 1);
-        for q in quads {
-            moved.push(self.vertices.len() as u32);
-            if empty {
-                continue;
-            }
-            // Preserve vertex order and attributes of a draw already cut to an inner scissor.
-            if q.iter().all(contains) {
-                self.vertices.extend_from_slice(&q);
-                continue;
-            }
-            let corners = [q[0], q[1], q[2], q[5]];
-            let (mut x_lo, mut x_hi) = (f32::INFINITY, f32::NEG_INFINITY);
-            let (mut y_lo, mut y_hi) = (f32::INFINITY, f32::NEG_INFINITY);
-            for v in &corners {
-                x_lo = x_lo.min(v.pos[0]);
-                x_hi = x_hi.max(v.pos[0]);
-                y_lo = y_lo.min(v.pos[1]);
-                y_hi = y_hi.max(v.pos[1]);
-            }
-            // An axis-aligned rectangle, its corners in any order.
-            let find = |x: f32, y: f32| corners.iter().find(|v| v.pos == [x, y]).copied();
-            let rect = (
-                find(x_lo, y_lo),
-                find(x_hi, y_lo),
-                find(x_hi, y_hi),
-                find(x_lo, y_hi),
-            );
-            let (Some(tl), Some(tr), Some(br), Some(bl)) = rect else {
-                // Item geometry arrives as triangles: clip each against the
-                // rectangle and re-emit the fan, so a triangle straddling the
-                // edge keeps its visible part instead of vanishing whole.
-                for tri in [[q[0], q[1], q[2]], [q[3], q[4], q[5]]] {
-                    let area = (tri[1].pos[0] - tri[0].pos[0]) * (tri[2].pos[1] - tri[0].pos[1])
-                        - (tri[2].pos[0] - tri[0].pos[0]) * (tri[1].pos[1] - tri[0].pos[1]);
-                    if area == 0.0 {
-                        continue;
-                    }
-                    let mut poly = tri.to_vec();
-                    for (axis, limit, keep_below) in
-                        [(0, x0, false), (0, x1, true), (1, y0, false), (1, y1, true)]
-                    {
-                        poly = clip_polygon(&poly, axis, limit, keep_below);
-                    }
-                    for i in 1..poly.len().saturating_sub(1) {
-                        // A triangle as the quad `a, b, c, c`.
-                        let (a, b, c) = (poly[0], poly[i], poly[i + 1]);
-                        self.vertices.extend_from_slice(&[a, b, c, a, c, c]);
-                    }
+        let mut at = start as u32;
+        let end = self.vertices.len() as u32;
+        let mut i = self.scissors.partition_point(|(range, _)| range.end <= at);
+        while at < end {
+            let next = self.scissors.get(i).map_or(end, |(range, _)| range.start);
+            if at < next {
+                let rect = [x0, y0, x1, y1];
+                if i > 0 && self.scissors[i - 1].0.end == at && self.scissors[i - 1].1 == rect {
+                    self.scissors[i - 1].0.end = next;
+                    at = next;
+                    continue;
                 }
-                continue;
-            };
-            let (cx0, cy0) = (x_lo.max(x0), y_lo.max(y0));
-            let (cx1, cy1) = (x_hi.min(x1), y_hi.min(y1));
-            if cx0 >= cx1 || cy0 >= cy1 {
-                continue;
-            }
-            let t = |p: f32, lo: f32, hi: f32| if hi == lo { 0.0 } else { (p - lo) / (hi - lo) };
-            let corner = |x, y| {
-                clip_corner::clip_corner(
-                    [tl, tr, br, bl],
-                    [x, y],
-                    [t(x, x_lo, x_hi), t(y, y_lo, y_hi)],
-                )
-            };
-            let c = [
-                corner(cx0, cy0),
-                corner(cx1, cy0),
-                corner(cx1, cy1),
-                corner(cx0, cy1),
-            ];
-            self.vertices.extend([0, 1, 2, 0, 2, 3].map(|i| c[i]));
-        }
-        moved.push(self.vertices.len() as u32);
-        let at = |v: u32| moved[((v as usize - start) / 6).min(moved.len() - 1)];
-        let start = start as u32;
-        let first = self.blends.partition_point(|(range, _)| range.end <= start);
-        self.blends
-            .extract_if(first.., |(range, _)| {
-                // A coalesced run can straddle the start: its prefix stays put.
-                if range.start >= start {
-                    range.start = at(range.start);
+                self.scissors.insert(i, (at..next, rect));
+                at = next;
+            } else {
+                let (range, [l, t, r, b]) = &self.scissors[i];
+                let overlap = [l.max(x0), t.max(y0), r.min(x1), b.min(y1)];
+                if range.start < at {
+                    let tail = at..range.end;
+                    self.scissors[i].0.end = at;
+                    i += 1;
+                    self.scissors.insert(i, (tail, overlap));
+                } else {
+                    self.scissors[i].1 = overlap;
                 }
-                range.end = at(range.end);
-                range.start == range.end
-            })
-            .for_each(drop);
+                at = self.scissors[i].0.end;
+            }
+            if i > 0
+                && self.scissors[i - 1].0.end == self.scissors[i].0.start
+                && self.scissors[i - 1].1 == self.scissors[i].1
+            {
+                let end = self.scissors.remove(i).0.end;
+                self.scissors[i - 1].0.end = end;
+            } else {
+                i += 1;
+            }
+        }
+    }
+
+    /// The intervals of a draw run in order, including any unscissored gaps.
+    pub fn scissors_in(
+        &self,
+        vertices: Range<u32>,
+    ) -> impl Iterator<Item = (Range<u32>, Option<[f32; 4]>)> + '_ {
+        let mut at = vertices.start;
+        let mut clips = self.scissors[self.scissors.partition_point(|(r, _)| r.end <= at)..]
+            .iter()
+            .peekable();
+        std::iter::from_fn(move || {
+            if at >= vertices.end {
+                return None;
+            }
+            let (end, clip) = match clips.peek() {
+                Some((range, _)) if range.start > at => (range.start, None),
+                Some(_) => {
+                    let (range, clip) = clips.next().unwrap();
+                    (range.end, Some(*clip))
+                }
+                None => (vertices.end, None),
+            };
+            let end = end.min(vertices.end);
+            let range = at..end;
+            at = end;
+            Some((range, clip))
+        })
+    }
+
+    /// Discard appended vertices and their scissor state.
+    pub fn truncate_vertices(&mut self, len: usize) {
+        self.vertices.truncate(len);
+        let len = len as u32;
+        let first = self
+            .scissors
+            .partition_point(|(range, _)| range.start < len);
+        self.scissors.truncate(first);
+        if let Some((range, _)) = self.scissors.last_mut() {
+            range.end = range.end.min(len);
+        }
     }
     /// `blit` of the top-left `w x h` texels of a `tw x th` texture.
     pub fn sprite_region(

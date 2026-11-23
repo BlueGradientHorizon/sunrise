@@ -95,7 +95,7 @@ impl<'a, 'g> GameDrawContext<'a, 'g> {
         let last_blend_end = surface.blends.last().map(|(range, _)| range.end);
         let accepted = listen(&mut GameDrawContext::new(game, surface));
         if !accepted {
-            surface.vertices.truncate(counts.0);
+            surface.truncate_vertices(counts.0);
             surface.pictures.truncate(counts.1);
             surface.blends.truncate(counts.2);
             surface.inline_profiles.truncate(counts.3);
@@ -1153,9 +1153,6 @@ mod tests {
         for v in &mut expected.vertices {
             v.pos = [14.0 + v.pos[0] * scale, 26.0 + v.pos[1] * scale];
         }
-        let original_vertices = expected.vertices.len();
-        expected.clip_since(0, 9.0, 16.0, 43.0, 69.0);
-        assert!(expected.vertices.len() < original_vertices);
         for colour in [0xFF55_55FF, 0xFF55_FF55, 0xFFFF_FF55] {
             assert!(expected.vertices.iter().any(|v| v.color == colour));
         }
@@ -1179,6 +1176,11 @@ mod tests {
             )
         })
         .unwrap();
+        let end = actual.vertices.len() as u32;
+        assert_eq!(
+            actual.scissors_in(0..end).collect::<Vec<_>>(),
+            [(0..end, Some([9.0, 16.0, 43.0, 69.0]))]
+        );
         assert_eq!(
             bytemuck::cast_slice::<_, u8>(&actual.vertices),
             bytemuck::cast_slice::<_, u8>(&expected.vertices),

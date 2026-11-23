@@ -104,7 +104,8 @@ pub trait GuiCanvas {
     /// scissor (or the viewport if there is none). The two ordered corners are transformed, flooring the resulting origin and
     /// extents separately. `None` inherits the enclosing scissor unchanged. Empty, inverted or
     /// reflected scissor axes draw nothing. The clip does not move when a descendant changes its
-    /// pose. Non-finite geometry refuses the scope before calling `draw`; zero scale is allowed.
+    /// pose, and only restricts visible pixels, not interpolation inside the clip. Non-finite
+    /// geometry refuses the scope before calling `draw`; zero scale is allowed.
     /// On `Err` or unwind, discard the child's draws. On success they stay in order, but are
     /// still discarded if an enclosing group fails. The parent's pose and scissor never change.
     fn scope(

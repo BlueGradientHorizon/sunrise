@@ -3,6 +3,58 @@ use crate::gfx::hud_coverage;
 
 #[test]
 #[ignore = "daily"]
+fn repeated_partial_scissors_preserve_the_unclipped_gradient_pixels() {
+    let _gpu = crate::gfx::test_gpu::lock();
+    let Some(gpu) = Gpu::new() else { return };
+    let mut atlas = HudAtlas::build(&ResourceSource::directory(
+        "/nonexistent/sunrise-test-assets".into(),
+    ))
+    .unwrap();
+    // The test GPU samples a two-texel atlas: the centre of its first, opaque white texel.
+    atlas.white = Rect {
+        u0: 0.25,
+        u1: 0.25,
+        v0: 0.5,
+        v1: 0.5,
+        w: 1,
+        h: 1,
+    };
+    let draw = |scissor| {
+        let mut batch = HudBatch::scratch([4, 2]);
+        for x in 0..4 {
+            let start = batch.vertices.len();
+            // At y=1 the red interpolant is about 1.2; rounding it there would darken
+            // the surviving pixel at y=1.5 compared with drawing the original gradient.
+            batch.fill_gradient(
+                &atlas,
+                (x as f32, -1.0, 1.0, 4.9),
+                rgba(0, 0, 0, 255),
+                rgba(3, 0, 0, 255),
+            );
+            if scissor {
+                batch.clip_since(start, 0.0, 1.0, 4.0, 2.0);
+            }
+        }
+        if scissor {
+            batch.clip_since(0, 1.0, 0.0, 4.0, 2.0);
+        }
+        gpu.draw(&batch, 0.0, 0.0, false).0
+    };
+    let whole = draw(false);
+    let clipped = draw(true);
+    assert_eq!(
+        &clipped[..20],
+        &[0; 20],
+        "entire first row and the second row's first pixel"
+    );
+    for pixel in whole[20..].chunks_exact(4) {
+        assert_eq!(pixel, [2, 0, 0, 255]);
+    }
+    assert_eq!(&clipped[20..], &whole[20..]);
+}
+
+#[test]
+#[ignore = "daily"]
 fn standalone_picture_draw_order_and_screen_exit_release() {
     let _gpu = crate::gfx::test_gpu::lock();
     let Some(mut gpu) = Gpu::new() else { return };

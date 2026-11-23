@@ -6,8 +6,9 @@
 clip. Call its methods directly inside the callback, in draw order. A nested `scope` applies
 pose operations in order to a copy of the current pose and optionally scissors to
 `[x, y, w, h]` in the resulting local coordinates. That clip stays fixed in screen space even
-when a descendant changes pose. Returning from a child scope leaves the parent pose and clip
-as they were.
+when a descendant changes pose. The scissor restricts the pixels drawn, not the original vertices
+or their colour and texture interpolation. Returning from a child scope leaves the parent pose
+and clip as they were.
 
 ```rust,ignore
 use mod_api::{GuiDrawError, Text, client::hud_layout::PoseOp};
