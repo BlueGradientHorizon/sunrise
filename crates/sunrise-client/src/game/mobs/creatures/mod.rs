@@ -2114,6 +2114,8 @@ impl Game<'_> {
                     sunrise_client::health::HitLend::attacking_player(
                         self.player.as_mut(),
                         attack.attacker,
+                        &self.potions.effects,
+                        acting_equipment!(self),
                     ),
                 ),
             };

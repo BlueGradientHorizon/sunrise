@@ -643,7 +643,8 @@ impl Game<'_> {
                         Some(self.items()),
                         Some(&self.pack.block_registries),
                         &self.damage_hooks,
-                    );
+                    )
+                    .with_reads(crate::game::entity::hit_reads_of!(self));
                     if let Some(pause) = resume.take() {
                         m.resume_client_moved_fall(&w, &mut level, &mut events, pause)
                     } else {

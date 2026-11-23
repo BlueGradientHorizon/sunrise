@@ -114,6 +114,9 @@ pub enum AttachmentError {
     /// The holder's physical storage is temporarily extracted or lifted.
     /// Retry after the current pass; the refused store writes no value.
     HolderBusy,
+    /// The holder is only lent for reading during this hook (a hit's victim or causing
+    /// entity): `has` and `get_existing` answer, and a store writes nothing.
+    ReadOnlyHolder,
     /// This physical holder family has no attachment lifetime storage; retrying cannot help.
     /// Stable lowercase family names: mob, item, orb, projectile, armorstand,
     /// itemframe, painting, boat, minecart, other, fangs, crystal, dragon, tnt,
@@ -177,6 +180,16 @@ pub trait AttachmentHost {
         holder: Holder,
         access: AttachmentAccess,
     ) -> Result<&mut Attachments, AttachmentError>;
+    /// `holder`'s map when this host only lends it for reading: `Some(Ok(None))` for such a
+    /// holder that keeps no map. Reads answer from it without decoding into it, and every
+    /// write refuses with [`AttachmentError::ReadOnlyHolder`]. None, the default, for a holder
+    /// [`Self::attachments`] answers.
+    fn read_only_attachments(
+        &self,
+        _holder: Holder,
+    ) -> Option<Result<Option<&Attachments>, AttachmentError>> {
+        None
+    }
 }
 
 /// A value of a mod's own type, as the holder keeps it: shared, so a copy of the holder's map
@@ -290,6 +303,9 @@ impl<H: AttachmentHost + ?Sized> AttachmentStore for H {
         name: &str,
     ) -> Result<bool, AttachmentError> {
         AttachmentHost::validate_attachment(self, namespace, name, false)?;
+        if let Some(map) = self.read_only_attachments(holder) {
+            return Ok(map?.is_some_and(|map| map.holds(namespace, name)));
+        }
         Ok(Attachments::holds(
             self.attachments(holder, AttachmentAccess::Existing)?,
             namespace,
@@ -303,6 +319,9 @@ impl<H: AttachmentHost + ?Sized> AttachmentStore for H {
         name: &str,
     ) -> Result<Option<AttachmentValue>, AttachmentError> {
         AttachmentHost::validate_attachment(self, namespace, name, false)?;
+        if let Some(map) = self.read_only_attachments(holder) {
+            return map?.map_or(Ok(None), |map| map.decoded(namespace, name));
+        }
         Attachments::decoded(
             self.attachments(holder, AttachmentAccess::Existing)?,
             namespace,
@@ -316,6 +335,9 @@ impl<H: AttachmentHost + ?Sized> AttachmentStore for H {
         name: &str,
     ) -> Result<Option<Compound>, AttachmentError> {
         AttachmentHost::validate_attachment(self, namespace, name, false)?;
+        if let Some(map) = self.read_only_attachments(holder) {
+            return map?.map_or(Ok(None), |map| map.saved(namespace, name));
+        }
         Attachments::saved(
             self.attachments(holder, AttachmentAccess::Existing)?,
             namespace,
@@ -333,6 +355,14 @@ impl<H: AttachmentHost + ?Sized> AttachmentStore for H {
         AttachmentHost::validate_attachment(self, namespace, name, form.policy.sync)?;
         if form.policy.copy_on_death && form.encoded.is_none() {
             return Err(AttachmentError::InvalidCopyPolicy);
+        }
+        if let Some(map) = self.read_only_attachments(holder) {
+            map?;
+            // A saved value read through a read-only map is decoded for that read alone.
+            return match form.write {
+                AttachmentWrite::Decoded => Ok(()),
+                _ => Err(AttachmentError::ReadOnlyHolder),
+            };
         }
         let AttachmentForm {
             encoded,
@@ -360,6 +390,10 @@ impl<H: AttachmentHost + ?Sized> AttachmentStore for H {
         sync: bool,
     ) -> Result<(), AttachmentError> {
         AttachmentHost::validate_attachment(self, namespace, name, sync)?;
+        if let Some(map) = self.read_only_attachments(holder) {
+            map?;
+            return Err(AttachmentError::ReadOnlyHolder);
+        }
         Attachments::discard(
             self.attachments(holder, AttachmentAccess::Existing)?,
             namespace,
@@ -375,6 +409,10 @@ impl<H: AttachmentHost + ?Sized> AttachmentStore for H {
         name: &str,
     ) -> Result<(), AttachmentError> {
         AttachmentHost::validate_attachment(self, namespace, name, true)?;
+        if let Some(map) = self.read_only_attachments(holder) {
+            map?;
+            return Err(AttachmentError::ReadOnlyHolder);
+        }
         Attachments::queue_sync(
             self.attachments(holder, AttachmentAccess::Existing)?,
             namespace,
@@ -1207,6 +1245,76 @@ mod tests {
             .iter()
             .map(|row| (row.holder, *row.entry.read(key).unwrap()))
             .collect()
+    }
+
+    /// A host that lends entity 1's map and entity 2 (which keeps none) only for reading.
+    struct ReadOnlyHost {
+        map: Attachments,
+    }
+    impl AttachmentHost for ReadOnlyHost {
+        fn validate_attachment(&self, _: &str, _: &str, _: bool) -> Result<(), AttachmentError> {
+            Ok(())
+        }
+        fn attachments(
+            &mut self,
+            _: Holder,
+            _: AttachmentAccess,
+        ) -> Result<&mut Attachments, AttachmentError> {
+            Err(AttachmentError::MissingHolder)
+        }
+        fn read_only_attachments(
+            &self,
+            holder: Holder,
+        ) -> Option<Result<Option<&Attachments>, AttachmentError>> {
+            match holder {
+                Holder::Entity(1) => Some(Ok(Some(&self.map))),
+                Holder::Entity(2) => Some(Ok(None)),
+                _ => None,
+            }
+        }
+    }
+
+    #[test]
+    fn a_read_only_holder_answers_reads_and_refuses_every_write() {
+        let mut source = Attachments::default();
+        COUNTER.set(&mut source, Holder::Level, 5).unwrap();
+        let mut map = Attachments::from_nbt(source.to_nbt());
+        MEMORY.set(&mut map, Holder::Level, 8).unwrap();
+        let mut host = ReadOnlyHost { map };
+        let (one, two) = (Holder::Entity(1), Holder::Entity(2));
+
+        assert_eq!(COUNTER.has(&mut host, one), Ok(true));
+        assert_eq!(COUNTER.get_existing(&mut host, one), Ok(Some(5)));
+        assert_eq!(MEMORY.get_existing(&mut host, one), Ok(Some(8)));
+        // The saved value decoded for that read alone: the lent map still keeps it saved.
+        assert!(matches!(host.map.decoded("test", "counter"), Ok(None)));
+        assert_eq!(COUNTER.has(&mut host, two), Ok(false));
+        assert_eq!(COUNTER.get_existing(&mut host, two), Ok(None));
+
+        assert_eq!(
+            COUNTER.get(&mut host, two),
+            Err(AttachmentError::ReadOnlyHolder)
+        );
+        assert_eq!(
+            COUNTER.set(&mut host, one, 9),
+            Err(AttachmentError::ReadOnlyHolder)
+        );
+        assert_eq!(
+            COUNTER.remove(&mut host, one),
+            Err(AttachmentError::ReadOnlyHolder)
+        );
+        assert_eq!(
+            SYNCED.sync_data(&mut host, one),
+            Err(AttachmentError::ReadOnlyHolder)
+        );
+        assert_eq!(COUNTER.has(&mut host, two), Ok(false));
+        assert_eq!(COUNTER.get_existing(&mut host, one), Ok(Some(5)));
+        assert_eq!(MEMORY.get_existing(&mut host, one), Ok(Some(8)));
+        // Any other holder still goes through the host's writable maps.
+        assert_eq!(
+            COUNTER.has(&mut host, Holder::Level),
+            Err(AttachmentError::MissingHolder)
+        );
     }
 
     #[test]

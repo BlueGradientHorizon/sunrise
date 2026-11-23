@@ -143,6 +143,27 @@ pub(super) fn body_equipment(
     Some(EquipmentRead::resident(stack))
 }
 
+/// `Entity.getType` of a living body. The name is looked up on the call, which a listener
+/// makes.
+pub(super) fn body_kind(body: LivingBody<'_>) -> Option<mod_api::EntityTypeKey> {
+    mod_api::__private::resolved_entity_type_key(match body {
+        LivingBody::Mob(m) => &m.kind.id,
+        LivingBody::Player(_) => "minecraft:player",
+        LivingBody::Stand(_) => "minecraft:armor_stand",
+        LivingBody::Dragon(_) => "minecraft:ender_dragon",
+    })
+}
+
+/// The holder of a living body's attachments: a player's by UUID where its borrower knows it,
+/// any other entity's by id.
+pub(super) fn body_holder(body: LivingBody<'_>) -> Option<mod_api::Holder> {
+    Some(match body {
+        LivingBody::Mob(m) => mod_api::Holder::Entity(m.id),
+        LivingBody::Player(p) => mod_api::Holder::Player(p.uuid?),
+        LivingBody::Stand(s) | LivingBody::Dragon(s) => mod_api::Holder::Entity(s.id),
+    })
+}
+
 /// `Mob.isNoAi`: None for anything but a mob.
 pub(super) fn body_no_ai(body: LivingBody<'_>) -> Option<bool> {
     match body {
@@ -173,19 +194,24 @@ fn player_equipment<'a>(
     ]
 }
 
-/// A fixed body's fields, for an armor stand or the dragon.
-pub(super) fn fixed_body<'a>(
-    id: u32,
-    health: &'a f32,
-    live: &'a sunrise_client::living_attributes::LivingAttributes,
-    equipment: &'a sunrise_items::equipment::Equipment,
-) -> FixedBody<'a> {
-    FixedBody {
-        id,
-        health,
-        live,
-        equipment,
-    }
+/// An armor stand's body.
+pub(super) fn stand_body(a: &sunrise_client::entities::ArmorStand) -> LivingBody<'_> {
+    LivingBody::Stand(FixedBody {
+        id: a.id,
+        health: &a.health,
+        live: &a.live,
+        equipment: &a.equipment,
+    })
+}
+
+/// The dragon's body.
+pub(super) fn dragon_body(d: &super::dragon::Dragon) -> LivingBody<'_> {
+    LivingBody::Dragon(FixedBody {
+        id: d.id,
+        health: &d.health,
+        live: &d.live,
+        equipment: &d.equipment,
+    })
 }
 
 impl Game<'_> {
@@ -234,14 +260,8 @@ impl Game<'_> {
             Target::Mob(id) => {
                 LivingBody::Mob(self.mobs.iter().find(|m| m.id == id && !m.removed)?)
             }
-            Target::Stand(id) => {
-                let a = self.armor_stands.iter().find(|a| a.id == id)?;
-                LivingBody::Stand(fixed_body(a.id, &a.health, &a.live, &a.equipment))
-            }
-            Target::Dragon(id) => {
-                let d = self.dragon.as_ref().filter(|d| d.id == id)?;
-                LivingBody::Dragon(fixed_body(d.id, &d.health, &d.live, &d.equipment))
-            }
+            Target::Stand(id) => stand_body(self.armor_stands.iter().find(|a| a.id == id)?),
+            Target::Dragon(id) => dragon_body(self.dragon.as_ref().filter(|d| d.id == id)?),
             _ => return None,
         })
     }

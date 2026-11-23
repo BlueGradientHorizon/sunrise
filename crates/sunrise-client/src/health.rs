@@ -21,7 +21,7 @@ use sunrise_world::{
     player_health::{PlayerAttributeHealth, PlayerFloatIds},
     player_hurt::{CausingEntity, PlayerHurtWorld, ServerPlayerHurtWorld},
     server_player_combat::{CombatEnvironment, ServerPlayerCombat},
-    server_player_damage::ServerDamageEnvironment,
+    server_player_damage::{PlayerBodyRead, ServerDamageEnvironment},
     synced_floats::{FloatValue, Observer, SyncedFloats},
 };
 pub(crate) type Attributes = LiveAttributes<Box<dyn sunrise_world::attributes::live::Identities>>;
@@ -39,6 +39,7 @@ pub use attack::{damage_type, melee, mob_source, source_damage_type};
 /// What `LivingEntity.hurtServer` is about to hurt, for [`DamageHooks::incoming`], or
 /// `LivingEntity.knockback` to push, for [`DamageHooks::knockback`]: the entity and the
 /// hit's source.
+#[derive(Clone, Copy)]
 pub enum Hurting<'a> {
     /// A player, by its entity id.
     Player(i32, HurtSource<'a>),
@@ -131,12 +132,20 @@ impl<S: for<'s> From<HitSound<'s>>> SoundQueue for Vec<S> {
         self.push(sound.into());
     }
 }
-/// The entity a hit's site lends its listeners: the live borrow of its id, position and own
-/// random. The site names who (the attacker it holds a `&mut` to); nothing is looked up.
+/// The entity a hit's site lends its listeners: the live borrow of its whole body, for its own
+/// random and its reads ([`HitEffects::lent_body`]). The site names who (the attacker it holds
+/// a `&mut` to); nothing is looked up.
 pub struct HitLend<'a> {
-    id: i32,
-    position: [f64; 3],
-    random: &'a mut sunrise_core::random::LegacyRandom,
+    body: LentBody<'a>,
+}
+enum LentBody<'a> {
+    Mob(&'a mut crate::mobs::Mob),
+    /// The player in place, with the effects and stacks the game keeps beside its body.
+    Player {
+        motion: &'a mut PlayerMotion,
+        effects: &'a crate::effects::PlayerEffects,
+        equipment: PlayerEquipment<'a>,
+    },
 }
 /// Whether any native mod listens to a hook whose host is a `HitHost`. A site looks up its
 /// attacker only then; without one nothing is looked up, borrowed or drawn.
@@ -155,18 +164,24 @@ pub fn hit_host_listened() -> bool {
 impl<'a> HitLend<'a> {
     pub fn mob(mob: &'a mut crate::mobs::Mob) -> Option<Self> {
         Some(Self {
-            id: mob.id as i32,
-            position: [mob.position.x, mob.position.y, mob.position.z],
-            random: &mut mob.random,
+            body: LentBody::Mob(mob),
         })
     }
-    /// `player`, if it is the attacker `attacker` (an entity id).
-    pub fn attacking_player(player: Option<&'a mut PlayerMotion>, attacker: i32) -> Option<Self> {
-        let player = player.filter(|p| p.entity_id == attacker && hit_host_listened())?;
+    /// `player`, if it is the attacker `attacker` (an entity id), with the `effects` and
+    /// `equipment` the game keeps beside the body in place.
+    pub fn attacking_player(
+        player: Option<&'a mut PlayerMotion>,
+        attacker: i32,
+        effects: &'a crate::effects::PlayerEffects,
+        equipment: PlayerEquipment<'a>,
+    ) -> Option<Self> {
+        let motion = player.filter(|p| p.entity_id == attacker && hit_host_listened())?;
         Some(Self {
-            id: player.entity_id,
-            position: [player.position.x, player.position.y, player.position.z],
-            random: &mut player.random,
+            body: LentBody::Player {
+                motion,
+                effects,
+                equipment,
+            },
         })
     }
     /// The mob among `mobs` with id `attacker`, if it is there to borrow.
@@ -177,11 +192,56 @@ impl<'a> HitLend<'a> {
         hit_host_listened().then_some(())?;
         Self::mob(mobs.find(|m| m.id as i32 == attacker)?)
     }
+    fn id(&self) -> i32 {
+        match &self.body {
+            LentBody::Mob(mob) => mob.id as i32,
+            LentBody::Player { motion, .. } => motion.entity_id,
+        }
+    }
+    fn position(&self) -> [f64; 3] {
+        let position = match &self.body {
+            LentBody::Mob(mob) => mob.position,
+            LentBody::Player { motion, .. } => motion.position,
+        };
+        [position.x, position.y, position.z]
+    }
+    fn random(&mut self) -> &mut sunrise_core::random::LegacyRandom {
+        match &mut self.body {
+            LentBody::Mob(mob) => &mut mob.random,
+            LentBody::Player { motion, .. } => &mut motion.random,
+        }
+    }
+    fn body(&self) -> LivingBody<'_> {
+        match &self.body {
+            LentBody::Mob(mob) => LivingBody::Mob(mob),
+            LentBody::Player {
+                motion,
+                effects,
+                equipment,
+            } => LivingBody::Player(PlayerBody {
+                id: motion.entity_id,
+                uuid: None,
+                health: PlayerHealthRead::Synced(&motion.health.data, motion.health.ids),
+                attributes: Some(&motion.attributes),
+                effects: Some(effects),
+                equipment: *equipment,
+            }),
+        }
+    }
     fn reborrow(&mut self) -> HitLend<'_> {
         HitLend {
-            id: self.id,
-            position: self.position,
-            random: &mut *self.random,
+            body: match &mut self.body {
+                LentBody::Mob(mob) => LentBody::Mob(mob),
+                LentBody::Player {
+                    motion,
+                    effects,
+                    equipment,
+                } => LentBody::Player {
+                    motion,
+                    effects,
+                    equipment: *equipment,
+                },
+            },
         }
     }
 }
@@ -260,11 +320,12 @@ impl<'a> HitEffects<'a> {
             return None;
         }
         let lent = self.lent.as_mut()?;
-        (i32::try_from(entity.id()).ok()? == lent.id).then_some((
-            lent.id,
-            lent.position,
-            &mut *lent.random,
-        ))
+        let id = lent.id();
+        (i32::try_from(entity.id()).ok()? == id).then(|| (id, lent.position(), lent.random()))
+    }
+    /// The body of the entity the hit lends, for its reads; none where it lends none.
+    pub fn lent_body(&self) -> Option<LivingBody<'_>> {
+        self.lent.as_ref().map(HitLend::body)
     }
 }
 /// A living entity's body as a read borrows it, whoever holds it: a hit (its victim, its lent
@@ -314,6 +375,23 @@ pub struct PlayerBody<'a> {
     pub effects: Option<&'a crate::effects::PlayerEffects>,
     /// The stacks in vanilla `EquipmentSlot` order.
     pub equipment: PlayerEquipment<'a>,
+}
+/// What a hit's listeners need to name and read the living entities it lends: the open of the
+/// world, the attribute catalog, the player in place's effects, stacks, UUID and attachments, and the
+/// entities' attachment maps, all lent for reading. Built by the game at the site; a level
+/// built without it lends no entity.
+#[derive(Clone, Copy)]
+pub struct HitReads<'a> {
+    pub epoch: mod_api::WorldEpoch,
+    pub attributes: &'a std::sync::Arc<sunrise_world::attributes::entity::Catalog>,
+    pub player_effects: Option<&'a crate::effects::PlayerEffects>,
+    /// The player in place's stacks, in vanilla `EquipmentSlot` order.
+    pub player_equipment: PlayerEquipment<'a>,
+    /// The acting player's UUID, the holder of its attachments; none outside a player's turn.
+    pub player_uuid: Option<u128>,
+    pub player_attachments: Option<&'a sunrise_mod_runtime::attachments::Attachments>,
+    pub entity_attachments:
+        Option<&'a crate::fast_hash::FxHashMap<u32, sunrise_mod_runtime::attachments::Attachments>>,
 }
 /// Inputs to `Entity.isInvulnerableToBase` for a mob or a nonliving body.
 pub struct BodyImmunity<T> {
@@ -398,6 +476,10 @@ pub struct DamageLevel<'a> {
     /// outside a game's hit.
     effects: Option<HitEffects<'a>>,
     player_equipment: PlayerEquipment<'a>,
+    /// What the hit's listeners need to name and read the entities it lends ([`HitReads`]).
+    reads: Option<HitReads<'a>>,
+    /// The living body the hit lands on, where the hurt code lends it ([`Self::with_victim`]).
+    victim: Option<LivingBody<'a>>,
 }
 impl<'a> DamageLevel<'a> {
     /// The level of `world`, whose blocks `registry` names.
@@ -436,6 +518,8 @@ impl<'a> DamageLevel<'a> {
             players: None,
             effects: None,
             player_equipment: [None; 8],
+            reads: None,
+            victim: None,
         }
     }
     /// The level of `world`, with the random and attachments `lent` took out of it.
@@ -466,6 +550,8 @@ impl<'a> DamageLevel<'a> {
             players: None,
             effects: None,
             player_equipment: [None; 8],
+            reads: None,
+            victim: None,
         }
     }
     /// Lend the UUID owner when mobs can start attacks inside this borrow.
@@ -500,6 +586,8 @@ impl<'a> DamageLevel<'a> {
                 .map(|(resolver, memory)| (*resolver, &mut **memory as &mut dyn PlayerMemory)),
             effects: self.effects.as_mut().map(HitEffects::reborrow),
             player_equipment: self.player_equipment,
+            reads: self.reads,
+            victim: self.victim,
         }
     }
     /// Lend the stacks worn by this hit's player victim for enchantment immunity.
@@ -509,12 +597,45 @@ impl<'a> DamageLevel<'a> {
             ..self
         }
     }
+    /// The same level whose listeners name and read the entities it lends through `reads`.
+    pub fn with_reads(self, reads: Option<HitReads<'a>>) -> Self {
+        Self { reads, ..self }
+    }
+    /// What the hit's listeners need to name and read the entities it lends.
+    pub fn reads(&self) -> Option<HitReads<'a>> {
+        self.reads
+    }
+    /// The same level, whose hit lands on `victim`'s body: the player, armor stand or dragon
+    /// the hurt code holds (a mob's comes with its [`Hurting::Mob`]).
+    pub fn with_victim(self, victim: LivingBody<'a>) -> Self {
+        Self {
+            victim: Some(victim),
+            ..self
+        }
+    }
+    /// The body the hit lands on, where the hurt code lends it.
+    pub fn victim(&self) -> Option<LivingBody<'a>> {
+        self.victim
+    }
+    /// The level for a hook on `hurting`: its victim is the body lent with
+    /// [`Self::with_victim`], or the mob [`Hurting::Mob`] holds.
+    fn for_victim<'s>(&'s mut self, hurting: Hurting<'s>) -> DamageLevel<'s> {
+        let level = self.reborrow();
+        match (level.victim, hurting) {
+            (None, Hurting::Mob(mob, _)) => level.with_victim(LivingBody::Mob(mob)),
+            _ => level,
+        }
+    }
     /// The same level whose hit lends `effects`.
     pub fn with_effects(self, effects: HitEffects<'a>) -> Self {
         Self {
             effects: Some(effects),
             ..self
         }
+    }
+    /// What this hit lends its listeners, for reading.
+    pub fn hit_effects_ref(&self) -> Option<&HitEffects<'a>> {
+        self.effects.as_ref()
     }
     /// What this hit lends its listeners: level sounds and an entity's random.
     pub fn hit_effects(&mut self) -> Option<&mut HitEffects<'a>> {
@@ -703,18 +824,18 @@ impl<'a> DamageLevel<'a> {
         container: &mut DamageContainer,
     ) -> bool {
         let hook = self.hooks.incoming;
-        hook.is_some_and(|hook| hook(self.reborrow(), hurting, victim, container))
+        hook.is_some_and(|hook| hook(self.for_victim(hurting), hurting, victim, container))
     }
     /// `LivingDamageEvent.Pre` of the hit on `hurting` ([`DamageHooks::pre`]; nothing without it).
     pub fn damage_pre(&mut self, hurting: Hurting<'_>, container: &mut DamageContainer) {
         if let Some(hook) = self.hooks.pre {
-            hook(self.reborrow(), hurting, container);
+            hook(self.for_victim(hurting), hurting, container);
         }
     }
     /// `LivingDamageEvent.Post` of the hit on `hurting` ([`DamageHooks::post`]; nothing without it).
     pub fn damage_post(&mut self, hurting: Hurting<'_>, container: &DamageContainer) {
         if let Some(hook) = self.hooks.post {
-            hook(self.reborrow(), hurting, container);
+            hook(self.for_victim(hurting), hurting, container);
         }
     }
 
@@ -744,7 +865,7 @@ impl<'a> DamageLevel<'a> {
                         .effects
                         .as_ref()
                         .and_then(|effects| effects.lent.as_ref())
-                        .map(|lent| lent.id),
+                        .map(HitLend::id),
                     state: container.into_state(),
                 })
             });
@@ -909,7 +1030,7 @@ impl DamageLevel<'_> {
         let mut block = vanilla;
         if let Some(hook) = self.hooks.shield {
             hook(
-                self.reborrow(),
+                self.for_victim(hurting),
                 hurting,
                 damage,
                 vanilla.blocked,
@@ -932,7 +1053,7 @@ impl DamageLevel<'_> {
         let Some(hook) = self.hooks.totem else {
             return false;
         };
-        hook(self.reborrow(), hurting, off_hand)
+        hook(self.for_victim(hurting), hurting, off_hand)
     }
 }
 /// The block an entity with no raised item is asked about: none, and one a mod forces
@@ -2113,18 +2234,111 @@ impl ServerDamageEnvironment<Attributes> for Environment<'_> {
         self.phase("entity-damage")
     }
     fn damage_pre(&mut self, container: &mut DamageContainer) -> io::Result<()> {
-        let source = self
-            .level
-            .attack()
-            .player_source(&self.source.definition().name, self.causing);
-        self.level
-            .damage_pre(Hurting::Player(self.entity, source), container);
-        Ok(())
+        self.pre(container, None)
+    }
+    fn damage_pre_with(
+        &mut self,
+        container: &mut DamageContainer,
+        body: PlayerBodyRead<'_, Attributes>,
+    ) -> io::Result<()> {
+        self.pre(container, Some(body))
     }
 }
 impl CombatEnvironment<Attributes> for Environment<'_> {
     fn dead_flag(&self) -> bool {
         *self.dead
+    }
+    fn hurt_start_with(
+        &mut self,
+        _: &mut State,
+        container: &mut DamageContainer,
+        body: PlayerBodyRead<'_, Attributes>,
+    ) -> io::Result<bool> {
+        self.incoming(container, Some(body))
+    }
+    fn damage_post_with(
+        &mut self,
+        _: &mut State,
+        container: DamageContainer,
+        body: PlayerBodyRead<'_, Attributes>,
+    ) -> io::Result<()> {
+        self.post(container, Some(body))
+    }
+}
+/// The hit's level for a hook on player `entity`, with its body when the combat lends it: the
+/// floats and attributes the combat holds, the effects and stacks the game keeps beside it.
+fn player_hook_level<'b>(
+    level: &'b mut DamageLevel<'_>,
+    entity: i32,
+    body: Option<PlayerBodyRead<'b, Attributes>>,
+) -> DamageLevel<'b> {
+    let reads = level.reads();
+    let victim = body.map(|body| {
+        LivingBody::Player(PlayerBody {
+            id: entity,
+            uuid: reads.and_then(|reads| reads.player_uuid),
+            health: PlayerHealthRead::Synced(body.data, body.ids),
+            attributes: Some(body.attributes),
+            effects: reads.and_then(|reads| reads.player_effects),
+            equipment: reads.map_or([None; 8], |reads| reads.player_equipment),
+        })
+    });
+    let level = level.reborrow();
+    match victim {
+        Some(victim) => level.with_victim(victim),
+        None => level,
+    }
+}
+impl Environment<'_> {
+    fn incoming(
+        &mut self,
+        container: &mut DamageContainer,
+        body: Option<PlayerBodyRead<'_, Attributes>>,
+    ) -> io::Result<bool> {
+        let source = self
+            .level
+            .attack()
+            .player_source(&self.source.definition().name, self.causing);
+        let (entity, victim) = (self.entity, self.victim);
+        let canceled = player_hook_level(&mut self.level, self.entity, body).incoming_canceled(
+            Hurting::Player(entity, source),
+            victim,
+            container,
+        );
+        self.canceled |= canceled;
+        Ok(canceled)
+    }
+    fn pre(
+        &mut self,
+        container: &mut DamageContainer,
+        body: Option<PlayerBodyRead<'_, Attributes>>,
+    ) -> io::Result<()> {
+        let source = self
+            .level
+            .attack()
+            .player_source(&self.source.definition().name, self.causing);
+        let entity = self.entity;
+        player_hook_level(&mut self.level, self.entity, body)
+            .damage_pre(Hurting::Player(entity, source), container);
+        Ok(())
+    }
+    fn post(
+        &mut self,
+        container: DamageContainer,
+        body: Option<PlayerBodyRead<'_, Attributes>>,
+    ) -> io::Result<()> {
+        let source = self
+            .level
+            .attack()
+            .player_source(&self.source.definition().name, self.causing);
+        let (entity, needs_owner) = (self.entity, *self.dead || self.totem_fired);
+        let completion = player_hook_level(&mut self.level, self.entity, body).finish_damage(
+            Hurting::Player(entity, source),
+            container,
+            needs_owner,
+        );
+        *self.damage_completion = completion;
+        Ok(())
     }
 }
 impl EntityImmunityWorld for Environment<'_> {
@@ -2229,17 +2443,7 @@ impl HurtWorld for Environment<'_> {
         Ok(self.status.fire_resistance)
     }
     fn hurt_start(&mut self, _: &mut State, container: &mut DamageContainer) -> io::Result<bool> {
-        let source = self
-            .level
-            .attack()
-            .player_source(&self.source.definition().name, self.causing);
-        let canceled = self.level.incoming_canceled(
-            Hurting::Player(self.entity, source),
-            self.victim,
-            container,
-        );
-        self.canceled |= canceled;
-        Ok(canceled)
+        self.incoming(container, None)
     }
     fn sleeping(&mut self, _: &mut State) -> io::Result<bool> {
         Ok(false)
@@ -2435,16 +2639,7 @@ impl HurtWorld for Environment<'_> {
         Ok(())
     }
     fn damage_post(&mut self, _: &mut State, container: DamageContainer) -> io::Result<()> {
-        let source = self
-            .level
-            .attack()
-            .player_source(&self.source.definition().name, self.causing);
-        *self.damage_completion = self.level.finish_damage(
-            Hurting::Player(self.entity, source),
-            container,
-            *self.dead || self.totem_fired,
-        );
-        Ok(())
+        self.post(container, None)
     }
 }
 impl PlayerHurtWorld for Environment<'_> {

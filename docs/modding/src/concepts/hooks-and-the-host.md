@@ -458,6 +458,17 @@ volume, pitch)` is `Level.playSound(null, x, y, z, ...)` and `host.play_sound_fr
 queued. The seed is drawn at the call from the level's sound-seed stream, not from the level's random.
 `entity.next_float(host)`, `next_double`, `next_bool` and `next_int(host, bound)` draw from the entity's actual
 random stream, in listener order. A hit lends its attacker where the game applies a melee hit (the attacking player or mob, for player → mob, mob → mob and mob → player) and no entity at any other damage site (environment, projectiles, explosions, potions and the like); the attacking mob's own random is the one its AI draws from, and a hit built inside a mob's own tick lends none. Any other entity, a stale handle, a client and an out-of-range `bound` answer `None` (`false` for a sound).
+`host.victim()` (`LivingIncomingDamageEvent.getEntity`) and `host.causing()` (`DamageSource.getEntity`) lend
+the hit's living victim and that attacker as a `LivingView`, read-only and valid for the listener's call. Its
+reads take the same names, arguments and answers as the `LivingRef` reads (`health`, `absorption`, `max_health`,
+`effect`, `effects`, `potion_affected`, `attribute_value`, `with_hand_item`, and `MobRef::no_ai` as `no_ai`), and
+go through the same engine function, so each answers the entity's live state at that moment: Pre sees the health
+before the hit takes it, Post the health after. The victim is any mob, player or the dragon at the three damage
+moments, and a mob or the dragon at `living_shield_block` and `living_use_totem` (a player's body is not lent
+there). `causing()` is `None` where the hit lends no attacker, as for its random. `view.holder()` names the
+entity's attachments: `has` and `get_existing` through the hit's host read them, and `get` that would store its
+default, `set`, `remove` and `sync_data` refuse with `AttachmentError::ReadOnlyHolder`, writing nothing. A
+player's holder is lent during that player's turn.
 Outside a write, a `LevelRef` plays level events, and their global form for every player on the server
 ([Playing level events](../how-to/world/level-events.md)).
 `set_block(pos, state, flags)` is `Level.setBlock` on a whole state, as `LevelRef::set_block` takes it: it

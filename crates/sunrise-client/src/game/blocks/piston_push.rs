@@ -1545,7 +1545,8 @@ impl Game<'_> {
                         Some(world_items!(self)),
                         Some(&self.pack.block_registries),
                         &self.damage_hooks,
-                    );
+                    )
+                    .with_reads(crate::game::entity::hit_reads_of!(self));
                     mobs[i].update_pushed_support(&world, wanted, moved);
                     if authoritative {
                         mobs[i].restitute_movement(&world, &mut level, wanted, moved);
