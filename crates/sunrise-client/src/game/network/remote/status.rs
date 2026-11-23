@@ -16,47 +16,62 @@ impl Game<'_> {
             .iter()
             .map(|(id, uuid)| (*id as u32, *uuid))
             .collect();
-        let mut entries: Vec<_> = {
+        let listed = skin_entries(
+            &r.level_players,
+            &r.skin_textures,
+            &mut r.level_player_textures,
+        );
+        // Each profile's textures stay behind their `Arc`: only the
+        // signed-in account's merge is copied.
+        let entries: Vec<(u128, &skins::Textures)> = {
             let keys = r.services_keys.lock().unwrap_or_else(|e| e.into_inner());
-            skin_entries(
-                &r.level_players,
-                &r.skin_textures,
-                &mut r.level_player_textures,
-            )
-            .into_iter()
-            .filter_map(|(uuid, property)| {
-                property
-                    .unpack(&keys, skins::texture_uris())
-                    .map(|textures| (uuid, textures.clone()))
-            })
-            .collect()
+            listed
+                .iter()
+                .filter_map(|(uuid, property)| {
+                    property
+                        .unpack(&keys, skins::texture_uris())
+                        .map(|textures| (*uuid, textures))
+                })
+                .collect()
         };
         // Minecraft.profileFuture: the signed-in account's active skin and cape
         // when the server sent no textures (single player), or a body without
         // the equipped cape. A profile with only accessories keeps its default body.
-        if let OwnProfile::Done(Some(own)) = &r.own_profile {
-            if let Some((_, t)) = entries.iter_mut().find(|(u, _)| *u == local) {
-                if t.skin.is_none() && t.cape.is_none() && t.elytra.is_none() {
-                    *t = own.clone();
-                } else if t.skin.is_some() && t.cape.is_none() {
-                    t.cape.clone_from(&own.cape);
+        let own = match &r.own_profile {
+            OwnProfile::Done(Some(own)) => Some(match entries.iter().find(|(u, _)| *u == local) {
+                Some((_, textures)) => {
+                    let mut merged = (*textures).clone();
+                    if merged.skin.is_none() && merged.cape.is_none() && merged.elytra.is_none() {
+                        merged = own.clone();
+                    } else if merged.skin.is_some() && merged.cape.is_none() {
+                        merged.cape.clone_from(&own.cape);
+                    }
+                    merged
                 }
-            } else {
-                entries.push((local, own.clone()));
-            }
-        }
+                None => own.clone(),
+            }),
+            _ => None,
+        };
         let mut skins = HashMap::new();
-        for (uuid, textures) in entries {
+        {
             // PlayerInfo.createSkinLookup: only the local player's own skin
             // may be unsigned.
             let mut downloads = self.skin_downloads.borrow_mut();
-            if let skins::Lookup::Ready(skin) =
-                skins::lookup(&textures, uuid != local, |kind, url| {
-                    downloads.state(kind, url)
-                })
-                && skin != skins::ResolvedSkin::default()
-            {
-                skins.insert(uuid, skin);
+            let mut resolve = |uuid, textures: &skins::Textures| {
+                if let skins::Lookup::Ready(skin) =
+                    skins::lookup(textures, uuid != local, |kind, url| {
+                        downloads.state(kind, url)
+                    })
+                    && skin != skins::ResolvedSkin::default()
+                {
+                    skins.insert(uuid, skin);
+                }
+            };
+            for (uuid, textures) in entries.iter().filter(|(u, _)| own.is_none() || *u != local) {
+                resolve(*uuid, textures);
+            }
+            if let Some(textures) = &own {
+                resolve(local, textures);
             }
         }
         // An offline name's skin from the launcher, where neither the server

@@ -226,26 +226,7 @@ impl Game<'_> {
         // The chat's tree until the server sends its own, or forever when it
         // sends none: the game's own, plus the commands native mods own.
         let chat_tree = self.chat_tree_for(None);
-        // Minecraft.services() has the keys wherever the game is played, single player's own
-        // server included: its guests' chat keys are checked against them.
-        let services_keys = Arc::new(std::sync::Mutex::new(ServicesKeys::Pending));
-        let slot = services_keys.clone();
-        if let Err(why) = std::thread::Builder::new()
-            .name("Services keys".into())
-            .spawn(move || {
-                use sunrise_server_files::profiles;
-                let keys = profiles::fetch_profile_key_keys(&profiles::discovery_url())
-                    .unwrap_or_else(|why| {
-                        log::error!("Sunrise: {why}");
-                        ServicesKeySet::default()
-                    });
-                *slot.lock().unwrap_or_else(|e| e.into_inner()) = ServicesKeys::Ready(keys);
-            })
-        {
-            log::error!("Sunrise: could not start services key fetch: {why}");
-            *services_keys.lock().unwrap_or_else(|e| e.into_inner()) =
-                ServicesKeys::Ready(ServicesKeySet::default());
-        }
+        let services_keys = ServicesKeys::fetching();
         self.ui.registries.selector_tokens.clear();
         self.remote = Some(Remote {
             selector_metadata_supported: true,
@@ -428,6 +409,14 @@ impl Game<'_> {
     }
     /// Prepare a client session and remote state to receive packets from a studio replay.
     pub(in crate::game) fn init_remote_for_replay(&mut self) -> Result<()> {
+        self.init_remote_for_replay_with(ServicesKeys::fetching())
+    }
+    /// `init_remote_for_replay` with the services' keys supplied: a replayed or viewed
+    /// world checks its players' signed properties as a joined client does.
+    pub(in crate::game) fn init_remote_for_replay_with(
+        &mut self,
+        services_keys: Arc<std::sync::Mutex<ServicesKeys>>,
+    ) -> Result<()> {
         self.reset_client_item_use();
         self.realm_session = false;
         self.lan_session = false;
@@ -517,9 +506,6 @@ impl Game<'_> {
         self.boss_overlay.reset();
 
         let chat_tree = self.chat_tree_for(None);
-        let services_keys = Arc::new(std::sync::Mutex::new(ServicesKeys::Ready(
-            ServicesKeySet::default(),
-        )));
 
         self.ui.registries.selector_tokens.clear();
         self.remote = Some(Remote {

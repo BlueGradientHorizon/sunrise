@@ -102,16 +102,21 @@ fn signed_texture_retained_by_entity_resolves_when_keys_arrive() {
     let mut kept = HashMap::new();
     let mut listed = HashMap::from([(7, property)]);
     let entries = skin_entries(&players, &listed, &mut kept);
+    let retained = entries[0].1.clone();
     assert!(
-        entries[0]
-            .1
+        retained
             .unpack(&ServicesKeys::Pending, &TEXTURE_URIS)
-            .is_none()
+            .is_none(),
+        "a signature waits for the keys: no verdict is cached"
     );
     listed.clear();
 
     let keys = ServicesKeys::Ready(profile_key_keys(&fixture["public_keys"].to_string()).unwrap());
     let entries = skin_entries(&players, &listed, &mut kept);
+    assert!(
+        Arc::ptr_eq(&retained, &entries[0].1),
+        "the entity kept the same property"
+    );
     let textures = entries[0].1.unpack(&keys, &TEXTURE_URIS).unwrap();
     let Lookup::Ready(resolved) = lookup(textures, true, |_, _| Download::Ready) else {
         panic!("the retained signed property must pass the secure lookup once keys load");
@@ -156,4 +161,60 @@ fn tab_object_skin_publication_tracks_changes_and_atlas_clear() {
         "name:player",
         "skins/second"
     ));
+}
+
+/// A replay client's services keys come the way a joined client's do: nothing is
+/// cached on keys it does not have, and a signed property resolves once they arrive.
+#[test]
+fn a_replay_client_waits_for_the_services_keys_as_a_joined_client_does() {
+    use crate::game::native_entity_refs::tests::with_game;
+    use skins::{Download, Lookup, TEXTURE_URIS, lookup};
+    use std::sync::Mutex;
+    use sunrise_server_files::profiles::ServicesKeySet;
+    let fixture: serde_json::Value = serde_json::from_str(SIGNED_TEXTURES).unwrap();
+    let (answer, asked) = std::sync::mpsc::channel::<ServicesKeySet>();
+    let property = PlayerTextures::new(AccountProperty {
+        name: "textures".into(),
+        value: fixture["value"].as_str().unwrap().into(),
+        signature: Some(
+            fixture["profile_property_signature"]
+                .as_str()
+                .unwrap()
+                .into(),
+        ),
+    });
+    let mut slot: Option<Arc<Mutex<ServicesKeys>>> = None;
+    with_game(|game| {
+        game.init_remote_for_replay_with(ServicesKeys::fetching_with(move || {
+            Ok::<_, &'static str>(asked.recv().unwrap())
+        }))
+        .unwrap();
+        slot = Some(game.remote.as_ref().unwrap().services_keys.clone());
+    });
+    let keys = slot.unwrap();
+    assert!(matches!(*keys.lock().unwrap(), ServicesKeys::Pending));
+    assert!(
+        property
+            .unpack(&keys.lock().unwrap(), &TEXTURE_URIS)
+            .is_none(),
+        "empty ready keys would cache the signature as invalid"
+    );
+    answer
+        .send(profile_key_keys(&fixture["public_keys"].to_string()).unwrap())
+        .unwrap();
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    while matches!(*keys.lock().unwrap(), ServicesKeys::Pending) {
+        assert!(
+            std::time::Instant::now() < deadline,
+            "the keys never arrived"
+        );
+        std::thread::yield_now();
+    }
+    let textures = property
+        .unpack(&keys.lock().unwrap(), &TEXTURE_URIS)
+        .unwrap();
+    let Lookup::Ready(resolved) = lookup(textures, true, |_, _| Download::Ready) else {
+        panic!("the signed property must resolve once the keys arrive");
+    };
+    assert_eq!(resolved.cape, Some(skins::cape_location("abcd1234")));
 }

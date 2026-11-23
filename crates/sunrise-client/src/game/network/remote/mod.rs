@@ -281,6 +281,35 @@ pub(super) enum ServicesKeys {
     Ready(ServicesKeySet),
 }
 
+impl ServicesKeys {
+    /// Minecraft.services() has the keys wherever the game is played, single player's own
+    /// server included: its guests' chat keys are checked against them.
+    fn fetching() -> Arc<std::sync::Mutex<Self>> {
+        use sunrise_server_files::profiles;
+        Self::fetching_with(|| profiles::fetch_profile_key_keys(&profiles::discovery_url()))
+    }
+    /// The keys start `Pending` and arrive from `fetch` on a thread of their own, so a
+    /// listener never caches a verdict on keys it does not have yet. A thread that cannot
+    /// start leaves them pending.
+    pub(super) fn fetching_with<E: std::fmt::Display>(
+        fetch: impl FnOnce() -> std::result::Result<ServicesKeySet, E> + Send + 'static,
+    ) -> Arc<std::sync::Mutex<Self>> {
+        let keys = Arc::new(std::sync::Mutex::new(ServicesKeys::Pending));
+        let slot = keys.clone();
+        let _ = std::thread::Builder::new()
+            .name("Services keys".into())
+            .spawn(move || {
+                // The error is the line vanilla logs, after which it has no keys.
+                let keys = fetch().unwrap_or_else(|why| {
+                    log::error!("Sunrise: {why}");
+                    ServicesKeySet::default()
+                });
+                *slot.lock().unwrap_or_else(|e| e.into_inner()) = ServicesKeys::Ready(keys);
+            });
+        keys
+    }
+}
+
 /// One `PlayerInfo` property, shared by the list entry and the entities that kept it.
 struct PlayerTextures {
     property: AccountProperty,
