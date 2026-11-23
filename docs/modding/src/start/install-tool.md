@@ -202,7 +202,7 @@ update, it also verifies the archive's checksum and prints the old and new commi
 pinned SDK. On Windows, the previous executable is kept as `.cargo-sunrise-mod.exe.old` beside the new one and can
 be deleted once the command exits.
 
-On `new`, `build`, `run`, `check` and `update`, such a copy checks the signed rolling release for a newer build once
+On `new`, `build`, `run`, `check` and `pin`, such a copy checks the signed rolling release for a newer build once
 per day at most. It prints a reminder when one is available but never installs it automatically. The check is off
 in CI and when `CARGO_NET_OFFLINE` is set to anything but `false`.
 
