@@ -598,12 +598,7 @@ impl Game<'_> {
         let Some(flags) = self.creative_drop_features() else {
             return false;
         };
-        if thrown.is_empty()
-            || !self
-                .creative_screen
-                .catalog()
-                .is_item_enabled(&thrown.item, flags)
-        {
+        if thrown.is_empty() || !self.creative_screen.catalog().item_enabled(thrown, flags) {
             return false;
         }
         let Some(item) = self.to_network(&Some(thrown.clone())) else {

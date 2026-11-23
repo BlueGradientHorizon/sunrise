@@ -1,5 +1,9 @@
 use super::*;
 
+#[cfg(test)]
+#[path = "team_packet_tests.rs"]
+mod team_packet_tests;
+
 impl Game<'_> {
     /// A `Holder<SoundEvent>` off the wire: an inline event's location, or
     /// the name of a registered one.
@@ -119,16 +123,23 @@ impl Game<'_> {
     pub(in crate::game) fn remote_team(&mut self, p: play::SetPlayerTeam) {
         use sunrise_client::scoreboard::{CollisionRule, Visibility, tag_to_json};
         let board = &mut self.score.board;
+        let team = if p.method == 0 {
+            board.add_team(&p.name)
+        } else if let Some(team) = board.team_mut(&p.name) {
+            team
+        } else {
+            log::warn!(
+                "Received team packet with method {} for unknown team {:?}",
+                p.method,
+                p.name
+            );
+            return;
+        };
         if p.method == 1 {
             board.remove_team(&p.name);
             return;
         }
-        if p.method == 0 {
-            board.add_team(&p.name);
-        }
-        if let Some(params) = &p.parameters
-            && let Some(team) = board.team_mut(&p.name)
-        {
+        if let Some(params) = &p.parameters {
             team.display_name = tag_to_json(&params.display_name);
             team.prefix = tag_to_json(&params.prefix);
             team.suffix = tag_to_json(&params.suffix);
@@ -517,12 +528,21 @@ impl Game<'_> {
             return;
         }
         let stack = stack.filter(|stack| !stack.is_empty());
-        let item = stack.as_ref().map_or("minecraft:air", |stack| &*stack.item);
-        if !self
-            .creative_screen
-            .catalog()
-            .is_item_enabled(item, self.enabled_feature_ids())
-        {
+        // Vanilla checks the item's required features, and an empty stack's item is air.
+        let air;
+        let enabled = match &stack {
+            Some(stack) => self
+                .creative_screen
+                .catalog()
+                .item_enabled(stack, self.enabled_feature_ids()),
+            None => {
+                air = ItemStack::new("minecraft:air", 0);
+                self.creative_screen
+                    .catalog()
+                    .item_enabled(&air, self.enabled_feature_ids())
+            }
+        };
+        if !enabled {
             return;
         }
         self.send_play(S::SetCreativeModeSlot(play::SetCreativeModeSlot {

@@ -334,7 +334,7 @@ impl Game<'_> {
             && !self
                 .creative_screen
                 .catalog()
-                .is_item_enabled(&stack.item, self.enabled_feature_ids())
+                .item_enabled(&stack, self.enabled_feature_ids())
         {
             return Err(CreativeGiveError::FeatureDisabled);
         }

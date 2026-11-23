@@ -67,8 +67,9 @@ fn creative_drop_guards_charge_only_sent_drops() {
                 assert!(!items.names.is_empty());
                 assert!(game.enabled_feature_ids().is_empty());
                 for name in &items.names {
-                    assert!(catalog.is_item_enabled(name, &vanilla), "{name}");
-                    assert!(!catalog.is_item_enabled(name, &[]), "{name}");
+                    let stack = ItemStack::new(name, 1);
+                    assert!(catalog.item_enabled(&stack, &vanilla), "{name}");
+                    assert!(!catalog.item_enabled(&stack, &[]), "{name}");
                 }
 
                 game.screen = Screen::Creative;
