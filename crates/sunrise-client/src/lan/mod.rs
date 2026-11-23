@@ -35,6 +35,7 @@ pub mod handoff;
 pub mod hub;
 pub mod import;
 mod io_pool;
+pub mod login_profile;
 pub mod menu;
 pub mod menu_extra_rev;
 #[cfg(test)]
@@ -456,6 +457,8 @@ pub struct Shared {
     sync: Mutex<Arc<data::SyncData>>,
     pub events: crate::net::ingress::Producer<NetEvent>,
     configuration_requests: Option<Sender<configuration_tasks::ConfigurationRequest>>,
+    /// Admitted logins' properties for `player_login_profile`, on a server the game drives.
+    login_profiles: Option<Sender<login_profile::LoginProfileRequest>>,
     prepare_spawn: bool,
     lan_incarnation: u64,
     next_configuration_connection: AtomicU64,
@@ -723,6 +726,7 @@ pub struct Lan {
     pub configuration_tasks: configuration_tasks::Tasks,
     events: crate::net::ingress::Consumer<NetEvent>,
     configuration_requests: Option<Receiver<configuration_tasks::ConfigurationRequest>>,
+    login_profiles: Option<Receiver<login_profile::LoginProfileRequest>>,
     pub port: u16,
     listener: Option<JoinHandle<()>>,
     /// Stops the accept loop alone: local connections stay.
@@ -764,6 +768,12 @@ impl Lan {
         } else {
             (None, None)
         };
+        let (profile_tx, profile_rx) = if drive_configuration {
+            let (tx, rx) = channel();
+            (Some(tx), Some(rx))
+        } else {
+            (None, None)
+        };
         let (listen, port, announce) = (config.listen, config.port, config.announce);
         let hide_online_players = config.hide_online_players;
         let enable_status = config.enable_status;
@@ -777,6 +787,7 @@ impl Lan {
             sync: Mutex::new(sync),
             events: tx,
             configuration_requests: request_tx,
+            login_profiles: profile_tx,
             prepare_spawn,
             lan_incarnation,
             next_configuration_connection: AtomicU64::new(1),
@@ -803,6 +814,7 @@ impl Lan {
             configuration_tasks: configuration_tasks::Tasks::new(lan_incarnation),
             events,
             configuration_requests: request_rx,
+            login_profiles: profile_rx,
             port: 0,
             listener: None,
             listener_stop: Arc::new(AtomicBool::new(false)),
@@ -820,6 +832,12 @@ impl Lan {
         self.configuration_requests
             .iter()
             .flat_map(Receiver::try_iter)
+    }
+    /// Take the admitted logins whose properties wait for `player_login_profile`.
+    pub fn login_profile_requests(
+        &self,
+    ) -> impl Iterator<Item = login_profile::LoginProfileRequest> + '_ {
+        self.login_profiles.iter().flat_map(Receiver::try_iter)
     }
     /// Start accepting connections on `port` (0 picks a free one), and
     /// announce the world on the local network when `announce`

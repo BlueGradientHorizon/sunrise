@@ -1625,6 +1625,15 @@ impl Game<'_> {
     ) {
         self.fire_player_sprint(player, name, sprinting);
     }
+    /// `player_login_profile`: the mods' edit of an admitted login's properties.
+    pub(in crate::game) fn native_player_login_profile(
+        &mut self,
+        player: u128,
+        name: &str,
+        properties: &mut Vec<mod_api::AccountProfileProperty>,
+    ) {
+        self.fire_player_login_profile(player, name, properties);
+    }
     /// A server player's client answered a resource pack in play (vanilla's
     /// `ServerboundResourcePackPacket`): `status` is `Action`'s number, 0
     /// successfully loaded, 1 declined, 2 failed download, 3 accepted, 4
