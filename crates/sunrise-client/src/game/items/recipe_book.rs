@@ -1445,9 +1445,10 @@ impl Game<'_> {
         self.menu_transfer_answer(player, menu, Some(pos), recipe, max, dry_run)
     }
     /// Asks `menu_transfer` of the part of mod menu type `menu` (the caller checked that one
-    /// listens): its answer, and with `dry_run` the cells it named, each kept to the recipe's
-    /// cells (`clamp_cells`: the placement's slots, or `MAX_CHECK_CELLS` for a recipe the game
-    /// can't place). Cells a part names outside a dry run are dropped. None when no part answers.
+    /// listens): its answer, and with `dry_run` the cells it named, both lists kept to the
+    /// recipe's known layout (`clamp_cells` to `recipe_cells`: one input for stonecutting, the
+    /// placement's slots, or `MAX_CHECK_CELLS` for a recipe the game can't inspect). Cells a
+    /// part names outside a dry run are dropped. None when no part answers.
     pub(in crate::game) fn menu_transfer_answer(
         &mut self,
         player: u128,
@@ -1457,7 +1458,7 @@ impl Game<'_> {
         max: bool,
         dry_run: bool,
     ) -> Option<RecipeTransferCheck> {
-        use sunrise_client::lan::recipes::{MAX_CHECK_CELLS, clamp_cells};
+        use sunrise_client::lan::recipes::{clamp_cells, recipe_cells};
         let (mut result, mut missing, mut craftable) = (None, Vec::new(), Vec::new());
         self.native_menu_transfer(mod_api::__private::MenuTransferCall {
             player,
@@ -1472,7 +1473,16 @@ impl Game<'_> {
         });
         let result = result?;
         let cells = if dry_run {
-            (self.recipes().placement(recipe)).map_or(MAX_CHECK_CELLS, |p| p.slots.len())
+            let recipes = self.recipes();
+            let id = if recipe.contains(':') {
+                std::borrow::Cow::Borrowed(recipe)
+            } else {
+                std::borrow::Cow::Owned(format!("minecraft:{recipe}"))
+            };
+            let kind = (recipes.by_type.iter())
+                .find(|(_, list)| list.iter().any(|r| r.id == *id))
+                .map(|(kind, _)| kind.as_str());
+            recipe_cells(kind, recipes.placement(recipe).map(|p| p.slots.len()))
         } else {
             0
         };

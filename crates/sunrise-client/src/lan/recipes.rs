@@ -693,6 +693,22 @@ pub const CHECK_CHANNEL: &str = "sunrise:recipe_check";
 /// type) and the most a reply carries.
 pub const MAX_CHECK_CELLS: usize = 256;
 
+/// How many cells a check names for a recipe of type `kind` whose placement
+/// (`Recipes::placement`) has `placement` slots: the recipe's known layout
+/// (`RecipeTransferCheck`'s cell order). A stonecutting recipe has its one
+/// input and a smithing recipe its template, base and addition, though
+/// neither has a placement; a recipe the game can't inspect (a mod's own
+/// type, a custom recipe whose placement is empty, or an unknown id) keeps
+/// `MAX_CHECK_CELLS`.
+pub fn recipe_cells(kind: Option<&str>, placement: Option<usize>) -> usize {
+    match (kind, placement) {
+        (Some("minecraft:stonecutting"), _) => 1,
+        (Some("minecraft:smithing_transform" | "minecraft:smithing_trim"), _) => 3,
+        (_, Some(slots)) if slots > 0 => slots.min(MAX_CHECK_CELLS),
+        _ => MAX_CHECK_CELLS,
+    }
+}
+
 /// The recipe cells a `menu_transfer` part named, as a check keeps them: the
 /// ones below `count` (the recipe's cells, at most `MAX_CHECK_CELLS`), each
 /// once, in ascending order.
@@ -741,13 +757,21 @@ pub fn encode_check_reply(
 }
 
 /// A `CHECK_CHANNEL` reply as `encode_check_reply` writes it: the window,
-/// the tag and the check. None for a reply that doesn't read whole.
+/// the tag and the check, each cell list once per cell and ascending. None
+/// for a reply that doesn't read whole or counts a list below 0 or past
+/// `MAX_CHECK_CELLS`.
 pub fn decode_check_reply(data: &[u8]) -> Option<(i32, i32, mod_api::RecipeTransferCheck)> {
     fn cells(reader: &mut sunrise_protocol::buf::Reader<'_>) -> Option<Vec<u32>> {
-        let n = reader.varint().ok()?;
-        (0..n.clamp(0, MAX_CHECK_CELLS as i32))
+        let n = usize::try_from(reader.varint().ok()?).ok()?;
+        if n > MAX_CHECK_CELLS {
+            return None;
+        }
+        let mut cells = (0..n)
             .map(|_| reader.u8().ok().map(u32::from))
-            .collect()
+            .collect::<Option<Vec<u32>>>()?;
+        cells.sort_unstable();
+        cells.dedup();
+        Some(cells)
     }
     let mut reader = sunrise_protocol::buf::Reader::new(data);
     let (container, tag) = (reader.varint().ok()?, reader.varint().ok()?);
@@ -1635,6 +1659,73 @@ mod check_reply_tests {
         extra.extend([1, 2, 9]);
         assert_eq!(decode_check_reply(&extra), None);
         assert_eq!(decode_check_reply(&old(9, &[])), None);
+    }
+
+    /// A reply's cell list counted below 0 or past `MAX_CHECK_CELLS` is
+    /// refused whole; the cells of one that reads reach mods once each, in
+    /// ascending order, whatever order the server wrote them in.
+    #[test]
+    fn a_reply_is_refused_outside_the_counts_and_its_cells_come_sorted() {
+        let reply = |result: u8, lists: &[(i32, &[u8])]| {
+            let mut w = Writer::new();
+            w.varint(7);
+            w.varint(3);
+            w.u8(result);
+            for &(count, cells) in lists {
+                w.varint(count);
+                for &c in cells {
+                    w.u8(c);
+                }
+            }
+            w.data
+        };
+        // Missing (1) with a count of -1, 257 or i32::MAX: refused.
+        assert_eq!(decode_check_reply(&reply(1, &[(-1, &[])])), None);
+        let all: Vec<u8> = (0..=255).chain([0]).collect();
+        assert_eq!(decode_check_reply(&reply(1, &[(257, &all)])), None);
+        assert_eq!(decode_check_reply(&reply(1, &[(i32::MAX, &[])])), None);
+        // Moves (0) with a craftable count of -5 or 300 in the trailer: refused.
+        assert_eq!(decode_check_reply(&reply(0, &[(0, &[]), (-5, &[])])), None);
+        assert_eq!(decode_check_reply(&reply(0, &[(0, &[]), (300, &[])])), None);
+        // 256 cells, every byte once, is the most a list holds.
+        let every: Vec<u8> = (0..=255).rev().collect();
+        let (_, _, wide) = decode_check_reply(&reply(1, &[(256, &every)])).unwrap();
+        assert_eq!(wide.missing_cells, (0..=255).collect::<Vec<u32>>());
+        // Out of order and repeated: sorted, each once, in both lists.
+        assert_eq!(
+            decode_check_reply(&reply(1, &[(5, &[8, 2, 8, 0, 2]), (4, &[6, 1, 6, 3])])),
+            Some((7, 3, check(R::Missing, &[0, 2, 8], &[1, 3, 6])))
+        );
+        assert_eq!(
+            decode_check_reply(&reply(0, &[(2, &[4, 4]), (3, &[9, 5, 9])])),
+            Some((7, 3, check(R::Moves, &[4], &[5, 9])))
+        );
+    }
+
+    /// A check names cells by the recipe's known layout: one input for
+    /// stonecutting, three for smithing, the placement's slots otherwise,
+    /// and `MAX_CHECK_CELLS` for a recipe the game can't inspect.
+    #[test]
+    fn a_recipes_cells_follow_its_known_layout() {
+        assert_eq!(recipe_cells(Some("minecraft:stonecutting"), None), 1);
+        assert_eq!(recipe_cells(Some("minecraft:smithing_transform"), None), 3);
+        assert_eq!(recipe_cells(Some("minecraft:smithing_trim"), None), 3);
+        assert_eq!(recipe_cells(Some("minecraft:crafting_shaped"), Some(6)), 6);
+        assert_eq!(recipe_cells(Some("minecraft:smelting"), Some(1)), 1);
+        // A custom recipe's empty placement, a mod's own type, an unknown id.
+        assert_eq!(
+            recipe_cells(Some("minecraft:crafting_special_firework_rocket"), Some(0)),
+            256
+        );
+        assert_eq!(recipe_cells(Some("mymod:crusher"), None), 256);
+        assert_eq!(recipe_cells(None, None), 256);
+        // Both lists are kept to that count: one stonecutting cell is cell 0.
+        let cut = recipe_cells(Some("minecraft:stonecutting"), None);
+        assert_eq!(clamp_cells(&[2, 0, 1], cut), [0]);
+        assert_eq!(
+            clamp_cells(&[300, 255, 7], recipe_cells(Some("mymod:crusher"), None)),
+            [7, 255]
+        );
     }
 }
 

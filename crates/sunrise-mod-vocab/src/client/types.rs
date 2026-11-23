@@ -1298,11 +1298,14 @@ pub enum PanelEvent {
     /// go of it outside the panel, over the open screen (JEI's ghost
     /// ingredient drag). A drag starts once the pointer moves 4 GUI pixels
     /// with the left button held on an item; until then the press is a
-    /// click, which comes as `Clicked` on its release. Dropping it back on
-    /// the panel, Escape and closing the screen cancel it. The game moves
-    /// nothing and no slot of the screen hears the release: the mod decides
-    /// what the drop does (a filter slot of a menu it knows, say) and checks
-    /// it on its own server.
+    /// click, which comes as `Clicked` on its release while the list still
+    /// has that item at its index. The press belongs to the menu open when it
+    /// went down: dropping it back on the panel, Escape, the window losing
+    /// focus, and that menu closing or being replaced cancel it, and a
+    /// screen hook that cancels the release drops it; none of these sends
+    /// anything. The game moves nothing and no screen hears the release:
+    /// the mod decides what the drop does (a filter slot of a menu it knows,
+    /// say) and checks it on its own server.
     Dropped {
         /// The dragged item, as the mod sent it.
         stack: Stack,

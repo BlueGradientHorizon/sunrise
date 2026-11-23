@@ -88,11 +88,9 @@ impl Game<'_> {
         {
             return Ok(());
         }
-        // Escape drops an item dragged off the item panel, not the screen.
-        if key == KeyCode::Escape
-            && matches!(self.screen, Screen::Inventory | Screen::Creative)
-            && self.mod_browser_drag_escape()
-        {
+        // Escape cancels a press on the item panel; one that is a drag takes
+        // the Escape, and the screen stays open.
+        if key == KeyCode::Escape && self.mod_browser_drag_escape() {
             return Ok(());
         }
         if key == KeyCode::Escape && self.mod_browser_back() {

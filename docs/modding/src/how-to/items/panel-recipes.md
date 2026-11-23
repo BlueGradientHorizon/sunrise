@@ -64,8 +64,13 @@ left one while the player carries a stack, still comes as the button goes down).
 - Let go outside the panel: the owner hears `PanelEvent::Dropped { stack, x, y }`, the item as the
   mod sent it and the point in GUI pixels from the window's top left (`ScreenView::mouse`'s
   frame). No slot of the screen hears that release: nothing is picked up, placed or thrown.
-- Let go back on the panel, press Escape, or close the screen: the drag is cancelled and nothing is
-  sent. Escape during a drag leaves the screen open.
+- Let go back on the panel, press Escape, switch away from the window, or close or replace the
+  menu: the drag is cancelled and nothing is sent. Escape during a drag leaves the screen open. A
+  press belongs to the menu that was open when it went down, and its release never reaches the
+  screen underneath, even after a cancel. A screen hook that cancels the release drops the item
+  with nothing sent.
+- A click comes only while the list still has the pressed item at its index; a drag drops the item
+  as it was when pressed.
 
 The game moves nothing for a drop. The viewer finds what lies under `x, y` (a slot of a menu it
 knows, or a target another mod published), forwards the drop to the mod that owns it, and that mod

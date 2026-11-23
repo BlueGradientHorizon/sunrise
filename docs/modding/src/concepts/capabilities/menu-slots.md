@@ -512,8 +512,9 @@ A dry run can also say which of the recipe's cells it can't fill: push their ind
 shaped recipe, else its ingredients in order) to `event.missing_cells`, and the ones the menu lacks but could
 craft, as a storage network's autocrafting does, to `event.craftable_cells`. Both start empty. The viewer gets
 them as `RecipeTransferCheck::missing_cells` and `craftable_cells` with whatever the part answers, so a part may
-answer `Moves` and still mark the cells it would craft. The game keeps the cells below the recipe's cell count
-(below 256 for a recipe it can't place, such as a mod's own type), each once, in ascending order, and ignores
+answer `Moves` and still mark the cells it would craft. The game keeps both lists below the recipe's cell count,
+from its known layout (one for a stonecutting recipe, three for smithing, the placement's slots for crafting and
+cooking; 256 for a recipe it can't inspect, such as a mod's own type), each once, in ascending order, and ignores
 both outside a dry run.
 
 ```rust,ignore
@@ -524,7 +525,7 @@ if event.dry_run {
 }
 ```
 
-This is version 2 of `menu_transfer`: named injections request `hook_version = 2`. A solo
+This is version 2 of `menu_transfer`: update your `Hooks` implementation and rebuild. A solo
 world and a LAN host's own player get the same contract: the game is the server there and asks the part of the
 player's open block menu before its own grid transfer, on the same thread.
 

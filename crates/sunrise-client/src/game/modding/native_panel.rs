@@ -56,7 +56,9 @@ pub(super) enum BrowserTooltip {
 /// a click until the pointer moves `DRAG_THRESHOLD` away, then a drag of the
 /// item, drawn under the pointer, that its release drops on the screen
 /// (`PanelEvent::Dropped` to the panel's owner) or, back on the panel,
-/// cancels. Escape and closing the screen cancel it too.
+/// cancels. It belongs to the menu open when it went down (`menu`): Escape,
+/// focus loss, and that menu closing or being replaced cancel it. Its
+/// release is the panel's whatever happened, and never reaches a screen.
 #[derive(Clone, Debug)]
 pub(super) struct Held {
     /// Whose panel the item is on.
@@ -69,6 +71,10 @@ pub(super) struct Held {
     pub(super) from: (f32, f32),
     /// Whether it has become a drag.
     pub(super) dragging: bool,
+    /// The menu open when it went down (`ScreenState::screen_instance`).
+    pub(super) menu: u64,
+    /// Cancelled: it draws nothing and its release sends nothing.
+    pub(super) cancelled: bool,
 }
 
 /// What the release of a `Held` press does.
@@ -78,11 +84,30 @@ pub(super) enum Release {
     Click(usize),
     /// A drag let go off the panel, at this point.
     Drop(BrowserStack, (f32, f32)),
-    /// A drag let go back on the panel: nothing.
+    /// Nothing: a drag let go back on the panel, a cancelled press, or one
+    /// whose menu, panel or item went away under it.
     Cancel,
 }
 
+/// The game as a `Held` press's release finds it.
+#[derive(Clone, Copy, Debug)]
+pub(super) struct Now<'a> {
+    /// The open menu (`ScreenState::screen_instance`).
+    pub(super) menu: u64,
+    /// Whose panel shows, if one does.
+    pub(super) owner: Option<&'a Owner>,
+    /// Whether the release is over the panel; None when it has no room.
+    pub(super) on_panel: Option<bool>,
+    /// The item at the pressed index of the shown list.
+    pub(super) at_index: Option<&'a BrowserStack>,
+}
+
 impl Held {
+    /// Whether it still counts on menu `menu`: not cancelled, and on the
+    /// menu it went down on.
+    fn live_on(&self, menu: u64) -> bool {
+        !self.cancelled && self.menu == menu
+    }
     /// The pointer is at `cursor` with the button still held: true once the
     /// press is a drag, which it stays until its release.
     pub(super) fn moved(&mut self, cursor: (f32, f32)) -> bool {
@@ -90,16 +115,48 @@ impl Held {
         self.dragging |= dx * dx + dy * dy >= DRAG_THRESHOLD * DRAG_THRESHOLD;
         self.dragging
     }
-    /// The button came up at `cursor`, `on_panel` when that is over the
-    /// panel's area. The release point counts as a last move.
-    pub(super) fn release(mut self, cursor: (f32, f32), on_panel: bool) -> Release {
-        if !self.moved(cursor) {
-            Release::Click(self.index)
+    /// It does nothing more; its release is still the panel's.
+    fn cancel(&mut self) {
+        self.cancelled = true;
+        self.dragging = false;
+    }
+    /// The button came up at `cursor`, with the game as `now` finds it. The
+    /// release point counts as a last move. A click needs the pressed item
+    /// still at its index; a drop sends the item as it was pressed.
+    pub(super) fn release(mut self, cursor: (f32, f32), now: Now<'_>) -> Release {
+        let Some(on_panel) = now.on_panel else {
+            return Release::Cancel;
+        };
+        if !self.live_on(now.menu) || now.owner != Some(&self.owner) {
+            Release::Cancel
+        } else if !self.moved(cursor) {
+            if now.at_index == Some(&self.sent) {
+                Release::Click(self.index)
+            } else {
+                Release::Cancel
+            }
         } else if on_panel {
             Release::Cancel
         } else {
             Release::Drop(self.sent, cursor)
         }
+    }
+}
+
+/// The panel's overlay, in order: an item dragged off the list over
+/// everything, the settings button's label under it, then `rest` (the
+/// pointed item's or fluid's tooltip).
+fn browser_overlay(
+    dragged: Option<ItemStack>,
+    settings: Option<String>,
+    rest: impl FnOnce() -> Option<BrowserTooltip>,
+) -> Option<BrowserTooltip> {
+    if let Some(stack) = dragged {
+        Some(BrowserTooltip::Dragged(stack))
+    } else if let Some(label) = settings {
+        Some(BrowserTooltip::Text(label))
+    } else {
+        rest()
     }
 }
 
@@ -157,11 +214,49 @@ pub(super) struct Panel {
 }
 
 impl Panel {
-    /// The item being dragged off `owner`'s panel, if a drag is on.
-    pub(super) fn dragged(&self, owner: &Owner) -> Option<&ItemStack> {
+    /// The item being dragged off `owner`'s panel on menu `menu`, if a drag
+    /// is on.
+    pub(super) fn dragged(&self, owner: &Owner, menu: u64) -> Option<&ItemStack> {
         (self.held.as_ref())
-            .filter(|held| held.dragging && held.owner == *owner)
+            .filter(|held| held.live_on(menu) && held.dragging && held.owner == *owner)
             .map(|held| &held.stack)
+    }
+    /// Cancels the held press (Escape, focus loss, its menu closing): true
+    /// when it was a drag. Its release stays the panel's.
+    pub(super) fn cancel_press(&mut self) -> bool {
+        let Some(held) = self.held.as_mut().filter(|held| !held.cancelled) else {
+            return false;
+        };
+        let dragging = held.dragging;
+        held.cancel();
+        dragging
+    }
+    /// A button went down anywhere. A left one means the held press's
+    /// release never came, so it is forgotten; another cancels it.
+    pub(super) fn other_press(&mut self, left: bool) {
+        if left {
+            self.held = None;
+        } else {
+            self.cancel_press();
+        }
+    }
+    /// A mod's screen hook vetoed the held press's release: the press and
+    /// its dragged item go, and nothing is sent.
+    pub(super) fn release_vetoed(&mut self) {
+        self.held = None;
+    }
+    /// The pointer moved to `cursor` with menu `menu` open: true while a
+    /// press is held. A press from another menu is cancelled.
+    pub(super) fn press_moved(&mut self, cursor: (f32, f32), menu: u64) -> bool {
+        let Some(held) = self.held.as_mut() else {
+            return false;
+        };
+        if held.live_on(menu) {
+            held.moved(cursor);
+        } else {
+            held.cancel();
+        }
+        true
     }
     /// `panel_style`.
     pub(super) fn set_style(&mut self, mod_id: &str, style: PanelStyle) {
@@ -826,6 +921,7 @@ impl Game<'_> {
         let mut search = search.clone();
         search.draw_with_skin(batch, &self.gui.atlas, None, skin);
         self.panel.search = Some(search);
+        let mut settings_label = None;
         if let Some(rect @ [x, y, width, height]) = layout.settings {
             let hovered = inside(cursor, rect);
             let atlas = &self.gui.atlas;
@@ -859,22 +955,24 @@ impl Game<'_> {
             let label = sunrise_client::lang::get("options.title");
             sunrise_client::widgets::record(&label, rect, true);
             if hovered && self.carried.is_none() {
-                return Some(BrowserTooltip::Text(label));
+                settings_label = Some(label);
             }
         }
-        if let Some(stack) =
-            (self.panel.of.as_ref()).and_then(|(owner, _)| self.panel.dragged(owner))
-        {
-            // The dragged item goes over everything, in the tooltip's place.
-            Some(BrowserTooltip::Dragged(stack.clone()))
-        } else if self.carried.is_some() {
-            None
-        } else if let Some(stack) = self.browser_pointed_stack(&layout) {
-            Some(BrowserTooltip::Stack(stack.1))
-        } else {
-            self.recipe_fluid_hovered(&layout)
-                .map(BrowserTooltip::Fluid)
-        }
+        // The dragged item goes over everything, the settings button's label too.
+        let menu = self.screen_state.screen_instance;
+        let dragged = (self.panel.of.as_ref())
+            .and_then(|(owner, _)| self.panel.dragged(owner, menu))
+            .cloned();
+        browser_overlay(dragged, settings_label, || {
+            if self.carried.is_some() {
+                None
+            } else if let Some(stack) = self.browser_pointed_stack(&layout) {
+                Some(BrowserTooltip::Stack(stack.1))
+            } else {
+                self.recipe_fluid_hovered(&layout)
+                    .map(BrowserTooltip::Fluid)
+            }
+        })
     }
 
     pub(super) fn draw_mod_browser_tooltip(
@@ -903,8 +1001,9 @@ impl Game<'_> {
     /// (its search box, page arrows, items or empty space; a click there
     /// never throws the carried stack).
     pub(super) fn mod_browser_press(&mut self, right: bool) -> bool {
-        // A press whose release never came (the pointer left the window) ends here.
-        self.panel.held = None;
+        // A left press whose release never came (the pointer left the window)
+        // ends here; a right press cancels the held one.
+        self.panel.other_press(!right);
         let Some(owner) = self.browser_sync() else {
             return false;
         };
@@ -987,6 +1086,8 @@ impl Game<'_> {
                     stack,
                     from: cursor,
                     dragging: false,
+                    menu: self.screen_state.screen_instance,
+                    cancelled: false,
                 });
                 return true;
             }
@@ -1000,37 +1101,41 @@ impl Game<'_> {
         inside(cursor, layout.area)
     }
 
-    /// The pointer moved on a container screen: a press held on a panel item
-    /// becomes a drag once it is `DRAG_THRESHOLD` away.
-    pub(super) fn mod_browser_drag_move(&mut self) {
-        let cursor = self.cursor;
-        if let Some(held) = self.panel.held.as_mut() {
-            held.moved(cursor);
-        }
+    /// The pointer moved with a press held on a panel item: it becomes a
+    /// drag once it is `DRAG_THRESHOLD` away, and is cancelled once its menu
+    /// is no longer the open one. True while a press is held: neither the
+    /// menu nor its slots hear the move.
+    pub(super) fn mod_browser_drag_move(&mut self) -> bool {
+        let menu = self.screen_state.screen_instance;
+        self.panel.press_moved(self.cursor, menu)
     }
 
-    /// A left release on a container screen: true when it ends a press on a
-    /// panel item (`Held`), which then clicks the item, drops it on the
-    /// screen (`PanelEvent::Dropped` to the panel's owner) or cancels the
-    /// drag. The screen underneath never hears that release: no slot click,
-    /// no throw, no quick craft.
-    pub(super) fn mod_browser_release(&mut self, right: bool) -> bool {
-        if right {
+    /// A left release: true when it ends a press on a panel item (`Held`),
+    /// which then clicks the item, drops it on the screen
+    /// (`PanelEvent::Dropped` to the panel's owner) or does nothing (`Now`:
+    /// a cancelled press, its menu closed or replaced, the panel gone or
+    /// changed hands, or the item no longer at its index). The release is
+    /// the panel's either way: no screen hears it, no slot click, no throw,
+    /// no quick craft.
+    pub(super) fn mod_browser_release(&mut self) -> bool {
+        if self.panel.held.is_none() {
             return false;
         }
+        let owner = self.browser_sync();
+        let on_panel = (self.browser_batch())
+            .and_then(|batch| self.browser_layout(&batch))
+            .map(|layout| inside(self.cursor, layout.area));
         let Some(held) = self.panel.held.take() else {
-            return false;
-        };
-        // The panel went away or changed hands under the press: nothing more.
-        if self.browser_sync().as_ref() != Some(&held.owner) {
-            return true;
-        }
-        let Some(layout) = (self.browser_batch()).and_then(|batch| self.browser_layout(&batch))
-        else {
             return true;
         };
-        let owner = held.owner.clone();
-        let event = match held.release(self.cursor, inside(self.cursor, layout.area)) {
+        let at_index = (self.panel_shown()).and_then(|shown| shown.items.get(held.index).cloned());
+        let now = Now {
+            menu: self.screen_state.screen_instance,
+            owner: owner.as_ref(),
+            on_panel,
+            at_index: at_index.as_ref(),
+        };
+        let event = match held.release(self.cursor, now) {
             Release::Click(index) => BrowserEvent::Clicked {
                 index: index as u32,
                 right: false,
@@ -1038,29 +1143,42 @@ impl Game<'_> {
             Release::Drop(stack, (x, y)) => BrowserEvent::Dropped { stack, x, y },
             Release::Cancel => return true,
         };
-        self.panel_event(&owner, event);
-        true
-    }
-
-    /// Escape on a container screen: true when it cancelled a drag off the
-    /// panel, and the screen stays open.
-    pub(super) fn mod_browser_drag_escape(&mut self) -> bool {
-        if !self.mod_browser_dragging() {
-            return false;
+        if let Some(owner) = owner {
+            self.panel_event(&owner, event);
         }
-        self.panel.held = None;
         true
     }
 
-    /// Whether a left press on a panel item waits for its release.
-    pub(super) fn mod_browser_holding(&self) -> bool {
-        self.panel.held.is_some()
+    /// A mod's screen hook vetoed the left release of a held press: the
+    /// dragged item goes away and nothing is sent.
+    pub(super) fn mod_browser_release_vetoed(&mut self) {
+        self.panel.release_vetoed();
     }
 
-    /// Whether an item is being dragged off the panel: the screen's slots
-    /// show no tooltip under it.
+    /// A button went down (`left` or another): a held press whose release
+    /// never came is forgotten, or cancelled by another button.
+    pub(super) fn mod_browser_other_press(&mut self, left: bool) {
+        self.panel.other_press(left);
+    }
+
+    /// Escape: cancels a held press. True when that was a drag over its own
+    /// menu, and the screen stays open.
+    pub(super) fn mod_browser_drag_escape(&mut self) -> bool {
+        let dragging = self.mod_browser_dragging();
+        self.panel.cancel_press();
+        dragging
+    }
+
+    /// The window lost the focus: a held press is cancelled.
+    pub(super) fn mod_browser_focus_lost(&mut self) {
+        self.panel.cancel_press();
+    }
+
+    /// Whether an item is being dragged off the panel over the menu it was
+    /// pressed on: the screen's slots show no tooltip under it.
     pub(super) fn mod_browser_dragging(&self) -> bool {
-        self.panel.held.as_ref().is_some_and(|held| held.dragging)
+        let menu = self.screen_state.screen_instance;
+        (self.panel.held.as_ref()).is_some_and(|held| held.live_on(menu) && held.dragging)
     }
 
     /// A wheel notch `d` on a container screen (positive is up): true when
@@ -1147,8 +1265,9 @@ impl Game<'_> {
     /// The container screen closed: the search box lets go of the keys.
     pub(super) fn mod_browser_closed(&mut self) {
         self.panel.transfer_warning = None;
-        // Closing the screen cancels a drag off the panel.
-        self.panel.held = None;
+        // Closing the screen cancels a press on the panel; its release stays
+        // the panel's.
+        self.panel.cancel_press();
         if let Some(search) = self.panel.search.as_mut() {
             search.focused = false;
         }
@@ -1240,7 +1359,10 @@ pub(super) fn browser_stack(
 
 #[cfg(test)]
 mod tests {
-    use super::{BrowserStack, DRAG_THRESHOLD, Held, Owner, Panel, RecipePage, Release};
+    use super::{
+        BrowserStack, BrowserTooltip, DRAG_THRESHOLD, Held, Now, Owner, Panel, RecipePage, Release,
+        browser_overlay,
+    };
     use crate::game::native_hooks::{NativeRecipeLayout, NativeRecipeResult, NativeRecipeView};
     use mod_api::FluidStack;
 
@@ -1383,6 +1505,9 @@ mod tests {
         }
     }
 
+    /// The menu every `held` press goes down on.
+    const MENU: u64 = 7;
+
     fn held(owner: &str, index: usize) -> Held {
         Held {
             owner: Owner::Native(owner.into()),
@@ -1391,7 +1516,30 @@ mod tests {
             stack: sunrise_client::items::ItemStack::new("minecraft:stone", 1),
             from: (100.0, 50.0),
             dragging: false,
+            menu: MENU,
+            cancelled: false,
         }
+    }
+
+    /// The release of a `held("jei", _)` press, with its menu still open,
+    /// jei's panel shown, `at_index` at the pressed index, and the pointer
+    /// `on_panel` or not.
+    fn release(
+        press: Held,
+        to: (f32, f32),
+        on_panel: bool,
+        at_index: Option<&BrowserStack>,
+    ) -> Release {
+        let jei = Owner::Native("jei".into());
+        press.release(
+            to,
+            Now {
+                menu: MENU,
+                owner: Some(&jei),
+                on_panel: Some(on_panel),
+                at_index,
+            },
+        )
     }
 
     /// A press stays a click until the pointer is `DRAG_THRESHOLD` away, in
@@ -1416,29 +1564,202 @@ mod tests {
     #[test]
     fn a_release_clicks_drops_or_cancels() {
         keys();
+        let stone = stack("minecraft:stone");
         // A click, on the panel or (a shaky hand at its edge) just off it.
         assert_eq!(
-            held("jei", 3).release((101.0, 51.0), true),
+            release(held("jei", 3), (101.0, 51.0), true, Some(&stone)),
             Release::Click(3)
         );
         assert_eq!(
-            held("jei", 3).release((102.0, 50.0), false),
+            release(held("jei", 3), (102.0, 50.0), false, Some(&stone)),
             Release::Click(3)
         );
         // Let go off the panel: the item, where it landed.
         let mut dragged = held("jei", 3);
         assert!(dragged.moved((60.0, 50.0)));
         assert_eq!(
-            dragged.clone().release((40.5, 70.25), false),
+            release(dragged.clone(), (40.5, 70.25), false, Some(&stone)),
             Release::Drop(stack("minecraft:stone"), (40.5, 70.25))
         );
         // Back on the panel: nothing.
-        assert_eq!(dragged.release((100.0, 50.0), true), Release::Cancel);
+        assert_eq!(
+            release(dragged, (100.0, 50.0), true, Some(&stone)),
+            Release::Cancel
+        );
         // A release far from the press with no move between is a drag too.
         assert_eq!(
-            held("jei", 0).release((20.0, 20.0), false),
+            release(held("jei", 0), (20.0, 20.0), false, Some(&stone)),
             Release::Drop(stack("minecraft:stone"), (20.0, 20.0))
         );
+    }
+
+    /// A deferred click is sent only while the shown list still has the
+    /// pressed item at its index; a drag drops the item captured at the
+    /// press, whatever the list holds now.
+    #[test]
+    fn a_deferred_click_needs_its_item_still_at_its_index() {
+        keys();
+        let (stone, dirt) = (stack("minecraft:stone"), stack("minecraft:dirt"));
+        assert_eq!(
+            release(held("jei", 3), (100.0, 50.0), true, Some(&stone)),
+            Release::Click(3)
+        );
+        // The list changed under the press: another item at 3, or none.
+        assert_eq!(
+            release(held("jei", 3), (100.0, 50.0), true, Some(&dirt)),
+            Release::Cancel
+        );
+        assert_eq!(
+            release(held("jei", 3), (100.0, 50.0), true, None),
+            Release::Cancel
+        );
+        // The same item id at another count is another stack.
+        let mut more = stack("minecraft:stone");
+        more.count = 2;
+        assert_eq!(
+            release(held("jei", 3), (100.0, 50.0), true, Some(&more)),
+            Release::Cancel
+        );
+        // A drag keeps the stone it picked up.
+        let mut dragged = held("jei", 3);
+        assert!(dragged.moved((60.0, 50.0)));
+        assert_eq!(
+            release(dragged, (30.0, 40.0), false, Some(&dirt)),
+            Release::Drop(stack("minecraft:stone"), (30.0, 40.0))
+        );
+    }
+
+    /// A press belongs to the menu open when it went down. Escape, focus
+    /// loss, a right press, and its menu closing or being replaced cancel
+    /// it: it draws nothing and its release sends nothing, but the press
+    /// stays held so that release is still the panel's. A vetoed release
+    /// drops it with nothing sent; a new left press forgets a press whose
+    /// release never came.
+    #[test]
+    fn a_press_is_bound_to_its_menu() {
+        keys();
+        let stone = stack("minecraft:stone");
+        let jei = Owner::Native("jei".into());
+        let at = |menu: u64, owner: Option<&'static str>, on_panel: Option<bool>| {
+            let mut press = held("jei", 3);
+            assert!(press.moved((60.0, 50.0)));
+            let owner = owner.map(|id| Owner::Native(id.into()));
+            press.release(
+                (30.0, 40.0),
+                Now {
+                    menu,
+                    owner: owner.as_ref(),
+                    on_panel,
+                    at_index: Some(&stack("minecraft:stone")),
+                },
+            )
+        };
+        assert_eq!(
+            at(MENU, Some("jei"), Some(false)),
+            Release::Drop(stack("minecraft:stone"), (30.0, 40.0))
+        );
+        // Released over a replacement menu, with the panel gone, owned by
+        // another mod, or with no room to show it: nothing.
+        assert_eq!(at(MENU + 1, Some("jei"), Some(false)), Release::Cancel);
+        assert_eq!(at(MENU, None, Some(false)), Release::Cancel);
+        assert_eq!(at(MENU, Some("ae2"), Some(false)), Release::Cancel);
+        assert_eq!(at(MENU, Some("jei"), None), Release::Cancel);
+
+        // Escape and focus loss: the first cancel of a drag says so (the
+        // Escape is the drag's), a second finds nothing to cancel.
+        for _ in ["Escape", "focus loss"] {
+            let mut panel = Panel {
+                held: Some(held("jei", 3)),
+                ..Panel::default()
+            };
+            assert!(panel.press_moved((60.0, 50.0), MENU));
+            assert!(panel.dragged(&jei, MENU).is_some());
+            assert!(panel.cancel_press());
+            assert!(!panel.cancel_press());
+            assert!(panel.dragged(&jei, MENU).is_none());
+            let press = panel.held.take().expect("its release is still the panel's");
+            assert_eq!(
+                release(press, (30.0, 40.0), false, Some(&stone)),
+                Release::Cancel
+            );
+        }
+        // A press that is not a drag yet cancels too, and leaves Escape to
+        // the screen.
+        let mut panel = Panel {
+            held: Some(held("jei", 3)),
+            ..Panel::default()
+        };
+        assert!(!panel.cancel_press());
+        assert_eq!(
+            release(
+                panel.held.take().unwrap(),
+                (100.0, 50.0),
+                true,
+                Some(&stone)
+            ),
+            Release::Cancel
+        );
+
+        // Its menu replaced: the first move over the new menu cancels it.
+        let mut panel = Panel {
+            held: Some(held("jei", 3)),
+            ..Panel::default()
+        };
+        assert!(panel.press_moved((60.0, 50.0), MENU));
+        assert!(panel.press_moved((50.0, 50.0), MENU + 1));
+        assert!(panel.dragged(&jei, MENU).is_none());
+        assert!(panel.dragged(&jei, MENU + 1).is_none());
+        let press = panel.held.take().unwrap();
+        assert!(press.cancelled);
+        assert_eq!(
+            release(press, (30.0, 40.0), false, Some(&stone)),
+            Release::Cancel
+        );
+        assert!(!panel.press_moved((50.0, 50.0), MENU), "no press, no move");
+
+        // A right press cancels it; a vetoed release drops it outright.
+        let mut panel = Panel {
+            held: Some(held("jei", 3)),
+            ..Panel::default()
+        };
+        panel.press_moved((60.0, 50.0), MENU);
+        panel.other_press(false);
+        assert!(panel.held.as_ref().unwrap().cancelled);
+        assert!(panel.dragged(&jei, MENU).is_none());
+        panel.release_vetoed();
+        assert!(panel.held.is_none());
+
+        // A left press with a press still held: that release never came.
+        let mut panel = Panel {
+            held: Some(held("jei", 3)),
+            ..Panel::default()
+        };
+        panel.other_press(true);
+        assert!(panel.held.is_none());
+    }
+
+    /// An item dragged off the list draws over the settings button: its
+    /// label shows only with no drag, and the pointed item's tooltip only
+    /// with neither.
+    #[test]
+    fn the_dragged_item_draws_over_the_settings_label() {
+        keys();
+        let stone = sunrise_client::items::ItemStack::new("minecraft:stone", 1);
+        let label = || Some("Options".to_owned());
+        let rest = || Some(BrowserTooltip::Text("Stone".into()));
+        assert!(matches!(
+            browser_overlay(Some(stone.clone()), label(), rest),
+            Some(BrowserTooltip::Dragged(s)) if s == stone
+        ));
+        assert!(matches!(
+            browser_overlay(None, label(), rest),
+            Some(BrowserTooltip::Text(t)) if t == "Options"
+        ));
+        assert!(matches!(
+            browser_overlay(None, None, rest),
+            Some(BrowserTooltip::Text(t)) if t == "Stone"
+        ));
+        assert!(browser_overlay(None, None, || None).is_none());
     }
 
     /// Only a drag on the shown panel's own owner draws its item; a press
@@ -1448,15 +1769,22 @@ mod tests {
         keys();
         let mut panel = Panel::default();
         let jei = Owner::Native("jei".into());
-        assert!(panel.dragged(&jei).is_none());
+        assert!(panel.dragged(&jei, MENU).is_none());
         panel.held = Some(held("jei", 1));
-        assert!(panel.dragged(&jei).is_none(), "a press is not a drag yet");
+        assert!(
+            panel.dragged(&jei, MENU).is_none(),
+            "a press is not a drag yet"
+        );
         panel.held.as_mut().unwrap().moved((0.0, 0.0));
         assert_eq!(
-            panel.dragged(&jei),
+            panel.dragged(&jei, MENU),
             Some(&sunrise_client::items::ItemStack::new("minecraft:stone", 1))
         );
-        assert!(panel.dragged(&Owner::Native("recipes".into())).is_none());
+        assert!(
+            panel
+                .dragged(&Owner::Native("recipes".into()), MENU)
+                .is_none()
+        );
     }
 
     #[test]

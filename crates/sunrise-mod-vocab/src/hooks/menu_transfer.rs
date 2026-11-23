@@ -14,8 +14,10 @@ pub trait Hooks {
     /// part may also push the recipe's cells nothing fills to
     /// `missing_cells`, and the cells it lacks but could craft to
     /// `craftable_cells` (both empty by default), in `RecipeTransferCheck`'s
-    /// cell order; the game keeps the ones below the recipe's cell count,
-    /// each once, in ascending order, and ignores both outside a dry run.
+    /// cell order; the game keeps the ones below the recipe's cell count
+    /// (its known layout: one for stonecutting, 256 for a recipe it can't
+    /// inspect), each once, in ascending order, and ignores both outside a
+    /// dry run.
     #[notes = r##"### Recipe transfer into a mod menu
 
 A viewer's "+" (`RecipesClientHost::transfer_recipe_id`, or `transfer_recipe` for a recipe-book recipe)
@@ -35,9 +37,10 @@ Version 2 adds the dry run's cells. `missing_cells` names the recipe's cells no 
 `craftable_cells` the ones the menu lacks but could craft (a storage network's autocrafting), both as indices in
 `RecipeTransferCheck`'s cell order: width by height for a shaped recipe, else its ingredients in order. They reach
 the viewer as `RecipeTransferCheck::missing_cells` and `craftable_cells`, with any answer, so a part can answer
-`Moves` and still mark the craftable cells. The game keeps the cells below the recipe's cell count (for a recipe
-it can't place, a mod's own type, below 256), each once, in ascending order; pushes outside a dry run are
-dropped. Named injections request `hook_version = 2`."##]
+`Moves` and still mark the craftable cells. The game keeps both lists below the recipe's cell count, from its
+known layout (one for a stonecutting recipe, three for smithing, the placement's slots for crafting and cooking;
+256 for a recipe it can't inspect, such as a mod's own type), each once, in ascending order; pushes outside a dry
+run are dropped."##]
     #[hook(
         dispatch = "api_carrier",
         side = "server",
