@@ -85,9 +85,9 @@ commit. Joins are processed in spawn order before removal effects. A refused joi
 spawn leaves a stale handle, not an ID that can be reused. Removing an entity makes it unavailable
 immediately, while dismounts, leave and other removal effects wait for commit. Abort restores the
 resident entity without a leave or join; a spawn removed within the same transaction is never
-announced. A join listener that spawns, removes or commits a transaction during announcement
-receives its own joins after the announcing batch, in requested order. Travel between levels is
-not journaled. See [Spawning](../how-to/world/spawning.md) and
+announced. Join notifications in the same level requested while a commit is announcing its joins
+are delivered after that announcing batch, in request order. Travel between levels is not
+journaled. See [Spawning](../how-to/world/spawning.md) and
 [Hook notes](../reference/hook-notes.md).
 
 ## Transaction authority

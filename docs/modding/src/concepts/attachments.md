@@ -51,7 +51,7 @@ lost on unload or restart. Unknown mods' encoded entries survive load and save w
 decoded. Holder data is stored under `sunrise:attachments`, by namespace and name; each level
 uses the dimension's `data/sunrise/attachments.dat` file rather than `level.dat`. See
 `Holder::Entity` in the [generated API reference](../reference/api.md) for entity persistence
-exceptions such as split experience orbs.
+details.
 
 ## Querying holders
 

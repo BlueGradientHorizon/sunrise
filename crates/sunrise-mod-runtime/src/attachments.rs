@@ -146,9 +146,9 @@ pub fn attachment_compound(tag: Option<&Tag>) -> Result<Option<&Compound>, Attac
 pub enum Holder {
     /// A non-player entity ID in the host's current dimension.
     ///
-    /// An entity keeps its UUID through saves so saved attachments reload with it. When a saved
-    /// experience orb with `count > 1` expands into several live orbs on load, only the first
-    /// inherits the saved attachments.
+    /// An entity keeps its UUID through saves so saved attachments reload with it. A saved
+    /// experience orb with `count > 1` loads as one entity with its merged count, and its saved
+    /// attachments bind to that entity.
     Entity(u32),
     Player(u128),
     BlockEntity([i32; 3]),
@@ -407,15 +407,21 @@ pub struct AttachmentType<T: 'static> {
     /// Send the value to the clients that see the holder; needs a codec.
     ///
     /// Values travel on `sunrise:attachment_sync` (play, clientbound, version 1, optional) only to
-    /// connections that negotiated it; vanilla clients receive none. Each message is prepared
-    /// against the player's current connection epoch and published at root commit in order with
-    /// the player's other packets: a rolled-back edit sends nothing, and a message prepared before
-    /// a connection reconfiguration never reaches the new connection.
+    /// connections that negotiated it; vanilla clients receive none. Queued changes (from `get`
+    /// inserting a default, `set`, `remove`, or [`AttachmentType::sync_data`]) are coalesced and
+    /// sent at the end of the tick, whereas a client that starts tracking a holder receives an
+    /// initial pairing bundle of all synced values for that holder.
+    ///
+    /// Each message is prepared against the player's current connection epoch: inside a
+    /// transaction it is published at root commit (a rolled-back edit sends nothing); outside a
+    /// transaction it is published immediately, in order with the player's other packets. A
+    /// message prepared before a connection reconfiguration never reaches the new connection.
     ///
     /// Payload size is bounded by the connection's frame limits (there is no separate cap). A
     /// namespace or name exceeding 256 UTF-16 code units, a value that cannot be encoded, or a
-    /// message past the frame limits is not sent and is logged by name each time while the player
-    /// stays joined. A full outgoing queue closes that player's connection.
+    /// message past the frame limits is not sent; the refusal is logged with the holder and error
+    /// (not necessarily each attachment name) while the player stays joined. A full outgoing queue
+    /// closes that player's connection.
     pub sync: bool,
 }
 
@@ -539,13 +545,15 @@ impl<T: Clone + Send + Sync + 'static> AttachmentType<T> {
         value
     }
     /// Send the current value to the clients that see the holder.
-    /// Queue a sync of this attachment for `holder` at the end of the tick (requires `sync: true`).
+    /// Queue a sync of this attachment for `holder` at the end of the tick when `self.sync` is
+    /// `true`. When `self.sync` is `false`, validates the declaration and policy and returns
+    /// `Ok(())` without queuing a sync.
     ///
-    /// Follows the same send limits, failure outcomes, and connection-epoch rules documented on
-    /// [`AttachmentType::sync`]: overlong names (over 256 UTF-16 code units), unencodable values,
-    /// and oversized frames are logged by name and not sent without disconnecting the player; a
-    /// full outgoing queue closes the player's connection; and updates prepared before a
-    /// reconfiguration never cross into the new connection.
+    /// Queued updates follow the same send limits, failure outcomes, and connection-epoch rules
+    /// documented on [`AttachmentType::sync`]: overlong names (over 256 UTF-16 code units),
+    /// unencodable values, and oversized frames are logged with the holder and error and not sent
+    /// without disconnecting the player; a full outgoing queue closes the player's connection; and
+    /// updates prepared before a reconfiguration never cross into the new connection.
     pub fn sync_data<S: AttachmentStore + ?Sized>(
         &self,
         store: &mut S,
