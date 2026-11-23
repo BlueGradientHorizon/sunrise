@@ -87,7 +87,7 @@ impl Game<'_> {
     /// the acting player, and a game without a hub keeps its single
     /// player's the same way), any other guest's are their hub record's.
     /// None for another kind.
-    fn native_living_player_effects(&self, t: Target) -> Option<&PlayerEffects> {
+    pub(super) fn native_living_player_effects(&self, t: Target) -> Option<&PlayerEffects> {
         match t {
             Target::Player => Some(&self.potions.effects),
             Target::Guest(conn) if self.lan_acting == Some(conn) => Some(&self.potions.effects),
@@ -141,22 +141,8 @@ impl Game<'_> {
     ) -> Option<ActiveEffect> {
         let def = mod_api::__private::effect_index(effect)
             .and_then(sunrise_client_core::potions::effect_by_index)?;
-        match self.native_living_read_target(living)? {
-            t @ (Target::Player | Target::Guest(_)) => self
-                .native_living_player_effects(t)?
-                .get_registered(def.index)
-                .map(active_effect),
-            Target::Mob(id) => {
-                let m = self.mobs.iter().find(|m| m.id == id && !m.removed)?;
-                let e = m
-                    .extra
-                    .effects
-                    .iter()
-                    .find(|e| e.registry_index == Some(def.index))?;
-                Some(mob_effect(m, e))
-            }
-            _ => None,
-        }
+        let target = self.native_living_read_target(living)?;
+        super::native_living_body::body_effect(self.native_living_body(target)?, def.index)
     }
 
     /// Visit `LivingEntity.getActiveEffects` over the resident player, guest or mob store.
@@ -196,22 +182,9 @@ impl Game<'_> {
         else {
             return false;
         };
-        match self.native_living_read_target(living) {
-            Some(t @ (Target::Player | Target::Guest(_))) => self
-                .native_living_player_effects(t)
-                .is_some_and(|effects| effects.get_registered(def.index).is_some()),
-            Some(Target::Mob(id)) => self
-                .mobs
-                .iter()
-                .find(|m| m.id == id && !m.removed)
-                .is_some_and(|m| {
-                    m.extra
-                        .effects
-                        .iter()
-                        .any(|e| e.registry_index == Some(def.index))
-                }),
-            _ => false,
-        }
+        self.native_living_read_target(living)
+            .and_then(|target| self.native_living_body(target))
+            .is_some_and(|body| super::native_living_body::body_potion_affected(body, def.index))
     }
 
     /// `LivingEntity.getEffectBlendFactor(effect, partialTick)` on a client:

@@ -28,6 +28,10 @@ pub trait KeysHost {
     /// Side: both.
     /// Resolve a canonical entry in the current side's live registry. None for an
     /// unknown registry or entry, or before that registry is available.
+    ///
+    /// `minecraft:worldgen/world_preset` has no published complete registry owner, so this
+    /// returns `None` for it even when prepared preset files exist or a world selected that
+    /// preset.
     fn registry_entry(&self, registry: &str, id: &str) -> Option<RegistryEntry>;
     /// Side: both.
     /// Visit the canonical entry IDs in the current side's registry, in the table's existing

@@ -517,6 +517,7 @@ fn sources(root: &Path) -> Result<Sources, String> {
     })
 }
 
+pub mod api_reference;
 mod build;
 mod capability_keys;
 pub mod counterparts;
@@ -574,6 +575,7 @@ pub mod replace;
 pub(crate) mod source;
 pub mod staging;
 pub mod surface;
+pub use api_reference::generate as generate_api_reference;
 pub use build::{generate, generate_api_parts, generate_render, write_if_changed};
 pub use counterparts::generate as generate_counterparts;
 pub use notes::generate as generate_hook_notes;

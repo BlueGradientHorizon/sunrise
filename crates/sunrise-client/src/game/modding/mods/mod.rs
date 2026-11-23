@@ -5151,6 +5151,7 @@ pub(in crate::game) mod tests {
                             sprite: None,
                             tint: None,
                             world: Some(Default::default()),
+                            measures: Default::default(),
                         },
                     ]);
                     register_fluid_models(ExecutionRole::Client);
