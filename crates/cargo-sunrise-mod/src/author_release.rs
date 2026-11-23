@@ -41,26 +41,19 @@ fn registry_file(fetch: Fetch<'_>, name: &str) -> Result<String, String> {
     fetch(&url)?.ok_or_else(|| format!("{url}: not found"))
 }
 
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct Watched {
-    #[serde(default)]
-    repository: Vec<Repository>,
-}
-
+/// `registry/repositories/<numeric repository id>.toml`: one file per registered repository.
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct Repository {
-    id: u64,
-    // A name can be reused after a rename: the ID is the identity.
+    // A name can be reused after a rename: the ID in the file name is the identity.
     #[serde(rename = "name")]
     _name: String,
-    package: Vec<WatchedPackage>,
+    package: Vec<RegisteredPackage>,
 }
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-struct WatchedPackage {
+struct RegisteredPackage {
     path: String,
     project: String,
 }
@@ -129,16 +122,18 @@ fn registered(
     kind: &str,
 ) -> Result<(), String> {
     let name = github_name(origin).ok_or(NOT_REGISTERED)?;
-    let watched: Watched = toml::from_str(&registry_file(fetch, "watched.toml")?)
-        .map_err(|e| format!("registry/watched.toml: {e}"))?;
     let url = format!("https://api.github.com/repos/{name}");
     let text = fetch(&url)?.ok_or(NOT_REGISTERED)?;
     let GitHubRepository { id } = serde_json::from_str(&text).map_err(|e| format!("{url}: {e}"))?;
-    let package = watched
-        .repository
+    let file = format!("repositories/{id}.toml");
+    let url = format!("{}/{file}", sunrise_addresses::MOD_REGISTRY_METADATA);
+    let text = fetch(&url)?.ok_or(NOT_REGISTERED)?;
+    let repository: Repository =
+        toml::from_str(&text).map_err(|e| format!("registry/{file}: {e}"))?;
+    let package = repository
+        .package
         .iter()
-        .find(|r| r.id == id)
-        .and_then(|repo| repo.package.iter().find(|p| p.path == path))
+        .find(|p| p.path == path)
         .ok_or(NOT_REGISTERED)?;
     let record = format!("projects/{}/project.toml", package.project);
     let ProjectRecord {

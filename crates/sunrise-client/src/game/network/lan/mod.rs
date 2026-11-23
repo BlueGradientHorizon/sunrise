@@ -2542,6 +2542,10 @@ impl Game<'_> {
             .first
             .then(|| host.hub.lan.configuration_requests().collect::<Vec<_>>());
         let handoffs = self.level_pass.first.then(|| host.hub.lan.take_handoffs());
+        let login_profiles = self
+            .level_pass
+            .first
+            .then(|| host.hub.lan.login_profile_requests().collect::<Vec<_>>());
         let holding = lan::Holding::start();
         // Last tick's tracked entities: enough for place collision and joins
         // before this tick moves anyone.
@@ -2634,11 +2638,54 @@ impl Game<'_> {
         if let Some(handoffs) = handoffs {
             self.tick_lan_player_handshakes(handoffs);
         }
+        for request in login_profiles.into_iter().flatten() {
+            self.answer_login_profile(request);
+        }
         if let Some(requests) = configuration_requests {
             sunrise_client::spans::time("lan_configuration_tasks", || {
                 self.tick_lan_configuration_tasks(requests)
             });
         }
+    }
+
+    /// `player_login_profile` for one admitted login: the mods' list when the packet can carry
+    /// it, else the login's own, sent back to its connection.
+    fn answer_login_profile(&mut self, request: lan::login_profile::LoginProfileRequest) {
+        use sunrise_core::profile::AccountProperty;
+        let lan::login_profile::LoginProfileRequest {
+            uuid,
+            name,
+            properties,
+            reply,
+        } = request;
+        let mut edited: Vec<_> = properties
+            .iter()
+            .map(|property| mod_api::AccountProfileProperty {
+                name: property.name.clone(),
+                value: property.value.clone(),
+                signature: property.signature.clone(),
+            })
+            .collect();
+        self.native_player_login_profile(uuid, &name, &mut edited);
+        let edited: Vec<_> = edited
+            .into_iter()
+            .map(|property| AccountProperty {
+                name: property.name,
+                value: property.value,
+                signature: property.signature,
+            })
+            .collect();
+        let chosen = if lan::login_profile::properties_fit(&edited) {
+            edited
+        } else {
+            log::warn!(
+                "player_login_profile: the properties for {name} don't fit the login packet; \
+                 keeping the login's own"
+            );
+            properties
+        };
+        // A connection that closed meanwhile no longer waits.
+        let _ = reply.send(chosen);
     }
 
     fn tick_lan_player_handshakes(&mut self, handoffs: Vec<lan::Handoff>) {
@@ -7065,5 +7112,7 @@ mod merchant_packet_tests {
     }
 }
 
+#[cfg(test)]
+mod login_profile_tests;
 #[cfg(test)]
 mod tracking_hook_tests;

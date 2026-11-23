@@ -1365,6 +1365,10 @@ fn login_and_configure(
     properties: Vec<sunrise_core::profile::AccountProperty>,
 ) -> Result<Option<Parts>, String> {
     let e = |e: sunrise_protocol::Error| e.to_string();
+    // `player_login_profile`: the login's properties, as a mod edits them, go to both login
+    // success and the player list.
+    let properties =
+        super::login_profile::edited(shared.login_profiles.as_ref(), uuid, name, properties);
     // ServerLoginPacketListenerImpl: memory connections are not compressed.
     let threshold = shared.config.compression_threshold;
     if threshold >= 0 && !c.is_memory() {
