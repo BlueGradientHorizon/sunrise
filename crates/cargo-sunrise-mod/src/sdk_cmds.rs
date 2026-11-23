@@ -397,7 +397,7 @@ fn fit_lines(entry: ChildEntry, package: Option<&Path>, builds: &[&str]) -> Resu
             println!("{}  made for", target.name);
             continue;
         }
-        let game = match game_fit(project, &manifest, &table, &target) {
+        let game = match game_fit(&manifest, &table, &target) {
             Ok(game) => game,
             Err(why) => {
                 known = false;
@@ -549,8 +549,9 @@ pub(crate) fn compare_fit<B: AsRef<[u8]>>(
 /// The game code `manifest` declares, as `target` has it, against `table`'s record of it, and
 /// the horizon-mixins revision the mod pins against the one `target`'s tool builds with. A
 /// misfit already known stays when the build data cannot be read: why it cannot comes second.
+/// The build data is fetched from `target`'s signed SDK into a private folder, never read from
+/// the project's cache, which the checkout can edit.
 fn game_fit(
-    project: &Path,
     manifest: &Manifest,
     table: &UsesTable,
     target: &PinnedSdk,
@@ -560,8 +561,19 @@ fn game_fit(
     let index =
         Index::read(&bytes, &target.build).map_err(|e| format!("{}: {e}", path.display()))?;
     Ok(compare_game(manifest, table, &index.mixins.rev, || {
-        crate::sdk_fetch::build_data(project, &target.build)
-            .and_then(|data| game_uses::entries(manifest, &data, &target.build))
+        let staging = tempfile::tempdir().map_err(|e| format!("build data: {e}"))?;
+        crate::sdk_fetch::release_data(
+            &crate::sdk_fetch::Base::from_env(),
+            &crate::sdk_fetch::keys(),
+            &target.build,
+            staging.path(),
+            true,
+        )?;
+        let data = staging
+            .path()
+            .join(&target.build)
+            .join(crate::sdk_fetch::BUILD_DATA);
+        game_uses::entries(manifest, &data, &target.build)
     }))
 }
 
@@ -654,7 +666,7 @@ pub(crate) fn pin_report(entry: ChildEntry, root: &Path, to: &str) -> Result<(),
     );
     // The game code the mod declares, by the new build's build data.
     let made = uses_table::table(&uses, root, &parsed, &old)?;
-    let (compared, uncompared) = game_fit(root, &parsed, &made, &new)?;
+    let (compared, uncompared) = game_fit(&parsed, &made, &new)?;
     for misfit in &compared.misfits {
         println!("{misfit}");
     }

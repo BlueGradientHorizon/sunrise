@@ -21,10 +21,26 @@ impl OfflineSdk {
         }
     }
 
-    pub fn release(&self, commit: &str, mixins: &str) {
+    /// A signed `sdk-<commit>` release, with `build_data`'s files as its `build-data.tar.xz`
+    /// when there are any.
+    pub fn release(&self, commit: &str, mixins: &str, build_data: &[(&str, &[u8])]) {
         let tag = format!("sdk-{commit}");
         let folder = self.base.join(&tag);
         fs::create_dir_all(&folder).unwrap();
+        if !build_data.is_empty() {
+            let xz = lzma_rust2::XzWriter::new(Vec::new(), lzma_rust2::XzOptions::with_preset(0))
+                .unwrap();
+            let mut tar = tar::Builder::new(xz);
+            for (name, bytes) in build_data {
+                let mut header = tar::Header::new_ustar();
+                header.set_entry_type(tar::EntryType::Regular);
+                header.set_mode(0o644);
+                header.set_size(bytes.len() as u64);
+                tar.append_data(&mut header, name, *bytes).unwrap();
+            }
+            let archive = tar.into_inner().unwrap().finish().unwrap();
+            fs::write(folder.join("build-data.tar.xz"), archive).unwrap();
+        }
         let surface = format!(r#"{{"schema":{},"hash":"ab"}}"#, mod_surface::SCHEMA);
         fs::write(folder.join("surface.json"), &surface).unwrap();
         // Repinning also fetches the project's API archive. These tests have no Rust sources to scan.

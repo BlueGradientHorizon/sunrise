@@ -45,11 +45,7 @@ impl Project {
         )
         .unwrap();
         let sdk = OfflineSdk::new(&dir);
-        sdk.release(OLD, MIXINS);
-        sdk.release(NEW, MIXINS);
-        sdk.prefetch(&dir, OLD, NEW);
-        let project = Self { dir, sdk };
-        project.build_data(
+        let old = build_data(
             OLD,
             &[
                 (STEADY, "struct", "1111"),
@@ -58,7 +54,7 @@ impl Project {
                 (BODILESS, "method", "4444"),
             ],
         );
-        project.build_data(
+        let new = build_data(
             NEW,
             &[
                 (STEADY, "struct", "1111"),
@@ -66,36 +62,39 @@ impl Project {
                 (BODILESS, "method", "4499"),
             ],
         );
-        project
-    }
-
-    /// `build`'s internals catalog and an empty function index, as the fetched SDK's build data.
-    fn build_data(&self, build: &str, internals: &[(&str, &str, &str)]) {
-        let dir = self
-            .dir
-            .join(".sunrise/cache")
-            .join(build)
-            .join("build-data");
-        fs::create_dir_all(&dir).unwrap();
-        let listed = internals
-            .iter()
-            .map(|(path, kind, hash)| {
-                serde_json::json!({"path": path, "kind": kind, "signature": path, "hash": hash})
-            })
-            .collect::<Vec<_>>();
-        let catalog =
-            serde_json::json!({"schema": 1, "build": {"commit": build}, "internals": listed});
-        fs::write(dir.join("internals.json"), catalog.to_string()).unwrap();
-        fs::write(
-            dir.join("functions.json"),
-            format!(r#"{{"schema":1,"build":{{"commit":"{build}"}},"crates":{{}},"functions":{{}},"refused":{{}}}}"#),
-        )
-        .unwrap();
+        for (build, data) in [(OLD, &old), (NEW, &new)] {
+            let files: Vec<(&str, &[u8])> = data
+                .iter()
+                .map(|(name, bytes)| (*name, bytes.as_slice()))
+                .collect();
+            sdk.release(build, MIXINS, &files);
+        }
+        sdk.prefetch(&dir, OLD, NEW);
+        Self { dir, sdk }
     }
 
     fn run(&self, args: &[&str]) -> Output {
         self.sdk.command(&self.dir).args(args).output().unwrap()
     }
+}
+
+/// `build`'s internals catalog and an empty function index: the files of its signed SDK's build
+/// data.
+fn build_data(build: &str, internals: &[(&str, &str, &str)]) -> Vec<(&'static str, Vec<u8>)> {
+    let listed = internals
+        .iter()
+        .map(|(path, kind, hash)| {
+            serde_json::json!({"path": path, "kind": kind, "signature": path, "hash": hash})
+        })
+        .collect::<Vec<_>>();
+    let catalog = serde_json::json!({"schema": 1, "build": {"commit": build}, "internals": listed});
+    let functions = format!(
+        r#"{{"schema":1,"build":{{"commit":"{build}"}},"crates":{{}},"functions":{{}},"refused":{{}}}}"#
+    );
+    vec![
+        ("internals.json", catalog.to_string().into_bytes()),
+        ("functions.json", functions.into_bytes()),
+    ]
 }
 
 impl Drop for Project {
@@ -236,4 +235,29 @@ fn pin_without_a_build_moves_to_the_current_nightly() {
         Manifest::parse(&manifest).unwrap().native.unwrap().sunrise,
         NEW
     );
+}
+
+#[test]
+#[ignore = "daily"]
+fn a_changed_build_data_cache_cannot_turn_a_misfit_into_a_fit() {
+    let moved = Project::new("cache", &[STEADY, RESHAPED, DROPPED]);
+    // The project's cache holds the new build's catalog rewritten to the old hashes; the verdict
+    // still comes from the signed SDK's build data.
+    let cached = moved
+        .dir
+        .join(".sunrise/cache")
+        .join(NEW)
+        .join("build-data");
+    fs::create_dir_all(&cached).unwrap();
+    for (name, bytes) in build_data(
+        NEW,
+        &[
+            (STEADY, "struct", "1111"),
+            (RESHAPED, "struct", "2222"),
+            (DROPPED, "field", "3333"),
+        ],
+    ) {
+        fs::write(cached.join(name), bytes).unwrap();
+    }
+    assert_answer(moved.run(&["check", "--build", NEW]), 1, CHANGED_IDS);
 }

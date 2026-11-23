@@ -588,6 +588,10 @@ fn build_data_from(
     build: &str,
 ) -> Result<PathBuf, String> {
     let dir = project.join(CACHE).join(build);
+    // A linked folder on the way would send the cache's removal and writes outside the project.
+    for folder in [project.join(".sunrise"), project.join(CACHE), dir.clone()] {
+        crate::internals::check_output_dir(&folder)?;
+    }
     let into = dir.join(BUILD_DATA);
     // The stamp is written only after the folder's SDK verified, and the build data is renamed
     // into place only after it unpacked whole from a verified archive.
@@ -627,7 +631,13 @@ pub(crate) fn release_data(
         fs::remove_file(&lock).map_err(|e| format!("{}: {e}", lock.display()))?;
     }
     // A transported artifact must never be mistaken for a verified local SDK cache.
-    fs::remove_file(dir.join(STAMP)).map_err(|e| format!("{}: {e}", dir.display()))?;
+    for name in [
+        STAMP,
+        sunrise_release_sign::SUMS,
+        sunrise_release_sign::SIGNATURE,
+    ] {
+        fs::remove_file(dir.join(name)).map_err(|e| format!("{}: {e}", dir.display()))?;
+    }
     Ok(index)
 }
 

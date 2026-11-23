@@ -526,6 +526,11 @@ fn repin(dir: &Path, fetch: FetchSdk, requested: &str, sunrise: &str) -> Result<
             path.display()
         ));
     }
+    // The old pin's SDK is removed after the write: a linked folder on the way would send the
+    // removal outside the project, so it is refused before anything changes.
+    for folder in [dir.join(".sunrise"), dir.join(sdk_fetch::DIR)] {
+        internals::check_output_dir(&folder)?;
+    }
     internals::atomic_write_manifest(&path, text)?;
     // The old pin's SDK goes; the next command fetches this one.
     if let Err(e) = std::fs::remove_dir_all(dir.join(sdk_fetch::DIR))

@@ -28,8 +28,8 @@ impl Project {
         fs::write(dir.join(MANIFEST), format!("# A modder's description\nid = 'example'\nname = 'Example'\nversion = '0.1.0'\napi = '0.2'\ncapabilities = ['registries']\n{declarations}\n[native] # native settings\ngame = '26.3'\nsunrise = '{OLD}' # pinned game\nmixins = '{MANIFEST_MIXINS}'\n")).unwrap();
         fs::write(dir.join("Cargo.toml"), "# Keep this comment\n[package]\nname = 'example'\nversion = '0.1.0'\n[dependencies]\nsunrise-mod-api = { path = '.sunrise/sdk/api/crates/sunrise-mod-api' } # API pin\nsunrise-internals = { path = '.sunrise/sdk/api/crates/sunrise-internals' } # facade pin\n").unwrap();
         let sdk = OfflineSdk::new(&dir);
-        sdk.release(OLD, MANIFEST_MIXINS);
-        sdk.release(NEW, NEW_MIXINS);
+        sdk.release(OLD, MANIFEST_MIXINS, &[]);
+        sdk.release(NEW, NEW_MIXINS, &[]);
         sdk.prefetch(&dir, OLD, NEW);
         let project = Self { dir, sdk };
         project.catalog(OLD, OLD_CATALOG);
@@ -349,7 +349,7 @@ fn pin_refuses_a_malformed_mixins_revision_and_changes_no_file() {
         "internals = [{ path = 'sunrise_client::game::Game', hash = 'stale' }]\n",
     );
     for rev in ["main", &NEW_MIXINS.to_uppercase(), &NEW_MIXINS[1..]] {
-        project.sdk.release(NEW, rev);
+        project.sdk.release(NEW, rev, &[]);
         // Force pin to read the replacement signed release instead of the cached valid SDK.
         fs::remove_dir_all(project.dir.join(".sunrise/cache").join(NEW)).unwrap();
         let manifest = fs::read(project.dir.join(MANIFEST)).unwrap();
