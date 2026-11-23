@@ -12,10 +12,12 @@ pub trait Hooks {
     /// screen; cursor anchors truncate to whole GUI pixels, and a widget positioner may
     /// ignore the anchor. `screen` is `[screen_width, screen_height]` in GUI pixels.
     /// `positioner` is the active `ClientTooltipPositioner` that places the
-    /// tooltip box once measured. `font` is the font identifier used for measurement and
-    /// drawing (starting at `minecraft:default` or the item font queried again after Gather); change it to
-    /// measure and draw with a replacement font without rewrapping already-split text
-    /// lines. A prepared component's `width` and `height` return `None` on failure,
+    /// tooltip box once measured. Text lines are wrapped only where
+    /// `render_tooltip_gather_components` ran: with no Gather listener, or for a stack
+    /// that can't be converted, each line arrives whole, as vanilla passes it. `font` is
+    /// the font identifier used for measurement and drawing (`minecraft:default`, or the
+    /// item font, queried again before Pre); change it to measure and draw with a
+    /// replacement font without rewrapping the lines. A prepared component's `width` and `height` return `None` on failure,
     /// distinct from a valid size of zero. A failed component measurement or draw
     /// aborts the whole tooltip. `draw` is the tooltip's GUI drawing context; paint
     /// from Pre stays visible on cancellation or failure. Return `Flow::Cancel` and the
@@ -26,7 +28,7 @@ pub trait Hooks {
         receiver = "read",
         dispatch = "api_carrier",
         side = "client",
-        version = 3,
+        version = 4,
         contract = "cancel",
         out = "cancel",
         neoforge = "RenderTooltipEvent.Pre",
