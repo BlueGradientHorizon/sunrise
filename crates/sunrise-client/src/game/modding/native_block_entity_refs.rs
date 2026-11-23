@@ -3,7 +3,7 @@
 use super::Game;
 use mod_api::__private::game::*;
 use mod_api::{
-    BlockEntityDataError, BlockEntityError, BlockEntityItemError, BlockEntityRef,
+    BlockEntityAt, BlockEntityDataError, BlockEntityError, BlockEntityItemError, BlockEntityRef,
     BlockEntityShapes, BlockEntityShapesError, BlockEntityTypeKey, LevelRef, PlayerRef,
     TransactionContext,
 };
@@ -125,6 +125,38 @@ impl Game<'_> {
         let [x, y, z] = entity.fields().position;
         let block = &self.pack.assets.registry.state(world.block(x, y, z))?.name;
         mod_api::__private::block_entity_type_key(save::block_entity_id(block_entity, block))
+    }
+
+    /// The block entities of an open server level in the box `min..max` and the build height,
+    /// read from loaded chunks only (`ServerChunkCache.getChunkNow`,
+    /// `LevelChunk.getBlockEntities`). None for reversed bounds, a stale handle or a client.
+    pub(super) fn level_block_entities(
+        &self,
+        level: LevelRef,
+        min: [i32; 3],
+        max: [i32; 3],
+    ) -> Option<Vec<BlockEntityAt>> {
+        let world = self.native_level_world(level)?;
+        let registry = self.pack.assets.registry;
+        Some(
+            world
+                .block_entities_in_box(min, max)?
+                .into_iter()
+                .filter_map(|(x, y, z)| {
+                    let block = &registry.state(world.block(x, y, z))?.name;
+                    let id = match world.block_entities.get(&(x, y, z)) {
+                        Some(entity) => save::block_entity_id(entity, block),
+                        // Taken out for its tick: its block's factory names its type.
+                        None => sunrise_client::block_entity_types::type_for(block)
+                            .or_else(|| sunrise_client::lan::chunks::block_entity_type(block))?,
+                    };
+                    Some(BlockEntityAt {
+                        pos: [x, y, z],
+                        kind: mod_api::__private::block_entity_type_key(id)?,
+                    })
+                })
+                .collect(),
+        )
     }
 
     /// The block entity's position.

@@ -697,6 +697,10 @@ impl BlockEntities {
     pub fn mods_in(&self, chunk: (i32, i32)) -> impl Iterator<Item = &Pos> {
         self.mods.get(&chunk).into_iter().flatten()
     }
+    /// Every block entity of chunk `chunk`, in no order; one taken out is listed too.
+    pub fn in_chunk(&self, chunk: (i32, i32)) -> impl Iterator<Item = &Pos> {
+        self.columns.get(&chunk).into_iter().flatten()
+    }
     /// `SignBlockEntity.playerWhoMayEdit` of the sign at `pos`.
     pub fn sign_editor(&self, pos: &Pos) -> Option<u128> {
         match self.map.get(pos) {

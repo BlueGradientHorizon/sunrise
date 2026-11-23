@@ -2,6 +2,18 @@
 use crate::BlockEntityTypeKey;
 use std::{fmt, sync::Arc};
 
+/// A block entity `LevelRef::block_entities` found: its block position and its type
+/// (`BlockEntity.getType`), not its block's ID nor its saved data.
+// no wire: an in-process host read's result, never sent.
+// exhaustive: the game builds one per block entity it lists; mods only read it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct BlockEntityAt {
+    /// The block entity's block position.
+    pub pos: [i32; 3],
+    /// Its type's key; `kind.id(host)` names it, as `minecraft:chest`.
+    pub kind: BlockEntityTypeKey,
+}
+
 /// The mirror followed by rotation applied during structure placement.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, sunrise_mod_api_macros::Wire)]
 #[non_exhaustive]
