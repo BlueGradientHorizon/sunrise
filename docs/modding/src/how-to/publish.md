@@ -7,6 +7,24 @@ registry version row must name a stable Sunrise release in `sunrise`. A native m
 included, write the row by hand as [the registry reference](../reference/registry-index.md#the-entry) shows. The steps below show how to prepare and check
 a local draft, and what review does with a submission.
 
+## Your mod's page
+
+For a tagged registry release, edit `page.toml` beside `sunrise-mod.toml`:
+
+- `summary`: a short description of at least 25 characters.
+- `description`: a long description of at least 125 characters. You can use Markdown.
+- `categories`: an optional list of up to eight IDs from the registry's `registry/categories.toml`.
+- `[[screenshots]]`: at least one entry, with a `path` such as `page/recipes.png` and an optional `caption`.
+  Put the images under `page/`. Use PNG or JPEG files, at most 5 MiB each.
+
+Text minimums count Unicode scalar values after trimming surrounding whitespace. Optional `name`, `authors`,
+`homepage` and `issues` override the values in `sunrise-mod.toml`. The page uses the mod's own `icon.png`.
+
+Run `cargo sunrise-mod check` to see what you still need before release. Run
+[`cargo sunrise-mod check --release <tag>`](../reference/sdk/05-commands.md) to require a complete page and
+check the tag against the manifest's version. `build` writes `target/sunrise-mod/<id>.page.tar` separately from the
+`.smod` whenever the project has a `page.toml`.
+
 ## 1. Build and write the submission
 
 Set `version` in `sunrise-mod.toml` to a SemVer without `+build` metadata, at most 64 characters after
