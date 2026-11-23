@@ -2,7 +2,7 @@
 //! the EntityDataSerializers id, and the serializer's value, ending with 0xFF.
 use crate::{
     Result,
-    buf::{Codec, Ident, Pos, Reader},
+    buf::{Codec, Ident, Opt, Pos, Reader, TrustedComponent},
     item::{Slot, Stack, Template},
     packets::login::PropertyCodec,
 };
@@ -488,28 +488,10 @@ pub mod serializer {
     pub const HUMANOID_ARM: i32 = 42;
     pub const DYE_COLOR: i32 = 43;
 }
-fn validate_trusted_component(tag: &Tag, r: &Reader) -> Result<()> {
-    if *tag == Tag::End {
-        return Err(crate::Error::new("Expected non-null compound tag"));
-    }
-    sunrise_world::component_value::source::from_component_tag_with_items(
-        "minecraft:custom_name",
-        tag,
-        &|item| r.contains_registry_entry("minecraft:item", item),
-    )
-    .map_err(|e| crate::Error::new(format!("Failed to decode: {e}")))?;
-    Ok(())
-}
 
-/// `ComponentSerialization.TRUSTED_STREAM_CODEC`: unlimited-heap NBT tag validated by `ComponentSerialization.CODEC`.
-fn read_trusted_component(r: &mut Reader) -> Result<Tag> {
-    let tag = r.nbt_within(sunrise_core::nbt::Limits {
-        max_bytes: usize::MAX,
-        max_nodes: usize::MAX,
-        max_depth: 512,
-    })?;
-    validate_trusted_component(&tag, r)?;
-    Ok(tag)
+/// `HumanoidArm.BY_ID`: 1 is right; 0 and any out-of-range id select left.
+pub(crate) fn humanoid_arm_id(id: i32) -> i32 {
+    i32::from(id == 1)
 }
 
 /// `PaintingVariant.DIRECT_CODEC`: resolve a synchronized `minecraft:painting_variant` entry tag.
@@ -549,14 +531,14 @@ fn decode_painting_variant_nbt(tag: &Tag, r: &Reader) -> Result<PaintingVariant>
         .to_string();
     let title = match tag.get("title") {
         Some(t) => {
-            validate_trusted_component(t, r)?;
+            TrustedComponent::validate_tag(t, r)?;
             Some(t.clone())
         }
         None => None,
     };
     let author = match tag.get("author") {
         Some(a) => {
-            validate_trusted_component(a, r)?;
+            TrustedComponent::validate_tag(a, r)?;
             Some(a.clone())
         }
         None => None,
@@ -578,8 +560,8 @@ fn read_value(kind: i32, r: &mut Reader) -> Result<Value> {
         LONG => Value::Long(r.varlong()?),
         FLOAT => Value::Float(r.f32()?),
         STRING => Value::String(r.string(32767)?),
-        COMPONENT => Value::Text(r.nbt()?),
-        OPTIONAL_COMPONENT => Value::OptText(if r.bool()? { Some(r.nbt()?) } else { None }),
+        COMPONENT => Value::Text(TrustedComponent::read(r)?),
+        OPTIONAL_COMPONENT => Value::OptText(Opt::<TrustedComponent>::read(r)?),
         ITEM_STACK => Value::Item(Slot::read(r)?),
         BOOLEAN => Value::Bool(r.bool()?),
         ROTATIONS | VECTOR3 => Value::Floats(vec![r.f32()?, r.f32()?, r.f32()?]),
@@ -601,16 +583,8 @@ fn read_value(kind: i32, r: &mut Reader) -> Result<Value> {
                 width: r.varint()?,
                 height: r.varint()?,
                 asset_id: Ident::read(r)?,
-                title: if r.bool()? {
-                    Some(read_trusted_component(r)?)
-                } else {
-                    None
-                },
-                author: if r.bool()? {
-                    Some(read_trusted_component(r)?)
-                } else {
-                    None
-                },
+                title: Opt::<TrustedComponent>::read(r)?,
+                author: Opt::<TrustedComponent>::read(r)?,
             })),
             holder => {
                 let Some(id) = holder.checked_sub(1).filter(|&id| id >= 0) else {
@@ -634,8 +608,8 @@ fn read_value(kind: i32, r: &mut Reader) -> Result<Value> {
             }
         },
         // VarInt-encoded: direction, block states, optional ints, pose, the
-        // holder-registry variants (cat to zombie nautilus) and the
-        // enum states (sniffer to weathering copper), arm, dye.
+        // holder-registry variants (cat to zombie nautilus), the
+        // enum states (sniffer to weathering copper), and dye.
         BLOCK_STATE
         | OPTIONAL_BLOCK_STATE
         | DIRECTION
@@ -643,8 +617,8 @@ fn read_value(kind: i32, r: &mut Reader) -> Result<Value> {
         | POSE
         | CAT_VARIANT..=ZOMBIE_NAUTILUS_VARIANT
         | SNIFFER_STATE..=WEATHERING_COPPER_STATE
-        | HUMANOID_ARM
         | DYE_COLOR => Value::Id(r.varint()?),
+        HUMANOID_ARM => Value::Id(humanoid_arm_id(r.varint()?)),
         PARTICLE => Value::Particle(Particle::read(r)?),
         RESOLVABLE_PROFILE => Value::Profile(read_profile(r)?),
         PARTICLES => {
@@ -965,6 +939,39 @@ impl crate::retained::OwnedHeap for EntityData {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use sunrise_core::nbt;
+
+    #[test]
+    fn arm_ids_decode_the_same_in_metadata_and_client_information() {
+        use crate::packets::configuration::ClientInformation;
+
+        for (wire_id, expected) in [(0, 0), (1, 1), (-1, 0), (2, 0)] {
+            let mut metadata = Writer::new();
+            EntityData::write(
+                &vec![(15, serializer::HUMANOID_ARM, Value::Id(wire_id))],
+                &mut metadata,
+            );
+            assert_eq!(
+                EntityData::read(&mut Reader::new(&metadata.data)).unwrap(),
+                [(15, serializer::HUMANOID_ARM, Value::Id(expected))]
+            );
+
+            let mut info = Writer::new();
+            ClientInformation::write(
+                &ClientInformation {
+                    main_hand: wire_id,
+                    ..ClientInformation::new(8)
+                },
+                &mut info,
+            );
+            assert_eq!(
+                ClientInformation::read(&mut Reader::new(&info.data))
+                    .unwrap()
+                    .main_hand,
+                expected
+            );
+        }
+    }
 
     #[test]
     fn round_trips_and_stops_at_unknown_serializers() {
@@ -1005,6 +1012,106 @@ mod tests {
             EntityData::read(&mut Reader::new(&w.data)).unwrap(),
             entries
         );
+    }
+
+    fn component_entry(kind: i32, component: &[u8]) -> Writer {
+        let mut w = Writer::new();
+        w.u8(2);
+        w.varint(kind);
+        if kind == serializer::OPTIONAL_COMPONENT {
+            w.bool(true);
+        }
+        w.bytes(component);
+        w
+    }
+
+    #[test]
+    fn entity_components_exceed_the_generic_nbt_budget() {
+        // A component can be a list of literal strings. This list exceeds
+        // both the ordinary network NBT byte budget and its node budget.
+        const TEXT: &str = "literal";
+        const SIBLINGS: i32 = 262_144;
+        let text = Tag::String(TEXT.into());
+        let mut component = Writer::new();
+        component.bytes(&[9, 8]); // TAG_List of TAG_String
+        component.i32(SIBLINGS);
+        for _ in 0..SIBLINGS {
+            component.u16(TEXT.len() as u16);
+            component.bytes(TEXT.as_bytes());
+        }
+        assert!(Reader::new(&component.data).nbt().is_err());
+
+        for kind in [serializer::COMPONENT, serializer::OPTIONAL_COMPONENT] {
+            let mut w = component_entry(kind, &component.data);
+            w.bytes(&[3, 0, 7, 0xff]); // A byte entry after the component, then the terminator.
+
+            let entries = EntityData::read(&mut Reader::new(&w.data)).unwrap();
+            let strings = match &entries[0] {
+                (2, serializer::COMPONENT, Value::Text(Tag::List(strings)))
+                | (2, serializer::OPTIONAL_COMPONENT, Value::OptText(Some(Tag::List(strings)))) => {
+                    strings
+                }
+                _ => panic!("expected a component list"),
+            };
+            assert_eq!(entries[0].1, kind);
+            assert_eq!(strings.len(), SIBLINGS as usize);
+            assert!(strings.iter().all(|s| s == &text));
+            assert_eq!(entries[1..], [(3, serializer::BYTE, Value::Byte(7))]);
+        }
+    }
+
+    #[test]
+    fn entity_components_reject_nbt_that_is_not_a_component() {
+        let mut tag = Writer::new();
+        tag.nbt(&Tag::Int(7));
+        for kind in [serializer::COMPONENT, serializer::OPTIONAL_COMPONENT] {
+            let mut w = component_entry(kind, &tag.data);
+            w.u8(0xff);
+            let err = EntityData::read(&mut Reader::new(&w.data)).unwrap_err();
+            assert!(err.to_string().starts_with("Failed to decode:"), "{err}");
+        }
+    }
+
+    #[test]
+    fn entity_components_keep_vanillas_nbt_depth_limit() {
+        // An unused field isolates the NBT depth limit from the component codec.
+        let mut unused = Tag::Int(0);
+        for _ in 0..511 {
+            unused = Tag::List(vec![unused]);
+        }
+        for (depth, unused) in [(512, unused.clone()), (513, Tag::List(vec![unused]))] {
+            let component =
+                Tag::compound([("text", Tag::String("name".into())), ("unused", unused)]);
+            let bytes = nbt::write_network(
+                &component,
+                nbt::Limits {
+                    max_depth: 513,
+                    ..nbt::Limits::default()
+                },
+            )
+            .unwrap();
+            for kind in [serializer::COMPONENT, serializer::OPTIONAL_COMPONENT] {
+                let mut w = component_entry(kind, &bytes);
+                w.u8(0xff);
+
+                let decoded = EntityData::read(&mut Reader::new(&w.data));
+                if depth == 512 {
+                    let expected = if kind == serializer::COMPONENT {
+                        Value::Text(component.clone())
+                    } else {
+                        Value::OptText(Some(component.clone()))
+                    };
+                    assert_eq!(decoded.unwrap(), [(2, kind, expected)]);
+                } else {
+                    assert!(
+                        decoded
+                            .unwrap_err()
+                            .to_string()
+                            .ends_with("depth limit exceeded")
+                    );
+                }
+            }
+        }
     }
 
     /// `EntityDataSerializers.VECTOR3` and `QUATERNION`

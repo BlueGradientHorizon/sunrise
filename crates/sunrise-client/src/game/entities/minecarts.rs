@@ -2190,13 +2190,6 @@ impl Game<'_> {
         true
     }
     pub(super) fn cart_hit(&self) -> Option<(usize, f64)> {
-        let mut pick = crate::game::pick_accumulator::PickAccumulator::new(self.entity_reach);
-        self.cart_hit_with_pick(&mut pick)
-    }
-    pub(super) fn cart_hit_with_pick(
-        &self,
-        pick: &mut crate::game::pick_accumulator::PickAccumulator,
-    ) -> Option<(usize, f64)> {
         if let Some(hit) = self.cached_entity_pick() {
             let (entity, distance, _) = hit?;
             let index = self.carts.iter().position(|f| f.id == entity.id())?;
@@ -2204,27 +2197,12 @@ impl Game<'_> {
         }
         let (eye, dir) = self.aim()?;
         let reach: f64 = self.entity_reach;
+        let (from, to) = super::pick_accumulator::pick_ray_segment(eye, dir, reach);
+        let mut pick = super::pick_accumulator::PickAccumulator::new(reach * reach);
         let mut best: Option<(usize, f64)> = None;
         for (i, c) in self.carts.iter().enumerate() {
-            let bb = c.bounds();
-            let (lo, hi) = (bb.min_position(), bb.max_position());
-            let (lo, hi) = ([lo.x, lo.y, lo.z], [hi.x, hi.y, hi.z]);
-            let (mut t0, mut t1) = (0.0f64, reach);
-            let mut hit = true;
-            for a in 0..3 {
-                if dir[a].abs() < 1e-9 {
-                    hit &= eye[a] >= lo[a] && eye[a] <= hi[a];
-                    continue;
-                }
-                let (mut ta, mut tb) = ((lo[a] - eye[a]) / dir[a], (hi[a] - eye[a]) / dir[a]);
-                if ta > tb {
-                    std::mem::swap(&mut ta, &mut tb);
-                }
-                t0 = t0.max(ta);
-                t1 = t1.min(tb);
-            }
-            if hit && t0 <= t1 && pick.consider(self, c.id, t0) {
-                best = Some((i, t0));
+            if pick.consider_box(self, c.id, from, to, c.bounds()) {
+                best = Some((i, pick.hovered.unwrap().distance_sq.sqrt()));
             }
         }
         best
@@ -2468,6 +2446,115 @@ impl Game<'_> {
     /// The seed vanilla picks a block state model's weighted alternatives with outside the
     /// world (`BlockModelResolver.MODEL_SEED`).
     pub(super) const BLOCK_MODEL_SEED: i64 = 42;
+    /// `BlockModelResolver.update` + `BlockModelRenderState.submit`: combines external light
+    /// with the block state's own light component-wise (`emissiveRendering` gives full sky+block
+    /// light `(15, 15)`, otherwise `(0, state.getLightEmission())`).
+    pub(super) fn block_display_light(&self, state: BlockStateId, external_light: u32) -> u32 {
+        let emissive = self.pack.assets.registry.state(state).is_some_and(|st| {
+            let name = st.name.strip_prefix("minecraft:").unwrap_or(&st.name);
+            name == "magma_block"
+                || (matches!(name, "sculk_sensor" | "calibrated_sculk_sensor")
+                    && st.properties.get("sculk_sensor_phase").map(String::as_str)
+                        == Some("active"))
+        });
+        let (block_sky, block_em) = if emissive {
+            (15 * 16, 15 * 16)
+        } else {
+            (0, u32::from(self.res.facts().get(state).emission) * 16)
+        };
+        let sky = (external_light & 0xFF).max(block_sky);
+        let block = ((external_light >> 8) & 0xFF).max(block_em);
+        sky | (block << 8)
+    }
+    /// `BlockModelRenderState` / `BlockDisplayRenderer`: baked block-state faces with back-face
+    /// culling (`SHADED_CULL_W`), one resolved sheet (`translucentBlockItemSheet` if any face is
+    /// translucent, else `cutoutBlockItemSheet`), component-wise light max, JOML vertex transform,
+    /// and reusable slot scratch. Returns whether the model routed to the translucent sheet.
+    pub(super) fn block_display_model_vertices(
+        &self,
+        state: BlockStateId,
+        seed: i64,
+        pose: sunrise_client::camera::joml::Mat4,
+        light: u32,
+        slots: &mut Vec<u32>,
+        out: &mut Vec<Vertex>,
+    ) -> bool {
+        if self
+            .pack
+            .render
+            .model_catalog
+            .slots_seeded(state, seed, slots)
+            .is_err()
+        {
+            return false;
+        }
+        let effective_light = self.block_display_light(state, light);
+        let has_translucency = slots.iter().any(|&slot| {
+            self.pack
+                .render
+                .model_catalog
+                .baked_model(slot)
+                .faces
+                .iter()
+                .any(|face| {
+                    let Some(name) = self.pack.layer_names.get(&face.layer) else {
+                        return false;
+                    };
+                    if !self.gui.atlas.sprites.contains_key(name) {
+                        return false;
+                    }
+                    face.translucent
+                        || self.gui.atlas.translucent.contains(name)
+                        || face.quad.render_type
+                            == Some(sunrise_assets::bake::RenderType::Translucent)
+                })
+        });
+        let layer = if has_translucency {
+            sunrise_client::gfx::TRANSLUCENT_ITEM_OVERLAY
+        } else {
+            0
+        };
+        let tint = self.default_block_tint(state);
+        let mut normals = sunrise_client::item_render::FaceNormals::new(pose.to_glam());
+        for &slot in slots.iter() {
+            let model = self.pack.render.model_catalog.baked_model(slot);
+            for face in &model.faces {
+                let Some(name) = self.pack.layer_names.get(&face.layer) else {
+                    continue;
+                };
+                let Some(sprite) = self.gui.atlas.sprites.get(name) else {
+                    continue;
+                };
+                let quad = PreparedModelFace::new(&face.quad, *sprite);
+                let mut color = u32::MAX;
+                if let Some(t) = tint(quad.tint_index) {
+                    color = sunrise_client::hud_layout::multiply(
+                        color,
+                        sunrise_client::mobs::render::abgr(t),
+                    );
+                }
+                let n = normals
+                    .face(quad.facing)
+                    .to_array()
+                    .map(|v| (v.clamp(-1.0, 1.0) * 127.0) as i8);
+                let normal = [n[0], n[1], n[2], sunrise_client::mesher::SHADED_CULL_W];
+                let quad_light = (effective_light & 0xFF)
+                    | ((effective_light >> 8) & 0xFF).max(u32::from(quad.light_emission) * 16) << 8;
+                for k in 0..4 {
+                    out.push(Vertex {
+                        normal,
+                        pos: pose.transform_position(quad.positions[k]),
+                        uv: quad.uv[k],
+                        layer,
+                        color,
+                        light: quad_light,
+                        glint_uv: [0.0, 0.0],
+                    });
+                }
+            }
+        }
+        has_translucency
+    }
     /// Baked block-state faces with default block tints and terrain shade or diffuse lighting.
     pub(super) fn block_model_vertices(
         &self,
@@ -2601,6 +2688,9 @@ impl Game<'_> {
         // edge, scaled by the view scale.
         let range = (WIDTH + HEIGHT + WIDTH) / 3.0 * 64.0 * self.view_scale();
         for c in &self.carts[run] {
+            if self.hides_as_camera(c.id) {
+                continue;
+            }
             let Some(model) = self.cart_models.models.get(&c.kind) else {
                 continue;
             };

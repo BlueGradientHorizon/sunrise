@@ -80,7 +80,7 @@ impl Game<'_> {
     pub(super) fn native_client_entity_context(&self, entity: EntityRef) -> Option<(&Remote, i32)> {
         let remote = self.remote.as_ref().filter(|r| r.logged_in)?;
         (self.native_lifecycle.epoch() == Some(entity.epoch())).then_some(())?;
-        Some((remote, i32::try_from(entity.id()).ok()?))
+        Some((remote, entity.id() as i32))
     }
 
     /// An entity tracked by the remote client but absent from local entity lists.
@@ -139,14 +139,11 @@ impl Game<'_> {
             return self.player.as_ref().map(|_| Target::Player);
         }
         // The server tracks the dragon alone; its parts are the client's own copies of it.
-        if let Some(part) = self.level_dragon_part(entity.id()) {
-            return Some(part);
+        if self.resident_dragon_part(entity.id()).is_some() {
+            return Some(Target::DragonPart(entity.id()));
         }
         remote.tracked(id)?;
-        match self.level_entity(id)? {
-            Target::Mob(mob) if !self.mobs.iter().any(|m| m.id == mob && !m.removed) => None,
-            target => Some(target),
-        }
+        self.level_entity(id)
     }
     /// What a handle names for a read that works on both sides: the server's
     /// entity (`native_entity_target`) or, on a client, its own copy of it.
@@ -730,7 +727,7 @@ impl Game<'_> {
         collect: bool,
     ) -> Option<Vec<ItemStack>> {
         // Loot and break effects cannot be rolled back by the level journal.
-        if self.transaction_current().is_some()
+        if self.has_open_transaction()
             || !self.native_level_write_allowed(level, pos)
             || self.dim.key() != level.dimension()
         {
@@ -3317,7 +3314,7 @@ pub(super) mod tests {
                         g.abilities = Default::default();
                     })
                     .unwrap();
-                game.lan_guest_joined(13, &[], [0.0, 64.0, 0.0]);
+                game.lan_guest_joined(13, &[], [0.0, 64.0, 0.0], None);
                 let g = game.lan.as_ref().unwrap().hub.guest(13).unwrap();
                 (
                     g.game_mode,
@@ -3647,7 +3644,7 @@ pub(super) mod tests {
             );
             assert_ne!(overworld_actor, nether_actor);
             let host: &mut dyn mod_api::ServerHost = game;
-            let aborted: Result<(), ()> = host.transaction(|host, _| {
+            let aborted: Result<(), mod_api::TransactionError<()>> = host.transaction(|host, _| {
                 attachment.set(host, holder, 99).unwrap();
                 Err(())
             });
@@ -3670,10 +3667,11 @@ pub(super) mod tests {
                 &sunrise_client::items::ItemStack::new("minecraft:stick", 1),
             ));
             let host: &mut dyn mod_api::ServerHost = game;
-            let rolled_back: Result<(), ()> = host.transaction(|host, tx| {
-                assert_eq!(place.insert(host, tx, &sticks, 1), 1);
-                Err(())
-            });
+            let rolled_back: Result<(), mod_api::TransactionError<()>> =
+                host.transaction(|host, tx| {
+                    assert_eq!(place.insert(host, tx, &sticks, 1), Ok(1));
+                    Err(())
+                });
             assert!(rolled_back.is_err());
             assert!(place.with_stack(game, |_| ()).is_none());
             assert_eq!(
@@ -3690,7 +3688,7 @@ pub(super) mod tests {
             );
             let host: &mut dyn mod_api::ServerHost = game;
             assert_eq!(
-                host.transaction(|host, tx| Ok::<_, ()>(place.insert(host, tx, &sticks, 1))),
+                host.transaction(|host, tx| place.insert(host, tx, &sticks, 1)),
                 Ok(1)
             );
             assert_eq!(place.with_stack(game, |stack| stack.count()).unwrap(), 1);
@@ -4003,18 +4001,21 @@ pub(super) mod tests {
             let (tx, _rx) = std::sync::mpsc::channel();
             shared
                 .events
-                .send(sunrise_client::lan::NetEvent::Joined(Box::new(Joined {
-                    conn,
-                    uuid: 5678,
-                    name: "joiner".into(),
-                    properties: Vec::new(),
-                    info: ClientInformation::new(8),
-                    brand: String::new(),
-                    sender: PlayerSender::new(tx, Arc::default()),
-                    latency: Arc::default(),
-                    address: ([127, 0, 0, 1], 1).into(),
-                    expected: false,
-                })))
+                .send(sunrise_client::lan::NetEvent::Joined(
+                    Box::new(Joined {
+                        conn,
+                        uuid: 5678,
+                        name: "joiner".into(),
+                        properties: Vec::new(),
+                        info: ClientInformation::new(8),
+                        brand: String::new(),
+                        sender: PlayerSender::new(tx, Arc::default()),
+                        latency: Arc::default(),
+                        address: ([127, 0, 0, 1], 1).into(),
+                        expected: false,
+                    }),
+                    None,
+                ))
                 .unwrap();
             use mod_api;
             struct Logout(std::sync::Arc<std::sync::atomic::AtomicUsize>);
@@ -4785,7 +4786,7 @@ pub(super) mod tests {
         assert_eq!(game.world.modified.clone(), dirty_before);
         assert_eq!(game.world.block(5, 64, 0), block_before);
         let host: &mut dyn mod_api::ServerHost = &mut game;
-        let aborted: Result<(), ()> = host.transaction(|host, _| {
+        let aborted: Result<(), mod_api::TransactionError<()>> = host.transaction(|host, _| {
             assert!(level.send_block_updated(host, [6, 64, 0]));
             Err(())
         });

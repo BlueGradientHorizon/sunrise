@@ -373,8 +373,15 @@ impl Game<'_> {
     }
     /// The height of the entity's eyes above its feet (`Entity.getEyeHeight`).
     /// API 379.
-    pub(super) fn entity_eye_height(&self, entity: EntityRef) -> Option<f64> {
-        Some(self.target_eye_height(self.native_entity_read_target(entity)?))
+    pub(in crate::game) fn entity_eye_height(&self, entity: EntityRef) -> Option<f64> {
+        if let Some(target) = self.native_entity_read_target(entity) {
+            return Some(self.target_eye_height(target));
+        }
+        let (remote, id) = self.native_client_entity_context(entity)?;
+        remote.tracked(id)?;
+        self.interactions
+            .get(&id)
+            .map(|i| f64::from(i.eye_height()))
     }
     /// Where the entity's eyes are (`Entity.getEyePosition`). API
     /// 379.

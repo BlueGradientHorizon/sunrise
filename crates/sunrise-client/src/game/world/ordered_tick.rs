@@ -1,7 +1,7 @@
-//! PURPOSE: ticks experience orbs, primed TNT and falling blocks in the order
-//! they joined the level, between the other kinds' batches.
+//! PURPOSE: ticks experience orbs, primed TNT, falling blocks and the dragon
+//! in the order they joined the level, between the other kinds' batches.
 //! WHY: `ServerLevel.tick` ticks every entity in join order, one kind among
-//! the rest; these three used to tick as three fixed batches (orbs after the
+//! the rest; the mobile entities used to tick as fixed batches (orbs after the
 //! mobs, falling blocks and TNT after the gateways), so a TNT that joined
 //! before a boat blew up after the boat moved (#6509, tick order slice 2).
 //! REFS: vanilla `ServerLevel.tick` (`entityTickList.forEach`),
@@ -16,7 +16,7 @@ use sunrise_client::random_source;
 use sunrise_core::geometry::Vec3;
 use sunrise_core::random::RandomSource as _;
 
-/// What this tick has ticked of the three kinds.
+/// Progress through this level tick's ordered entity turns.
 #[derive(Default, Clone)]
 pub(super) struct OrderedTicks {
     /// Joins at or above this started after the tick began; they tick next tick.
@@ -41,6 +41,11 @@ pub(super) struct OrderedTicks {
     /// The falling blocks (id, join) that ended a tick still falling with a part listening to
     /// `falling_tick`, delivered after the pass.
     pub(super) falling_ticked: Vec<(u32, JoinSeq)>,
+    /// Only consecutive falling ticks without mod callbacks may defer compaction.
+    pub(super) defer_landings: bool,
+    /// The terminal slots awaiting compaction at the end of that run.
+    pub(super) landed: sunrise_core::fast_hash::FxHashSet<JoinSeq>,
+    pub(super) landing_time: sunrise_client::spans::SpanTotal,
     /// Whether the entity tick hooks are heard this tick, and which types are told alone: the
     /// server's unsimulated entities of those types are told at their place in this order
     /// (game/modding/native_ticks.rs).
@@ -53,6 +58,7 @@ pub(super) enum Batch {
     ArmorStands,
     Boats,
     Carts,
+    Fishing,
     Tridents,
     Rockets,
     Items,
@@ -66,7 +72,7 @@ pub(super) enum Batch {
 }
 
 impl Batch {
-    const COUNT: usize = 9;
+    const COUNT: usize = 10;
 }
 
 #[derive(Clone, Copy)]
@@ -74,6 +80,7 @@ enum Pending {
     Orb,
     Tnt,
     Falling,
+    Dragon,
     /// An entity the server keeps without simulating it (a display, a marker, an interaction),
     /// of a type a mod named: only told its tick.
     Other,
@@ -89,6 +96,7 @@ impl Game<'_> {
     pub(super) fn begin_ordered_ticks(&mut self) {
         let _span = sunrise_client::spans::guard("ordered_ticks");
         let pending_buf = std::mem::take(&mut self.ordered.pending_buf);
+        let landed = std::mem::take(&mut self.ordered.landed);
         let mut armor_stands = std::mem::take(&mut self.ordered.armor_stands);
         armor_stands.clear();
         let mut falling_ticked = std::mem::take(&mut self.ordered.falling_ticked);
@@ -98,6 +106,7 @@ impl Game<'_> {
             first_join(&self.armor_stands),
             first_join(&self.boats),
             first_join(&self.carts),
+            self.hook.as_ref().map(Joined::join_seq),
             first_join(&self.tridents),
             first_join(&self.rockets),
             first_join(&self.dropped),
@@ -122,12 +131,14 @@ impl Game<'_> {
             pending_buf,
             armor_stands,
             falling_ticked,
+            defer_landings: false,
+            landed,
+            landing_time: Default::default(),
             told,
         };
     }
 
-    /// Ticks, one at a time in join order, every orb, primed TNT and falling
-    /// block that joined before `cut` and has not ticked this tick.
+    /// Ticks each ordered entity that joined before `cut` and has not ticked yet.
     pub(super) fn run_ordered_ticks(&mut self, cut: JoinSeq, late: bool) -> Result<()> {
         let _span = sunrise_client::spans::guard("ordered_ticks");
         let mut first_error = None;
@@ -149,8 +160,8 @@ impl Game<'_> {
             // Orbs are announced after their tick, always; TNT and falling
             // blocks that joined since the last packets wait for them.
             let right_pass = match kind {
-                Pending::Orb | Pending::Other => !late,
-                _ => late == (j >= announced),
+                Pending::Orb | Pending::Dragon | Pending::Other => !late,
+                Pending::Tnt | Pending::Falling => late == (j >= announced),
             };
             if right_pass && wanted(j) {
                 pending.push((j, kind));
@@ -161,6 +172,9 @@ impl Game<'_> {
         self.falling
             .iter()
             .for_each(|e| offer(e.join, Pending::Falling));
+        if let Some(dragon) = self.dragon.as_ref() {
+            offer(dragon.join, Pending::Dragon);
+        }
         // Only while a mod hears entity ticks and named the type: otherwise none is offered.
         let told = self.ordered.told;
         if told.listening() {
@@ -175,10 +189,32 @@ impl Game<'_> {
         // run and again after an explosion, which can move or remove them.
         let mut obstacles: Option<sunrise_client::entities::ObstacleGrid> = None;
         let mut nearby = Vec::new();
+        self.ordered.defer_landings = mod_api::__private::mods().is_empty();
         'entity: for (join, kind) in pending.drain(..) {
+            // TNT, orbs and mod tick callbacks may observe the falling list.
+            if !matches!(kind, Pending::Falling) {
+                self.remove_landed_falling();
+            }
             self.ordered.done = Some(join);
             // ServerLevel.tick: only entities in entity-ticking chunks tick.
             match kind {
+                Pending::Dragon => {
+                    let Some(dragon) = self.dragon.as_ref().filter(|d| d.join == join) else {
+                        continue;
+                    };
+                    let at = dragon.position;
+                    if entity_ticking(at.x.floor() as i32, at.z.floor() as i32) {
+                        self.tick_dragon();
+                        if let Some(dragon) = self.dragon.as_ref().filter(|d| d.join == join) {
+                            self.entity_section_step(
+                                dragon.id,
+                                at.components(),
+                                dragon.position.components(),
+                            );
+                        }
+                        obstacles = None;
+                    }
+                }
                 Pending::Tnt => {
                     let Some(i) = self.tnts.locate(join) else {
                         continue;
@@ -431,6 +467,9 @@ impl Game<'_> {
                 }
             }
         }
+        self.ordered.defer_landings = false;
+        self.remove_landed_falling();
+        std::mem::take(&mut self.ordered.landing_time).record("fall_finish");
         self.ordered.pending_buf = pending;
         self.deliver_falling_ticks();
         if events && let Err(e) = self.process_level_events() {
@@ -439,8 +478,17 @@ impl Game<'_> {
         first_error.map_or(Ok(()), Err)
     }
 
-    /// Before a batch of another kind ticks: the three kinds' entities that
-    /// joined before everything still to tick in the batches from this one on.
+    /// Close a run of falling blocks before the next entity can observe the list.
+    fn remove_landed_falling(&mut self) {
+        if !self.ordered.landed.is_empty() {
+            let landed = &mut self.ordered.landed;
+            self.falling.retain(|block| !landed.contains(&block.join));
+            landed.clear();
+        }
+    }
+
+    /// Before a batch ticks, run the ordered entities that joined before
+    /// everything still to tick in the batches from this one on.
     pub(super) fn ordered_before(&mut self, batch: Batch) -> Result<()> {
         let cut = self.ordered.suffix_min[batch as usize];
         if cut == JoinSeq::MAX {

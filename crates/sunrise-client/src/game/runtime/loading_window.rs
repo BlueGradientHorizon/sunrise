@@ -91,11 +91,7 @@ pub(super) fn build_renderer(
     // adopted. Configure the world swapchain before its first gameplay frame instead of
     // waiting for `Game::apply_settings` after the handoff.
     renderer.set_present_mode(vsync, settings.present_mode);
-    renderer.hud.sprite_animations = atlas
-        .sprite_animations
-        .iter()
-        .map(|(rect, animation)| (*rect, animation.clone(), (usize::MAX, 0, 0)))
-        .collect();
+    renderer.hud.sprite_animations = atlas.renderer_animations();
     renderer.hud.set_text_shader(&renderer.device, {
         let text = &atlas.text_shaders;
         (text.gui.as_deref()).map(|p| (p, &text.expressions.gui[..]))
@@ -189,11 +185,7 @@ pub(super) fn loading_renderer(
         previous.map(|r| r.display_reading()).unwrap_or_default(),
     ))?;
     if let Some(atlas) = atlas {
-        renderer.hud.sprite_animations = atlas
-            .sprite_animations
-            .iter()
-            .map(|(rect, animation)| (*rect, animation.clone(), (usize::MAX, 0, 0)))
-            .collect();
+        renderer.hud.sprite_animations = atlas.renderer_animations();
     }
     Ok(renderer)
 }
@@ -206,6 +198,7 @@ pub(super) fn loading_frame(hud: &HudBatch) -> Frame<'_> {
         yaw: 0.0,
         pitch: 10.0,
         fov_degrees: 85.0,
+        cull_fov_degrees: 85.0,
         eye: glam::DVec3::new(0.5, 100.0, 0.5),
         eye_rotation: [0.0, 10.0],
         first_person: true,
@@ -322,6 +315,7 @@ pub(super) fn start_game<'a>(
             ),
             entity_models.as_deref(),
             pack.render.model_library.as_deref().ok(),
+            !options.execution_role.is_dedicated_server(),
         )?),
     };
     let mut initial = None;

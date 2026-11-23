@@ -44,6 +44,18 @@ use sunrise_core::{
 };
 use sunrise_protocol::entity_data::Value;
 
+/// `EnderDragon.recreateFromPacket`: part `part` (`0..8`) gets wire id `dragon_id + 1 + part`
+/// using Java's wrapping 32-bit integer arithmetic.
+pub(in crate::game) fn dragon_part_id(dragon_id: u32, part: usize) -> u32 {
+    dragon_id.wrapping_add(1).wrapping_add(part as u32)
+}
+
+/// Inverse of [`dragon_part_id`]: returns the `0..8` part index when `candidate_id` belongs to `dragon_id`.
+pub(in crate::game) fn dragon_part_index(dragon_id: u32, candidate_id: u32) -> Option<usize> {
+    let offset = candidate_id.wrapping_sub(dragon_id.wrapping_add(1));
+    (offset < 8).then_some(offset as usize)
+}
+
 /// `HealOrHarmMobEffect.applyInstantaneousEffect` at an `AreaEffectCloud`'s
 /// 0.5 scale: `(int) (scale * (6 << amplifier) + 0.5)`.
 fn harm_amount(amplifier: u32) -> f32 {
@@ -112,10 +124,29 @@ fn fireball_cloud_origin(feet: [f64; 3], targets: &[(Aabb, Vec3)]) -> [f64; 3] {
     feet
 }
 
-/// Mob ids from here on are dragon parts (`SPECIAL + part`) and crystals
-/// (`SPECIAL + 16 + crystal`), so projectiles can target them.
+/// Mob ids from here on are dragon parts (`SPECIAL + part`). End crystals use their real entity ids.
 pub(super) const SPECIAL: u32 = u32::MAX - 4096;
-pub(super) const CRYSTAL_IDS: u32 = SPECIAL + 16;
+
+/// Direct projectile metadata for `hit_special_full` (both shared projectiles and `ThrownTrident`).
+pub(super) struct DirectHit<'a> {
+    pub id: u32,
+    pub position: Vec3,
+    pub kind: Option<&'a sunrise_client::projectiles::ProjectileKind>,
+}
+impl<'a> DirectHit<'a> {
+    pub(super) fn from_projectile(p: &'a Projectile) -> Self {
+        Self {
+            id: p.id,
+            position: p.position,
+            kind: Some(&p.kind),
+        }
+    }
+}
+
+/// `EnderDragon.recreateFromPacket`: signed wrapping `i32` id of part `part` (`i + dragonId + 1`).
+pub(in crate::game) fn dragon_part_wire_id(dragon_id: u32, part: usize) -> i32 {
+    dragon_part_id(dragon_id, part) as i32
+}
 const FIGHT_FILE: &str = "data/minecraft/ender_dragon_fight.dat";
 pub(super) const MAX_HEALTH: f32 = 200.0;
 /// `Mob.getAmbientSoundInterval`.
@@ -1377,15 +1408,8 @@ impl Game<'_> {
                 .any(|g| h.hub.here(g) && g.loaded && !g.dead && near(g.position))
         })
     }
-    /// `EnderDragonFight.tick` and the fight's entities, while the End is
-    /// ticked (in place for its player, or on a server with players in it).
+    /// `EnderDragonFight.tick`, before the level ticks its entities.
     pub(super) fn tick_fight(&mut self) {
-        // A dragon outside the End (`/summon`) has no fight: `ServerLevel.getDragonFight` is
-        // null there, but `EnderDragon.aiStep` still flies it.
-        if !self.dimension_type().has_ender_dragon_fight {
-            self.tick_dragon();
-            return;
-        }
         self.load_fight();
         // updatePlayers, every 20 ticks.
         self.fight.player_scan += 1;
@@ -1432,12 +1456,6 @@ impl Game<'_> {
             }
         }
         self.assign_dragon_and_crystal_ids();
-        // updateDragon runs when the fight dragon ticks or dies, but not with NoAI.
-        let ticks = self.dragon.as_ref().is_some_and(|d| !d.alive() || !d.no_ai);
-        if ticks && self.is_fight_dragon() {
-            self.fight.dragon_unseen = 0;
-        }
-        self.tick_dragon();
     }
 
     pub(super) fn assign_dragon_and_crystal_ids(&mut self) {
@@ -1614,25 +1632,37 @@ impl Game<'_> {
             .filter(|d| d.alive())
             .map(|d| std::array::from_fn(|i| d.part_box(i)))
     }
-    /// Targets for projectiles: dragon parts and crystals.
+    /// Whether `id` is a live End crystal entity id.
+    pub(in crate::game) fn is_crystal_id(&self, id: u32) -> bool {
+        self.crystals.iter().any(|c| c.id == id)
+    }
+    /// Whether `id` is a dragon part (`SPECIAL..SPECIAL + 8`) or a live End crystal.
+    pub(in crate::game) fn is_special_target(&self, id: u32) -> bool {
+        id >= SPECIAL || self.is_crystal_id(id)
+    }
+    /// Targets for projectiles: crystals (by real entity id) and dragon parts.
     pub(super) fn special_targets(&self) -> Vec<(u32, Aabb)> {
         let mut out = Vec::new();
+        for c in self.crystals.iter() {
+            out.push((c.id, c.bounds()));
+        }
         if let Some(boxes) = self.dragon_part_boxes() {
             for (i, part) in boxes.into_iter().enumerate() {
                 out.push((SPECIAL + i as u32, part));
             }
         }
-        for (i, c) in self.crystals.iter().enumerate() {
-            let p = c.position;
-            out.push((
-                CRYSTAL_IDS + i as u32,
-                Aabb::new(
-                    Vec3::new(p.x - 1.0, p.y, p.z - 1.0),
-                    Vec3::new(p.x + 1.0, p.y + 2.0, p.z + 1.0),
-                ),
-            ));
-        }
         out
+    }
+    /// Resolves a crosshair target id (including synthetic dragon-part ids) to its wire entity id.
+    pub(in crate::game) fn wire_entity_id(&self, id: u32) -> Option<i32> {
+        if (SPECIAL..SPECIAL + 8).contains(&id) {
+            let dragon = self
+                .dragon
+                .as_ref()
+                .filter(|d| d.id != 0 || self.remote.is_some())?;
+            return Some(dragon_part_wire_id(dragon.id, (id - SPECIAL) as usize));
+        }
+        Some(id as i32)
     }
     /// `ServerLevel.dragonParts`: where the part with that entity id is
     /// and its box.
@@ -1656,28 +1686,61 @@ impl Game<'_> {
         kind: DamageKind,
         direct: Option<&Projectile>,
     ) -> Hurt {
-        if id >= CRYSTAL_IDS {
+        let owner = by_player.then_some(Who::Player);
+        let guest = self.lan_acting.filter(|_| by_player);
+        self.hit_special_full(
+            id,
+            amount,
+            owner,
+            guest,
+            kind,
+            None,
+            direct.map(DirectHit::from_projectile),
+        )
+    }
+    /// Full-source damage dispatch for a crystal (real entity id) or dragon part.
+    pub(super) fn hit_special_full(
+        &mut self,
+        id: u32,
+        amount: f32,
+        owner: Option<Who>,
+        guest: Option<u32>,
+        kind: DamageKind,
+        damage_type_override: Option<&str>,
+        direct: Option<DirectHit<'_>>,
+    ) -> Hurt {
+        if let Some(index) = self.crystals.iter().position(|c| c.id == id) {
             // EndCrystal.hurtServer: false while invulnerable and for fire
             // (its type is fire immune), else it blows up.
-            let index = (id - CRYSTAL_IDS) as usize;
-            let Some(crystal) = self.crystals.get(index) else {
-                return Hurt::Refused;
-            };
+            let crystal = &self.crystals[index];
             let crystal_id = crystal.id;
-            let causing = if by_player { self.own_entity_id() } else { 0 };
-            let damage_type = super::creatures::damage_type(kind, by_player);
-            let vanilla = is_fire(kind) || (crystal.invulnerable && !(by_player && self.creative));
+            let by_player = owner == Some(Who::Player);
+            let creative = match owner {
+                Some(Who::Player) => match guest {
+                    Some(conn) if self.lan_acting == Some(conn) => self.creative,
+                    Some(conn) => self.command_guest(conn).is_some_and(|g| g.creative()),
+                    None => self.creative,
+                },
+                _ => false,
+            };
+            let causing = match owner {
+                Some(Who::Player) => match guest {
+                    Some(conn) => self.command_guest(conn).map_or(0, |g| g.entity_id),
+                    None => self.own_entity_id(),
+                },
+                Some(Who::Mob(oid)) => oid as i32,
+                None => 0,
+            };
+            let damage_type = damage_type_override
+                .unwrap_or_else(|| super::creatures::damage_type(kind, by_player));
+            let vanilla = is_fire(kind) || (crystal.invulnerable && !(by_player && creative));
             let source = HurtSource {
                 damage_type,
                 causing,
-                direct: direct.map_or(causing, |projectile| projectile.id as i32),
-                position: direct.map(|projectile| {
-                    [
-                        projectile.position.x,
-                        projectile.position.y,
-                        projectile.position.z,
-                    ]
-                }),
+                direct: direct.as_ref().map_or(causing, |d| d.id as i32),
+                position: direct
+                    .as_ref()
+                    .map(|d| [d.position.x, d.position.y, d.position.z]),
             };
             if self.native_nonliving_invulnerable(
                 crystal_id,
@@ -1687,15 +1750,34 @@ impl Game<'_> {
             ) {
                 return Hurt::Refused;
             }
-            let by = by_player.then(|| self.acting_player());
+            let Some(index) = self.crystals.iter().position(|c| c.id == id) else {
+                return Hurt::Refused;
+            };
+            let by = by_player.then(|| guest.map_or_else(|| self.acting_player(), FightWho::Guest));
             // A listener may allow a hit on an otherwise invulnerable crystal.
             self.crystals[index].invulnerable = false;
             self.destroy_crystal(index, by, CrystalDamage::Direct);
             Hurt::Landed { full: true }
         } else if id >= SPECIAL {
-            let by = by_player.then(|| self.acting_player());
+            let by_player = owner == Some(Who::Player);
+            let by = by_player.then(|| guest.map_or_else(|| self.acting_player(), FightWho::Guest));
             let part = (id - SPECIAL) as usize;
-            self.hurt_dragon_part(part, amount, by_player, by, kind, direct)
+            let from = (matches!(kind, DamageKind::PlayerAttack | DamageKind::Thorns))
+                .then(|| self.player.as_ref().map(|p| p.position))
+                .flatten();
+            self.hurt_dragon_part_at(
+                part,
+                amount,
+                by_player,
+                by,
+                kind,
+                DragonHitOrigin {
+                    direct: direct.as_ref().and_then(|d| d.kind),
+                    entity_id: direct.as_ref().map(|d| d.id as i32),
+                    from,
+                    invulnerability_checked: false,
+                },
+            )
         } else {
             Hurt::Refused
         }
@@ -2078,46 +2160,33 @@ impl Game<'_> {
         });
         self.trigger_killed(view, blow.as_ref());
     }
-    /// Player melee on the dragon's parts or a crystal under the crosshair.
-    /// The dragon part under the crosshair within reach: its id and distance.
+    /// The dragon part or crystal under the crosshair within reach.
     pub(super) fn dragon_hit(&self) -> Option<(u32, f64)> {
-        let mut pick = crate::game::pick_accumulator::PickAccumulator::new(self.entity_reach);
-        self.dragon_hit_with_pick(&mut pick)
-    }
-    pub(super) fn dragon_hit_with_pick(
-        &self,
-        pick: &mut crate::game::pick_accumulator::PickAccumulator,
-    ) -> Option<(u32, f64)> {
         if let Some(hit) = self.cached_entity_pick() {
             let (entity, distance, _) = hit?;
+            let id = entity.id();
+            if let Some(d) = self
+                .dragon
+                .as_ref()
+                .filter(|d| d.id != 0 || self.remote.is_some())
+                && let Some(part) = dragon_part_index(d.id, id)
+            {
+                return Some((SPECIAL + part as u32, distance));
+            }
             return self
                 .special_targets()
                 .into_iter()
-                .any(|(id, _)| id == entity.id())
-                .then_some((entity.id(), distance));
+                .any(|(special, _)| special == id)
+                .then_some((id, distance));
         }
         let (eye, dir) = self.aim()?;
         let reach: f64 = self.entity_reach;
+        let (from, to) = super::pick_accumulator::pick_ray_segment(eye, dir, reach);
+        let mut pick = super::pick_accumulator::PickAccumulator::new(reach * reach);
         let mut best: Option<(u32, f64)> = None;
         for (id, b) in self.special_targets() {
-            let (lo, hi) = (b.min_position(), b.max_position());
-            let (lo, hi) = ([lo.x, lo.y, lo.z], [hi.x, hi.y, hi.z]);
-            let (mut t0, mut t1) = (0.0f64, reach);
-            let mut hit = true;
-            for a in 0..3 {
-                if dir[a].abs() < 1e-9 {
-                    hit &= eye[a] >= lo[a] && eye[a] <= hi[a];
-                    continue;
-                }
-                let (mut ta, mut tb) = ((lo[a] - eye[a]) / dir[a], (hi[a] - eye[a]) / dir[a]);
-                if ta > tb {
-                    std::mem::swap(&mut ta, &mut tb);
-                }
-                t0 = t0.max(ta);
-                t1 = t1.min(tb);
-            }
-            if hit && t0 <= t1 && pick.consider(self, id, t0) {
-                best = Some((id, t0));
+            if pick.consider_box(self, id, from, to, b) {
+                best = Some((id, pick.hovered.unwrap().distance_sq.sqrt()));
             }
         }
         best
@@ -2694,8 +2763,13 @@ impl Game<'_> {
             [look[0] / norm, look[1] / norm, look[2] / norm]
         }
     }
-    /// `EnderDragon.aiStep` (and `tickDeath`) for the dragon.
-    fn tick_dragon(&mut self) {
+    /// `EnderDragon.aiStep` (and `tickDeath`) for the dragon's own entity tick.
+    pub(super) fn tick_dragon(&mut self) {
+        // updateDragon runs when the fight dragon ticks or dies, but not with NoAI.
+        let ticks = self.dragon.as_ref().is_some_and(|d| !d.alive() || !d.no_ai);
+        if ticks && self.is_fight_dragon() {
+            self.fight.dragon_unseen = 0;
+        }
         // Entity.baseTick: the saved invulnerability window counts down
         // (#916), before the dragon's own borrow of the game.
         if let Some(id) = self.dragon.as_ref().map(|d| d.id) {
@@ -3852,12 +3926,10 @@ impl Game<'_> {
         };
         // DragonFireballRenderer.submit: turned by the camera's orientation.
         let [right, up] = super::billboard_axes(self.camera_orientation());
-        for b in self
-            .creatures
-            .projectiles
-            .iter()
-            .filter(|p| p.kind == sunrise_client::projectiles::ProjectileKind::DragonFireball)
-        {
+        for b in self.creatures.projectiles.iter().filter(|p| {
+            p.kind == sunrise_client::projectiles::ProjectileKind::DragonFireball
+                && !self.hides_as_camera(p.id)
+        }) {
             let p = glam::DVec3::new(
                 b.previous.x + (b.position.x - b.previous.x) * alpha,
                 b.previous.y + (b.position.y - b.previous.y) * alpha,
@@ -4561,10 +4633,12 @@ impl Game<'_> {
             .retain(|c| c.position.distance_squared(at) > 0.01);
         let (drawn, _) = Crystal::own_draws();
         let time = Crystal::start_time(at, drawn, self.clock.still());
+        self.next_entity += 1;
+        let crystal_id = self.next_entity;
         self.crystals.push(Crystal {
             beam: Some([0, 128, 0]),
             invulnerable: true,
-            ..Crystal::new(0, at, true, time)
+            ..Crystal::new(crystal_id, at, true, time)
         });
         let _ = self.set_state_named([cx, h, cz], "minecraft:bedrock", &[]);
         let _ = self.set_state_named([cx, h + 1, cz], "minecraft:fire", &[]);
@@ -4879,12 +4953,11 @@ impl Game<'_> {
     }
     /// The remote dragon, if `id` is it or one of its parts.
     fn remote_dragon_mut(&mut self, id: i32) -> Option<&mut Dragon> {
-        let Ok(uid) = u32::try_from(id) else {
-            return None;
-        };
-        self.dragon
-            .as_mut()
-            .filter(|d| d.id == uid || (d.id != 0 && (d.id + 1..=d.id + 8).contains(&uid)))
+        let uid = id as u32;
+        let remote = self.remote.is_some();
+        self.dragon.as_mut().filter(|d| {
+            (d.id != 0 || remote) && (d.id == uid || dragon_part_index(d.id, uid).is_some())
+        })
     }
     /// `handleSetEntityData`: LivingEntity.DATA_HEALTH_ID and
     /// EnderDragon.DATA_PHASE (`onSyncedDataUpdated` sets the phase).
@@ -5128,26 +5201,6 @@ impl Game<'_> {
                 .play("minecraft:entity.ender_dragon.growl", Some(at), 2.5, pitch);
         }
     }
-    /// The dragon's parts as a server's client attacks them: the server's
-    /// ids for `EnderDragonPart`s follow the dragon's.
-    pub(super) fn remote_dragon_part_hit_with_pick(
-        &self,
-        eye: [f64; 3],
-        dir: [f64; 3],
-        reach: f64,
-        pick: &mut crate::game::pick_accumulator::PickAccumulator,
-    ) -> Option<(i32, f64, [f64; 3])> {
-        let d = self.dragon.as_ref().filter(|d| d.alive() && d.id != 0)?;
-        (0..8)
-            .filter_map(|i| {
-                let b = d.part_box(i);
-                let p = d.parts[i].0;
-                super::ray_box(eye, dir, reach, b)
-                    .filter(|&t| pick.consider(self, d.id + 1 + i as u32, t))
-                    .map(|t| ((d.id + 1 + i as u32) as i32, t, [p.x, p.y, p.z]))
-            })
-            .last()
-    }
 }
 
 #[path = "dragon/crystal.rs"]
@@ -5156,6 +5209,24 @@ mod crystal;
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn dragon_part_wire_ids_wrap_like_vanilla_i32() {
+        let neg_one = (-1i32) as u32;
+        for part in 0..8 {
+            let wire = dragon_part_wire_id(neg_one, part);
+            assert_eq!(wire, part as i32);
+            assert_eq!(dragon_part_index(neg_one, wire as u32), Some(part));
+        }
+        assert_eq!(dragon_part_index(neg_one, (-1i32) as u32), None);
+        assert_eq!(dragon_part_index(neg_one, 8), None);
+
+        let max = i32::MAX as u32;
+        assert_eq!(dragon_part_wire_id(max, 0), i32::MIN);
+        assert_eq!(dragon_part_index(max, i32::MIN as u32), Some(0));
+        assert_eq!(dragon_part_wire_id(max, 7), i32::MIN + 7);
+        assert_eq!(dragon_part_index(max, (i32::MIN + 7) as u32), Some(7));
+    }
 
     #[test]
     fn dragon_search_preserves_equal_cost_heap_order() {

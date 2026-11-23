@@ -693,6 +693,16 @@ impl Game<'_> {
         };
         let (old_yaw, old_pitch) = (host.hub.guests[gi].yaw, host.hub.guests[gi].pitch);
         let boat = self.boats.iter().position(|boat| boat.id as i32 == id);
+        let tnt = self
+            .tnts
+            .iter()
+            .find(|tnt| tnt.id as i32 == id)
+            .map(|tnt| tnt.id);
+        let falling = self.falling.iter().any(|block| block.id as i32 == id);
+        if falling {
+            // FallingBlockEntity.isAttackable is false: Player.attack exits at cannotAttack.
+            return Ok(false);
+        }
         let general = match u32::try_from(id).ok().and_then(|id| self.general_row(id)) {
             Some(row) => {
                 let catalog = crate::game::general::general_type_catalog();
@@ -703,9 +713,13 @@ impl Game<'_> {
             }
             None => None,
         };
-        // A packet names its target already. Boats and general rows use that target
+        // A packet names its target already. Boats, primed TNT and general rows use that target
         // with the attacker's actual aim instead of casting a new ray at its center.
-        if boat.is_none() && general.is_none() && self.look_at_entity(gi, id, None).is_none() {
+        if boat.is_none()
+            && tnt.is_none()
+            && general.is_none()
+            && self.look_at_entity(gi, id, None).is_none()
+        {
             return Err(ActionRefused::InvalidTarget);
         }
         // A mace's smash sets the attacker's velocity and sends it at once, before the
@@ -719,6 +733,8 @@ impl Game<'_> {
                 if let Some(index) = boat {
                     g.strike_boat(index);
                     g.swing_arm();
+                } else if let Some(tnt_id) = tnt {
+                    g.strike_general_row(tnt_id, "minecraft:tnt");
                 } else if let Some((id, kind)) = general {
                     g.strike_general_row(id, kind);
                 } else {
@@ -731,8 +747,8 @@ impl Game<'_> {
             .ok()
             .flatten();
         self.send_guest_motion(conn, sent);
-        if general.is_some() {
-            // The plain row refused damage, even though the attack spent its charge.
+        if tnt.is_some() || general.is_some() {
+            // Primed TNT and plain rows refuse damage, even though the attack spent its charge.
             return Ok(false);
         }
         // The mob now answers to this guest (game/network/lan_mobs.rs).

@@ -667,7 +667,18 @@ impl Game<'_> {
     /// `GuiGraphics.renderItem(player, level, stack, x, y, 0)`.
     pub(super) fn draw_item_model(&self, batch: &mut HudBatch, stack: &ItemStack, x: f32, y: f32) {
         let owner = self.player_owner(Some(stack));
-        let state = self.resolve_item(stack, DisplayContext::Gui, Some(&owner), 0);
+        self.draw_item_model_with_owner(batch, stack, x, y, Some(&owner));
+    }
+    /// `GuiGraphicsExtractor.item`: `fakeItem` uses the same model draw with no owner.
+    pub(super) fn draw_item_model_with_owner(
+        &self,
+        batch: &mut HudBatch,
+        stack: &ItemStack,
+        x: f32,
+        y: f32,
+        owner: Option<&OwnerState>,
+    ) {
+        let state = self.resolve_item(stack, DisplayContext::Gui, owner, 0);
         item_render::gui::draw_with_frame(
             &state,
             &self.pack.item_renderer,
@@ -731,6 +742,30 @@ impl Game<'_> {
     ) {
         let lights = diffuse_lights(self.nether_lighting());
         self.submit_item_lit(state, pose, light, lights, out);
+    }
+    /// [`Self::submit_item_world`] preserving JOML `Matrix4f` rounding through baked quads.
+    pub(super) fn submit_item_world_joml(
+        &self,
+        state: &ItemRenderState,
+        pose: sunrise_client::camera::joml::Mat4,
+        light: u32,
+        out: &mut Vec<Vertex>,
+    ) {
+        let lights = diffuse_lights(self.nether_lighting());
+        let mut sink = WorldSink {
+            out,
+            light: item_hdr_light(state, light),
+            lights: (state.hdr_light == 0).then_some(lights),
+            glint: self.glint(),
+            tier: state.hdr_tier,
+        };
+        state.submit_joml(
+            &self.pack.item_renderer,
+            &self.gui.atlas.sprites,
+            &self.item_host(),
+            pose,
+            &mut sink,
+        );
     }
     /// [`Self::submit_item_world`] shaded by other diffuse lights (a
     /// `Lighting.Entry` other than the level's), in the pose's output space.
@@ -855,20 +890,23 @@ impl Game<'_> {
         out: &mut Vec<Vertex>,
         run: std::ops::Range<usize>,
     ) {
-        let live = self.dropped[run].iter().map(|item| {
-            let (p, q) = (item.previous, item.position);
-            let at = [
-                p.x + (q.x - p.x) * alpha,
-                p.y + (q.y - p.y) * alpha,
-                p.z + (q.z - p.z) * alpha,
-            ];
-            ItemEntityDraw {
-                item,
-                at,
-                partial: alpha as f32,
-                entity: true,
-            }
-        });
+        let live = self.dropped[run]
+            .iter()
+            .filter(|item| !self.hides_as_camera(item.id))
+            .map(|item| {
+                let (p, q) = (item.previous, item.position);
+                let at = [
+                    p.x + (q.x - p.x) * alpha,
+                    p.y + (q.y - p.y) * alpha,
+                    p.z + (q.z - p.z) * alpha,
+                ];
+                ItemEntityDraw {
+                    item,
+                    at,
+                    partial: alpha as f32,
+                    entity: true,
+                }
+            });
         self.item_entity_geometry(camera, live, out);
     }
 

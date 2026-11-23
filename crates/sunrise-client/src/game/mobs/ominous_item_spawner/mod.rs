@@ -242,6 +242,9 @@ impl Game<'_> {
         out: &mut Vec<Vertex>,
     ) {
         for s in &self.ominous_spawners {
+            if self.hides_as_camera(s.id) {
+                continue;
+            }
             let at = glam::DVec3::from_array(s.position);
             if at.distance_squared(camera) >= 64.0 * 64.0 {
                 continue;

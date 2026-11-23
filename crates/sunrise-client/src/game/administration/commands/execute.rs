@@ -226,7 +226,7 @@ impl Game<'_> {
                 .map_or([0.0; 2], sunrise_client::entity_nbt::rotation),
             Target::Hook(id) => self
                 .fishing_hook_by_id(id)
-                .map_or([0.0; 2], |(hook, _)| hook.rotation),
+                .map_or([0.0; 2], |(hook, _)| [hook.yaw, hook.pitch]),
             Target::Other(id) => self
                 .others
                 .iter()
@@ -267,13 +267,17 @@ impl Game<'_> {
                 Some(a) if a.small => f64::from(0.9875f32),
                 _ => self.type_eye_height(&self.target_type(t)),
             },
+            Target::Other(id) => self.interactions.get(&(id as i32)).map_or_else(
+                || self.type_eye_height(&self.target_type(t)),
+                |i| f64::from(i.eye_height()),
+            ),
             // Entity.getEyeHeight: the type's dimensions.
             _ => self.type_eye_height(&self.target_type(t)),
         }
     }
     /// `EntityType.getDimensions().eyeHeight()` from `entity-types.json`,
     /// read once: a float, widened as `Entity.getEyeY` does.
-    fn type_eye_height(&self, ty: &str) -> f64 {
+    pub(in crate::game) fn type_eye_height(&self, ty: &str) -> f64 {
         static EYE_HEIGHTS: std::sync::OnceLock<std::collections::HashMap<String, f64>> =
             std::sync::OnceLock::new();
         EYE_HEIGHTS

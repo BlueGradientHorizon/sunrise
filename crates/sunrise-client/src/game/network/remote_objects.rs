@@ -73,7 +73,8 @@ impl Game<'_> {
         } {
             self.text_displays.insert(
                 id as i32,
-                super::text_displays::RemoteTextDisplay::new(shows, position, yaw),
+                super::text_displays::RemoteTextDisplay::new(shows, position, yaw)
+                    .with_pitch(pitch),
             );
         } else if kind == "minecraft:ominous_item_spawner" {
             self.add_remote_ominous_item_spawner(id, position);
@@ -81,7 +82,7 @@ impl Game<'_> {
             // The width, height and response follow in SetEntityData.
             self.interactions.insert(
                 id as i32,
-                super::interactions::RemoteInteraction::new(position),
+                super::interactions::RemoteInteraction::new_with_rotation(position, yaw, pitch),
             );
         } else if let Some(cart) = super::minecarts::CartKind::from_id(kind) {
             let mut c = super::minecarts::Minecart::new(id, cart, at);
@@ -99,7 +100,11 @@ impl Game<'_> {
             }
             self.boats.push(b);
         } else if kind == "minecraft:armor_stand" {
-            self.armor_stands.push(ArmorStand::new(id, at, yaw));
+            let mut stand = ArmorStand::new(id, at, yaw);
+            let clamped = (pitch % 360.0).clamp(-90.0, 90.0);
+            stand.pitch = clamped;
+            stand.previous_pitch = clamped;
+            self.armor_stands.push(stand);
         } else if kind == "minecraft:item_frame" || kind == "minecraft:glow_item_frame" {
             self.item_frames.push(ItemFrame {
                 attachment_lifetime: Default::default(),
@@ -136,10 +141,10 @@ impl Game<'_> {
         } else if kind == "minecraft:painting" {
             // The variant comes with the entity data; until then the
             // registry's first one (VariantUtils.getAny).
-            let (variant, width, height) = self
+            let (variant, asset, width, height) = self
                 .remote_painting_variant(0)
-                .map_or((Arc::from("minecraft:kebab"), 1, 1), |v| {
-                    (v.id, v.width, v.height)
+                .map_or((Arc::from("minecraft:kebab"), None, 1, 1), |v| {
+                    (v.id, Some(Arc::from(v.asset)), v.width, v.height)
                 });
             // Direction 3D data value (north 2, south 3, west 4, east 5) to 2D.
             let facing = match data {
@@ -155,7 +160,7 @@ impl Game<'_> {
                 pos: block,
                 facing,
                 variant,
-                asset: None,
+                asset,
                 width,
                 height,
                 check_interval: 0,
@@ -565,10 +570,11 @@ impl Game<'_> {
         self.item_frames.clear();
         self.paintings.clear();
         self.orbs.clear();
+        self.pick_section_clear();
     }
 
     pub(super) fn remove_remote_object(&mut self, id: u32) {
-        self.text_displays.remove(&(id as i32));
+        self.text_displays.shift_remove(&(id as i32));
         self.interactions.remove(&(id as i32));
         self.ominous_spawners.retain(|s| s.id != id);
         self.remote_knots.remove(&id);
@@ -590,6 +596,7 @@ impl Game<'_> {
         self.item_frames.retain(|f| f.id != id);
         self.paintings.retain(|p| p.id != id);
         self.bolts.retain(|b| b.id != id);
+        self.pick_section_remove(id);
     }
 }
 
