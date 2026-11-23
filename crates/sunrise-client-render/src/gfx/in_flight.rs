@@ -194,9 +194,9 @@ fn chain(
 /// `Sourced::collect`) waiting for each other (`collect_stats`).
 #[derive(Default)]
 pub(crate) struct StatsHalves {
-    /// The near table's held halves by full frame serial, each with whether its
-    /// frame drew sourced geometry (the flag rides the readback, `copy_stats`).
-    near: BTreeMap<u64, ([usize; 3], bool)>,
+    /// The near table's held halves by full frame serial: only frames that drew
+    /// sourced geometry wait (the flag rides the readback, `copy_stats`).
+    near: BTreeMap<u64, [usize; 3]>,
     /// Sourced geometry's held halves by full frame serial.
     sourced: BTreeMap<u64, [usize; 3]>,
     /// The newest frame serial each pass's ring has delivered: a held half at or
@@ -223,11 +223,12 @@ fn collect_stats(
     let mut published: Option<(u64, [usize; 3])> = None;
     for (frame, counts, drew_sourced) in near {
         halves.near_delivered = halves.near_delivered.max(frame);
-        if frame <= halves.sourced_delivered && !halves.sourced.contains_key(&frame) {
-            continue;
-        }
         if drew_sourced {
-            halves.near.insert(frame, (counts, true));
+            // Its sourced half can no longer come once the sourced ring passed it.
+            if frame <= halves.sourced_delivered && !halves.sourced.contains_key(&frame) {
+                continue;
+            }
+            halves.near.insert(frame, counts);
         } else {
             // The frame drew no sourced geometry, so it has no sourced half; no held
             // half pairs with it later. Its counts are the frame's: publish and clear.
@@ -252,7 +253,7 @@ fn collect_stats(
         .max()
         .copied();
     if let Some(frame) = joined {
-        let ([a, b, c], _) = halves.near.remove(&frame).expect("the near half");
+        let [a, b, c] = halves.near.remove(&frame).expect("the near half");
         let [d, e, _] = halves.sourced.remove(&frame).expect("the sourced half");
         if published.as_ref().is_none_or(|&(shown, _)| frame > shown) {
             published = Some((frame, [a + d, b + e, c]));
@@ -366,11 +367,26 @@ mod stats_tests {
             collect_stats(&mut halves, vec![(22, [6, 2, 1], false)], vec![]),
             Some((22, [6, 2, 1]))
         );
+        assert_eq!(collect_stats(&mut halves, vec![], vec![]), None);
+    }
+
+    /// A frame that drew no sourced geometry needs no partner, so it publishes even
+    /// when the sourced ring has already delivered a newer frame.
+    #[test]
+    fn a_whole_near_frame_publishes_behind_the_sourced_ring() {
+        let mut halves = StatsHalves::default();
         assert_eq!(
-            collect_stats(&mut halves, vec![], vec![(21, [4, 0, 0])]),
+            collect_stats(&mut halves, vec![], vec![(6, [2, 0, 0])]),
             None
         );
-        assert_eq!(collect_stats(&mut halves, vec![], vec![]), None);
+        assert_eq!(
+            collect_stats(&mut halves, vec![(5, [7, 3, 1], false)], vec![]),
+            Some((5, [7, 3, 1]))
+        );
+        assert_eq!(
+            collect_stats(&mut halves, vec![(6, [7, 3, 1], true)], vec![]),
+            Some((6, [9, 3, 1]))
+        );
     }
 
     /// A newer unmatched half never displaces an older pairing: sourced 21 waits while
