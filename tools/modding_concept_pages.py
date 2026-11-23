@@ -12,7 +12,7 @@ no edit to SUMMARY.md, and check every page's links.
   book names `playsunrise.net/docs/modding`, where it is published; the old Pages addresses are refused.
   Horizon's own projects (the machine sample, the mixins tool) keep their links.
 - A page the book doesn't render, or one titled as a design, a plan or a work list, fails the build.
-- The HTML check also refuses duplicate top-level H1 page titles across the book.
+- The HTML check also refuses duplicate rendered chapter H1 titles across the book, including generated chapters.
 """
 import argparse
 from collections import Counter
@@ -219,7 +219,18 @@ class HtmlLinks(HTMLParser):
     def __init__(self, text):
         super().__init__()
         self.ids, self.links = set(), []
+        self._in_main = 0
+        self._saw_main = False
+        self._capture_h1 = None
+        self._h1_chunks = []
+        self._main_h1 = None
+        self._fallback_h1 = None
         self.feed(text)
+
+    @property
+    def title(self):
+        """The chapter's rendered H1 text, excluding mdBook's menu-title page chrome."""
+        return self._main_h1 if self._saw_main else self._fallback_h1
 
     def handle_starttag(self, tag, attrs):
         attrs = dict(attrs)
@@ -227,31 +238,49 @@ class HtmlLinks(HTMLParser):
             self.ids.add(attrs["id"])
         if tag == "a" and "href" in attrs:
             self.links.append(attrs["href"])
+        if tag == "main":
+            self._in_main += 1
+            self._saw_main = True
+        elif tag == "h1" and self._capture_h1 is None:
+            classes = set(attrs.get("class", "").split())
+            if "menu-title" not in classes:
+                if self._in_main and self._main_h1 is None:
+                    self._capture_h1 = "main"
+                    self._h1_chunks = []
+                elif not self._in_main and self._fallback_h1 is None:
+                    self._capture_h1 = "fallback"
+                    self._h1_chunks = []
 
+    def handle_endtag(self, tag):
+        if tag == "main" and self._in_main:
+            self._in_main -= 1
+        elif tag == "h1" and self._capture_h1 is not None:
+            text = " ".join("".join(self._h1_chunks).split()) or None
+            if self._capture_h1 == "main":
+                self._main_h1 = text
+            else:
+                self._fallback_h1 = text
+            self._capture_h1 = None
+            self._h1_chunks = []
 
-def check_source_pages(src, pages):
-    """Refuse duplicate top-level H1 page titles across the book before checking rendered links."""
-    titles, errors = {}, []
-    for page in pages:
-        text = (src / page).read_text(encoding="utf-8")
-        title = next((title for title, _ in headings(text, level=1)), None)
-        if title:
-            first = titles.setdefault(title.casefold(), page)
-            if first != page:
-                errors.append(f"{page}: duplicate H1 {title!r} (also in {first})")
-    if errors:
-        raise AssertionError("\n".join(errors))
+    def handle_data(self, data):
+        if self._capture_h1 is not None:
+            self._h1_chunks.append(data)
 
 
 def check_html(directory, src=SRC):
     pages = sorted(p.relative_to(src).as_posix() for p in src.rglob("*.md") if p.name != "SUMMARY.md")
-    check_source_pages(src, pages)
     # The generated chapters have no source page.
     pages += [p for p in ("reference/hook-notes.md", "reference/neoforge-counterparts.md")
               if (directory / p).with_suffix(".html").is_file()]
+    titles, dup_errors = {}, []
     for page in pages:
         path = directory / Path(page).with_suffix(".html")
-        html = HtmlLinks(path.read_text())
+        html = HtmlLinks(path.read_text(encoding="utf-8"))
+        if html.title:
+            first = titles.setdefault(html.title.casefold(), page)
+            if first != page:
+                dup_errors.append(f"{page}: duplicate H1 {html.title!r} (also in {first})")
         for link in html.links:
             url = urlsplit(link)
             if url.scheme or url.netloc:
@@ -262,7 +291,9 @@ def check_html(directory, src=SRC):
             assert target.is_relative_to(directory.resolve()) and target.is_file(), (
                 f"{page}: missing rendered link {link} (link to repository files with a GitHub URL)")
             if url.fragment:
-                assert unquote(url.fragment) in HtmlLinks(target.read_text()).ids, f"{page}: missing rendered anchor {link}"
+                assert unquote(url.fragment) in HtmlLinks(target.read_text(encoding="utf-8")).ids, f"{page}: missing rendered anchor {link}"
+    if dup_errors:
+        raise AssertionError("\n".join(dup_errors))
     print(f"Rendered relative links and anchors: valid in {len(pages)} chapters")
 
 
