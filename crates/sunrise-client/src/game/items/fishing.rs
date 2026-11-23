@@ -99,6 +99,8 @@ pub(super) struct Hook {
     left_owner: bool,
     /// `Entity.yRot` updated on `Projectile.updateRotation` and `ProjectileDeflection.REVERSE`.
     pub(super) yaw: f32,
+    /// `Entity.xRot` updated on `Projectile.updateRotation`.
+    pub(super) pitch: f32,
     last_deflected_by: Option<u32>,
     needs_sync: bool,
     tick_count: i32,
@@ -314,6 +316,12 @@ fn synchronized_random(uuid: [i32; 4], game_time: i64) -> LegacyRandom {
 fn bite_impulse(r: &mut impl RandomSource) -> f64 {
     // Mth.nextFloat(random, min, max): `random.nextFloat() * (max - min) + min`.
     f64::from(-0.4f32 * (r.next_float() * (1.0f32 - 0.6f32) + 0.6f32))
+}
+
+/// `FishingHook`'s constructor and `Projectile.updateRotation` read the current velocity.
+fn hook_rotation(v: Vec3) -> [f32; 2] {
+    let atan2 = sunrise_core::geometry::trig::atan2_degrees;
+    [atan2(v.x, v.z), atan2(v.y, v.horizontal_distance())]
 }
 
 /// `FishingHook` constructor's three independent triangle draws.
@@ -573,6 +581,7 @@ impl Game<'_> {
             // use, but its construction still takes its own unique seed.
             let _synchronized = random_source::create();
             let v = cast_velocity(y_sin, y_cos, dir_y, &mut random);
+            let [hook_yaw, hook_pitch] = hook_rotation(v);
             self.next_entity += 1;
             self.install_fishing_hook(Hook {
                 uuid,
@@ -587,7 +596,8 @@ impl Game<'_> {
                 state: State::Flying,
                 hooked_in: None,
                 left_owner: false,
-                yaw,
+                yaw: hook_yaw,
+                pitch: hook_pitch,
                 last_deflected_by: None,
                 needs_sync: false,
                 tick_count: 0,
@@ -1469,10 +1479,11 @@ impl Game<'_> {
                 moved,
                 &mut h.velocity,
             );
-            h.yaw = sunrise_client::arrows::lerp_rotation(
-                old_yaw,
-                sunrise_core::geometry::trig::atan2_degrees(h.velocity.x, h.velocity.z),
-            );
+            // FishingHook.tick turns before grounding or drag zeros/scales motion.
+            let [yaw, pitch] = hook_rotation(h.velocity);
+            let lerp = sunrise_client::arrows::lerp_rotation;
+            h.yaw = lerp(old_yaw, yaw);
+            h.pitch = lerp(h.pitch, pitch);
             if h.state == State::Flying && (h.ground.on_ground || h.ground.horizontal_collision) {
                 h.velocity = Vec3::ZERO;
             }
@@ -2048,6 +2059,7 @@ impl Hook {
             hooked_in: None,
             left_owner: false,
             yaw: 0.0,
+            pitch: 0.0,
             last_deflected_by: None,
             needs_sync: false,
             tick_count: 0,
@@ -2536,7 +2548,7 @@ fn cast_direction(yaw: f32, pitch: f32) -> (f32, f32, f32) {
 }
 
 #[cfg(test)]
-mod tests {
+pub(in crate::game) mod tests {
     use super::{Hook, cast_direction, entity_hit_margin, first_entity_hit, pull_item, rebound};
 
     /// `FishingHookRenderer.getPlayerHandPos` in first person on HotSpot 25.0.4.1: the camera at
@@ -2618,6 +2630,10 @@ mod tests {
     #[test]
     #[ignore = "requires prepared resources and the vanilla fishing reference"]
     fn fishing_retrieve_reference() {
+        run_fishing_retrieve_reference();
+    }
+
+    pub(in crate::game) fn run_fishing_retrieve_reference() {
         use sunrise_core::random::{LegacyRandom, RandomSource};
         use sunrise_world::loot::{LootData, PackOverlay};
         let resources = std::env::var_os("SUNRISE_FISHING_RESOURCES").unwrap();
@@ -2744,6 +2760,10 @@ mod tests {
     #[test]
     #[ignore = "run by tools/test_breeze_hook_parity.py"]
     fn breeze_hook_parity_fixture() {
+        run_breeze_hook_parity_fixture();
+    }
+
+    pub(in crate::game) fn run_breeze_hook_parity_fixture() {
         use super::{EntityCollision, Hook};
         use std::io::Write;
         let input =
@@ -2815,6 +2835,7 @@ mod tests {
     #[test]
     fn reeling_an_item_requests_an_immediate_motion_update() {
         let mut item = ItemEntity {
+            size_answer: None,
             random: sunrise_core::random::LegacyRandom::new(0),
             attachment_lifetime: Default::default(),
             fall_distance: 0.0,
@@ -2986,4 +3007,4 @@ mod fishing_medium_tests;
 
 #[cfg(test)]
 #[path = "fishing_tests/fishing_targets_tests.rs"]
-mod fishing_targets_tests;
+pub(in crate::game) mod fishing_targets_tests;

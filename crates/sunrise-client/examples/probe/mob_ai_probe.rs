@@ -602,7 +602,7 @@ fn print_heart(
 /// The damage of a mob's direct hit on the player (others count as none).
 fn player_damage(e: &MobEvent) -> f32 {
     match e {
-        MobEvent::AttackPlayer(amount, _)
+        MobEvent::AttackPlayer(amount, ..)
         | MobEvent::CubeHurtPlayer { amount, .. }
         | MobEvent::Sting {
             target: Who::Player,
@@ -630,7 +630,7 @@ fn player_hurt(player: Option<&PlayerView>, e: &MobEvent) -> bool {
         return false;
     };
     match e {
-        MobEvent::AttackPlayer(amount, _)
+        MobEvent::AttackPlayer(amount, ..)
         | MobEvent::CubeHurtPlayer { amount, .. }
         | MobEvent::Sting {
             target: Who::Player,
@@ -1250,6 +1250,7 @@ pub fn main() -> sunrise_client::Result<()> {
                     biomes: &biomes,
                     mob_griefing: true,
                     universal_anger: false,
+                    pvp: false,
                     mob_drops: true,
                     max_entity_cramming: 24,
                     difficulty: LocalDifficulty::new(s.difficulty, world.day_time, 0, 0.0),
@@ -1465,6 +1466,7 @@ pub fn main() -> sunrise_client::Result<()> {
                             target,
                             amount,
                             source,
+                            ..
                         } => (Some((target, amount, source)), false),
                         // IronGolem.doHurtTarget: thrown up only if the hit landed.
                         MobEvent::IronGolemHit {

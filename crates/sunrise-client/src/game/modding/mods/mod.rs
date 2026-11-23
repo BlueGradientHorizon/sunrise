@@ -4285,17 +4285,11 @@ pub(in crate::game) mod tests {
     }
 
     mod inventory {
-        include!(concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/src/game/modding/mods/mod_inventory_tests.rs"
-        ));
+        include!("mod_inventory_tests.rs");
     }
 
     mod recipe_priorities {
-        include!(concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/src/game/modding/mods/recipe_priorities_tests.rs"
-        ));
+        include!("recipe_priorities_tests.rs");
     }
 
     const BUILT: &[BuiltMod] = &[BuiltMod {
@@ -5016,6 +5010,7 @@ pub(in crate::game) mod tests {
                             sprite: None,
                             tint: None,
                             world: Some(Default::default()),
+                            measures: Default::default(),
                         },
                     ]);
                     register_fluid_models(ExecutionRole::Client);
