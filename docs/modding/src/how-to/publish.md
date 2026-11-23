@@ -26,6 +26,17 @@ workflow, commits the version bump signed off (`Signed-off-by`, from your Git `u
 at the repository root or `<id>/v<version>` for a subfolder package. GitHub Actions builds and attests both the
 `.smod` and its page bundle, with no signing key for you to manage. The registry bot submits them for review.
 
+If your default branch accepts changes only through pull requests, add `--pull-request`:
+
+```sh
+cargo sunrise-mod release patch --pull-request
+```
+
+The release commit then goes on a new branch, `release/<tag>`, which is pushed together with the tag, and your
+checkout is left on that branch. The tag starts the release as usual. Open the pull request it prints, from
+`release/<tag>` into the branch you released from, and merge it before your next release, so that branch carries
+the new version.
+
 ## How releasing works
 
 1. You register your mod's repository once at [Submit a mod](https://playsunrise.net/mods/submit).
