@@ -2740,6 +2740,22 @@ impl<R: RandomSource> LootContext<'_, R> {
                 items_ok && enchants_ok && custom_ok
             }
             "minecraft:killed_by_player" => self.killed_by_player,
+            // TimeCheck: the level's clock, in the range (bounds as written; none is open).
+            "minecraft:time_check" => sunrise_world::loot::time_check_ticks(
+                self.place.as_deref(),
+                c,
+            )
+            .is_some_and(|time| {
+                let range = &c["value"];
+                let bound = |key: &str| range.get(key).and_then(Value::as_number).map(int_value);
+                match range {
+                    Value::Number(n) => int_value(n) == time,
+                    _ => {
+                        bound("min").is_none_or(|min| time >= min)
+                            && bound("max").is_none_or(|max| time <= max)
+                    }
+                }
+            }),
             "minecraft:random_chance_with_enchanted_bonus" => {
                 let level = self.attacker_level(c["enchantment"].as_str().unwrap_or(""), random);
                 let chance = if level > 0 {

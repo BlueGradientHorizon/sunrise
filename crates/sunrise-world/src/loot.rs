@@ -1405,6 +1405,22 @@ struct Context<'a, R> {
     enchanted_level: Option<&'a mut EnchantedLevel<'a, R>>,
 }
 /// A range predicate written as `{min?, max?}`, not as a single provider.
+/// `TimeCheck.test`'s ticks: the named clock's total in `place`'s level, modulo the condition's
+/// period. `None` when the level has no such clock or the period is zero: the check never holds.
+pub fn time_check_ticks(place: Option<&LootPlace>, condition: &Value) -> Option<i64> {
+    let total = place?
+        .level
+        .as_ref()?
+        .clocks
+        .get(condition["clock"].as_str()?)
+        .copied()?;
+    match condition["period"].as_i64() {
+        Some(0) => None,
+        Some(period) => Some(total.wrapping_rem(period)),
+        None => Some(total),
+    }
+}
+
 fn is_line(range: &Value) -> bool {
     range.as_object().is_some_and(|o| !o.contains_key("type"))
 }
@@ -1687,19 +1703,8 @@ impl<R: RandomSource> Context<'_, R> {
                 // TimeCheck: the clock's total ticks, modulo the period, in the range. A clock
                 // the level does not have never matches.
                 "minecraft:time_check" => {
-                    let Some(total) = self
-                        .place
-                        .as_deref()
-                        .and_then(|p| p.level.as_ref())
-                        .zip(c["clock"].as_str())
-                        .and_then(|(level, clock)| level.clocks.get(clock).copied())
-                    else {
+                    let Some(time) = time_check_ticks(self.place.as_deref(), c) else {
                         return false;
-                    };
-                    let time = match c["period"].as_i64() {
-                        Some(0) => return false,
-                        Some(period) => total.wrapping_rem(period),
-                        None => total,
                     };
                     self.int_in_range(&c["value"], time as i32)
                 }
