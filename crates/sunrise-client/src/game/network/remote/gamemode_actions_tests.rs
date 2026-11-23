@@ -222,24 +222,76 @@ fn spectator_entity_use_sends_both_hands_without_feeding_or_swinging() {
                     param: 3.0,
                 }))
                 .unwrap();
-                for id in [101, 102] {
+                for id in [101, 102, 103] {
                     if id == 102 {
                         // A boat that normally consumes the main-hand click is also PASS.
                         add_entity(game, id, "minecraft:oak_boat", [0.5, 66.5, 1.5]);
+                    } else if id == 103 {
+                        // Remove the closer boat so the crosshair picks the remote leash knot;
+                        // knots have no API entity body, and spectator must still send both hands
+                        // with hit locations relative to the knot's origin.
+                        game.handle_packet(C::RemoveEntities(play::RemoveEntities {
+                            ids: vec![102],
+                        }))
+                        .unwrap();
+                        add_entity(game, id, "minecraft:leash_knot", [0.5, 66.0, 1.0]);
                     }
                     game.refresh_client_pick(1.0);
                     assert_eq!(game.crosshair_entity_id(), Some(id));
+                    let expected_loc = if id == 103 {
+                        let Some(mod_api::CrosshairTarget::Entity { point, .. }) =
+                            game.crosshair_target()
+                        else {
+                            panic!("expected crosshair knot target");
+                        };
+                        let knot_origin =
+                            sunrise_client::mobs::leash::knot_state([0, 66, 1]).position;
+                        let raw = [
+                            point[0] - knot_origin.x,
+                            point[1] - knot_origin.y,
+                            point[2] - knot_origin.z,
+                        ];
+                        // Round-trip through LpVec3 so the assertion checks the exact wire value.
+                        let encoded = S::Interact(play::Interact {
+                            id,
+                            hand: 0,
+                            location: raw,
+                            secondary: false,
+                        })
+                        .encode();
+                        let mut r = sunrise_protocol::buf::Reader::new(&encoded);
+                        let pkt_id = r.varint().unwrap();
+                        let S::Interact(decoded) = S::decode(pkt_id, r.rest()).unwrap() else {
+                            panic!("expected Interact");
+                        };
+                        Some(decoded.location)
+                    } else {
+                        None
+                    };
                     let swings = game.swings_started;
                     game.remote_use(InteractionAttempt::Press);
                     let packets = outgoing(game, &mut reader);
                     let interactions: Vec<_> = packets
                         .iter()
                         .filter_map(|packet| match packet {
-                            S::Interact(interact) => Some((interact.id, interact.hand)),
+                            S::Interact(interact) => {
+                                Some((interact.id, interact.hand, interact.location))
+                            }
                             _ => None,
                         })
                         .collect();
-                    assert_eq!(interactions, [(id, 0), (id, 1)]);
+                    assert_eq!(
+                        interactions
+                            .iter()
+                            .map(|(e, h, _)| (*e, *h))
+                            .collect::<Vec<_>>(),
+                        [(id, 0), (id, 1)]
+                    );
+                    if let Some(expected) = expected_loc {
+                        for (_, _, loc) in &interactions {
+                            assert_eq!(*loc, expected);
+                        }
+                    }
                     assert!(
                         !packets
                             .iter()
@@ -250,6 +302,38 @@ fn spectator_entity_use_sends_both_hands_without_feeding_or_swinging() {
                     assert_eq!(game.inventory[game.selected], wheat);
                     assert_eq!(game.offhand, wheat);
                     assert!(game.using.is_none());
+                }
+
+                // Minecraft.startUseItem: an entity whose blockPosition() is outside the world
+                // border aborts the entire click with no Interact, UseItem, or off-hand turn,
+                // in both spectator and survival modes.
+                game.handle_packet(C::SetBorderCenter(play::SetBorderCenter { x: 0.0, z: 0.0 }))
+                    .unwrap();
+                game.handle_packet(C::SetBorderSize(play::SetBorderSize { size: 2.0 }))
+                    .unwrap();
+                // Border spans [-1.0, 1.0); entity 103's blockPosition is (0, 66, 1) -> outside.
+                let snowball = Some(ItemStack::new("minecraft:snowball", 2));
+                game.inventory[game.selected] = snowball.clone();
+                game.offhand = snowball;
+                for mode in [3.0_f32, 0.0_f32] {
+                    game.handle_packet(C::GameEvent(play::GameEvent {
+                        event: 3,
+                        param: mode,
+                    }))
+                    .unwrap();
+                    game.refresh_client_pick(1.0);
+                    assert_eq!(game.crosshair_entity_id(), Some(103));
+                    let swings = game.swings_started;
+                    game.remote_use(InteractionAttempt::Press);
+                    let packets = outgoing(game, &mut reader);
+                    assert!(
+                        !packets.iter().any(|p| matches!(
+                            p,
+                            S::Interact(_) | S::UseItem(_) | S::UseItemOn(_) | S::Punch(_)
+                        )),
+                        "mode {mode}: expected click abort outside world border, got {packets:?}"
+                    );
+                    assert_eq!(game.swings_started, swings);
                 }
             });
         },

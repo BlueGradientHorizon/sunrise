@@ -1,6 +1,28 @@
 use super::*;
 
 impl Game<'_> {
+    /// Bounding box `[lo, hi]` and world origin `[x, y, z]` of a crosshair entity for
+    /// `Minecraft.startUseItem` (including remote/resident leash knots, which have no API body).
+    fn use_entity_geometry(&self, entity: mod_api::EntityRef) -> Option<([[f64; 3]; 2], [f64; 3])> {
+        let knot_block = self.remote_knots.get(&entity.id()).copied().or_else(|| {
+            self.resident_entities
+                .knots
+                .iter()
+                .find(|k| k.id == entity.id())
+                .map(|k| k.fence)
+        });
+        if let Some(block) = knot_block {
+            let bounds = crate::game::pick_entity::knot_bounds(block);
+            let p = sunrise_client::mobs::leash::knot_state(block).position;
+            let (lo, hi) = (bounds.min_position(), bounds.max_position());
+            return Some(([[lo.x, lo.y, lo.z], [hi.x, hi.y, hi.z]], [p.x, p.y, p.z]));
+        }
+        Some((
+            self.entity_bounding_box(entity)?,
+            self.entity_position(entity)?,
+        ))
+    }
+
     /// `Minecraft.startUseItem`'s entity turn for `hand`: Interact goes to
     /// the server, and whether the click ends there is what this client's
     /// copy of the entity answers (`MultiPlayerGameMode.interact`).
@@ -24,9 +46,20 @@ impl Game<'_> {
             else {
                 return false;
             };
-            let Some([lo, hi]) = self.entity_bounding_box(entity) else {
+            let Some(([lo, hi], origin)) = self.use_entity_geometry(entity) else {
                 return false;
             };
+            // Minecraft.startUseItem checks the target's blockPosition() against the world
+            // border before range/interaction and returns from the whole click when outside.
+            let block = sunrise_core::position::BlockPos::containing(Vec3::new(
+                origin[0], origin[1], origin[2],
+            ));
+            if !self
+                .border
+                .is_within_bounds(f64::from(block.x), f64::from(block.z), 0.0)
+            {
+                return true;
+            }
             let Some(eye) = self.eye_position() else {
                 return false;
             };
@@ -40,10 +73,8 @@ impl Game<'_> {
             }
             if spectator {
                 // MultiPlayerGameMode.interact sends for either hand before returning PASS.
-                if let Some(origin) = self.entity_position(entity) {
-                    let location = std::array::from_fn(|i| point[i] - origin[i]);
-                    self.send(interact_packet(entity.id() as i32, location));
-                }
+                let location = std::array::from_fn(|i| point[i] - origin[i]);
+                self.send(interact_packet(entity.id() as i32, location));
                 return false;
             }
         }

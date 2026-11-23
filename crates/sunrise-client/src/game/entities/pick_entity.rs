@@ -38,7 +38,7 @@ pub(super) fn aabb_extents((lo, hi): ([f64; 3], [f64; 3])) -> Aabb {
     )
 }
 
-pub(super) fn knot_bounds(block: [i32; 3]) -> Aabb {
+pub(in crate::game) fn knot_bounds(block: [i32; 3]) -> Aabb {
     let knot = sunrise_client::mobs::leash::knot_state(block);
     let p = knot.position;
     let half = knot.width / 2.0;
@@ -262,7 +262,7 @@ impl Game<'_> {
 
     /// `Entity.getPickResult` of the entity `id`.
     pub(super) fn entity_pick_result(&self, id: i32) -> Option<ItemStack> {
-        let id = u32::try_from(id).ok()?;
+        let id = id as u32;
         // EnderDragonPart.getPickResult delegates to its owner's Mob.getPickResult.
         let id = self
             .resident_dragon_part(id)
@@ -335,7 +335,7 @@ impl Game<'_> {
             .object_target(id)
             .map(|(lo, hi, _)| (lo, hi))
             .or_else(|| {
-                let uid = u32::try_from(id).ok()?;
+                let uid = id as u32;
                 let bounds = self
                     .mobs
                     .iter()
@@ -387,6 +387,7 @@ mod tests {
                     game.player =
                         Some(PlayerMotion::new(game.motion, Vec3::new(0.5, 65.0, 0.5)).unwrap());
                     let knot = game.tie_knot([0, 65, 2]);
+                    let far_knot = game.tie_knot([0, 65, 10]);
                     let Some(Target::Other(explicit_knot)) = game
                         .summon_with_nbt("minecraft:leash_knot", [1.5, 65.0, 2.5], "{}")
                         .unwrap()
@@ -403,19 +404,67 @@ mod tests {
                             Some(ItemStack::new("minecraft:lead", 1))
                         );
                     }
+                    assert!(
+                        !game.within_entity_range(far_knot as i32),
+                        "far knot outside reach+3 must fail server reach"
+                    );
+                    // Cross the signed i32 boundary so later dragon parts carry negative wire IDs.
+                    game.next_entity = (i32::MAX as u32) - 3;
                     let dragon = game
-                        .spawn_dragon_spawned([0.5, 65.0, 3.5], SpawnSite::Plain)
+                        .spawn_dragon_facing([0.5, 65.0, 3.5], SpawnSite::Plain, Some(0.0))
                         .unwrap();
                     let parent_result = game.entity_pick_result(dragon as i32);
                     assert_eq!(
                         parent_result,
                         Some(ItemStack::new("minecraft:ender_dragon_spawn_egg", 1))
                     );
+                    let body_part_id = dragon_part_id(dragon, 2) as i32;
+                    assert!(body_part_id < 0, "expected negative signed part wire ID");
+                    assert!(game.within_entity_range(body_part_id));
                     for part in 0..8 {
                         assert_eq!(
                             game.entity_pick_result(dragon_part_id(dragon, part) as i32),
                             parent_result
                         );
+                    }
+
+                    // Exercise the real PickItemFromEntity server packet handler through a creative guest.
+                    let (mut hub, _rx, _other) =
+                        crate::game::lan_particles::tests::test_hub("PickEntity", Vec::new(), None);
+                    let gi = hub.guests.connection_index(1).unwrap();
+                    hub.guests.update(gi, |g| {
+                        g.game_mode = 1;
+                        g.position = [0.5, 65.0, 0.5];
+                        g.placed = true;
+                        g.dimension = "minecraft:overworld".into();
+                        g.inventory[0] = None;
+                        g.selected = 0;
+                    });
+                    game.lan = Some(crate::game::lan::LanHost::for_test(hub));
+
+                    for (id, expected) in [
+                        (far_knot as i32, None),
+                        (knot as i32, Some("minecraft:lead")),
+                        (explicit_knot as i32, Some("minecraft:lead")),
+                        (body_part_id, Some("minecraft:ender_dragon_spawn_egg")),
+                    ] {
+                        game.lan.as_mut().unwrap().hub.guests.update(gi, |g| {
+                            g.inventory[0] = None;
+                            g.selected = 0;
+                        });
+                        game.lan_guest_packet(
+                            1,
+                            sunrise_protocol::packets::play::Serverbound::PickItemFromEntity(
+                                sunrise_protocol::packets::play::PickItemFromEntity {
+                                    id,
+                                    include_data: false,
+                                },
+                            ),
+                        );
+                        let held = game.lan.as_ref().unwrap().hub.guests[gi].inventory[0]
+                            .as_ref()
+                            .map(|s| s.item.as_str());
+                        assert_eq!(held, expected, "PickItemFromEntity({id})");
                     }
                 });
             },
