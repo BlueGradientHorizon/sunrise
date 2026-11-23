@@ -65,8 +65,8 @@ impl ServerEntry {
                 Some(Tag::Short(n)) => Some(f64::from(*n) != 0.0),
                 Some(Tag::Int(n)) => Some(f64::from(*n) != 0.0),
                 Some(Tag::Long(n)) => Some((*n as f64) != 0.0),
-                Some(Tag::Float(n)) => Some(f64::from(*n) != 0.0),
-                Some(Tag::Double(n)) => Some(*n != 0.0),
+                Some(Tag::Float(bits)) => Some(f64::from(f32::from_bits(*bits)) != 0.0),
+                Some(Tag::Double(bits)) => Some(f64::from_bits(*bits) != 0.0),
                 _ => None,
             },
             accepted_code_of_conduct: match tag.get("acceptedCodeOfConduct") {
@@ -445,8 +445,16 @@ mod tests {
                     entry("IntZero", "int0.example", Tag::Int(0)),
                     entry("Int256", "int256.example", Tag::Int(256)),
                     entry("LongOne", "long1.example", Tag::Long(1)),
-                    entry("FloatNegZero", "fneg0.example", Tag::Float(-0.0)),
-                    entry("DoubleHalf", "dhalf.example", Tag::Double(0.5)),
+                    entry(
+                        "FloatNegZero",
+                        "fneg0.example",
+                        Tag::Float((-0.0_f32).to_bits()),
+                    ),
+                    entry(
+                        "DoubleHalf",
+                        "dhalf.example",
+                        Tag::Double(0.5_f64.to_bits()),
+                    ),
                     entry(
                         "StringIgnored",
                         "str.example",
