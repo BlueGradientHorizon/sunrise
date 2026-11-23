@@ -351,7 +351,11 @@ pub trait BabyEntitySpawnSlot {
     fn is_present(&self) -> bool;
     fn get(&self) -> Option<UnspawnedMobView<'_>>;
     fn get_mut(&mut self) -> Option<PendingChildEditor<'_>>;
-    fn construct(&self, spec: PendingMobSpec) -> Result<UnspawnedMob, UnspawnedMobError>;
+    fn construct(
+        &self,
+        host: &mut dyn crate::ServerHost,
+        spec: PendingMobSpec,
+    ) -> Result<UnspawnedMob, UnspawnedMobError>;
     fn replace(&mut self, child: UnspawnedMob) -> Result<Option<UnspawnedMob>, UnspawnedMobError>;
     fn take(&mut self) -> Option<UnspawnedMob>;
 }
@@ -401,10 +405,15 @@ impl<'a> BabyEntitySpawnChild<'a> {
 
     /// Construct a detached breeding child from `spec` without attaching it to the slot.
     ///
+    /// Fires `entity_constructing` immediately, even if the child is later discarded.
     /// Runs no spawn finalization or level insertion. Dropping the returned [`UnspawnedMob`]
     /// without passing it to [`Self::replace`] cleanly discards it.
-    pub fn construct(&self, spec: PendingMobSpec) -> Result<UnspawnedMob, UnspawnedMobError> {
-        self.inner.construct(spec)
+    pub fn construct(
+        &self,
+        host: &mut dyn crate::ServerHost,
+        spec: PendingMobSpec,
+    ) -> Result<UnspawnedMob, UnspawnedMobError> {
+        self.inner.construct(host, spec)
     }
 
     /// Put `child` into the breeding slot, returning any child that was previously there.
@@ -440,7 +449,11 @@ pub trait MobSplitChildList {
     }
     fn get(&self, index: usize) -> Option<UnspawnedMobView<'_>>;
     fn get_mut(&mut self, index: usize) -> Option<PendingChildEditor<'_>>;
-    fn construct(&self, spec: PendingMobSpec) -> Result<UnspawnedMob, UnspawnedMobError>;
+    fn construct(
+        &self,
+        host: &mut dyn crate::ServerHost,
+        spec: PendingMobSpec,
+    ) -> Result<UnspawnedMob, UnspawnedMobError>;
     fn push(&mut self, child: UnspawnedMob) -> Result<(), UnspawnedMobError>;
     fn insert(&mut self, index: usize, child: UnspawnedMob) -> Result<(), UnspawnedMobError>;
     fn replace(
@@ -495,10 +508,15 @@ impl<'a> MobSplitChildren<'a> {
 
     /// Construct a detached split child from `spec` without adding it to the list.
     ///
+    /// Fires `entity_constructing` immediately, even if the child is later discarded.
     /// Runs no spawn finalization or level insertion. Dropping the returned [`UnspawnedMob`]
     /// without attaching it cleanly discards it.
-    pub fn construct(&self, spec: PendingMobSpec) -> Result<UnspawnedMob, UnspawnedMobError> {
-        self.inner.construct(spec)
+    pub fn construct(
+        &self,
+        host: &mut dyn crate::ServerHost,
+        spec: PendingMobSpec,
+    ) -> Result<UnspawnedMob, UnspawnedMobError> {
+        self.inner.construct(host, spec)
     }
 
     /// Append `child` to the end of the list.

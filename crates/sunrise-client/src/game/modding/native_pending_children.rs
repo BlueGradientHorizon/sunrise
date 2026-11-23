@@ -6,8 +6,8 @@
 use super::native_unspawned_mob;
 use mod_api::{
     AttributeModifier, BabyEntitySpawnSlot, EquipmentSlot, Identifier, ItemStack,
-    MobSplitChildList, PendingChildEditor, PendingChildWrite, PendingMobSpec, UnspawnedMob,
-    UnspawnedMobError, UnspawnedMobRead, UnspawnedMobView, UnspawnedMobWrite,
+    MobSplitChildList, PendingChildEditor, PendingChildWrite, PendingMobSpec, ServerHost,
+    UnspawnedMob, UnspawnedMobError, UnspawnedMobRead, UnspawnedMobView, UnspawnedMobWrite,
 };
 use std::sync::Arc;
 use sunrise_client::mobs::{Mob, Species, finalize};
@@ -200,7 +200,7 @@ impl PendingChildWrite for PendingMob {
 
 /// Constructs an unspawned pending child from `spec`, validating all domain invariants before
 /// allocating or drawing RNG.
-pub(super) fn construct_pending_mob(
+fn construct_pending_mob(
     resources: &Arc<super::Resources>,
     attributes: &Arc<Catalog>,
     dimension: super::Dim,
@@ -252,6 +252,7 @@ pub(super) fn construct_pending_mob(
 
 /// Scoped single-slot editor backing [`mod_api::BabyEntitySpawnChild`] for `baby_entity_spawn`.
 pub(super) struct BabyChildSlot<'a> {
+    pub(super) action: u64,
     pub(super) slot: &'a mut Option<PendingMob>,
     pub(super) resources: Arc<super::Resources>,
     pub(super) attributes: Arc<Catalog>,
@@ -272,7 +273,11 @@ impl BabyEntitySpawnSlot for BabyChildSlot<'_> {
         self.slot.as_mut().map(|p| PendingChildEditor::new(p))
     }
 
-    fn construct(&self, spec: PendingMobSpec) -> Result<UnspawnedMob, UnspawnedMobError> {
+    fn construct(
+        &self,
+        host: &mut dyn ServerHost,
+        spec: PendingMobSpec,
+    ) -> Result<UnspawnedMob, UnspawnedMobError> {
         let pending = construct_pending_mob(
             &self.resources,
             &self.attributes,
@@ -280,7 +285,9 @@ impl BabyEntitySpawnSlot for BabyChildSlot<'_> {
             self.constraint,
             spec,
         )?;
-        Ok(UnspawnedMob::new(Box::new(pending)))
+        mod_api::backend_mut_of(host)
+            .ok_or(UnspawnedMobError::Unsupported)?
+            .initialize_pending_child(UnspawnedMob::new(Box::new(pending)), self.action)
     }
 
     fn replace(&mut self, child: UnspawnedMob) -> Result<Option<UnspawnedMob>, UnspawnedMobError> {
@@ -306,6 +313,7 @@ impl BabyEntitySpawnSlot for BabyChildSlot<'_> {
 
 /// Scoped unbounded list editor backing [`mod_api::MobSplitChildren`] for `mob_split`.
 pub(super) struct SplitChildList<'a> {
+    pub(super) action: u64,
     pub(super) children: &'a mut Vec<PendingMob>,
     pub(super) resources: Arc<super::Resources>,
     pub(super) attributes: Arc<Catalog>,
@@ -327,7 +335,11 @@ impl MobSplitChildList for SplitChildList<'_> {
             .map(|p| PendingChildEditor::new(p))
     }
 
-    fn construct(&self, spec: PendingMobSpec) -> Result<UnspawnedMob, UnspawnedMobError> {
+    fn construct(
+        &self,
+        host: &mut dyn ServerHost,
+        spec: PendingMobSpec,
+    ) -> Result<UnspawnedMob, UnspawnedMobError> {
         let pending = construct_pending_mob(
             &self.resources,
             &self.attributes,
@@ -335,7 +347,9 @@ impl MobSplitChildList for SplitChildList<'_> {
             ChildConstraint::Split,
             spec,
         )?;
-        Ok(UnspawnedMob::new(Box::new(pending)))
+        mod_api::backend_mut_of(host)
+            .ok_or(UnspawnedMobError::Unsupported)?
+            .initialize_pending_child(UnspawnedMob::new(Box::new(pending)), self.action)
     }
 
     fn push(&mut self, child: UnspawnedMob) -> Result<(), UnspawnedMobError> {

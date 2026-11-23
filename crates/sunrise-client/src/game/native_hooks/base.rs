@@ -3674,9 +3674,9 @@ impl Game<'_> {
     /// world's spawning made it, false when something else did (a breed, a
     /// raid, a spawner, a conversion, `/summon`, and the second mob of a
     /// jockey the world spawned). One call a mob: a `/summon` with passengers
-    /// tells each. Not told of a mob loaded with its chunk, leaving a hive or
-    /// changing level. It only hears; the mob is already among the game's
-    /// mobs. Server-side.
+    /// tells each. Natural spawns tell the source level after each successful
+    /// admission, before the spawn state's callback. Not told of a mob loaded
+    /// with its chunk, leaving a hive or changing level. Server-side.
     pub(in crate::game) fn native_mob_spawned(
         &mut self,
         dimension: &str,

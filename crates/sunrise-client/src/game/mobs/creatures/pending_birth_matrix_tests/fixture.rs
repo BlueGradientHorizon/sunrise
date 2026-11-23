@@ -37,7 +37,7 @@ fn spec(
 /// `mob_split`: mode 0 changes nothing, 1 cancels, 2 edits A, removes B, pushes D and drops an
 /// unattached child, 3 replaces C with E (also exercising `insert` + `remove`), 4 tests invalid
 /// inputs and grows the list past 64 children (to 70), 5 clears all children.
-pub fn mob_split(_: &mut dyn ServerHost, event: &mut MobSplitEvent<'_>) -> Flow {
+pub fn mob_split(host: &mut dyn ServerHost, event: &mut MobSplitEvent<'_>) -> Flow {
     let dim = event.dimension;
     match event.parent % 10 {
         1 => return Flow::Cancel,
@@ -48,53 +48,65 @@ pub fn mob_split(_: &mut dyn ServerHost, event: &mut MobSplitEvent<'_>) -> Flow 
             drop(removed);
             let d = event
                 .children
-                .construct(spec(
-                    "minecraft:slime",
-                    dim,
-                    [3.0, 70.0, 4.0],
-                    12.0,
-                    Some(2),
-                    false,
-                ))
+                .construct(
+                    host,
+                    spec(
+                        "minecraft:slime",
+                        dim,
+                        [3.0, 70.0, 4.0],
+                        12.0,
+                        Some(2),
+                        false,
+                    ),
+                )
                 .unwrap();
             event.children.push(d).unwrap();
             let _dropped = event
                 .children
-                .construct(spec(
-                    "minecraft:slime",
-                    dim,
-                    [9.0, 70.0, 9.0],
-                    0.0,
-                    Some(2),
-                    false,
-                ))
+                .construct(
+                    host,
+                    spec(
+                        "minecraft:slime",
+                        dim,
+                        [9.0, 70.0, 9.0],
+                        0.0,
+                        Some(2),
+                        false,
+                    ),
+                )
                 .unwrap();
         }
         3 => {
             let e = event
                 .children
-                .construct(spec(
-                    "minecraft:magma_cube",
-                    dim,
-                    [8.0, 65.0, 9.0],
-                    33.0,
-                    Some(2),
-                    false,
-                ))
+                .construct(
+                    host,
+                    spec(
+                        "minecraft:magma_cube",
+                        dim,
+                        [8.0, 65.0, 9.0],
+                        33.0,
+                        Some(2),
+                        false,
+                    ),
+                )
                 .unwrap();
             let prev = event.children.replace(2, e).unwrap();
             assert_eq!(prev.kind().unwrap().to_string(), "minecraft:slime");
             drop(prev);
             let temp = event
                 .children
-                .construct(spec(
-                    "minecraft:slime",
-                    dim,
-                    [1.0, 65.0, 1.0],
-                    5.0,
-                    Some(2),
-                    false,
-                ))
+                .construct(
+                    host,
+                    spec(
+                        "minecraft:slime",
+                        dim,
+                        [1.0, 65.0, 1.0],
+                        5.0,
+                        Some(2),
+                        false,
+                    ),
+                )
                 .unwrap();
             event.children.insert(0, temp).unwrap();
             let back = event.children.remove(0).unwrap();
@@ -104,35 +116,42 @@ pub fn mob_split(_: &mut dyn ServerHost, event: &mut MobSplitEvent<'_>) -> Flow 
         4 => {
             let slime = |at: [f64; 3], d: &str| spec("minecraft:slime", d, at, 0.0, Some(2), false);
             let mut digits = vec![
-                code(event.children.construct(slime([f64::NAN, 64.0, 0.0], dim))),
-                code(event.children.construct(spec(
-                    "minecraft:not_a_mob",
-                    dim,
-                    [0.0, 64.0, 0.0],
-                    0.0,
-                    None,
-                    false,
-                ))),
                 code(
                     event
                         .children
-                        .construct(slime([0.0, 64.0, 0.0], "minecraft:the_end")),
+                        .construct(host, slime([f64::NAN, 64.0, 0.0], dim)),
+                ),
+                code(event.children.construct(
+                    host,
+                    spec(
+                        "minecraft:not_a_mob",
+                        dim,
+                        [0.0, 64.0, 0.0],
+                        0.0,
+                        None,
+                        false,
+                    ),
+                )),
+                code(
+                    event
+                        .children
+                        .construct(host, slime([0.0, 64.0, 0.0], "minecraft:the_end")),
                 ),
             ];
             let oob_insert = event
                 .children
-                .construct(slime([0.0, 64.0, 0.0], dim))
+                .construct(host, slime([0.0, 64.0, 0.0], dim))
                 .unwrap();
             digits.push(code(event.children.insert(99, oob_insert)));
             let oob_replace = event
                 .children
-                .construct(slime([0.0, 64.0, 0.0], dim))
+                .construct(host, slime([0.0, 64.0, 0.0], dim))
                 .unwrap();
             digits.push(code(event.children.replace(99, oob_replace)));
             while event.children.len() < 70 {
                 let more = event
                     .children
-                    .construct(slime([0.0, 64.0, 0.0], dim))
+                    .construct(host, slime([0.0, 64.0, 0.0], dim))
                     .unwrap();
                 event.children.push(more).unwrap();
             }
@@ -152,30 +171,26 @@ pub fn mob_split(_: &mut dyn ServerHost, event: &mut MobSplitEvent<'_>) -> Flow 
 
 /// `baby_entity_spawn`: mode 0 changes nothing, 1 cancels, 2 replaces the baby with a pig baby
 /// (tagged `"replaced_pig"`, with yaw 77.0 that breeding snaps back to 0.0) and drops an
-/// unattached second baby, 3 clears the baby without cancelling, 4 offers a grown replacement
-/// and records its refusal (`Invalid` is 4) as a tag on the kept baby.
-pub fn baby_entity_spawn(_: &mut dyn ServerHost, event: &mut BabyEntitySpawnEvent<'_>) -> Flow {
+/// unattached second baby, 3 clears the baby without cancelling, 4 replaces the baby with a
+/// grown pig (tagged `"grown_pig"`), which breeding makes a baby after the event.
+pub fn baby_entity_spawn(host: &mut dyn ServerHost, event: &mut BabyEntitySpawnEvent<'_>) -> Flow {
     let dim = event.dimension;
     let pig = |baby| spec("minecraft:pig", dim, [0.5, 64.0, 0.0], 0.0, None, baby);
     match event.parent % 10 {
         1 => return Flow::Cancel,
         2 => {
-            let mut replacement = event.child.construct(pig(true)).unwrap();
+            let mut replacement = event.child.construct(host, pig(true)).unwrap();
             replacement.set_yaw(77.0).unwrap();
             replacement.add_tag("replaced_pig").unwrap();
             let prev = event.child.replace(replacement).unwrap();
             assert_eq!(prev.unwrap().kind().unwrap().to_string(), "minecraft:cow");
-            let _dropped = event.child.construct(pig(true)).unwrap();
+            let _dropped = event.child.construct(host, pig(true)).unwrap();
         }
         3 => event.child.clear(),
         4 => {
-            let grown = code(event.child.construct(pig(false)));
-            event
-                .child
-                .get_mut()
-                .unwrap()
-                .add_tag(&format!("refused_{grown}"))
-                .unwrap();
+            let mut grown = event.child.construct(host, pig(false)).unwrap();
+            grown.add_tag("grown_pig").unwrap();
+            event.child.replace(grown).unwrap();
         }
         _ => {}
     }

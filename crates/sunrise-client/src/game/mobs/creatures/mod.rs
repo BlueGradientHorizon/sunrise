@@ -108,17 +108,6 @@ pub(super) enum SpawnSite {
     Raw,
 }
 
-/// What a spawn site does with a mob after `finalize_spawn` was heard.
-#[derive(Debug, PartialEq)]
-pub(super) enum Finalized {
-    /// Finalized as vanilla does; the site goes on to the class's follow-ups.
-    Done,
-    /// A mod skipped finalization: the mob spawns uninitialised.
-    Skipped,
-    /// A mod stopped the spawn: the mob is not added.
-    Cancelled,
-}
-
 mod death_source;
 mod death_weapon;
 mod destroy_rules;
@@ -759,11 +748,11 @@ impl Game<'_> {
         mob.persistent = persistent;
         match site {
             SpawnSite::Raw => return Some(mob),
-            SpawnSite::Finalizing(reason) => match self.finalize_with(&mut mob, reason, None) {
-                Finalized::Cancelled => return self.discard_unjoined_mob(mob.id),
-                Finalized::Skipped => return Some(mob),
-                Finalized::Done => {}
-            },
+            SpawnSite::Finalizing(reason) => {
+                if !self.finalize_with(&mut mob, reason, None) {
+                    return self.discard_unjoined_mob(mob.id);
+                }
+            }
             // A plain spawn finalizes as a summoned one (vanilla's /summon
             // and egg path): its few reason-gated arms behave the same.
             SpawnSite::Plain => {
@@ -960,12 +949,6 @@ impl Game<'_> {
             self.lan_entity_event(id as i32, event, at);
         }
     }
-    /// Finalize a converted frog or witch before it joins the level.
-    fn finalize_converted(&mut self, mob: &mut Mob) {
-        // A mod that stops a conversion's finalization leaves the mob as converted.
-        self.finalize_with(mob, SpawnReason::Conversion, None);
-        mob.persistent = true;
-    }
     /// `Mob.convertTo(type, ConversionParams.single(...))`: a new mob of
     /// `kind`, made without spawn finalization unless its conversion asks, takes
     /// its place with what `conversion::single` carries over, and the old
@@ -1019,7 +1002,11 @@ impl Game<'_> {
         }
         match (from.species(), kind) {
             (Species::Tadpole, "minecraft:frog") | (Species::Villager, "minecraft:witch") => {
-                self.finalize_converted(&mut mob);
+                if !self.finalize_with(&mut mob, SpawnReason::Conversion, None) {
+                    self.forget_entity(mob.id);
+                    return None;
+                }
+                mob.persistent = true;
             }
             (Species::Pig, "minecraft:zombified_piglin") => {
                 let old = self.mobs.iter_mut().find(|m| m.id == from.id)?;
@@ -1193,19 +1180,20 @@ impl Game<'_> {
     /// `Mob.finalizeSpawn` behind `FinalizeSpawnEvent`: the one fire point for
     /// the mobs the game spawns where vanilla calls `finalizeSpawn`. The class's
     /// follow-ups (raider flags and the like) are part of `finalizeSpawn`, so a
-    /// site skips them on [`Finalized::Skipped`].
+    /// site skips them when the listener cancels initialization. Returns whether
+    /// the mob may be admitted.
     pub(super) fn finalize_with(
         &mut self,
         mob: &mut Mob,
         reason: SpawnReason,
         spawner: Option<mod_api::SpawnSource>,
-    ) -> Finalized {
+    ) -> bool {
         let mut group = None;
         let (outcome, difficulty) = self.finalize_spawn_event(mob, reason, spawner, &mut group);
-        if outcome == Finalized::Done {
+        if !outcome.skip_initialization {
             self.finalize_grouped(mob, &difficulty, reason, group);
         }
-        outcome
+        !outcome.veto_admission
     }
     /// `Mob.finalizeSpawn`'s event, the half listeners own: they hear the
     /// spawn, cancel it, take it over, set its difficulty, edit the mob
@@ -1218,11 +1206,28 @@ impl Game<'_> {
         reason: SpawnReason,
         spawner: Option<mod_api::SpawnSource>,
         group: &mut Option<Group>,
-    ) -> (Finalized, spawning::LocalDifficulty) {
+    ) -> (
+        sunrise_client::mobs::finalize::SpawnEvent,
+        spawning::LocalDifficulty,
+    ) {
         let at = [mob.position.x, mob.position.y, mob.position.z];
         let difficulty = self.local_difficulty(at);
+        self.finalize_spawn_with_difficulty(mob, reason, spawner, difficulty, group)
+    }
+    pub(super) fn finalize_spawn_with_difficulty(
+        &self,
+        mob: &mut Mob,
+        reason: SpawnReason,
+        spawner: Option<mod_api::SpawnSource>,
+        difficulty: spawning::LocalDifficulty,
+        group: &mut Option<Group>,
+    ) -> (
+        sunrise_client::mobs::finalize::SpawnEvent,
+        spawning::LocalDifficulty,
+    ) {
+        let at = [mob.position.x, mob.position.y, mob.position.z];
         if !mod_api::__private::listened(mod_api::HookId::FinalizeSpawn) {
-            return (Finalized::Done, difficulty);
+            return (Default::default(), difficulty);
         }
         let kind = mob.kind.id.clone();
         self.finalize_spawn_lent(&kind, at, reason, spawner, difficulty, Some(mob), group)
@@ -1271,10 +1276,13 @@ impl Game<'_> {
         at: [f64; 3],
         reason: SpawnReason,
         spawner: Option<mod_api::SpawnSource>,
-    ) -> (Finalized, spawning::LocalDifficulty) {
+    ) -> (
+        sunrise_client::mobs::finalize::SpawnEvent,
+        spawning::LocalDifficulty,
+    ) {
         let difficulty = self.local_difficulty(at);
         if !mod_api::__private::listened(mod_api::HookId::FinalizeSpawn) {
-            return (Finalized::Done, difficulty);
+            return (Default::default(), difficulty);
         }
         self.finalize_spawn_lent(kind, at, reason, spawner, difficulty, None, &mut None)
     }
@@ -1290,7 +1298,10 @@ impl Game<'_> {
         difficulty: spawning::LocalDifficulty,
         mob: Option<&mut Mob>,
         group: &mut Option<Group>,
-    ) -> (Finalized, spawning::LocalDifficulty) {
+    ) -> (
+        sunrise_client::mobs::finalize::SpawnEvent,
+        spawning::LocalDifficulty,
+    ) {
         let mut heard = mod_api::Difficulty::from(difficulty);
         let (mut spawn_cancelled, mut skip) = (false, false);
         let given = group
@@ -1315,13 +1326,13 @@ impl Game<'_> {
                 .as_ref()
                 .and_then(super::native_unspawned_mob::spawn_group);
         }
-        if spawn_cancelled {
-            return (Finalized::Cancelled, difficulty);
-        }
-        if skip {
-            return (Finalized::Skipped, difficulty);
-        }
-        (Finalized::Done, heard.into())
+        (
+            sunrise_client::mobs::finalize::SpawnEvent {
+                skip_initialization: skip,
+                veto_admission: spawn_cancelled,
+            },
+            heard.into(),
+        )
     }
     /// `ServerLevel.getCurrentDifficultyAt` in the level in place.
     pub(super) fn local_difficulty(&self, at: [f64; 3]) -> spawning::LocalDifficulty {
@@ -1927,25 +1938,33 @@ impl Game<'_> {
         let Some(index) = self.mobs.locate(join) else {
             return;
         };
-        let mut dying = self.mobs[index].clone();
         let removal = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            if split {
+            let mut random = if split {
+                let mut dying = self.mobs[index].clone();
                 self.split_cube_children(&mut dying);
-            }
-            if !dying.extra.effects.is_empty() {
-                let names: Vec<_> = dying
+                dying.random
+            } else {
+                self.mobs[index].random.clone()
+            };
+            // LivingEntity.remove sees the body's current effects and pose, after the split
+            // and child join listeners have had a chance to edit it. Keep the split's draws.
+            let Some(index) = self.mobs.locate(join) else {
+                return;
+            };
+            let parent = &self.mobs[index];
+            if !parent.extra.effects.is_empty() {
+                let names: Vec<_> = parent
                     .extra
                     .effects
                     .iter()
                     .map(|e| e.id.trim_start_matches("minecraft:"))
                     .collect();
-                let bounds = dying.bounds();
                 self.effects_on_death(
                     &names,
-                    bounds,
-                    dying.silent,
-                    Some(dying.id),
-                    Some(&mut dying.random),
+                    parent.bounds(),
+                    parent.silent,
+                    Some(parent.id),
+                    Some(&mut random),
                 );
             }
         }));
@@ -4395,23 +4414,31 @@ impl Game<'_> {
         // BabyEntitySpawnEvent: posted even if no proposed child was constructed, matching
         // NeoForge's Animal.spawnChildFromBreeding and Fox.FoxBreedGoal.breed.
         let listened = mod_api::__private::listened(mod_api::HookId::BabyEntitySpawn);
-        if listened {
-            let conn = self
-                .love_cause
-                .get(&parent)
-                .or(self.love_cause.get(&partner))
-                .copied();
-            let player = (
-                conn.and_then(|c| self.killer_uuid(c)),
-                conn.and_then(|c| self.player_entity_id_by_connection(c)),
-            );
+        let accepted = if listened {
+            let feeders = [parent, partner].map(|id| self.love_cause.get(&id).copied());
+            let player = feeders
+                .into_iter()
+                .flatten()
+                .find_map(|conn| match conn {
+                    Some(conn) if self.lan_acting != Some(conn) => {
+                        let guest = self.lan.as_ref()?.hub.guest(conn)?;
+                        guest
+                            .placed_in(self.dim.id())
+                            .then_some((guest.uuid, guest.entity_id))
+                    }
+                    conn if conn == self.lan_acting && self.player.is_some() => {
+                        Some((self.native_acting_id(), self.own_entity_id()))
+                    }
+                    _ => None,
+                })
+                .map_or((None, None), |(uuid, id)| (Some(uuid), Some(id)));
             let constraint = if p.species() == Species::Fox {
                 super::native_pending_children::ChildConstraint::BreedingFox
             } else {
                 super::native_pending_children::ChildConstraint::BreedingAgeable
             };
             match self.breed_with_listeners(parent, partner, player, child, constraint) {
-                super::pending_births::BreedOutcome::Accepted(baby) => child = baby,
+                super::pending_births::BreedOutcome::Accepted(baby) => baby,
                 super::pending_births::BreedOutcome::Cancelled => {
                     // NeoForge Animal.spawnChildFromBreeding / Fox.FoxBreedGoal.breed:
                     // only cancellation resets both parents and skips finalization.
@@ -4425,8 +4452,11 @@ impl Game<'_> {
                     return None;
                 }
             }
-        }
-        let mut child = child?;
+        } else {
+            child.map(|child| self.stash_breeding_child(child))
+        };
+        let (mut pending, action) = accepted?;
+        let child = &mut pending.mob;
         // NeoForge Animal.spawnChildFromBreeding / Fox.FoxBreedGoal.breed:
         // apply post-event completion to the live initiating parent and selected child.
         let live_parent = self
@@ -4455,20 +4485,20 @@ impl Game<'_> {
                 .copied()
                 .and_then(|conn| self.killer_uuid(conn));
             sunrise_client::mobs::fox::trust_breeders(
-                &mut child,
+                child,
                 parent_cause.map(sunrise_client::lan::playerdata::uuid_ints),
                 partner_cause.map(sunrise_client::lan::playerdata::uuid_ints),
             );
             self.finalize_breeding(
                 &live_parent,
                 partner,
-                Some(&child),
+                Some(child),
                 order,
                 listened || at_tick_boundary,
             );
         }
-        sunrise_client::mobs::finalize::set_baby(&mut child, true);
-        sunrise_client::mobs::living::teleports::snap_to(&mut child, live_parent.position);
+        sunrise_client::mobs::finalize::set_baby(child, true);
+        sunrise_client::mobs::living::teleports::snap_to(child, live_parent.position);
         child.yaw = 0.0;
         child.previous_yaw = 0.0;
         child.body_yaw = 0.0;
@@ -4482,7 +4512,7 @@ impl Game<'_> {
             self.finalize_breeding(
                 &live_parent,
                 partner,
-                Some(&child),
+                Some(child),
                 order,
                 listened || at_tick_boundary,
             );
@@ -4492,18 +4522,16 @@ impl Game<'_> {
             live_parent.position.y,
             live_parent.position.z,
         ];
-        match order {
-            OrbOrder::AfterChild => {
-                let joined = self.insert_spawned_mob(child);
-                self.mob_event_particles(parent, 18);
-                self.breeding_orb(parent, at, experience);
-                joined
-            }
-            OrbOrder::BeforeChild => {
-                self.breeding_orb(parent, at, experience);
-                self.insert_spawned_mob(child)
-            }
+        if order == OrbOrder::BeforeChild {
+            self.breeding_orb(parent, at, experience);
         }
+        let child = self.issue_pending_child(pending, action);
+        let joined = self.insert_spawned_mob(child);
+        if order == OrbOrder::AfterChild {
+            self.mob_event_particles(parent, 18);
+            self.breeding_orb(parent, at, experience);
+        }
+        joined
     }
     /// `MobEffectUtil.addEffectToPlayersAround` for an elder guardian:
     /// mining fatigue III for five minutes unless a stronger or longer one

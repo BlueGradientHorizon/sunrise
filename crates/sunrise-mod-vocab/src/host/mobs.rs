@@ -175,6 +175,14 @@ pub trait MobsBackend {
 #[doc(hidden)]
 #[sunrise_mod_api_macros::host_area]
 pub trait MobsBackendMut {
+    // hidden: a scoped pending-child editor completes construction via the listener's host loan.
+    #[doc(hidden)]
+    fn initialize_pending_child(
+        &mut self,
+        child: UnspawnedMob,
+        action: u64,
+    ) -> Result<UnspawnedMob, UnspawnedMobError>;
+
     /// Side: server.
     /// `EnderDragonPhaseManager.setPhase`: the dragon ends its phase and
     /// begins the new one fresh (targets and counters cleared), and the

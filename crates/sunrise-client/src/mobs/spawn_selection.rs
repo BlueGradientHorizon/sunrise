@@ -344,7 +344,7 @@ pub trait NaturalLevel: SpawnLevel {
         _entity: &str,
         _reason: Reason,
         _at: [f64; 3],
-        _pending: Pending,
+        _pending: Pending<'_>,
     ) -> SpawnCheck {
         SpawnCheck::Default
     }
@@ -630,14 +630,11 @@ pub fn spawn_aabb(s: Species, x: f64, y: f64, z: f64, width: f32, height: f32) -
 /// The mob a position check is about, which the site has not created yet
 /// (vanilla creates it before the check).
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub struct Pending {
+pub struct Pending<'a> {
     /// The yaw the site creates it with, drawn before the check.
     pub yaw: f32,
-    /// Whether the site creates it fresh from its type (`EntityType.create`):
-    /// natural spawning, and a spawner whose spawn data is the type alone. A
-    /// spawner with entity data loads it, and chunk generation's packs come
-    /// from the generator.
-    pub fresh: bool,
+    /// Configured spawner data, loaded into the candidate before the check.
+    pub configured: Option<&'a sunrise_core::nbt::Compound>,
 }
 /// `Mob.checkSpawnRules` and `checkSpawnObstruction` of a freshly created
 /// mob, unless a mod forces the answer (`MobSpawnEvent.PositionCheck`); then
@@ -647,7 +644,7 @@ pub fn position_ok<L: NaturalLevel>(
     entity: &str,
     reason: Reason,
     at: [f64; 3],
-    pending: Pending,
+    pending: Pending<'_>,
     vanilla: impl FnOnce() -> bool,
 ) -> bool {
     let ok = match l.position_check(entity, reason, at, pending) {
@@ -1241,18 +1238,16 @@ impl SpawnState {
         change * charge
     }
     /// `SpawnState.afterSpawn`.
-    fn after_spawn<L: NaturalLevel>(
+    fn after_spawn(
         &mut self,
-        l: &L,
+        spawn_cost: impl FnOnce(&str, [i32; 3]) -> Option<SpawnCost>,
         entity: &str,
         category: Category,
         pos: [i32; 3],
     ) {
         let charge = match &self.last_checked {
             Some((p, c)) if *p == pos => *c,
-            _ => l
-                .spawn_cost(entity, pos[0], pos[1], pos[2])
-                .map_or(0.0, |c| c.charge),
+            _ => spawn_cost(entity, pos).map_or(0.0, |c| c.charge),
         };
         self.add_charge(pos, charge);
         self.counts[category.index()] += 1;
@@ -1369,7 +1364,13 @@ pub fn spawn_category_for_position<L: NaturalLevel, R: RandomSource + Clone>(
         let Some(result) = spawn(l, &request, random) else {
             continue;
         };
-        cluster.after_spawn(l, state, candidate, candidate.block, trace);
+        cluster.after_spawn(
+            |entity, [x, y, z]| l.spawn_cost(entity, x, y, z),
+            state,
+            candidate,
+            candidate.block,
+            trace,
+        );
         cluster.check_limit(candidate, result.cluster_size, result.school);
     }
     cluster.finish(state);
@@ -1521,7 +1522,10 @@ impl SpawnCluster {
                     &entry.entity,
                     Reason::Natural,
                     [xx, f64::from(y), zz],
-                    Pending { yaw, fresh: true },
+                    Pending {
+                        yaw,
+                        configured: None,
+                    },
                     || {
                         mob_spawn_rules(species, l, x, y, z)
                             && spawn_obstruction(species, l, bounds, true, x, y, z)
@@ -1558,7 +1562,7 @@ impl SpawnCluster {
     /// Account for an attempted insertion, even if the level declined admission.
     pub fn after_spawn(
         &mut self,
-        l: &impl NaturalLevel,
+        spawn_cost: impl FnOnce(&str, [i32; 3]) -> Option<SpawnCost>,
         state: &mut SpawnState,
         candidate: SpawnCandidate,
         block: [i32; 3],
@@ -1572,7 +1576,7 @@ impl SpawnCluster {
             .current
             .as_ref()
             .expect("candidate belongs to the selected spawn group");
-        state.after_spawn(l, &entry.entity, candidate.category, block);
+        state.after_spawn(spawn_cost, &entry.entity, candidate.category, block);
         trace(Event::Spawn(
             &entry.entity,
             candidate.position,
@@ -1869,7 +1873,10 @@ pub fn spawn_mobs_for_chunk_generation<
                         &entry.entity,
                         Reason::ChunkGeneration,
                         [fx, fy, fz],
-                        Pending { yaw, fresh: false },
+                        Pending {
+                            yaw,
+                            configured: None,
+                        },
                         || {
                             mob_spawn_rules(species, l, bx, pos[1], bz)
                                 && spawn_obstruction(species, l, bounds, false, bx, pos[1], bz)
