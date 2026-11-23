@@ -257,7 +257,7 @@ pub fn assemble(
         }
         None => start[1],
     };
-    first.moved(cy - (b.min[1] + first.ground_level_delta));
+    first.moved(cy.wrapping_sub(b.min[1].wrapping_add(first.ground_level_delta)));
     let start_box = first.bounding_box;
     let (start_position, start_rotation) = (first.position, first.rotation);
     let counts = Counts::new(limits, resources);
@@ -441,7 +441,7 @@ fn adjust(
     if limits.no_liquid || !ocean_floor {
         land = land.max(sea);
     } else {
-        land = land.min(sea - box0.span()[1]);
+        land = land.min(sea.wrapping_sub(box0.span()[1]));
     }
     // offsetToNewHeight.
     if limits.max_y.is_some()
@@ -887,7 +887,7 @@ impl Assembler<'_> {
                         continue;
                     }
                     let target_ground = if target_rigid {
-                        source_ground - delta_y
+                        source_ground.wrapping_sub(delta_y)
                     } else {
                         target.ground_level_delta()
                     };
