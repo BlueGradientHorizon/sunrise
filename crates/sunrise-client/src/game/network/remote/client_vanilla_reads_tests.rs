@@ -274,7 +274,11 @@ fn the_contextual_bar_facts_read_the_jumpable_mount_and_the_tracked_waypoints() 
                     }))
                     .unwrap();
                 };
-                for (id, kind) in [(30, "minecraft:horse"), (31, "minecraft:pig")] {
+                for (id, kind) in [
+                    (30, "minecraft:horse"),
+                    (31, "minecraft:pig"),
+                    (32, "minecraft:camel"),
+                ] {
                     add(game, id, kind);
                     let mount = game.mobs.iter_mut().find(|m| m.id == id).unwrap();
                     mount.extra.set_saddled(true);
@@ -284,10 +288,31 @@ fn the_contextual_bar_facts_read_the_jumpable_mount_and_the_tracked_waypoints() 
                 assert!(horse.is_some());
                 assert_eq!(facts(game), (horse, false));
                 assert_eq!(game.contextual_bar(), ContextualBar::JumpableVehicle);
+                // In the second seat the player does not control the horse
+                // (`getControlledVehicle`), so it has no jumpable vehicle and no jump bar.
+                add(game, 33, "minecraft:zombie");
+                ride(game, 30, vec![33, PLAYER as i32]);
+                assert_eq!(facts(game), (None, false));
+                assert_ne!(game.contextual_bar(), ContextualBar::JumpableVehicle);
                 // A saddle only steers a pig.
                 ride(game, 30, Vec::new());
                 ride(game, 31, vec![PLAYER as i32]);
                 assert_eq!(facts(game), (None, false));
+                // A camel jumps (dashes) unless it sits (`Camel.canJump`, `refuseToMove`).
+                ride(game, 31, Vec::new());
+                ride(game, 32, vec![PLAYER as i32]);
+                let camel = game.entity(32);
+                assert!(camel.is_some());
+                assert_eq!(facts(game), (camel, false));
+                game.mobs
+                    .iter_mut()
+                    .find(|m| m.id == 32)
+                    .unwrap()
+                    .extra
+                    .camel_sitting = true;
+                assert_eq!(facts(game), (None, false));
+                assert_ne!(game.contextual_bar(), ContextualBar::JumpableVehicle);
+                ride(game, 32, Vec::new());
 
                 let waypoint = |operation| {
                     C::TrackedWaypoint(TrackedWaypoint {

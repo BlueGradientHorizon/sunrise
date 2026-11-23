@@ -10,8 +10,9 @@ Java's `int`. Pausing holds it; a server tick freeze does not. This is not world
 or the frame's animation clock.
 
 Two reads give the facts the HUD picks its contextual bar from (the jump bar, the locator bar or the
-experience bar): `ClientHost::jumpable_vehicle()` is the vehicle the local player rides that can jump
-(`LocalPlayer.jumpableVehicle`: a saddled horse, donkey, mule, camel or nautilus, not a pig or a strider),
+experience bar): `ClientHost::jumpable_vehicle()` is the vehicle the local player controls that can jump now
+(`LocalPlayer.jumpableVehicle`: the player is its first passenger, on a saddled horse, donkey, mule, nautilus or
+camel, and the camel is not sitting; never a pig or a strider, and not for a second passenger),
 and `ClientHost::has_waypoints()` is whether the server tracks any waypoint for this client
 (`ClientWaypointManager.hasWaypoints`). The HUD reads the same state. The bar it chose is not exposed, as
 vanilla's `Hud.nextContextualInfoState` is private.

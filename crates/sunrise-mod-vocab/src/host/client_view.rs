@@ -121,10 +121,12 @@ pub trait ClientViewClientHost {
     /// a block broken earlier in a tick remains that tick's use target.
     fn crosshair_target(&self) -> Option<CrosshairTarget>;
     /// Side: client.
-    /// The vehicle the local player rides that can jump (`LocalPlayer.jumpableVehicle`): a
-    /// saddled horse, donkey, mule, camel or nautilus, not a pig or a strider, which a saddle
-    /// only steers. The HUD's contextual bar reads the same mount for its jump bar. None when
-    /// the player rides no such vehicle, or outside a client world.
+    /// The vehicle the local player controls that can jump now (`LocalPlayer.jumpableVehicle`):
+    /// the player is its controlling passenger (`getControlledVehicle`: the first one, on its
+    /// saddle) and it can jump (`PlayerRideableJumping.canJump`): a saddled horse, donkey,
+    /// mule, nautilus or camel, the camel neither sitting nor getting up or down; a pig or a
+    /// strider never jumps. The HUD's jump bar makes the same decision. None when the player
+    /// controls no such vehicle (a second passenger included), or outside a client world.
     fn jumpable_vehicle(&self) -> Option<EntityRef>;
     /// Side: client.
     /// Whether the server tracks any waypoint for this client
