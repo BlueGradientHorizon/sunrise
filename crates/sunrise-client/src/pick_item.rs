@@ -86,7 +86,7 @@ pub fn apply(
             // (or is replaced when there is none).
             *selected = hotbar;
             if items[hotbar].is_some()
-                && let Some(free) = items.iter().position(Option::is_none)
+                && let Some(free) = crate::menu::free_slot(items)
             {
                 items[free] = items[hotbar].take();
             }
@@ -95,9 +95,15 @@ pub fn apply(
     }
 }
 
-/// `getSuitableHotbarSlot`: from the selected slot on, the first empty one,
-/// else the first `not_replaceable` answers `false` for, else the selected one.
-fn suitable_hotbar_slot(
+/// `Inventory.getSuitableHotbarSlot`: the hotbar slot a pick swaps into (`pickSlot`) or puts
+/// the item in (`addAndPickItem`). From the selected slot on, wrapping round the 9 hotbar
+/// slots of `items`, the first empty one, else the first `not_replaceable` answers `false` for
+/// (vanilla's `isEnchanted`, NeoForge's `IItemExtension.isNotReplaceableByPickAction`), else
+/// the selected one. Fabric has no event here; NeoForge's answers for one stack, not for the
+/// slot, so a Java mod mixes into `Inventory.getSuitableHotbarSlot`; a native mod answers here
+/// through `[[native.mixin]]` (#4854).
+#[sunrise_mod_api_macros::replaceable]
+pub fn suitable_hotbar_slot(
     items: &[Option<ItemStack>],
     selected: usize,
     not_replaceable: &mut dyn FnMut(&ItemStack, usize) -> bool,

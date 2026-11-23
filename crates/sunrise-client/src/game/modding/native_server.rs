@@ -3036,6 +3036,52 @@ mod tests {
         assert_eq!(apple.count, 3);
     }
 
+    /// The game's `Inventory.add` (pickups, `/give`, a bucket's or a bottle's result) takes
+    /// its slots from `getSlotWithRemainingSpace` and `getFreeSlot`
+    /// (`sunrise_client::menu::{slot_with_remaining_space, free_slot}`): one dirt at a time
+    /// lands where they answer and nowhere else, in vanilla's order (the selected slot, the
+    /// off hand, the main slots, then the first empty one).
+    #[test]
+    fn every_added_item_lands_where_the_slot_pickers_answer() {
+        use super::super::inventory_add;
+        use sunrise_client::menu::{OFFHAND, free_slot, slot_with_remaining_space};
+        let mut inv = vec![stack("minecraft:stone", 64); 36];
+        for (slot, have) in [
+            (0, stack("minecraft:stone", 5)),
+            (1, None),
+            (2, None),
+            (3, stack("minecraft:dirt", 63)),
+            (7, stack("minecraft:dirt", 63)),
+            (20, None),
+        ] {
+            inv[slot] = have;
+        }
+        let mut off = stack("minecraft:dirt", 62);
+        let selected = 3;
+        let dirt = stack("minecraft:dirt", 1).unwrap();
+        let mut landed = Vec::new();
+        for _ in 0..6 {
+            let answer = slot_with_remaining_space(&inv, off.as_ref(), selected, &dirt, 64)
+                .or_else(|| free_slot(&inv))
+                .unwrap();
+            let (mut inv_after, mut off_after) = (inv.clone(), off.clone());
+            let cell = if answer == OFFHAND {
+                &mut off_after
+            } else {
+                &mut inv_after[answer]
+            };
+            match cell {
+                Some(have) => have.count += 1,
+                empty => *empty = Some(dirt.clone()),
+            }
+            let mut one = dirt.clone();
+            assert!(!inventory_add(&mut inv, &mut off, selected, 64, &mut one));
+            assert_eq!((&inv, &off), (&inv_after, &off_after), "into {answer}");
+            landed.push(answer);
+        }
+        assert_eq!(landed, [3, OFFHAND, OFFHAND, 7, 1, 1]);
+    }
+
     #[test]
     fn usages_merge_into_one_tree_with_runnable_nodes() {
         let (t, levels, problems) = tree(&[

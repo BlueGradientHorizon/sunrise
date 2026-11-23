@@ -4539,11 +4539,11 @@ impl Dim {
     }
 }
 /// `Inventory.add` on a player's 36 slots (hotbar first) and off hand,
-/// `max` the stack's own maximum: onto equal stacks first
-/// (`getSlotWithRemainingSpace`: the selected slot, the off hand, then the
-/// hotbar and the main inventory), then into empty slots of the inventory
-/// (`getFreeSlot`, never the off hand). What does not fit stays in `stack`;
-/// true when some of it is left.
+/// `max` the stack's own maximum, one slot at a time (`addResource`): onto an
+/// equal stack while there is one (`getSlotWithRemainingSpace`), else into an
+/// empty slot of the inventory (`getFreeSlot`, never the off hand), until the
+/// stack is used up or a slot takes none of it. What does not fit stays in
+/// `stack`; true when some of it is left.
 fn inventory_add(
     inventory: &mut [Option<ItemStack>],
     offhand: &mut Option<ItemStack>,
@@ -4551,41 +4551,42 @@ fn inventory_add(
     max: u32,
     stack: &mut ItemStack,
 ) -> bool {
-    let order = std::iter::once(selected)
-        .chain(std::iter::once(shield::OFFHAND_SLOT))
-        .chain((0..36).filter(|&i| i != selected));
-    for i in order {
-        let slot = if i == shield::OFFHAND_SLOT {
+    use sunrise_client::menu::{OFFHAND, free_slot, slot_with_remaining_space};
+    loop {
+        let slot =
+            slot_with_remaining_space(&inventory[..36], offhand.as_ref(), selected, stack, max)
+                .or_else(|| free_slot(&inventory[..36]));
+        let Some(slot) = slot else {
+            return true;
+        };
+        let cell = if slot == OFFHAND {
             &mut *offhand
         } else {
-            &mut inventory[i]
+            &mut inventory[slot]
         };
-        if let Some(slot) = slot
-            && slot.same_item_same_components(stack)
-            && slot.count < max
-        {
-            let moved = (max - slot.count).min(stack.count);
-            slot.count += moved;
-            stack.count -= moved;
-            if stack.count == 0 {
-                return false;
+        let moved = match cell {
+            Some(cell) => {
+                let moved = max.saturating_sub(cell.count).min(stack.count);
+                cell.count += moved;
+                moved
             }
+            None => {
+                let moved = stack.count.min(max);
+                *cell = Some(ItemStack {
+                    count: moved,
+                    ..stack.clone()
+                });
+                moved
+            }
+        };
+        stack.count -= moved;
+        if stack.count == 0 {
+            return false;
+        }
+        if moved == 0 {
+            return true;
         }
     }
-    for slot in inventory.iter_mut().take(36) {
-        if slot.is_none() {
-            let moved = stack.count.min(max);
-            *slot = Some(ItemStack {
-                count: moved,
-                ..stack.clone()
-            });
-            stack.count -= moved;
-            if stack.count == 0 {
-                return false;
-            }
-        }
-    }
-    true
 }
 
 fn facing_offset(facing: &str) -> [i32; 3] {
