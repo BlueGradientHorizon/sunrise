@@ -1,5 +1,11 @@
 //! Persistent `ParticleTypes.CODEC` options. Model sprites and registry IDs are
 //! resolved by the receiving level, not stored in the environment attribute.
+//!
+//! A block or an item is named here and refused by the level that draws the option when its
+//! block registry or item table does not know the name (`Game::emit_model_ambient`). Vanilla's
+//! codecs make the same lookup while the biome file is decoded: `Registry.byNameCodec` refuses
+//! a block outside the registry, and `Item.CODEC` an item outside it or air. The attribute
+//! files are read before a level's registries exist, so the check waits for the level.
 
 use crate::{
     chunk::BlockState,

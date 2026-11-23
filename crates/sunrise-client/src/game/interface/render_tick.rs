@@ -1075,9 +1075,9 @@ impl Game<'_> {
                 .and_then(|state| {
                     self.block_provider_options(*ty, state, at.map(|x| x.floor() as i32))
                 }),
-            PersistentOptions::Item(tag) => {
-                sunrise_items::item_nbt::item_from_nbt(tag).map(|stack| self.item_particle(&stack))
-            }
+            PersistentOptions::Item(tag) => sunrise_items::item_nbt::item_from_nbt(tag)
+                .filter(|stack| self.items().get(&stack.item).is_some())
+                .map(|stack| self.item_particle(&stack)),
             PersistentOptions::ElderGuardian => {
                 self.particles.elder_guardian();
                 return;
@@ -1410,3 +1410,7 @@ mod tests {
         });
     }
 }
+
+#[cfg(test)]
+#[path = "tests/ambient_particle_tests.rs"]
+mod ambient_particle_tests;
