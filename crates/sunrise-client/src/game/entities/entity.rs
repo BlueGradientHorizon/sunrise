@@ -1782,14 +1782,16 @@ macro_rules! hit_effects_of {
 }
 /// What a hit's listeners need from `$game` to name and read the living entities the hit lends
 /// ([`HitReads`](sunrise_client::health::HitReads)), as field-level borrows; none before the
-/// world has an epoch, and none while no `HitHost` hook listens.
+/// world has an epoch. It asks nothing: the views it backs exist only inside a callback the
+/// hit dispatches, behind that callback's own subscription check.
 macro_rules! hit_reads_of {
     ($game:expr) => {
-        sunrise_client::health::hit_host_listened()
-            .then(|| $game.native_lifecycle.epoch())
-            .flatten()
+        $game
+            .native_lifecycle
+            .epoch()
             .map(|epoch| sunrise_client::health::HitReads {
                 epoch,
+                living_types: $game.res.living_type_keys(),
                 attributes: &$game.motion.attributes,
                 player_effects: Some(&$game.potions.effects),
                 player_equipment: acting_equipment!($game),

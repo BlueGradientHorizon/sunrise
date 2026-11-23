@@ -99,7 +99,14 @@ macro_rules! game_side {
             items: $s.res.items(),
             damage_types: &$s.health_resources.damage,
             player_equipment: acting_equipment!($s),
-            hit_reads: $crate::game::entity::hit_reads_of!($s),
+            hit_borrows: $crate::game::native_surface::HitBorrows {
+                living_types: $s.res.living_type_keys(),
+                attributes: &$s.motion.attributes,
+                player_effects: &$s.potions.effects,
+                player_uuid: $s.lan_acting_uuid,
+                player_attachments: &$s.player_state.attachments,
+                entity_attachments: &*$s.entity_attachments,
+            },
             tag_items: if $s.options.execution_role.is_client() {
                 $s.remote.as_ref().and_then(|remote| remote.tags.as_ref())
             } else {
@@ -3024,6 +3031,9 @@ struct WorldRest {
     recipes: Recipes,
     transformers: sunrise_client::block_transform::Transformers,
     mob_types: HashMap<String, Arc<MobType>>,
+    /// The registry keys of the player, the armor stand and the dragon, resolved with these
+    /// resources as each mob type's own key is ([`MobType::type_key`]).
+    living_type_keys: sunrise_client::health::LivingTypeKeys,
     mob_data: sunrise_client::mobs::MobData,
     /// Complete pre-creation facts for the registered entity types.
     spawner_types: HashMap<String, sunrise_client::mobs::spawner::SpawnerTypeFacts>,
