@@ -88,14 +88,21 @@ pub(super) fn apply_player_knockback(
         x: xd,
         z: zd,
     };
-    if let Some(velocity) = player_knockback_velocity(p, level, knock, source) {
+    // A clone is the owner's state, so it goes back whether or not the push lands.
+    let mut random = p.random.clone();
+    let pushed = player_knockback_velocity(p, &mut random, level, knock, source);
+    p.random = random;
+    if let Some(velocity) = pushed {
         p.velocity = velocity;
     }
 }
 
 /// The full player path, shared with calls that borrow a guest's body in its own level.
+/// `random` is the player's own (`Entity.random`), which a short direction's retries draw from;
+/// the caller writes it back to the player.
 pub(in crate::game) fn player_knockback_velocity(
     player: &sunrise_client::motion::PlayerMotion,
+    random: &mut sunrise_core::random::EntityRandom,
     level: &mut sunrise_client::health::DamageLevel<'_>,
     mut knock: Knock,
     source: HurtSource<'_>,
@@ -113,11 +120,6 @@ pub(in crate::game) fn player_knockback_velocity(
         .unwrap_or(0.0);
     let mut velocity = player.velocity;
     knock
-        .apply(
-            &mut velocity,
-            resistance,
-            player.ground.on_ground,
-            level.random(),
-        )
+        .apply(&mut velocity, resistance, player.ground.on_ground, random)
         .then_some(velocity)
 }

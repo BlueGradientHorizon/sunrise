@@ -311,23 +311,7 @@ impl Game<'_> {
         target: Target,
         change: impl FnOnce(Vec3) -> Option<Vec3>,
     ) -> bool {
-        let conn = match target {
-            Target::Player => self.lan_acting,
-            Target::Guest(conn) => Some(conn),
-            _ => None,
-        };
-        let Some(conn) = conn else {
-            return false;
-        };
-        let Some(host) = self.lan.as_mut() else {
-            return false;
-        };
-        let motion = if target == Target::Player {
-            host.hub.guest(conn).and(self.player.as_mut())
-        } else {
-            host.hub.guests.motion_mut(conn)
-        };
-        let Some(motion) = motion else {
+        let Some((conn, motion)) = self.player_motion_mut(target) else {
             return false;
         };
         let Some(velocity) = change(motion.velocity) else {
@@ -336,6 +320,36 @@ impl Game<'_> {
         motion.velocity = velocity;
         self.send_guest_motion(conn, Some(velocity));
         true
+    }
+
+    /// Put back a player's own random after a copy of it drew for them.
+    pub(super) fn write_player_random(
+        &mut self,
+        target: Target,
+        random: sunrise_core::random::EntityRandom,
+    ) {
+        if let Some((_, motion)) = self.player_motion_mut(target) {
+            motion.random = random;
+        }
+    }
+
+    /// The body of the acting player or a guest, with its connection, during or outside a turn.
+    fn player_motion_mut(
+        &mut self,
+        target: Target,
+    ) -> Option<(u32, &mut sunrise_client::motion::PlayerMotion)> {
+        let conn = match target {
+            Target::Player => self.lan_acting,
+            Target::Guest(conn) => Some(conn),
+            _ => None,
+        }?;
+        let host = self.lan.as_mut()?;
+        let motion = if target == Target::Player {
+            host.hub.guest(conn).and(self.player.as_mut())
+        } else {
+            host.hub.guests.motion_mut(conn)
+        }?;
+        Some((conn, motion))
     }
 
     /// Moves a player by `delta` through the level (`Entity.move`) after the `entity_move` hook

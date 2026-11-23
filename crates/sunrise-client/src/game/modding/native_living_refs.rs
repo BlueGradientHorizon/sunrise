@@ -172,7 +172,7 @@ impl Game<'_> {
         let id = living.id();
         match target {
             Target::Player | Target::Guest(_) => self
-                .player_knockback_from_mod(target, id, knock, SOURCE)
+                .player_knockback_from_mod(living, target, knock, SOURCE)
                 .is_some(),
             Target::Mob(_) => {
                 let Some(i) = self.mob_index.find(&self.mobs, id) else {
@@ -193,13 +193,7 @@ impl Game<'_> {
             }
             Target::Stand(id) => self.knock_back_armor_stand(id, knock, SOURCE, &NO_ATTACK),
             Target::Dragon(_) => {
-                let resistance = self
-                    .native_target_attribute(
-                        target,
-                        "minecraft:knockback_resistance",
-                        sunrise_world::attribute_map::ValueKind::Computed,
-                    )
-                    .unwrap_or(0.0);
+                let resistance = self.dragon_knockback_resistance();
                 let plan = self.prepare_knockback_credit(id as i32, None, &NO_ATTACK);
                 let mut credit = plan.lend(&mut self.last_hurt_by_player);
                 let level =
@@ -217,28 +211,28 @@ impl Game<'_> {
     /// Lend the victim's own body and level to the player path without switching turns or levels.
     fn player_knockback_from_mod(
         &mut self,
+        living: LivingRef,
         target: Target,
-        id: u32,
         knock: Knock,
         source: mod_api::HurtSource<'_>,
     ) -> Option<()> {
+        let id = living.id();
+        // The hook's attacker falls back to the victim's `getLastHurtByMob`, resolved in any
+        // level; the source stays unattributed and kill credit is planned on its own.
+        let remembered = self
+            .living_last_attacker(living)
+            .map(|attacker| self.last_attacker_attack(attacker.id()));
+        let attack = remembered.as_ref().unwrap_or(&NO_ATTACK);
         let hub = &self.lan.as_ref()?.hub;
-        let (player, combat) = match target {
+        let player = match target {
             Target::Player => {
                 hub.guest(self.lan_acting?)?;
-                (self.player.as_ref()?, Some(&self.combat))
+                self.player.as_ref()?
             }
-            Target::Guest(conn) => (
-                hub.guest(conn)?.motion.as_deref()?,
-                self.guest_combat.get(&conn),
-            ),
+            Target::Guest(conn) => hub.guest(conn)?.motion.as_deref()?,
             _ => return None,
         };
-        // As in a vanilla player push with no causing entity, keep the victim's attacker fallback.
-        let remembered = combat
-            .and_then(|combat| combat.kill_credit(self.world.game_time))
-            .map(|id| self.attack_of(id as i32));
-        let attack = remembered.as_ref().unwrap_or(&NO_ATTACK);
+        let mut random = player.random.clone();
         let plan = self.prepare_knockback_credit(id as i32, None, attack);
         let dimension = self.resident_target_dimension(target).unwrap_or(self.dim);
         let mut credit = plan.lend(&mut self.last_hurt_by_player);
@@ -264,10 +258,31 @@ impl Game<'_> {
             None,
         ));
         let velocity = level.through_short_knockback(|level| {
-            super::creatures::knockback::player_knockback_velocity(player, level, knock, source)
-        })?;
+            super::creatures::knockback::player_knockback_velocity(
+                player,
+                &mut random,
+                level,
+                knock,
+                source,
+            )
+        });
+        // The retries drew from the victim's own random, landed or not.
+        self.write_player_random(target, random);
+        let velocity = velocity?;
         self.write_player_velocity(target, |_| Some(velocity))
             .then_some(())
+    }
+
+    /// [`Self::attack_of`] for a remembered attacker, which may be a mob in another loaded
+    /// level: its main-hand stack is read there.
+    fn last_attacker_attack(&self, attacker: u32) -> Attack {
+        let mut attack = self.attack_of(attacker as i32);
+        if let Some((_, mob)) = self.mob_in_other_level(attacker)
+            && !mod_api::__private::mods().is_empty()
+        {
+            attack.held[0] = mob.extra.main_hand_stack().cloned();
+        }
+        attack
     }
 
     pub(super) fn knock_back_armor_stand(

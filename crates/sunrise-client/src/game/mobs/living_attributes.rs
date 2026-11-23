@@ -1046,7 +1046,10 @@ mod tests {
             let read_at = |game: &Game<'_>| {
                 let m = &game.mobs[0];
                 let gear = m.extra.gear_knockback.as_deref();
-                (gear.map(std::ptr::from_ref), m.gear_knockback_resistance)
+                (
+                    gear.map(std::ptr::from_ref),
+                    gear.map(|_| m.knockback_resistance()),
+                )
             };
             let close = |value: Option<f64>, to: f64| value.is_some_and(|v| (v - to).abs() < 1e-6);
             game.mobs[0].set_equipment_stack(CHEST, stack("minecraft:netherite_chestplate"));
@@ -1326,7 +1329,7 @@ mod tests {
                 game.refresh_gear_knockback_resistance();
                 game.tick_equipment_attributes();
                 // Netherite's own 0.1, and the mod's 0.4.
-                let resistance = game.mobs[0].gear_knockback_resistance.unwrap();
+                let resistance = game.mobs[0].knockback_resistance();
                 assert!((resistance - 0.5).abs() < 1e-6, "{resistance}");
                 let toughness = read(game, 12, "minecraft:armor_toughness");
                 assert_eq!(toughness, (Some(0.0), Some(0.0)));

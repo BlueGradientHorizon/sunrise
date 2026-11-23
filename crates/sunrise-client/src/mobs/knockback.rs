@@ -20,10 +20,18 @@ impl Mob {
             self.knockback_full(level, power, xd, zd, source, damage, false)
         })
     }
-    /// `getAttributeValue(KNOCKBACK_RESISTANCE)`: the mob's own, and what its gear adds.
+    /// `getAttributeValue(KNOCKBACK_RESISTANCE)` at the time of the push: the mob's attribute as
+    /// it stands now, with the modifiers its gear granted at the last equipment check
+    /// (`LivingEntity.collectEquipmentChanges`, once a tick).
     pub fn knockback_resistance(&self) -> f64 {
-        self.gear_knockback_resistance
-            .unwrap_or(self.attrs.knockback_resistance)
+        match self.extra.gear_knockback.as_deref() {
+            Some(gear) => finalize::value_with(
+                self,
+                finalize::Attr::KnockbackResistance,
+                gear.modifiers.iter().copied(),
+            ),
+            None => self.attrs.knockback_resistance,
+        }
     }
     /// Full knockback entry, including whether this is an extra effect push.
     /// The short entry delegates here once; direct full calls bypass the short entry.

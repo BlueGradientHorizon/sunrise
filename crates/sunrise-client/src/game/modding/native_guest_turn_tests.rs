@@ -725,14 +725,61 @@ fn velocity_writes_send_only_the_owning_player_the_replacement_motion() {
         let b_body = game.command_guest(13).unwrap().motion.as_ref().unwrap();
         assert_eq!(b_body.velocity, Vec3::new(-1.0, 0.0, 0.0));
         assert_eq!(game.dim, super::Dim::Nether);
+        // A direction too short to normalise is retried from the player's own random
+        // (`Entity.random`), never the level's.
+        use sunrise_core::random::RandomSource;
+        let mut own = b_body.random.clone();
+        let mut level = game
+            .levels
+            .parked_mut(super::Dim::Overworld)
+            .unwrap()
+            .world
+            .random
+            .clone();
+        let (x, z) = loop {
+            let x = (own.next_double() - own.next_double()) * 0.01;
+            let z = (own.next_double() - own.next_double()) * 0.01;
+            if x * x + z * z >= f64::from(1.0e-5_f32) {
+                break (x, z);
+            }
+        };
+        assert!(living.knockback(game, 1.0, [0.0, 0.0]));
+        let b_body = game.command_guest(13).unwrap().motion.as_ref().unwrap();
+        let length = (x * x + z * z).sqrt();
+        assert_eq!(
+            b_body.velocity,
+            Vec3::new(-1.0 / 2.0 - x / length, 0.0, 0.0 / 2.0 - z / length)
+        );
+        assert_eq!(b_body.random.clone().next_long(), own.next_long());
+        assert_eq!(
+            game.levels
+                .parked_mut(super::Dim::Overworld)
+                .unwrap()
+                .world
+                .random
+                .clone()
+                .next_long(),
+            level.next_long()
+        );
 
         assert_eq!(
             take_motion(&a_packets),
             [(12, [1.0, 0.0, -1.0]), (12, [1.0, 1.0, -1.0])]
         );
+        let pushed = game
+            .command_guest(13)
+            .unwrap()
+            .motion
+            .as_ref()
+            .unwrap()
+            .velocity;
         assert_eq!(
             take_motion(&b_packets),
-            [(13, [-2.0, 0.0, 2.0]), (13, [-1.0, 0.0, 0.0])]
+            [
+                (13, [-2.0, 0.0, 2.0]),
+                (13, [-1.0, 0.0, 0.0]),
+                (13, [pushed.x, pushed.y, pushed.z])
+            ]
         );
     });
 }

@@ -152,6 +152,14 @@ pub(super) const MAX_HEALTH: f32 = 200.0;
 /// `Mob.getAmbientSoundInterval`.
 const AMBIENT_INTERVAL: i32 = 80;
 
+/// A full hit's default knockback (`dealDefaultKnockback`): where it comes from, and the
+/// dragon's knockback resistance when it lands, which the hurt alone cannot read.
+#[derive(Clone, Copy, Debug)]
+struct Push {
+    from: Vec3,
+    resistance: f64,
+}
+
 #[derive(Default)]
 pub(super) struct Fight {
     pub(super) loaded: bool,
@@ -781,8 +789,9 @@ impl Dragon {
     ) -> Hurt {
         self.hurt_part_from(level, part, damage, counts, kind, direct, None, false)
     }
-    /// `hurt_part` with the melee attacker's position (`DamageSource.getSourcePosition`,
-    /// the direct entity's feet). `None` for a hit that is not a player's melee.
+    /// `hurt_part` with where a full hit's default knockback comes from: the melee attacker's
+    /// position (`DamageSource.getSourcePosition`, the direct entity's feet) and the dragon's
+    /// knockback resistance at the hit. `None` for a hit that is not a player's melee.
     fn hurt_part_from(
         &mut self,
         level: &mut DamageLevel<'_>,
@@ -791,7 +800,7 @@ impl Dragon {
         counts: Option<HurtSource<'_>>,
         kind: DamageKind,
         direct: Option<&ProjectileKind>,
-        from: Option<Vec3>,
+        push: Option<Push>,
         invulnerability_checked: bool,
     ) -> Hurt {
         // The game-level invulnerability hook includes the part's fire immunity in
@@ -805,7 +814,7 @@ impl Dragon {
             damage,
             counts,
             shrugs(direct),
-            from,
+            push,
             invulnerability_checked,
         )
     }
@@ -846,7 +855,7 @@ impl Dragon {
         damage: f32,
         counts: Option<HurtSource>,
         arrow: bool,
-        from: Option<Vec3>,
+        push: Option<Push>,
         invulnerability_checked: bool,
     ) -> Hurt {
         if matches!(self.phase, Phase::Dying { .. }) || !self.alive() {
@@ -962,7 +971,7 @@ impl Dragon {
         // and maybe takes off. `from` is the attacker's feet for a player's
         // melee hit. Explosions are `#no_knockback`; their push is
         // `explosion_knockback`.
-        if full && let Some(from) = from {
+        if full && let Some(Push { from, resistance }) = push {
             self.knockback(
                 level,
                 Knock {
@@ -971,7 +980,7 @@ impl Dragon {
                     z: from.z - self.position.z,
                 },
                 source,
-                0.0,
+                resistance,
             );
         }
         // The last of `LivingEntity.hurtServer` (`reallyHurt`'s `super.hurtServer`):
@@ -1970,6 +1979,22 @@ impl Game<'_> {
             },
         )
     }
+    /// The dragon's `getAttributeValue(KNOCKBACK_RESISTANCE)` now, which both knockback entries
+    /// read: its saved attributes over the type's default. 0 without a dragon.
+    pub(super) fn dragon_knockback_resistance(&self) -> f64 {
+        self.dragon
+            .as_ref()
+            .and_then(|d| {
+                d.live.read(
+                    &self.motion.attributes,
+                    "minecraft:ender_dragon",
+                    "minecraft:knockback_resistance",
+                    sunrise_world::attribute_map::ValueKind::Computed,
+                    Vec::new,
+                )
+            })
+            .unwrap_or(0.0)
+    }
     /// `hurt_dragon_part` with the position a full hit's knockback pushes away from.
     fn hurt_dragon_part_at(
         &mut self,
@@ -2018,22 +2043,18 @@ impl Game<'_> {
             self.combat.attack(),
         );
         let mut credit = plan.lend(&mut self.last_hurt_by_player);
+        // `getAttributeValue(KNOCKBACK_RESISTANCE)` as the push reads it, before the hit.
+        let push = origin.from.map(|from| Push {
+            from,
+            resistance: self.dragon_knockback_resistance(),
+        });
         let Some(d) = self.dragon.as_mut() else {
             return Hurt::Refused;
         };
         let was_down = d.down();
         let (cooldown, last_hurt) = (d.invulnerable, d.last_hurt);
         let level = super::entity::damage_level_of!(self, self.combat.attack(), &mut credit, None);
-        let hurt = d.hurt_part_from(
-            level,
-            part,
-            damage,
-            source,
-            kind,
-            origin.direct,
-            origin.from,
-            true,
-        );
+        let hurt = d.hurt_part_from(level, part, damage, source, kind, origin.direct, push, true);
         // LivingEntity.hurtServer: damage that is applied sets lastHurtByPlayer
         // (100 ticks); a hit the damage cooldown absorbs returns before that.
         if counts
@@ -5971,26 +5992,70 @@ mod tests {
         let mut perched = dragon(Phase::Scanning { time: 0 });
         perched.velocity = velocity;
         assert_eq!(
-            perched.hurt_from(level, 0, 9.0, HIT, false, Some(from), false),
+            perched.hurt_from(
+                level,
+                0,
+                9.0,
+                HIT,
+                false,
+                Some(Push {
+                    from,
+                    resistance: 0.0
+                }),
+                false
+            ),
             Hurt::Landed { full: true }
         );
         assert_eq!(perched.velocity, velocity);
 
         let mut taking_off = dragon(Phase::Flaming { ticks: 0 });
         taking_off.velocity = velocity;
-        taking_off.hurt_from(level, 0, 60.0, HIT, false, Some(from), false);
+        taking_off.hurt_from(
+            level,
+            0,
+            60.0,
+            HIT,
+            false,
+            Some(Push {
+                from,
+                resistance: 0.0,
+            }),
+            false,
+        );
         assert!(matches!(taking_off.phase, Phase::Takeoff { .. }));
         assert_eq!(taking_off.velocity, velocity);
 
         let mut flying = dragon(flying());
         flying.velocity = velocity;
         assert_eq!(
-            flying.hurt_from(level, 0, 9.0, HIT, false, Some(from), false),
+            flying.hurt_from(
+                level,
+                0,
+                9.0,
+                HIT,
+                false,
+                Some(Push {
+                    from,
+                    resistance: 0.0
+                }),
+                false
+            ),
             Hurt::Landed { full: true }
         );
         assert_eq!(flying.velocity, pushed);
         assert_eq!(
-            flying.hurt_from(level, 0, 20.0, HIT, false, Some(from), false),
+            flying.hurt_from(
+                level,
+                0,
+                20.0,
+                HIT,
+                false,
+                Some(Push {
+                    from,
+                    resistance: 0.0
+                }),
+                false
+            ),
             Hurt::Landed { full: false }
         );
         assert_eq!(flying.velocity, pushed);

@@ -632,6 +632,42 @@ fn callable_knockback_respects_the_hook_and_resistance_without_dealing_damage() 
     assert!(heard.incoming_causing.is_empty());
 }
 
+/// `getAttributeValue(KNOCKBACK_RESISTANCE)` is read at the push: a geared zombie whose
+/// resistance was set to full this tick, before any equipment check, is not pushed.
+#[test]
+#[ignore = "daily"]
+fn callable_knockback_reads_resistance_written_this_tick() {
+    if super::native_entity_refs::tests::run_fresh_cases(
+        "game::native_knockback_tests::callable_knockback_reads_resistance_written_this_tick",
+        "SUNRISE_CALLABLE_KNOCKBACK_GEAR_CHILD",
+        &["geared"],
+    ) {
+        return;
+    }
+    use super::living_attributes::AttributeWrite;
+    use sunrise_items::equipment::CHEST;
+    heard(|game, _| {
+        zombie_at(game, 42, Vec3::ZERO);
+        game.mobs[0].ground.on_ground = true;
+        game.mobs[0].set_equipment_stack(
+            CHEST,
+            Some(ItemStack::new("minecraft:netherite_chestplate", 1)),
+        );
+        game.refresh_gear_knockback_resistance();
+        let living = game.living(game.entity(42).unwrap()).unwrap();
+        assert_eq!(
+            game.write_attribute(
+                super::commands::Target::Mob(42),
+                "minecraft:knockback_resistance",
+                AttributeWrite::Base(1.0),
+            ),
+            Some(true)
+        );
+        assert!(!living.knockback(game, 0.5, [1.0, 0.0]));
+        assert_eq!(game.mobs[0].velocity, Vec3::ZERO);
+    });
+}
+
 pub(in crate::game) fn credit_pig(game: &mut super::Game<'_>) {
     game.world.health_rules.difficulty = sunrise_world::food::Difficulty::Normal;
     game.world
