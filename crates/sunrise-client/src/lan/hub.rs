@@ -4582,6 +4582,13 @@ impl Hub {
                     events.push(HostEvent::InputCredits(credits));
                     return true;
                 }
+                // handleMoveVehicle tests the pending teleport before moving the vehicle.
+                // A later confirmation or player move must not run ahead of that test.
+                packet @ S::MoveVehicle(_) => {
+                    events.push(HostEvent::Packet(conn, Box::new(packet)));
+                    events.push(HostEvent::InputCredits(credits));
+                    return true;
+                }
                 // ContainerInput's codec (ByIdMap, OutOfBoundsStrategy.ZERO) reads an
                 // unknown click type as PICKUP.
                 S::ContainerClick(mut p) => {
@@ -4650,20 +4657,16 @@ impl Hub {
         if g.won_game || g.landing || !g.client_loaded() {
             return;
         }
+        let rot = rot.unwrap_or((g.yaw, g.pitch));
         if self.update_awaiting_teleport(i) {
-            // Only MovePlayer applies the report's rotation while waiting. The resend,
-            // if due, had the player's rotation before this packet.
-            if let Some((yaw, pitch)) = rot {
-                self.guests.update(i, |g| {
-                    // Entity.absSnapRotationTo clamps the wrapped pitch to -90..90.
-                    (g.yaw, g.pitch) = (wrap_degrees(yaw), wrap_degrees(pitch).clamp(-90.0, 90.0));
-                });
-            }
+            // Resend with the old look, then snap the report's angles (the player's
+            // current angles for a look-less packet) with Entity.absSnapRotationTo.
+            self.guests.update(i, |g| {
+                (g.yaw, g.pitch) = (wrap_degrees(rot.0), wrap_degrees(rot.1).clamp(-90.0, 90.0));
+            });
             return;
         }
-        let g = &self.guests[i];
-        let to = pos.unwrap_or(g.position);
-        let rot = rot.unwrap_or((g.yaw, g.pitch));
+        let to = pos.unwrap_or(self.guests[i].position);
         self.position_change(i, to, rot, flags, Hearing::Heard, ctx, events);
     }
 
