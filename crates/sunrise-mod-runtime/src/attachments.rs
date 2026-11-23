@@ -530,7 +530,8 @@ impl<T: Clone + Send + Sync + 'static> AttachmentType<T> {
         store.validate_attachment(self.namespace, self.name, self.sync)?;
         store.holds(holder, self.namespace, self.name)
     }
-    /// Read a value only if present, like `getExistingData`; a saved value decodes once.
+    /// Read a value only if present, like `getExistingData`. A saved value decodes once and is
+    /// stored, except on a read-only holder, where it decodes on each read and is not stored.
     pub fn get_existing<S: AttachmentStore + ?Sized>(
         &self,
         store: &mut S,
