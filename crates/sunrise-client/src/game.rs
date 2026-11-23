@@ -433,6 +433,8 @@ mod decorated_pot;
 pub(crate) mod dedicated;
 #[path = "game/items/deflect.rs"]
 mod deflect;
+#[path = "game/interface/demo_intro.rs"]
+mod demo_intro;
 #[path = "game/interface/developer_launch.rs"]
 mod developer_launch;
 #[path = "game/interface/dialogs.rs"]
@@ -2519,6 +2521,8 @@ enum Screen {
     ServerLinks,
     /// ConfirmLinkScreen for a server link (game/network/server_links.rs).
     ConfirmLink,
+    /// Parentless PopupScreen opened by the server's demo event.
+    DemoIntro,
     /// DialogScreen.WarningScreen: the note about custom screens.
     DialogWarning,
     /// WinScreen: the end poem and the credits (game/interface/win.rs).
@@ -2554,6 +2558,7 @@ impl Screen {
             Screen::BlockEditor => "block_editor",
             Screen::ServerLinks => "server_links",
             Screen::ConfirmLink => "confirm_link",
+            Screen::DemoIntro => "demo_intro",
             Screen::DialogWarning => "dialog_warning",
             Screen::Win => "win",
             Screen::DebugOptions => "debug_options",
@@ -3824,6 +3829,7 @@ struct Game<'a> {
     end_portal_travel: bool,
     /// The open WinScreen (game/interface/win.rs).
     win: Option<win::Win>,
+    demo_intro: Option<demo_intro::DemoIntro>,
     end: end::EndState,
     block_ticks: Ticks,
     tick_scratch: TickScratch,
@@ -7801,6 +7807,7 @@ impl Game<'_> {
             Screen::Social => self.draw_social_screen(&mut batch),
             Screen::ServerLinks => self.draw_server_links(&mut batch),
             Screen::ConfirmLink => self.draw_confirm_link(&mut batch),
+            Screen::DemoIntro => self.draw_demo_intro(&mut batch),
             Screen::DialogWarning => self.draw_dialog_warning(&mut batch),
             Screen::CommandBlock => self.draw_command_block(&mut batch),
             Screen::BlockEditor => self.draw_block_editor(&mut batch),
@@ -12299,6 +12306,7 @@ impl Game<'_> {
             }
             Screen::HudEditor if left => self.hud_editor_release(),
             Screen::ConfirmLink if left_press => self.confirm_link_click(),
+            Screen::DemoIntro if left_press => self.demo_intro_click(),
             Screen::DialogWarning if left_press => self.dialog_warning_click()?,
             Screen::WorldOptions if left => self.world_options_release(),
             Screen::Friends if left_press => self.friends_screen_click(),
@@ -13213,6 +13221,7 @@ impl Game<'_> {
                             | Screen::CommandBlock
                             | Screen::BlockEditor
                             | Screen::DebugOptions
+                            | Screen::DemoIntro
                             | Screen::Win
                     ))))
     }
@@ -13859,6 +13868,7 @@ impl<'a> Game<'a> {
             respawn_config: None,
             end_portal_travel: false,
             win: None,
+            demo_intro: None,
             end: Default::default(),
             block_ticks: Ticks::new(0),
             tick_scratch: TickScratch::default(),
