@@ -17,7 +17,7 @@ pub struct Options<'a> {
 }
 
 impl<'a> Options<'a> {
-    /// `command` is the name the refusal uses (`registry list`); its first word names the usage.
+    /// `command` is the name the refusal uses (`check`); its first word names the usage.
     /// `valued` names the options that take a value, which [`Options::value`] and
     /// [`Options::values`] then read.
     pub fn new(command: &'a str, args: &'a [String], valued: &[&str]) -> Self {

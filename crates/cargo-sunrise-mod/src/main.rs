@@ -1302,8 +1302,12 @@ mod tests {
         assert_eq!(update_args(&line), Ok(Some("nightly")));
         for (error, option) in [
             (
-                build_args(&argv("--relase")).map(drop).unwrap_err(),
-                "--relase",
+                build_args(&argv(
+                    "--binaries out --sunrise-release 26.3-0.1.0 --releases releases.json",
+                ))
+                .map(drop)
+                .unwrap_err(),
+                "--binaries",
             ),
             (
                 build_args(&argv("--update-lock --typo"))

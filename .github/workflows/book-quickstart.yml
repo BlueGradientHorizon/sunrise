@@ -102,8 +102,7 @@ jobs:
         run: python3 tools/ci/source_mtimes.py "${CARGO_TARGET_DIR:-target}/ci-source-mtimes-v2.json"
       - name: Cap build parallelism to the runner
         run: python3 tools/ci/cargo_jobs.py --job-mib 3072 --cap
-      # The tool names the commit it was built from (`--version`, a release plan's `tool_commit`), as a release
-      # tool does. Set for every later step, so the test builds below don't rebuild it as `dev`.
+      # The tool names the commit it was built from (`--version`), as a release tool does. Set for every later step, so the test builds below don't rebuild it as `dev`.
       - name: The tool's commit
         run: |
           tool_commit=$(git rev-parse --verify HEAD)

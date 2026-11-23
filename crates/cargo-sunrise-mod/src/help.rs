@@ -146,7 +146,7 @@ pub fn unknown(name: &str) -> String {
 }
 
 /// Whether `args` (a command's, after its name) ask for its help: `--help` or `-h` right after the
-/// command. Later it may be an option's value (`--summary --help`) or meant for the game (`run -- --help`).
+/// command. Later it may be an option's value (`--with --help`) or meant for the game (`run -- --help`).
 pub fn asked(args: &[String]) -> bool {
     args.first().is_some_and(|a| a == "--help" || a == "-h")
 }

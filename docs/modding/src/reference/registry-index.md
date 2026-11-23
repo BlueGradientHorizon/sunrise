@@ -282,9 +282,8 @@ new entry that follows a repository's releases (`repo = ...`): every version is 
 
 ### Adding a signing key to an unsigned entry
 
-`publish --registry` refuses to add a `key` to an existing unsigned entry that still has unsigned version rows.
-To switch an unsigned listing to signed releases, prepare the signed release without `--registry`, keep the existing
-project entry, edit its `key`, remove its unsigned legacy version rows, and add the new signed row in your registry
+An existing unsigned entry that still has unsigned version rows does not take a `key` as it is.
+To switch an unsigned listing to signed releases, keep the existing project entry, edit its `key`, remove its unsigned legacy version rows, and add the new signed row in your registry
 checkout. Only unsigned legacy rows without `sunrise` can be removed without a takedown (review notes each removed
 row while the project entry stays).
 

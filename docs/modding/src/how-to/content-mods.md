@@ -62,12 +62,10 @@ cargo sunrise-mod check target/sunrise-mod/my_mod.smod   # the registry's checks
   It also checks for blockstates on blocks with `render_shape` set to `MODEL` and warns about missing local loot
   tables, item definitions or English names, or registry content on a client-only package. Reference diagnostics name
   the source file, the relevant field or member index, and the ID.
-- `check <file>` runs what the registry runs: the file's size and SHA-256, its manifest and content, and a signature
+- `check <file>` checks a package file locally: its size and SHA-256, its manifest and content, and a signature
   with `--key <public key> --signature <file>.minisig`. It reads `.smod`, `.spack`, resource pack `.zip`
   and `.sshader` files.
-- `registry build|review|check|list|release|releases|page` supports the registry repository's CI
-  ([the registry index](../reference/registry-index.md)). `registry releases --out releases.json` discovers stable
-  release tags and commits. The workflow verifies the signed SDK separately.
+- To release a mod to the registry, follow [Publishing your mod](publish.md).
 - `use-jar <path>` records and caches an original Java jar as an external asset/data source, without copying it into the mod
   ([Java jars as external assets](#java-jars-as-external-assets)).
 
