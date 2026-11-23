@@ -767,9 +767,13 @@ pub fn install(
         // A hook dispatch or retained owner reports its panic and returns control to the caller.
         // Do not emit a fatal crash report or terminate a worker before that scope unwinds.
         if mod_api::__private::hook_dispatch_depth() > CONTAIN_HOOK_DEPTH.with(std::cell::Cell::get)
-            || mod_api::__private::game::retained_callback_active()
-            || contained_panic(info)
         {
+            return;
+        }
+        // A retained callback's panic is recorded for its boundary (location and the
+        // attributed operation) before nested fatal handling is suppressed.
+        let recorded = contained_panic(info);
+        if recorded || mod_api::__private::game::retained_callback_active() {
             return;
         }
         default(info);
