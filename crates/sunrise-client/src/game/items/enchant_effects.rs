@@ -1132,7 +1132,7 @@ impl Game<'_> {
             *self.player_slot_mut(slot) = Some(stack);
 
             if let Some((player, name, item)) = notice {
-                self.native_player_item_mend(player, &name, &item, repaired, amount);
+                self.native_player_item_mend(player, &name, &item, repaired, amount.max(0) as u32);
             }
             if remaining == 0 {
                 return 0;
