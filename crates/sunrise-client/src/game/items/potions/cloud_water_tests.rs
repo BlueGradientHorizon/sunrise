@@ -1,4 +1,4 @@
-use crate::game::commands::DataRef;
+use crate::game::commands::data::DataRef;
 use crate::game::dragon::Breath;
 use crate::game::native_entity_refs::tests::{
     bind_local_player, prepare_entity_ticking_neighborhood, with_game,
