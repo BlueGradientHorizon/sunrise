@@ -127,7 +127,9 @@ A retained key keeps its identity across reloads; its members come from the curr
   damage type tags (`DamageSource.is(TagKey)`); it returns `None` for a damage type the bound
   registry doesn't have.
 - `item_tags(item)` lists the tag names an item belongs to; `item_tag_names()` lists all bound
-  item tags, including empty tags. Both return identifiers without resolving keys.
+  item tags, including empty tags. Both return identifiers without resolving keys. Each call
+  scans every bound item tag and builds a new list, so keep them out of per-tick and
+  per-entity hooks; for one known tag, `is_in_tag` is a single lookup.
 
 Neither callback can edit tags or access a mutable host. Evaluating a type without a
 registered codec does not copy a tag snapshot.
@@ -178,3 +180,10 @@ changed. Other components are untouched. Literal NBT types, arrays and Java
 UTF-16 payloads are retained. Both evaluators use the same path parser and merge
 implementation. Like `set` and `insert`, append and merge refuse writes beyond
 the existing 512-level NBT budget before creating any target parents.
+
+## Container loot
+
+To inspect or edit rolled container loot after table-load changes and before shuffle, splitting and placement,
+implement the server-side `Hooks::container_loot_filled` hook. For opener rules, double-chest fills, stack
+trimming and refused edits, see `Hooks::container_loot_filled` in the
+[mod API reference](../../reference/api.md).
