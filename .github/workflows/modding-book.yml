@@ -2,12 +2,12 @@ name: modding-book
 on:
   push:
     branches: [main]
-    paths: ["docs/modding/**", "crates/sunrise-mod-vocab/**", "crates/sunrise-mod-api/**", "crates/sunrise-mod-api-gen/**", "crates/sunrise-stage/**", "xtask/**", "tools/*modding*", "tests/test_modding_*.py", "tools/ci/nightly.py", "crates/sunrise-mod-package/src/sdk/**", "crates/sunrise-mod-surface/**", "crates/sunrise-mod-call/**", ".github/workflows/modding-book.yml"]
+    paths: ["docs/modding/**", "crates/sunrise-mod-vocab/**", "crates/sunrise-mod-api/**", "crates/sunrise-mod-api-gen/**", "crates/sunrise-stage/**", "xtask/**", "tools/*modding*", "tests/test_modding_*.py", "tools/ci/nightly.py", "crates/sunrise-mod-package/src/sdk/**", "crates/sunrise-mod-surface/**", "crates/sunrise-mod-call/**", "crates/sunrise-client/src/mobs/villager_secondary.extension-tags.json", ".github/workflows/modding-book.yml"]
   # A PR gets the book itself (concept-pages preprocessor and mdBook build), not the API doc and example builds.
   pull_request:
     # The generator and xtask render the hook-notes and NeoForge counterparts chapters at build time, from the
     # mod API's surface and catalog.
-    paths: ["docs/modding/**", "crates/sunrise-mod-vocab/**", "crates/sunrise-mod-api/**", "crates/sunrise-mod-api-gen/**", "crates/sunrise-stage/**", "xtask/**", "tools/*modding*", "tests/test_modding_*.py", "tools/ci/nightly.py", "crates/sunrise-mod-package/src/sdk/**", "crates/sunrise-mod-surface/**", "crates/sunrise-mod-call/**", ".github/workflows/modding-book.yml"]
+    paths: ["docs/modding/**", "crates/sunrise-mod-vocab/**", "crates/sunrise-mod-api/**", "crates/sunrise-mod-api-gen/**", "crates/sunrise-stage/**", "xtask/**", "tools/*modding*", "tests/test_modding_*.py", "tools/ci/nightly.py", "crates/sunrise-mod-package/src/sdk/**", "crates/sunrise-mod-surface/**", "crates/sunrise-mod-call/**", "crates/sunrise-client/src/mobs/villager_secondary.extension-tags.json", ".github/workflows/modding-book.yml"]
   workflow_dispatch:
 # A newer push to a pull request or to main replaces the older run: only the newest head's book matters.
 concurrency:
@@ -140,16 +140,3 @@ jobs:
         with:
           name: modding-book
           path: target/modding-book
-      # Generated chapters and SDK tables for playsunrise.net's docs-sync workflow (no Rust on the site runner).
-      - name: Export generated chapters and SDK tables
-        if: steps.book.outputs.present == 'true' && github.event_name != 'pull_request'
-        run: |
-          rm -rf "$RUNNER_TEMP/modding-book-generated"
-          python3 tools/modding_export_generated.py --out "$RUNNER_TEMP/modding-book-generated"
-      - if: steps.book.outputs.present == 'true' && github.event_name != 'pull_request'
-        uses: actions/upload-artifact@v4
-        with:
-          name: modding-book-generated
-          path: ${{ runner.temp }}/modding-book-generated
-          if-no-files-found: error
-          retention-days: 90
