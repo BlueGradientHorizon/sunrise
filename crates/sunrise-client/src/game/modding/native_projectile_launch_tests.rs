@@ -163,6 +163,10 @@ fn owner_launch_reports_explicit_guest_to_join_listeners() {
     )];
     mod_platform::testing::with_mods(mods.into(), || {
         crate::game::native_guest_turn_tests::with_guests(|game| {
+            // A mod reaches the shot only in an accessible section.
+            game.world
+                .chunks
+                .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
             let source = game.entity(12).unwrap();
             let owner = game.living(source).unwrap();
             let previous_actor = game.lan_acting;
