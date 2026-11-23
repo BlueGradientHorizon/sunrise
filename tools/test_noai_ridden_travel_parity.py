@@ -76,6 +76,7 @@ def main():
         lab.ROOT / "crates/sunrise-client/src/mobs/ai.rs",
         lab.ROOT / "crates/sunrise-client/src/mobs/equine.rs",
         lab.ROOT / "crates/sunrise-client/src/mobs/living.rs",
+        lab.ROOT / "crates/sunrise-client/src/mobs/living/travel.rs",
     ]
     hashes = base.source_hashes(sources)
     matched = base.compare(vanilla, WITNESS)
