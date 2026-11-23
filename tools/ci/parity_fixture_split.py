@@ -4,8 +4,7 @@ For each named test it moves the body into a function beside it, `run_<test>`, t
 and leaves the `#[test]` (its attributes, name and ignore reason untouched, so test rows and discovery still see it)
 calling that function: build.rs's table (feature `parity-fixtures`) finds exactly that shape. The inline module that
 holds it becomes visible to `game`, where the table is; a test at the top of a file module is reported, for the
-module's declaration to be made visible by hand. tools/ci/parity_fixture_cfg.py compiles those modules under the
-feature.
+module's declaration to be made visible by hand.
 
 Usage: parity_fixture_split.py TESTS.json NAME...   (TESTS.json: ignored_inventory.tests() rows as dicts)
 """

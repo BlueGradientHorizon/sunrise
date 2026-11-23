@@ -16,9 +16,8 @@ import lab
 def snapshot_tests(build):
     """Run the prepared-resource hurt, landing, world lifetime and wire cases.
 
-    One package per Cargo run, as other harnesses select them: in one run, sunrise-client-lib's lib test and rlib
-    compiled beside sunrise-client's lib test, 15.6 GiB at once, and a 16 GiB parity runner killed it (signal 9,
-    main, run 43884739298). Apart, the larger, sunrise-client's with its rlib, peaks at 11.5 GiB."""
+    One Cargo run per package: sunrise-client-lib's lib test, then sunrise-client's fixtures from their own binary
+    (lab.parity_fixtures()), never the sunrise-client lib test, whose rustc a parity runner cannot hold (#4896)."""
     stdout = output = ""
     # Tests that run their cases in child processes (native_entity_refs::tests::run_fresh_cases) pass the
     # prepared resources down by this variable; the scratch homes keep the runs out of a player's folders.
