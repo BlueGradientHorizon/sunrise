@@ -984,9 +984,7 @@ impl Renderer {
         } else {
             &visible_lods
         };
-        let count = visible.len() + far.len();
-        let budget = (count / 8).max(15).min(count);
-        self.translucency_cursor %= count.max(1);
+        let rotation = Rotation::new(visible.len(), far.len(), self.translucency_cursor);
         let eye = camera + rendered_eye.map_or(DVec3::ZERO, |e| e.as_dvec3());
         for (i, v) in visible.iter().enumerate().rev() {
             let s = self.sections.get_mut(v.slot);
@@ -994,7 +992,7 @@ impl Renderer {
                 let nearby = (v.key.0 - camera_section.0).abs() <= 2
                     && (v.key.1 - camera_section.1).abs() <= 2
                     && (v.key.2 - camera_section.2).abs() <= 2;
-                let scheduled = resorts(i, 0, count, self.translucency_cursor, budget);
+                let scheduled = rotation.near(i);
                 let origin = [
                     v.key.0 * 16,
                     self.layout.min_y() + v.key.1 * 16,
@@ -1041,9 +1039,9 @@ impl Renderer {
         // place in what the CPU draws (`visible_lods`), which the tiles whose
         // solid quads the pass drew whole leave out of.
         let section_translucent = self.translucent_draws.len();
-        for (i, instance) in listed_slots(far, &visible_lods, visible.len()) {
+        let far_water = FarWater::new(far, &visible_lods, rotation);
+        for (i, instance, scheduled) in far_water.entries() {
             let v = &far[i];
-            let scheduled = resorts(i, visible.len(), count, self.translucency_cursor, budget);
             let tile = self.lods.get_mut(&v.key).expect("visible resident tile");
             let s = tile.drawn_mut();
             if let Some((index_page, index_start)) = s.sorted_indices {
@@ -1083,16 +1081,9 @@ impl Renderer {
             // front together, a far tile's water under a near chunk's (one fading in, or brought
             // into view by a longer render distance) blended twice and looked opaque. The cost: far
             // water just behind near water shows no surface of its own there.
-            let tier = |instance: usize| {
-                blend_tier(instance, visible.len(), |slot| visible_lods[slot].old)
-            };
             self.translucent_draws
                 .sort_unstable_by_key(|&(distance, instance, ..)| {
-                    (
-                        tier(instance),
-                        std::cmp::Reverse(distance),
-                        std::cmp::Reverse(instance),
-                    )
+                    far_water.order(distance, instance)
                 });
         }
         self.translucent_marks.clear();
@@ -1105,7 +1096,7 @@ impl Renderer {
             self.draws.push(draw);
             self.draw_pages.push(pages);
         }
-        self.translucency_cursor += budget;
+        self.translucency_cursor = rotation.next();
         let translucent_draws = self.draws.len() as u32 - solid_draws;
         let section_draws = self.draws.len();
         // The shadow camera's sections after the camera's: quads that can face the light (all of
@@ -3797,46 +3788,100 @@ pub(super) fn entity_buffer_vertices(vertices: u64, max_buffer_size: u64) -> u64
     vertices.next_power_of_two().min(most).max(vertices)
 }
 
-/// Whether the translucent entry at `index` of the near sections' and the far tiles' combined
-/// list re-sorts this frame: the rotation's `budget` entries from `cursor`, over `count`. A far
-/// tile's `index` is its place in the walk's complete set, past the near sections' `near`.
-pub(super) fn resorts(
-    index: usize,
+/// A frame's re-sort rotation over the near sections' and the far tiles' combined translucent
+/// list (`LevelRenderer`: a rotating eighth of it, at least 15, besides the nearby sections). A
+/// far tile's place is past the near sections', at its index in the walk's complete set, so the
+/// window is the same whichever solid draws the GPU owns.
+#[derive(Clone, Copy, Debug)]
+pub(super) struct Rotation {
     near: usize,
     count: usize,
-    cursor: usize,
     budget: usize,
-) -> bool {
-    (index + near + count - cursor) % count < budget
+    cursor: usize,
 }
 
-/// The far tiles a frame's water draws, each with its instance slot: walks the walk's complete
-/// set (`far`) with what the CPU draws of it (`listed`), and pairs each tile the walk listed
-/// with the slot it takes past the near sections' `near`. A tile whose solid quads the pass
-/// drew whole takes none, and the pairs keep the walk's order.
-pub(super) fn listed_slots<'a>(
+impl Rotation {
+    /// The rotation over `near` sections and `far` tiles, from the last frame's `cursor`.
+    pub(super) fn new(near: usize, far: usize, cursor: usize) -> Self {
+        let count = near + far;
+        Self {
+            near,
+            count,
+            budget: (count / 8).max(15).min(count),
+            cursor: cursor % count.max(1),
+        }
+    }
+
+    /// Whether the near section at `index` of the visible list re-sorts this frame.
+    pub(super) fn near(&self, index: usize) -> bool {
+        self.window(index)
+    }
+
+    /// The cursor the next frame starts from.
+    pub(super) fn next(&self) -> usize {
+        self.cursor + self.budget
+    }
+
+    fn window(&self, combined: usize) -> bool {
+        (combined + self.count - self.cursor) % self.count < self.budget
+    }
+}
+
+/// A frame's far water: the walk's complete set (`far`) and what the CPU draws of it (`listed`,
+/// which keeps the walk's order and leaves out the tiles whose solid quads the pass drew
+/// whole), with the frame's re-sort rotation. The rotation reads a tile's place in `far`, its
+/// instance slot and its blend tier read `listed`.
+pub(super) struct FarWater<'a> {
     far: &'a [lod::Visible],
     listed: &'a [lod::Visible],
-    near: usize,
-) -> impl Iterator<Item = (usize, usize)> + 'a {
-    let mut slot = 0usize;
-    far.iter().enumerate().filter_map(move |(i, v)| {
-        if listed.get(slot).is_some_and(|l| l.key == v.key) {
-            slot += 1;
-            Some((i, near + slot - 1))
-        } else {
-            None
-        }
-    })
+    rotation: Rotation,
 }
 
-/// A translucent draw's blend tier from its instance slot: the near sections' water (tier 0),
-/// the far tiles' (1), a tile standing in for its replacement (2, over them). `old`: whether
-/// the tile at the slot past the near sections' `near`, in the same list the slot names, is one.
-pub(super) fn blend_tier(instance: usize, near: usize, old: impl Fn(usize) -> bool) -> u32 {
-    match instance.checked_sub(near) {
-        None => 0,
-        Some(slot) if old(slot) => 2,
-        Some(_) => 1,
+impl<'a> FarWater<'a> {
+    pub(super) fn new(
+        far: &'a [lod::Visible],
+        listed: &'a [lod::Visible],
+        rotation: Rotation,
+    ) -> Self {
+        Self {
+            far,
+            listed,
+            rotation,
+        }
+    }
+
+    /// Each listed tile, as its index in `far`, its instance slot past the near sections', and
+    /// whether the rotation re-sorts it this frame.
+    pub(super) fn entries(&self) -> impl Iterator<Item = (usize, usize, bool)> + '_ {
+        let mut slot = 0usize;
+        let near = self.rotation.near;
+        self.far.iter().enumerate().filter_map(move |(i, v)| {
+            if self.listed.get(slot).is_some_and(|l| l.key == v.key) {
+                slot += 1;
+                Some((i, near + slot - 1, self.rotation.window(near + i)))
+            } else {
+                None
+            }
+        })
+    }
+
+    /// A translucent draw's place in the one back-to-front order of near and far water: its
+    /// blend tier first (the near sections' water 0, the far tiles' 1, a tile standing in for
+    /// its replacement 2, over them), then the farthest, then the highest instance.
+    pub(super) fn order(
+        &self,
+        distance: u64,
+        instance: usize,
+    ) -> (u32, std::cmp::Reverse<u64>, std::cmp::Reverse<usize>) {
+        let tier = match instance.checked_sub(self.rotation.near) {
+            None => 0,
+            Some(slot) if self.listed[slot].old => 2,
+            Some(_) => 1,
+        };
+        (
+            tier,
+            std::cmp::Reverse(distance),
+            std::cmp::Reverse(instance),
+        )
     }
 }

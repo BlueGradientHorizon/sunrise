@@ -117,8 +117,9 @@ fn boxes_round_outward_in_the_cells_units() {
     assert_eq!(cell_box(bounds, cell), cell_box(wider, cell));
 }
 
-/// A tile's colour from its vertices, white towards the fade's end, drawn by a view and
-/// projection in a uniform and depth tested, as the terrain pipelines draw.
+/// A tile's colour from its vertices, white towards the fade's end, with the vertices' alpha
+/// (the blended pipeline mixes water over what is behind it), drawn by a view and projection in
+/// a uniform and depth tested, as the terrain pipelines draw.
 const TILES: &str = "
 @group(0) @binding(0) var<uniform> view_proj: mat4x4<f32>;
 struct Tile {
@@ -133,7 +134,7 @@ struct Tile {
     let fade = clamp(-instance.w / 16.0, 0.0, 1.0);
     return Tile(
         view_proj * vec4<f32>(position + instance.xyz, 1.0),
-        vec4<f32>(mix(color.rgb, vec3<f32>(1.0), fade), 1.0),
+        vec4<f32>(mix(color.rgb, vec3<f32>(1.0), fade), color.a),
     );
 }
 @fragment fn fs(tile: Tile) -> @location(0) vec4<f32> {
@@ -978,7 +979,7 @@ fn water_keeps_its_place_when_the_table_comes_late(device: &wgpu::Device, queue:
 
     // One frame at `now`: the walk's complete set, the CPU's draws and instances of what
     // the pass left it (`pass`: the pass draws the rest), and the water of the listed
-    // tiles, at the slots `listed_slots` pairs them (`draw_frame`'s far water).
+    // tiles, at the slots `FarWater` pairs them (`draw_frame`'s far water).
     let mut frame = |sourced: &mut Sourced,
                      tiles: &FxHashMap<crate::lod::TileKey, crate::gfx::lod::Tile>,
                      now: Instant,
@@ -1087,10 +1088,12 @@ fn water_keeps_its_place_when_the_table_comes_late(device: &wgpu::Device, queue:
     sourced.check(&tiles, at, true);
 }
 /// A fade with the near sections' water and far water together keeps its order through the
-/// split: the walk's complete set drives the re-sort's rotation (`resorts`, a far tile's
+/// split: the walk's complete set drives the re-sort's rotation (`Rotation`, a far tile's
 /// place its own past the near sections'), a listed tile's instance slot names its place in
-/// what the CPU draws (`listed_slots`), and a tile standing in for its replacement blends by
-/// the tier of that same list (`blend_tier`). The far tile whose solid quads the pass drew
+/// what the CPU draws (`FarWater::entries`), and a tile standing in for its replacement blends
+/// by the tier of that same list (`FarWater::order`): the frames run `draw_frame`'s own decisions,
+/// with translucent water, on both sides of a fade's handoff, and the CPU's frames and the
+/// split's in worlds of their own. The far tile whose solid quads the pass drew
 /// whole leaves the CPU's list, so the two lists differ, and the split still draws the CPU's
 /// image. And when the camera steps a block across a tile's two water quads, the rotation
 /// re-sorts that tile — its order moves with the camera, the other water tiles' stays — in
@@ -1105,9 +1108,8 @@ fn near_and_far_water_keep_their_order_through_the_split() {
 fn near_and_far_water_keep_their_order(device: &wgpu::Device, queue: &Queue) {
     use crate::fast_hash::FxHashMap;
     use crate::gfx::SectionGpu;
-    use crate::gfx::draw_frame::{blend_tier, listed_slots, resorts};
+    use crate::gfx::draw_frame::{FarWater, Rotation};
     use crate::gfx::translucency;
-    use std::cmp::Reverse;
     use std::collections::BTreeSet;
     use std::time::Duration;
     use wgpu::util::DeviceExt;
@@ -1178,143 +1180,130 @@ fn near_and_far_water_keep_their_order(device: &wgpu::Device, queue: &Queue) {
         level: SIZE_LOG2 - 4,
     };
 
-    // The near sections, each one solid quad and one water quad over it, all within two
-    // sections of the camera's own (`nearby`): their water is always re-sorted.
-    let mut sections_near: Vec<((i32, i32, i32), [f64; 3], SectionGpu)> = Vec::new();
-    for (i, &(x, z)) in [(5, -3), (6, -3), (5, -2), (6, -2)].iter().enumerate() {
-        sections_near.push((
-            (x, 0, z),
-            [f64::from(x * 16), 0.0, f64::from(z * 16)],
-            mesh(
-                16.0,
-                (42.0, 0xFF40_4060 + 0x0001_0100 * u32::try_from(i).unwrap()),
-                &[([0.0, 0.0], 16.0, 60.0, 0x8090_60A0)],
-            ),
-        ));
-    }
-
     let bounds = [
         Vec3::new(0.0, 30.0, 0.0),
         Vec3::new(side as f32, 90.0, side as f32),
     ];
     let near_pass = GpuCulling::new(device, None).expect("the pass");
-    let mut sourced = Sourced::default();
-    let mut tiles: FxHashMap<crate::lod::TileKey, crate::gfx::lod::Tile> = Default::default();
-    let mut grid = crate::gfx::lod::TileGrid::default();
     let t0 = Instant::now() + Duration::from_secs(1);
     let whole = t0 - lod::FADE;
-    // Recorded as the residency records them: the first solid tile makes the table.
-    let add = |k: crate::lod::TileKey,
-               s: SectionGpu,
-               shown: Option<Instant>,
-               previous: Option<(SectionGpu, Option<Instant>)>,
-               tiles: &mut FxHashMap<crate::lod::TileKey, crate::gfx::lod::Tile>,
-               grid: &mut crate::gfx::lod::TileGrid,
-               sourced: &mut Sourced| {
-        tiles.insert(
-            k,
-            crate::gfx::lod::Tile::for_test(s, bounds, shown, previous),
-        );
-        grid.insert_bounds(k, bounds);
-        assert!(!sourced.record(k, tiles.get_mut(&k).unwrap(), Some(&near_pass), device, t0));
-    };
-
-    // The camera's own tile: two water quads the step's plane crosses, over a solid quad
-    // the pass draws.
+    // The camera's own tile, with two water quads the step's plane crosses.
     let straddle = key(0, -1);
-    add(
-        straddle,
-        mesh(
-            side as f32,
-            (40.0, 0xFF70_7070),
-            &[
-                ([150.0, 465.75], 16.0, 55.0, 0x80FF_3050),
-                ([150.0, 464.75], 16.0, 55.0, 0x8030_FF50),
-            ],
-        ),
-        Some(whole),
-        None,
-        &mut tiles,
-        &mut grid,
-        &mut sourced,
-    );
-    // Standing in for its replacement: its previous mesh draws, and its water blends by
-    // the tier that puts it over the others' (2, in the list the CPU draws).
+    // Standing in for its replacement until `t0 + FADE`.
     let stand_in = key(0, -2);
-    let water_full = [([0.0, 0.0], side as f32, 70.0, 0x80FF_8030)];
-    let own = mesh(side as f32, (46.0, 0xFF70_7070), &water_full);
-    let previous = mesh(side as f32, (44.0, 0xFF70_7070), &water_full);
-    add(
-        stand_in,
-        own,
-        Some(t0),
-        Some((previous, Some(t0))),
-        &mut tiles,
-        &mut grid,
-        &mut sourced,
-    );
-    // Fading in over the step: the pass leaves it the CPU's until its fade-in is due.
+    // Fading in from `t0 + FADE / 2`: the CPU's, then the pass's from `t0 + FADE * 3 / 2`.
     let fading = key(-1, -1);
-    add(
-        fading,
-        mesh(
-            side as f32,
-            (40.0, 0xFF70_7070),
-            &[([0.0, 0.0], side as f32, 70.0, 0x8030_80FF)],
-        ),
-        Some(t0 + lod::FADE / 2),
-        None,
-        &mut tiles,
-        &mut grid,
-        &mut sourced,
-    );
-    // Whole and water-bearing: the pass draws its solid quads, the CPU its water.
     let steady_water = key(1, -1);
-    add(
-        steady_water,
-        mesh(
-            side as f32,
-            (40.0, 0xFF70_7070),
-            &[([0.0, 0.0], side as f32, 70.0, 0x80FF_CC30)],
-        ),
-        Some(whole),
-        None,
-        &mut tiles,
-        &mut grid,
-        &mut sourced,
-    );
-    // Whole without water: steady, so not listed — the tile that shifts the CPU's list
-    // against the walk's, which the tier's lookup must not cross.
     let dropped = key(1, 0);
-    add(
-        dropped,
-        mesh(side as f32, (40.0, 0xFF70_7070), &[]),
-        Some(whole),
-        None,
-        &mut tiles,
-        &mut grid,
-        &mut sourced,
-    );
-    // Filler around them, to give the walk more entries than the rotation's budget:
-    // steady, no water, the pass's.
-    for &(x, z) in [
-        (-3, 0),
-        (-2, 0),
-        (-1, 0),
-        (2, 0),
-        (3, 0),
-        (-2, 1),
-        (-1, 1),
-        (0, 1),
-        (1, 1),
-        (2, 1),
-        (-1, -2),
-        (1, -2),
-    ]
-    .iter()
-    {
+    // One world: the near sections, the far tiles as the residency records them and the
+    // water's last sorted orders. Built twice, so the CPU's frames and the split's each keep
+    // their own sort state, as two renderers would.
+    struct World {
+        sections_near: Vec<((i32, i32, i32), [f64; 3], SectionGpu)>,
+        sourced: Sourced,
+        tiles: FxHashMap<crate::lod::TileKey, crate::gfx::lod::Tile>,
+        grid: crate::gfx::lod::TileGrid,
+        orders: FxHashMap<crate::lod::TileKey, Vec<u32>>,
+    }
+    let mut build = || -> World {
+        // The near sections, each one solid quad and one water quad over it, all within two
+        // sections of the camera's own (`nearby`): their water is always re-sorted.
+        let mut sections_near: Vec<((i32, i32, i32), [f64; 3], SectionGpu)> = Vec::new();
+        for (i, &(x, z)) in [(5, -3), (6, -3), (5, -2), (6, -2)].iter().enumerate() {
+            sections_near.push((
+                (x, 0, z),
+                [f64::from(x * 16), 0.0, f64::from(z * 16)],
+                mesh(
+                    16.0,
+                    (42.0, 0xFF40_4060 + 0x0001_0100 * u32::try_from(i).unwrap()),
+                    &[([0.0, 0.0], 16.0, 60.0, 0x8090_60A0)],
+                ),
+            ));
+        }
+
+        let mut sourced = Sourced::default();
+        let mut tiles: FxHashMap<crate::lod::TileKey, crate::gfx::lod::Tile> = Default::default();
+        let mut grid = crate::gfx::lod::TileGrid::default();
+        // Recorded as the residency records them: the first solid tile makes the table.
+        let add = |k: crate::lod::TileKey,
+                   s: SectionGpu,
+                   shown: Option<Instant>,
+                   previous: Option<(SectionGpu, Option<Instant>)>,
+                   tiles: &mut FxHashMap<crate::lod::TileKey, crate::gfx::lod::Tile>,
+                   grid: &mut crate::gfx::lod::TileGrid,
+                   sourced: &mut Sourced| {
+            tiles.insert(
+                k,
+                crate::gfx::lod::Tile::for_test(s, bounds, shown, previous),
+            );
+            grid.insert_bounds(k, bounds);
+            assert!(!sourced.record(k, tiles.get_mut(&k).unwrap(), Some(&near_pass), device, t0));
+        };
+
+        // The camera's own tile: two water quads the step's plane crosses, over a solid quad
+        // the pass draws.
         add(
-            key(x, z),
+            straddle,
+            mesh(
+                side as f32,
+                (40.0, 0xFF70_7070),
+                &[
+                    ([150.0, 465.75], 16.0, 55.0, 0x80FF_3050),
+                    ([150.0, 464.75], 16.0, 55.0, 0x8030_FF50),
+                ],
+            ),
+            Some(whole),
+            None,
+            &mut tiles,
+            &mut grid,
+            &mut sourced,
+        );
+        // Standing in for its replacement: its previous mesh draws, and its water blends by
+        // the tier that puts it over the others' (2, in the list the CPU draws).
+        let water_full = [([0.0, 0.0], side as f32, 70.0, 0x80FF_8030)];
+        let own = mesh(side as f32, (46.0, 0xFF70_7070), &water_full);
+        let previous = mesh(side as f32, (44.0, 0xFF70_7070), &water_full);
+        add(
+            stand_in,
+            own,
+            Some(t0),
+            Some((previous, Some(t0))),
+            &mut tiles,
+            &mut grid,
+            &mut sourced,
+        );
+        // Fading in over the step: the pass leaves it the CPU's until its fade-in is due.
+        add(
+            fading,
+            mesh(
+                side as f32,
+                (40.0, 0xFF70_7070),
+                &[([0.0, 0.0], side as f32, 70.0, 0x8030_80FF)],
+            ),
+            Some(t0 + lod::FADE / 2),
+            None,
+            &mut tiles,
+            &mut grid,
+            &mut sourced,
+        );
+        // Whole and water-bearing: the pass draws its solid quads, the CPU its water.
+        add(
+            steady_water,
+            mesh(
+                side as f32,
+                (40.0, 0xFF70_7070),
+                &[([0.0, 0.0], side as f32, 70.0, 0x80FF_CC30)],
+            ),
+            Some(whole),
+            None,
+            &mut tiles,
+            &mut grid,
+            &mut sourced,
+        );
+        // Whole without water: steady, so not listed — the tile that shifts the CPU's list
+        // against the walk's, which the tier's lookup must not cross.
+        add(
+            dropped,
             mesh(side as f32, (40.0, 0xFF70_7070), &[]),
             Some(whole),
             None,
@@ -1322,39 +1311,75 @@ fn near_and_far_water_keep_their_order(device: &wgpu::Device, queue: &Queue) {
             &mut grid,
             &mut sourced,
         );
-    }
-    assert!(!sourced.off());
-    assert!(sourced.lists(straddle) && sourced.lists(stand_in));
-    assert!(sourced.lists(fading) && sourced.lists(steady_water));
-    assert!(!sourced.lists(dropped));
+        // Filler around them, to give the walk more entries than the rotation's budget:
+        // steady, no water, the pass's.
+        for &(x, z) in [
+            (-3, 0),
+            (-2, 0),
+            (-1, 0),
+            (2, 0),
+            (3, 0),
+            (-2, 1),
+            (-1, 1),
+            (0, 1),
+            (1, 1),
+            (2, 1),
+            (-1, -2),
+            (1, -2),
+        ]
+        .iter()
+        {
+            add(
+                key(x, z),
+                mesh(side as f32, (40.0, 0xFF70_7070), &[]),
+                Some(whole),
+                None,
+                &mut tiles,
+                &mut grid,
+                &mut sourced,
+            );
+        }
+        assert!(!sourced.off());
+        assert!(sourced.lists(straddle) && sourced.lists(stand_in));
+        assert!(sourced.lists(fading) && sourced.lists(steady_water));
+        assert!(!sourced.lists(dropped));
+        World {
+            sections_near,
+            sourced,
+            tiles,
+            grid,
+            orders: Default::default(),
+        }
+    };
+    let mut cpu_world = build();
+    let mut split_world = build();
 
     let rig = rig(device, queue, stride);
     let view = Frustum::from_planes(frustum(rig_view()));
     let mut uploads = Uploads::new(device);
     let mut sorter = translucency::Sorter::default();
-    let mut orders: FxHashMap<crate::lod::TileKey, Vec<u32>> = Default::default();
-    // The frame's split, for the asserts that pin `resorts`' offset and `blend_tier`'s list
-    // (`#4769`'s second and third defects): the walk's complete set, the CPU's list of it,
-    // the near sections' count and the rotation's shape.
+    // What a frame decided, for the asserts on `draw_frame`'s own decisions (`#4769`'s second
+    // and third defects): the far tiles the rotation re-sorted, and the stand-in's blend tier.
     struct Split {
-        far: Vec<lod::Visible>,
-        listed: Vec<lod::Visible>,
-        near_len: usize,
-        count: usize,
-        budget: usize,
-        cursor: usize,
+        resorted: Vec<crate::lod::TileKey>,
+        stand_in_tier: Option<u32>,
     }
 
     // One frame: the near sections and the walk's complete set drive the re-sort's rotation
     // and the water's order, what the pass left the CPU (`pass`) drives the draws and
     // instances, and the picture comes back with the far tiles' draw order.
-    let mut frame = |sourced: &mut Sourced,
-                     tiles: &mut FxHashMap<crate::lod::TileKey, crate::gfx::lod::Tile>,
-                     orders: &mut FxHashMap<crate::lod::TileKey, Vec<u32>>,
+    let mut frame = |world: &mut World,
                      camera: DVec3,
                      now: Instant,
                      pass: bool|
      -> (Vec<u32>, Vec<crate::lod::TileKey>, Split) {
+        let World {
+            sections_near,
+            sourced,
+            tiles,
+            grid,
+            orders,
+        } = world;
         sourced.take_due(tiles, now);
         let mut visible: Vec<(u64, (i32, i32, i32), usize)> = sections_near
             .iter()
@@ -1372,7 +1397,7 @@ fn near_and_far_water_keep_their_order(device: &wgpu::Device, queue: &Queue) {
         // the walk's order.
         let mut far: Vec<lod::Visible> = Vec::new();
         let mut list = |v| far.push(v);
-        walk_tiles(&grid, tiles, camera, &view, now, None, &mut list);
+        walk_tiles(grid, tiles, camera, &view, now, None, &mut list);
         far.sort_unstable_by_key(|v| (v.distance, v.key));
         let visible_lods: Vec<lod::Visible> = if pass {
             far.iter()
@@ -1383,15 +1408,13 @@ fn near_and_far_water_keep_their_order(device: &wgpu::Device, queue: &Queue) {
             far.clone()
         };
         let near_len = visible.len();
-        let count = near_len + far.len();
-        let budget = (count / 8).max(15).min(count);
         // The rotation rests on the straddle tile: whichever frame walks it re-sorts it.
-        let cursor = (near_len
+        let cursor = near_len
             + far
                 .iter()
                 .position(|v| v.key == straddle)
-                .expect("the straddle tile in view"))
-            % count;
+                .expect("the straddle tile in view");
+        let rotation = Rotation::new(near_len, far.len(), cursor);
 
         let mut encoder = device.create_command_encoder(&Default::default());
         if pass {
@@ -1452,7 +1475,7 @@ fn near_and_far_water_keep_their_order(device: &wgpu::Device, queue: &Queue) {
         for (i, &(distance, _, s_i)) in visible.iter().enumerate() {
             let (_, o, s) = &mut sections_near[s_i];
             if s.sorted_indices.is_some() {
-                let scheduled = resorts(i, 0, count, cursor, budget);
+                let scheduled = rotation.near(i);
                 let origin = [o[0] as i32, o[1] as i32, o[2] as i32];
                 if scheduled {
                     let _ = s.sort.update(
@@ -1470,9 +1493,13 @@ fn near_and_far_water_keep_their_order(device: &wgpu::Device, queue: &Queue) {
                 }
             }
         }
-        for (i, instance) in listed_slots(&far, &visible_lods, near_len) {
+        let mut resorted = Vec::new();
+        let far_water = FarWater::new(&far, &visible_lods, rotation);
+        for (i, instance, scheduled) in far_water.entries() {
             let v = &far[i];
-            let scheduled = resorts(i, near_len, count, cursor, budget);
+            if scheduled {
+                resorted.push(v.key);
+            }
             let s = tiles
                 .get_mut(&v.key)
                 .expect("visible resident tile")
@@ -1490,13 +1517,12 @@ fn near_and_far_water_keep_their_order(device: &wgpu::Device, queue: &Queue) {
                 }
             }
         }
-        translucent_draws.sort_unstable_by_key(|&(distance, instance)| {
-            (
-                blend_tier(instance, near_len, |slot| visible_lods[slot].old),
-                Reverse(distance),
-                Reverse(instance),
-            )
-        });
+        translucent_draws
+            .sort_unstable_by_key(|&(distance, instance)| far_water.order(distance, instance));
+        let stand_in_tier = visible_lods
+            .iter()
+            .position(|v| v.key == stand_in)
+            .map(|slot| far_water.order(0, near_len + slot).0);
         let mut far_order: Vec<crate::lod::TileKey> = Vec::new();
         for &(_, instance) in &translucent_draws {
             if instance < near_len {
@@ -1527,19 +1553,17 @@ fn near_and_far_water_keep_their_order(device: &wgpu::Device, queue: &Queue) {
             copy_and_submit(device, queue, encoder, &rig, &mut uploads),
             far_order,
             Split {
-                far: far.clone(),
-                listed: visible_lods.clone(),
-                near_len,
-                count,
-                budget,
-                cursor,
+                resorted,
+                stand_in_tier,
             },
         )
     };
 
     let at = t0 + lod::FADE;
-    let (cpu, cpu_order, _) = frame(&mut sourced, &mut tiles, &mut orders, before, at, false);
-    let (split, split_order, ff) = frame(&mut sourced, &mut tiles, &mut orders, before, at, true);
+    // Before the handoff: the fading tile is the CPU's whole, the stand-in stands in.
+    let (cpu, cpu_order, cf) = frame(&mut cpu_world, before, at, false);
+    let (split, split_order, ff) = frame(&mut split_world, before, at, true);
+    assert!(!split_world.sourced.draws_solid(fading));
     let black = |image: &[u32]| image.iter().filter(|&&p| p == 0xFF00_0000).count();
     let (covered, total) = (cpu.len() - black(&cpu), cpu.len());
     assert!(covered > 250, "the tiles cover {covered} of {total}");
@@ -1557,55 +1581,53 @@ fn near_and_far_water_keep_their_order(device: &wgpu::Device, queue: &Queue) {
             .collect::<Vec<_>>()
     };
     assert_eq!(without_stand_in(&cpu_order), without_stand_in(&split_order));
-    // Nothing was sorted yet: every water tile's order came out of its first sort.
-    assert_eq!(orders.len(), 4);
-    let before_orders = orders.clone();
-    // The rotation's offset is the near sections': with it the straddle tile is in the
-    // window, at zero (the second defect's call) it would stay out.
-    let straddle_combined = ff.near_len + ff.listed.iter().position(|v| v.key == straddle).unwrap();
-    assert!(resorts(
-        straddle_combined,
-        ff.near_len,
-        ff.count,
-        ff.cursor,
-        ff.budget
-    ));
-    assert!(!resorts(
-        straddle_combined - ff.near_len,
-        0,
-        ff.count,
-        ff.cursor,
-        ff.budget
-    ));
-    // The tier reads the list the slot names: the stand-in's slot in the CPU's list is a
-    // stand-in there and blends last (2); the walk's complete list at that slot is not one
-    // (the third defect's lookup).
-    let stand_in_combined = ff.near_len + ff.listed.iter().position(|v| v.key == stand_in).unwrap();
-    assert_eq!(
-        blend_tier(stand_in_combined, ff.near_len, |slot| ff.listed[slot].old),
-        2
-    );
-    assert_ne!(
-        blend_tier(stand_in_combined, ff.near_len, |slot| ff.far[slot].old),
-        2
-    );
+    // Nothing was sorted yet: every water tile's order came out of its first sort, the same
+    // in each world.
+    assert_eq!(split_world.orders.len(), 4);
+    assert_eq!(cpu_world.orders, split_world.orders);
+    let before_orders = split_world.orders.clone();
+    // `draw_frame`'s rotation puts a far tile past the near sections: the straddle tile, at
+    // the cursor, re-sorts in each frame, with the pass on or off (the second defect left it
+    // out of the window).
+    assert!(cf.resorted.contains(&straddle) && ff.resorted.contains(&straddle));
+    // `draw_frame`'s order reads the stand-in's tier from the list its slot names, the CPU's
+    // (the third defect read the walk's complete list, where the slot is another tile's).
+    assert_eq!(ff.stand_in_tier, Some(2));
 
     // The camera steps a block along z, across the straddle pair's plane: the rotation
-    // re-sorts the pair in both frames, the other water tiles' order stays, and the split
+    // re-sorts the pair in both worlds, the other water tiles' order stays, and the split
     // still draws the CPU's image.
-    let (cpu, cpu_order, _) = frame(&mut sourced, &mut tiles, &mut orders, after, at, false);
-    let (split, split_order, _) = frame(&mut sourced, &mut tiles, &mut orders, after, at, true);
+    let (cpu, cpu_order, _) = frame(&mut cpu_world, after, at, false);
+    let (split, split_order, _) = frame(&mut split_world, after, at, true);
     let wrong = cpu.iter().zip(&split).filter(|(a, b)| a != b).count();
     assert_eq!(wrong, 0, "{wrong} pixels of {total} differ over the step");
     assert_eq!(split_order.last(), Some(&stand_in));
     assert_eq!(without_stand_in(&cpu_order), without_stand_in(&split_order));
-    let moved: BTreeSet<_> = orders
-        .iter()
-        .filter(|(k, o)| before_orders.get(k) != Some(*o))
-        .map(|(k, _)| *k)
-        .collect();
-    assert_eq!(moved, BTreeSet::from([straddle]));
-    assert!(sourced.draw_calls() > 0);
+    let moved = |world: &World| -> BTreeSet<_> {
+        world
+            .orders
+            .iter()
+            .filter(|(k, o)| before_orders.get(k) != Some(*o))
+            .map(|(k, _)| *k)
+            .collect()
+    };
+    assert_eq!(moved(&cpu_world), BTreeSet::from([straddle]));
+    assert_eq!(moved(&split_world), BTreeSet::from([straddle]));
+
+    // After the handoff: the fading tile is whole and its solid quads the pass's, its water
+    // still the CPU's; the stand-in's replacement is in. The split still draws the CPU's
+    // image, the water in one order.
+    let later = t0 + lod::FADE * 2;
+    let (cpu, cpu_order, _) = frame(&mut cpu_world, after, later, false);
+    let (split, split_order, _) = frame(&mut split_world, after, later, true);
+    assert!(split_world.sourced.draws_solid(fading) && split_world.sourced.lists(fading));
+    let wrong = cpu.iter().zip(&split).filter(|(a, b)| a != b).count();
+    assert_eq!(
+        wrong, 0,
+        "{wrong} pixels of {total} differ after the handoff"
+    );
+    assert_eq!(cpu_order, split_order);
+    assert!(split_world.sourced.draw_calls() > 0);
     #[cfg(debug_assertions)]
-    sourced.check(&tiles, at, true);
+    split_world.sourced.check(&split_world.tiles, later, true);
 }
