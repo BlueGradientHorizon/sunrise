@@ -648,6 +648,7 @@ impl Game<'_> {
         // Clear any createResult flag raised while populating the menu before the click.
         let _ = menu.anvil_created();
         let outcome = run(self, &mut menu, &env, &to_menu);
+        let made = maps.made.take();
         // Any creative-screen drop sent live inside `run` already updated `menu`'s
         // throttler; keep `self.drop_spam_throttler` in step even if a later click failed.
         if self.remote.is_some()
@@ -656,7 +657,6 @@ impl Game<'_> {
         {
             self.drop_spam_throttler = throttle;
         }
-        let made = maps.made.take();
         match outcome {
             None => return false,
             Some(false) => return true,

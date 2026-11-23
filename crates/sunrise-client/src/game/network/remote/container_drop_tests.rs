@@ -340,8 +340,9 @@ fn canceled_creative_drop_keeps_throttle_budget_for_next_take() {
             with_mods(
                 vec![ModEntry::new(
                     "test:cancel_first_drop",
-                    CancelFirstCreativeSlot(Arc::clone(&seen)),
-                )],
+                    Box::new(CancelFirstCreativeSlot(Arc::clone(&seen))),
+                )]
+                .into(),
                 || {
                     with_client_game(|game| {
                         let mut reader = logged_in(game);
