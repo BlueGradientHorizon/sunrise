@@ -209,7 +209,13 @@ pub(super) fn client_command_tree(
     custom: &CommandArguments,
     executors: Option<&mut CommandExecutorSlots>,
 ) -> (Value, HashMap<String, u8>, Vec<String>) {
-    command_tree_for(commands, BaseTree::Reserved(&|_| false), custom, true, executors)
+    command_tree_for(
+        commands,
+        BaseTree::Reserved(&|_| false),
+        custom,
+        true,
+        executors,
+    )
 }
 
 /// Whether a usage merges into a vanilla root of `base`, or why it cannot go into the tree. Each
@@ -1959,7 +1965,10 @@ impl Game<'_> {
     /// source, using vanilla's silence and block/cart track-output rules. The command's result
     /// is whatever the executor returns.
     pub(super) fn native_failure(&mut self, line: Text) {
-        let source = self.command_source.unwrap_or_else(|| self.player_source());
+        let source = self
+            .command_source
+            .clone()
+            .unwrap_or_else(|| self.player_source());
         self.with_source(
             super::commands::execute::Source {
                 dimension: source.origin_dimension,

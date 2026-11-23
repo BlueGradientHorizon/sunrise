@@ -2326,7 +2326,7 @@ impl Game<'_> {
                 main(self.stack_in(self.selected)),
                 listens.then(|| self.offhand.clone()).flatten(),
             ]
-        } else if let Some(index) = self.mob_index.find(&self.mobs, attacker as u32) {
+        } else if let Some(index) = self.mob_index.find_ref(&self.mobs, attacker as u32) {
             let mob = &self.mobs[index];
             [main(mob.extra.main_hand_stack()), None]
         } else if let Some(guest) = self

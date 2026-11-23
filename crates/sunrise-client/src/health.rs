@@ -2113,7 +2113,7 @@ pub(crate) struct Environment<'a> {
     pub(crate) entity: i32,
     /// Where the player stands and looks, for the incoming-damage hook.
     pub(crate) victim: Victim,
-    victim_motion: (f64, bool),
+    pub(crate) victim_motion: (f64, bool),
     pub(crate) causing: i32,
     /// `Abilities.invulnerable`, the game mode (`Player.hurtServer`'s own
     /// gate answers it, which no creative hit passes).
@@ -2354,7 +2354,7 @@ impl<'a> ArmorWorld for Environment<'a> {
             "minecraft:armor_effectiveness",
             &ctx,
             self.level.random(),
-            &mut self.random,
+            self.random,
             value,
         ))
     }
@@ -2420,7 +2420,7 @@ impl ServerDamageEnvironment<Attributes> for Environment<'_> {
                 slot,
                 &ctx,
                 self.level.random(),
-                &mut self.random,
+                self.random,
                 protection,
             );
         }

@@ -8,7 +8,7 @@ use sunrise_core::{geometry::Direction, position::BlockPos};
 use sunrise_world::{
     fluid::{FluidHeightWorld, FluidKind, FluidState as EngineFluidState},
     level::{Behaviours, fluid_can_be_replaced_with, fluid_tick_delay},
-    registry::{BlockRegistry, BlockStateId},
+    registry::BlockStateId,
 };
 
 /// Kinds of contextual block provider dispatched by the game.
@@ -305,6 +305,7 @@ mod tests {
     use std::sync::Arc;
     use sunrise_client::chunk::{Chunk, Light};
     use sunrise_client::items::TagRegistry;
+    use sunrise_world::registry::BlockRegistry;
 
     #[test]
     fn sky_visibility_uses_the_published_sky_layer() {

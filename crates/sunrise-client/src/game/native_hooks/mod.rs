@@ -14,7 +14,7 @@ pub(in crate::game) use build_creative_mode_tab_contents::CreativeCache;
 pub(in crate::game) use client_pick::ClientPick;
 pub(in crate::game) use fire::{
     ConnectsToCall, EntityChangeBlockPreCall, HotbarAttackIndicatorProgressCall,
-    ItemAfterVerticalCollisionCall, PlayerPongCall, PreRemoveSideEffectsCall, UpdateShapeCall,
+    ItemAfterVerticalCollisionCall, PlayerPongCall, UpdateShapeCall,
 };
 use mod_api::{BlockEntityDataSource, BlockEntityRef, ClockAdjustment};
 
@@ -41,7 +41,7 @@ use mod_api::{
     ClientAudioOptions, ClientChatOptions, ClientGraphicsOptions, ClientGuiOptions,
     ClientInputOptions, ClientMiningPrediction, ClientModifiers, ClientReloadListeners,
     ColorResolvers, EnchantmentEffects, EnchantmentInfo, EntityLayers, EntityRef, EntityRenderers,
-    ExperienceOrbRef, GameRuleActor, GuiLayerRegistrar, HandDrawContext, HandRender, InsideEffects,
+    ExperienceOrbRef, GuiLayerRegistrar, HandDrawContext, HandRender, InsideEffects,
     InteractionAttempt, InteractionKey, ItemEntityRef, LifecycleContext, LivingRef, LoadConditions,
     NoteBlockChange, ParticleProviders, PathComputationType, Placement, PlayerRef,
     PoiTypeExtensions, RecipeBookCategory, ScreenId, ScreenOpening, ScreenTarget, ScreenWidgets,

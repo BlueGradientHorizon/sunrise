@@ -66,7 +66,7 @@ pub fn decode_end_gateway(tag: &Tag) -> crate::containers::EndGateway {
 /// and rows outside `0..mod_item_slots`, duplicates, invalid or noncanonical
 /// rows, and slotless entries stay verbatim in `nbt`.
 /// The game sizes the modeled vector to its container when it uses it.
-fn decode_mod_block_entity(
+pub(super) fn decode_mod_block_entity(
     id: String,
     tag: &Tag,
     mod_item_slots: usize,
@@ -134,7 +134,7 @@ fn decode_mod_block_entity(
 const COMPACT_MOD_ITEM_SLOTS: usize = 256;
 
 /// The declared item slot count owned by a mod block's stock container.
-fn block_mod_item_slots(block: &str) -> usize {
+pub(super) fn block_mod_item_slots(block: &str) -> usize {
     mod_api::__private::parts_installation::block_container(block)
         .map_or(0, |container| container.slots)
 }

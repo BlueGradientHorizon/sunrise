@@ -1127,7 +1127,7 @@ impl<
         &self,
         at: mod_api::BlockSide,
         slot: usize,
-        read: &mut dyn for<'a> FnMut(mod_api::ItemStackView<'a>),
+        read: &mut dyn for<'view> FnMut(mod_api::ItemStackView<'view>),
     ) {
         if self
             .previewed(BlockPos::new(at.pos[0], at.pos[1], at.pos[2]))

@@ -5645,7 +5645,7 @@ pub(super) mod tests {
         );
         fill_chest(&mut game);
         let host: &mut dyn mod_api::ServerHost = &mut game;
-        let rolled_back: Result<(), ()> = host.transaction(|host, _| {
+        let rolled_back: Result<(), mod_api::TransactionError<()>> = host.transaction(|host, _| {
             assert!(
                 level
                     .destroy_block(host, [0, 64, 0], true, None, false)
@@ -5658,7 +5658,7 @@ pub(super) mod tests {
             );
             Err(())
         });
-        assert_eq!(rolled_back, Err(()));
+        assert_eq!(rolled_back, Err(mod_api::TransactionError::Aborted(())));
         assert_eq!(game.world.block(0, 64, 0), chest);
         assert!(game.dropped.is_empty());
         let Some(super::super::BlockEntity::Chest(restored)) =
@@ -5936,8 +5936,10 @@ pub(super) mod tests {
                 chunks(game);
                 let level = game.level("minecraft:overworld").unwrap();
                 let [item, block, pig, text] = ADMISSIONS.map(|(_, kind, at)| {
-                    game.summon("minecraft:overworld", kind, at, Compound::new())
+                    game.level_summon(level, kind, at, Compound::new())
                         .unwrap()
+                        .unwrap()
+                        .id()
                 });
                 assert_eq!(ids(game, level, LO, HI), [block, pig, text, item]);
                 for (id, (_, _, at)) in [item, block, pig, text].into_iter().zip(ADMISSIONS) {
@@ -6024,13 +6026,6 @@ pub(super) mod tests {
                 _: &mod_api::RegistrationContext,
             ) {
                 registrar.entity_tick_each("minecraft:block_display");
-            }
-            fn entity_tick_listened(
-                &self,
-                _: HostSide<'_>,
-                event: &mut mod_api::EntityTickListenedEvent,
-            ) {
-                event.listened = true;
             }
             fn player_tick_post(&self, host: HostSide<'_>, event: &mut PlayerTickPostEvent) {
                 let HostSide::Client(host) = host else { return };

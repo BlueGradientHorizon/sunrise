@@ -1109,8 +1109,8 @@ impl Game<'_> {
                             [block.x, block.y, block.z],
                         );
                         let Some(row) = self.tridents.locate(join) else {
-                            if let Some(seal) = transaction.take() {
-                                self.transaction_close(&seal, true);
+                            if let Some(frame) = transaction.take() {
+                                self.close_storage_frame(frame, true);
                             }
                             continue;
                         };

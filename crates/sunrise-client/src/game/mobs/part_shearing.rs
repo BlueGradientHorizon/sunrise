@@ -67,35 +67,19 @@ impl Game<'_> {
         let project = |metadata| super::api_values::project_stack(shears, metadata).ok();
         let shears_view = mod_api::ItemStackView::resident(metadata, &project);
         let boundary_items = self.stack_boundary_items();
-        let mut accepted: Option<Vec<ItemStack>> = None;
-        let mut validate =
-            |value: &Vec<mod_api::ItemStack>| -> Result<(), mod_api::StackWriteError> {
-                let items = boundary_items
-                    .as_ref()
-                    .ok_or(mod_api::StackWriteError::Unavailable)?;
-                // Invalid drops are skipped individually; the part's valid ones still fall.
-                accepted = Some(
-                    value
-                        .iter()
-                        .filter_map(|drop| drop.try_into_engine(&**items).ok())
-                        .collect(),
-                );
-                Ok(())
-            };
         let mut drops = Vec::new();
-        self.native_on_sheared(
-            entity,
-            player,
-            shears_view,
-            &mut drops,
-            &mut validate,
-            part,
-            &kind.id,
-        )?;
+        self.native_on_sheared(entity, player, shears_view, &mut drops, part, &kind.id)?;
+        // Invalid drops are skipped individually; the part's valid ones still fall.
+        let accepted: Vec<ItemStack> = boundary_items.map_or_else(Vec::new, |items| {
+            drops
+                .iter()
+                .filter_map(|drop| drop.try_into_engine(&*items).ok())
+                .collect()
+        });
         // The part may have moved or removed the mob: its drops fall where it is now.
         let index = self.mobs.iter().position(|m| m.id == id && !m.removed);
         let at = index.map_or(at, |i| self.mobs[i].position);
-        for stack in accepted.unwrap_or_default() {
+        for stack in accepted {
             self.spawn_at_location(at, 1.0, stack);
             let Some(i) = index else { continue };
             let r = &mut self.mobs[i].random;

@@ -1389,10 +1389,17 @@ pub(super) fn emit<'a>(
                             *{event}.{main} = {saved}.{main_index}; *{event}.{off} = {saved}.{off_index}; {refusal}
                          }}")
             } else {
-                checked_indices.iter().map(|(field, index)| {
-                    let refusal = refused(owner, &format!("\"{field}\""));
-                    format!("if *{event}.{field} != {saved}.{index} && let Err(error) = __accept_{field}(&*{event}.{field}) {{ *{event}.{field} = {saved}.{index}; {refusal} }}")
-                }).collect()
+                checked_indices
+                    .iter()
+                    .map(|(field, index)| {
+                        let refusal = refused(owner, &format!("\"{field}\""));
+                        // Each field's check is a statement of its own line: `} if` on one line reads
+                        // as an `else if` whose `else` is missing (`clippy::suspicious_else_formatting`).
+                        format!(
+                            "if *{event}.{field} != {saved}.{index} && let Err(error) = __accept_{field}(&*{event}.{field}) {{ *{event}.{field} = {saved}.{index}; {refusal} }}\n"
+                        )
+                    })
+                    .collect()
             }
         };
         let report_panic = if panic_signal {
@@ -1450,9 +1457,16 @@ pub(super) fn emit<'a>(
             let finish = list_finish(true);
             let rollback_lists = list_finish(false);
             let admit = admit_fields(mod_id_expr);
-            format!(
-                "{{ {enter} match {invocation} {{ Some(answer) => {{ {finish}{admit} answer }}, None => {{ {report_panic}{restore_statement}{discard_batch}{rollback_lists}{on_abort} }} }} }}"
-            )
+            let decision = format!(
+                "match {invocation} {{ Some(answer) => {{ {finish}{admit} answer }}, None => {{ {report_panic}{restore_statement}{discard_batch}{rollback_lists}{on_abort} }} }}"
+            );
+            // A block that only holds the match is a statement without effect
+            // (`clippy::unnecessary_operation`); it scopes the entered lists' names.
+            if enter.is_empty() {
+                decision
+            } else {
+                format!("{{ {enter} {decision} }}")
+            }
         };
         let listener_call = |callee: &str, mod_id_expr: &str| {
             let expression = format!("{callee}.{name}({invoke})");

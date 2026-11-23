@@ -342,19 +342,22 @@ impl Game<'_> {
                 .and_then(|id| self.enchantment_actor(id as i32))
                 .and_then(|actor| actor.motion);
         }
-        let victim_random = if authoritative {
-            victim.and_then(|id| self.damage_victim_random(id))
-        } else {
-            None
+        let mut evaluate = |victim_random: &mut LegacyRandom| {
+            enchantments.modify_entity_value(
+                &levels,
+                component,
+                &ctx,
+                &mut level_random,
+                victim_random,
+                base,
+            )
         };
-        let value = enchantments.modify_entity_value(
-            &levels,
-            component,
-            &ctx,
-            &mut level_random,
-            victim_random.unwrap_or(&mut fallback),
-            base,
-        );
+        let value = if authoritative && let Some(id) = victim {
+            self.with_damage_victim_random(id, |random| evaluate(random))
+                .unwrap_or_else(|| evaluate(&mut fallback))
+        } else {
+            evaluate(&mut fallback)
+        };
         self.world.random = level_random;
         value
     }
@@ -381,7 +384,7 @@ impl Game<'_> {
                 motion: motion.map(|p| (p.fall_distance, p.fall_flying || p.flying)),
             });
         }
-        if let Some(index) = self.mob_index.find(&self.mobs, id as u32) {
+        if let Some(index) = self.mob_index.find_ref(&self.mobs, id as u32) {
             let mob = &self.mobs[index];
             return Some(EnchantmentActor {
                 id,
@@ -399,16 +402,22 @@ impl Game<'_> {
         })
     }
 
-    /// `Entity.getRandom` for the body that the damage effect is about.
-    fn damage_victim_random(&mut self, id: u32) -> Option<&mut LegacyRandom> {
+    /// `Entity.getRandom` for the body that the damage effect is about: runs `effect` on it.
+    fn with_damage_victim_random<R>(
+        &mut self,
+        id: u32,
+        effect: impl FnOnce(&mut LegacyRandom) -> R,
+    ) -> Option<R> {
         use super::lan_actions::CombatPlayer;
         match self.combat_player(id) {
-            Some(CombatPlayer::InPlace) => return self.player.as_mut().map(|p| &mut *p.random),
+            Some(CombatPlayer::InPlace) => {
+                return self.player.as_mut().map(|p| effect(&mut p.random));
+            }
             Some(CombatPlayer::Displaced(depth, _)) => {
                 return self.lan_displaced_players[depth]
                     .body
                     .as_mut()
-                    .map(|p| &mut *p.random);
+                    .map(|p| effect(&mut p.random));
             }
             Some(CombatPlayer::Parked(guest)) => {
                 let conn = guest.conn;
@@ -418,26 +427,24 @@ impl Game<'_> {
                     .hub
                     .guests
                     .motion_mut(conn)
-                    .map(|p| &mut *p.random);
+                    .map(|p| effect(&mut p.random));
             }
             None => {}
         }
         if let Some(index) = self.mob_index.find(&self.mobs, id) {
-            return self.mobs.get_mut(index).map(|mob| &mut mob.random);
+            return self.mobs.get_mut(index).map(|mob| effect(&mut mob.random));
         }
         if let Some(dragon) = self.dragon.as_mut().filter(|dragon| dragon.id == id) {
-            return Some(&mut dragon.random);
+            return Some(effect(&mut dragon.random));
         }
         if let Some(stand) = self.armor_stands.iter_mut().find(|stand| stand.id == id) {
-            return Some(&mut stand.random);
+            return Some(effect(&mut stand.random));
         }
-        if let Some(boat) = self.boats.iter_mut().find(|boat| boat.id == id) {
-            return Some(&mut boat.random);
+        if let Some(index) = self.boats.iter().position(|boat| boat.id == id) {
+            return Some(self.boats.update(index, |boat| effect(&mut boat.random)));
         }
-        self.carts
-            .iter_mut()
-            .find(|cart| cart.id == id)
-            .map(|cart| &mut cart.random)
+        let index = self.carts.iter().position(|cart| cart.id == id)?;
+        Some(self.carts.update(index, |cart| effect(&mut cart.random)))
     }
     /// `Player.attack`'s extra knockback: `getKnockback` (the ATTACK_KNOCKBACK
     /// attribute, plus the weapon's knockback enchantment, halved) plus 0.5 for a
@@ -805,15 +812,18 @@ impl Game<'_> {
                 );
             }
             Some("damage_entity") => {
-                let (Some(target), Some(random)) = (target, self.damage_victim_random(affected))
-                else {
+                let Some(target) = target else {
                     return;
                 };
                 let (min, max) = (value("min_damage"), value("max_damage"));
-                let damage = if min >= max {
-                    min
-                } else {
-                    random.next_float() * (max - min) + min
+                let Some(damage) = self.with_damage_victim_random(affected, |random| {
+                    if min >= max {
+                        min
+                    } else {
+                        random.next_float() * (max - min) + min
+                    }
+                }) else {
+                    return;
                 };
                 let cause = holder.and_then(|id| self.post_attack_target(id));
                 let from = cause.and_then(|cause| self.target_position(cause));
@@ -822,8 +832,7 @@ impl Game<'_> {
                     (cause, target, ty)
                     && let Some(index) = self.mob_index.find(&self.mobs, id)
                 {
-                    let join = self.mobs[index].join;
-                    let (_, killed) = self.hurt_by_player(
+                    self.hurt_by_player(
                         index,
                         damage,
                         Damage {
@@ -833,13 +842,6 @@ impl Game<'_> {
                             attacker_species: None,
                         },
                     );
-                    if killed
-                        && let Some(i) = self.mob_index.find(&self.mobs, id)
-                        && self.mobs[i].join == join
-                        && !self.mobs[i].removed
-                    {
-                        self.native_kill_event(i);
-                    }
                 } else {
                     self.hurt_target(target, damage, ty, cause, cause, from);
                 }
@@ -1160,23 +1162,25 @@ impl Game<'_> {
         if ids.is_empty() {
             return;
         }
-        let Some(random) = self.damage_victim_random(affected) else {
+        let Some((pick, ticks, amplifier)) = self.with_damage_victim_random(affected, |random| {
+            let pick = random.next_int_bound(ids.len() as i32).unwrap_or(0) as usize;
+            let mut between = |min: &str, max: &str| {
+                let (lo, hi) = (
+                    level_value(&effect[min], level),
+                    level_value(&effect[max], level),
+                );
+                if lo >= hi {
+                    lo
+                } else {
+                    random.next_float() * (hi - lo) + lo
+                }
+            };
+            let ticks = round_f32(between("min_duration", "max_duration") * 20.0);
+            let amplifier = round_f32(between("min_amplifier", "max_amplifier")).max(0);
+            (pick, ticks, amplifier)
+        }) else {
             return;
         };
-        let pick = random.next_int_bound(ids.len() as i32).unwrap_or(0) as usize;
-        let mut between = |min: &str, max: &str| {
-            let (lo, hi) = (
-                level_value(&effect[min], level),
-                level_value(&effect[max], level),
-            );
-            if lo >= hi {
-                lo
-            } else {
-                random.next_float() * (hi - lo) + lo
-            }
-        };
-        let ticks = round_f32(between("min_duration", "max_duration") * 20.0);
-        let amplifier = round_f32(between("min_amplifier", "max_amplifier")).max(0);
         let Some(def) = sunrise_client::brewing::effect(ids[pick]) else {
             return;
         };
@@ -1592,15 +1596,18 @@ impl Game<'_> {
                             Some("spawn_particles")
                                 if effect["particle"]["type"] == "minecraft:soul" =>
                             {
-                                let Some(random) = game.damage_victim_random(actor) else {
+                                let Some((at, velocity)) =
+                                    game.with_damage_victim_random(actor, |random| {
+                                        soul_speed_particle(
+                                            position,
+                                            body.movement.components(),
+                                            body.width,
+                                            random,
+                                        )
+                                    })
+                                else {
                                     return;
                                 };
-                                let (at, velocity) = soul_speed_particle(
-                                    position,
-                                    body.movement.components(),
-                                    body.width,
-                                    random,
-                                );
                                 if let Some(lan) = game.lan.as_mut() {
                                     crate::game::lan_particles::send_soul_particle(
                                         lan, at, velocity,
@@ -1637,7 +1644,7 @@ impl Game<'_> {
                 }
             }
             Target::Mob(id) => {
-                let mob = &self.mobs[self.mob_index.find(&self.mobs, id)?];
+                let mob = &self.mobs[self.mob_index.find_ref(&self.mobs, id)?];
                 TickBody {
                     position: mob.position,
                     movement: mob.position.subtract(mob.previous),
@@ -1700,8 +1707,10 @@ impl Game<'_> {
         } else {
             (
                 self.post_attack_target(actor),
-                self.damage_victim_random(actor)
-                    .and_then(|random| enchantment_sound(effect, level, random)),
+                self.with_damage_victim_random(actor, |random| {
+                    enchantment_sound(effect, level, random)
+                })
+                .flatten(),
             )
         };
         if let Some((sound, volume, pitch)) = sound
@@ -2725,7 +2734,12 @@ mod tests {
                 )
             );
             let pitch = table
-                .condition(&requirement, 1, &EffectContext::default(), &mut l_rng)
+                .condition(
+                    &requirement,
+                    1,
+                    &crate::enchant::EffectContext::default(),
+                    &mut l_rng,
+                )
                 .then(|| enchantment_sound(&sound, 1, &mut w_rng).unwrap().2);
             let want_pitch = (expected_level.next_float() < 0.35)
                 .then(|| expected_wearer.next_float() * (1.0 - 0.6) + 0.6);

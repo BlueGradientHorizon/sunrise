@@ -4,6 +4,7 @@ use mod_api::{Identifier, PackType, ResourceOpenError};
 use std::collections::BTreeSet;
 use std::io::Read;
 use sunrise_assets::resource_source::{ResourcePath, ResourceSource};
+use sunrise_client::datapack::DataPack;
 
 impl Game<'_> {
     pub(in crate::game) fn open_resource(
@@ -59,7 +60,7 @@ impl Game<'_> {
             }
             sources.push(&self.pack.data_changes);
             if self.options.execution_role.is_logical_server() {
-                sources.extend(self.fns.pack_sources().rev());
+                sources.extend(self.fns.enabled_packs().map(DataPack::source));
             }
             ("data", sources)
         })
@@ -324,8 +325,11 @@ mod tests {
                     Resource::bytes(b"high".to_vec()),
                 ];
                 index.insert(model.clone(), copies[1].clone());
-                game.pack.source =
-                    ResourceSource::indexed_with_layers(index, BTreeMap::from([(model, copies)]));
+                game.pack.source = ResourceSource::indexed_with_layers(
+                    index,
+                    BTreeMap::from([(model, copies)]),
+                    None,
+                );
                 assert_eq!(
                     game.resource_stack(PackType::ClientResources, &id("demo:models/gem.json")),
                     [b"low".to_vec(), b"high".to_vec()]
@@ -340,8 +344,11 @@ mod tests {
                 ];
                 let mut index = files("assets");
                 index.insert(big.clone(), copies[1].clone());
-                game.pack.source =
-                    ResourceSource::indexed_with_layers(index, BTreeMap::from([(big, copies)]));
+                game.pack.source = ResourceSource::indexed_with_layers(
+                    index,
+                    BTreeMap::from([(big, copies)]),
+                    None,
+                );
                 let big = id("demo:models/big.json");
                 assert_eq!(
                     game.resource_stack(PackType::ClientResources, &big),

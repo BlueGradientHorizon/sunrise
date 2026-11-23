@@ -6326,7 +6326,7 @@ pub(in crate::game) mod tests {
                 )),
             );
             game.dragon.replace(d);
-            game.tick_equipment_attributes();
+            game.refresh_stand_and_dragon_equipment_attributes();
             let resistance = f64::from(0.1_f32);
             assert_eq!(game.dragon_knockback_resistance(), resistance);
             let from = Vec3::new(3.0, 70.0, 4.0);

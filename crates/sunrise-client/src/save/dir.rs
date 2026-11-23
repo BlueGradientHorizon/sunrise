@@ -22,7 +22,7 @@ pub struct SaveDir {
     pub(super) professions:
         std::sync::RwLock<Option<Arc<crate::mobs::villager::ResolvedProfessions>>>,
     /// A server-owned world save, not a remote cache: chunk-disk hooks need its worker context.
-    server_owned: bool,
+    pub(super) server_owned: bool,
     /// The dimension's skylight and height, from its folder name.
     pub shape: LevelShape,
     /// The region file headers kept for far readers (`far_record`).

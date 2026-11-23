@@ -31,7 +31,7 @@ impl Items {
     }
 }
 
-use sunrise_mod_vocab::__private::{
+use mod_vocab::__private::{
     BorrowedRandom, BoundEnchantmentEntityEffect, BoundEnchantmentValueEffect,
     EnchantmentEffectRegistry, builtin_enchantment_entity_kind, builtin_enchantment_value_kind,
 };

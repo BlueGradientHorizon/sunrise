@@ -450,7 +450,6 @@ impl Source {
                     let attrs = file
                         .cfg
                         .iter()
-                        .cloned()
                         .map(|condition| {
                             let predicate: proc_macro2::TokenStream =
                                 condition.parse().map_err(|e| {

@@ -2,7 +2,7 @@
 
 pub mod dynamic_panel {
     // ANCHOR: dynamic_panel
-    use mod_api::{ClientHost, DynamicTextureError, GuiRenderPostEvent, Hooks, Identifier};
+    use mod_api::{ClientHost, DynamicTextureError, Hooks, Identifier, RenderGuiPostEvent};
 
     const PANEL: &str = "mymod:dynamic/panel";
 
@@ -19,10 +19,10 @@ pub mod dynamic_panel {
 
     #[mod_api::sunrise_mod]
     impl Hooks for PanelHud {
-        fn gui_render_post(&self, _: &dyn ClientHost, event: &mut GuiRenderPostEvent<'_>) {
+        fn render_gui_post(&self, _: &dyn ClientHost, event: &mut RenderGuiPostEvent<'_>) {
             // The whole image (`src` in its own pixels), stretched over 128 by 64 GUI pixels.
             event
-                .batch
+                .draw
                 .sprite(PANEL, [0.0, 0.0, 64.0, 32.0], [8.0, 8.0, 128.0, 64.0], None);
         }
     }
@@ -146,7 +146,7 @@ pub mod screens {
         y: f32,
     ) -> Result<(), Box<dyn std::error::Error>> {
         // ANCHOR: scaled_text_lines
-        // From a menu screen draw callback, gui_render_post or another drawing hook.
+        // From a menu screen draw callback, render_gui_post or another drawing hook.
         let scale = 2.0;
         let lines = draw.text_lines(&label, 120.0, TextAlign::Centre, scale)?;
         let mut draws = Vec::with_capacity(lines.lines.len() + 2);

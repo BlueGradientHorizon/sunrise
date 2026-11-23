@@ -564,7 +564,13 @@ mod tests {
                     // Hidden sections are excluded from level lookup, spatial queries,
                     // ray traces, tracking, and ticking.
                     assert_eq!(game.entity(hidden.id()), None);
-                    assert_eq!(game.entity_by_uuid(hidden_uuid), None);
+                    assert_eq!(
+                        game.level_entity_by_uuid(
+                            game.native_current_level().unwrap(),
+                            hidden_uuid
+                        ),
+                        None
+                    );
                     assert!(
                         !collect_game_all_entities(game, level)
                             .unwrap()
@@ -635,7 +641,13 @@ mod tests {
                         )),
                     );
                     assert_eq!(game.entity(hidden.id()), Some(hidden));
-                    assert_eq!(game.entity_by_uuid(hidden_uuid), Some(hidden));
+                    assert_eq!(
+                        game.level_entity_by_uuid(
+                            game.native_current_level().unwrap(),
+                            hidden_uuid
+                        ),
+                        Some(hidden)
+                    );
                     assert!(
                         collect_game_all_entities(game, level)
                             .unwrap()

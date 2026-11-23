@@ -161,7 +161,7 @@ impl Game<'_> {
                     cull: true,
                 });
             }
-            if let Some(entity) = &block.entity {
+            if let Some(entity) = block.entity {
                 let entity = BlockEntityDataView::new(entity);
                 let name = &*self.res.facts().get(block.state).name;
                 let mut draw = BlockEntityDraw::posed(

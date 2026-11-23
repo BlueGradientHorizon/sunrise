@@ -6413,7 +6413,7 @@ impl Game<'_> {
         let prev_attacker = self.combat.projectile_attacker.take();
         let prev_effect = self.combat.enchantment_projectile_attacker.take();
         self.combat.projectile_attacker = shooter;
-        self.combat.enchantment_projectile_attacker = effect_attacker;
+        self.combat.enchantment_projectile_attacker = effect_attacker.map(|id| id as i32);
         let outcome = self.arrow_hit_one_entity(arrow, Who::Player, amount, deferred);
         self.combat.projectile_attacker = prev_attacker;
         self.combat.enchantment_projectile_attacker = prev_effect;
@@ -6452,7 +6452,7 @@ impl Game<'_> {
             let saved_effect_attacker = g
                 .combat
                 .enchantment_projectile_attacker
-                .replace(effect_attacker);
+                .replace(effect_attacker as i32);
             let res = g.arrow_hit_one_entity(arrow, Who::Player, amount, None);
             g.combat.refuse_player_hit = false;
             g.combat.projectile_attacker = None;
@@ -6758,7 +6758,7 @@ impl Game<'_> {
         mut arrow: Projectile,
         first_who: Who,
         first_at: Vec3,
-        deferred: Option<&mut Option<LandedPlayerArrow>>,
+        mut deferred: Option<&mut Option<LandedPlayerArrow>>,
     ) -> Result<()> {
         let step = arrow.arrow.as_mut().and_then(|a| a.pierce_step.take());
         let (step_end, step_block, remaining) = match step {

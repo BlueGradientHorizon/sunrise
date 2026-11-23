@@ -688,7 +688,7 @@ impl Game<'_> {
     /// server added to the level the client shows, whatever its kind, counted by the client's
     /// entity pass (`Entity.commonTick`) since the client added it.
     fn client_entity_tick_count(&self, entity: EntityRef) -> Option<i32> {
-        let (remote, id) = self.native_client_entity_context(entity)?;
+        let (remote, id) = self.native_client_entity_context(entity).ok()?;
         // The local player from its admission (Login, Respawn), before the server's first
         // teleport gives it a body.
         if id == remote.entity_id {
