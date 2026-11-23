@@ -745,7 +745,11 @@ impl ModelPart {
 
     /// `addAllChildren`: each direct child with its path by child index, then each
     /// child's own children the same way, child by child.
-    fn add_all_children<'a>(&'a self, path: &mut Vec<u32>, accept: &mut impl FnMut(&'a str, &[u32])) {
+    fn add_all_children<'a>(
+        &'a self,
+        path: &mut Vec<u32>,
+        accept: &mut impl FnMut(&'a str, &[u32]),
+    ) {
         for (index, (name, _)) in self.children.iter().enumerate() {
             path.push(index as u32);
             accept(name, path);
@@ -1202,7 +1206,10 @@ mod tests {
     fn part_lookup_takes_direct_children_before_deeper_parts_in_vanilla_order() {
         // createPartLookup: put("root", this), then addAllChildren into putIfAbsent.
         fn part(x: f32, children: Vec<(&str, ModelPart)>) -> ModelPart {
-            let children = children.into_iter().map(|(n, c)| (n.to_owned(), c)).collect();
+            let children = children
+                .into_iter()
+                .map(|(n, c)| (n.to_owned(), c))
+                .collect();
             ModelPart::new(Vec::new(), children, PartPose::offset(x, 0.0, 0.0))
         }
         let mut model = part(
@@ -1241,6 +1248,13 @@ mod tests {
         assert_eq!(model.get_child("head").unwrap().x_rot, 0.5);
         let body = model.get_child("body").unwrap();
         assert_eq!(body.get_child("head").unwrap().x_rot, 0.0);
-        assert_eq!(body.get_child("arm").unwrap().get_child("tail").unwrap().x_rot, 0.25);
+        assert_eq!(
+            body.get_child("arm")
+                .unwrap()
+                .get_child("tail")
+                .unwrap()
+                .x_rot,
+            0.25
+        );
     }
 }
