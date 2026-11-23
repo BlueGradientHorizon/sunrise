@@ -522,6 +522,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "daily"]
     fn disk_decoder_accepts_long_code_of_conduct_and_large_lists_across_second_save() {
         let dir = std::env::temp_dir().join(format!(
             "sunrise-servers-unbounded-coc-{}",
