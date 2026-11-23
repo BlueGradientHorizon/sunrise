@@ -1,7 +1,8 @@
 //! The callback's typed store: only encoded values cross the worker boundary.
 use super::*;
 use std::sync::Arc;
-use sunrise_mod_runtime::attachments::CheckedAttachmentType;
+use sunrise_core::nbt::{self, Limits, NamedTag};
+use sunrise_mod_runtime::attachments::{ATTACHMENTS_KEY, CheckedAttachmentType};
 
 /// A job-local attachment transaction. No decoded value is shared with live state.
 /// Use [`Self::get`], [`Self::set`] and [`Self::remove`] with an issued [`AttachmentKey`].
@@ -31,8 +32,8 @@ impl ChunkDiskData {
         })
     }
 
-    /// Replace only the snapshot's value through its persistence codec. Failed encoding
-    /// leaves the original envelopes intact and returns locally without poisoning other edits.
+    /// Replace only the snapshot's value through its persistence codec. A codec or saved-NBT
+    /// refusal leaves the prior envelopes intact and does not poison other edits.
     pub fn set<T: Clone + Send + Sync + 'static>(
         &mut self,
         key: &AttachmentKey<T>,
@@ -57,17 +58,41 @@ impl ChunkDiskData {
         apply: impl FnOnce(&CheckedAttachmentType<T>, &mut Attachments) -> Result<R, AttachmentError>,
     ) -> Result<R, ChunkDiskFailure> {
         let key_name = key.id();
-        let checked = key
-            .live()
-            .map_err(|error| failure(key_name, &format!("{error:?}")))?;
+        let refused = |error| failure(key_name, ChunkDiskFailureKind::Attachment(error));
+        let checked = key.live().map_err(refused)?;
         if !checked.has_codec() {
-            return Err(failure(key_name, "missing persistence codec"));
+            return Err(failure(
+                key_name,
+                ChunkDiskFailureKind::MissingPersistenceCodec,
+            ));
         }
         let disk = checked.disk_only();
         let mut store = Attachments::from_nbt((*self.entries).clone());
-        let value =
-            apply(&disk, &mut store).map_err(|error| failure(key_name, &format!("{error:?}")))?;
+        let value = apply(&disk, &mut store).map_err(refused)?;
         let encoded = store.to_nbt();
+        // Mount the envelopes at their real depth in the saved record. The region writer's
+        // write guard is not the reader's depth limit (vanilla NbtIo.write/read).
+        let mut root = NamedTag {
+            name: "".into(),
+            tag: Tag::Compound([(ATTACHMENTS_KEY.into(), Tag::Compound(encoded))].into()),
+        };
+        let limits = Limits::saved();
+        let write = Limits {
+            max_depth: nbt::DISK_WRITE_NESTING_GUARD.max(limits.max_depth),
+            ..limits
+        };
+        if nbt::write_named(&root, write)
+            .and_then(|bytes| nbt::read_named(&bytes, limits).map(|_| ()))
+            .is_err()
+        {
+            return Err(failure(key_name, ChunkDiskFailureKind::InvalidSavedNbt));
+        }
+        let Tag::Compound(root) = &mut root.tag else {
+            unreachable!()
+        };
+        let Some(Tag::Compound(encoded)) = root.remove(&ATTACHMENTS_KEY.into()) else {
+            unreachable!()
+        };
         self.entries = Arc::new(encoded);
         Ok(value)
     }
@@ -91,14 +116,14 @@ impl ChunkDiskData {
     }
 }
 
-fn failure(key: &str, reason: &str) -> ChunkDiskFailure {
+fn failure(key: &str, reason: ChunkDiskFailureKind) -> ChunkDiskFailure {
     let mod_id = crate::content::crash::current_native_mod().unwrap_or_default();
-    if !mod_id.is_empty() && !key.is_empty() {
-        log::warn!("mod {mod_id}: chunk attachment {key} operation refused: {reason}");
+    if !mod_id.is_empty() {
+        log::warn!("mod {mod_id}: chunk attachment {key} operation refused: {reason:?}");
     }
     ChunkDiskFailure {
         mod_id: mod_id.into(),
         key: key.into(),
-        reason: reason.into(),
+        reason,
     }
 }

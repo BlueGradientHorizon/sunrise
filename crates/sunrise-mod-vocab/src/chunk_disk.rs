@@ -74,7 +74,20 @@ pub struct ChunkDiskFailure {
     /// The attachment key, or empty for a failure outside a typed operation.
     pub key: String,
     /// The failed operation or missing capability.
-    pub reason: String,
+    pub reason: ChunkDiskFailureKind,
+}
+
+/// Why the chunk attachment edit did not publish.
+#[derive(Clone, Debug, PartialEq, Eq)]
+#[non_exhaustive]
+// no wire: local error from a chunk-disk attachment operation.
+pub enum ChunkDiskFailureKind {
+    /// The registered key has no persistence codec.
+    MissingPersistenceCodec,
+    /// The key or its typed store operation was refused.
+    Attachment(AttachmentError),
+    /// The proposed envelopes cannot be written and read as ordinary saved chunk NBT.
+    InvalidSavedNbt,
 }
 
 /// A disk callback's shared Host. It has no live backend and is never a

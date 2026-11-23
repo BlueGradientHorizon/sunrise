@@ -11,8 +11,10 @@ The event's `data` is a typed, job-local attachment store. Use its `get`, `set`
 and `remove` methods with an issued `AttachmentKey<T>` whose descriptor has a
 persistence codec (`.serialize(codec)`). Disk operations consume only the
 persistence codec and never invoke `sync_codec`. `T` does not need `Wire`. A
-codec error, missing persistence codec, or stale key returns `Err` locally
-without modifying stored envelopes or poisoning unrelated edits in the job.
+codec error, missing persistence codec, stale key, or envelope that the ordinary
+saved-record codec cannot write and read returns `Err` locally without modifying
+stored envelopes or poisoning unrelated edits. Inspect `err.reason` for the typed
+`ChunkDiskFailureKind`.
 Use `event.data.transaction(...)` and return an error to undo a group of edits.
 
 The callback runs on the persistence worker after capture and before encoding.
@@ -43,8 +45,10 @@ does not retry the failed snapshot. A later edit can be saved in a new snapshot.
 
 ## Disk NBT validation
 
-The ordinary disk writer encodes the complete record, including
-`sunrise:attachments`. Invalid NBT that the writer cannot encode leaves the prior
-record intact without dropping neighboring records. As in vanilla
-`NbtIo.StringFallbackDataOutput`, strings too long for modified UTF-8 are written
-empty. Unknown attachment entries are preserved opaquely.
+Attachment edits use the normal saved-record NBT writer and reader rules, at
+`sunrise:attachments`'s actual nesting in the record. A bad envelope does not
+stop a valid sibling edit or terrain from saving. There are no separate attachment
+budgets. The ordinary writer still encodes the complete record; an ordinary record
+failure leaves the prior record intact without dropping neighboring records. As in
+vanilla `NbtIo.StringFallbackDataOutput`, strings too long for modified UTF-8 are
+written empty. Unknown attachment entries are preserved opaquely.
