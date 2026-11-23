@@ -530,6 +530,7 @@ impl Game<'_> {
                 let (_, (_, id)) = key;
                 let entity = EntityRef::new(level.epoch(), id.get());
                 if let Some((target, Some(at))) = self.native_entity_target_with_location(entity)
+                    && self.entity_target_accessible(target)
                     && self
                         .query_body(target, at.join, true)
                         .is_some_and(|body| bounds.intersects(body))
