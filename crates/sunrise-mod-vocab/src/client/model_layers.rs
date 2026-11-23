@@ -726,10 +726,8 @@ impl ModelPart {
     /// name, a part named `root` never replaces this one, and a part deep in the first
     /// child's subtree shadows a shallower one under a later child.
     ///
-    /// It is built once, here; [`PartLookup::get`] allocates nothing. NeoForge and
-    /// Fabric add nothing of their own: their mods call vanilla's
-    /// `ModelPart.createPartLookup()`. To pose the parts it finds, use
-    /// [`Self::part_lookup_mut`].
+    /// It is built once, here; [`PartLookup::get`] allocates nothing. To pose the
+    /// parts it finds, use [`Self::part_lookup_mut`].
     pub fn part_lookup(&self) -> PartLookup<'_> {
         PartLookup {
             root: self,
