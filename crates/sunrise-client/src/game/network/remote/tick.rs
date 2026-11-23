@@ -1465,13 +1465,18 @@ impl Game<'_> {
     pub(super) fn tick_remote_own_player(&mut self) -> Result<Option<u8>> {
         // ClientLevel.tickEntities skips a removed entity. Keep the last player state
         // for LevelExtractor.extractPlayerState, which still sees it on the death screen.
-        if self.player.is_none() || self.local_player_removed_by_death() {
-            return Ok(None);
-        }
-        // ClientLevel.tickNonPassenger's Entity.commonTick, before LocalPlayer.tick: the player
-        // counts this tick whether it has loaded, sleeps or rides.
-        if let Some(r) = self.remote.as_mut() {
+        let removed = self.local_player_removed_by_death();
+        // ClientLevel.tickNonPassenger's Entity.commonTick, before LocalPlayer.tick: the admitted
+        // player counts this tick whether it has its body yet, has loaded, sleeps or rides.
+        if let Some(r) = self
+            .remote
+            .as_mut()
+            .filter(|r| r.has_logical_player && !removed)
+        {
             r.own_tick_count = r.own_tick_count.wrapping_add(1);
+        }
+        if self.player.is_none() || removed {
+            return Ok(None);
         }
         // LocalPlayer.tick and sendChanges run once the client has loaded (hasClientLoaded),
         // wherever the player is: a chunk that hasn't come yet has no blocks here, as vanilla's

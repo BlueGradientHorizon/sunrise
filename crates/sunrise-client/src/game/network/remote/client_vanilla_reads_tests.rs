@@ -333,6 +333,39 @@ fn the_contextual_bar_facts_read_the_jumpable_mount_and_the_tracked_waypoints() 
     );
 }
 
+/// `handleRespawn` admits the new `LocalPlayer` at once: its count reads 0 from then, and the
+/// client level ticks it, before the server's first teleport gives it a body.
+#[test]
+#[ignore = "daily"]
+fn a_respawned_player_counts_from_its_admission() {
+    crate::game::in_own_process(
+        "game::remote::tests::client_vanilla_reads_tests::a_respawned_player_counts_from_its_admission",
+        || {
+            with_client_game(|game| {
+                let _connection = join(game);
+                game.tick_remote().unwrap();
+                game.tick_remote().unwrap();
+                assert_eq!(tick_count(game, PLAYER), Some(2));
+                game.handle_packet(C::Respawn(play::Respawn {
+                    spawn: spawn(),
+                    keep: 0,
+                }))
+                .unwrap();
+                assert!(game.player.is_none());
+                let me = mod_api::EntityRef::new(game.native_lifecycle.epoch().unwrap(), PLAYER);
+                let count = |game: &Game<'_>| me.tick_count(game as &dyn ClientHost);
+                assert_eq!(count(game), Some(0));
+                game.tick_remote().unwrap();
+                assert_eq!(count(game), Some(1));
+                stand(game, 2);
+                assert_eq!(count(game), Some(1));
+                game.tick_remote().unwrap();
+                assert_eq!(count(game), Some(2));
+            });
+        },
+    );
+}
+
 /// `LocalPlayer.jumpableVehicle` asks nothing of the mount's health: a saddled horse the player
 /// controls stays its jumpable vehicle, and the jump bar's, while it dies.
 #[test]
