@@ -13,10 +13,7 @@ use sunrise_client::{
     ui::EditBox,
 };
 use sunrise_protocol::packets::play::{self, Clientbound as C, Serverbound as S};
-use winit::{
-    event::{ElementState, KeyEvent},
-    keyboard::{KeyCode, PhysicalKey},
-};
+use winit::keyboard::KeyCode;
 
 pub(super) struct SignEditor {
     pub pos: (i32, i32, i32),
@@ -531,25 +528,32 @@ impl Game<'_> {
             self.close_sign_editor();
         }
     }
-    /// `AbstractSignEditScreen.removed`: a server's client sends what it
-    /// wrote (ServerboundSignUpdatePacket); the window's own world keeps it
-    /// and sends it to its guests (`sendBlockUpdated`).
     pub(super) fn close_sign_editor(&mut self) {
-        if let Some(edit) = self.sign_edit.take() {
-            if self.remote.is_some() {
-                self.send(S::SignUpdate(play::SignUpdate {
-                    pos: [edit.pos.0, edit.pos.1, edit.pos.2],
-                    lines: edit.lines,
-                    front: edit.front,
-                }));
-            } else {
-                self.mark_block_entity_updated(edit.pos);
-            }
-            // `SignBlockEntity.updateSignText`'s `setAllowedPlayerEditor(null)`:
-            // the editor that closes gives the sign up.
-            self.world.block_entities.set_sign_editor(edit.pos, None);
+        if self.remove_sign_editor() {
+            self.refresh_screen_widgets();
         }
         self.capture(true);
+    }
+
+    /// `AbstractSignEditScreen.removed`: send what the client wrote, or
+    /// keep it in the window's own world and send its guests the block update.
+    pub(super) fn remove_sign_editor(&mut self) -> bool {
+        let Some(edit) = self.sign_edit.take() else {
+            return false;
+        };
+        if self.remote.is_some() {
+            self.send(S::SignUpdate(play::SignUpdate {
+                pos: [edit.pos.0, edit.pos.1, edit.pos.2],
+                lines: edit.lines,
+                front: edit.front,
+            }));
+        } else {
+            self.mark_block_entity_updated(edit.pos);
+        }
+        // `SignBlockEntity.updateSignText`'s `setAllowedPlayerEditor(null)`:
+        // the editor that closes gives the sign up.
+        self.world.block_entities.set_sign_editor(edit.pos, None);
+        true
     }
     /// `ServerPlayer.openTextEdit` for the guest whose action opened a sign:
     /// the block, then the editor, on its client, and the guest may write on it.
@@ -664,19 +668,33 @@ impl Game<'_> {
             );
         }
     }
-    pub(super) fn sign_edit_key(&mut self, event: &KeyEvent) {
-        if event.state != ElementState::Pressed {
-            return;
-        }
-        if let Some(shortcut) = self.edit_shortcut(event) {
+    pub(super) fn sign_edit_key(
+        &mut self,
+        key: KeyCode,
+        shortcut: Option<sunrise_client::clipboard::EditShortcut>,
+    ) -> bool {
+        if let Some(shortcut) = shortcut {
             self.sign_shortcut(shortcut);
-            return;
+            true
+        } else if matches!(
+            key,
+            KeyCode::Escape
+                | KeyCode::Enter
+                | KeyCode::NumpadEnter
+                | KeyCode::ArrowUp
+                | KeyCode::ArrowDown
+                | KeyCode::ArrowLeft
+                | KeyCode::ArrowRight
+                | KeyCode::Home
+                | KeyCode::End
+                | KeyCode::Backspace
+                | KeyCode::Delete
+        ) {
+            self.sign_input(Some(key), None);
+            true
+        } else {
+            false
         }
-        let key = match event.physical_key {
-            PhysicalKey::Code(k) => Some(k),
-            _ => None,
-        };
-        self.sign_input(key, event.text.as_deref());
     }
     /// A key and the text it typed on the sign being edited (the keyboard,
     /// or a controller's on-screen keyboard).
@@ -1015,6 +1033,7 @@ impl Game<'_> {
             u32::MAX,
             true,
         );
+        self.draw_overlay_mounted_widgets(batch, "sign_editor");
     }
 }
 

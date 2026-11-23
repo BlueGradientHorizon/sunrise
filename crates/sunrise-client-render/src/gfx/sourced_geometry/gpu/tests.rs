@@ -86,6 +86,23 @@ fn cells_key_on_their_corner_in_sections() {
     assert_eq!(cell(1 << 20, 0, 19).key(), None);
 }
 
+#[test]
+fn records_refuse_cells_narrower_than_a_section() {
+    let mesh = Mesh {
+        cell: Cell {
+            x: 0,
+            z: 0,
+            size_log2: 3,
+        },
+        page: 0,
+        start: 0,
+        quads: 1,
+        sides: &Sides::unsorted(1),
+        bounds: [Vec3::ZERO, Vec3::ONE],
+    };
+    assert!(SourcedGpu::record(&mesh, false).is_none());
+}
+
 /// A mesh's box is its bounds rounded outward in the cell's units.
 #[test]
 fn boxes_round_outward_in_the_cells_units() {
@@ -837,6 +854,7 @@ fn residency_images_match(device: &wgpu::Device, queue: &Queue) {
     assert!(!sourced.lists(stand_in) && sourced.draws_solid(stand_in));
     assert!(sourced.lists(key(-1, 0)) && sourced.draws_solid(key(-1, 0)));
     // The residency's own invariant, as the debug renderer walks it each 64th frame.
+    #[cfg(debug_assertions)]
     sourced.check(&tiles, at, true);
 }
 
@@ -930,6 +948,7 @@ fn water_keeps_its_place_when_the_table_comes_late(device: &wgpu::Device, queue:
     assert!(!sourced.record_all(&mut tiles, Some(&near), device));
     assert!(sourced.off());
     assert!(sourced.lists(water_tile));
+    #[cfg(debug_assertions)]
     sourced.check(&tiles, t0, true);
     // The first tile with solid quads makes the table; the water tile's place survives it.
     let solid_tile = key(1, 0);
@@ -1065,6 +1084,7 @@ fn water_keeps_its_place_when_the_table_comes_late(device: &wgpu::Device, queue:
     );
     assert!(sourced.lists(water_tile) && !sourced.draws_solid(water_tile));
     assert!(sourced.draws_solid(solid_tile));
+    #[cfg(debug_assertions)]
     sourced.check(&tiles, at, true);
 }
 /// A fade with the near sections' water and far water together keeps its order through the
@@ -1608,5 +1628,6 @@ fn near_and_far_water_keep_their_order(device: &wgpu::Device, queue: &Queue) {
     );
     assert_eq!(cpu_order, split_order);
     assert!(split_world.sourced.draw_calls() > 0);
+    #[cfg(debug_assertions)]
     split_world.sourced.check(&split_world.tiles, later, true);
 }

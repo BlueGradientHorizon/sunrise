@@ -135,7 +135,8 @@ impl Renderer {
         self.update_lightmap(&mut encoder, frame);
         let views = self.views(frame);
         let pose = frame.bob * frame.spin;
-        let view_proj = views.primary().view_proj(pose);
+        let transforms = views.frame_transforms(pose);
+        let view_proj = transforms.draw_view_proj;
         laps.lap("r_acquire");
         // TAA runs where the world post pass does, not under a shader pack's own.
         let taa = !frame.title
@@ -373,8 +374,8 @@ impl Renderer {
             bytemuck::bytes_of(&crosshair_globals),
         );
         // Frustum culling and camera-relative origins.
-        let cull_proj = views.cull().view_proj(pose);
-        let view = Frustum::from_planes(frustum(cull_proj));
+        let cull_proj = transforms.cull_view_proj;
+        let view = transforms.cull_frustum;
         let camera = frame.camera;
         let camera_section = camera_section(camera, self.layout.min_y());
         // The water mirror draws the same lists: they take in what its camera sees too
@@ -389,9 +390,8 @@ impl Renderer {
             )))
         });
         // Solid quads facing away from the eye are left out: the bob moves
-        // the eye off `camera`, so it is found from the projection. With the mirror, those
-        // facing its eye are kept too: it sits straight below, at this camera-relative y.
-        let rendered_eye = view::projection_center(cull_proj);
+        // the eye off `camera`, so it is found from the composed draw projection.
+        let rendered_eye = transforms.rendered_eye;
         let eye = rendered_eye.filter(|_| self.sides_on);
         let mirror_low = mirror_plane
             .zip(eye)
@@ -481,17 +481,13 @@ impl Renderer {
         let serial = self.frame_serial;
         // GPU frames' statistics come back a frame or a few later: the near table's
         // (`GpuCulling::collect`) and sourced geometry's, which drew only in frames the
-        // near pass drew, added to the same frame's counts.
+        // near pass drew, added to the same frame's counts. The halves land in different
+        // polls when one pass's ring held no readback free for the frame, and half a
+        // frame's counts undercount it, so they publish together (`collect_stats`).
         if let Some(gpu) = &mut self.gpu_culling {
             let near = gpu.collect();
             let sourced = self.sourced.collect();
-            let stats = match (near, sourced) {
-                (Some((f, [a, b, c])), Some((g, [d, e, _]))) if f == g => {
-                    Some((f, [a + d, b + e, c]))
-                }
-                (near, sourced) => near.or(sourced),
-            };
-            if let Some((frame, stats)) = stats {
+            if let Some((frame, stats)) = self.collect_stats(near, sourced) {
                 self.show_stats(frame, stats);
             }
         }
@@ -1185,7 +1181,8 @@ impl Renderer {
         if gpu_frame && let Some(gpu) = &self.gpu_culling {
             section_draw_calls += gpu.draw_calls();
         }
-        // The sourced-geometry pass's, one per page; the meshes it alone draws are not counted.
+        // Sourced draw calls are counted here; its kept meshes and solid draws are read back
+        // separately (`Sourced::collect`).
         if sourced_frame {
             section_draw_calls += self.sourced.draw_calls();
         }
@@ -1392,6 +1389,8 @@ impl Renderer {
             native_translucent_quads,
             banner_pattern_quads,
             glint_only_quads,
+            text_offset_solid_quads,
+            text_normal_solid_quads,
         ] = self.entity_batch.update(
             entities,
             frame.additive,
@@ -1405,6 +1404,7 @@ impl Renderer {
         self.entity_order.prepare(entities, ordinary_skin, oit_on);
         let entity_quads = entity_quads + posed / 4;
         let weather_quads = frame.weather.len() as u32 / 4;
+        let text_solid_quads = text_offset_solid_quads + text_normal_solid_quads;
         let world_quads = entity_quads
             + text_quads
             + crumbling_quads
@@ -1423,7 +1423,8 @@ impl Renderer {
             + native_cutout_mipped_quads
             + native_translucent_quads
             + banner_pattern_quads
-            + glint_only_quads;
+            + glint_only_quads
+            + text_solid_quads;
         laps.lap("r_draw_lists");
         // Where the tail of materials the classic and the improved passes
         // both draw ends: the shadows, particles and items count back from it.
@@ -1437,7 +1438,8 @@ impl Renderer {
             - native_cutout_mipped_quads
             - native_translucent_quads
             - banner_pattern_quads
-            - glint_only_quads;
+            - glint_only_quads
+            - text_solid_quads;
         let native_clouds = self.native.as_ref().is_none_or(|n| n.vanilla_clouds);
         // A pack's core/clouds, decided before either mesh is prepared: its faces, or none and
         // the native mesh in this same frame.
@@ -2880,7 +2882,8 @@ impl Renderer {
                 pass.set_vertex_buffer(0, self.entity_buffer.slice(..));
                 pass.draw_indexed(
                     0..banner_pattern_quads * 6,
-                    ((world_quads - glint_only_quads - banner_pattern_quads) * 4) as i32,
+                    ((world_quads - text_solid_quads - glint_only_quads - banner_pattern_quads) * 4)
+                        as i32,
                     0..1,
                 );
                 pass.set_bind_group(0, &self.group, &[]);
@@ -2892,9 +2895,44 @@ impl Renderer {
                 pass.set_vertex_buffer(0, self.entity_buffer.slice(..));
                 pass.draw_indexed(
                     0..glint_only_quads * 6,
-                    ((world_quads - glint_only_quads) * 4) as i32,
+                    ((world_quads - text_solid_quads - glint_only_quads) * 4) as i32,
                     0..1,
                 );
+                pass.set_bind_group(0, &self.group, &[]);
+            }
+            if text_solid_quads > 0 {
+                pass.stage(self.own_timing.as_mut(), "entity text solid");
+                pass.set_vertex_buffer(0, self.entity_buffer.slice(..));
+                // Draw glowing outline copies with NORMAL depth before coplanar
+                // POLYGON_OFFSET sign glyph faces and inline sprites.
+                let marked = light_marks(self.output.frame.format, self.hdr.is_some());
+                for (index, (pipeline, count, first)) in [
+                    (
+                        &self.world_text_pipeline,
+                        text_normal_solid_quads,
+                        world_quads - text_normal_solid_quads,
+                    ),
+                    (
+                        &self.text_polygon_offset_pipeline,
+                        text_offset_solid_quads,
+                        world_quads - text_solid_quads,
+                    ),
+                ]
+                .into_iter()
+                .enumerate()
+                {
+                    if count == 0 {
+                        continue;
+                    }
+                    pass.set_pipeline(pipeline);
+                    self.bind_world_text(&mut pass, index == 1, false);
+                    pass.draw_indexed(0..count * 6, (first * 4) as i32, 0..1);
+                    if marked {
+                        pass.set_pipeline(&self.text_mark_pipelines[index]);
+                        pass.set_bind_group(0, &self.entity_group, &[]);
+                        pass.draw_indexed(0..count * 6, (first * 4) as i32, 0..1);
+                    }
+                }
                 pass.set_bind_group(0, &self.group, &[]);
             }
             if self.explicit_opaque_particles.any() {
@@ -2959,6 +2997,7 @@ impl Renderer {
             // alpha/mipmap policies and ordinary opaque depth. Storage follows
             // the existing materials without moving their indices or frame tails.
             let mut first = world_quads
+                - text_solid_quads
                 - glint_only_quads
                 - banner_pattern_quads
                 - native_solid_quads
@@ -2993,6 +3032,7 @@ impl Renderer {
                 pass.draw_indexed(
                     0..native_translucent_quads * 6,
                     ((world_quads
+                        - text_solid_quads
                         - glint_only_quads
                         - banner_pattern_quads
                         - native_translucent_quads)

@@ -123,6 +123,10 @@ impl Renderer {
         self.lods = lods;
         if oom {
             self.sourced_oom();
+            return Err(crate::graphics::GpuCullingOffer::OutOfMemory
+                .reason()
+                .expect("out-of-memory offer has a refusal reason")
+                .into());
         }
         #[cfg(debug_assertions)]
         {

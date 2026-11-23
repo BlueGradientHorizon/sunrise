@@ -29,8 +29,9 @@ use sunrise_client::{
     lan::{
         self, NetConfig,
         chunks::ChunkEncoder,
+        configuration_tasks::{Configured, PreparedSpawn},
         data::{BIOME_REGISTRY, SyncData},
-        entity::{EntityState, States},
+        entity::{EntityState, States, avatar_main_arm_meta},
         hub::{HostEvent, Hub, HubConfig, TickCtx, stuck_meta},
         playerdata,
     },
@@ -54,6 +55,8 @@ pub struct LanSettings {
 
 pub(super) struct LanHost {
     pub hub: Hub,
+    /// Acknowledged joins whose runtime destination closed before placement.
+    spawn_joins: Vec<(u32, Configured)>,
     /// The mods heard that everyone still here leaves with the server.
     pub players_told_left: bool,
     pub settings: LanSettings,
@@ -788,9 +791,11 @@ pub(super) fn mob_meta(
             }
             defaults.push((18, serializer::BOOLEAN, Value::Bool(false)));
         }
-        // Mannequin.DATA_PROFILE, DATA_IMMOVABLE and DATA_DESCRIPTION (after Avatar's two):
-        // `updateDescription` keeps the last as a component, or none when hidden.
+        // Mannequin inherits Avatar's main arm. Its own DATA_PROFILE, DATA_IMMOVABLE
+        // and DATA_DESCRIPTION follow the Avatar entries; `updateDescription`
+        // keeps the last as a component, or none when hidden.
         "minecraft:mannequin" => {
+            avatar_main_arm_meta(e.main_hand_left, meta, defaults);
             if let Some(profile) = &m.profile {
                 meta.push((
                     17,
@@ -1296,6 +1301,7 @@ impl Game<'_> {
         self.lan = Some(LanHost {
             players_told_left: false,
             hub,
+            spawn_joins: Vec::new(),
             settings: LanSettings { port, ..settings },
             play: HashMap::new(),
             menus: HashMap::new(),
@@ -1709,7 +1715,10 @@ impl Game<'_> {
             .iter()
             .position(|g| g.uuid == uuid && g.placed && !self.crash_save.excludes(g.conn))
         {
-            let live = Some(self.player_state.attachments.clone());
+            // The owner's map is the game's only during their own turn
+            // (`guest_turn`); otherwise their record holds it, whoever acts.
+            let live =
+                (self.lan_acting_uuid == Some(uuid)).then(|| self.player_state.attachments.clone());
             host.hub.guests.update(i, |g| {
                 let held = live.map(|a| std::mem::replace(&mut g.attachments, a));
                 playerdata::store(g, &mut self.level, vehicle);
@@ -2086,6 +2095,26 @@ impl Game<'_> {
                 HostEvent::RawPayload(delivery) => {
                     self.run_payload(delivery.endpoint, delivery.incoming);
                 }
+                HostEvent::PlayerPong { conn, id } => {
+                    let Some(guest) = self.lan.as_ref()?.hub.guest(conn).filter(|g| {
+                        g.joined() && g.participates_online() && g.play_connection_open()
+                    }) else {
+                        continue;
+                    };
+                    let Some(epoch) = self.native_lifecycle.epoch() else {
+                        continue;
+                    };
+                    let player = mod_api::__private::game::player_ref(
+                        mod_api::EntityRef::new(epoch, guest.entity_id as u32),
+                        guest.uuid,
+                    );
+                    let name = guest.name.clone();
+                    self.native_player_pong(crate::game::native_hooks::PlayerPongCall {
+                        player,
+                        name: &name,
+                        id,
+                    });
+                }
                 event @ (HostEvent::Chat { .. } | HostEvent::Warn(_) | HostEvent::Error(_)) => {
                     self.lan_log_event(event);
                 }
@@ -2184,7 +2213,45 @@ impl Game<'_> {
                     let host = self.lan.as_mut()?;
                     host.hub.broadcast(&C::PlayerInfoUpdate(*update));
                 }
-                HostEvent::Joined(conn) => {
+                HostEvent::Joined(conn, configured) => {
+                    let host = self.lan.as_ref()?;
+                    if host
+                        .hub
+                        .guest(conn)
+                        .is_none_or(|g| !g.left_reason.is_empty())
+                    {
+                        continue;
+                    }
+                    let prepared = if let Some(ref lease) = configured {
+                        if lease.session().closed() {
+                            continue;
+                        }
+                        match self.acknowledged_spawn(lease) {
+                            Some(Ok(spawn)) => spawn,
+                            Some(Err(error)) => {
+                                log::warn!(
+                                    "Could not prepare spawn after acknowledgement: {error}"
+                                );
+                                self.lan.as_mut()?.hub.kick(
+                                    conn,
+                                    sunrise_protocol::text::translatable(
+                                        "multiplayer.disconnect.invalid_player_data",
+                                        &[],
+                                    ),
+                                );
+                                continue;
+                            }
+                            None => {
+                                self.lan
+                                    .as_mut()?
+                                    .spawn_joins
+                                    .push((conn, configured.unwrap()));
+                                continue;
+                            }
+                        }
+                    } else {
+                        None
+                    };
                     // The mods may refuse the login before the player is placed.
                     if let Some((uuid, name)) = self
                         .lan
@@ -2224,7 +2291,7 @@ impl Game<'_> {
                         }
                         host.hub.former_names.insert(uuid, old.name);
                     }
-                    self.lan_guest_joined(conn, entities, spawn);
+                    self.lan_guest_joined(conn, entities, spawn, prepared);
                     let host = self.lan.as_ref()?;
                     super::cauldron_prediction::publish_registrations(
                         &super::cauldron_interactions::snapshot(),
@@ -2302,27 +2369,35 @@ impl Game<'_> {
                         let mut host = self.lan.take()?;
                         self.cleanup_fake_player(&mut host, &guest);
                         self.lan = Some(host);
-                        self.native_guest_left(&guest);
+                        if self.announce_guest_left(&guest) {
+                            self.native_player_logged_out(guest.uuid, &guest.name);
+                        }
                         continue;
                     }
-                    // The menu they had open closes, in the level they were in
-                    // (`ServerPlayer.disconnect` -> `doCloseContainer`).
+                    // Close the guest's menu in their level before `player_logged_out`.
                     if guest.placed {
                         let back = self.dim;
                         let theirs = super::Dim::from_id(&guest.dimension);
                         if self.enter_level(theirs).is_ok() {
                             let conn = guest.conn;
                             let host = self.lan.as_mut()?;
-                            let at = host.hub.guests.len();
                             let carrier = guest.entity_id as u32;
+                            let asleep = guest.bed.is_some();
                             host.hub.guests.push(*guest);
                             // A player logging out carries no mob a mod seated on it.
                             self.eject_player_riders(Some(carrier));
+                            // ServerPlayer.disconnect: stopSleepInBed(true, false).
+                            if asleep && let Some(gi) = self.guest_index(conn) {
+                                self.wake_guest(gi, true, false);
+                            }
                             self.guest_disconnected(conn);
                             let Some(host) = self.lan.as_mut() else {
                                 unreachable!("LanHost dropped inside a tick; closes are deferred")
                             };
-                            assert_eq!(host.hub.guests[at].conn, conn);
+                            let at =
+                                host.hub.guests.connection_index(conn).expect(
+                                    "a leaving player stays listed while their menu closes",
+                                );
                             *guest = host.hub.guests.remove(at);
                         }
                         if let Err(e) = self.enter_level(back) {
@@ -2330,6 +2405,9 @@ impl Game<'_> {
                         }
                     }
                     self.lan_crafting_left(&mut guest);
+                    // PlayerList.remove: the mods hear the leave first, then the
+                    // statistic, the vehicle and the save follow.
+                    let mut guest = self.native_guest_left(guest);
                     if guest.joined() {
                         self.award_leave_game(guest.conn, guest.uuid, &guest.name);
                     }
@@ -2340,7 +2418,6 @@ impl Game<'_> {
                     host.play.remove(&guest.conn);
                     host.forget_menus(guest.conn);
                     self.clear_guest_book_connection(guest.conn);
-                    self.native_guest_left(&guest);
                     // PlayerList.remove after the logout: what it tracked stops (removePairing).
                     for e in guest.tracker.take_events() {
                         self.tell_tracking(guest.uuid, &guest.name, &e);
@@ -2454,9 +2531,21 @@ impl Game<'_> {
         if self.level_pass.packets_drained {
             return;
         }
-        let Some(mut host) = self.take_lan_for_packet_tick() else {
+        let Some(mut host) = self.lan.take() else {
             return;
         };
+        // ServerLoginPacketListenerImpl waits for PlayerList.remove, which saves the old
+        // guest. Snapshot the new requests before polling play events: the old connection
+        // publishes Left before releasing the reservation that admitted its replacement.
+        let configuration_requests = self
+            .level_pass
+            .first
+            .then(|| host.hub.lan.configuration_requests().collect::<Vec<_>>());
+        let handoffs = self.level_pass.first.then(|| host.hub.lan.take_handoffs());
+        let login_profiles = self
+            .level_pass
+            .first
+            .then(|| host.hub.lan.login_profile_requests().collect::<Vec<_>>());
         let holding = lan::Holding::start();
         // Last tick's tracked entities: enough for place collision and joins
         // before this tick moves anyone.
@@ -2500,6 +2589,13 @@ impl Game<'_> {
             } else {
                 Vec::new()
             };
+            if pass.first {
+                events.extend(
+                    host.spawn_joins
+                        .drain(..)
+                        .map(|(conn, lease)| HostEvent::Joined(conn, Some(lease))),
+                );
+            }
             events.extend(sunrise_client::spans::time("lan_drain", || {
                 host.hub.drain_packets(&mut ctx)
             }));
@@ -2539,6 +2635,95 @@ impl Game<'_> {
         self.level_pass.packets_drained = true;
         drop(holding);
         self.lan = Some(host);
+        if let Some(handoffs) = handoffs {
+            self.tick_lan_player_handshakes(handoffs);
+        }
+        for request in login_profiles.into_iter().flatten() {
+            self.answer_login_profile(request);
+        }
+        if let Some(requests) = configuration_requests {
+            sunrise_client::spans::time("lan_configuration_tasks", || {
+                self.tick_lan_configuration_tasks(requests)
+            });
+        }
+    }
+
+    /// `player_login_profile` for one admitted login: the mods' list when the packet can carry
+    /// it, else the login's own, sent back to its connection.
+    fn answer_login_profile(&mut self, request: lan::login_profile::LoginProfileRequest) {
+        use sunrise_core::profile::AccountProperty;
+        let lan::login_profile::LoginProfileRequest {
+            uuid,
+            name,
+            properties,
+            reply,
+        } = request;
+        let mut edited: Vec<_> = properties
+            .iter()
+            .map(|property| mod_api::AccountProfileProperty {
+                name: property.name.clone(),
+                value: property.value.clone(),
+                signature: property.signature.clone(),
+            })
+            .collect();
+        self.native_player_login_profile(uuid, &name, &mut edited);
+        let edited: Vec<_> = edited
+            .into_iter()
+            .map(|property| AccountProperty {
+                name: property.name,
+                value: property.value,
+                signature: property.signature,
+            })
+            .collect();
+        let chosen = if lan::login_profile::properties_fit(&edited) {
+            edited
+        } else {
+            log::warn!(
+                "player_login_profile: the properties for {name} don't fit the login packet; \
+                 keeping the login's own"
+            );
+            properties
+        };
+        // A connection that closed meanwhile no longer waits.
+        let _ = reply.send(chosen);
+    }
+
+    fn tick_lan_player_handshakes(&mut self, handoffs: Vec<lan::Handoff>) {
+        for mut handoff in handoffs {
+            let peer_ip = handoff.peer_ip.map(|ip| ip.to_string());
+            let mut cancel = false;
+            let mut reason = None;
+            self.native_player_handshake(
+                &mut handoff.intention.host,
+                handoff.intention.port,
+                handoff.intention.protocol,
+                peer_ip.as_deref(),
+                &mut cancel,
+                &mut reason,
+            );
+            let refusal = cancel.then(|| {
+                // The reason is checked once more where it becomes the packet's JSON.
+                let reason = reason.and_then(|text| {
+                    let json = sunrise_client::api_text::to_serialized_engine(&text)
+                        .map_err(|error| error.to_string())
+                        .and_then(|text| {
+                            lan::conn::login_disconnect_json(&text.component_view())
+                                .ok_or_else(|| "too long for a login disconnect".to_owned())
+                        });
+                    json.inspect_err(|error| {
+                        log::warn!("player_handshake disconnect reason refused: {error}");
+                    })
+                    .ok()
+                });
+                reason.unwrap_or_else(|| {
+                    lan::conn::component_json(&sunrise_protocol::text::translatable(
+                        "multiplayer.disconnect.generic",
+                        &[],
+                    ))
+                })
+            });
+            handoff.answer(refusal);
+        }
     }
 
     /// The entity id counter, once the entities Sunrise keeps without one
@@ -2803,9 +2988,10 @@ impl Game<'_> {
             // An entity that left the level since the last tick (a snowball
             // that hit) is dropped by the tracker below: its event goes out
             // first, as `Level.broadcastEntityEvent` precedes the discard.
-            let (gone, later): (Vec<_>, Vec<_>) = std::mem::take(&mut self.lan_entity_events)
-                .into_iter()
-                .partition(|(id, ..)| !entities.iter().any(|e| e.id == *id));
+            let (gone, later) = partition_lan_entity_events(
+                std::mem::take(&mut self.lan_entity_events),
+                entities.iter().map(|entity| entity.id),
+            );
             self.lan_entity_events = later;
             for (id, event) in gone {
                 host.hub.entity_event(id, event);
@@ -2985,8 +3171,29 @@ impl Game<'_> {
         conn: u32,
         entities: &[EntityState],
         spawn: [f64; 3],
+        prepared: Option<PreparedSpawn>,
     ) {
         let spawn_level = self.world_spawn_level();
+        let back = self.dim;
+        // `PrepareSpawnTask.Ready.spawn` waits for saved entities before the player loads.
+        // Streaming commits terrain and the corresponding entity records together.
+        if let Some(prepared) = prepared {
+            let level = super::Dim::from_id(prepared.level.id);
+            if let Err(e) = self.enter_level(level) {
+                log::error!("could not open {}: {e}", level.id());
+                return;
+            }
+            self.tickets.add_spawn(
+                prepared.chunk(),
+                sunrise_client::ticket_levels::SpawnTicketKind::Player,
+            );
+            self.spawn_loaded_entities();
+            self.world.entities_pending.clear();
+            if let Err(e) = self.enter_level(back) {
+                log::error!("could not reopen {}: {e}", back.id());
+                return;
+            }
+        }
         let Some(host) = self.lan.as_mut() else {
             return;
         };
@@ -3023,9 +3230,16 @@ impl Game<'_> {
         if host
             .hub
             .update_guest(conn, |g| {
-                // PrepareSpawnTask: with no saved rotation the player faces the world
-                // spawn's angle (`/setworldspawn ... <angle>`).
-                playerdata::face_world_spawn(g, known, self.level.world_spawn_angle);
+                // Ready.spawn loads the player data again, but snaps to the prepared place.
+                if let Some(prepared) = prepared {
+                    g.dimension = prepared.level.id.to_owned();
+                    g.place(prepared.position);
+                    [g.yaw, g.pitch] = prepared.rotation;
+                    g.head_yaw = g.yaw;
+                } else if !known {
+                    g.dimension = spawn_level.id().to_owned();
+                    playerdata::face_world_spawn(g, false, self.level.world_spawn_angle);
+                }
                 if !known || force {
                     g.game_mode = default_mode;
                     // ServerPlayerGameMode.setGameModeForPlayer: the abilities of the mode chosen.
@@ -3035,47 +3249,6 @@ impl Game<'_> {
             .is_none()
         {
             return;
-        }
-        if !known {
-            // ServerPlayer.adjustSpawnLocation: a player new to the world
-            // stands where PlayerSpawnFinder puts them, not all on one spot
-            // (it reads the loaded level, which holds the spawn when it is
-            // the world spawn's). PrepareSpawnTask puts them in that level, so
-            // the search reads that one, opened for it.
-            let back = self.dim;
-            let opened = back != spawn_level
-                && self
-                    .enter_level(spawn_level)
-                    .inspect_err(|e| log::error!("could not open {}: {e}", spawn_level.id()))
-                    .is_ok();
-            let feet = if self.dim == spawn_level {
-                self.server_player_spawn(spawn)
-            } else {
-                spawn
-            };
-            if opened && let Err(e) = self.enter_level(back) {
-                log::error!("could not reopen {}: {e}", back.id());
-                return;
-            }
-            let Some(host) = self.lan.as_mut() else {
-                return;
-            };
-            if host
-                .hub
-                .update_guest(conn, |g| {
-                    g.position = feet;
-                    g.previous_position = feet;
-                    // Ready.spawn uses the world spawn's yaw and pitch.
-                    [g.yaw, g.pitch] = self.level.world_spawn_angle;
-                    g.head_yaw = g.yaw;
-                    g.health = 20.0;
-                    g.food = 20;
-                    g.dimension = spawn_level.id().to_owned();
-                })
-                .is_none()
-            {
-                return;
-            }
         }
         // A server places each player in their own level (`PlayerList.placeNewPlayer`).
         let Some(host) = self.lan.as_mut() else {
@@ -3616,6 +3789,42 @@ pub(super) fn living_flags(using: Option<(usize, u32)>, spinning: bool) -> i8 {
         | if spinning { 4 } else { 0 }
 }
 
+/// Tracker updates go between the two groups. Partition preserves the
+/// enqueue order within each group.
+fn partition_lan_entity_events(
+    events: Vec<(i32, i8)>,
+    mut live_ids: impl Iterator<Item = i32>,
+) -> (Vec<(i32, i8)>, Vec<(i32, i8)>) {
+    match events.as_slice() {
+        [] => (Vec::new(), Vec::new()),
+        [(id, _)] if live_ids.any(|live| live == *id) => (Vec::new(), events),
+        [_] => (events, Vec::new()),
+        _ => {
+            let present: sunrise_core::fast_hash::FxHashSet<_> = live_ids.collect();
+            events
+                .into_iter()
+                .partition(|(id, _)| !present.contains(id))
+        }
+    }
+}
+
+#[cfg(test)]
+#[test]
+fn entity_event_partition_keeps_delivery_order() {
+    let live = [1, 3, 5];
+    let events = [(2, 17), (1, 18), (2, 19), (5, 20), (4, 21)];
+    for batch in [events.as_slice(), &events[..1], &events[1..2], &[]] {
+        let expected = batch
+            .iter()
+            .copied()
+            .partition(|(id, _)| !live.contains(id));
+        assert_eq!(
+            partition_lan_entity_events(batch.to_vec(), live.into_iter()),
+            expected
+        );
+    }
+}
+
 #[cfg(test)]
 use level_event_targets::level_event_except;
 
@@ -3633,11 +3842,7 @@ pub(in crate::game) fn client_info(
         },
         chat_colors: i.chat_colors,
         model_customisation: i.model_customisation,
-        main_hand: if i.main_hand == 1 {
-            mod_api::MainHand::Right
-        } else {
-            mod_api::MainHand::Left
-        },
+        main_hand: main_hand(i.main_hand),
         text_filtering: i.text_filtering,
         allows_listing: i.allows_listing,
         particle_status: match i.particle_status.rem_euclid(3) {
@@ -3645,6 +3850,16 @@ pub(in crate::game) fn client_info(
             1 => mod_api::ParticleStatus::Decreased,
             _ => mod_api::ParticleStatus::Minimal,
         },
+    }
+}
+
+/// `HumanoidArm.BY_ID`: 1 is the right arm, and every other id the left (0, and the id an
+/// unknown one reads as).
+pub(in crate::game) fn main_hand(id: i32) -> mod_api::MainHand {
+    if id == 1 {
+        mod_api::MainHand::Right
+    } else {
+        mod_api::MainHand::Left
     }
 }
 
@@ -3691,6 +3906,7 @@ mod tests {
                 },
                 hub,
                 players_told_left: false,
+                spawn_joins: Vec::new(),
                 play: Default::default(),
                 menus: Default::default(),
                 broken: Default::default(),
@@ -3711,6 +3927,464 @@ mod tests {
                 idle_states: Default::default(),
             }
         }
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn player_handshake_dispatch_before_login() {
+        use crate::game::native_entity_refs::tests::{run_fresh_cases, with_game};
+        use mod_api::{Flow, Hooks, ModEntry, PlayerHandshakeEvent, ServerHost, Text};
+        use serde_json::{Value, json};
+        use std::{
+            net::{Shutdown, TcpStream},
+            sync::{Arc, Mutex, mpsc},
+            thread,
+            time::{Duration, Instant},
+        };
+        use sunrise_client::lan::{Lan, NetConfig, chunks::ChunkEncoder, data::SyncData};
+        use sunrise_core::nbt::Tag;
+        use sunrise_protocol::{
+            PROTOCOL_VERSION,
+            connection::Connection,
+            crypto::offline_uuid,
+            packets::{Empty, handshake, login, status},
+        };
+
+        const WAIT: Duration = Duration::from_secs(5);
+        const ORIGINAL: &str = "entry.test\0suffix";
+        const REWRITTEN: &str = "route.test\0kept";
+        if run_fresh_cases(
+            "game::lan::tests::player_handshake_dispatch_before_login",
+            "SUNRISE_PLAYER_HANDSHAKE_CHILD",
+            &["login"],
+        ) {
+            return;
+        }
+
+        #[derive(Debug, PartialEq, Eq)]
+        struct Seen {
+            host: String,
+            port: u16,
+            protocol: i32,
+            peer_ip: Option<String>,
+            thread: thread::ThreadId,
+        }
+        struct Listener {
+            rewrite: bool,
+            seen: Arc<Mutex<Vec<Seen>>>,
+        }
+        #[mod_api::__subscriptions]
+        impl Hooks for Listener {
+            fn player_handshake(
+                &self,
+                _: &mut dyn ServerHost,
+                event: &mut PlayerHandshakeEvent<'_>,
+            ) -> Flow {
+                self.seen.lock().unwrap().push(Seen {
+                    host: event.requested_host.clone(),
+                    port: event.requested_port,
+                    protocol: event.protocol_version,
+                    peer_ip: event.peer_ip.map(str::to_owned),
+                    thread: thread::current().id(),
+                });
+                if self.rewrite {
+                    // The handshake's own values are this listener's copy: the next one
+                    // still reads what the connection sent.
+                    event.requested_port = 1;
+                    event.protocol_version = 0;
+                    event.peer_ip = Some("10.0.0.1");
+                    match event.requested_host.as_str() {
+                        "closed.test" => {
+                            event.cancelled = true;
+                            *event.reason = Some(Text::literal("Fixture refused"));
+                        }
+                        "default.test" => event.cancelled = true,
+                        "item.test" => {
+                            event.cancelled = true;
+                            let mut style = mod_api::text::TextStyle::default();
+                            style.hover = Some(mod_api::text::TextHover::Item {
+                                id: "minecraft:stone".into(),
+                                count: 1,
+                                components: Some(Tag::compound([(
+                                    "minecraft:custom_model_data",
+                                    Tag::compound([(
+                                        "floats",
+                                        Tag::List(vec![Tag::Float(0.5f32.to_bits())]),
+                                    )]),
+                                )])),
+                            });
+                            *event.reason = Some(Text::literal("Fixture item").with_style(style));
+                        }
+                        "long.test" => {
+                            event.cancelled = true;
+                            // Valid Text, longer than the login disconnect's 262144-unit string.
+                            *event.reason = Some(Text::literal("a".repeat(262_145)));
+                        }
+                        "deep.test" => {
+                            event.cancelled = true;
+                            let mut text = Text::literal("too deep to serialize");
+                            for _ in 0..mod_api::text::MAX_TEXT_DEPTH {
+                                text = Text::literal("").append(text);
+                            }
+                            *event.reason = Some(text);
+                        }
+                        _ if event.requested_host.starts_with("local") => {
+                            *event.requested_host = format!("{REWRITTEN}{}", "a".repeat(255));
+                        }
+                        _ => *event.requested_host = REWRITTEN.into(),
+                    }
+                }
+                Flow::Continue
+            }
+        }
+
+        let seen = Arc::new(Mutex::new(Vec::new()));
+        let mods = [("handshake_rewrite", true), ("handshake_observe", false)]
+            .into_iter()
+            .map(|(id, rewrite)| {
+                ModEntry::new(
+                    id,
+                    Box::new(Listener {
+                        rewrite,
+                        seen: seen.clone(),
+                    }),
+                )
+            })
+            .collect::<Vec<_>>()
+            .into();
+        mod_platform::testing::with_mods(mods, || {
+            with_game(|game| {
+                let (gate, gate_calls) = mpsc::channel();
+                let net = NetConfig {
+                    compression_threshold: -1,
+                    gate: Some(Arc::new(move |addr, uuid, name| {
+                        let _ = gate.send((addr, uuid, name.to_owned()));
+                        None
+                    })),
+                    ..NetConfig::loopback(0, "Handshake fixture".into(), 8)
+                };
+                let sync = Arc::new(SyncData::empty());
+                let lan = Lan::start_with_spawn_preparation(sync.clone(), net).unwrap();
+                let port = lan.port;
+                let shared = lan.shared.clone();
+                let config = super::HubConfig {
+                    default_game_mode: 0,
+                    guest_commands: false,
+                    force_game_mode: false,
+                    hardcore: false,
+                    view_distance: 10,
+                    simulation_distance: 10,
+                    dimension: "minecraft:overworld".into(),
+                    allow_flight: false,
+                    seed: 0,
+                    max_players: 8,
+                    integrated: true,
+                    levels: Default::default(),
+                    level_seeds: Default::default(),
+                };
+                let encoder = ChunkEncoder::new(
+                    [] as [(Arc<str>, bool); 0],
+                    &sync.builtin,
+                    &[],
+                    &[],
+                    Default::default(),
+                );
+                game.lan = Some(LanHost::for_test(Hub::new(
+                    lan,
+                    sync,
+                    encoder,
+                    config,
+                    game.loop_context.clone(),
+                )));
+                let tcp = || {
+                    let stream = TcpStream::connect(("127.0.0.1", port)).unwrap();
+                    let connection = Connection::from_stream(stream.try_clone().unwrap()).unwrap();
+                    connection.reader.set_read_timeout(Some(WAIT)).unwrap();
+                    (connection, stream)
+                };
+                let intention = |c: &mut Connection, host: &str, port, protocol, intent| {
+                    c.send(
+                        &handshake::Serverbound::Intention(handshake::Intention {
+                            host: host.into(),
+                            port,
+                            protocol,
+                            intent,
+                        })
+                        .encode(),
+                    )
+                    .unwrap();
+                };
+                let hello = |c: &mut Connection, name: &str| {
+                    c.send(
+                        &login::Serverbound::Hello(login::ServerHello {
+                            name: name.into(),
+                            uuid: 1, // Offline admission derives the UUID from the name instead.
+                        })
+                        .encode(),
+                    )
+                    .unwrap();
+                };
+                let login_packet = |c: &mut Connection| {
+                    let (id, data) = c.recv().unwrap();
+                    login::Clientbound::decode(id, &data).unwrap()
+                };
+                let assert_login = |c: &mut Connection, name: &str, addr| {
+                    let login::Clientbound::LoginFinished(done) = login_packet(c) else {
+                        panic!("expected LoginFinished for {name}");
+                    };
+                    assert_eq!(done.profile.name, name);
+                    assert_eq!(done.profile.uuid, offline_uuid(name));
+                    assert_eq!(
+                        gate_calls.try_recv().unwrap(),
+                        (addr, offline_uuid(name), name.into())
+                    );
+                };
+                let assert_closed = |c: &mut Connection| {
+                    assert!(c.recv().unwrap_err().is_end_of_stream());
+                };
+                let observed = |host: &str, port, peer_ip: Option<&str>| Seen {
+                    host: host.into(),
+                    port,
+                    protocol: PROTOCOL_VERSION,
+                    peer_ip: peer_ip.map(str::to_owned),
+                    thread: thread::current().id(),
+                };
+                let pump = |game: &mut crate::game::Game<'_>, count| {
+                    let deadline = Instant::now() + WAIT;
+                    while seen.lock().unwrap().len() < count {
+                        assert!(Instant::now() < deadline, "handshake was not dispatched");
+                        game.level_pass = Default::default();
+                        game.tick_lan_packets();
+                        thread::yield_now();
+                    }
+                    std::mem::take(&mut *seen.lock().unwrap())
+                };
+                let tcp_ip = Some("127.0.0.1");
+                let (mut c, stream) = tcp();
+                intention(&mut c, ORIGINAL, 25565, PROTOCOL_VERSION, handshake::LOGIN);
+                hello(&mut c, "FirstPeer");
+                assert_eq!(
+                    pump(game, 2),
+                    [
+                        observed(ORIGINAL, 25565, tcp_ip),
+                        observed(REWRITTEN, 25565, tcp_ip)
+                    ]
+                );
+                assert_login(&mut c, "FirstPeer", stream.local_addr().unwrap());
+                drop((c, stream));
+
+                let generic = json!({"translate": "multiplayer.disconnect.generic"});
+                for (host, expected) in [
+                    ("closed.test", json!("Fixture refused")),
+                    ("default.test", generic.clone()),
+                    ("deep.test", generic.clone()),
+                    ("long.test", generic.clone()),
+                    ("item.test", Value::Null),
+                ] {
+                    let (mut c, _stream) = tcp();
+                    intention(&mut c, host, 25565, PROTOCOL_VERSION, handshake::LOGIN);
+                    assert_eq!(pump(game, 1), [observed(host, 25565, tcp_ip)]);
+                    let login::Clientbound::Disconnect(refusal) = login_packet(&mut c) else {
+                        panic!("expected login disconnect");
+                    };
+                    let reason: Value = serde_json::from_str(&refusal.reason_json).unwrap();
+                    if expected.is_null() {
+                        assert_eq!(reason["text"], "Fixture item");
+                        let hover = &reason["hover_event"];
+                        assert_eq!(
+                            (&hover["action"], &hover["id"]),
+                            (&json!("show_item"), &json!("minecraft:stone"))
+                        );
+                        assert_eq!(
+                            hover["components"]["minecraft:custom_model_data"]["floats"],
+                            json!([0.5])
+                        );
+                    } else {
+                        assert_eq!(reason, expected);
+                    }
+                    assert_closed(&mut c);
+                }
+
+                let mut c =
+                    Connection::local(game.lan.as_ref().unwrap().hub.lan.connect_local().unwrap());
+                c.reader.set_read_timeout(Some(WAIT)).unwrap();
+                intention(&mut c, "local.test", 0, PROTOCOL_VERSION, handshake::LOGIN);
+                let long_host = format!("{REWRITTEN}{}", "a".repeat(255));
+                assert_eq!(
+                    pump(game, 2),
+                    [
+                        observed("local.test", 0, None),
+                        observed(&long_host, 0, None)
+                    ]
+                );
+                hello(&mut c, "LocalPeer");
+                assert_login(
+                    &mut c,
+                    "LocalPeer",
+                    sunrise_client::lan::conn::MEMORY_ADDRESS,
+                );
+                drop(c);
+
+                // A peer that leaves a whole Hello behind once its handshake was taken reaches
+                // no admission.
+                let mut c =
+                    Connection::local(game.lan.as_ref().unwrap().hub.lan.connect_local().unwrap());
+                intention(&mut c, "local.left", 0, PROTOCOL_VERSION, handshake::LOGIN);
+                let deadline = Instant::now() + WAIT;
+                let handoffs = loop {
+                    let handoffs = game.lan.as_ref().unwrap().hub.lan.take_handoffs();
+                    if !handoffs.is_empty() {
+                        break handoffs;
+                    }
+                    assert!(Instant::now() < deadline, "memory handshake was not queued");
+                    thread::yield_now();
+                };
+                hello(&mut c, "LeftPeer");
+                drop(c);
+                game.tick_lan_player_handshakes(handoffs);
+                assert_eq!(seen.lock().unwrap().len(), 2);
+                seen.lock().unwrap().clear();
+                assert_eq!(
+                    gate_calls.recv_timeout(Duration::from_millis(500)),
+                    Err(mpsc::RecvTimeoutError::Timeout)
+                );
+
+                let (mut c, _stream) = tcp();
+                intention(&mut c, ORIGINAL, 25565, PROTOCOL_VERSION, handshake::STATUS);
+                c.send(&status::Serverbound::StatusRequest(Empty).encode())
+                    .unwrap();
+                let (id, bytes) = c.recv().unwrap();
+                assert!(matches!(
+                    status::Clientbound::decode(id, &bytes).unwrap(),
+                    status::Clientbound::StatusResponse(_)
+                ));
+                c.send(&status::Serverbound::PingRequest(status::Ping { time: 4242 }).encode())
+                    .unwrap();
+                let (id, bytes) = c.recv().unwrap();
+                assert_eq!(
+                    status::Clientbound::decode(id, &bytes).unwrap(),
+                    status::Clientbound::PongResponse(status::Ping { time: 4242 })
+                );
+                assert_closed(&mut c);
+
+                let (mut c, _stream) = tcp();
+                intention(
+                    &mut c,
+                    &"a".repeat(256),
+                    25565,
+                    PROTOCOL_VERSION,
+                    handshake::LOGIN,
+                );
+                assert_closed(&mut c);
+
+                for (protocol, intent, key) in [
+                    (
+                        PROTOCOL_VERSION - 1,
+                        handshake::LOGIN,
+                        "multiplayer.disconnect.incompatible",
+                    ),
+                    (
+                        PROTOCOL_VERSION,
+                        handshake::TRANSFER,
+                        "multiplayer.disconnect.transfers_disabled",
+                    ),
+                ] {
+                    let (mut c, _stream) = tcp();
+                    intention(&mut c, ORIGINAL, 25565, protocol, intent);
+                    let login::Clientbound::Disconnect(reason) = login_packet(&mut c) else {
+                        panic!("expected vanilla refusal");
+                    };
+                    assert!(reason.reason_json.contains(key));
+                    assert_closed(&mut c);
+                }
+                game.level_pass = Default::default();
+                game.tick_lan_packets();
+                assert!(seen.lock().unwrap().is_empty());
+                assert_eq!(gate_calls.try_recv(), Err(mpsc::TryRecvError::Empty));
+
+                shared.set_accepts_transfers(true);
+                let (mut c, stream) = tcp();
+                intention(
+                    &mut c,
+                    ORIGINAL,
+                    25565,
+                    PROTOCOL_VERSION,
+                    handshake::TRANSFER,
+                );
+                hello(&mut c, "TransferPeer");
+                assert_eq!(
+                    pump(game, 2),
+                    [
+                        observed(ORIGINAL, 25565, tcp_ip),
+                        observed(REWRITTEN, 25565, tcp_ip)
+                    ]
+                );
+                assert_login(&mut c, "TransferPeer", stream.local_addr().unwrap());
+                drop((c, stream));
+
+                let (mut c, stream) = tcp();
+                intention(&mut c, ORIGINAL, 25565, PROTOCOL_VERSION, handshake::LOGIN);
+                hello(&mut c, "Abandoned");
+                // Signal EOF to the server without giving up our ability to observe its reply.
+                stream.shutdown(Shutdown::Write).unwrap();
+                assert_eq!(
+                    pump(game, 2),
+                    [
+                        observed(ORIGINAL, 25565, tcp_ip),
+                        observed(REWRITTEN, 25565, tcp_ip)
+                    ]
+                );
+                assert_closed(&mut c);
+                assert_eq!(gate_calls.try_recv(), Err(mpsc::TryRecvError::Empty));
+
+                assert!(mod_api::__private::set_mod_enabled(
+                    "handshake_rewrite",
+                    false
+                ));
+                assert!(mod_api::__private::set_mod_enabled(
+                    "handshake_observe",
+                    false
+                ));
+                let (mut c, stream) = tcp();
+                intention(
+                    &mut c,
+                    "closed.test",
+                    25565,
+                    PROTOCOL_VERSION,
+                    handshake::LOGIN,
+                );
+                hello(&mut c, "NoListenerPeer");
+                // No tick is needed; the worker uses the captured table's current enabled set.
+                assert_login(&mut c, "NoListenerPeer", stream.local_addr().unwrap());
+                assert!(seen.lock().unwrap().is_empty());
+                drop((c, stream));
+
+                // A server draining for a stop still listens and refuses an accepted login.
+                for id in ["handshake_rewrite", "handshake_observe"] {
+                    assert!(mod_api::__private::set_mod_enabled(id, true));
+                }
+                shared.refuse_logins();
+                let (mut c, _stream) = tcp();
+                intention(&mut c, ORIGINAL, 25565, PROTOCOL_VERSION, handshake::LOGIN);
+                hello(&mut c, "DrainPeer");
+                assert_eq!(
+                    pump(game, 2),
+                    [
+                        observed(ORIGINAL, 25565, tcp_ip),
+                        observed(REWRITTEN, 25565, tcp_ip)
+                    ]
+                );
+                let login::Clientbound::Disconnect(refusal) = login_packet(&mut c) else {
+                    panic!("expected the shutdown refusal");
+                };
+                assert_eq!(
+                    serde_json::from_str::<Value>(&refusal.reason_json).unwrap(),
+                    json!({"translate": "multiplayer.disconnect.server_shutdown"})
+                );
+                assert_closed(&mut c);
+                assert_eq!(gate_calls.try_recv(), Err(mpsc::TryRecvError::Empty));
+            });
+        });
     }
 
     #[test]
@@ -5178,6 +5852,9 @@ impl super::Dim {
 }
 
 #[cfg(test)]
+mod player_packet_tests;
+
+#[cfg(test)]
 pub(crate) mod world_spawn_sync_tests {
     use super::*;
     use std::sync::{Arc, atomic::AtomicI32, mpsc};
@@ -5474,7 +6151,7 @@ mod world_spawn_join_tests {
                 &Default::default(),
             );
             guests.update(0, |g| g.placed = false);
-            game.lan_guest_joined(12, &[], [0.5, 64.0, 0.5]);
+            game.lan_guest_joined(12, &[], [0.5, 64.0, 0.5], None);
             let g = &game.lan.as_ref().unwrap().hub.guests[0];
             assert_eq!(g.dimension, "minecraft:the_nether");
             assert_eq!(g.position, [40.5, 70.0, -12.5]);
@@ -5744,11 +6421,11 @@ mod merchant_packet_tests {
                     );
                 };
                 if self.abort {
-                    let aborted: Result<(), ()> = host.transaction(|host, _| {
+                    let aborted = host.transaction(|host, _| {
                         open(host);
-                        Err(())
+                        Err::<(), _>(())
                     });
-                    assert_eq!(aborted, Err(()));
+                    assert_eq!(aborted, Err(mod_api::TransactionError::Aborted(())));
                 } else {
                     open(host);
                 }
@@ -5893,6 +6570,7 @@ mod merchant_packet_tests {
             hub.guests.push(guest);
             game.lan = Some(super::LanHost {
                 hub,
+                spawn_joins: Vec::new(),
                 players_told_left: false,
                 settings: super::LanSettings {
                     port: 0,
@@ -6434,5 +7112,7 @@ mod merchant_packet_tests {
     }
 }
 
+#[cfg(test)]
+mod login_profile_tests;
 #[cfg(test)]
 mod tracking_hook_tests;

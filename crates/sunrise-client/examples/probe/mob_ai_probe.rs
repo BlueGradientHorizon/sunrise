@@ -602,7 +602,7 @@ fn print_heart(
 /// The damage of a mob's direct hit on the player (others count as none).
 fn player_damage(e: &MobEvent) -> f32 {
     match e {
-        MobEvent::AttackPlayer(amount, _)
+        MobEvent::AttackPlayer(amount, ..)
         | MobEvent::CubeHurtPlayer { amount, .. }
         | MobEvent::Sting {
             target: Who::Player,
@@ -630,7 +630,7 @@ fn player_hurt(player: Option<&PlayerView>, e: &MobEvent) -> bool {
         return false;
     };
     match e {
-        MobEvent::AttackPlayer(amount, _)
+        MobEvent::AttackPlayer(amount, ..)
         | MobEvent::CubeHurtPlayer { amount, .. }
         | MobEvent::Sting {
             target: Who::Player,
@@ -907,8 +907,9 @@ pub fn main() -> sunrise_client::Result<()> {
     let motion = sunrise_client::motion::MotionResources::load(root, &assets)?;
     let data = MobData::load(
         &sunrise_assets::resource_source::ResourceRoot::directory(root.to_path_buf()),
-        &facts,
-    );
+        facts.states.len(),
+        false,
+    )?;
     let types = MobTypes::load(root)?;
     // The types a bee leaving its hive is loaded with (EntityType.loadEntityRecursive).
     let arc_types: HashMap<String, Arc<MobType>> = types
@@ -1464,6 +1465,7 @@ pub fn main() -> sunrise_client::Result<()> {
                             target,
                             amount,
                             source,
+                            ..
                         } => (Some((target, amount, source)), false),
                         // IronGolem.doHurtTarget: thrown up only if the hit landed.
                         MobEvent::IronGolemHit {

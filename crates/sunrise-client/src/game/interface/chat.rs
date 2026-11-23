@@ -46,10 +46,7 @@ fn sunrise_profiler_args<'a>(
         .is_none_or(|tree| tree.has_sunrise_profiler())
         .then_some(args)
 }
-use winit::{
-    event::KeyEvent,
-    keyboard::{KeyCode, PhysicalKey},
-};
+use winit::keyboard::KeyCode;
 
 /// `base` with extra client-local commands added: each a literal taking the
 /// rest of the line as typed (`Dispatcher::with_mod_commands`), so the chat
@@ -1061,25 +1058,22 @@ impl Game<'_> {
             });
         }
     }
+    /// `ChatScreen.removed` after another screen interrupted chat.
+    pub(super) fn remove_chat_screen(&mut self) {
+        if let Some(chat) = self.ui.chat_screen.take() {
+            self.keep_chat_draft(chat.value(), ChatExit::Interrupted);
+            self.ui.chat_draft_shown = false;
+            self.ui.chat.reset_scroll();
+        }
+        self.ui.in_bed_chat = false;
+    }
+
     /// `Gui.tick`: a sleeper gets `InBedChatScreen`; when the player has
     /// woken (`onPlayerWokeUp`) it closes, or turns into the plain chat
     /// screen if something was typed.
     pub(super) fn tick_in_bed_chat(&mut self) {
-        // Another screen took over the open chat (death, a container the
-        // server opened): `ChatScreen.removed` runs with the INTERRUPTED reason.
-        if self.screen != Screen::Chat && self.ui.chat_screen.is_some() {
-            let text = self
-                .ui
-                .chat_screen
-                .as_ref()
-                .map_or_else(String::new, |s| s.value().to_owned());
-            self.keep_chat_draft(&text, ChatExit::Interrupted);
-            self.ui.chat_draft_shown = false;
-            self.ui.chat_screen = None;
-            self.ui.chat.reset_scroll();
-        }
         if self.screen != Screen::Chat {
-            self.ui.in_bed_chat = false;
+            self.remove_chat_screen();
         }
         if self.ui.in_bed_chat {
             if self.sleeping.is_none() {
@@ -1203,8 +1197,12 @@ impl Game<'_> {
         );
     }
     /// Keys while the chat screen is open.
-    pub(super) fn chat_key(&mut self, event: &KeyEvent) {
-        if let Some(shortcut) = self.edit_shortcut(event) {
+    pub(super) fn chat_key(
+        &mut self,
+        key: KeyCode,
+        shortcut: Option<sunrise_client::clipboard::EditShortcut>,
+    ) -> bool {
+        if let Some(shortcut) = shortcut {
             let m = Measure(&self.gui.atlas.font);
             let c = Commands {
                 dispatcher: chat_tree(&self.remote),
@@ -1212,16 +1210,14 @@ impl Game<'_> {
             };
             if let Some(screen) = self.ui.chat_screen.as_mut() {
                 screen.shortcut(&m, &c, shortcut, &mut self.clipboard);
+                return true;
             }
-            return;
+            return false;
         }
-        let PhysicalKey::Code(key) = event.physical_key else {
-            return;
-        };
-        self.chat_key_code(key, event.text.as_deref());
+        self.chat_key_code(key, None)
     }
     /// A key (and the text it typed) while the chat screen is open.
-    pub(super) fn chat_key_code(&mut self, key: KeyCode, typed_text: Option<&str>) {
+    pub(super) fn chat_key_code(&mut self, key: KeyCode, typed_text: Option<&str>) -> bool {
         // The live modifiers, not `self.keys`: every ModifiersChanged runs
         // sync_toggle, which drops ShiftLeft and ControlLeft from `self.keys`
         // while a screen is open.
@@ -1236,7 +1232,7 @@ impl Game<'_> {
             }
         {
             self.toggle_chat_search();
-            return;
+            return true;
         }
         match key {
             // ChatScreen.keyPressed: the chat scrolls a page.
@@ -1251,19 +1247,20 @@ impl Game<'_> {
                 self.ui
                     .chat
                     .scroll_by(if key == KeyCode::PageUp { n } else { -n }, true);
-                return;
+                return true;
             }
             _ => {}
         }
         let Some(mut screen) = self.ui.chat_screen.take() else {
-            return;
+            return false;
         };
         let m = Measure(&self.gui.atlas.font);
         let c = Commands {
             dispatcher: chat_tree(&self.remote),
             registries: &self.ui.registries,
         };
-        match screen.key(&m, &c, &self.ui.chat.recent, key, shift, ctrl) {
+        let (handled, action) = screen.key_input(&m, &c, &self.ui.chat.recent, key, shift, ctrl);
+        match action {
             ChatAction::Close => {
                 // Escape: the box still holds its text, which close_chat keeps as the draft
                 // (a search's query gives way to the text it put aside: keep_chat_draft).
@@ -1297,6 +1294,7 @@ impl Game<'_> {
             }
         }
         self.notify_chat_suggestion_completion();
+        handled
     }
     fn notify_chat_suggestion_completion(&mut self) {
         if let Some(completion) = self
@@ -1498,17 +1496,26 @@ impl Game<'_> {
             Some(ClickEvent::CopyToClipboard(value)) => {
                 use sunrise_client::clipboard::Clipboard;
                 self.clipboard.set(&value);
+                true
             }
             Some(ClickEvent::OpenFile(path)) => {
                 super::packs::open_folder(std::path::Path::new(&path));
+                true
             }
-            Some(ClickEvent::OpenUrl(url)) => self.click_url(url),
+            Some(ClickEvent::OpenUrl(url)) => {
+                self.click_url(url);
+                true
+            }
             Some(ClickEvent::SuggestCommand(command)) => {
                 if let Some(screen) = self.ui.chat_screen.as_mut() {
                     screen.suggest_command(&m, &c, &command);
                 }
+                true
             }
-            Some(ClickEvent::RunCommand(command)) => self.click_command(&command),
+            Some(ClickEvent::RunCommand(command)) => {
+                self.click_command(&command);
+                true
+            }
             Some(ClickEvent::Profiler(command)) => {
                 if let Some(args) = command
                     .strip_prefix('/')
@@ -1518,15 +1525,20 @@ impl Game<'_> {
                 } else {
                     return false;
                 }
+                true
             }
             // Screen.defaultHandleGameClickEvent: the dialog opens over the
             // screen, and closes back to it.
-            Some(ClickEvent::ShowDialog(dialog)) => self.show_dialog_ref(&dialog),
+            Some(ClickEvent::ShowDialog(dialog)) => {
+                self.show_dialog_ref(&dialog);
+                true
+            }
             // Screen.defaultHandleGameClickEvent: custom actions retain chat.
             // ChatScreen.handleComponentClicked: the queue row's internal id
             // shows the next held-back message; other custom ids go on.
             Some(ClickEvent::Custom { id, .. }) if id == QUEUE_EXPAND_ID => {
                 self.accept_next_delayed_message();
+                true
             }
             Some(ClickEvent::Custom { id, payload }) => {
                 if let Some(remote) = &self.remote {
@@ -1536,11 +1548,11 @@ impl Game<'_> {
                 } else {
                     return false;
                 }
+                true
             }
             // Screen.defaultHandleClickEvent: a page link means nothing in chat.
-            Some(ClickEvent::ChangePage(_)) | None => return false,
+            Some(ClickEvent::ChangePage(_)) | None => false,
         }
-        true
     }
     /// `Screen.clickUrlAction`: nothing with Web Links off, else the link
     /// opens, after the confirmation unless Prompt on Links is off.
@@ -1600,12 +1612,15 @@ impl Game<'_> {
         let mut layout = self.link_prompt_layout(url, (w, h));
         layout.declare_no(2);
         layout.draw(batch, atlas, self.cursor, &labels);
+        self.draw_overlay_mounted_widgets(batch, "link_prompt");
     }
     /// The prompt's answer: the link opens on yes; either way the chat is back.
     pub(super) fn answer_link_prompt(&mut self, yes: bool) {
-        if let Some(url) = self.link_prompt.take()
-            && yes
-        {
+        let Some(url) = self.link_prompt.take() else {
+            return;
+        };
+        self.refresh_screen_widgets();
+        if yes {
             super::packs::open_uri(&url);
         }
     }
@@ -2874,6 +2889,31 @@ mod tests {
             vanilla.client_suggestions(&parse, "summon minecraft:wind_charg".len(), &reg);
         let texts: Vec<String> = suggestions.into_iter().map(|s| s.text).collect();
         assert_eq!(texts, vec!["minecraft:wind_charge".to_string()]);
+    }
+
+    #[test]
+    fn server_sound_commands_complete_from_builtins_without_audio() {
+        let exported = Registries::from_export(&serde_json::json!({
+            "by_registry": {"minecraft:sound_event": {"ids": ["test:sample_sound"]}}
+        }));
+        let mut reg = Registries {
+            permission: 4,
+            ..Default::default()
+        };
+        reg.fill_from_exported(&exported);
+        let tree = sunrise_client::command::vanilla::game_dispatcher();
+        for input in ["playsound test:sample", "stopsound @s master test:sample"] {
+            let parse = tree.parse(input, &reg);
+            let (_, options) = tree.client_suggestions(&parse, input.len(), &reg);
+            assert_eq!(
+                options
+                    .into_iter()
+                    .map(|suggestion| suggestion.text)
+                    .collect::<Vec<_>>(),
+                ["test:sample_sound"],
+                "{input}"
+            );
+        }
     }
 
     /// `Registries::fill_from_export` and `fill_from_exported` populate

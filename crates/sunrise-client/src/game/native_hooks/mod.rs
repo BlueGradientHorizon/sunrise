@@ -12,8 +12,8 @@ pub(in crate::game) use block_entity_tick::ResidentBlockEntityAccess;
 pub(in crate::game) use build_creative_mode_tab_contents::CreativeCache;
 pub(in crate::game) use client_pick::ClientPick;
 pub(in crate::game) use fire::{
-    ConnectsToCall, EntityChangeBlockPreCall, ItemAfterVerticalCollisionCall,
-    PreRemoveSideEffectsCall, UpdateShapeCall,
+    ConnectsToCall, EntityChangeBlockPreCall, HotbarAttackIndicatorProgressCall,
+    ItemAfterVerticalCollisionCall, PlayerPongCall, PreRemoveSideEffectsCall, UpdateShapeCall,
 };
 use mod_api::{BlockEntityDataSource, BlockEntityRef, ClockAdjustment};
 
@@ -44,9 +44,9 @@ use mod_api::{
     EntityRenderers, GameRuleActor, GuiLayerRegistrar, HandDrawContext, HandRender, InsideEffects,
     InteractionAttempt, InteractionKey, ItemEntityRef, LifecycleContext, LivingRef, LoadConditions,
     NoteBlockChange, ParticleProviders, PathComputationType, Placement, PlayerRef,
-    PoiTypeExtensions, RecipeBookCategory, ScreenId, ScreenOpening, ScreenTarget, ScreenshotImage,
-    ServerReloadListeners, ServerTickPhase, SpecialModelRenderers, TicketController, ToolUse,
-    VillagerProfessions, WorldPhase,
+    PoiTypeExtensions, RecipeBookCategory, ScreenId, ScreenOpening, ScreenTarget, ScreenWidgets,
+    ScreenshotImage, ServerReloadListeners, ServerTickPhase, SpecialModelRenderers,
+    TicketController, ToolUse, VillagerProfessions, WorldPhase,
 };
 use mod_api::{
     ActiveEffect, AttachmentStore, BlockClick, BlockUpdateFlags, BonemealSource, ChunkRef,
@@ -321,6 +321,7 @@ mod gui_render_post;
 mod gui_ticks;
 mod held_item_tint;
 mod highlight_tip;
+mod hotbar_attack_indicator_progress;
 mod hud_mode;
 mod humanoid_setup_anim;
 mod ignited_by_lava;
@@ -446,6 +447,7 @@ mod player_item_smithed;
 mod player_leave;
 mod player_move;
 mod player_passage_cross;
+mod player_pong;
 mod player_set_spawn;
 mod player_spawn_phantoms;
 mod player_start_spectating_entity;
@@ -467,6 +469,7 @@ mod register_block_tint_sources;
 mod register_cauldron_fluid_content;
 mod register_cauldron_interaction;
 mod register_client_item_extensions;
+mod register_client_tooltip_component_factories;
 mod register_color_resolvers;
 mod register_configuration_tasks;
 mod register_debug_entries;

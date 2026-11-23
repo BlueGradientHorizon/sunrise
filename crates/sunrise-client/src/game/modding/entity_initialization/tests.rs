@@ -304,6 +304,15 @@ fn client_login_tracking_and_retracking_initialize_the_client_store_once() {
             .unwrap();
             let profile = game.remote.as_ref().unwrap().profile;
             assert_eq!(VALUE.get(game, Holder::Player(profile)), Ok(41));
+            game.handle_packet(C::PlayerInfoUpdate(play::PlayerInfoUpdate {
+                actions: 1,
+                entries: vec![play::PlayerInfo {
+                    uuid: 22,
+                    name: Some("Remote".into()),
+                    ..Default::default()
+                }],
+            }))
+            .unwrap();
             let registry = game
                 .remote
                 .as_ref()
@@ -404,7 +413,7 @@ fn server_players_initialize_on_join_and_new_respawn_but_not_rebind() {
                 .hub
                 .guests
                 .update_all(|guest| guest.placed = false);
-            game.lan_guest_joined(12, &[], [0.5, 64.0, 0.5]);
+            game.lan_guest_joined(12, &[], [0.5, 64.0, 0.5], None);
             assert_eq!(VALUE.get(game, Holder::Player(12)), Ok(41));
             game.bind_player_attachments(12, false);
             game.initialize_server_player(12, 12);

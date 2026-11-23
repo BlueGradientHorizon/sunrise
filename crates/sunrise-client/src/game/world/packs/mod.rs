@@ -370,14 +370,10 @@ impl Game<'_> {
             if self.spawn_pack_reload(ReloadKind::Selection).is_ok() {
                 // addResourcePackLoadFailToast(null), SystemToast.addOrUpdate.
                 let title = sunrise_client::text::Text::translate("resourcePack.load_fail", &[]);
-                match &mut self.server_packs.load_fail {
-                    Some(toast) => toast.reset(title, None),
-                    None => {
-                        self.server_packs.load_fail = self.add_system_toast(
-                            sunrise_client::toasts::SystemToast::new(title, None),
-                        );
-                    }
-                }
+                self.add_or_update_system_toast(
+                    super::toast_manager::SystemToastId::PackLoadFailure,
+                    sunrise_client::toasts::SystemToast::new(title, None),
+                );
                 return;
             }
         }

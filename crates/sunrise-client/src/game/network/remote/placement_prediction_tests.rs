@@ -174,22 +174,22 @@ impl mod_api::ResourceHandler<mod_api::ItemResource> for StoragePort {
     fn insert_at(
         &self,
         _: &mut dyn mod_api::ServerHost,
-        _: &mod_api::Transaction,
+        _: &mod_api::TransactionContext,
         _: usize,
         _: &mod_api::ItemResource,
         _: u32,
-    ) -> u32 {
-        0
+    ) -> std::result::Result<u32, mod_api::TransactionError<mod_api::Overanswered>> {
+        Ok(0)
     }
     fn extract_at(
         &self,
         _: &mut dyn mod_api::ServerHost,
-        _: &mod_api::Transaction,
+        _: &mod_api::TransactionContext,
         _: usize,
         _: &mod_api::ItemResource,
         _: u32,
-    ) -> u32 {
-        0
+    ) -> std::result::Result<u32, mod_api::TransactionError<mod_api::Overanswered>> {
+        Ok(0)
     }
 }
 
@@ -217,7 +217,7 @@ fn placement_and_prediction_choose_from_their_local_item_providers() {
     };
     use mod_api::{Direction, LevelHost};
     use sunrise_core::position::BlockPos;
-    use sunrise_world::level::{PlaceContext, PlaceOutcome};
+    use sunrise_world::level::{PlaceContext, PlaceOutcome, PlacementSource};
 
     if run_fresh_cases(
         "game::remote::placement_prediction_tests::placement_and_prediction_choose_from_their_local_item_providers",
@@ -289,9 +289,11 @@ fn placement_and_prediction_choose_from_their_local_item_providers() {
                 face: Direction::Up,
                 hit: sunrise_core::geometry::Vec3::new(4.5, 65.0, 4.5),
                 inside: false,
-                yaw: 0.0,
-                pitch: 0.0,
-                sneaking: false,
+                source: PlacementSource::Player {
+                    yaw: 0.0,
+                    pitch: 0.0,
+                    sneaking: false,
+                },
                 item: "minecraft:oak_log".to_owned(),
                 can_use_game_master_blocks: false,
             };
