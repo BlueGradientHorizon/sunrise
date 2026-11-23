@@ -1,13 +1,11 @@
 use super::*;
 
-const WATCHED: &str = "\
-[[repository]]
-id = 101
+const REPOSITORY: &str = "\
 name = 'author/example'
-[[repository.package]]
+[[package]]
 path = '.'
 project = 'Ab3dE9xQ'
-[[repository.package]]
+[[package]]
 path = 'mods/example'
 project = 'Ab3dE9xY'
 ";
@@ -54,7 +52,9 @@ const METADATA: &str = "https://raw.githubusercontent.com/sunrise-org/sunrise-mo
 fn registry(url: &str) -> Result<Option<String>, String> {
     let file = url.strip_prefix(METADATA).and_then(|f| f.strip_prefix('/'));
     Ok(Some(match file {
-        Some("watched.toml") => WATCHED.into(),
+        Some("repositories/101.toml") => REPOSITORY.into(),
+        // Raw GitHub answers not found for a repository with no registration file.
+        Some(f) if f.starts_with("repositories/") => return Ok(None),
         Some("release-workflow.toml") => format!("uses = '{USES}'"),
         Some("projects/Ab3dE9xQ/project.toml") => "mod = 'example'\nkind = 'mod'\n".into(),
         Some("projects/Ab3dE9xY/project.toml") => "mod = 'example'\nkind = 'native-mod'\n".into(),
@@ -89,7 +89,7 @@ fn registration_is_the_repository_id_package_path_mod_id_and_kind() {
         )
         .is_err()
     );
-    // A repository listed under another name is found by its ID; a reused name is not trusted.
+    // A repository registered under another name is found by its ID; a reused name is not trusted.
     let fetch = |url: &str| match url {
         "https://api.github.com/repos/author/renamed" => Ok(Some(r#"{"id":101}"#.into())),
         "https://api.github.com/repos/author/example" => Ok(Some(r#"{"id":102}"#.into())),
@@ -103,18 +103,19 @@ fn registration_is_the_repository_id_package_path_mod_id_and_kind() {
         "mod",
     )
     .unwrap();
-    assert!(
+    // Repository 102 has no registration file.
+    assert_eq!(
         registered(
             &fetch,
             "git@github.com:author/example.git",
             ".",
             "example",
             "mod"
-        )
-        .is_err()
+        ),
+        Err(NOT_REGISTERED.into())
     );
-    let unknown = format!("unknown = true\n{WATCHED}");
-    let fetch = |url: &str| match url.ends_with("watched.toml") {
+    let unknown = format!("unknown = true\n{REPOSITORY}");
+    let fetch = |url: &str| match url.ends_with("repositories/101.toml") {
         true => Ok(Some(unknown.clone())),
         false => registry(url),
     };
