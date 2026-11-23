@@ -37,6 +37,9 @@ at the repository root or `<id>/v<version>` for a subfolder package. GitHub Acti
 4. The registry checks the release and opens a registry pull request, which a reviewer approves before the version
    is listed.
 
+To check a released package and its attestation yourself, use
+[`check <file.smod>`](../reference/sdk/05-commands.md#check-a-released-package).
+
 The earlier route (`publish`, `keygen`, `sign`, `release plan` and prebuilt binaries) has been removed.
 
 ## Your mod's page
