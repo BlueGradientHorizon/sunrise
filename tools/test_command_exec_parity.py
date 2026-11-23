@@ -198,7 +198,7 @@ def main():
                         help='leave out the sync_randoms steps: the control in which their fields differ run to run')
     parser.add_argument('--groups-file', type=Path,
                         help='run these generated [name, ops] groups after the common setup instead of the corpus')
-    parser.add_argument('--record-witness', type=Path,
+    parser.add_argument('--record-stand-living-witness', type=Path,
                         help='write a versioned JSON witness from the Java reference run (with --reference-only)')
     args = parser.parse_args()
     build = args.work_dir.resolve() if args.work_dir else lab.LOCAL / 'command-exec-parity'
@@ -609,14 +609,14 @@ def main():
                 sys.exit(f'Java callback guard failed: {op}: {row.get("results")}')
             if 'expect_map' in op and row.get('messages') != [[[op['expect_map'], [None, False, False, False, False, False]]]]:
                 sys.exit(f'Java map prerequisite failed: {op}: {row}')
-        if args.record_witness:
+        if args.record_stand_living_witness:
             names = [name for name, _ in groups if name != 'setup']
             if names != [corpus_module.STAND_LIVING_GROUP]:
                 sys.exit(f'--record-witness supports only {corpus_module.STAND_LIVING_GROUP!r}, got {names!r}')
             witness = corpus_module.extract_stand_living_witness(lock['minecraft']['version'], reference)
-            args.record_witness.parent.mkdir(parents=True, exist_ok=True)
-            args.record_witness.write_text(json.dumps(witness, indent=2) + '\n', encoding='utf-8')
-            print(f'Recorded witness: {args.record_witness}')
+            args.record_stand_living_witness.parent.mkdir(parents=True, exist_ok=True)
+            args.record_stand_living_witness.write_text(json.dumps(witness, indent=2) + '\n', encoding='utf-8')
+            print(f'Recorded witness: {args.record_stand_living_witness}')
         print(f'Java reference: {len(reference)} records, fixture guards passed')
         return
 
