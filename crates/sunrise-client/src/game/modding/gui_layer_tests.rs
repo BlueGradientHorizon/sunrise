@@ -958,11 +958,17 @@ fn hotbar_attack_indicator_progress_edits_only_stock_hotbar_paint() {
                     super::remote_camera::CameraPlayer::Absent
                 );
             }
-            game.set_mode_id(if frame.variant == Variant::Spectator {
-                3
+            let mode = if frame.variant == Variant::Spectator {
+                sunrise_client::command::args::GameMode::Spectator
             } else {
-                0
-            });
+                sunrise_client::command::args::GameMode::Survival
+            };
+            // A client of a server takes its mode from the server: only its local mode changes.
+            if game.remote.is_some() {
+                game.set_local_mode(mode);
+            } else {
+                game.set_mode(mode);
+            }
             game.ui.hide_gui = frame.variant == Variant::Hidden;
             game.settings.attack_indicator = match frame.variant {
                 Variant::Off => 0,
