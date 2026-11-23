@@ -54,10 +54,7 @@ impl Game<'_> {
             let block = sunrise_core::position::BlockPos::containing(Vec3::new(
                 origin[0], origin[1], origin[2],
             ));
-            if !self
-                .border
-                .is_within_bounds(f64::from(block.x), f64::from(block.z), 0.0)
-            {
+            if !self.border.contains(f64::from(block.x), f64::from(block.z)) {
                 return true;
             }
             let Some(eye) = self.eye_position() else {

@@ -463,7 +463,7 @@ mod tests {
                         );
                         let held = game.lan.as_ref().unwrap().hub.guests[gi].inventory[0]
                             .as_ref()
-                            .map(|s| s.item.as_str());
+                            .map(|s| &*s.item);
                         assert_eq!(held, expected, "PickItemFromEntity({id})");
                     }
                 });
