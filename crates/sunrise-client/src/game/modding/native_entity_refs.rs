@@ -2432,7 +2432,7 @@ pub(super) mod tests {
                 game.world.set(x, y, z, glass).unwrap();
             }
             let dimension = game.dim.id().to_owned();
-            let key = |state| {
+            let key = |state: sunrise_world::registry::BlockStateId| {
                 use crate::game::api_values::TryIntoApi;
                 let state: mod_api::BlockState = state.try_into_api().unwrap();
                 state.block()
