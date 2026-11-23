@@ -10180,13 +10180,11 @@ impl Game<'_> {
         }
         self.tracked_special_box(id as i32)
     }
-    /// `Player.giveExperiencePoints`: the signed grant changes the score before the XP bar.
+    /// `Player.giveExperiencePoints`: the signed grant, zero included (the `player_xp_change` listener
+    /// may rewrite it), changes the score before the XP bar.
     /// `add_experience_levels` runs once for each level gained or lost, and the mods hear
     /// of the level change once.
     pub(super) fn give_experience_points(&mut self, points: i32) {
-        if points == 0 {
-            return;
-        }
         let Some(points) = self.xp_change(points) else {
             return;
         };
