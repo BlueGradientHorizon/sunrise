@@ -785,6 +785,9 @@ impl Game<'_> {
                 let (seat, _) = super::remote_vehicles::generic_player_seat(at, at, scale);
                 p.position = seat;
                 self.previous_position = seat;
+                // The rider's section follows its seat before the snap returns.
+                let rider = p.entity_id as u32;
+                self.pick_section_move(rider, seat.components());
             }
         }
     }

@@ -168,16 +168,39 @@ impl PickFingerprint {
     }
 }
 
+/// Where a crossing falls in the client's tick: vanilla's `ClientLevel.tickEntities` moves each
+/// entity at its own turn, in the order the level admitted them, so two entities entering one
+/// section in the same tick arrive in that order whichever Sunrise loop moved them first.
+/// Outside the entity ticks (packets, spawns) arrivals keep the order they happen in.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
+struct Arrival {
+    tick: u64,
+    /// 1 inside the entity ticks, 2 after them (packets and spawns until the next tick).
+    phase: u8,
+    /// The admission order inside the entity ticks, otherwise the running count.
+    order: u64,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct Slot {
+    member: PickMember,
+    arrival: Arrival,
+}
+
 /// Sparse section map matching `EntitySectionStorage`: keys are packed `SectionPos` values and
-/// each section preserves entity entry order across spawns and section crossings.
+/// each section keeps its entities in the order they arrived, across spawns and crossings.
 #[derive(Default)]
 pub(in crate::game) struct PickSectionStorage {
-    sections: BTreeMap<SectionKey, Vec<PickMember>>,
-    by_id: FxHashMap<u32, (PickKind, SectionKey)>,
+    sections: BTreeMap<SectionKey, Vec<Slot>>,
+    /// Each member's kind, section and admission order.
+    by_id: FxHashMap<u32, (PickKind, SectionKey, u64)>,
     initialized: bool,
     fingerprint: PickFingerprint,
     scratch_removed: Vec<u32>,
     scratch_added: Vec<((u64, u32), PickMember, [f64; 3])>,
+    tick: u64,
+    in_entity_ticks: bool,
+    arrivals: u64,
 }
 
 impl PickSectionStorage {
@@ -187,15 +210,65 @@ impl PickSectionStorage {
         self.initialized = false;
     }
 
-    pub(super) fn place(&mut self, member: PickMember, at: [f64; 3]) {
+    /// `ClientLevel.tickEntities` starts: crossings from here take the movers' admission order.
+    pub(in crate::game) fn begin_entity_ticks(&mut self) {
+        self.tick += 1;
+        self.in_entity_ticks = true;
+    }
+
+    /// The entity ticks are over: later arrivals follow every crossing of this tick.
+    pub(in crate::game) fn end_entity_ticks(&mut self) {
+        self.in_entity_ticks = false;
+    }
+
+    fn arrival(&mut self, seq: u64) -> Arrival {
+        if self.in_entity_ticks {
+            Arrival {
+                tick: self.tick,
+                phase: 1,
+                order: seq,
+            }
+        } else {
+            self.arrivals += 1;
+            Arrival {
+                tick: self.tick,
+                phase: 2,
+                order: self.arrivals,
+            }
+        }
+    }
+
+    fn insert(&mut self, key: SectionKey, member: PickMember, seq: u64) {
+        let arrival = self.arrival(seq);
+        let bucket = self.sections.entry(key).or_default();
+        // Almost always the end: only a same-tick crossing of an earlier-admitted entity
+        // steps back over the later-admitted ones that crossed before it here.
+        let at = bucket
+            .iter()
+            .rposition(|slot| slot.arrival <= arrival)
+            .map_or(0, |i| i + 1);
+        bucket.insert(at, Slot { member, arrival });
+        self.by_id.insert(member.id, (member.kind, key, seq));
+    }
+
+    fn take_out(&mut self, member: PickMember, key: SectionKey) {
+        if let Some(bucket) = self.sections.get_mut(&key) {
+            if let Some(pos) = bucket.iter().position(|slot| slot.member == member) {
+                bucket.remove(pos);
+            }
+            if bucket.is_empty() {
+                self.sections.remove(&key);
+            }
+        }
+    }
+
+    pub(super) fn place(&mut self, member: PickMember, at: [f64; 3], seq: u64) {
         self.remove(member.id);
-        let key = SectionKey::at(at);
-        self.sections.entry(key).or_default().push(member);
-        self.by_id.insert(member.id, (member.kind, key));
+        self.insert(SectionKey::at(at), member, seq);
     }
 
     pub(in crate::game) fn move_id(&mut self, id: u32, to: [f64; 3]) {
-        let Some(&(kind, old_key)) = self.by_id.get(&id) else {
+        let Some(&(kind, old_key, seq)) = self.by_id.get(&id) else {
             return;
         };
         let new_key = SectionKey::at(to);
@@ -203,35 +276,19 @@ impl PickSectionStorage {
             return;
         }
         let member = PickMember { kind, id };
-        if let Some(bucket) = self.sections.get_mut(&old_key) {
-            if let Some(pos) = bucket.iter().position(|&m| m == member) {
-                bucket.remove(pos);
-            }
-            if bucket.is_empty() {
-                self.sections.remove(&old_key);
-            }
-        }
-        self.sections.entry(new_key).or_default().push(member);
-        self.by_id.insert(id, (kind, new_key));
+        self.take_out(member, old_key);
+        self.insert(new_key, member, seq);
     }
 
     pub(in crate::game) fn remove(&mut self, id: u32) {
-        let Some((kind, old_key)) = self.by_id.remove(&id) else {
+        let Some((kind, old_key, _)) = self.by_id.remove(&id) else {
             return;
         };
-        let member = PickMember { kind, id };
-        if let Some(bucket) = self.sections.get_mut(&old_key) {
-            if let Some(pos) = bucket.iter().position(|&m| m == member) {
-                bucket.remove(pos);
-            }
-            if bucket.is_empty() {
-                self.sections.remove(&old_key);
-            }
-        }
+        self.take_out(PickMember { kind, id }, old_key);
     }
 
     pub(super) fn kind_of(&self, id: u32) -> Option<PickKind> {
-        self.by_id.get(&id).map(|&(kind, _)| kind)
+        self.by_id.get(&id).map(|&(kind, _, _)| kind)
     }
 
     fn note_fingerprint(&mut self, game: &Game<'_>) {
@@ -254,7 +311,7 @@ impl PickSectionStorage {
             self.clear();
         } else {
             self.scratch_removed.clear();
-            for (&id, &(kind, _)) in &self.by_id {
+            for (&id, &(kind, _, _)) in &self.by_id {
                 if game.pick_member_position_of_kind(kind, id).is_none()
                     && !matches!(game.server_resident_entity(id), EntityLookup::Taken)
                 {
@@ -275,200 +332,14 @@ impl PickSectionStorage {
                 added.push(((seq, id), PickMember { kind, id }, pos));
             }
         };
-
-        for e in game
-            .mobs
-            .iter()
-            .filter(|e| game.remote.is_none() || game.dragon.as_ref().is_none_or(|d| d.id != e.id))
-        {
-            let p = e.position();
-            consider(e.join_seq().get(), PickKind::Mob, e.id(), [p.x, p.y, p.z]);
-        }
-        for e in game.boats.iter() {
-            let p = e.position();
-            consider(e.join_seq().get(), PickKind::Boat, e.id(), [p.x, p.y, p.z]);
-        }
-        for e in game.carts.iter() {
-            let p = e.position();
-            consider(e.join_seq().get(), PickKind::Cart, e.id(), [p.x, p.y, p.z]);
-        }
-        for e in game.armor_stands.iter() {
-            let p = e.position();
-            consider(
-                e.join_seq().get(),
-                PickKind::ArmorStand,
-                e.id(),
-                [p.x, p.y, p.z],
-            );
-        }
-        for e in game.tnts.iter() {
-            let p = e.position();
-            consider(e.join_seq().get(), PickKind::Tnt, e.id(), [p.x, p.y, p.z]);
-        }
-        for e in game.falling.iter() {
-            let p = e.position();
-            consider(
-                e.join_seq().get(),
-                PickKind::Falling,
-                e.id(),
-                [p.x, p.y, p.z],
-            );
-        }
-        for e in game.creatures.projectiles.iter() {
-            let p = e.position();
-            consider(
-                e.join_seq().get(),
-                PickKind::Projectile,
-                e.id(),
-                [p.x, p.y, p.z],
-            );
-        }
-        for e in game.tridents.iter() {
-            let p = e.position();
-            consider(
-                e.join_seq().get(),
-                PickKind::Trident,
-                e.id(),
-                [p.x, p.y, p.z],
-            );
-        }
-        for e in game.rockets.iter() {
-            let p = e.position();
-            consider(
-                e.join_seq().get(),
-                PickKind::Rocket,
-                e.id(),
-                [p.x, p.y, p.z],
-            );
-        }
-        for e in game.resident_entities.general.rows.iter() {
-            let p = e.position();
-            consider(
-                e.join_seq().get(),
-                PickKind::General,
-                e.id(),
-                [p.x, p.y, p.z],
-            );
-        }
-        for p in game.paintings.iter() {
-            consider(
-                p.join.get(),
-                PickKind::Painting,
-                p.id,
-                hanging_center(p.bounds()),
-            );
-        }
-        for f in game.item_frames.iter() {
-            consider(
-                f.join.get(),
-                PickKind::ItemFrame,
-                f.id,
-                hanging_center(f.bounds()),
-            );
-        }
-        for c in game.cushions.iter() {
-            consider(
-                c.join.get(),
-                PickKind::Cushion,
-                c.id,
-                [c.position.x, c.position.y, c.position.z],
-            );
-        }
-        for (&id, i) in &game.interactions {
-            consider(
-                i.join.get(),
-                PickKind::Interaction,
-                id as u32,
-                [i.position.x, i.position.y, i.position.z],
-            );
-        }
-        if let Some(remote) = &game.remote {
-            for (&id, row) in &remote.general.rows {
-                consider(
-                    row.join.get(),
-                    PickKind::RemoteGeneral,
-                    id as u32,
-                    row.position,
-                );
-            }
-        }
-        for (&id, &block) in &game.remote_knots {
-            consider(u64::MAX, PickKind::RemoteKnot, id, knot_position(block));
-        }
-        for k in game.resident_entities.knots.iter() {
-            consider(
-                k.join.get(),
-                PickKind::LocalKnot,
-                k.id,
-                knot_position(k.fence),
-            );
-        }
-        for c in game.crystals.iter().filter(|c| c.id != 0) {
-            consider(
-                c.join.get(),
-                PickKind::Crystal,
-                c.id,
-                [c.position.x, c.position.y, c.position.z],
-            );
-        }
-
-        if let Some(remote) = &game.remote {
-            for (&id, d) in &game.text_displays {
-                consider(
-                    d.join.get(),
-                    PickKind::RemoteDisplay,
-                    id as u32,
-                    d.position().to_array(),
-                );
-            }
-            for e in game.dropped.iter() {
-                consider(
-                    e.join_seq().get(),
-                    PickKind::Item,
-                    e.id(),
-                    e.position().components(),
-                );
-            }
-            for (&id, pending) in &remote.pending_items {
-                consider(
-                    pending.join.get(),
-                    PickKind::Item,
-                    id as u32,
-                    pending.position,
-                );
-            }
-            for e in game.orbs.iter() {
-                consider(
-                    e.join_seq().get(),
-                    PickKind::Orb,
-                    e.id(),
-                    e.position().components(),
-                );
-            }
-            if let Some(p) = game.client_section_player() {
-                consider(
-                    game.resident_entities.local_player.join().get(),
-                    PickKind::LocalPlayer,
-                    p.entity_id as u32,
-                    p.position.components(),
-                );
-            }
-            if let Some(d) = game.dragon.as_ref().filter(|d| d.id != 0) {
-                consider(
-                    d.join.get(),
-                    PickKind::Dragon,
-                    d.id,
-                    d.position.components(),
-                );
-            }
-        }
+        visit_section_members(game, &mut consider);
 
         if self.scratch_added.len() > 1 {
             self.scratch_added.sort_by_key(|(key, _, _)| *key);
         }
         for i in 0..self.scratch_added.len() {
-            let (_, member, pos) = self.scratch_added[i];
-            self.place(member, pos);
+            let ((seq, _), member, pos) = self.scratch_added[i];
+            self.place(member, pos, seq);
         }
         self.scratch_added.clear();
         self.fingerprint = fp;
@@ -487,9 +358,9 @@ impl PickSectionStorage {
             return;
         }
         let search = SectionSearch::new(search);
-        for (_, members) in search.sections(&self.sections, None) {
-            for &member in members {
-                visit(member);
+        for (_, slots) in search.sections(&self.sections, None) {
+            for slot in slots {
+                visit(slot.member);
             }
         }
     }
@@ -500,19 +371,213 @@ impl PickSectionStorage {
         after: &mut Option<(SectionKey, usize)>,
     ) -> Option<PickMember> {
         if let Some((key, offset)) = *after
-            && let Some(&member) = self
+            && let Some(slot) = self
                 .sections
                 .get(&key)
-                .and_then(|members| members.get(offset + 1))
+                .and_then(|slots| slots.get(offset + 1))
         {
             *after = Some((key, offset + 1));
-            return Some(member);
+            return Some(slot.member);
         }
-        let (&key, members) = search
+        let (&key, slots) = search
             .sections(&self.sections, after.map(|(key, _)| key))
             .next()?;
         *after = Some((key, 0));
-        members.first().copied()
+        slots.first().map(|slot| slot.member)
+    }
+}
+
+/// Every entity the section index files, with its admission order, kind, id and position, family
+/// by family.
+pub(in crate::game) fn visit_section_members(
+    game: &Game<'_>,
+    consider: &mut impl FnMut(u64, PickKind, u32, [f64; 3]),
+) {
+    for e in game
+        .mobs
+        .iter()
+        .filter(|e| game.remote.is_none() || game.dragon.as_ref().is_none_or(|d| d.id != e.id))
+    {
+        let p = e.position();
+        consider(e.join_seq().get(), PickKind::Mob, e.id(), [p.x, p.y, p.z]);
+    }
+    for e in game.boats.iter() {
+        let p = e.position();
+        consider(e.join_seq().get(), PickKind::Boat, e.id(), [p.x, p.y, p.z]);
+    }
+    for e in game.carts.iter() {
+        let p = e.position();
+        consider(e.join_seq().get(), PickKind::Cart, e.id(), [p.x, p.y, p.z]);
+    }
+    for e in game.armor_stands.iter() {
+        let p = e.position();
+        consider(
+            e.join_seq().get(),
+            PickKind::ArmorStand,
+            e.id(),
+            [p.x, p.y, p.z],
+        );
+    }
+    for e in game.tnts.iter() {
+        let p = e.position();
+        consider(e.join_seq().get(), PickKind::Tnt, e.id(), [p.x, p.y, p.z]);
+    }
+    for e in game.falling.iter() {
+        let p = e.position();
+        consider(
+            e.join_seq().get(),
+            PickKind::Falling,
+            e.id(),
+            [p.x, p.y, p.z],
+        );
+    }
+    for e in game.creatures.projectiles.iter() {
+        let p = e.position();
+        consider(
+            e.join_seq().get(),
+            PickKind::Projectile,
+            e.id(),
+            [p.x, p.y, p.z],
+        );
+    }
+    for e in game.tridents.iter() {
+        let p = e.position();
+        consider(
+            e.join_seq().get(),
+            PickKind::Trident,
+            e.id(),
+            [p.x, p.y, p.z],
+        );
+    }
+    for e in game.rockets.iter() {
+        let p = e.position();
+        consider(
+            e.join_seq().get(),
+            PickKind::Rocket,
+            e.id(),
+            [p.x, p.y, p.z],
+        );
+    }
+    for e in game.resident_entities.general.rows.iter() {
+        let p = e.position();
+        consider(
+            e.join_seq().get(),
+            PickKind::General,
+            e.id(),
+            [p.x, p.y, p.z],
+        );
+    }
+    for p in game.paintings.iter() {
+        consider(
+            p.join.get(),
+            PickKind::Painting,
+            p.id,
+            hanging_center(p.bounds()),
+        );
+    }
+    for f in game.item_frames.iter() {
+        consider(
+            f.join.get(),
+            PickKind::ItemFrame,
+            f.id,
+            hanging_center(f.bounds()),
+        );
+    }
+    for c in game.cushions.iter() {
+        consider(
+            c.join.get(),
+            PickKind::Cushion,
+            c.id,
+            [c.position.x, c.position.y, c.position.z],
+        );
+    }
+    for (&id, i) in &game.interactions {
+        consider(
+            i.join.get(),
+            PickKind::Interaction,
+            id as u32,
+            [i.position.x, i.position.y, i.position.z],
+        );
+    }
+    if let Some(remote) = &game.remote {
+        for (&id, row) in &remote.general.rows {
+            consider(
+                row.join.get(),
+                PickKind::RemoteGeneral,
+                id as u32,
+                row.position,
+            );
+        }
+    }
+    for (&id, &block) in &game.remote_knots {
+        consider(u64::MAX, PickKind::RemoteKnot, id, knot_position(block));
+    }
+    for k in game.resident_entities.knots.iter() {
+        consider(
+            k.join.get(),
+            PickKind::LocalKnot,
+            k.id,
+            knot_position(k.fence),
+        );
+    }
+    for c in game.crystals.iter().filter(|c| c.id != 0) {
+        consider(
+            c.join.get(),
+            PickKind::Crystal,
+            c.id,
+            [c.position.x, c.position.y, c.position.z],
+        );
+    }
+
+    if let Some(remote) = &game.remote {
+        for (&id, d) in &game.text_displays {
+            consider(
+                d.join.get(),
+                PickKind::RemoteDisplay,
+                id as u32,
+                d.position().to_array(),
+            );
+        }
+        for e in game.dropped.iter() {
+            consider(
+                e.join_seq().get(),
+                PickKind::Item,
+                e.id(),
+                e.position().components(),
+            );
+        }
+        for (&id, pending) in &remote.pending_items {
+            consider(
+                pending.join.get(),
+                PickKind::Item,
+                id as u32,
+                pending.position,
+            );
+        }
+        for e in game.orbs.iter() {
+            consider(
+                e.join_seq().get(),
+                PickKind::Orb,
+                e.id(),
+                e.position().components(),
+            );
+        }
+        if let Some(p) = game.client_section_player() {
+            consider(
+                game.resident_entities.local_player.join().get(),
+                PickKind::LocalPlayer,
+                p.entity_id as u32,
+                p.position.components(),
+            );
+        }
+        if let Some(d) = game.dragon.as_ref().filter(|d| d.id != 0) {
+            consider(
+                d.join.get(),
+                PickKind::Dragon,
+                d.id,
+                d.position.components(),
+            );
+        }
     }
 }
 
@@ -542,9 +607,10 @@ impl Game<'_> {
     /// Files or replaces entity `id` at its current section in entry order.
     pub(in crate::game) fn pick_section_sync_id(&mut self, id: u32) {
         if let Some((kind, pos)) = self.locate_pick_member(id) {
+            let seq = self.pick_member_seq(kind, id);
             let mut storage = self.client_pick.sections.borrow_mut();
             storage.note_fingerprint(self);
-            storage.place(PickMember { kind, id }, pos);
+            storage.place(PickMember { kind, id }, pos, seq);
         }
     }
 
@@ -703,6 +769,93 @@ impl Game<'_> {
             ));
         }
         None
+    }
+
+    /// The member's admission order, its turn in `ClientLevel.tickEntities` (as `sync_with`
+    /// reads it); members without one come last.
+    fn pick_member_seq(&self, kind: PickKind, id: u32) -> u64 {
+        let id32 = id as i32;
+        match kind {
+            PickKind::RemoteDisplay => self.text_displays.get(&id32).map(|d| d.join),
+            PickKind::Item => self
+                .dropped
+                .iter()
+                .find(|e| e.id == id)
+                .map(|e| e.join_seq())
+                .or_else(|| {
+                    self.remote
+                        .as_ref()?
+                        .pending_items
+                        .get(&id32)
+                        .map(|p| p.join)
+                }),
+            PickKind::Orb => self.orbs.iter().find(|e| e.id == id).map(|e| e.join_seq()),
+            PickKind::LocalPlayer => Some(self.resident_entities.local_player.join()),
+            PickKind::Dragon => self.dragon.as_ref().map(|d| d.join),
+            PickKind::Mob => self
+                .mob_index
+                .find_ref(&self.mobs, id)
+                .map(|i| self.mobs[i].join_seq()),
+            PickKind::Boat => self
+                .boats
+                .iter()
+                .find(|e| e.id() == id)
+                .map(|e| e.join_seq()),
+            PickKind::Cart => self
+                .carts
+                .iter()
+                .find(|e| e.id() == id)
+                .map(|e| e.join_seq()),
+            PickKind::ArmorStand => self
+                .armor_stands
+                .iter()
+                .find(|e| e.id() == id)
+                .map(|e| e.join_seq()),
+            PickKind::Tnt => self
+                .tnts
+                .iter()
+                .find(|e| e.id() == id)
+                .map(|e| e.join_seq()),
+            PickKind::Falling => self
+                .falling
+                .iter()
+                .find(|e| e.id() == id)
+                .map(|e| e.join_seq()),
+            PickKind::Projectile => self
+                .creatures
+                .projectiles
+                .iter()
+                .find(|e| e.id() == id)
+                .map(|e| e.join_seq()),
+            PickKind::Trident => self
+                .tridents
+                .iter()
+                .find(|e| e.id() == id)
+                .map(|e| e.join_seq()),
+            PickKind::Rocket => self
+                .rockets
+                .iter()
+                .find(|e| e.id() == id)
+                .map(|e| e.join_seq()),
+            PickKind::General => self.resident_entities.general.row(id).map(|e| e.join_seq()),
+            PickKind::Painting => self.paintings.iter().find(|e| e.id == id).map(|e| e.join),
+            PickKind::ItemFrame => self.item_frames.iter().find(|e| e.id == id).map(|e| e.join),
+            PickKind::Cushion => self.cushions.iter().find(|e| e.id == id).map(|e| e.join),
+            PickKind::Interaction => self.interactions.get(&id32).map(|e| e.join),
+            PickKind::RemoteGeneral => self
+                .remote
+                .as_ref()
+                .and_then(|r| r.general.rows.get(&id32).map(|e| e.join)),
+            PickKind::RemoteKnot => None,
+            PickKind::LocalKnot => self
+                .resident_entities
+                .knots
+                .iter()
+                .find(|k| k.id == id)
+                .map(|k| k.join),
+            PickKind::Crystal => self.crystals.iter().find(|c| c.id == id).map(|c| c.join),
+        }
+        .map_or(u64::MAX, |seq| seq.get())
     }
 
     fn pick_member_position_of_kind(&self, kind: PickKind, id: u32) -> Option<[f64; 3]> {
@@ -1109,7 +1262,7 @@ mod tests {
             (92, PickKind::RemoteDisplay, 15.5),
             (55, PickKind::Mob, 14.5),
         ] {
-            storage.place(PickMember { kind, id }, [x, 65.5, 3.0]);
+            storage.place(PickMember { kind, id }, [x, 65.5, 3.0], u64::from(id));
         }
         let bounds = Aabb::new(
             Vec3::new(-f64::MAX, 64.0, 0.0),

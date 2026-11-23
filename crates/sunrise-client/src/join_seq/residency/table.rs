@@ -339,17 +339,23 @@ impl EntityTable {
     /// happens, so the order of the calls is the order of the moves: a move out
     /// and back is two entries, and a passenger moved after its vehicle enters
     /// after it.
-    pub fn entered_section(&mut self, id: u32) {
+    pub fn entered_section(&mut self, id: u32, at: [f64; 3]) {
         self.drain();
         if let Some(id) = NonZeroU32::new(id)
             && let Some(row) = self.rows.get_mut(&id)
         {
-            if row.location.owner.kind != Kind::DragonPart {
-                self.spatial.unfile(id, *row);
-                row.section = None;
-            }
+            let old = (row.entry, id);
             row.entry = JoinSeq::next();
+            if row.location.owner.kind != Kind::DragonPart {
+                self.spatial.cross(id, row, old, at);
+            }
         }
+    }
+
+    /// Whether some row of `dimension` waits for a query to resolve its position.
+    pub fn has_unfiled_section_members(&mut self, dimension: DimensionKey) -> bool {
+        self.drain();
+        self.spatial.has_unfiled(dimension)
     }
 
     /// Copy an unfiled ID; source position resolution must happen outside the table borrow.

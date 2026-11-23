@@ -127,7 +127,14 @@ impl Game<'_> {
         self.guardian_look_scratch = looks;
     }
 
+    /// `ClientLevel.tickEntities`: the section index takes each crossing at its entity's turn.
     pub(in crate::game) fn tick_remote_entities(&mut self, running: bool) {
+        self.client_pick.sections.get_mut().begin_entity_ticks();
+        self.tick_remote_entity_turns(running);
+        self.client_pick.sections.get_mut().end_entity_ticks();
+    }
+
+    fn tick_remote_entity_turns(&mut self, running: bool) {
         use crate::game::native_ticks::{PLAYER, TickKind};
 
         let frozen_ticking: Vec<i32> = if running {
@@ -700,6 +707,9 @@ impl Game<'_> {
             }
             let section_id = m.id;
             let section_to = m.position;
+            // The committed body is where the index finds it before any hook reads it; the
+            // section events stay at their own turn below.
+            self.pick_section_move(section_id, section_to.components());
             // `refreshDimensions` from its tick: a `minecraft:scale` the server sent since
             // (`LivingEntity.refreshDirtyAttributes`), a shulker's lid (`onPeekAmountChange`).
             self.native_client_copy_size(section_id, None);
