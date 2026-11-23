@@ -193,7 +193,7 @@ fn biome_source_admission_errors_separate_invalid_from_unknown() {
         fn possible_biomes(&self) -> &[String] {
             &self.0
         }
-        fn noise_biome(&self, _: [i32; 3], _: i64) -> u16 {
+        fn noise_biome(&self, _: [i32; 3], _: i64) -> Result<u16, String> {
             unreachable!("a refused source is not sampled")
         }
     }

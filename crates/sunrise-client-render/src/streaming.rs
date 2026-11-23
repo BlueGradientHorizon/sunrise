@@ -91,7 +91,10 @@ pub trait ChunkGenerator: Send + Sync + 'static {
     /// caches the workers share, which only spare work for chunks generated
     /// next to each other in a run. Results do not change.
     fn all_idle(&self) {}
-    fn proto(&self, worker: &mut Self::Worker, x: i32, z: i32) -> Proto;
+    /// The neighbour-independent proto chunk of column `(x, z)`. An `Err` is a generation that
+    /// cannot finish (a mod's code failed): the column is not published and is not asked for
+    /// again.
+    fn proto(&self, worker: &mut Self::Worker, x: i32, z: i32) -> Result<Proto, String>;
     fn decorates(&self) -> bool {
         false
     }
@@ -317,6 +320,8 @@ pub enum Done {
     Generated(Chunk),
     /// A proto chunk, and whether it was decorated (loaded so from the save).
     Proto(i32, i32, Proto, bool),
+    /// A column whose generation failed, and why.
+    Failed(i32, i32, String),
     /// A decorated region, the region indices of its final chunks and what
     /// decoration wrote into them.
     Decorated(i32, i32, Box<[Proto; 9]>, Vec<usize>, FinalWrites),
@@ -567,6 +572,8 @@ pub struct Streaming {
     /// The centre and radius the sweep was last reset for.
     scan_area: ((i32, i32), i32),
     generating: FxHashSet<(i32, i32)>,
+    /// Columns whose generation failed: never published, never asked for again.
+    failed: FxHashSet<(i32, i32)>,
     generation_scan: GenerationScan,
     /// Proto chunks: `None` while checked out to a decoration or save job.
     protos: FxHashMap<(i32, i32), Option<Proto>>,
@@ -822,6 +829,7 @@ struct GenerationInputs<'a> {
     ranges: Ranges<'a>,
     world: &'a World,
     generating: &'a FxHashSet<(i32, i32)>,
+    failed: &'a FxHashSet<(i32, i32)>,
     protos: &'a FxHashMap<(i32, i32), Option<Proto>>,
     finishing: &'a FxHashSet<(i32, i32)>,
     decorates: bool,
@@ -846,6 +854,7 @@ impl GenerationScan {
         let missing = |&(_, x, z): &(i64, i32, i32)| {
             !input.world.chunks.contains_key(&(x, z))
                 && !input.generating.contains(&(x, z))
+                && !input.failed.contains(&(x, z))
                 && !input.protos.contains_key(&(x, z))
                 && !input.finishing.contains(&(x, z))
         };
@@ -895,6 +904,7 @@ impl GenerationScan {
                     if !input.ranges.requested(x, z, input.decorates)
                         || input.world.chunks.contains_key(&(x, z))
                         || input.generating.contains(&(x, z))
+                        || input.failed.contains(&(x, z))
                         || input.protos.contains_key(&(x, z))
                         || input.finishing.contains(&(x, z))
                     {
@@ -917,6 +927,7 @@ impl GenerationScan {
                         let (x, z) = (fx + dx, fz + dz);
                         if input.world.chunks.contains_key(&(x, z))
                             || input.generating.contains(&(x, z))
+                            || input.failed.contains(&(x, z))
                             || input.protos.contains_key(&(x, z))
                             || input.finishing.contains(&(x, z))
                         {
@@ -1098,11 +1109,13 @@ impl<G: ChunkGenerator> Jobs<G> {
                     generator.prepare_loaded(&mut *worker, &chunk);
                     Done::Generated(chunk)
                 }
-                None => {
-                    let proto = generator.proto(&mut *worker, x, z);
-                    let decorated = generator.is_decorated(&proto);
-                    Done::Proto(x, z, proto, decorated)
-                }
+                None => match generator.proto(&mut *worker, x, z) {
+                    Ok(proto) => {
+                        let decorated = generator.is_decorated(&proto);
+                        Done::Proto(x, z, proto, decorated)
+                    }
+                    Err(reason) => Done::Failed(x, z, reason),
+                },
             },
             Job::Decorate(x, z, mut region, finals, outer) => {
                 // The final chunks' proto chunks, made here: a
@@ -1269,6 +1282,7 @@ impl Streaming {
             scan_age: 0,
             scan_area: ((i32::MIN, i32::MIN), i32::MIN),
             generating: Default::default(),
+            failed: Default::default(),
             generation_scan: GenerationScan::default(),
             protos: Default::default(),
             light_views: Default::default(),
@@ -2098,6 +2112,12 @@ impl Streaming {
                         }
                     }
                 }
+                Done::Failed(x, z, reason) => {
+                    // Nothing of the column is published, and it is not asked for again.
+                    log::error!("Sunrise: generating chunk {x} {z} failed: {reason}");
+                    self.generating.remove(&(x, z));
+                    self.failed.insert((x, z));
+                }
                 Done::Decorated(x, z, region, finals, writes) => {
                     self.receive_decorated(x, z, *region, finals, writes, world)
                 }
@@ -2882,6 +2902,7 @@ impl Streaming {
             },
             world,
             generating: &self.generating,
+            failed: &self.failed,
             protos: &self.protos,
             finishing: &self.finishing,
             decorates: self.decorates,
@@ -3059,6 +3080,7 @@ impl Streaming {
             *queue = std::collections::BinaryHeap::from(saves);
         }
         self.generating.clear();
+        self.failed.clear();
         self.decorating = 0;
         self.decorating_finals.clear();
         self.finishing.clear();
@@ -4693,8 +4715,8 @@ mod tests {
         impl ChunkGenerator for Generator {
             type Worker = ();
             fn worker(&self) {}
-            fn proto(&self, _: &mut (), _: i32, _: i32) -> Proto {
-                Box::new(())
+            fn proto(&self, _: &mut (), _: i32, _: i32) -> Result<Proto, String> {
+                Ok(Box::new(()))
             }
             fn finish(&self, _: Proto) -> Chunk {
                 Chunk::empty(0, 0)
@@ -5384,6 +5406,7 @@ mod tests {
         extra: Vec<((i32, i32), i32)>,
         forced: HashSet<(i32, i32)>,
         generating: FxHashSet<(i32, i32)>,
+        failed: FxHashSet<(i32, i32)>,
         protos: FxHashMap<(i32, i32), Option<Proto>>,
         finishing: FxHashSet<(i32, i32)>,
         decorates: bool,
@@ -5398,6 +5421,7 @@ mod tests {
                 extra: Vec::new(),
                 forced: HashSet::new(),
                 generating: Default::default(),
+                failed: Default::default(),
                 protos: Default::default(),
                 finishing: Default::default(),
                 decorates,
@@ -5417,6 +5441,7 @@ mod tests {
                 },
                 world: &self.world,
                 generating: &self.generating,
+                failed: &self.failed,
                 protos: &self.protos,
                 finishing: &self.finishing,
                 decorates: self.decorates,

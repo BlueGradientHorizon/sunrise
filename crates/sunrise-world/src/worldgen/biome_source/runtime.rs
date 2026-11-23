@@ -25,6 +25,8 @@ pub enum BiomeSourceError {
     Sample(SampleError),
     Regions(RegionError),
     MissingPreset,
+    /// A registered source failed at a cell.
+    Registered(String),
 }
 impl std::fmt::Display for BiomeSourceError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -189,7 +191,10 @@ impl<'a> BiomeSourceResolver<'a> {
             Self::End(source, erosion) => source.noise_biome(quart, *erosion, context)?.as_str(),
             Self::MultiNoise(source) => source.sample(context, quart)?,
             Self::Regions(source) => source.sample(context, quart)?,
-            Self::Registered(source) => source.noise_biome(quart).as_str(),
+            Self::Registered(source) => source
+                .noise_biome(quart)
+                .map_err(BiomeSourceError::Registered)?
+                .as_str(),
         })
     }
     /// Native fixed/checkerboard/End and registered sources do not pre-sample a climate volume.

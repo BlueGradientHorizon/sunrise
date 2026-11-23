@@ -1126,12 +1126,17 @@ impl ChunkGenerator for VanillaTerrain {
             worker.structure_starts(ChunkPos::new(x, z));
         }
     }
-    fn proto(&self, worker: &mut GeneratorWorker, x: i32, z: i32) -> Proto {
+    fn proto(
+        &self,
+        worker: &mut GeneratorWorker,
+        x: i32,
+        z: i32,
+    ) -> std::result::Result<Proto, String> {
         self.last_proto.store(
             self.elapsed_ms().max(1),
             std::sync::atomic::Ordering::Relaxed,
         );
-        match worker.generate_proto(ChunkPos::new(x, z)) {
+        Ok(match worker.generate_proto(ChunkPos::new(x, z)) {
             Ok(chunk) => Box::new(VanillaProto::Ready(Box::new(ResidentProto {
                 terrain_chunk: chunk,
                 saved_biomes: None,
@@ -1140,7 +1145,7 @@ impl ChunkGenerator for VanillaTerrain {
                 log::warn!("Sunrise: generating chunk {x} {z} failed: {e}");
                 Box::new(VanillaProto::Failed(x, z))
             }
-        }
+        })
     }
     fn decorates(&self) -> bool {
         true
@@ -1152,7 +1157,7 @@ impl ChunkGenerator for VanillaTerrain {
     /// chunk's blocks over it, so that features read and write it as they do
     /// the chunks around it (`ChunkAccess` of a full chunk in the region).
     fn proto_beside_final(&self, worker: &mut GeneratorWorker, snapshot: &Chunk) -> Option<Proto> {
-        let mut proto = self.proto(worker, snapshot.x, snapshot.z);
+        let mut proto = self.proto(worker, snapshot.x, snapshot.z).ok()?;
         self.restore_proto(
             &mut proto,
             SavedProto {

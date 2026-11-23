@@ -13,7 +13,10 @@ pub trait ModBiomeSource: Send + Sync {
     fn possible_biomes(&self) -> &[String];
     /// `BiomeResolver.getNoiseBiome` at quart cell `quart` (block >> 2) of a
     /// world with `seed`: an index into [`possible_biomes`](Self::possible_biomes).
-    fn noise_biome(&self, quart: [i32; 3], seed: i64) -> u16;
+    ///
+    /// An `Err` is the source failing (its code panicked or its mod is disabled): the
+    /// column being generated is not published.
+    fn noise_biome(&self, quart: [i32; 3], seed: i64) -> Result<u16, String>;
 }
 
 /// The installed biome sources, `modid:chaos` → source. Set once, before any
@@ -78,10 +81,11 @@ impl<T> LevelBiomeSource<T> {
             seed,
         })
     }
-    /// The biome at quart cell `quart`. An index past the list wraps around it.
-    pub fn noise_biome(&self, quart: [i32; 3]) -> &T {
-        let index = usize::from(self.source.noise_biome(quart, self.seed));
-        &self.biomes[index % self.biomes.len()]
+    /// The biome at quart cell `quart`. An index past the list wraps around it. The source's
+    /// failure is the answer, never a biome in its place.
+    pub fn noise_biome(&self, quart: [i32; 3]) -> Result<&T, String> {
+        let index = usize::from(self.source.noise_biome(quart, self.seed)?);
+        Ok(&self.biomes[index % self.biomes.len()])
     }
     /// The possible biomes, in the order the mod listed them.
     pub fn biomes(&self) -> &[T] {
@@ -108,8 +112,8 @@ mod tests {
         fn possible_biomes(&self) -> &[String] {
             &self.0
         }
-        fn noise_biome(&self, [x, _, z]: [i32; 3], seed: i64) -> u16 {
-            (x + z + seed as i32) as u16
+        fn noise_biome(&self, [x, _, z]: [i32; 3], seed: i64) -> Result<u16, String> {
+            Ok((x + z + seed as i32) as u16)
         }
     }
 
@@ -130,7 +134,9 @@ mod tests {
         let biomes = sources(&["minecraft:plains", "minecraft:desert"]);
         let level = LevelBiomeSource::resolve("test:stripes", &biomes, 1, known).unwrap();
         assert_eq!(level.biomes(), [1, 0]);
-        let row: Vec<usize> = (-1..3).map(|x| *level.noise_biome([x, 7, 0])).collect();
+        let row: Vec<usize> = (-1..3)
+            .map(|x| *level.noise_biome([x, 7, 0]).unwrap())
+            .collect();
         assert_eq!(row, [1, 0, 1, 0]);
     }
 }

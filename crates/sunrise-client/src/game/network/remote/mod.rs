@@ -196,8 +196,8 @@ struct NoTerrain;
 impl ChunkGenerator for NoTerrain {
     type Worker = ();
     fn worker(&self) {}
-    fn proto(&self, _: &mut (), _: i32, _: i32) -> Proto {
-        Box::new(())
+    fn proto(&self, _: &mut (), _: i32, _: i32) -> std::result::Result<Proto, String> {
+        Ok(Box::new(()))
     }
     fn finish(&self, _: Proto) -> Chunk {
         Chunk::empty(0, 0)
