@@ -87,6 +87,10 @@ pub(super) trait Entity: EntityRules {
     /// `Entity.getDeltaMovement`.
     fn velocity(&self) -> Vec3;
     fn velocity_mut(&mut self) -> &mut Vec3;
+    /// The server's accumulated `Entity.fallDistance`. A kind that does not track it has zero.
+    fn fall_distance(&self) -> f64 {
+        self.body_fall_distance()
+    }
     /// `Entity.resetFallDistance`: how far it has fallen is forgotten, so its next landing
     /// hurts it as a step does. Required, so a new kind states whether it keeps a fall distance.
     fn reset_fall_distance(&mut self);
@@ -189,6 +193,14 @@ pub(super) trait Entity: EntityRules {
     /// `Entity.isRemoved`.
     fn is_removed(&self) -> bool {
         false
+    }
+    /// `Entity.isPickable`: true for kinds a projectile or ray pick can strike.
+    fn is_pickable(&self) -> bool {
+        false
+    }
+    /// `Entity.canBeHitByProjectile`: alive and pickable.
+    fn can_be_hit_by_projectile(&self) -> bool {
+        self.is_alive() && self.is_pickable()
     }
     /// `instanceof LivingEntity`.
     fn is_living(&self) -> bool {
@@ -1136,7 +1148,8 @@ impl Game<'_> {
             Some(&self.pack.block_registries),
             &self.damage_hooks,
         )
-        .with_effects(crate::game::entity::hit_effects_of!(self, None));
+        .with_effects(crate::game::entity::hit_effects_of!(self, None))
+        .with_reads(crate::game::entity::hit_reads_of!(self));
         if let Some(hooks) = sunrise_client::block_contact::HOOKS.get() {
             (hooks.inside_fire)(
                 &mut level,
@@ -1771,6 +1784,28 @@ macro_rules! hit_effects_of {
         )
     };
 }
+/// What a hit's listeners need from `$game` to name and read the living entities the hit lends
+/// ([`HitReads`](sunrise_client::health::HitReads)), as field-level borrows; none before the
+/// world has an epoch. It asks nothing: the views it backs exist only inside a callback the
+/// hit dispatches, behind that callback's own subscription check.
+macro_rules! hit_reads_of {
+    ($game:expr) => {
+        $game
+            .native_lifecycle
+            .epoch()
+            .map(|epoch| sunrise_client::health::HitReads {
+                epoch,
+                living_types: $game.res.living_type_keys(),
+                attributes: &$game.motion.attributes,
+                player_effects: Some(&$game.potions.effects),
+                player_equipment: acting_equipment!($game),
+                player_uuid: $game.lan_acting_uuid,
+                player_attachments: Some(&$game.player_state.attachments),
+                entity_attachments: Some(&*$game.entity_attachments),
+            })
+    };
+}
+pub(super) use hit_reads_of;
 /// The level `$game` ticks, lent to a hit's damage hooks with its block registry and merged
 /// tag tables, so a mob or the player beside them can take the hit. `$attack` is the
 /// [`Attack`](sunrise_client::health::Attack) the site took first. Every site names what it
@@ -1790,7 +1825,9 @@ macro_rules! damage_level_of {
         )
         .attacked_by($attack)
         .no_push()
+        .with_mob_hurt_handoff(&mut $game.paused_mob_hurt)
         .with_effects(crate::game::entity::hit_effects_of!($game, $lend))
+        .with_reads(crate::game::entity::hit_reads_of!($game))
         $(.with_player_equipment($equipment))?
     };
     ($game:ident, $attack:expr, $credit:expr, $lend:expr) => {
@@ -1803,7 +1840,9 @@ macro_rules! damage_level_of {
         )
         .attacked_by($attack)
         .with_knockback_credit($credit)
+        .with_mob_hurt_handoff(&mut $game.paused_mob_hurt)
         .with_effects(crate::game::entity::hit_effects_of!($game, $lend))
+        .with_reads(crate::game::entity::hit_reads_of!($game))
     };
 }
 pub(super) use damage_level_of;
@@ -1958,8 +1997,7 @@ impl Game<'_> {
     }
     /// The type ids the boat kind loads.
     fn loads_as_boat(&self, kind: &str) -> bool {
-        super::boats::any_boat_wood(kind)
-            .is_some_and(|(wood, chest)| self.boat_models.has(wood, chest))
+        super::boats::registered_boat(kind, &self.res.items().component_registry).is_some()
     }
     /// Whether `load_listed` loads `kind` as a vehicle that takes its mob
     /// riders (`take_mob_passengers`): a mob, boat, minecart or primed TNT.
@@ -2028,7 +2066,7 @@ impl Game<'_> {
                     .filter(|dragon| dragon.id != 0)
                     .flat_map(|dragon| {
                         (0..dragon.parts.len())
-                            .filter_map(move |offset| dragon.id.checked_add(offset as u32 + 1))
+                            .map(move |offset| super::dragon::dragon_part_id(dragon.id, offset))
                     }),
             )
             .chain(self.ominous_spawners.iter().map(|e| e.id))
@@ -2063,6 +2101,9 @@ impl Entity for Mob {
     const SERIALIZES_ATTACHMENTS: bool = true;
     stored_ground!();
 
+    fn fall_distance(&self) -> f64 {
+        self.fall_distance
+    }
     fn reset_fall_distance(&mut self) {
         self.fall_distance = 0.0;
     }
@@ -2157,6 +2198,9 @@ impl Entity for Mob {
     fn is_removed(&self) -> bool {
         self.removed
     }
+    fn is_pickable(&self) -> bool {
+        !self.removed && !(&*self.kind.id == "minecraft:player" && self.extra.spectator)
+    }
     fn is_living(&self) -> bool {
         true
     }
@@ -2205,6 +2249,9 @@ impl Entity for Mob {
 
 impl Entity for ItemEntity {
     stored_ground!();
+    fn fall_distance(&self) -> f64 {
+        self.fall_distance
+    }
     fn support_collision(
         &self,
         _tags: &sunrise_items::items::EntityTypeTags,
@@ -2452,10 +2499,16 @@ impl Entity for Boat {
     fn bounds(&self) -> Aabb {
         Boat::bounds(self)
     }
+    fn is_pickable(&self) -> bool {
+        true
+    }
 }
 
 impl Entity for Minecart {
     stored_ground!();
+    fn fall_distance(&self) -> f64 {
+        self.fall_distance
+    }
     fn reset_fall_distance(&mut self) {
         self.fall_distance = 0.0;
     }
@@ -2534,6 +2587,9 @@ impl Entity for Minecart {
     fn bounds(&self) -> Aabb {
         Minecart::bounds(self)
     }
+    fn is_pickable(&self) -> bool {
+        true
+    }
     /// `tick_blocks` sweeps minecarts along with the players.
     fn sweeps_blocks_inside(&self) -> bool {
         false
@@ -2541,7 +2597,7 @@ impl Entity for Minecart {
 }
 
 /// Width and height `EntityType.ARMOR_STAND` gives a stand.
-fn armor_stand_size(stand: &ArmorStand) -> (f64, f64) {
+pub(super) fn armor_stand_size(stand: &ArmorStand) -> (f64, f64) {
     if stand.marker {
         (0.0, 0.0)
     } else if stand.small {
@@ -2566,6 +2622,9 @@ impl Entity for ArmorStand {
     /// `LivingEntity.isAlive`: health above 0 (removal is the level's).
     fn is_alive(&self) -> bool {
         self.health > 0.0
+    }
+    fn is_pickable(&self) -> bool {
+        !self.marker
     }
     fn move_entity(&mut self, gate: &mut MoveGate, movement: Vec3) {
         if gate.skipped() {
@@ -2780,6 +2839,9 @@ impl Entity for PrimedTnt {
     fn bounds(&self) -> Aabb {
         PrimedTnt::bounds(self)
     }
+    fn is_pickable(&self) -> bool {
+        true
+    }
     fn piston_slime_bounce(&mut self, movement: Direction) {
         self.velocity = piston_push::bounce_velocity(movement, self.velocity);
         // Leave the ground so the next tick does not apply the on-ground
@@ -2791,6 +2853,9 @@ impl Entity for PrimedTnt {
 
 impl Entity for FallingBlock {
     stored_ground!();
+    fn fall_distance(&self) -> f64 {
+        self.fall_distance
+    }
     fn support_collision(
         &self,
         _tags: &sunrise_items::items::EntityTypeTags,
@@ -2867,10 +2932,18 @@ impl Entity for FallingBlock {
     fn bounds(&self) -> Aabb {
         sunrise_client::falling_block::bounds(self.position)
     }
+    fn is_pickable(&self) -> bool {
+        true
+    }
 }
 
 impl Entity for Projectile {
     stored_ground!();
+    fn fall_distance(&self) -> f64 {
+        self.arrow
+            .as_ref()
+            .map_or(self.fall_distance, |arrow| arrow.fall_distance)
+    }
     fn support_collision(
         &self,
         _tags: &sunrise_items::items::EntityTypeTags,
@@ -2878,10 +2951,7 @@ impl Entity for Projectile {
         (
             sunrise_client::motion::BodyMotion::entity_context(self.id, self.position),
             Some(PowderSnowSubject {
-                fall_distance: self
-                    .arrow
-                    .as_ref()
-                    .map_or(self.fall_distance, |arrow| arrow.fall_distance),
+                fall_distance: self.fall_distance(),
                 ..Default::default()
             }),
         )
@@ -3056,6 +3126,9 @@ impl Entity for Projectile {
     }
     fn piston_slime_bounce(&mut self, movement: Direction) {
         Projectile::piston_slime_bounce(self, movement);
+    }
+    fn is_pickable(&self) -> bool {
+        super::deflect::attackable(self)
     }
 }
 

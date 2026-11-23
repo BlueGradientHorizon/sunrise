@@ -1312,6 +1312,9 @@ impl Entity for GeneralRow {
     fn velocity_mut(&mut self) -> &mut Vec3 {
         &mut self.velocity
     }
+    fn fall_distance(&self) -> f64 {
+        self.fall_distance
+    }
     fn reset_fall_distance(&mut self) {
         self.fall_distance = 0.0;
     }
@@ -1332,6 +1335,9 @@ impl Entity for GeneralRow {
     }
     fn bounds(&self) -> Aabb {
         general_type_catalog().bounds(self.type_slot, self.position)
+    }
+    fn is_pickable(&self) -> bool {
+        general_type_catalog().pickable(self.type_slot)
     }
     fn selector_target(&self) -> Option<Target> {
         Some(Target::General(self.id))

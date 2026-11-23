@@ -69,6 +69,12 @@ impl MobIndex {
         let i = self.find(mobs, id)?;
         Some(&mobs[i])
     }
+
+    /// Immutable indexed borrow: O(1) on cache hit, falls back to linear scan on miss.
+    pub fn get_ref<'a>(&self, mobs: &'a [Mob], id: u32) -> Option<&'a Mob> {
+        let i = self.find_ref(mobs, id)?;
+        Some(&mobs[i])
+    }
 }
 
 #[cfg(test)]

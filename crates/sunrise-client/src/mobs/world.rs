@@ -302,7 +302,7 @@ impl MobWorld<'_> {
     }
     /// Membership in a prebound gameplay tag, indexed by the mob type's registry slot.
     #[inline]
-    pub fn entity_tag_bit(&self, kind: &super::MobType, bit: u8) -> bool {
+    pub fn entity_tag_bit(&self, kind: &super::MobType, bit: u32) -> bool {
         self.items.is_some_and(|items| {
             items
                 .entity_type_tags
@@ -951,7 +951,7 @@ impl TestResources {
         let facts = BlockFacts::load(root, registry).unwrap();
         let motion = crate::motion::MotionResources::load(root, &assets).unwrap();
         let source = sunrise_assets::resource_source::ResourceRoot::directory(root.to_path_buf());
-        let data = super::MobData::load(&source, &facts);
+        let data = super::MobData::load(&source, facts.states.len(), false).unwrap();
         let types = super::MobTypes::load(root).unwrap();
         let biomes = crate::biome::Biomes::load(&source).unwrap();
         let defaults = sunrise_world::item_defaults::read(root).unwrap();

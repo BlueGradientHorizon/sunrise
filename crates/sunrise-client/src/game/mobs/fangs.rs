@@ -285,6 +285,9 @@ impl Game<'_> {
                     attacker_species: None,
                 },
             );
+            let Some((index, hurt)) = self.complete_mob_hurt(index, hurt) else {
+                continue;
+            };
             self.finish_mob_damage_at(index);
             self.settle_mob_hurt(id);
             if hurt && owner.is_some() {
@@ -318,7 +321,7 @@ impl Game<'_> {
         };
         let partial = alpha as f32;
         for f in &self.fangs.list {
-            if !f.started {
+            if !f.started || self.hides_as_camera(f.id) {
                 continue;
             }
             // getAnimationProgress.

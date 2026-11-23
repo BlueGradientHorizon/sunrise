@@ -1606,8 +1606,7 @@ impl Game<'_> {
     }
     /// The darkness effect's blend factor at the partial tick.
     pub(super) fn darkness_blend(&self, partial: f32) -> f32 {
-        let (previous, current) = self.sculk.darkness;
-        previous + (current - previous) * partial
+        darkness_blend_at(self.sculk.darkness, partial)
     }
     /// The fog's view of the darkness effect, while it is on.
     pub(super) fn darkness_fog(&self) -> Option<f32> {
@@ -1619,12 +1618,17 @@ impl Game<'_> {
     /// `LightmapRenderStateExtractor`: (brightness taken off the gamma
     /// option, the pulsing light scale).
     pub(super) fn darkness_lighting(&self, partial: f32) -> (f32, f32) {
-        let scale = self.settings.file.double("darknessEffectScale") as f32;
+        let scale = self.darkness_effect_scale();
         let modifier = self.darkness_blend(partial) * scale;
         let pulse = ((self.visual_ticks() as f32 - partial) * std::f32::consts::PI * 0.025).cos()
             * 0.45
             * modifier;
         (modifier, pulse.max(0.0) * scale)
+    }
+
+    /// The Darkness Effect option (`darknessEffectScale`), 0..1.
+    pub(super) fn darkness_effect_scale(&self) -> f32 {
+        self.settings.file.double("darknessEffectScale") as f32
     }
 
     /// `LightmapRenderStateExtractor`: the night vision effect's intensity
@@ -1976,6 +1980,47 @@ impl Game<'_> {
             source: (id != 0).then_some(EventSource::Entity(id)),
             owner,
             player: owner == Some(Who::Player) || self.rides_player(owner),
+            ..Context::default()
+        };
+        self.post_game_event("minecraft:projectile_land", at, ctx);
+    }
+    /// `Projectile.onHit`: entity hits post at the ray point with no affected state;
+    /// block hits post at the block center with the post-callback block state.
+    pub(in crate::game) fn projectile_hit_landed_event(
+        &mut self,
+        id: u32,
+        owner: Option<Who>,
+        hit: sunrise_client::projectiles::Hit,
+    ) {
+        match hit {
+            sunrise_client::projectiles::Hit::Entity { at, .. } => {
+                self.projectile_landed_event(id, owner, [at.x, at.y, at.z]);
+            }
+            sunrise_client::projectiles::Hit::Block { pos, .. } => {
+                self.projectile_block_landed_event(id, owner, pos);
+            }
+            sunrise_client::projectiles::Hit::None => {}
+        }
+    }
+    /// `Projectile.onHit` on a block: `PROJECTILE_LAND` at block center with post-callback state.
+    pub(in crate::game) fn projectile_block_landed_event(
+        &mut self,
+        id: u32,
+        owner: Option<Who>,
+        pos: [i32; 3],
+    ) {
+        let state = self.world.block(pos[0], pos[1], pos[2]);
+        let at = [
+            f64::from(pos[0]) + 0.5,
+            f64::from(pos[1]) + 0.5,
+            f64::from(pos[2]) + 0.5,
+        ];
+        let ctx = Context {
+            source: (id != 0).then_some(EventSource::Entity(id)),
+            owner,
+            player: owner == Some(Who::Player) || self.rides_player(owner),
+            dampening_state: self.state_dampens(Some(state)),
+            affected_state: Some(state),
             ..Context::default()
         };
         self.post_game_event("minecraft:projectile_land", at, ctx);
@@ -2677,6 +2722,23 @@ pub(in crate::game) fn darkness_blend_tick(
         None => 0.0,
     };
     (current, next)
+}
+
+/// The darkness effect's blend factor at the partial tick, from its (previous, current)
+/// factors (`Mth.lerp(partial, previous, current)`).
+pub(in crate::game) fn darkness_blend_at((previous, current): (f32, f32), partial: f32) -> f32 {
+    previous + (current - previous) * partial
+}
+
+/// `GameRenderer.nightVisionScale` of another entity's night vision instance with `duration`
+/// ticks left: 1, or over its last 200 ticks (`MobEffectInstance.endsWithin(200)`: only -1 is
+/// infinite) a flicker on `Mth.sin`'s table, in vanilla's float order.
+pub(in crate::game) fn night_vision_scale(duration: i32, partial: f32) -> f32 {
+    if duration == -1 || duration > 200 {
+        return 1.0;
+    }
+    let angle = (duration as f32 - partial) * std::f32::consts::PI * 0.2;
+    0.7 + sunrise_core::geometry::trig::sin(f64::from(angle)) * 0.3
 }
 
 /// A new darkness instance's `BlendState`: from nothing, or, when the server

@@ -16,6 +16,70 @@ pub enum ToastKind {
     System,
     /// A toast without one of the above families, including now-playing music.
     Other,
+    /// A notification submitted through `ClientHost::add_toast`.
+    Mod,
+}
+
+/// The optional 16×16 GUI icon of a [`ModToast`].
+// no wire: part of a local ClientHost::add_toast argument, not a wire field.
+#[derive(Clone, Debug)]
+#[non_exhaustive]
+pub enum ToastIcon {
+    /// Draw this stack's item model, without a count or durability overlay.
+    Item(ItemStack),
+    /// Draw a sprite from the GUI atlas, identified by its resource name.
+    Sprite(Identifier),
+}
+
+/// A client mod notification submitted through `ClientHost::add_toast`.
+// no wire: local ClientHost::add_toast argument, not a wire field.
+#[derive(Clone, Debug)]
+#[non_exhaustive]
+pub struct ModToast {
+    /// Title, drawn in yellow unless styled otherwise.
+    pub title: Text,
+    /// Optional text under the title.
+    pub description: Option<Text>,
+    /// Optional icon to the left of the text.
+    pub icon: Option<ToastIcon>,
+    /// An optional token for replacing a visible or queued mod toast. Use your mod's namespace.
+    /// Without a token, each accepted request is a separate toast.
+    pub kind: Option<Identifier>,
+    /// Milliseconds fully visible, before applying the user's Notification Time multiplier.
+    /// `None` uses vanilla `SystemToastId`'s default of 5000 ms.
+    pub display_ms: Option<u64>,
+}
+
+impl ModToast {
+    /// Create a notification with just a title and vanilla's default display time.
+    pub fn new(title: Text) -> Self {
+        Self {
+            title,
+            description: None,
+            icon: None,
+            kind: None,
+            display_ms: None,
+        }
+    }
+}
+
+/// Why a requested toast was not queued.
+// no wire: local refusal returned by ClientHost::add_toast.
+#[derive(Clone, Debug, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum AddToastError {
+    /// The host cannot submit notifications to a client window.
+    Unavailable,
+    /// The title or description could not be represented as game text.
+    Text(TextFormError),
+    /// The item stack could not be represented as an icon.
+    Icon(StackWriteError),
+}
+
+impl NoBackend for AddToastError {
+    fn no_backend() -> Self {
+        Self::Unavailable
+    }
 }
 
 /// What a key did in an `input_key` event (GLFW's `action`: release 0, press 1, repeat 2).
@@ -292,6 +356,10 @@ pub struct ClientGuiOptions {
     pub text_background_opacity: f32,
     /// Menu background blur radius.
     pub menu_blur: i32,
+    /// How far the camera tilts when the player is hurt, 0 (off) to 1 (`damageTiltStrength`,
+    /// the Damage Tilt accessibility option): the factor of vanilla's own hurt tilt, so a mod's
+    /// camera shake can scale with it as that tilt does.
+    pub damage_tilt_strength: f64,
 }
 
 /// A snapshot of the client's chat preferences.
@@ -991,6 +1059,15 @@ pub struct ScreenView<'a> {
     /// `multiplayer`, `add_server`, `direct_connect`…, with no menu, no title
     /// and no slots.
     pub id: &'static str,
+    /// The mod whose own screen this view represents when `id == "mod"`, or
+    /// `None` for vanilla, title, and overlay screens.
+    ///
+    /// Carries the owning mod id of the receiving screen snapshot even if a
+    /// handler closed it or opened another mod's screen before a Post or
+    /// Closing hook ran. Prefer `event.screen.mod_screen` over live
+    /// [`crate::ClientHost::mod_screen`] when identifying the screen an event
+    /// targeted.
+    pub mod_screen: Option<&'a str>,
     /// The type id of the menu the server opened for this screen
     /// (`minecraft:generic_9x3`, `minecraft:furnace`, a mod's own id; a mount's
     /// inventory is `sunrise:mount<n>`). None on a screen without one (the

@@ -117,6 +117,8 @@ pub(super) struct Boat {
     pub items: Vec<Option<ItemStack>>,
     /// `AbstractBoat.leashData`: who holds its lead (`boat_leads.rs`).
     pub leash: Option<Holder>,
+    /// Entity id of the specific leash knot instance when `leash == Some(Holder::Knot(_))`.
+    pub leash_knot_id: Option<u32>,
     /// The player a `Holder::Player` lead is tied to (their UUID).
     pub leash_player: Option<[i32; 4]>,
     /// A holder read from a save that is not in the world yet.
@@ -292,6 +294,7 @@ impl Boat {
             chest: false,
             items: Vec::new(),
             leash: None,
+            leash_knot_id: None,
             leash_player: None,
             leash_pending: None,
             leash_spin: 0.0,
@@ -537,6 +540,29 @@ pub(super) fn boat_wood(item: &str) -> Option<&str> {
         .or_else(|| name.strip_suffix("_raft"))
         .filter(|w| !w.ends_with("_chest"))
 }
+/// `EntityType.by`: a boat-shaped id still needs a registered entity type.
+pub(super) fn registered_boat<'a>(
+    kind: &'a str,
+    registry: &sunrise_client_core::registries::Registries,
+) -> Option<(&'a str, bool)> {
+    let boat = any_boat_wood(kind)?;
+    registry
+        .ids("minecraft:entity_type")
+        .binary_search_by(|id| id.as_str().cmp(kind))
+        .ok()?;
+    Some(boat)
+}
+
+/// The boat item and its matching vanilla entity type are both registered.
+pub(super) fn registered_boat_item<'a>(
+    id: &'a str,
+    items: &sunrise_client::items::Items,
+) -> Option<(&'a str, bool)> {
+    let boat = registered_boat(id, &items.component_registry)?;
+    items.get(id)?;
+    Some(boat)
+}
+
 pub(super) struct BoatModels {
     pub models: HashMap<String, Part>,
     pub chest_models: HashMap<String, Part>,
@@ -544,7 +570,7 @@ pub(super) struct BoatModels {
     pub water_patch: Option<Part>,
 }
 impl BoatModels {
-    /// Whether a boat of this wood (with or without a chest) can be drawn.
+    /// Whether this remote boat has a layer to draw.
     pub fn has(&self, wood: &str, chest: bool) -> bool {
         if chest {
             self.chest_models.contains_key(wood)
@@ -1947,10 +1973,8 @@ impl Game<'_> {
     /// The boat `BoatItem.use` would place for `stack` (its SUCCESS), or
     /// None when it aims at nothing (PASS) or the spot is taken (FAIL).
     pub(super) fn boat_to_place(&self, stack: &ItemStack) -> Option<Boat> {
-        let (wood, chest) = any_boat_wood(&stack.item)?;
-        if !self.boat_models.has(wood, chest) {
-            return None;
-        }
+        // BoatItem holds a registered item and its entity type, not a model.
+        let (wood, chest) = registered_boat_item(&stack.item, self.res.items())?;
         let hit = self.boat_item_hit()?;
         let mut boat = Boat::new(
             self.next_entity + 1,
@@ -1979,13 +2003,6 @@ impl Game<'_> {
         Some(boat)
     }
     pub(super) fn boat_hit(&self) -> Option<(usize, f64)> {
-        let mut pick = crate::game::pick_accumulator::PickAccumulator::new(self.entity_reach);
-        self.boat_hit_with_pick(&mut pick)
-    }
-    pub(super) fn boat_hit_with_pick(
-        &self,
-        pick: &mut crate::game::pick_accumulator::PickAccumulator,
-    ) -> Option<(usize, f64)> {
         if let Some(hit) = self.cached_entity_pick() {
             let (entity, distance, _) = hit?;
             let index = self.boats.iter().position(|f| f.id == entity.id())?;
@@ -1993,27 +2010,18 @@ impl Game<'_> {
         }
         let (eye, dir) = self.aim()?;
         let reach: f64 = self.entity_reach;
+        let (from, to) = super::pick_accumulator::pick_ray_segment(eye, dir, reach);
+        let mut pick = super::pick_accumulator::PickAccumulator::new(reach * reach);
         let mut best: Option<(usize, f64)> = None;
         for (i, b) in self.boats.iter().enumerate() {
-            let bb = b.bounds();
-            let (lo, hi) = (bb.min_position(), bb.max_position());
-            let (lo, hi) = ([lo.x, lo.y, lo.z], [hi.x, hi.y, hi.z]);
-            let (mut t0, mut t1) = (0.0f64, reach);
-            let mut hit = true;
-            for a in 0..3 {
-                if dir[a].abs() < 1e-9 {
-                    hit &= eye[a] >= lo[a] && eye[a] <= hi[a];
-                    continue;
-                }
-                let (mut ta, mut tb) = ((lo[a] - eye[a]) / dir[a], (hi[a] - eye[a]) / dir[a]);
-                if ta > tb {
-                    std::mem::swap(&mut ta, &mut tb);
-                }
-                t0 = t0.max(ta);
-                t1 = t1.min(tb);
-            }
-            if hit && t0 <= t1 && pick.consider(self, b.id, t0) {
-                best = Some((i, t0));
+            if pick.consider_box(
+                self,
+                b.id,
+                from,
+                to,
+                self.client_copy_box(b.id, b.position, b.bounds()),
+            ) {
+                best = Some((i, pick.hovered.unwrap().distance_sq.sqrt()));
             }
         }
         best
@@ -2179,6 +2187,7 @@ impl Game<'_> {
                 }
                 self.special_attack_slowdown(knockback);
             }
+            self.remember_player_target(None);
             self.special_attack_exhaustion();
         }
         // Player.onAttack: the hit starts the attack strength again.
@@ -2435,6 +2444,28 @@ impl Game<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn boat_admission_uses_registered_entity_ids() {
+        let registry = sunrise_client_core::registries::Registries {
+            entity_types: vec![
+                "minecraft:bamboo_chest_raft".into(),
+                "minecraft:oak_boat".into(),
+                "minecraft:pig".into(),
+            ],
+            ..Default::default()
+        };
+        assert_eq!(
+            registered_boat("minecraft:oak_boat", &registry),
+            Some(("oak", false))
+        );
+        assert_eq!(
+            registered_boat("minecraft:bamboo_chest_raft", &registry),
+            Some(("bamboo", true))
+        );
+        assert_eq!(registered_boat("minecraft:bamboo_boat", &registry), None);
+        assert_eq!(registered_boat("minecraft:pig", &registry), None);
+    }
 
     fn boat() -> Boat {
         Boat::new(1, Arc::from("oak"), Vec3::ZERO, 0.0)

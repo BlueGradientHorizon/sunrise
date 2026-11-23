@@ -8,6 +8,8 @@ mod difficulty;
 mod display_names;
 pub(super) use data::{place_summoned, strip_finalize_tree};
 mod effects;
+#[cfg(test)]
+mod enchant_tests;
 pub(super) mod execute;
 pub(super) mod extra;
 mod give;
@@ -610,20 +612,16 @@ impl Game<'_> {
                 None => Text::empty(),
             },
             // ItemEntity.getName: its CustomName, else the stack's item name
-            // (`getItemName`: `minecraft:item_name`, else the item's own).
+            // (`getItemName`: a mod item's Part, else the item's own `getName`).
             Target::Item(id) => {
                 if let Some(c) = self.persist_raw(id).and_then(|r| r.get("CustomName")) {
                     return sunrise_client::scoreboard::comp_text(
                         &sunrise_client::scoreboard::tag_to_json(c),
                     );
                 }
-                let stack = self.dropped.iter().find(|i| i.id == id).map(|i| &i.stack);
-                match stack.and_then(|s| s.item_name()) {
-                    Some(name) => Text::literal(name),
-                    None => {
-                        let item = stack.map(|s| s.item.to_string()).unwrap_or_default();
-                        Text::literal(self.pack.names.display_item(&item))
-                    }
+                match self.dropped.iter().find(|i| i.id == id) {
+                    Some(item) => self.stack_item_name_text(&item.stack),
+                    None => Text::literal(self.pack.names.display_item("")),
                 }
             }
             // FallingBlockEntity.getTypeName: `entity.minecraft.falling_block_type`

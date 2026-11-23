@@ -67,6 +67,9 @@ impl Game<'_> {
         out: &mut Vec<Vertex>,
     ) {
         for (&id, row) in frame.rows[range].iter() {
+            if self.hides_as_camera(id as u32) {
+                continue;
+            }
             self.general_entity_geometry(frame, id as u32, row, out);
         }
     }

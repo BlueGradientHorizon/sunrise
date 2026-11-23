@@ -699,8 +699,6 @@ fn lava_cauldron_contacts(
     registry: &sunrise_world::registry::BlockRegistry,
     bounds: Aabb,
 ) -> usize {
-    use sunrise_core::geometry::ShapeOp;
-    static SHAPE: std::sync::OnceLock<VoxelShape> = std::sync::OnceLock::new();
     let epsilon = f64::from(1e-5_f32);
     let mut contacts = 0;
     let candidates = bounds.deflate(Vec3::new(epsilon, epsilon, epsilon));
@@ -712,31 +710,7 @@ fn lava_cauldron_contacts(
         {
             return true;
         }
-        let shape = SHAPE.get_or_init(|| {
-            let cuboid = |x0, y0, z0, x1, y1, z1| {
-                VoxelShape::from_box(Aabb::new(
-                    Vec3::new(x0 / 16.0, y0 / 16.0, z0 / 16.0),
-                    Vec3::new(x1 / 16.0, y1 / 16.0, z1 / 16.0),
-                ))
-                .expect("valid cauldron box")
-            };
-            let mut solid = VoxelShape::block();
-            // AbstractCauldronBlock.SHAPE: the openings under its feet
-            // and its hollow centre are cut out of the unit block.
-            for hole in [
-                cuboid(0.0, 0.0, 4.0, 16.0, 3.0, 12.0),
-                cuboid(4.0, 0.0, 0.0, 12.0, 3.0, 16.0),
-                cuboid(2.0, 0.0, 2.0, 14.0, 3.0, 14.0),
-                cuboid(2.0, 4.0, 2.0, 14.0, 16.0, 14.0),
-            ] {
-                solid = solid
-                    .join(&hole, ShapeOp::ONLY_FIRST)
-                    .expect("valid cauldron cutout");
-            }
-            solid
-                .join(&cuboid(2.0, 4.0, 2.0, 14.0, 15.0, 14.0), ShapeOp::OR)
-                .expect("valid filled cauldron")
-        });
+        let shape = crate::block_contact::lava_cauldron_filled_shape();
         let local = bounds.move_by(Vec3::new(-f64::from(x), -f64::from(y), -f64::from(z)));
         // Only block enumeration uses the deflated box. The actual
         // shape contact follows Entity.collidedWithShapeMovingFrom.
@@ -1705,6 +1679,19 @@ pub struct ItemFrame {
     pub random: LegacyRandom,
 }
 impl ItemFrame {
+    /// `ItemFrame.setDirection`: wall frames use the horizontal direction's yaw;
+    /// ceiling and floor frames use the vertical direction's pitch.
+    pub fn entity_rotation(&self) -> [f32; 2] {
+        match self.facing {
+            0 => [0.0, 90.0],
+            1 => [0.0, -90.0],
+            2 => [180.0, 0.0],
+            3 => [0.0, 0.0],
+            4 => [90.0, 0.0],
+            _ => [270.0, 0.0],
+        }
+    }
+
     /// `ItemFrame.setItem`: the adopted stack holds one item. The caller owns
     /// the old map association, sounds and neighbour updates.
     pub fn set_item(&mut self, item: Option<ItemStack>) {
@@ -1755,12 +1742,17 @@ pub struct ArmorStand {
     pub attachment_lifetime: sunrise_mod_runtime::attachments::AttachmentLifetime,
     /// `Entity.xRot`: kept for `/tp` and `Rotation`; the kind turns only in yaw.
     pub pitch: f32,
+    /// `Entity.xRotO`: pitch at the start of the tick for camera interpolation.
+    pub previous_pitch: f32,
     /// When it joined its list ([`crate::join_seq`]); set by the list, not by the spawn site.
     pub join: crate::join_seq::JoinSeq,
     pub fire_ticks: i32,
     /// Unsaved fire immunity granted on this logical side.
     pub mod_fire_immune: bool,
     pub health: f32,
+    pub tick_count: i32,
+    /// Transient `LivingEntity.lastHurtMob`; an owned arrow or wind charge can set it.
+    pub last_hurt_mob: Option<(u32, i32)>,
     pub id: u32,
     pub position: Vec3,
     /// `Entity.xo`, `yo`, `zo`: the position at the start of the tick, which
@@ -1825,6 +1817,10 @@ pub struct ArmorStand {
     pub speed_instance: bool,
     /// `NAME_TAG_DISTANCE` and `BELOW_NAME_DISTANCE` from server attribute updates.
     pub nameplate: crate::entities::nameplate::NameplateDistances,
+    /// Synced client-side effects from `UpdateMobEffect` / `RemoveMobEffect`, as a mob's.
+    pub client_effects: crate::effects::PlayerEffects,
+    /// `MobEffectInstance.BlendState` (previous, current) for its client-side darkness.
+    pub darkness_blend: (f32, f32),
 }
 /// The fluid a stand travels in (`LivingEntity.travelInFluid`: water first,
 /// then lava), from the heights `Entity::push_by_fluid` measured.
@@ -2031,30 +2027,37 @@ impl ArmorStand {
     /// put at, when one is due). The yaw
     /// turns the short way and stays continuous, so a frame between ticks
     /// never spins it.
-    pub fn interpolate(&mut self, step: Option<(Vec3, f32)>) {
+    pub fn interpolate(&mut self, step: Option<(Vec3, f32, f32)>) {
         self.previous = self.position;
         self.previous_yaw = self.yaw;
-        if let Some((at, yaw)) = step {
+        self.previous_pitch = self.pitch;
+        if let Some((at, yaw, pitch)) = step {
             self.position = at;
             self.yaw += crate::camera::wrap_degrees(yaw - self.yaw);
+            self.pitch = (pitch % 360.0).clamp(-90.0, 90.0);
         }
     }
     /// Put there at once, with nothing to blend from
     /// (`Entity.snapTo`).
-    pub fn snap(&mut self, at: Vec3, yaw: f32) {
+    pub fn snap(&mut self, at: Vec3, yaw: f32, pitch: f32) {
         self.position = at;
         self.previous = at;
         self.yaw = yaw;
         self.previous_yaw = yaw;
+        self.pitch = (pitch % 360.0).clamp(-90.0, 90.0);
+        self.previous_pitch = self.pitch;
     }
     pub fn new(id: u32, position: Vec3, yaw: f32) -> Self {
         Self {
             attachment_lifetime: Default::default(),
             pitch: 0.0,
+            previous_pitch: 0.0,
             join: Default::default(),
             fire_ticks: 0,
             mod_fire_immune: false,
             health: 20.0,
+            tick_count: 0,
+            last_hurt_mob: None,
             id,
             position,
             previous: position,
@@ -2083,6 +2086,8 @@ impl ArmorStand {
             ground: Default::default(),
             speed_instance: false,
             nameplate: Default::default(),
+            client_effects: Default::default(),
+            darkness_blend: (0.0, 0.0),
         }
     }
     /// `Entity.getOnPos(0.2)` (`getOnPosLegacy`): the supporting block's
@@ -2184,21 +2189,26 @@ impl ArmorStand {
         if lava && !self.mod_fire_immune {
             self.fire_ticks = self.fire_ticks.max(300);
         }
-        // The fire block reaches a stand through `applyEffectsFromBlocks`,
-        // which a NoGravity stand does not feel (measured beside the server).
+        // BaseFireBlock.entityInside: FIRE_IGNITE runs before hurt(inFire), even when invisible.
         if !self.mod_fire_immune
-            && !self.invisible
             && !self.marker
             && !self.no_gravity
             && crate::motion::environment::fire_contact(world, registry, self.bounds()) > 0.0
         {
-            if self.fire_ticks > 0 {
-                if !invulnerable(world, "minecraft:in_fire") {
+            if self.fire_ticks < 0 {
+                self.fire_ticks += 1;
+            }
+            if self.fire_ticks >= 0 {
+                self.fire_ticks = self.fire_ticks.max(160);
+            }
+            if !self.invisible && !invulnerable(world, "minecraft:in_fire") {
+                if self.fire_ticks > 0 {
                     self.health -= 0.15;
                     hit_by = Some("minecraft:in_fire");
+                } else {
+                    // ArmorStand.hurtServer(#ignites_armor_stands): not on fire yet -> ignite 5s.
+                    self.fire_ticks = self.fire_ticks.max(100);
                 }
-            } else {
-                self.fire_ticks = 100;
             }
         }
         // Dead: the damage type that ran its health out, which vanilla's
@@ -2871,7 +2881,7 @@ mod armor_stand_render_tests {
         let mut stand = ArmorStand::new(1, Vec3::new(0.5, 70.0, 0.5), 0.0);
         // A new stand has no move behind it.
         assert_eq!(stand.render_position(0.5), stand.position);
-        let fall = |s: &ArmorStand| Some((Vec3::new(0.5, s.position.y - 1.0, 0.5), 0.0));
+        let fall = |s: &ArmorStand| Some((Vec3::new(0.5, s.position.y - 1.0, 0.5), 0.0, 0.0));
         stand.interpolate(fall(&stand));
         assert_eq!(stand.render_position(0.0).y, 70.0);
         assert_eq!(stand.render_position(0.25).y, 69.75);
@@ -2889,7 +2899,7 @@ mod armor_stand_render_tests {
         let mut stand = ArmorStand::new(1, Vec3::ZERO, 170.0);
         assert_eq!(stand.render_yaw(0.5), 170.0);
         // To -170 is 20 degrees on through 180, not 340 back through 0.
-        stand.interpolate(Some((Vec3::ZERO, -170.0)));
+        stand.interpolate(Some((Vec3::ZERO, -170.0, 0.0)));
         assert_eq!(stand.render_yaw(0.0), 170.0);
         assert_eq!(stand.render_yaw(0.5), 180.0);
         assert_eq!(stand.render_yaw(1.0), 190.0);
@@ -2901,8 +2911,8 @@ mod armor_stand_render_tests {
     #[test]
     fn a_snapped_stand_is_drawn_where_it_landed() {
         let mut stand = ArmorStand::new(1, Vec3::new(0.5, 70.0, 0.5), 0.0);
-        stand.interpolate(Some((Vec3::new(0.5, 69.0, 0.5), 0.0)));
-        stand.snap(Vec3::new(200.5, 64.0, 0.5), 90.0);
+        stand.interpolate(Some((Vec3::new(0.5, 69.0, 0.5), 0.0, 0.0)));
+        stand.snap(Vec3::new(200.5, 64.0, 0.5), 90.0, 0.0);
         assert_eq!(stand.render_position(0.5), Vec3::new(200.5, 64.0, 0.5));
         assert_eq!(stand.render_yaw(0.5), 90.0);
     }
@@ -2945,7 +2955,7 @@ mod armor_stand_light_tests {
     fn a_stand_probe_follows_the_frame() {
         let dark = |_: i32, _: i32, _: i32| 0u8;
         let mut falling = stand(0.5, 70.0, 0.5);
-        falling.interpolate(Some((Vec3::new(0.5, 69.0, 0.5), 0.0)));
+        falling.interpolate(Some((Vec3::new(0.5, 69.0, 0.5), 0.0, 0.0)));
         assert_eq!(falling.light_probe(0.0, dark), [0, 71, 0]);
         assert_eq!(falling.light_probe(0.5, dark), [0, 71, 0]);
         assert_eq!(falling.light_probe(1.0, dark), [0, 70, 0]);
@@ -2989,7 +2999,7 @@ mod armor_stand_light_tests {
         // partial-tick position: falling does not move the scan.
         let mut moving = stand(0.5, 64.0, 0.5);
         moving.marker = true;
-        moving.interpolate(Some((Vec3::new(0.5, 70.0, 0.5), 0.0)));
+        moving.interpolate(Some((Vec3::new(0.5, 70.0, 0.5), 0.0, 0.0)));
         assert_eq!(moving.light_probe(0.0, |_, _, _| 0u8), [0, 70, 0]);
         assert_eq!(moving.light_probe(0.5, |_, _, _| 0u8), [0, 70, 0]);
     }

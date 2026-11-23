@@ -877,8 +877,5 @@ impl Title {
             let lines = atlas.font.split(&Text::translate(key, &[]), 170.0);
             crate::ui::tooltip_menu(batch, atlas, &lines, cursor, rect);
         }
-        if let Some(toast) = &self.toast {
-            toast.draw(atlas, batch, 0.0);
-        }
     }
 }

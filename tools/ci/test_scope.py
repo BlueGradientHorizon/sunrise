@@ -46,7 +46,10 @@ MOD_API_GEN = [
 ]
 READERS = {
     "cargo-sunrise-mod": [
-        "Cargo.lock", "crates/sunrise-mod-api", "crates/sunrise-mod-package/src/sdk/fixture.tar.xz",
+        "Cargo.lock", "crates/sunrise-attestation/tests/fixtures", "crates/sunrise-mod-api",
+        "crates/sunrise-mod-package/src/sdk/fixture.tar.xz",
+        # The page checks read the package crate's screenshot fixtures.
+        "crates/sunrise-mod-package/tests/fixtures",
         "crates/sunrise-mod-package/tests/index", "docs/modding/src/how-to/native-mods.md", "tools/ci/rust-version",
         # The installed-client daily builds and installs the fn-replace-check `lower` fixture.
         "tools/ci/fn-replace-check/lower",
@@ -115,6 +118,8 @@ NOT_READS = {
     "sunrise-mod-source": {"Cargo.lock"},
     # shader_fuzz's `..` path parts, in the packs it writes and reads, beside its own seed pack.
     "sunrise-render-shaderpack": {"crates"},
+    # Server init uses the filename as a checkout-root sentinel; only sunrise-prepare reads its contents.
+    "sunrise-server": {"research-lock.json"},
     # Paths inside a staged game source or a test's scratch folder, never this checkout's files.
     "sunrise-native-build": {
         "Cargo.lock", "crates/sunrise-client/Cargo.toml", "crates/sunrise-client/build.rs", "crates/sunrise-client/src",
