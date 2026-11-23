@@ -118,26 +118,12 @@ impl Game<'_> {
             return false;
         }
         let mut instant = false;
-        // A ghast's fireball or a wind charge nearer than any mob: the
-        // server turns it (game/items/deflect.rs).
-        if let Some((i, distance)) = self.redirectable_hit()
-            && self.mob_hit().is_none_or(|(_, d, _)| distance <= d)
-            && self.before_block(distance)
-            && self.creatures.projectiles[i].id != 0
-        {
-            self.remote_attack_entity(self.creatures.projectiles[i].id as i32, distance);
-        } else if let Some(hit) = self.remote_object_hit(true)
-            && self.mob_hit().is_none_or(|(_, d, _)| hit.distance < d)
-            && self.before_block(hit.distance)
-        {
-            self.remote_attack_entity(hit.id, hit.distance);
-        } else if let Some((i, distance, _)) = self.mob_hit()
-            && self.before_block(distance)
-        {
-            self.remote_attack_entity(self.mobs[i].id as i32, distance);
-        } else if !self.entity_targeted()
-            && let Some(hit) = self.pick()
-        {
+        if let Some(hit) = self.crosshair_entity_hit() {
+            // A range rejection is still an entity hit: skip the attack, but swing below.
+            if let Some(distance) = self.attack_hit_distance(hit.point) {
+                self.remote_attack_entity(hit.id, distance);
+            }
+        } else if let Some(hit) = self.pick() {
             // A block hit on air falls through to MISS. `instant` below reads the
             // block again after the dig, which may have broken it.
             if mod_api::__private::listened(mod_api::HookId::LeftClickEmpty)
@@ -156,9 +142,7 @@ impl Game<'_> {
                 .facts()
                 .is_air(self.world.block(hit.pos[0], hit.pos[1], hit.pos[2]));
         } else {
-            if mod_api::__private::listened(mod_api::HookId::LeftClickEmpty)
-                && !self.entity_targeted()
-            {
+            if mod_api::__private::listened(mod_api::HookId::LeftClickEmpty) {
                 self.native_left_click_empty();
             }
             if self.has_miss_time() {
@@ -249,7 +233,7 @@ impl Game<'_> {
     pub(super) fn hud_disconnected(&mut self) {
         self.tab_list.reset();
         self.boss_overlay.reset();
-        self.adv.toasts.clear();
+        self.toast_manager = Default::default();
         self.debug_charts.reset();
         self.titles.clear();
         self.titles.reset_times();
@@ -258,13 +242,15 @@ impl Game<'_> {
     /// hit (`CRIT`) or magic critical hit (`ENCHANTED_HIT`) emitter.
     pub(super) fn remote_animate(&mut self, id: i32, action: u8) {
         use sunrise_client::particles::{ParticleOptions, ParticleType};
-        let Some((target, body)) = self.remote_tracking_body(id) else {
-            return;
-        };
         let particle = match action {
             // Player.stopSleepInBed.
             0 => {
-                if target == TrackingTarget::LocalPlayer {
+                if self.player.is_some()
+                    && self
+                        .remote
+                        .as_ref()
+                        .is_some_and(|remote| remote.entity_id == id)
+                {
                     self.sleeping = None;
                     self.sleep_timer = 100;
                 }
@@ -273,6 +259,9 @@ impl Game<'_> {
             1 => ParticleType::Crit,
             2 => ParticleType::EnchantedHit,
             _ => return,
+        };
+        let Some((target, body)) = self.remote_tracking_body(id) else {
+            return;
         };
         self.particles
             .tracking_emitter(ParticleOptions::simple(particle), target, body);

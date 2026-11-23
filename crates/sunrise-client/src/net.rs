@@ -43,6 +43,7 @@ use sunrise_protocol::{
     buf::Reader,
     connection::{ConnReader, Connection, Counters},
     crypto::{generate_secret, offline_uuid, server_hash},
+    item::{Names, NoNames},
     packets::{Empty, configuration as cfg, handshake, login, play},
     registry::Dynamic,
     rsa::RsaPublicKey,
@@ -1449,12 +1450,9 @@ fn run(
     // ClientHandshakePacketListenerImpl.handleLoginFinished: the brand, then
     // the client information.
     // The window's own server thread is no join to an address: it hears vanilla's identity.
-    let identity = if singleplayer {
-        sunrise_hooks::ClientIdentity::vanilla()
-    } else {
-        sunrise_hooks::engine::client_identity(address)
-    };
-    send_identity(&mut c, &identity).map_err(e)?;
+    let network =
+        (!singleplayer).then(|| (address, sunrise_hooks::engine::client_identity(address)));
+    native_client_identity(&mut c, network, &payloads.local).map_err(e)?;
     c.send(&cfg::Serverbound::ClientInformation(info).encode())
         .map_err(e)?;
     let (mut reader, writer) = c.split();
@@ -1757,30 +1755,30 @@ impl PlayIo {
     }
 }
 
-/// Registry view for decoding clientbound play packets: synchronized registries
-/// plus the loaded `minecraft:item` table for `Component` `hover_event` validation.
-struct PlayDecodeNames<'a> {
-    dynamic: &'a Dynamic,
+/// The loaded item table for `HoverEvent.ShowItem`, even when a packet's
+/// component codec has no synchronized registry context (configuration).
+struct ClientboundDecodeNames<'a> {
+    registries: &'a dyn Names,
     items: &'a ItemData,
 }
-impl sunrise_protocol::item::Names for PlayDecodeNames<'_> {
+impl Names for ClientboundDecodeNames<'_> {
     fn name(&self, registry: &str, id: i32) -> Option<String> {
-        sunrise_protocol::item::Names::name(self.dynamic, registry, id)
+        self.registries.name(registry, id)
     }
     fn consume_effect_kind(
         &self,
         id: i32,
     ) -> Option<sunrise_protocol::item::consume_effects::Kind> {
-        sunrise_protocol::item::Names::consume_effect_kind(self.dynamic, id)
+        self.registries.consume_effect_kind(id)
     }
     fn registry_entry(&self, registry: &str, id: i32) -> Option<(&str, Option<&Tag>)> {
-        sunrise_protocol::item::Names::registry_entry(self.dynamic, registry, id)
+        self.registries.registry_entry(registry, id)
     }
     fn contains_entry(&self, registry: &str, name: &str) -> bool {
         if registry == "minecraft:item" {
             return self.items.defaults().entries().contains_key(name);
         }
-        sunrise_protocol::item::Names::contains_entry(self.dynamic, registry, name)
+        self.registries.contains_entry(registry, name)
     }
 }
 
@@ -1815,8 +1813,8 @@ fn receive_play(
     let mut bundle = PlayBundle::default();
     loop {
         let (id, payload) = reader.recv().map_err(|e| connection_lost(e, lang))?;
-        let decode_names = PlayDecodeNames {
-            dynamic: &registries,
+        let decode_names = ClientboundDecodeNames {
+            registries: registries.as_ref(),
             items: resources,
         };
         let packet = match play::Clientbound::decode_reader(
@@ -2065,6 +2063,10 @@ fn configure(
             None => Err(Reason::plain("Disconnected")),
         }
     };
+    let decode_names = ClientboundDecodeNames {
+        registries: &NoNames,
+        items: resources,
+    };
     // Nothing goes out before the server has spoken on the channel (its Query or Offer) or
     // named itself Sunrise by brand: a vanilla server is sent what vanilla's client sends,
     // whatever mods are installed.
@@ -2078,20 +2080,20 @@ fn configure(
                 return Err(connection_lost(e, lang));
             }
         };
-        let packet =
-            cfg::Clientbound::decode_with_payload_codecs(id, &payload, &payloads.local.codecs)
-                .map_err(|err| {
-                    let name = sunrise_protocol::ids::name(
-                        sunrise_protocol::State::Configuration,
-                        sunrise_protocol::Direction::Clientbound,
-                        id,
-                    )
-                    .unwrap_or("?");
-                    log::warn!(
-                        "Sunrise: configuration packet decode failed ({name}, id={id}): {err}"
-                    );
-                    packet_decode_reason(sunrise_protocol::State::Configuration, id, &err, lang)
-                })?;
+        let packet = cfg::Clientbound::decode_reader(
+            id,
+            Reader::with_payload_codecs(&payload, &payloads.local.codecs).with_names(&decode_names),
+        )
+        .map_err(|err| {
+            let name = sunrise_protocol::ids::name(
+                sunrise_protocol::State::Configuration,
+                sunrise_protocol::Direction::Clientbound,
+                id,
+            )
+            .unwrap_or("?");
+            log::warn!("Sunrise: configuration packet decode failed ({name}, id={id}): {err}");
+            packet_decode_reason(sunrise_protocol::State::Configuration, id, &err, lang)
+        })?;
         if !io.accepts_packets() {
             continue;
         }
@@ -2322,7 +2324,60 @@ fn brand_event(payload: &cfg::CustomPayload) -> Option<Event> {
     }
 }
 
+/// Select the identity for initial configuration, before any client information is sent.
+fn native_client_identity(
+    c: &mut Connection,
+    network: Option<(&str, sunrise_hooks::ClientIdentity)>,
+    local_payloads: &crate::raw_payloads::Local,
+) -> Result<(), sunrise_protocol::Error> {
+    let Some((address, default)) = network else {
+        return send_identity(c, &sunrise_hooks::ClientIdentity::vanilla());
+    };
+    struct Host<'a>(&'a str);
+    impl mod_api::ClientIdentityHost for Host<'_> {
+        fn server_address(&self) -> &str {
+            self.0
+        }
+    }
+    let mut answer = None;
+    mod_api::dispatch_client_identity(&Host(address), &mut answer);
+    let Some(mod_api::ClientIdentity {
+        brand, payloads, ..
+    }) = answer
+    else {
+        return send_identity(c, &default);
+    };
+    let payloads = payloads
+        .into_iter()
+        .map(|payload| {
+            // An empty namespace still denotes `minecraft` on the wire. Check the
+            // effective channel so `:brand` cannot bypass engine ownership.
+            let channel = if payload.channel.namespace().is_empty() {
+                format!("minecraft:{}", payload.channel.path())
+            } else {
+                payload.channel.to_string()
+            };
+            if sunrise_protocol::packets::custom_payload::is_reserved_channel(&channel)
+                || local_payloads.owns(&channel)
+            {
+                return Err(sunrise_protocol::Error::new(format!(
+                    "client identity payload {channel} is reserved or transport-owned"
+                )));
+            }
+            // Identifier.STREAM_CODEC uses ByteBufCodecs.STRING_UTF8. Valid identifiers are ASCII.
+            if channel.len() > 32_767 {
+                return Err(sunrise_protocol::Error::new(
+                    "client identity payload identifier is longer than 32767 characters",
+                ));
+            }
+            Ok((channel, payload.bytes))
+        })
+        .collect::<Result<_, _>>()?;
+    send_identity(c, &sunrise_hooks::ClientIdentity { brand, payloads })
+}
+
 /// `ClientBrandRetriever.getClientModName`, then the identity's configuration payloads, in order.
+/// Every packet is encoded before any is sent, so an identity the codecs refuse sends nothing.
 fn send_identity(
     c: &mut Connection,
     identity: &sunrise_hooks::ClientIdentity,
@@ -2330,19 +2385,23 @@ fn send_identity(
     let mut brand = ::sunrise_core::vanilla_bytes::Writer::new();
     brand.string(&identity.brand);
     let brand = ("minecraft:brand", brand.data);
-    for (channel, data) in std::iter::once(brand).chain(
-        identity
-            .payloads
-            .iter()
-            .map(|(channel, data)| (channel.as_str(), data.clone())),
-    ) {
-        c.send(
-            &cfg::Serverbound::CustomPayload(cfg::CustomPayload {
+    let packets = std::iter::once(brand)
+        .chain(
+            identity
+                .payloads
+                .iter()
+                .map(|(channel, data)| (channel.as_str(), data.clone())),
+        )
+        .map(|(channel, data)| {
+            cfg::Serverbound::CustomPayload(cfg::CustomPayload {
                 channel: channel.into(),
                 data,
             })
-            .try_encode()?,
-        )?;
+            .try_encode()
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    for packet in &packets {
+        c.send(packet)?;
     }
     Ok(())
 }
@@ -2801,6 +2860,254 @@ mod tests {
             }
             assert!(server.recv().is_err(), "a packet after the expected ones");
         }
+    }
+
+    struct JoinIdentityMod {
+        answers: Vec<(&'static str, mod_api::ClientIdentity)>,
+        seen: Arc<Mutex<Vec<String>>>,
+    }
+
+    #[mod_api::__subscriptions]
+    impl mod_api::Hooks for JoinIdentityMod {
+        fn client_identity(
+            &self,
+            host: &dyn mod_api::ClientIdentityHost,
+            _: &mut mod_api::ClientIdentityEvent,
+        ) -> Option<mod_api::ClientIdentity> {
+            let address = host.server_address();
+            self.seen.lock().unwrap().push(address.to_owned());
+            self.answers
+                .iter()
+                .find(|(target, _)| *target == address)
+                .map(|(_, answer)| answer.clone())
+        }
+    }
+
+    #[test]
+    fn initial_identity_uses_the_mod_answer_for_each_network_join() {
+        use mod_api::{ClientIdentity, ClientIdentityPayload, Identifier, ModEntry};
+        use sunrise_protocol::connection::Pipe;
+
+        let seen = Arc::new(Mutex::new(Vec::new()));
+        let later_seen = Arc::new(Mutex::new(Vec::new()));
+        let mods = vec![
+            ModEntry::new(
+                "first_identity",
+                Box::new(JoinIdentityMod {
+                    answers: vec![
+                        (
+                            "Join.Example:25572",
+                            ClientIdentity::new(
+                                "custom",
+                                vec![
+                                    ClientIdentityPayload::new(
+                                        Identifier::parse("fixture:first").unwrap(),
+                                        vec![5, 9],
+                                    ),
+                                    ClientIdentityPayload::new(
+                                        Identifier::parse("fixture:second").unwrap(),
+                                        vec![],
+                                    ),
+                                ],
+                            ),
+                        ),
+                        ("Next.Example:25573", ClientIdentity::new("moved", vec![])),
+                    ],
+                    seen: seen.clone(),
+                }),
+            ),
+            ModEntry::new(
+                "later_identity",
+                Box::new(JoinIdentityMod {
+                    answers: vec![("Join.Example:25572", ClientIdentity::new("later", vec![]))],
+                    seen: later_seen.clone(),
+                }),
+            ),
+        ];
+        mod_platform::testing::with_mods(mods.into(), || {
+            let local = crate::raw_payloads::Local::empty();
+            for (address, expected) in [
+                (
+                    Some("Join.Example:25572"),
+                    vec![
+                        ("minecraft:brand", b"\x06custom".as_slice()),
+                        ("fixture:first", &[5, 9]),
+                        ("fixture:second", &[]),
+                    ],
+                ),
+                (
+                    Some("Next.Example:25573"),
+                    vec![("minecraft:brand", b"\x05moved".as_slice())],
+                ),
+                (
+                    Some("Elsewhere.Example"),
+                    vec![
+                        ("minecraft:brand", b"\x05layer".as_slice()),
+                        ("fixture:layer", &[3]),
+                    ],
+                ),
+                (None, vec![("minecraft:brand", b"\x07vanilla".as_slice())]),
+            ] {
+                let network = address.map(|address| {
+                    (
+                        address,
+                        sunrise_hooks::ClientIdentity {
+                            brand: "layer".into(),
+                            payloads: vec![("fixture:layer".into(), vec![3])],
+                        },
+                    )
+                });
+                let (client, server) = Pipe::pair();
+                let mut client = Connection::local(client);
+                native_client_identity(&mut client, network, &local).unwrap();
+                drop(client);
+                let mut server = Connection::local(server);
+                for (channel, bytes) in expected {
+                    let (id, body) = server.recv().unwrap();
+                    let cfg::Serverbound::CustomPayload(payload) =
+                        cfg::Serverbound::decode(id, &body).unwrap()
+                    else {
+                        panic!("expected a custom payload");
+                    };
+                    assert_eq!(
+                        (payload.channel.as_str(), payload.data.as_slice()),
+                        (channel, bytes)
+                    );
+                }
+                assert!(server.recv().is_err(), "a packet after the expected ones");
+            }
+        });
+        assert_eq!(
+            seen.lock().unwrap().as_slice(),
+            [
+                "Join.Example:25572",
+                "Next.Example:25573",
+                "Elsewhere.Example"
+            ]
+        );
+        assert_eq!(later_seen.lock().unwrap().as_slice(), ["Elsewhere.Example"]);
+    }
+
+    fn assert_refused_identity_channel(channel: mod_api::Identifier, diagnostic: &str) {
+        use mod_api::{ClientIdentity, ClientIdentityPayload, ModEntry};
+        use sunrise_protocol::connection::Pipe;
+
+        mod_platform::testing::with_mods(
+            vec![ModEntry::new(
+                "refused_identity",
+                Box::new(JoinIdentityMod {
+                    answers: vec![(
+                        "Join.Example",
+                        ClientIdentity::new(
+                            "custom",
+                            vec![ClientIdentityPayload::new(channel, b"\x03two".to_vec())],
+                        ),
+                    )],
+                    seen: Arc::default(),
+                }),
+            )]
+            .into(),
+            || {
+                let (client, server) = Pipe::pair();
+                let mut client = Connection::local(client);
+                let error = native_client_identity(
+                    &mut client,
+                    Some(("Join.Example", sunrise_hooks::ClientIdentity::vanilla())),
+                    &crate::raw_payloads::Local::empty(),
+                )
+                .unwrap_err();
+                assert!(error.to_string().contains(diagnostic), "{error}");
+                drop(client);
+                assert!(
+                    Connection::local(server).recv().is_err(),
+                    "sent part of a refused identity"
+                );
+            },
+        );
+    }
+
+    #[test]
+    fn initial_identity_sends_nothing_unless_every_packet_fits() {
+        use mod_api::{ClientIdentity, ClientIdentityPayload, Identifier, ModEntry};
+        use sunrise_protocol::connection::Pipe;
+
+        let payload = |len| {
+            vec![ClientIdentityPayload::new(
+                Identifier::parse("fixture:body").unwrap(),
+                vec![7; len],
+            )]
+        };
+        // ServerboundCustomPayloadPacket.MAX_PAYLOAD_SIZE is 32767 bytes; BrandPayload.write
+        // writes the brand with FriendlyByteBuf.writeUtf, at most 32767 characters.
+        for (brand, payloads, sent) in [
+            ("custom".to_owned(), payload(32_767), true),
+            ("custom".to_owned(), payload(32_768), false),
+            ("b".repeat(32_768), payload(0), false),
+        ] {
+            let answer = ClientIdentity::new(brand.clone(), payloads);
+            mod_platform::testing::with_mods(
+                vec![ModEntry::new(
+                    "limits",
+                    Box::new(JoinIdentityMod {
+                        answers: vec![("Join.Example", answer)],
+                        seen: Arc::default(),
+                    }),
+                )]
+                .into(),
+                || {
+                    let (client, server) = Pipe::pair();
+                    let mut client = Connection::local(client);
+                    let result = native_client_identity(
+                        &mut client,
+                        Some(("Join.Example", sunrise_hooks::ClientIdentity::vanilla())),
+                        &crate::raw_payloads::Local::empty(),
+                    );
+                    drop(client);
+                    let mut server = Connection::local(server);
+                    if sent {
+                        result.unwrap();
+                        let mut received = Vec::new();
+                        while let Ok((id, body)) = server.recv() {
+                            let cfg::Serverbound::CustomPayload(payload) =
+                                cfg::Serverbound::decode(id, &body).unwrap()
+                            else {
+                                panic!("expected a custom payload");
+                            };
+                            received.push((payload.channel.to_string(), payload.data.len()));
+                        }
+                        assert_eq!(
+                            received,
+                            [
+                                ("minecraft:brand".to_owned(), 7),
+                                ("fixture:body".to_owned(), 32_767)
+                            ]
+                        );
+                    } else {
+                        assert!(result.is_err(), "brand of {} bytes", brand.len());
+                        assert!(server.recv().is_err(), "sent part of a refused identity");
+                    }
+                },
+            );
+        }
+    }
+
+    #[test]
+    fn initial_identity_refuses_brand_as_an_extra_payload() {
+        for namespace in ["minecraft", ""] {
+            assert_refused_identity_channel(
+                mod_api::Identifier::from_parts(namespace, "brand").unwrap(),
+                "minecraft:brand is reserved",
+            );
+        }
+    }
+
+    #[test]
+    fn initial_identity_refuses_an_overlong_channel_identifier() {
+        // The namespace and colon make this 32,768 characters (Identifier.STREAM_CODEC).
+        assert_refused_identity_channel(
+            mod_api::Identifier::from_parts("fixture", &"x".repeat(32_760)).unwrap(),
+            "identifier is longer than 32767 characters",
+        );
     }
 
     #[test]
@@ -3389,6 +3696,61 @@ mod tests {
         assert!(thread.join().unwrap().is_ok());
         drop(writer);
         std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn configuration_accepts_a_resource_pack_prompt_with_a_builtin_item_hover() {
+        let root = TempDirGuard(std::env::temp_dir().join(format!(
+            "sunrise-net-config-item-hover-{}",
+            std::process::id()
+        )));
+        std::fs::create_dir_all(&root.0).unwrap();
+        std::fs::write(root.0.join("items.json"), r#"{"minecraft:diamond":{}}"#).unwrap();
+        let data =
+            crate::test_resources::item_data(&root.0, DataLoadOrigin::ClientPreload).unwrap();
+        let (client, server) = sunrise_protocol::connection::Pipe::pair();
+        let (mut reader, writer) = Connection::local(client).split();
+        let writer = Arc::new(Mutex::new(Some(QueuedWriter::new(writer).unwrap())));
+        let (prompt, _) = sunrise_core::nbt::parse_snbt(
+            r#"{text:"Pack prompt",hover_event:{action:show_item,id:"minecraft:diamond"}}"#,
+        )
+        .unwrap();
+        let request = cfg::ResourcePackPush {
+            id: 42,
+            url: "https://example.invalid/pack.zip".into(),
+            hash: String::new(),
+            required: false,
+            prompt: Some(prompt),
+        };
+        let mut server = Connection::local(server);
+        for packet in [
+            cfg::Clientbound::ResourcePackPush(request.clone()),
+            cfg::Clientbound::FinishConfiguration(Empty),
+        ] {
+            server.send(&packet.encode()).unwrap();
+        }
+        let mut received = None;
+        drive_configuration(
+            |send| {
+                configure(
+                    &mut reader,
+                    &writer,
+                    &Arc::new(AtomicBool::new(true)),
+                    &Language::new(),
+                    send,
+                    &Cookies::default(),
+                    &data,
+                    &crate::raw_payloads::Transport::empty(),
+                )
+            },
+            |event| {
+                if let Event::PackPush(request) = event {
+                    received = Some(request);
+                }
+            },
+        )
+        .unwrap();
+        assert_eq!(received, Some(request));
     }
 
     #[test]
@@ -4110,6 +4472,36 @@ mod tests {
                 }
             ));
         }
+    }
+
+    #[test]
+    fn block_entity_data_with_a_non_compound_root_disconnects_before_ingress() {
+        let (root, mut server, session, reader) = bundle_pipe("invalid-block-entity-root", 1 << 20);
+        let recorder = TestRecorder::default();
+        *session.recorder.lock().unwrap() = Some(Box::new(recorder.clone()));
+        server
+            .send(
+                &play::Clientbound::BlockEntityData(play::BlockEntityData {
+                    pos: [0; 3],
+                    kind: 0,
+                    tag: Tag::Int(1),
+                })
+                .encode(),
+            )
+            .unwrap();
+        let event = session.events.recv_timeout_owned(Duration::from_secs(5));
+        drop(server);
+        reader.join().unwrap();
+        std::fs::remove_dir_all(root).unwrap();
+        assert!(recorder.decoded().is_empty());
+        let (event, _credit) = event.unwrap().into_parts();
+        assert!(matches!(
+            event,
+            Event::Disconnected {
+                from_server: false,
+                ..
+            }
+        ));
     }
 
     #[test]

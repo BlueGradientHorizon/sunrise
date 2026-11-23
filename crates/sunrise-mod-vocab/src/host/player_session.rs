@@ -30,6 +30,15 @@ pub trait PlayerSessionBackend {
     /// None for a stale or unavailable player.
     fn player_permission_level(&self, player: PlayerRef) -> Option<u8>;
     /// Side: server.
+    /// `MinecraftServer.isSingleplayerOwner`: whether the player is the integrated server's
+    /// owner, as `IntegratedServer.isSingleplayerOwner` decides it: by the **name** of the
+    /// profile the server launched with ([`Players::singleplayer_profile`]), ignoring case,
+    /// not by UUID. Cheats, opening to LAN, join order and permission level don't change it;
+    /// whether the player is an operator is [`permission_level`](PlayerRef::permission_level).
+    /// An identity read that grants nothing. False on a dedicated server
+    /// (`DedicatedServer.isSingleplayerOwner`) and for a stale or unavailable player.
+    fn player_is_singleplayer_owner(&self, player: PlayerRef) -> bool;
+    /// Side: server.
     /// `ServerPlayer.isTextFilteringEnabled`: the text-filtering option the player's client
     /// announced (`ClientInformation.textFilteringEnabled`). False for the player running the
     /// server and for an acting player with no connection, as for a client that sent none. None
@@ -91,6 +100,15 @@ pub trait PlayerSessionBackend {
 #[doc(hidden)]
 #[sunrise_mod_api_macros::host_area]
 pub trait PlayerSessionBackendMut {
+    /// Side: server.
+    /// Queues a play ping with the signed 32-bit `id` for this player's current connection.
+    /// Success means the packet was admitted to the outbound queue (or the current transaction's
+    /// batch), not that it was delivered or answered. An unmodded client echoes the ID in a play
+    /// pong, observable in `player_pong`. This is separate from keep-alive and does not measure
+    /// or change the player's latency.
+    /// Refuses with [`PlayerPingRefusal`] if the handle is stale, the player has no open play
+    /// connection, or the send cannot be queued.
+    fn player_send_ping(&mut self, player: PlayerRef, id: i32) -> Result<(), PlayerPingRefusal>;
     /// Side: server.
     /// Disconnects that player with `reason`, as `/kick` does
     /// (`ServerGamePacketListenerImpl.disconnect`): their client shows it, the log's "lost

@@ -1059,8 +1059,8 @@ fn enderman_render_offset(m: &Mob, alpha: f32) -> glam::DVec3 {
     let z = random.next_gaussian() * d;
     glam::DVec3::new(x, 0.0, z)
 }
-/// `base_transform` from a pose of the entity's origin (`EntityRenderDispatcher.submit`
-/// under a pose stack, as `SpawnerRenderer` draws the mob inside a spawner).
+/// `LivingEntityRenderer.setupRotations` and the rest of the model transform, from the
+/// entity's origin pose (`EntityRenderDispatcher.submit`, including mobs drawn in spawners).
 #[sunrise_mod_api_macros::replaceable]
 pub fn base_transform_at(m: &Mob, alpha: f32, origin: glam::Mat4) -> glam::Mat4 {
     let mut body = anim::body_rot(m, alpha);
@@ -1110,9 +1110,10 @@ pub fn base_transform_at(m: &Mob, alpha: f32, origin: glam::Mat4) -> glam::Mat4 
     // every living entity, after the sleeping offset and before
     // setupRotations, so a pose translation scales with the model but the bed
     // it lies in does not.
+    let entity_scale = m.model_scale();
     let mut base = origin
         * sleep_offset
-        * glam::Mat4::from_scale(glam::Vec3::splat(m.model_scale()))
+        * glam::Mat4::from_scale(glam::Vec3::splat(entity_scale))
         * pufferfish_bob(m, alpha)
         * rotation;
     if m.death_time > 0 && !super::creaking::tearing_down(m) {
@@ -1125,9 +1126,11 @@ pub fn base_transform_at(m: &Mob, alpha: f32, origin: glam::Mat4) -> glam::Mat4 
         let pitch = m.previous_head_pitch + (m.head_pitch - m.previous_head_pitch) * alpha;
         base *= glam::Mat4::from_rotation_x((-90.0 - pitch).to_radians())
             * glam::Mat4::from_rotation_y(((m.age as f32 + alpha) * -75.0).to_radians());
-    } else if anim::upside_down(m) {
-        // isEntityUpsideDown
-        base *= glam::Mat4::from_translation(glam::Vec3::new(0.0, m.height() + 0.1, 0.0))
+    } else if anim::upside_down(m) && m.pose() != mod_api::Pose::Sleeping {
+        // The box height already includes entity scale. Undo the pose's scale
+        // for the whole offset, including the 0.1-block clearance.
+        let lift = (m.height() + 0.1) / entity_scale;
+        base *= glam::Mat4::from_translation(glam::Vec3::new(0.0, lift, 0.0))
             * glam::Mat4::from_rotation_z(PI);
     }
     // IronGolemRenderer.setupRotations, after LivingEntityRenderer's: the body
@@ -3211,6 +3214,7 @@ mod tests {
 
         let model = Arc::new(Part::parse("root", &json!({"children": {"head": {}}})));
         let kind = Arc::new(MobType {
+            type_key: Default::default(),
             shadow: None,
             id: "minecraft:player".into(),
             species: Species::Zombie,
@@ -3585,8 +3589,10 @@ mod tests {
         let facts = crate::blocks::BlockFacts::load(&root, assets.registry).unwrap();
         let data = MobData::load(
             &sunrise_assets::resource_source::ResourceRoot::directory(root.to_path_buf()),
-            &facts,
-        );
+            facts.states.len(),
+            true,
+        )
+        .unwrap();
         for id in ["minecraft:villager", "minecraft:wandering_trader"] {
             let kind = std::sync::Arc::new(types.types[id].clone());
             let mut mob = Mob::new(1, kind, sunrise_core::geometry::Vec3::ZERO, 0.0);
@@ -3634,8 +3640,8 @@ mod tests {
         // mask, draws depth only): the glint must not be one of them.
         use crate::gfx::{
             ENERGY_SWIRL_OVERLAY, SHADOW_OVERLAY, TEXT_POLYGON_OFFSET_OVERLAY,
-            TRANSLUCENT_GLINT_ITEM_OVERLAY, TRANSLUCENT_ITEM_OVERLAY, TRANSLUCENT_PARTICLE_OVERLAY,
-            WATER_MASK_OVERLAY,
+            TEXT_POLYGON_OFFSET_SOLID_OVERLAY, TRANSLUCENT_GLINT_ITEM_OVERLAY,
+            TRANSLUCENT_ITEM_OVERLAY, TRANSLUCENT_PARTICLE_OVERLAY, WATER_MASK_OVERLAY,
         };
         assert!(
             ![
@@ -3646,6 +3652,7 @@ mod tests {
                 TRANSLUCENT_GLINT_ITEM_OVERLAY,
                 ENERGY_SWIRL_OVERLAY,
                 TEXT_POLYGON_OFFSET_OVERLAY,
+                TEXT_POLYGON_OFFSET_SOLID_OVERLAY,
             ]
             .contains(&ARMOR_GLINT)
         );
@@ -4539,6 +4546,8 @@ mod random_texture_tests {
                 want[i]
             );
         }
+        m.custom_name = Some("Dinnerbone".into());
+        assert_eq!(base_transform_at(&m, 0.5, glam::Mat4::IDENTITY), scaled);
     }
 
     /// A sleeping avatar's bed offset is `getEyeHeight(Pose.STANDING) - 0.1`,
