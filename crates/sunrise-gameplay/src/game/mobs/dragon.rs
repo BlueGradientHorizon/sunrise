@@ -3559,17 +3559,14 @@ impl crate::game::ServerGame<'_> {
         if health != 1.0 {
             meta.push((9, serializer::FLOAT, Value::Float(health)));
         }
-        // Mob.DATA_MOB_FLAGS_ID: aggressive is 4.
-        if d.aggressive {
-            meta.push((15, serializer::BYTE, Value::Byte(4)));
-        }
+        // Mob.DATA_MOB_FLAGS_ID: NoAI bit 0, LeftHanded bit 1, aggressive bit 2,
+        // in one entry (two pushes on index 15 would overwrite each other).
+        meta.extend(
+            sunrise_gameplay_common::game::mobs::dragon_common::mob_flags_meta(d),
+        );
         let phase = d.phase.id();
         if phase != 10 {
             meta.push((16, serializer::INT, Value::Int(phase)));
-        }
-        // Mob.DATA_MOB_FLAGS_ID: NoAI is its first bit.
-        if d.no_ai {
-            meta.push((15, serializer::BYTE, Value::Byte(1)));
         }
         Some(sunrise_sim::lan::entity::EntityState {
             id: d.id as i32,
@@ -4216,19 +4213,19 @@ impl crate::game::ServerGame<'_> {
         if finalized.veto_admission {
             return None;
         }
+        let mut left_handed = false;
         if !finalized.skip_initialization {
             // Mob.finalizeSpawn (EnderDragon keeps it): the follow range's
-            // triangle and left-handed roll, neither of which changes how the dragon flies.
-            let _ = self
-                .common
-                .world
-                .random
-                .triangle(0.0, 0.114_850_000_000_000_01);
-            let _ = self.common.world.random.next_float();
+            // triangle, then `setLeftHanded(nextFloat() < 0.05)`, from the
+            // level's random. Neither changes how the dragon flies.
+            left_handed = sunrise_gameplay_common::game::mobs::dragon_common::finalize_spawn_left_handed(
+                &mut self.common.world.random,
+            );
         }
         // The dragon's own random (`Entity.random`), not the level's.
         let seed = random_source::unique_seed();
         let mut dragon = Dragon::new(position, yaw, seed);
+        dragon.left_handed = left_handed;
         dragon.join = sunrise_sim::join_seq::JoinSeq::next();
         dragon.id = self.server.next_entity + 1;
         self.server.next_entity += 9;
