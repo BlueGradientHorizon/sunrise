@@ -998,7 +998,7 @@ impl Renderer {
                 let nearby = (v.key.0 - camera_section.0).abs() <= 2
                     && (v.key.1 - camera_section.1).abs() <= 2
                     && (v.key.2 - camera_section.2).abs() <= 2;
-                let scheduled = (i + count - self.translucency_cursor) % count < budget;
+                let scheduled = resorts(i, 0, count, self.translucency_cursor, budget);
                 let origin = [
                     v.key.0 * 16,
                     self.layout.min_y() + v.key.1 * 16,
@@ -1045,15 +1045,9 @@ impl Renderer {
         // place in what the CPU draws (`visible_lods`), which the tiles whose
         // solid quads the pass drew whole leave out of.
         let section_translucent = self.translucent_draws.len();
-        let mut listed = 0usize;
-        for (i, v) in far.iter().enumerate() {
-            let scheduled = (i + count - self.translucency_cursor) % count < budget;
-            if visible_lods.get(listed).is_some_and(|l| l.key == v.key) {
-                listed += 1;
-            } else {
-                continue;
-            }
-            let instance = visible.len() + listed - 1;
+        for (i, instance) in listed_slots(far, &visible_lods, visible.len()) {
+            let v = &far[i];
+            let scheduled = resorts(i, visible.len(), count, self.translucency_cursor, budget);
             let tile = self.lods.get_mut(&v.key).expect("visible resident tile");
             let s = tile.drawn_mut();
             if let Some((index_page, index_start)) = s.sorted_indices {
@@ -1093,10 +1087,8 @@ impl Renderer {
             // front together, a far tile's water under a near chunk's (one fading in, or brought
             // into view by a longer render distance) blended twice and looked opaque. The cost: far
             // water just behind near water shows no surface of its own there.
-            let tier = |instance: usize| match instance.checked_sub(visible.len()) {
-                None => 0,
-                Some(tile) if far[tile].old => 2,
-                Some(_) => 1,
+            let tier = |instance: usize| {
+                blend_tier(instance, visible.len(), |slot| visible_lods[slot].old)
             };
             self.translucent_draws
                 .sort_unstable_by_key(|&(distance, instance, ..)| {
@@ -3763,4 +3755,48 @@ pub(super) fn mark_layers(active: &mut [u64], layers: &[u16]) {
 pub(super) fn entity_buffer_vertices(vertices: u64, max_buffer_size: u64) -> u64 {
     let most = max_buffer_size / std::mem::size_of::<Vertex>() as u64;
     vertices.next_power_of_two().min(most).max(vertices)
+}
+
+/// Whether the translucent entry at `index` of the near sections' and the far tiles' combined
+/// list re-sorts this frame: the rotation's `budget` entries from `cursor`, over `count`. A far
+/// tile's `index` is its place in the walk's complete set, past the near sections' `near`.
+pub(super) fn resorts(
+    index: usize,
+    near: usize,
+    count: usize,
+    cursor: usize,
+    budget: usize,
+) -> bool {
+    (index + near + count - cursor) % count < budget
+}
+
+/// The far tiles a frame's water draws, each with its instance slot: walks the walk's complete
+/// set (`far`) with what the CPU draws of it (`listed`), and pairs each tile the walk listed
+/// with the slot it takes past the near sections' `near`. A tile whose solid quads the pass
+/// drew whole takes none, and the pairs keep the walk's order.
+pub(super) fn listed_slots<'a>(
+    far: &'a [lod::Visible],
+    listed: &'a [lod::Visible],
+    near: usize,
+) -> impl Iterator<Item = (usize, usize)> + 'a {
+    let mut slot = 0usize;
+    far.iter().enumerate().filter_map(move |(i, v)| {
+        if listed.get(slot).is_some_and(|l| l.key == v.key) {
+            slot += 1;
+            Some((i, near + slot - 1))
+        } else {
+            None
+        }
+    })
+}
+
+/// A translucent draw's blend tier from its instance slot: the near sections' water (tier 0),
+/// the far tiles' (1), a tile standing in for its replacement (2, over them). `old`: whether
+/// the tile at the slot past the near sections' `near`, in the same list the slot names, is one.
+pub(super) fn blend_tier(instance: usize, near: usize, old: impl Fn(usize) -> bool) -> u32 {
+    match instance.checked_sub(near) {
+        None => 0,
+        Some(slot) if old(slot) => 2,
+        Some(_) => 1,
+    }
 }
