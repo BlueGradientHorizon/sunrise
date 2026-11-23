@@ -599,7 +599,7 @@ impl RenderEntityBounds for Cushion {
 /// Whether this projectile still lives its list's tick: an arrow's state was
 /// not removed. A thrown projectile leaves its list through the batch's own
 /// keep flags, not a field of its own.
-fn shot_alive(shot: &Projectile) -> bool {
+pub(in crate::game) fn shot_alive(shot: &Projectile) -> bool {
     shot.arrow.as_ref().is_none_or(|a| !a.removed)
 }
 
@@ -714,11 +714,16 @@ impl sunrise_client::block_contact::InsideWalk for ProjectileInside<'_, '_> {
         Ok(())
     }
 }
+/// Live read of an entity temporarily lent out by the current batch.
+pub(in crate::game) type InsideSources<'a> =
+    Option<&'a dyn Fn(u32) -> Option<(crate::game::commands::Target, [f64; 3])>>;
+
 /// Engine backing for [`mod_api::InsideEntityView`] while flushing an item's
 /// `InsideEffects` collector.
 struct ItemInsideAccess<'a, 'g> {
     game: &'a mut Game<'g>,
     item: &'a mut ItemEntity,
+    sources: InsideSources<'a>,
 }
 
 impl mod_api::InsideEntityAccess for ItemInsideAccess<'_, '_> {
@@ -832,6 +837,7 @@ impl mod_api::InsideEntityAccess for ItemInsideAccess<'_, '_> {
             subject_pos,
             direct,
             causing,
+            self.sources,
         ) else {
             return false;
         };
@@ -888,6 +894,7 @@ impl mod_api::InsideEntityAccess for ItemInsideAccess<'_, '_> {
 struct ProjectileInsideAccess<'a, 'g> {
     game: &'a mut Game<'g>,
     shot: &'a mut Projectile,
+    sources: InsideSources<'a>,
 }
 
 impl mod_api::InsideEntityAccess for ProjectileInsideAccess<'_, '_> {
@@ -1003,6 +1010,7 @@ impl mod_api::InsideEntityAccess for ProjectileInsideAccess<'_, '_> {
             subject_pos,
             direct,
             causing,
+            self.sources,
         ) else {
             return false;
         };
@@ -1311,7 +1319,11 @@ impl Game<'_> {
     /// fire over a lent level (as `item_fall_on` lends one), and the flush of
     /// the queued writes into this item, its own tick. Nothing runs without a
     /// listening part: one `any_inside` test is the whole cost.
-    pub(in crate::game) fn sweep_item_inside(&mut self, item: &mut ItemEntity) {
+    pub(in crate::game) fn sweep_item_inside(
+        &mut self,
+        item: &mut ItemEntity,
+        sources: InsideSources<'_>,
+    ) {
         if !sunrise_client::block_contact::HOOKS
             .get()
             .is_some_and(|hooks| (hooks.any_inside)())
@@ -1335,7 +1347,11 @@ impl Game<'_> {
         let ItemInside { game, item } = inside;
         // `applyAndClear`: the queued effects and callbacks apply in the
         // collector's order, in this item's tick, until it is destroyed.
-        let mut access = ItemInsideAccess { game, item };
+        let mut access = ItemInsideAccess {
+            game,
+            item,
+            sources,
+        };
         effects.apply_and_clear(&mut access);
     }
 
@@ -1369,7 +1385,11 @@ impl Game<'_> {
     /// The projectile's `Entity.checkInsideBlocks`, the same batch sweep the
     /// item's is: the shared walk over its move, the isolated fire over a lent
     /// level, and the flush into this projectile's own tick.
-    pub(in crate::game) fn sweep_projectile_inside(&mut self, shot: &mut Projectile) {
+    pub(in crate::game) fn sweep_projectile_inside(
+        &mut self,
+        shot: &mut Projectile,
+        sources: InsideSources<'_>,
+    ) {
         if !sunrise_client::block_contact::HOOKS
             .get()
             .is_some_and(|hooks| (hooks.any_inside)())
@@ -1391,7 +1411,11 @@ impl Game<'_> {
             &mut effects,
         );
         let ProjectileInside { game, shot } = inside;
-        let mut access = ProjectileInsideAccess { game, shot };
+        let mut access = ProjectileInsideAccess {
+            game,
+            shot,
+            sources,
+        };
         effects.apply_and_clear(&mut access);
     }
 
@@ -1407,36 +1431,42 @@ impl Game<'_> {
         subject_pos: [f64; 3],
         direct: Option<mod_api::EntityRef>,
         causing: Option<mod_api::EntityRef>,
+        sources: InsideSources<'_>,
     ) -> Option<(
         Option<crate::game::commands::Target>,
         Option<crate::game::commands::Target>,
         Option<[f64; 3]>,
     )> {
         let resolve = |handle: mod_api::EntityRef| {
-            let target = if handle.id() == subject_id {
-                (self.is_logical_server() && self.native_lifecycle.epoch() == Some(handle.epoch()))
-                    .then_some(subject_target)
+            let id = handle.id();
+            let resolved = if !self.is_logical_server()
+                || self.native_lifecycle.epoch() != Some(handle.epoch())
+            {
+                None
+            } else if id == subject_id {
+                Some((subject_target, Some(subject_pos)))
+            } else if let Some((target, pos)) = sources.and_then(|source| source(id)) {
+                (!matches!(target, crate::game::commands::Target::Projectile(_))
+                    || !self.projectile_removal_pending(id))
+                .then_some((target, Some(pos)))
             } else {
                 self.native_entity_target(handle)
                     .filter(|&target| self.target_level(target) == self.dim)
+                    .map(|target| (target, self.target_position(target)))
             };
-            target.ok_or_else(|| {
+            resolved.ok_or_else(|| {
                 log::warn!(
-                    "entity_inside: cannot resolve damage source {} in the swept entity's level",
-                    handle.id()
+                    "entity_inside: cannot resolve damage source {id} in the swept entity's level"
                 );
             })
         };
-        let direct_target = direct.map(resolve).transpose().ok()?;
-        let causing_target = causing.map(resolve).transpose().ok()?;
-        let from = direct_target.and_then(|t| {
-            if t == subject_target {
-                Some(subject_pos)
-            } else {
-                self.target_position(t)
-            }
-        });
-        Some((direct_target, causing_target, from))
+        let direct = direct.map(resolve).transpose().ok()?;
+        let causing = causing.map(resolve).transpose().ok()?;
+        Some((
+            direct.map(|(target, _)| target),
+            causing.map(|(target, _)| target),
+            direct.and_then(|(_, pos)| pos),
+        ))
     }
 
     /// `Projectile.hurtServer`: always returns `false`, marking non-immune
@@ -1564,6 +1594,7 @@ impl Game<'_> {
         escape_speed: Option<f32>,
         entity_boxes: &[Aabb],
         client: bool,
+        sources: InsideSources<'_>,
         splash: &mut impl FnMut(sunrise_client::entities::ItemSplash),
     ) -> (bool, bool) {
         let no_physics = escape_speed.is_some();
@@ -1640,7 +1671,7 @@ impl Game<'_> {
                 }
             }
             if !client {
-                self.sweep_item_inside(item);
+                self.sweep_item_inside(item, sources);
                 if item.health <= 0 {
                     return (false, true);
                 }

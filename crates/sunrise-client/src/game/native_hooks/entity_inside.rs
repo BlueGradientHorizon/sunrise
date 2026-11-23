@@ -702,7 +702,7 @@ mod sweep_tests {
                     sunrise_client::parallel::TickThread::mint(),
                     Some("minecraft:overworld"),
                     || {
-                        game.sweep_item_inside(&mut item);
+                        game.sweep_item_inside(&mut item, None);
                     },
                 );
                 assert_eq!(
@@ -746,7 +746,16 @@ mod sweep_tests {
                 let outcome = sunrise_client::block_contact::in_level(
                     sunrise_client::parallel::TickThread::mint(),
                     Some("minecraft:overworld"),
-                    || game.tick_item_with_block_contacts(&mut item, None, &[], false, &mut |_| {}),
+                    || {
+                        game.tick_item_with_block_contacts(
+                            &mut item,
+                            None,
+                            &[],
+                            false,
+                            None,
+                            &mut |_| {},
+                        )
+                    },
                 );
                 assert_eq!(outcome, (true, false));
                 assert_eq!(*part.contacts.lock().unwrap(), [[1, 100, 0]]);
@@ -786,7 +795,7 @@ mod sweep_tests {
                     sunrise_client::parallel::TickThread::mint(),
                     Some("minecraft:overworld"),
                     || {
-                        game.sweep_item_inside(&mut item);
+                        game.sweep_item_inside(&mut item, None);
                     },
                 );
                 assert_eq!(part.contacts.lock().unwrap().len(), 2);
@@ -869,7 +878,7 @@ mod sweep_tests {
                     sunrise_client::parallel::TickThread::mint(),
                     Some("minecraft:overworld"),
                     || {
-                        game.sweep_item_inside(&mut items[0]);
+                        game.sweep_item_inside(&mut items[0], None);
                     },
                 );
                 game.put_back_dropped(items);
@@ -917,7 +926,7 @@ mod sweep_tests {
                 sunrise_client::parallel::TickThread::mint(),
                 Some("minecraft:overworld"),
                 || {
-                    game.sweep_item_inside(&mut item);
+                    game.sweep_item_inside(&mut item, None);
                 },
             );
             assert_eq!(
@@ -967,7 +976,7 @@ mod sweep_tests {
                     sunrise_client::parallel::TickThread::mint(),
                     Some("minecraft:overworld"),
                     || {
-                        game.sweep_projectile_inside(&mut shot);
+                        game.sweep_projectile_inside(&mut shot, None);
                     },
                 );
                 assert_eq!(
@@ -1002,7 +1011,7 @@ mod sweep_tests {
                     sunrise_client::parallel::TickThread::mint(),
                     Some("minecraft:overworld"),
                     || {
-                        game.sweep_projectile_inside(&mut arrow);
+                        game.sweep_projectile_inside(&mut arrow, None);
                     },
                 );
                 assert!(
@@ -1046,7 +1055,7 @@ mod sweep_tests {
                 sunrise_client::parallel::TickThread::mint(),
                 Some("minecraft:overworld"),
                 || {
-                    game.sweep_projectile_inside(&mut shot);
+                    game.sweep_projectile_inside(&mut shot, None);
                 },
             );
             assert_eq!(
@@ -1092,7 +1101,7 @@ mod sweep_tests {
                     sunrise_client::parallel::TickThread::mint(),
                     Some("minecraft:overworld"),
                     || {
-                        game.sweep_projectile_inside(&mut flying);
+                        game.sweep_projectile_inside(&mut flying, None);
                     },
                 );
                 assert_eq!(
@@ -1112,7 +1121,7 @@ mod sweep_tests {
                     sunrise_client::parallel::TickThread::mint(),
                     Some("minecraft:overworld"),
                     || {
-                        game.sweep_projectile_inside(&mut stuck);
+                        game.sweep_projectile_inside(&mut stuck, None);
                     },
                 );
                 assert_eq!(
@@ -1167,7 +1176,7 @@ mod sweep_tests {
                     sunrise_client::parallel::TickThread::mint(),
                     Some("minecraft:overworld"),
                     || {
-                        projectiles.update(0, |p| game.sweep_projectile_inside(p));
+                        projectiles.update(0, |p| game.sweep_projectile_inside(p, None));
                     },
                 );
                 game.creatures.projectiles.restore(
@@ -1378,7 +1387,7 @@ mod sweep_tests {
                     sunrise_client::parallel::TickThread::mint(),
                     Some("minecraft:overworld"),
                     || {
-                        game.sweep_item_inside(&mut item);
+                        game.sweep_item_inside(&mut item, None);
                     },
                 );
 
@@ -1422,25 +1431,26 @@ mod sweep_tests {
         });
     }
 
-    /// Calling `hurt_with_source` with a stale `EntityRef` refuses that hurt call
-    /// (returns `false` without applying damage) and leaves sibling `push` and
-    /// `set_block` writes intact without rolling them back.
+    /// The item tick lifts its batch; a source in that batch is still live, but a
+    /// retired handle refuses just that call without rolling back the other writes.
     #[test]
     #[ignore = "daily"]
-    fn callback_hurt_with_stale_source_does_not_refuse_or_rollback() {
-        if fresh("callback_hurt_with_stale_source_does_not_refuse_or_rollback") {
+    fn callback_hurt_resolves_a_lifted_sibling_but_not_a_retired_handle() {
+        if fresh("callback_hurt_resolves_a_lifted_sibling_but_not_a_retired_handle") {
             return;
         }
         use crate::game::api_values::TryIntoApi;
         use std::sync::{Arc, Mutex};
+        use sunrise_client::items::ItemStack;
 
         #[derive(Clone, Default)]
-        struct StaleSourcePart {
+        struct SourcePart {
             dirt: Arc<Mutex<Option<mod_api::BlockState>>>,
+            sources: Arc<Mutex<Option<[mod_api::EntityRef; 3]>>>,
             outcomes: Arc<Mutex<Option<[bool; 3]>>>,
         }
         #[mod_api::sunrise_part]
-        impl mod_api::BlockPart for StaleSourcePart {
+        impl mod_api::BlockPart for SourcePart {
             fn entity_inside(
                 &self,
                 _: &mut dyn mod_api::LevelRandomHost,
@@ -1448,69 +1458,94 @@ mod sweep_tests {
             ) {
                 let dirt = self.dirt.lock().unwrap().unwrap();
                 let pos = [event.pos.x, event.pos.y, event.pos.z];
-                let stale_ref =
-                    mod_api::EntityRef::new(mod_api::WorldEpoch::new(u64::MAX), 999_999);
+                let [direct, causing, stale] = self.sources.lock().unwrap().unwrap();
                 let outcomes = self.outcomes.clone();
                 event.run_after(mod_api::InsideEffect::Freeze, move |view| {
-                    let hurt_ok = view.hurt_with_source(
-                        "minecraft:in_fire",
+                    let retired_hit =
+                        view.hurt_with_source("minecraft:generic", 2.0, Some(stale), None);
+                    let live_hit = view.hurt_with_source(
+                        "minecraft:generic",
                         1.0,
-                        Some(stale_ref),
-                        Some(stale_ref),
+                        Some(direct),
+                        Some(causing),
                     );
-                    let push_ok = view.push([0.5, 0.0, 0.0]);
                     let block_ok = view.set_block(pos, dirt);
-                    *outcomes.lock().unwrap() = Some([hurt_ok, push_ok, block_ok]);
+                    *outcomes.lock().unwrap() = Some([retired_hit, live_hit, block_ok]);
                 });
             }
         }
-        struct StaleSourceMod(StaleSourcePart);
+        type Hits = Arc<Mutex<Vec<(i32, i32, Option<[f64; 3]>)>>>;
+        struct SourceMod(SourcePart, Hits);
         #[mod_api::__subscriptions]
-        impl mod_api::Hooks for StaleSourceMod {
+        impl mod_api::Hooks for SourceMod {
             fn register(&self, r: &mut dyn mod_api::Registrar, _: &mod_api::RegistrationContext) {
-                let stone = r.block_key("minecraft:stone");
-                r.block_part(stone, self.0.clone());
+                let grass = r.block_key("minecraft:short_grass");
+                r.block_part(grass, self.0.clone());
+            }
+
+            fn entity_invulnerability_check(
+                &self,
+                _: mod_api::LevelSide<'_>,
+                event: &mut mod_api::EntityInvulnerabilityCheckEvent<'_>,
+            ) {
+                if event.kind == "minecraft:item" && event.source.damage_type == "minecraft:generic"
+                {
+                    self.1.lock().unwrap().push((
+                        event.source.direct,
+                        event.source.causing,
+                        event.source.position,
+                    ));
+                }
             }
         }
 
-        let part = StaleSourcePart::default();
+        let part = SourcePart::default();
+        let hits = Hits::default();
         let entry = || {
             mod_api::ModEntry::new(
-                "inside-stale-source",
-                Box::new(StaleSourceMod(part.clone())),
+                "inside-batch-source",
+                Box::new(SourceMod(part.clone(), hits.clone())),
             )
         };
         crate::game::api_values::install_parts(&[entry()]).unwrap();
-        let mods: mod_api::Mods = vec![entry()].into();
-        mod_platform::testing::with_mods(mods, || {
+        mod_platform::testing::with_mods(vec![entry()].into(), || {
             crate::game::native_entity_refs::tests::with_game(|game| {
                 game.options.dedicated = Some(Vec::new());
                 let _ = sunrise_client::block_contact::HOOKS.set(super::BLOCK_CONTACT_HOOKS);
-                let dirt = game
-                    .pack
-                    .assets
-                    .registry
-                    .default_state("minecraft:dirt")
-                    .unwrap();
-                let mut item = single_stone_item(game);
+                let _ = single_stone_item(game); // the contact test chunk
+                let state = |name| game.pack.assets.registry.default_state(name).unwrap();
+                let grass = state("minecraft:short_grass");
+                let dirt = state("minecraft:dirt");
+                game.world.set(1, 100, 0, grass).unwrap();
                 *part.dirt.lock().unwrap() = Some(dirt.try_into_api().unwrap());
-                let health_before = item.health;
-                let velocity_before = item.velocity.x;
+                for x in [1.5, 5.5, 8.5, 11.5] {
+                    game.spawn_item(
+                        ItemStack::new("minecraft:stone", 1),
+                        [x, 100.25, 0.5],
+                        [0.0; 3],
+                        20,
+                    );
+                    game.dropped.last_mut().unwrap().no_gravity = true;
+                }
+                let ids = std::array::from_fn::<_, 3, _>(|i| game.dropped[i + 1].id);
+                let [direct, causing, stale] = ids.map(|id| game.entity(id).unwrap());
+                *part.sources.lock().unwrap() = Some([direct, causing, stale]);
+                game.dropped.remove(3);
+                game.tickets.update(None);
+                game.ticked_entities_through = u32::MAX;
 
                 sunrise_client::block_contact::in_level(
                     sunrise_client::parallel::TickThread::mint(),
                     Some("minecraft:overworld"),
-                    || {
-                        game.sweep_item_inside(&mut item);
-                    },
+                    || game.tick_items(),
                 );
 
                 assert_eq!(*part.outcomes.lock().unwrap(), Some([false, true, true]));
                 assert_eq!(
-                    item.health, health_before,
-                    "stale explicit source refuses that hurt call without applying damage"
+                    *hits.lock().unwrap(),
+                    [(ids[0] as i32, ids[1] as i32, Some([5.5, 100.25, 0.5]))]
                 );
-                assert_eq!(item.velocity.x, velocity_before + 0.5);
+                assert_eq!(game.dropped[0].health, 4);
                 assert_eq!(game.world.block(1, 100, 0), dirt);
             });
         });
@@ -1607,7 +1642,7 @@ mod sweep_tests {
                     sunrise_client::parallel::TickThread::mint(),
                     Some("minecraft:overworld"),
                     || {
-                        game.sweep_item_inside(&mut item1);
+                        game.sweep_item_inside(&mut item1, None);
                     },
                 );
                 assert_eq!(panics_part.part_calls.load(Ordering::SeqCst), 1);
@@ -1621,7 +1656,7 @@ mod sweep_tests {
                     sunrise_client::parallel::TickThread::mint(),
                     Some("minecraft:overworld"),
                     || {
-                        game.sweep_item_inside(&mut item2);
+                        game.sweep_item_inside(&mut item2, None);
                     },
                 );
                 assert_eq!(
@@ -2000,7 +2035,7 @@ mod sweep_tests {
                 sunrise_client::block_contact::in_level(
                     sunrise_client::parallel::TickThread::mint(),
                     Some("minecraft:overworld"),
-                    || game.sweep_item_inside(&mut item),
+                    || game.sweep_item_inside(&mut item, None),
                 );
                 assert_eq!(item.health, 3, "float health subtraction before truncation");
 
@@ -2023,7 +2058,7 @@ mod sweep_tests {
                 sunrise_client::block_contact::in_level(
                     sunrise_client::parallel::TickThread::mint(),
                     Some("minecraft:overworld"),
-                    || game.sweep_item_inside(&mut bundle_item),
+                    || game.sweep_item_inside(&mut bundle_item, None),
                 );
                 assert!(bundle_item.health <= 0);
                 assert!(
@@ -2042,7 +2077,7 @@ mod sweep_tests {
                 sunrise_client::block_contact::in_level(
                     sunrise_client::parallel::TickThread::mint(),
                     Some("minecraft:overworld"),
-                    || game.sweep_projectile_inside(&mut shot),
+                    || game.sweep_projectile_inside(&mut shot, None),
                 );
                 assert_eq!(*part.proj_outcomes.lock().unwrap(), Some((true, false)));
                 assert!(

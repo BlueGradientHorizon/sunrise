@@ -5227,7 +5227,21 @@ impl Game<'_> {
             {
                 continue;
             }
-            projectiles.update(i, |p| game.sweep_projectile_inside(p));
+            projectiles.update_with_rest(i, |shot, before, after| {
+                let sources = |id| {
+                    before
+                        .iter()
+                        .chain(after)
+                        .find(|p| p.id == id && crate::game::entity::shot_alive(p))
+                        .map(|p| {
+                            (
+                                crate::game::commands::Target::Projectile(id),
+                                p.position.components(),
+                            )
+                        })
+                };
+                game.sweep_projectile_inside(shot, Some(&sources));
+            });
             projectiles.update(i, |p| game.lava_mark_hurt(p));
         }
         game.creatures.projectiles.restore(

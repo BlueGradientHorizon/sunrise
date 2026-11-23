@@ -118,37 +118,55 @@ impl Game<'_> {
                     break 'tick;
                 }
                 self.tick_saved_invulnerable_time(items[i].id);
+                let (no_physics, alive, discarded, entered) = items
+                    .with_one_and_rest(i, |item, before, after| {
+                        let sources = |id| {
+                            before
+                                .iter()
+                                .chain(after)
+                                .zip(removed[..i].iter().chain(&removed[i + 1..]))
+                                .find(|(p, removed)| p.id == id && !**removed && p.health > 0)
+                                .map(|(p, _)| {
+                                    (
+                                        crate::game::commands::Target::Item(id),
+                                        p.position.components(),
+                                    )
+                                })
+                        };
+                        let mut at_turn = |item: &mut ItemEntity| {
+                            // `getEntityCollisions(entity, bounds.expandTowards(movement))`: the boxes around
+                            // where the item can reach this tick.
+                            obstacles.near(ahead::reach(item), &mut nearby);
+                            // ItemEntity.tick's noPhysics (servers only): out of a block, a solid entity
+                            // or the border, placed or closed on it, towards the closest open side (#1252).
+                            let no_physics = merging
+                                && item.inside_block(
+                                    &self.world,
+                                    self.collision,
+                                    &nearby,
+                                    Some(self.border.geometry()),
+                                );
+                            // `moveTowardsClosestSpace` draws the speed from the item's own random.
+                            let escape_speed =
+                                no_physics.then(|| item.random.next_float() * 0.2 + 0.1);
+                            let mut entered = Vec::new();
+                            let (alive, discarded) = self.tick_item_with_block_contacts(
+                                item,
+                                escape_speed,
+                                &nearby,
+                                false,
+                                Some(&sources),
+                                &mut |splash| entered.push(splash),
+                            );
+                            (no_physics, alive, discarded, entered)
+                        };
+                        match moves.take(i, item, &mut at_turn) {
+                            Some(moved) => moved,
+                            None => at_turn(item),
+                        }
+                    })
+                    .expect("the item tick has a current row");
                 let item = &mut items[i];
-                let mut at_turn = |item: &mut ItemEntity| {
-                    // `getEntityCollisions(entity, bounds.expandTowards(movement))`: the boxes around
-                    // where the item can reach this tick.
-                    obstacles.near(ahead::reach(item), &mut nearby);
-                    // ItemEntity.tick's noPhysics (servers only): out of a block, a solid entity
-                    // or the border, placed or closed on it, towards the closest open side (#1252).
-                    let no_physics = merging
-                        && item.inside_block(
-                            &self.world,
-                            self.collision,
-                            &nearby,
-                            Some(self.border.geometry()),
-                        );
-                    // `moveTowardsClosestSpace` draws the speed from the item's own random.
-                    let escape_speed = no_physics.then(|| item.random.next_float() * 0.2 + 0.1);
-                    let mut entered = Vec::new();
-                    let (alive, discarded) = self.tick_item_with_block_contacts(
-                        item,
-                        escape_speed,
-                        &nearby,
-                        false,
-                        &mut |splash| entered.push(splash),
-                    );
-                    (no_physics, alive, discarded, entered)
-                };
-                let (no_physics, alive, discarded, entered) =
-                    match moves.take(i, item, &mut at_turn) {
-                        Some(moved) => moved,
-                        None => at_turn(item),
-                    };
                 // Entity.doWaterSplashEffect: the server plays the sound (broadcast
                 // to clients). Its addParticle is empty.
                 for splash in entered {

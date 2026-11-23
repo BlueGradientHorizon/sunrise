@@ -922,6 +922,7 @@ impl mod_api::InsideEntityAccess for GamePlayerInsideAccess<'_, '_> {
             subject_pos,
             direct,
             causing,
+            None,
         ) else {
             return false;
         };
