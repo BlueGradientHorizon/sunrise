@@ -138,6 +138,48 @@ const SCREENQUAD_VSH: &str = "#version 330\nlayout(location = 0) out vec2 texCoo
     void main() {\n    vec2 uv = vec2((gl_VertexIndex << 1) & 2, gl_VertexIndex & 2);\n\
         gl_Position = vec4(uv * vec2(2, 2) + vec2(-1, -1), 0, 1);\n    texCoord = uv;\n}\n";
 
+/// A `LightmapInfo` with a member past 26.3's (an older one's shape): vanilla's builder takes it
+/// (it checks a descriptor's name, type and dimension, not a block's size), and the pipeline is
+/// made with the block bound at the shader's size, the member reading zero beside the values
+/// `Lightmap.render` writes: the texture is the one [`PROBE_FSH`] draws, `Older` adding nothing.
+#[test]
+#[ignore = "daily"]
+fn a_pack_lightmap_with_an_older_larger_info_block_draws() {
+    let _gpu = crate::gfx::test_gpu::lock();
+    let Some((device, queue)) = device() else {
+        eprintln!("skipped: no adapter");
+        return;
+    };
+    let fsh = PROBE_FSH
+        .replace(
+            "vec3 NightVisionColor;\n",
+            "vec3 NightVisionColor;\n    vec4 Older;\n",
+        )
+        .replace(
+            "lightmapInfo.NightVisionColor.g);",
+            "lightmapInfo.NightVisionColor.g + lightmapInfo.Older.x);",
+        );
+    let program = crate::core_shader::translate_core_with(
+        SCREENQUAD_VSH,
+        &fsh,
+        &[],
+        &|_| None,
+        &GLUE,
+        &|b| b == INFO_BLOCK,
+    )
+    .expect("the shaders translate");
+    let mut core = lightmap_for(&device, Some(&program), &[])
+        .unwrap_or_else(|e| panic!("{e}"))
+        .expect("the lightmap pipeline");
+    core.set_readback(&device, true);
+    let pixels = draw(&device, &queue, &mut core, &PROBE);
+    for (sky, block) in [(0usize, 0usize), (3, 5), (15, 15)] {
+        let got = &pixels[(sky * 16 + block) * 4..][..4];
+        let want = [block as u8 * 17, sky as u8 * 17, 153, 102];
+        assert_eq!(got, want, "sky {sky} block {block}");
+    }
+}
+
 /// The pack's shader covers the whole texture with row `n` at sky level `n` and column `n` at
 /// block level `n` (GL's rows run from the bottom), reads `LightmapInfo` where `Lightmap.render`
 /// writes it, and its pixels come back for F3's lightmap chart.
@@ -494,8 +536,10 @@ fn a_lightmap_shader_reads_poly_globals() {
 
 /// A device binds at most `max_uniform_buffers_per_shader_stage` blocks to each stage (12 by
 /// default): each block counts only for the stages that read it. Seven expression uniforms in
-/// each stage are drawn (seven and eight with `LightmapInfo`); twelve in the fragment stage
-/// beside `LightmapInfo` are refused when the pipeline is built, so the texture stays native.
+/// each stage are drawn (seven and eight with `LightmapInfo`), and eleven in the fragment stage
+/// beside `LightmapInfo`; twelve there are past wgpu's default limit, which vanilla's device
+/// isn't held to: the light texture is computed natively and the pack stays, the note naming
+/// the stage, its 13 blocks and the limit.
 #[test]
 #[ignore = "daily"]
 fn a_lightmap_shaders_blocks_count_for_the_stages_that_read_them() {
@@ -504,12 +548,27 @@ fn a_lightmap_shaders_blocks_count_for_the_stages_that_read_them() {
         return;
     };
     assert_eq!(device.limits().max_uniform_buffers_per_shader_stage, 12);
-    let (program, expressions) = expression_lightmap(7, 7);
-    assert!(CoreLightmap::new(&device, &program, &expressions).is_some());
-    let (program, expressions) = expression_lightmap(0, 11);
-    assert!(CoreLightmap::new(&device, &program, &expressions).is_some());
-    let (program, expressions) = expression_lightmap(0, 12);
-    assert!(CoreLightmap::new(&device, &program, &expressions).is_none());
+    let made = |vertex, fragment| {
+        let (program, expressions) = expression_lightmap(vertex, fragment);
+        let past = program.past_device_limit(&device.limits(), &[wgpu::TextureFormat::Rgba8Unorm]);
+        let made = lightmap_for(&device, Some(&program), &expressions)
+            .unwrap_or_else(|e| panic!("{e}"))
+            .is_some();
+        (made, past)
+    };
+    assert_eq!(made(7, 7), (true, None));
+    assert_eq!(made(0, 11), (true, None));
+    assert_eq!(
+        made(0, 12),
+        (
+            false,
+            Some(crate::core_shader::PastDeviceLimit::UniformBlocks {
+                stage: wgpu::ShaderStages::FRAGMENT,
+                blocks: 13,
+                limit: 12
+            })
+        )
+    );
 }
 
 /// What F3's lightmap chart paints across the chart closing and opening again and fullbright

@@ -101,7 +101,64 @@ pub(crate) fn sampler_bindings<'a>(
     (layout, group)
 }
 
-/// Vanilla's blocks a stage of `program` reads: binding, offset, size and the stages reading it.
+/// The bytes each vanilla block has in a pipeline's buffer: from its [`VANILLA_OFFSETS`] to the
+/// next.
+pub(crate) const VANILLA_SLOT: u64 = 256;
+
+/// Vanilla's block `index` (`core_shader::BLOCKS`' order) as `program` binds it: vanilla's size,
+/// or the size its stages declare when larger (an older vanilla's block with more members, which
+/// vanilla's builder takes: it checks a descriptor's name, type and dimension, not a block's
+/// size). The bytes past vanilla's members read zero; [`oversized_block`] tells one that doesn't
+/// fit its slot.
+pub(crate) fn vanilla_block_size(program: &CoreProgram, index: usize) -> u64 {
+    block_size(program, index as u32, VANILLA_SIZES[index])
+}
+
+/// The block at `binding` as `program` binds it: `size` (what the pass writes), or the size its
+/// stages declare when larger, the bytes past the pass's reading zero ([`vanilla_block_size`]).
+pub(crate) fn block_size(program: &CoreProgram, binding: u32, size: u64) -> u64 {
+    size.max(program.declared_size(binding))
+}
+
+/// A vanilla block a program declares larger than its slot ([`VANILLA_SLOT`]): binding it would
+/// reach the next block, so the program draws natively and the pack stays, as before such a
+/// block failed the load (a whole buffer laid out from the program's sizes would fit it).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct OversizedBlock {
+    pub block: &'static str,
+    pub size: u64,
+}
+
+impl std::fmt::Display for OversizedBlock {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "its {} block is {} bytes, past the {VANILLA_SLOT} Sunrise binds it in",
+            self.block, self.size
+        )
+    }
+}
+
+/// The first of vanilla's blocks, then of the pass's `own` (`LightmapInfo`, `CloudInfo`, each in
+/// a slot as wide), that `program` declares larger than its slot.
+pub(crate) fn oversized_block(
+    program: &CoreProgram,
+    own: &[&'static str],
+) -> Option<OversizedBlock> {
+    let own = own.iter().filter_map(|&block| {
+        let i = program.other.iter().position(|n| n == block)?;
+        Some((block, crate::core_shader::other_binding(i)))
+    });
+    (crate::core_shader::BLOCKS.iter().copied())
+        .chain(own)
+        .find_map(|(block, binding)| {
+            let size = program.declared_size(binding);
+            (size > VANILLA_SLOT).then_some(OversizedBlock { block, size })
+        })
+}
+
+/// Vanilla's blocks a stage of `program` reads: binding, offset, size ([`vanilla_block_size`])
+/// and the stages reading it.
 pub(crate) fn vanilla_blocks(program: &CoreProgram) -> Vec<(u32, u64, u64, wgpu::ShaderStages)> {
     (0..4u32)
         .map(|b| {
@@ -109,7 +166,7 @@ pub(crate) fn vanilla_blocks(program: &CoreProgram) -> Vec<(u32, u64, u64, wgpu:
             (
                 b,
                 VANILLA_OFFSETS[i],
-                VANILLA_SIZES[i],
+                vanilla_block_size(program, i),
                 program.stages_reading(b),
             )
         })

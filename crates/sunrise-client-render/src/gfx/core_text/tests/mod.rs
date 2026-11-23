@@ -188,6 +188,7 @@ fn a_pack_text_shader_reads_the_light_as_vanilla_does() {
         &atlas,
         (&atlas, &sampler),
     )
+    .unwrap_or_else(|e| panic!("{e}"))
     .expect("the pack's pipeline");
     let light = 0x30 | (0xC0 << 8);
     assert_eq!(
@@ -235,6 +236,50 @@ fn vanillas_text_shader_makes_both_world_text_pipelines() {
         &atlas,
         (&lightmap, &sampler),
     )
+    .unwrap_or_else(|e| panic!("{e}"))
     .expect("the pack's world text pipelines");
     assert!(text.polygon_offset.is_some() && text.see_through.is_some());
+}
+
+/// The device refusing the world text's or the see-through text's pipeline fails the load, named
+/// by vanilla's pipeline, with the other pipeline fine. The refusal is one vanilla's builder
+/// makes too (`PipelineBuilder`: a descriptor missing from the pipeline's layout): `Sampler1`,
+/// which neither binds.
+#[test]
+#[ignore = "daily"]
+fn a_text_pipeline_the_device_refuses_fails_the_load() {
+    let _gpu = crate::gfx::test_gpu::lock();
+    let Some((device, queue)) = device() else {
+        eprintln!("skipped: no adapter");
+        return;
+    };
+    let vsh = "#version 330\nlayout(location = 0) in vec3 Position;\n\
+        void main() { gl_Position = vec4(Position, 1.0); }\n";
+    let translate = |fsh: &str, glue: &Glue| {
+        crate::core_shader::translate_core(vsh, fsh, &[], &|_| None, glue).unwrap()
+    };
+    let taken = "#version 330\nuniform sampler2D Sampler0;\nlayout(location = 0) out vec4 fragColor;\n\
+        void main() { fragColor = texture(Sampler0, vec2(0.5)); }\n";
+    let refused = "#version 330\nuniform sampler2D Sampler1;\nlayout(location = 0) out vec4 fragColor;\n\
+        void main() { fragColor = texture(Sampler1, vec2(0.5)); }\n";
+    let atlas = texture(&device, &queue, [0; 4]);
+    let sampler = device.create_sampler(&Default::default());
+    for (world, see_through, pipeline) in [
+        (refused, taken, "minecraft:pipeline/text_polygon_offset"),
+        (taken, refused, "minecraft:pipeline/text_see_through"),
+    ] {
+        let world = translate(world, &WORLD_GLUE);
+        let see_through = translate(see_through, &SEE_THROUGH_GLUE);
+        let error = CoreText::new(
+            &device,
+            wgpu::TextureFormat::Rgba8Unorm,
+            Some((&world, &[])),
+            Some((&see_through, &[])),
+            &atlas,
+            (&atlas, &sampler),
+        )
+        .err()
+        .expect("the device refuses it");
+        assert_eq!(error.split_once(": ").map(|(p, _)| p), Some(pipeline));
+    }
 }

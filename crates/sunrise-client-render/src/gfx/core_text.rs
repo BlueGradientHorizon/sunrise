@@ -34,6 +34,10 @@ pub(crate) const SEE_THROUGH_GLUE: Glue = Glue {
     vertex_id: "int(gl_VertexIndex)",
 };
 
+/// Vanilla's `TEXT_POLYGON_OFFSET`, the world text pipeline Sunrise draws with the pack's
+/// `TEXT` program (`hud::pack_text::TEXT_WORLD`) and a depth bias.
+const POLYGON_OFFSET_PIPELINE: &str = "minecraft:pipeline/text_polygon_offset";
+
 #[derive(Default)]
 pub struct TextShaders {
     pub gui: Option<Arc<CoreProgram>>,
@@ -60,7 +64,10 @@ pub(super) struct PackBlocks {
 }
 
 impl super::Renderer {
-    pub fn set_world_text_shaders(&mut self, shaders: &TextShaders) {
+    /// The packs' world and see-through text programs (`HudAtlas::text_shaders`), or the native
+    /// world text; or the device's refusal of a pipeline vanilla requires, which fails the pack
+    /// reload.
+    pub fn set_world_text_shaders(&mut self, shaders: &TextShaders) -> Result<(), String> {
         let expressions = &shaders.expressions;
         self.core_text = CoreText::new(
             &self.device,
@@ -69,7 +76,8 @@ impl super::Renderer {
             (shaders.see_through.as_deref()).map(|p| (p, &expressions.see_through[..])),
             &self.entity_atlas,
             (&self.lightmap_view, &self.lightmap_sampler),
-        );
+        )?;
+        Ok(())
     }
 
     /// The vanilla `Globals` block a pack's core shaders read this frame.
@@ -140,10 +148,10 @@ pub(crate) struct CoreText {
     uniform: wgpu::Buffer,
 }
 
-/// What [`CoreText::new`] builds a pipeline from: its name in the log, its program with its
-/// expression uniforms, and its depth state.
+/// What [`CoreText::new`] builds a pipeline from: its name in labels and vanilla's location
+/// of it, its program with its expression uniforms, and its depth state.
 type PartSpec<'a> = (
-    &'a str,
+    (&'a str, &'a str),
     Option<(
         &'a CoreProgram,
         &'a [crate::polytone_post::ExpressionUniform],
@@ -159,9 +167,9 @@ impl CoreText {
         see_through: Option<(&CoreProgram, &[crate::polytone_post::ExpressionUniform])>,
         atlas: &wgpu::TextureView,
         lightmap: (&wgpu::TextureView, &wgpu::Sampler),
-    ) -> Option<Self> {
+    ) -> Result<Option<Self>, String> {
         if world.is_none() && see_through.is_none() {
-            return None;
+            return Ok(None);
         }
         let depth = |write, compare, bias| wgpu::DepthStencilState {
             format: wgpu::TextureFormat::Depth32Float,
@@ -175,14 +183,16 @@ impl CoreText {
             slope_scale: 1.0,
             clamp: 0.0,
         };
+        let see_through_pipeline =
+            crate::hud::pack_text::TEXT[crate::hud::pack_text::TEXT_SEE_THROUGH].pipeline;
         let specs: [PartSpec; 2] = [
             (
-                "world",
+                ("world", POLYGON_OFFSET_PIPELINE),
                 world,
                 depth(true, wgpu::CompareFunction::GreaterEqual, offset),
             ),
             (
-                "see-through",
+                ("see-through", see_through_pipeline),
                 see_through,
                 depth(false, wgpu::CompareFunction::Always, Default::default()),
             ),
@@ -209,38 +219,36 @@ impl CoreText {
         });
         let textures = [(4, atlas, &glyphs), (8, lightmap.0, lightmap.1)];
         let mut parts = [None, None];
-        for (slot, ((name, program, depth), extra)) in
+        for (slot, (((name, location), program, depth), extra)) in
             parts.iter_mut().zip(specs.into_iter().zip(extras))
         {
             let (Some((program, _)), Some(extra)) = (program, extra) else {
                 continue;
             };
-            let label = format!("Resource pack {name} text");
-            // Each pipeline is refused on its own: a pack's shader is untrusted, and the backend
-            // failing to compile it is an internal error.
-            let validation = device.push_error_scope(wgpu::ErrorFilter::Validation);
-            let internal = device.push_error_scope(wgpu::ErrorFilter::Internal);
-            let part = Self::part(
-                device,
-                format,
-                &label,
-                program,
-                extra,
-                depth,
-                (&uniform, &textures),
-            );
-            let internal = pollster::block_on(internal.pop());
-            match internal.or(pollster::block_on(validation.pop())) {
-                Some(e) => log::warn!("the resource pack's {name} text shader is not used: {e}"),
-                None => *slot = Some(part),
+            // A program past the device's limits draws natively (`PastDeviceLimit`).
+            if !crate::core_shader::within_device_limits(device, program, location, &[format]) {
+                continue;
             }
+            let label = format!("Resource pack {name} text");
+            let part = crate::core_shader::scoped(device, location, || {
+                Self::part(
+                    device,
+                    format,
+                    &label,
+                    program,
+                    extra,
+                    depth,
+                    (&uniform, &textures),
+                )
+            })?;
+            *slot = Some(part);
         }
         let [polygon_offset, see_through] = parts;
-        (polygon_offset.is_some() || see_through.is_some()).then_some(Self {
+        Ok(Some(Self {
             polygon_offset,
             see_through,
             uniform,
-        })
+        }))
     }
 
     /// One pipeline of `program` over the shared `uniform` buffer: each block and sampler bound
