@@ -2463,6 +2463,9 @@ pub(crate) mod tests {
     mod client_read_tests {
         include!("client_read_tests.rs");
     }
+    mod container_drop_tests {
+        include!("container_drop_tests.rs");
+    }
     mod creative_sync_tests {
         include!("creative_sync_tests.rs");
     }
