@@ -279,6 +279,7 @@ impl Game<'_> {
         };
         let center = match hit {
             Hit::Entity { who, at } => {
+                self.remember_projectile_target(p, who);
                 self.wind_charge_damage(p, who);
                 [at.x, at.y, at.z]
             }
@@ -439,6 +440,9 @@ impl Game<'_> {
                     1.0,
                     source,
                 );
+                let Some((index, hurt)) = self.complete_mob_hurt(index, hurt) else {
+                    return;
+                };
                 if p.owner == Some(Who::Player) {
                     self.remember_mob_player_credit(id);
                 }
