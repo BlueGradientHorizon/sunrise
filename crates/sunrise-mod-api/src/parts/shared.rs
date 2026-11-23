@@ -118,7 +118,7 @@ pub struct PartRegistrar {
         HashMap<String, mod_vocab::__private::RegisteredBlockEntityTransform>,
     pub(crate) entity_attributes: Vec<EntityAttributeDeclaration>,
     pub(crate) world_fluids: Vec<(&'static str, (String, crate::WorldFluid))>,
-    pub(crate) fluid_interactions: Vec<crate::FluidInteraction>,
+    pub(crate) fluid_interactions: Vec<mod_vocab::__private::RegisteredFluidInteraction>,
     pub(crate) entity_attribute_modifications: Vec<EntityAttributeModification>,
     pub(crate) attributes: Vec<AttributeDeclaration>,
     pub(crate) attribute_widenings: Vec<AttributeBoundsWidening>,

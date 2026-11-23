@@ -513,6 +513,27 @@ pub trait LevelAccess: BlockEntityNeighbors {
     ) -> Option<bool> {
         None
     }
+    /// NeoForge's `HasFluidInteraction.test` of the native interaction the engine registered as
+    /// `handler`, for the liquid at `pos` against its neighbour `relative`. The default has none.
+    fn fluid_interaction_test(
+        &self,
+        _handler: u32,
+        _pos: BlockPos,
+        _relative: BlockPos,
+        _fluid: FluidState,
+    ) -> bool {
+        false
+    }
+    /// NeoForge's `FluidInteraction.interact` of that handler, which writes the level itself.
+    fn fluid_interaction_interact(
+        &mut self,
+        _ticks: &mut Ticks,
+        _handler: u32,
+        _pos: BlockPos,
+        _relative: BlockPos,
+        _fluid: FluidState,
+    ) {
+    }
     /// Returns the state to place for a liquid conversion, or None to cancel.
     fn fluid_place_block(
         &self,
