@@ -11,14 +11,15 @@ impl Game<'_> {
         let Some(host) = self.lan.as_mut() else {
             return;
         };
-        let Some(guest) = host.hub.guest(conn) else {
+        let Some((end_conquered, dead)) = host.hub.update_guest(conn, |guest| {
+            (
+                std::mem::take(&mut guest.won_game),
+                guest.dead && !guest.respawning,
+            )
+        }) else {
             return;
         };
-        let end_conquered = host
-            .play
-            .get_mut(&conn)
-            .is_some_and(|play| std::mem::take(&mut play.won_game));
-        if end_conquered || (guest.dead && !guest.respawning) {
+        if end_conquered || dead {
             self.queue_spawn_trip(
                 conn,
                 SpawnAction::Replace {
