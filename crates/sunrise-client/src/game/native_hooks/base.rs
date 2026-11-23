@@ -4789,7 +4789,7 @@ mod text_tests {
     #[ignore = "daily"]
     fn text_takes_argb_and_skips_transparent_text() {
         use mod_api::DrawContext;
-        crate::game::native_entity_refs::tests::with_game(|game| {
+        crate::game::native_entity_refs::tests::with_client_game(|game| {
             let drawn = |argb: u32| {
                 let mut batch = HudBatch::scratch([640, 480]);
                 crate::game::host::draw::GameDrawContext::new(game, &mut batch).text(

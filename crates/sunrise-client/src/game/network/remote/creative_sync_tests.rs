@@ -60,6 +60,7 @@ mod give_stack {
     use crate::game::native_entity_refs::tests::with_client_game;
     use crate::game::native_hotbar_slot::hotbar_slot_tests::{logged_in, sent};
     use mod_api::CreativeGiveError;
+    use sunrise_client::command::args::GameMode;
     use sunrise_core::nbt::{Compound, JavaString, Tag};
     use sunrise_protocol::item::{Component, Stack};
     use sunrise_protocol::packets::play::Serverbound as S;
@@ -166,7 +167,7 @@ mod give_stack {
                     let mut reader = logged_in(game);
                     let inventory = game.inventory.clone();
                     assert_eq!(game.give_stack(&stone), Err(CreativeGiveError::NotCreative));
-                    game.set_mode_id(1);
+                    game.set_local_mode(GameMode::Creative);
                     assert_eq!(
                         game.give_stack(&api("minecraft:stone", 65, &[])),
                         Err(CreativeGiveError::Stack(
@@ -218,7 +219,7 @@ mod give_stack {
                             ],
                         },
                     );
-                    game.set_mode_id(1);
+                    game.set_local_mode(GameMode::Creative);
                     game.selected = 0;
 
                     let mut sword = api(
@@ -348,7 +349,7 @@ mod give_stack {
             || {
                 with_client_game(|game| {
                     let mut reader = logged_in(game);
-                    game.set_mode_id(1);
+                    game.set_local_mode(GameMode::Creative);
                     game.selected = 4;
                     game.inventory[4] = engine("minecraft:stone", 60);
                     game.offhand = engine("minecraft:stone", 60);

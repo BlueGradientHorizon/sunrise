@@ -17,6 +17,14 @@ impl Game<'_> {
             })
             .unwrap_or_default();
         let rotation = [p.yaw, p.pitch, p.head_yaw].map(sunrise_protocol::buf::unpack_degrees);
+        // ClientLevel.addEntity discards the old entity before inserting the new one.
+        if self
+            .remote
+            .as_ref()
+            .is_some_and(|r| r.general.rows.contains_key(&p.id))
+        {
+            self.apply_remove_entities_packet(play::RemoveEntities { ids: vec![p.id] });
+        }
         if let Some(r) = self.remote.as_mut() {
             // ClientLevel.addEntity: an id it holds already is removed
             // and added again, after the player.
@@ -85,7 +93,6 @@ impl Game<'_> {
                 r.level_player_textures.remove(&id);
                 r.level_player_infos.remove(&id);
                 r.attachments.remove(&Holder::Entity(id as u32));
-                Self::forget_remote_general(r, id);
             }
             self.pick_section_remove(id as u32);
         }

@@ -3883,7 +3883,7 @@ mod cycling_tests {
         }];
         let mods: Mods = vec![ModEntry::new("pre", Box::new(Mod))].into();
         mod_platform::testing::with_mods(mods, || {
-            super::super::native_entity_refs::tests::with_game(|game| {
+            super::super::native_entity_refs::tests::with_client_game(|game| {
                 let mut batch = HudBatch::scratch([320, 240]);
                 let anchor = super::tooltip::quantize_tooltip_anchor((10.6, 20.4));
                 let mut pre = |game: &super::Game<'_>| {
