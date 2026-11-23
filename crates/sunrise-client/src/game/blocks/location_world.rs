@@ -118,6 +118,9 @@ impl World for LevelLocation<'_> {
     fn smokey(&self, p: [i32; 3]) -> bool {
         sunrise_client::beehive::smokey(self, p)
     }
+    fn loaded(&self, p: [i32; 3]) -> bool {
+        self.world.is_loaded_at(p[0], p[1], p[2])
+    }
     /// `BlockEntity.saveWithFullMetadata` of the stored block entity, as
     /// `Game::block_entity_nbt` reads it, without what the game keeps in its
     /// tick tables (a comparator's output, a moving piston) or a mod's
@@ -144,5 +147,23 @@ impl World for LevelLocation<'_> {
     }
     fn in_tag(&self, registry: &str, tag: &str, id: &str) -> bool {
         self.refs.tags.contains(registry, tag, id)
+    }
+}
+
+impl super::GameLevel<'_> {
+    /// This level as its location predicates and loot rolls read it.
+    pub(in crate::game) fn location_view(&self) -> LevelLocation<'_> {
+        LevelLocation {
+            world: &*self.world,
+            registry: self.registry,
+            facts: self.facts,
+            biomes: self.biomes,
+            items: self.items,
+            collision: self.collision,
+            hoppers: &*self.positions.hoppers,
+            raining: self.raining,
+            thundering: self.thundering,
+            refs: self.location,
+        }
     }
 }

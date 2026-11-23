@@ -359,6 +359,9 @@ impl adv::World for View<'_, '_> {
     fn smokey(&self, p: [i32; 3]) -> bool {
         sunrise_client::beehive::smokey(&self.0.mob_world_base(&[]), p)
     }
+    fn loaded(&self, p: [i32; 3]) -> bool {
+        self.0.world.is_loaded_at(p[0], p[1], p[2])
+    }
     fn block_entity_nbt(&self, p: [i32; 3]) -> Option<sunrise_core::nbt::Tag> {
         self.0.block_entity_nbt(p)
     }
