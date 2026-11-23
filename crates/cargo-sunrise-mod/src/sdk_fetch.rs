@@ -466,15 +466,13 @@ fn verified(
 }
 
 /// The compiled slices (`runtime`, `api`, `engine`) of the build `index` describes, for `target`,
-/// verified and unpacked into the folders `native-build`'s plan names. Independent release
-/// builds need only the runtime and API for one SDK host; the full client cache is unchanged.
+/// verified and unpacked into the folders `native-build`'s plan names.
 pub(crate) fn fetch_slices(
     base: &Base,
     index: &Index,
     target: &str,
     side: sdk::Side,
     route: sunrise_native_build::prebuilt::Route,
-    release: bool,
     dir: &Path,
     stamp: &CacheStamp,
 ) -> Result<sunrise_native_build::prebuilt::Package, String> {
@@ -483,9 +481,7 @@ pub(crate) fn fetch_slices(
     let names = index
         .route_assets(route.inputs(), target, side)
         .map_err(|e| format!("sdk-{build} has no slices for this computer ({target}): {e}"))?;
-    let into = if release {
-        dir.join("release-slices").join(host)
-    } else if route == sunrise_native_build::prebuilt::Route::Api {
+    let into = if route == sunrise_native_build::prebuilt::Route::Api {
         dir.join("api-slices").join(host)
     } else {
         dir.join(host)

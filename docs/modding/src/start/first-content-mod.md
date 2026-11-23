@@ -132,7 +132,7 @@ To play it in a game folder you already use, copy `glowing_blocks.smod` into tha
 folder is the one that holds `options.txt`; create `sunrise-mods/` if it is missing) and turn it on with the line
 `mod.glowing_blocks:true` in `sunrise-mods.txt` there ([Installing and using mods](../players/installing-mods.md)).
 
-## 5. Check it before you publish
+## 5. Check the package
 
 ```sh
 cargo sunrise-mod check target/sunrise-mod/glowing_blocks.smod
@@ -146,4 +146,4 @@ information. The content template includes the shared release workflow caller. F
 
 - [Content mods](../how-to/content-mods.md): every kind of content file, from blocks to world generation.
 - [The manifest and the package](../reference/manifest.md): every manifest field and package rule.
-- [Publishing your mod](../how-to/publish.md): signing and the registry.
+- [Publishing your mod](../how-to/publish.md): how releasing to the registry will work.

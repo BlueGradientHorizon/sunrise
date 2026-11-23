@@ -147,7 +147,7 @@ cargo sunrise-mod --help
 ```
 
 It prints a short list of the everyday commands, which shows it is installed (`cargo sunrise-mod help all`
-lists every command's usage, and `cargo sunrise-mod <command> --help` says one command's):
+lists the author-facing commands, and `cargo sunrise-mod <command> --help` shows the usage for one command):
 
 ```text
 usage: cargo sunrise-mod <command> [options]
