@@ -478,9 +478,9 @@ def prepare_entity_load(server, directory, bots, args, deadline):
         raise RuntimeError(f'entity load setup timed out waiting for bots: {sorted(set(names) - players.keys())}')
 
     x, y, z = map(math.floor, players[names[0]]['position'])
+    # Keep idle survival bots alive and targetable throughout the run.
+    server.console('effect give @a minecraft:resistance infinite 4 true')
     if args.spread_bots:
-        # Keep the idle survival bots alive and targetable throughout the run.
-        server.console('effect give @a minecraft:resistance infinite 4 true')
         server.console('time set midnight')
         server.console('gamerule advance_time false')
         width = math.isqrt(bots - 1) + 1
@@ -489,7 +489,6 @@ def prepare_entity_load(server, directory, bots, args, deadline):
             dz = (i // width) * args.spread_bots
             server.console(f'teleport {name} {x + dx + 0.5} {y} {z + dz + 0.5}')
     else:
-        server.console('gamerule spawn_mobs false')
         # Soul sand keeps moving the stands after the warm-up. The stone rim holds the water.
         x += 4
         z += 4
@@ -544,6 +543,8 @@ def run_once(kind, bots, behaviour, args, out):
         server.console('gamerule respawn_radius 0')
         for rule in filter(None, args.gamerule.split(',')):
             server.console('gamerule ' + rule.replace('=', ' '))
+        if args.water_stands:
+            server.console('gamerule spawn_mobs false')
         if args.farm:
             # A farm of mobs ~100 blocks east of the spawn, inside the simulation distance and far from
             # the bots: the mobs a player is not near. Cows and villagers (zombies would burn in daylight), two blocks apart so cramming leaves them be.
