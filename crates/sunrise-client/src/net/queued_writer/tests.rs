@@ -277,7 +277,7 @@ fn exhausted_held_play_credit_still_serves_control_replies_and_reconfiguration_a
     let mut held = writer.exhaust_play_credit(7);
     assert!(matches!(
         writer.prepare_packet(vec![1], 7, None),
-        Err(SendPacketError::Backpressure)
+        Err(PrepareRefusal::Held)
     ));
 
     // Excluded replies still drain through the existing writer while held permits stay unpublished.

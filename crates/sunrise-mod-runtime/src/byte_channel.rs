@@ -345,6 +345,18 @@ impl<T> Sender<T> {
         self.0.ready.notify_one();
         Ok(())
     }
+    /// Whether a value of `owned_bytes` would be admitted by [`Self::reserve`] were the
+    /// unpublished revocable reservations not held: a refusal that holds alone cause.
+    pub fn fits_without_revocable(&self, owned_bytes: usize) -> bool {
+        let state = self.0.lock();
+        let Some(charge) = owned_bytes.checked_add(message_overhead::<T>()) else {
+            return false;
+        };
+        state.receiver_alive
+            && (state.stats.reserved_bytes - state.revocable_pending_bytes)
+                .checked_add(charge)
+                .is_some_and(|bytes| bytes <= self.0.capacity)
+    }
     pub fn stats(&self) -> Stats {
         self.0.lock().stats
     }
@@ -875,6 +887,22 @@ mod tests {
                 Err(RecvTimeoutError::Disconnected)
             );
         });
+    }
+
+    #[test]
+    fn held_pressure_is_told_from_a_backlog_of_ordinary_credit() {
+        let charge = message_overhead::<u32>() + 16;
+        let (tx, _rx) = channel::<u32>(charge * 2).unwrap();
+        let held = tx.reserve_revocable(16).unwrap();
+        let held_too = tx.reserve_revocable(16).unwrap();
+        // Full, but only the holds fill it: the ordinary send would fit without them.
+        assert!(matches!(tx.reserve(16), Err(ReserveError::Full)));
+        assert!(tx.fits_without_revocable(16));
+        drop((held, held_too));
+        let _ordinary = tx.reserve(16).unwrap();
+        let _more = tx.reserve(16).unwrap();
+        // Ordinary credit fills it: no refusal here is the holds' doing.
+        assert!(!tx.fits_without_revocable(16));
     }
 
     #[test]
