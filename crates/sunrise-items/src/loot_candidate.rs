@@ -409,7 +409,17 @@ impl LootStackAccess for LootCandidate {
     }
 }
 
+/// Whether the modeled component `id` takes `value`: only components the stack models into
+/// typed fields have a shape to check; every other patch is kept as written.
+fn component_payload_ok(id: &str, value: &Tag) -> bool {
+    id != "minecraft:trim" || crate::item_data::trim::payload_ok(value)
+}
+
 impl LootStackEditAccess for LootCandidate {
+    fn accepts_component(&self, id: &str, value: &Tag) -> bool {
+        component_payload_ok(id, value)
+    }
+
     fn as_view(&self) -> &dyn LootStackAccess {
         self
     }
@@ -643,6 +653,10 @@ impl LootStackEditAccess for LootCandidate {
 pub(crate) struct LootCandidates(pub(crate) Vec<LootCandidate>);
 
 impl LootListAccess for LootCandidates {
+    fn accepts_component(&self, id: &str, value: &Tag) -> bool {
+        component_payload_ok(id, value)
+    }
+
     fn len(&self) -> usize {
         self.0.len()
     }

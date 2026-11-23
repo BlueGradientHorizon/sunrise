@@ -69,25 +69,37 @@ pub(crate) fn loot_list(stacks: &mut dyn engine::LootListAccess) -> mod_api::Loo
     )
 }
 
-fn queried_inventory_view(stack: &dyn LootStackAccess) -> Option<mod_api::ItemStackView<'_>> {
-    let item = mod_api::__private::item_key(stack.item_id())?;
-    let count = std::num::NonZeroU32::new(u32::try_from(stack.count()).ok()?)?;
-    let mut damage = u32::try_from(stack.damage()).ok()?;
+/// The damage component the ordered patch leaves on a stack of base damage `base`, read as
+/// `LootCandidate::write_component` writes it. Merely reading these scalars must not
+/// materialize the rest of the patch.
+fn queried_damage(
+    base: u32,
+    components: &[(String, Option<sunrise_core::nbt::Tag>)],
+) -> Option<u32> {
+    let mut damage = base;
     let mut explicit = false;
-    // The same ordered damage edits as Items' loot materialization. Merely
-    // reading these scalars must not materialize the rest of the patch.
-    for (id, value) in stack.components() {
+    for (id, value) in components {
         match (id.as_str(), value) {
             ("minecraft:damage", None) | ("!minecraft:damage", Some(_)) => {
                 damage = 0;
                 explicit = false;
             }
-            ("minecraft:damage", Some(_)) => explicit = true,
+            ("minecraft:damage", Some(tag)) => {
+                damage = sunrise_world::datafix::dynamic::as_int(Some(tag), 0).max(0) as u32;
+                explicit = true;
+            }
             _ => {}
         }
     }
+    (damage > 0 || explicit).then_some(damage)
+}
+
+fn queried_inventory_view(stack: &dyn LootStackAccess) -> Option<mod_api::ItemStackView<'_>> {
+    let item = mod_api::__private::item_key(stack.item_id())?;
+    let count = std::num::NonZeroU32::new(u32::try_from(stack.count()).ok()?)?;
+    let damage = queried_damage(u32::try_from(stack.damage()).ok()?, stack.components());
     Some(mod_api::ItemStackView::queried_loot(
-        (item, count, (damage > 0 || explicit).then_some(damage)),
+        (item, count, damage),
         stack,
         project_queried_stack,
     ))
@@ -170,6 +182,52 @@ pub(crate) fn dispatch_loot_ability(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The borrowed scalar follows the same ordered writes and removals as materializing the
+    /// stack: a write over zero base damage, a removal, and a later write.
+    #[test]
+    fn borrowed_damage_matches_materialization_of_ordered_writes() {
+        use sunrise_core::nbt::Tag;
+        let removal = || Tag::Compound(Default::default());
+        let write = |value| ("minecraft:damage".to_owned(), Some(Tag::Int(value)));
+        let cases: [(u32, Vec<(String, Option<Tag>)>); 5] = [
+            (0, vec![write(19)]),
+            (7, vec![write(19)]),
+            (7, vec![write(19), ("minecraft:damage".into(), None)]),
+            (
+                7,
+                vec![("!minecraft:damage".into(), Some(removal())), write(3)],
+            ),
+            (0, vec![write(0)]),
+        ];
+        for (base, components) in cases {
+            let borrowed = queried_damage(base, &components);
+            let stack = sunrise_items::items::ItemStack::from_loot(&engine::LootStack {
+                item: "minecraft:stick".into(),
+                count: 1,
+                damage: base as i32,
+                enchantments: Vec::new(),
+                potion: None,
+                map: false,
+                exploration: None,
+                ominous_amplifier: None,
+                stew_effects: Vec::new(),
+                names: Vec::new(),
+                components: components.clone(),
+            });
+            assert_eq!(
+                borrowed.unwrap_or(0),
+                stack.damage,
+                "base {base}, patch {components:?}"
+            );
+        }
+        assert_eq!(queried_damage(0, &[write(19)]), Some(19));
+        assert_eq!(queried_damage(0, &[write(0)]), Some(0));
+        assert_eq!(
+            queried_damage(0, &[write(19), ("minecraft:damage".into(), None)]),
+            None
+        );
+    }
     include!("loot_tags_tests.rs");
     use mod_api::{
         Hooks, LootStackEditError, LootStackEditor, LootTypeContext, ModEntry,
