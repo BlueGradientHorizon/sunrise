@@ -30,12 +30,25 @@ struct Expected {
     plain_after_first_tick: i32,
 }
 
+const WITNESS_ENV: &str = "SUNRISE_MOB_PORTAL_COOLDOWN_WITNESS";
+
 fn load_witness() -> Witness {
-    serde_json::from_str(include_str!(concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/../../tools/witness/26.3/mob_portal_cooldown.json"
-    )))
-    .unwrap()
+    let raw_path = std::env::var_os(WITNESS_ENV).unwrap_or_else(|| {
+        panic!(
+            "{WITNESS_ENV} is unset; run tools/test_mob_portal_cooldown_parity.py to record the witness"
+        )
+    });
+    let mut path = std::path::PathBuf::from(raw_path);
+    if path.is_dir() {
+        path.push("mob_portal_cooldown.json");
+    }
+    let raw = std::fs::read_to_string(&path).unwrap_or_else(|e| {
+        panic!(
+            "failed to read witness {} (record via tools/test_mob_portal_cooldown_parity.py): {e}",
+            path.display()
+        )
+    });
+    serde_json::from_str(&raw).expect("valid 26.3 mob portal cooldown witness JSON")
 }
 
 fn cooldown(game: &mut crate::game::Game<'_>, target: Target) -> Option<Tag> {
@@ -45,10 +58,14 @@ fn cooldown(game: &mut crate::game::Game<'_>, target: Target) -> Option<Tag> {
         .cloned()
 }
 
-/// #2387 (vanilla 26.3): a mob's live PortalCooldown across tick, save/load, and /data edits matches the recorded 26.3 witness.
+/// #2387 (vanilla 26.3): a mob's live PortalCooldown across tick, save/load, and /data edits matches the vanilla 26.3 witness `tools/test_mob_portal_cooldown_parity.py` records.
 #[test]
-#[ignore = "daily"]
+#[ignore = "run by tools/test_mob_portal_cooldown_parity.py"]
 fn a_mob_saves_its_live_portal_cooldown() {
+    run_a_mob_saves_its_live_portal_cooldown();
+}
+
+pub(in crate::game) fn run_a_mob_saves_its_live_portal_cooldown() {
     let witness = load_witness();
     assert_eq!(witness.minecraft, "26.3");
     let expected = &witness.expected;

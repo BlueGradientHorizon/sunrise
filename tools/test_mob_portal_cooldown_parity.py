@@ -1,10 +1,17 @@
 #!/usr/bin/env python3
-"""Compare a mob's live PortalCooldown across summon, tick, chunk reload, and /data edits."""
+"""Compare a mob's live PortalCooldown across summon, tick, chunk reload, and /data edits.
+
+Records the vanilla 26.3 witness and meta.json into .local/witness/<version>/mob_portal_cooldown/
+through VanillaCommandExecOracle, then runs the Rust witness test via lab.parity_fixtures() with
+SUNRISE_MOB_PORTAL_COOLDOWN_WITNESS.
+"""
 import argparse
 import json
+import os
 from pathlib import Path
 import subprocess
 import sys
+import tempfile
 
 try:
     from . import lab
@@ -15,7 +22,10 @@ except ImportError:
 
 INITIAL_COOLDOWN = 20
 MERGED_COOLDOWN = 50
-WITNESS_PATH = 'tools/witness/26.3/mob_portal_cooldown.json'
+WITNESS_ENV = 'SUNRISE_MOB_PORTAL_COOLDOWN_WITNESS'
+WITNESS_NAME = 'mob_portal_cooldown.json'
+TEST = 'game::commands::data::portal_cooldown_tests::a_mob_saves_its_live_portal_cooldown'
+ORACLE_PATH = 'mods/sunrise/src/test/java/dev/sunriselab/parity/VanillaCommandExecOracle.java'
 
 
 def steps():
@@ -99,6 +109,41 @@ def extract_witness(vanilla_jsonl):
     }
 
 
+def java_version_string():
+    result = subprocess.run(['java', '-version'], capture_output=True, text=True, check=True)
+    return (result.stderr or result.stdout).strip().splitlines()[0]
+
+
+def write_meta(witness_dir, witness_file, cases, command):
+    oracle_src = lab.ROOT / ORACLE_PATH
+    input_hashes = {
+        'research-lock.json': lab.digest(lab.LOCK, 'sha256'),
+        ORACLE_PATH: lab.digest(oracle_src, 'sha256'),
+        'tools/test_mob_portal_cooldown_parity.py': lab.digest(Path(__file__).resolve(), 'sha256'),
+        'groups.json': lab.digest(cases, 'sha256'),
+    }
+    for jar_name in ('server-game.jar', 'server.jar'):
+        jar = lab.GAME / 'jars' / jar_name
+        if jar.is_file():
+            input_hashes[jar_name] = lab.digest(jar, 'sha256')
+            break
+    lab.write_json(witness_dir / 'meta.json', {
+        'minecraft': lab.VERSION,
+        'java_version': java_version_string(),
+        'command': [str(part) for part in command],
+        'oracle': ORACLE_PATH,
+        'harness': 'tools/test_mob_portal_cooldown_parity.py',
+        'witness_env': WITNESS_ENV,
+        'input_hashes': input_hashes,
+        'outputs': {
+            WITNESS_NAME: {
+                'sha256': lab.digest(witness_file, 'sha256'),
+                'bytes': witness_file.stat().st_size,
+            },
+        },
+    })
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--binary', type=Path)
@@ -106,9 +151,11 @@ def main():
     parser.add_argument('--reference-only', action='store_true')
     parser.add_argument('--record', action='store_true')
     parser.add_argument('--work-dir', type=Path)
+    parser.add_argument('--witness-dir', type=Path)
+    parser.add_argument('--resources', type=Path, default=Path(os.environ.get('SUNRISE_TEST_RESOURCES', lab.RESOURCES)))
     args = parser.parse_args()
-    root = Path(__file__).resolve().parents[1]
-    work = (args.work_dir or root / '.local' / 'mob-portal-cooldown-parity').resolve()
+    root = lab.ROOT
+    work = (args.work_dir or lab.LOCAL / 'mob-portal-cooldown-parity').resolve()
     work.mkdir(parents=True, exist_ok=True)
     cases = work / 'groups.json'
     cases.write_text(json.dumps(groups()), encoding='utf-8')
@@ -124,17 +171,33 @@ def main():
     if result.returncode:
         return result.returncode
     witness = extract_witness(work / 'vanilla.jsonl')
-    witness_file = root / WITNESS_PATH
-    if args.record:
-        lab.write_json(witness_file, witness)
+    witness_dir = (args.witness_dir or lab.LOCAL / 'witness' / lab.VERSION / 'mob_portal_cooldown').resolve()
+    witness_dir.mkdir(parents=True, exist_ok=True)
+    witness_file = witness_dir / WITNESS_NAME
+    lab.write_json(witness_file, witness)
+    write_meta(witness_dir, witness_file, cases, run)
+    if args.record or args.reference_only:
         print(f'Recorded {lab.VERSION} witness: {witness_file}')
         return 0
-    committed = json.loads(witness_file.read_text(encoding='utf-8'))
-    if committed != witness:
-        raise SystemExit(
-            f'live {lab.VERSION} vanilla run disagrees with {WITNESS_PATH}: '
-            f'live={witness["expected"]} committed={committed.get("expected")}'
-        )
+    with tempfile.TemporaryDirectory(prefix='sunrise-mob-portal-cooldown-') as tmp:
+        scratch = Path(tmp)
+        homes = {k: scratch / k for k in ('SUNRISE_HOME', 'SUNRISE_LAUNCHER_HOME', 'XDG_DATA_HOME', 'XDG_CONFIG_HOME')}
+        env = lab.game_env(os.environ, **homes, RUST_MIN_STACK='16777216')
+        env['SUNRISE_TEST_RESOURCES'] = str(args.resources.resolve())
+        env[WITNESS_ENV] = str(witness_file.resolve())
+        binary = lab.parity_fixtures()
+        log_path = work / 'rust-witness-test.log'
+        with log_path.open('w', encoding='utf-8') as log:
+            test_result = subprocess.run(
+                [str(binary), TEST, '--exact', '--ignored', '--nocapture'],
+                cwd=scratch, env=env, timeout=3600, stdout=log, stderr=subprocess.STDOUT,
+            )
+        output = log_path.read_text(encoding='utf-8', errors='replace')
+        if test_result.returncode or '1 passed; 0 failed' not in output:
+            tail = output.splitlines()[-40:]
+            print('\n'.join(tail), file=sys.stderr, flush=True)
+            raise SystemExit(f'{TEST} failed against {witness_file}; see {log_path}')
+    print(f'Mob portal cooldown parity passed (witness test against {witness_file})')
     return 0
 
 
