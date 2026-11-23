@@ -102,9 +102,11 @@ impl FakeRegistries {
     }
     /// The sound a bucket plays filling with `fluid` (`pickup`) or emptying it, if given.
     pub(super) fn fluid_sound(&self, fluid: crate::FluidKey, pickup: bool) -> Option<&'static str> {
-        let (fill, empty) = self
-            .fluid_sounds
-            .get(crate::content::registry_keys::fluid_id(fluid)?)?;
+        self.fluid_sound_named(crate::content::registry_keys::fluid_id(fluid)?, pickup)
+    }
+    /// [`Self::fluid_sound`] for the fluid's registered name, as a queued effect keeps it.
+    pub(super) fn fluid_sound_named(&self, fluid: &str, pickup: bool) -> Option<&'static str> {
+        let (fill, empty) = self.fluid_sounds.get(fluid)?;
         Some(if pickup { fill } else { empty })
     }
     pub(super) fn is_loaded(&self, id: &str) -> bool {

@@ -310,7 +310,10 @@ impl FakeHost {
 
     /// A queued bucket sound and game event, as the game plays them at the outermost commit.
     fn play_fluid_effects(&mut self, queued: level::QueuedFluidEffects) {
-        if let Some(sound) = self.registries.fluid_sound(queued.fluid, queued.pickup) {
+        if let Some(sound) = self
+            .registries
+            .fluid_sound_named(queued.fluid, queued.pickup)
+        {
             self.sounds.push(FakeSound {
                 sound: sound.to_owned(),
                 at: queued.at,
