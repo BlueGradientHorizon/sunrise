@@ -351,6 +351,10 @@ jobs:
           printf '%s\n' "$COMMIT" > "$work/source-commit"
           cp -R "$exported"/. "$work"/
           git -C "$work" add -A
+          if git -C "$work" diff --cached --quiet; then
+            echo "### \`modding-book-generated\` already matches \`${COMMIT::10}\`" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
           git -C "$work" -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
             -c commit.gpgsign=false commit -q -m "docs(modding): generated bundle for ${COMMIT::10}"
           git -C "$work" push -q origin HEAD:refs/heads/modding-book-generated
