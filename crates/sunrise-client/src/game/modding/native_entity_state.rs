@@ -874,13 +874,16 @@ mod tests {
     }
 
     /// `Entity.setNoGravity` and `Entity.isNoGravity` reach a live dropped item, not only a
-    /// mob, and a stale handle still refuses both (#5011, #3938 item 47).
+    /// mob; a kind that is neither still refuses both, as does a stale handle (#5011, #3938
+    /// item 47).
     #[test]
     #[ignore = "daily"]
     fn no_gravity_reads_and_writes_a_live_dropped_item() {
         use super::super::native_entity_refs::tests::with_game;
         use mod_api::WorldEpoch;
+        use sunrise_client::entities::ArmorStand;
         use sunrise_client::items::ItemStack;
+        use sunrise_core::geometry::Vec3;
 
         with_game(|game| {
             game.options.dedicated = Some(Vec::new());
@@ -902,6 +905,13 @@ mod tests {
             assert!(game.dropped[0].no_gravity);
             assert!(game.dropped[0].needs_sync);
             assert_eq!(item.no_gravity(game), Some(true));
+
+            // A kind that is neither an item nor a mob keeps refusing both: the new arm
+            // widened the match for items alone.
+            game.armor_stands.push(ArmorStand::new(43, Vec3::ZERO, 0.0));
+            let stand = game.entity(43).unwrap();
+            assert_eq!(stand.no_gravity(game), None);
+            assert!(!stand.set_no_gravity(game, true));
 
             let stale = EntityRef::new(WorldEpoch::new(item.epoch().get() + 1), item.id());
             assert_eq!(stale.no_gravity(game), None);
