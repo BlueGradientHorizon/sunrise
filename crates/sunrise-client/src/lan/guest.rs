@@ -1174,19 +1174,27 @@ impl Guest {
     pub fn is_sunrise(&self) -> bool {
         self.brand == "sunrise"
     }
-    /// `Player.getDesiredPose`: sleeping, gliding, then the body's own pose
-    /// (swimming, crawling, crouching) once its server tick has run.
+    /// The pose the server shows of this player: `Player.getDesiredPose`
+    /// ([`desired_pose`](crate::pose::desired_pose)) of what its client
+    /// announced (the bed, a glide, the shift key), where a bed or a glide
+    /// comes before the body's own tick has taken it; else the body's own pose
+    /// once its server tick has run (swimming, crawling, crouching), which that
+    /// tick's `updatePlayerPose` took from the same desired pose. The swim and
+    /// the spin are the body's, so they are read there, not here.
     pub fn pose(&self) -> Pose {
-        if self.sleeping {
-            Pose::Sleeping
-        } else if self.fall_flying {
-            Pose::FallFlying
-        } else if let Some(m) = &self.motion {
-            m.pose
-        } else if self.sneaking && !self.abilities.flying {
-            Pose::Crouching
-        } else {
-            Pose::Standing
+        let desired = crate::pose::desired_pose(
+            self.entity_id,
+            crate::pose::PoseFlags {
+                sleeping: self.sleeping,
+                fall_flying: self.fall_flying,
+                shift_key_down: self.sneaking,
+                flying: self.abilities.flying,
+                ..Default::default()
+            },
+        );
+        match &self.motion {
+            Some(m) if desired != Pose::Sleeping && desired != Pose::FallFlying => m.pose,
+            _ => desired,
         }
     }
     /// `Avatar.POSES` for the guest's pose, with its scale attribute: also for

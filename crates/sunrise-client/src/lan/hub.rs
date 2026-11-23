@@ -3379,21 +3379,20 @@ impl Hub {
     ) -> EntityState {
         let (sneaking, sprinting, sleeping) = flags;
         let shared = shared_flags(sneaking, sprinting, &body);
-        // Player.getDesiredPose (and updatePlayerPose's crawl): sleeping,
-        // swimming, gliding, Riptide's spin, crouching.
-        let pose = if sleeping {
-            2
-        } else if body.swimming || body.crawling {
-            3
-        } else if body.gliding {
-            1
-        } else if body.spin_attack {
-            4
-        } else if sneaking || body.crouching {
-            5
-        } else {
-            0
-        };
+        // Player.getDesiredPose, with updatePlayerPose's crawl and its
+        // crouch under a low ceiling as the body took them.
+        let pose = crate::pose::desired_pose(
+            id,
+            crate::pose::PoseFlags {
+                sleeping,
+                swimming: body.swimming || body.crawling,
+                fall_flying: body.gliding,
+                auto_spin_attack: body.spin_attack,
+                shift_key_down: sneaking || body.crouching,
+                flying: false,
+            },
+        )
+        .id();
         let mut meta = Vec::new();
         if shared != 0 {
             meta.push((0, serializer::BYTE, Value::Byte(shared)));
@@ -5491,6 +5490,7 @@ mod tests {
     mod collision_part_tests;
     mod connection_group_sync_tests;
     mod debug_subscription_tests;
+    mod desired_pose_tests;
     mod displace_tests;
     mod effect_meta_tests;
     mod entity_move_check_tests;

@@ -1,0 +1,2 @@
+# Daily test of the replaceable Player.getDesiredPose seam (#4854): every pose reader takes its answer; it needs the prepared resources.
+sunrise-client-lib lan::hub::tests::desired_pose_tests::every_pose_reader_takes_the_desired_pose lib daily resources
