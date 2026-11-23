@@ -930,6 +930,65 @@ impl Game<'_> {
         pushed
     }
 
+    /// The acting player, then every other player in the level (LAN guests), each swapped in
+    /// as the player and hit when the blast's list visits them. The blast's source is the
+    /// same for all of them (`onExplosionHit(this.source)`).
+    fn explosion_hurt_players(
+        &mut self,
+        context: &ExplosionHookContext<'_>,
+        radius: f32,
+        damage_type: &str,
+        exploding: Option<u32>,
+        attacker: Option<&(u32, Text)>,
+        blast_source: Option<&sunrise_client::advancements::EntityView>,
+    ) -> Vec<(u32, [f64; 3])> {
+        let own = if self
+            .player
+            .as_ref()
+            .and_then(|p| u32::try_from(p.entity_id).ok())
+            .is_some_and(|id| !self.combat.visits(id))
+        {
+            None
+        } else {
+            self.explosion_hurt_player(
+                &context,
+                radius,
+                damage_type,
+                exploding,
+                attacker,
+                blast_source,
+            )
+        };
+        let mut pushed: Vec<_> = self.lan_acting.zip(own).into_iter().collect();
+        if let Some(host) = self.lan.as_ref() {
+            let combat = &self.combat;
+            let guests: Vec<u32> = host
+                .hub
+                .guests
+                .iter()
+                .filter(|g| host.hub.here(g))
+                .filter(|g| u32::try_from(g.entity_id).map_or(true, |id| combat.visits(id)))
+                .map(|g| g.conn)
+                .collect();
+            for conn in guests {
+                let push = self.as_guest(conn, |g| {
+                    g.explosion_hurt_player(
+                        &context,
+                        radius,
+                        damage_type,
+                        exploding,
+                        attacker,
+                        blast_source,
+                    )
+                });
+                if let Some(Some(push)) = push {
+                    pushed.push((conn, push));
+                }
+            }
+        }
+        pushed
+    }
+
     /// Where a blast at `center` reaches `entity`, unless it ignores the blast
     /// or is out of range (`getEntities` and `ServerExplosion.hurtEntities`).
     /// Generic over the kind, so every walked list gets its own copy.
@@ -988,7 +1047,10 @@ impl Game<'_> {
         let (knockback, flying_knockback) =
             (self.blast_knockback(false), self.blast_knockback(true));
         let kind = self.blast_damage_kind();
-        if hurts {
+        // Without a listener's list the passes run kind by kind; with one, the walk below
+        // reaches each entry's kind in the list's order.
+        let listed = self.combat.blast_hit_list.is_some();
+        if hurts && !listed {
             self.explosion_hits_special(center, radius, blocks, damage_type);
         }
         let diameter = f64::from(radius * 2.0);
@@ -1040,13 +1102,11 @@ impl Game<'_> {
             knockback,
             flying_knockback,
         };
-        let own = if self
-            .lan_acting_entity
-            .is_some_and(|id| !self.combat.visits(id))
-        {
-            None
+        let mut pushed = if listed {
+            // The list's own order reaches each player in the walk below.
+            Vec::new()
         } else {
-            self.explosion_hurt_player(
+            self.explosion_hurt_players(
                 &context,
                 radius,
                 damage_type,
@@ -1055,33 +1115,6 @@ impl Game<'_> {
                 blast_source.as_ref(),
             )
         };
-        let mut pushed: Vec<_> = self.lan_acting.zip(own).into_iter().collect();
-        if let Some(host) = self.lan.as_ref() {
-            let combat = &self.combat;
-            let guests: Vec<u32> = host
-                .hub
-                .guests
-                .iter()
-                .filter(|g| host.hub.here(g))
-                .filter(|g| u32::try_from(g.entity_id).map_or(true, |id| combat.visits(id)))
-                .map(|g| g.conn)
-                .collect();
-            for conn in guests {
-                let push = self.as_guest(conn, |g| {
-                    g.explosion_hurt_player(
-                        &context,
-                        radius,
-                        damage_type,
-                        exploding,
-                        attacker.as_ref(),
-                        blast_source.as_ref(),
-                    )
-                });
-                if let Some(Some(push)) = push {
-                    pushed.push((conn, push));
-                }
-            }
-        }
         // Mobs. `WitherBoss.hurtServer`: a wither shrugs off an undead cause.
         let (blast_direct_id, blast_direct_kind) = blast_source_spec.damage_direct.map_or(
             (0, sunrise_client::health::DirectEntity::Other),
@@ -1171,6 +1204,30 @@ impl Game<'_> {
                     break;
                 };
                 listed_at += 1;
+                // `ServerExplosion.hurtEntities` walks the edited list entry by entry, whatever
+                // the kind and however often it is named.
+                self.combat.blast_turn = Some(id);
+                if self.blast_is_player(id) {
+                    pushed.extend(self.explosion_hurt_players(
+                        &context,
+                        radius,
+                        damage_type,
+                        exploding,
+                        attacker.as_ref(),
+                        blast_source.as_ref(),
+                    ));
+                }
+                if hurts {
+                    self.explosion_hurt_listed_special(
+                        id,
+                        center,
+                        radius,
+                        blocks,
+                        damage_type,
+                        diameter,
+                        interaction,
+                    );
+                }
                 self.blast_handle(id).map(|handle| (id, handle))
             } else {
                 let Some(next) = self.next_entity_id(&mut cursor) else {
@@ -1421,11 +1478,55 @@ impl Game<'_> {
         // here are neither destroyed nor pushed by the same blast.
         // BlockAttachedEntity.kill / ArmorStand.kill credit DamageSource.getEntity.
         // VehicleEntity.destroy above uses Entity.kill and keeps the vehicle as source.
-        if hurts {
+        self.combat.blast_turn = None;
+        if hurts && !listed {
             self.explosion_breaks_frames(center, diameter, interaction);
             self.explosion_breaks_decorations(center, diameter, interaction);
         }
         pushed
+    }
+
+    /// Whether `id` names the acting player or a guest here.
+    fn blast_is_player(&self, id: u32) -> bool {
+        self.player
+            .as_ref()
+            .is_some_and(|p| u32::try_from(p.entity_id) == Ok(id))
+            || self.lan.as_ref().is_some_and(|host| {
+                host.hub
+                    .guests
+                    .iter()
+                    .any(|g| u32::try_from(g.entity_id) == Ok(id) && host.hub.here(g))
+            })
+    }
+
+    /// The listed entry `id`'s turn for the kinds outside the storage walk: an end crystal or
+    /// the dragon, an item frame, a painting, cushion or armour stand. The passes read the
+    /// turn, so only that entity is reached.
+    #[allow(clippy::too_many_arguments)]
+    fn explosion_hurt_listed_special(
+        &mut self,
+        id: u32,
+        center: [f64; 3],
+        radius: f32,
+        blocks: &[[i32; 3]],
+        damage_type: &str,
+        diameter: f64,
+        interaction: BlockInteraction,
+    ) {
+        if self.crystals.iter().any(|c| c.id == id)
+            || self.dragon.as_ref().is_some_and(|d| d.id == id)
+        {
+            self.explosion_hits_special(center, radius, blocks, damage_type);
+        }
+        if self.item_frames.iter().any(|f| f.id == id) {
+            self.explosion_breaks_frames(center, diameter, interaction);
+        }
+        if self.paintings.iter().any(|p| p.id == id)
+            || self.cushions.iter().any(|c| c.id == id)
+            || self.armor_stands.iter().any(|a| a.id == id)
+        {
+            self.explosion_breaks_decorations(center, diameter, interaction);
+        }
     }
 
     /// Decoration kills credit `DamageSource.getEntity`: the explicit blast
@@ -1796,6 +1897,7 @@ impl Game<'_> {
         // (its own detonate, a nested `level_explode`) keeps its own list.
         let outer = std::mem::take(&mut self.combat.blast_hit_list);
         let outer_ids = std::mem::take(&mut self.combat.blast_hit_ids);
+        let outer_turn = self.combat.blast_turn.take();
         self.explosion_detonate(center, radius, &mut targets);
         let pushed = self.explosion_hurt_entities(
             center,
@@ -1807,6 +1909,7 @@ impl Game<'_> {
         );
         self.combat.blast_hit_list = outer;
         self.combat.blast_hit_ids = outer_ids;
+        self.combat.blast_turn = outer_turn;
         self.explosion_block_step(&mut targets, radius, interaction, fire, &start)?;
         let effects = self.blast_effects();
         if !source.silent {
