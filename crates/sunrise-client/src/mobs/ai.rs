@@ -7937,40 +7937,54 @@ mod burn_and_rose_tests {
         }
     }
 
-    /// Vanilla 26.3 witness (tools/witness/26.3/first_tick_lava_burn.tsv): a NoAI pig in lava on its first and later ticks.
+    /// Vanilla 26.3 witness (tools/witness/26.3/first_tick_lava_burn.tsv): a NoAI pig in lava or dry air on its first and later ticks.
     #[test]
     #[ignore = "daily"]
     fn a_mob_loaded_in_lava_burns_on_its_first_tick() {
         const WITNESS: &str =
             include_str!("../../../../tools/witness/26.3/first_tick_lava_burn.tsv");
         struct Row {
+            in_lava: bool,
             initial_fire: i32,
+            initial_absorption_bits: u32,
             ticks: usize,
             hurt_time: i32,
             fire: i32,
             health_bits: u32,
+            absorption_bits: u32,
         }
         let mut rows = Vec::new();
         for line in WITNESS.lines() {
-            if line.is_empty() || line.starts_with('#') || line.starts_with("initial_fire\t") {
+            if line.is_empty() || line.starts_with('#') || line.starts_with("in_lava\t") {
                 continue;
             }
             let mut cols = line.split('\t');
+            let in_lava = match cols.next().unwrap() {
+                "0" => false,
+                "1" => true,
+                other => panic!("unexpected in_lava flag {other} in {line}"),
+            };
             let initial_fire: i32 = cols.next().unwrap().parse().unwrap();
+            let initial_absorption_bits: u32 =
+                u32::from_str_radix(cols.next().unwrap(), 16).unwrap();
             let ticks: usize = cols.next().unwrap().parse().unwrap();
             let hurt_time: i32 = cols.next().unwrap().parse().unwrap();
             let fire: i32 = cols.next().unwrap().parse().unwrap();
             let health_bits: u32 = u32::from_str_radix(cols.next().unwrap(), 16).unwrap();
+            let absorption_bits: u32 = u32::from_str_radix(cols.next().unwrap(), 16).unwrap();
             assert!(
                 cols.next().is_none(),
                 "unexpected trailing column in {line}"
             );
             rows.push(Row {
+                in_lava,
                 initial_fire,
+                initial_absorption_bits,
                 ticks,
                 hurt_time,
                 fire,
                 health_bits,
+                absorption_bits,
             });
         }
         assert!(!rows.is_empty(), "empty 26.3 witness");
@@ -7980,11 +7994,17 @@ mod burn_and_rose_tests {
             |w, types| {
                 for row in &rows {
                     let kind = Arc::new(types.types["minecraft:pig"].clone());
-                    let mut m = Mob::new(1, kind, Vec3::new(0.5, 64.0, 0.5), 0.0);
+                    let pos = if row.in_lava {
+                        Vec3::new(0.5, 64.0, 0.5)
+                    } else {
+                        Vec3::new(2.5, 64.0, 2.5)
+                    };
+                    let mut m = Mob::new(1, kind, pos, 0.0);
                     register(&mut m);
                     m.no_ai = true;
                     m.persistent = true;
                     m.fire_ticks = row.initial_fire;
+                    m.absorption = f32::from_bits(row.initial_absorption_bits);
                     assert!(m.first_tick);
                     let (mut lr, mut events) = (crate::health::TestLevel::new(0), Vec::new());
                     for _ in 0..row.ticks {
@@ -7993,19 +8013,30 @@ mod burn_and_rose_tests {
                     }
                     assert_eq!(
                         m.hurt_time, row.hurt_time,
-                        "Fire:{} ticks:{}",
-                        row.initial_fire, row.ticks
+                        "lava:{} Fire:{} abs:{:08x} ticks:{}",
+                        row.in_lava, row.initial_fire, row.initial_absorption_bits, row.ticks
                     );
                     assert_eq!(
                         m.fire_ticks, row.fire,
-                        "Fire:{} ticks:{}",
-                        row.initial_fire, row.ticks
+                        "lava:{} Fire:{} abs:{:08x} ticks:{}",
+                        row.in_lava, row.initial_fire, row.initial_absorption_bits, row.ticks
                     );
                     assert_eq!(
                         m.health.to_bits(),
                         row.health_bits,
-                        "Fire:{} ticks:{}",
+                        "lava:{} Fire:{} abs:{:08x} ticks:{}",
+                        row.in_lava,
                         row.initial_fire,
+                        row.initial_absorption_bits,
+                        row.ticks
+                    );
+                    assert_eq!(
+                        m.absorption.to_bits(),
+                        row.absorption_bits,
+                        "lava:{} Fire:{} abs:{:08x} ticks:{}",
+                        row.in_lava,
+                        row.initial_fire,
+                        row.initial_absorption_bits,
                         row.ticks
                     );
                 }

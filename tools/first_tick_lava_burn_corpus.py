@@ -8,14 +8,36 @@ import subprocess
 import sys
 
 GROUP = 'mob first-tick lava burn'
-FIRES = (-1, 0, 1, 19, 20, 21, 40, 320, 321)
+# (in_lava, initial_fire, initial_absorption)
+CASES = (
+    (True, -1, 0.0),
+    (True, 0, 0.0),
+    (True, 1, 0.0),
+    (True, 19, 0.0),
+    (True, 20, 0.0),
+    (True, 21, 0.0),
+    (True, 40, 0.0),
+    (True, 320, 0.0),
+    (True, 321, 0.0),
+    (True, 330, 0.0),
+    (False, 20, 0.0),
+    (False, 21, 0.0),
+    (True, 20, 2.5),
+    (True, 21, 2.5),
+    (True, 40, 2.5),
+)
 TICKS = (1, 2, 10, 11)
-SPOTS = ((2, 2), (7, 2), (12, 2), (2, 7), (7, 7), (12, 7), (2, 12), (7, 12), (12, 12))
+SPOTS = (
+    (2, 2), (6, 2), (10, 2), (14, 2),
+    (2, 6), (6, 6), (10, 6), (14, 6),
+    (2, 10), (6, 10), (10, 10), (14, 10),
+    (2, 14), (6, 14), (10, 14),
+)
 WITNESS = Path(__file__).resolve().parent / 'witness/26.3/first_tick_lava_burn.tsv'
 
 
 def first_tick_lava_burn(cmd, setup):
-    """Summon NoAI pigs in lava with initial Fire values and read HurtTime, Fire and Health."""
+    """Summon NoAI pigs in lava or dry air with initial Fire and AbsorptionAmount and read HurtTime, Fire, Health and AbsorptionAmount."""
     x0, y0, z0 = 3760, 260, 3776
     # Entities tick once the forced chunk's 2-column neighbourhood is loaded.
     chunks = [[(x0 >> 4) + i, (z0 >> 4) + k] for i in range(-2, 3) for k in range(-2, 3)]
@@ -26,21 +48,23 @@ def first_tick_lava_burn(cmd, setup):
         cmd(f'/fill {x0} {y0 - 1} {z0} {x0 + 15} {y0 + 2} {z0 + 15} air', False),
         cmd(f'/fill {x0} {y0 - 1} {z0} {x0 + 15} {y0} {z0 + 15} stone', False),
     ]
-    for i, ((dx, dz), fire) in enumerate(zip(SPOTS, FIRES), 1):
+    for i, ((dx, dz), (in_lava, fire, absorption)) in enumerate(zip(SPOTS, CASES), 1):
         x, z = x0 + dx, z0 + dz
-        ops.append(cmd(f'/setblock {x} {y0} {z} minecraft:lava', False))
+        block = 'minecraft:lava' if in_lava else 'minecraft:air'
+        ops.append(cmd(f'/setblock {x} {y0} {z} {block}', False))
+        extra = f',AbsorptionAmount:{absorption}f' if absorption != 0.0 else ''
         ops.append(cmd(
             f'/summon minecraft:pig {x}.5 {y0} {z}.5 '
-            f'{{UUID:[I;2674,0,0,{i}],NoAI:1b,PersistenceRequired:1b,Fire:{fire}s}}',
+            f'{{UUID:[I;2674,0,0,{i}],NoAI:1b,PersistenceRequired:1b,Fire:{fire}s{extra}}}',
             expect_result=1,
         ))
     done = 0
     for target in TICKS:
         ops += [cmd('/tick unfreeze', False), {'op': 'tick', 'n': target - done}, cmd('/tick freeze', False)]
         done = target
-        for i in range(1, len(FIRES) + 1):
+        for i in range(1, len(CASES) + 1):
             uid = f'00000a72-0000-0000-0000-{i:012x}'
-            for field in ('HurtTime', 'Fire', 'Health'):
+            for field in ('HurtTime', 'Fire', 'Health', 'AbsorptionAmount'):
                 ops.append(cmd(f'/data get entity {uid} {field}'))
     return ops + setup(
         '/tick unfreeze',
@@ -66,19 +90,19 @@ def record_witness(work_dir=None, out=WITNESS):
         check=True,
     )
     rows = [json.loads(line) for line in (scratch / 'vanilla.jsonl').read_text(encoding='utf-8').splitlines()]
-    expected_count = len(FIRES) + len(TICKS) * len(FIRES) * 3
+    expected_count = len(CASES) + len(TICKS) * len(CASES) * 4
     if len(rows) != expected_count:
         raise RuntimeError(f'expected {expected_count} vanilla records, got {len(rows)}')
-    idx = len(FIRES)
+    idx = len(CASES)
     lines = [
         '# vanilla 26.3 witness recorded via VanillaCommandExecOracle (python3 tools/first_tick_lava_burn_corpus.py --record)',
-        'initial_fire\tticks\thurt_time\tfire\thealth_bits',
+        'in_lava\tinitial_fire\tinitial_absorption_bits\tticks\thurt_time\tfire\thealth_bits\tabsorption_bits',
     ]
     for target in TICKS:
-        for i, initial_fire in enumerate(FIRES, 1):
+        for i, (in_lava, initial_fire, initial_absorption) in enumerate(CASES, 1):
             uid = f'00000a72-0000-0000-0000-{i:012x}'
             values = {}
-            for field in ('HurtTime', 'Fire', 'Health'):
+            for field in ('HurtTime', 'Fire', 'Health', 'AbsorptionAmount'):
                 row = rows[idx]
                 idx += 1
                 expected_cmd = f'/data get entity {uid} {field}'
@@ -88,8 +112,15 @@ def record_witness(work_dir=None, out=WITNESS):
             hurt_time = int(values['HurtTime'].removesuffix('s'))
             fire = int(values['Fire'].removesuffix('s'))
             health = float(values['Health'].removesuffix('f'))
+            absorption = float(values['AbsorptionAmount'].removesuffix('f'))
+            init_abs_bits = struct.pack('>f', initial_absorption).hex()
             health_bits = struct.pack('>f', health).hex()
-            lines.append(f'{initial_fire}\t{target}\t{hurt_time}\t{fire}\t{health_bits}')
+            abs_bits = struct.pack('>f', absorption).hex()
+            lava_flag = 1 if in_lava else 0
+            lines.append(
+                f'{lava_flag}\t{initial_fire}\t{init_abs_bits}\t{target}\t'
+                f'{hurt_time}\t{fire}\t{health_bits}\t{abs_bits}'
+            )
     out = Path(out)
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text('\n'.join(lines) + '\n', encoding='utf-8')
