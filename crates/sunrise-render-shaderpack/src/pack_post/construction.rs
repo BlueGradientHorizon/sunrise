@@ -8,7 +8,7 @@ use std::collections::HashMap;
 use sunrise_shaders::{BUFFERS, Format, Group, Kind, Post, SHADOW_COLORS};
 
 use super::packed;
-use super::{image_format, storage_formats_of};
+use super::{image_binding, image_format, storage_formats_of};
 use crate::pack_draw::DrawUniforms;
 use crate::pack_entities::PackEntities;
 use crate::pack_images;
@@ -1075,18 +1075,19 @@ pub fn bindings(
             ));
             return None;
         }
-        // An `R11F_G11F_B10F` image or buffer this device makes `RGBA16F` (a float stand-in
-        // that neither clamps nor drops NaN) takes `layout(r11f_g11f_b10f)` as `rgba16f`
-        // (`storage_formats_of`): Iris 1.11.7 stored into and read back such an image with a
-        // probe pack of ours (#10490), where Sunrise refused the program.
-        let stand_in = format == wgpu::TextureFormat::Rg11b10Ufloat
-            && actual == wgpu::TextureFormat::Rgba16Float;
-        if actual != format && !stand_in {
-            notes.push(format!(
-                "{name}: `{}` is {} but its texture is {actual:?}",
-                i.name, i.format
-            ));
-            return None;
+        // A qualifier `rebinds` pairs with its texture's format binds the texture's format,
+        // with a note (`storage_formats_of` retypes the image): `layout(rgba16)` on a pack's
+        // `RGBA16F` buffer (decision D-3, #548), and `layout(r11f_g11f_b10f)` on the `RGBA16F`
+        // stand-in for an `R11F_G11F_B10F` image or buffer (a float stand-in that neither clamps
+        // nor drops NaN), which Iris 1.11.7 stored into and read back with a probe pack of ours
+        // (#10490). Any other pair that differs refuses the program.
+        match image_binding(name, &i.name, &i.format, format, actual) {
+            Ok(None) => {}
+            Ok(Some(note)) => notes.push(note),
+            Err(note) => {
+                notes.push(note);
+                return None;
+            }
         }
         let format = actual;
         let access = match i.access.as_str() {
@@ -1140,10 +1141,21 @@ pub fn custom_index(custom: &[(String, String)], name: &str, ty: &str) -> Option
     (!disabled).then_some(pack_uniforms::NAMES.len() + k)
 }
 
+/// The depth bias of vanilla 26.3's polygon-offset pipelines: `RenderPipelines.TEXT_POLYGON_OFFSET`
+/// (`DepthStencilState(GREATER_THAN_OR_EQUAL, true, 1.0, 10.0)` over reversed depth), the same
+/// bias as `RenderPipelines.CRUMBLING_SNIPPET`'s (which writes no depth): toward the camera in a
+/// pack's forward depth.
+const POLYGON_OFFSET: wgpu::DepthBiasState = wgpu::DepthBiasState {
+    constant: -10,
+    slope_scale: -1.0,
+    clamp: 0.0,
+};
+
 /// The pass of program `p`: a quad, or `geometry` drawn by the game. `None` (with a note) when
 /// wgpu refuses it or it writes nothing. `formats` are its buffers' (for a program of the shadow
 /// buffers, buffer n is shadowcolor n); `shadow` the shadowcolor formats when the shadow pass
-/// runs.
+/// runs. `water_mask` and `polygon_offset` also make the pass's depth-only pipeline
+/// (`Pass::water_mask`) and its polygon-offset one (`Pass::polygon_offset`).
 pub fn build_pass(
     device: &wgpu::Device,
     p: sunrise_shaders::PostProgram,
@@ -1156,6 +1168,7 @@ pub fn build_pass(
     draws: &wgpu::BindGroupLayout,
     pack: &Resources<'_>,
     water_mask: bool,
+    polygon_offset: bool,
 ) -> Option<Pass> {
     let features = device.features();
     // The frame's uniforms, then the pack's custom ones.
@@ -1203,14 +1216,22 @@ pub fn build_pass(
     let mut own_blends: Vec<(Option<wgpu::BlendState>, bool)> = Vec::new();
     for &location in &interface.outputs {
         let l = location as usize;
+        // Only an output with somewhere to go takes a target slot: the location is the pack's
+        // (up to `u32::MAX`), the slots only as many as the buffers it can write.
+        let buffer = if final_pass {
+            (location == 0).then_some(None)
+        } else {
+            p.buffers.get(l).map(Some)
+        };
+        let Some(buffer) = buffer else {
+            continue;
+        };
         if targets.len() <= l {
             targets.resize(l + 1, None);
         }
         if final_pass {
-            if location == 0 {
-                targets[0] = target(screen);
-            }
-        } else if let Some(&buffer) = p.buffers.get(l) {
+            targets[0] = target(screen);
+        } else if let Some(&buffer) = buffer {
             let format = formats[buffer as usize];
             match format.sample_type(None, Some(features)) {
                 Some(wgpu::TextureSampleType::Uint) => {
@@ -1335,11 +1356,7 @@ pub fn build_pass(
                 depth_compare: Some(wgpu::CompareFunction::LessEqual),
                 stencil: Default::default(),
                 bias: if p.name == "gbuffers_damagedblock" {
-                    wgpu::DepthBiasState {
-                        constant: -10,
-                        slope_scale: -1.0,
-                        clamp: 0.0,
-                    }
+                    POLYGON_OFFSET
                 } else {
                     Default::default()
                 },
@@ -1388,14 +1405,29 @@ pub fn build_pass(
                 },
             )
         });
+        // Polygon-offset sign text's pipeline (`Draw::polygon_offset`): the same program, its
+        // depth biased toward the camera.
+        let polygon_offset = polygon_offset.then(|| {
+            pack.render_pipeline(
+                device,
+                RenderJob {
+                    depth_stencil: job.depth_stencil.clone().map(|d| wgpu::DepthStencilState {
+                        bias: POLYGON_OFFSET,
+                        ..d
+                    }),
+                    ..job.clone()
+                },
+            )
+        });
         (
             layout,
             pack.render_pipeline(device, job),
             sky_parts,
             water_mask,
+            polygon_offset,
         )
     });
-    let (layout, pipeline, sky_parts, water_mask) = match created {
+    let (layout, pipeline, sky_parts, water_mask, polygon_offset) = match created {
         Ok(created) => created,
         Err(e) => {
             notes.push(format!("{}: skipped: {e}", p.name));
@@ -1437,6 +1469,7 @@ pub fn build_pass(
         pipeline: Pipeline::Render(pipeline),
         sky_parts,
         water_mask,
+        polygon_offset,
         layout,
         samplers,
         writes,
@@ -1578,6 +1611,7 @@ pub fn build_compute(
         },
         sky_parts: None,
         water_mask: None,
+        polygon_offset: None,
         layout,
         samplers,
         writes: Vec::new(),
@@ -2046,8 +2080,10 @@ impl PackPost {
                 })
             })
             .transpose()?;
-        // The next pass built also gets a depth-only pipeline for the boats' water patches.
+        // The next pass built also gets a depth-only pipeline for the boats' water patches, and
+        // a polygon-offset one for sign text.
         let water_mask_next = std::cell::Cell::new(false);
+        let polygon_offset_next = std::cell::Cell::new(false);
         let mut build = |mut p: sunrise_shaders::PostProgram, geometry: Option<&Geometry<'_>>| {
             // Not wanted any more: the rest is skipped and the build refused below.
             if cancel.load(std::sync::atomic::Ordering::Relaxed) {
@@ -2099,6 +2135,7 @@ impl PackPost {
                     &draws.layout,
                     &pack,
                     water_mask_next.get(),
+                    polygon_offset_next.get(),
                 )?
             };
             pass.compute.append(&mut computes);
@@ -2311,6 +2348,12 @@ impl PackPost {
         let entity_passes = programs.map(|p| {
             // The entity program draws the boats, and their water patches (`Draw::water_mask`).
             water_mask_next.set(kind == crate::pack_entities::ENTITY);
+            // The block programs draw sign text, its POLYGON_OFFSET quads biased
+            // (`Draw::polygon_offset`).
+            polygon_offset_next.set(matches!(
+                kind,
+                crate::pack_entities::BLOCK | crate::pack_entities::BLOCK_TRANSLUCENT
+            ));
             kind += 1;
             p.zip(entity_geometry.as_ref()).and_then(|(p, g)| {
                 if p.name == "gbuffers_damagedblock" {
@@ -2335,6 +2378,7 @@ impl PackPost {
             late[crate::pack_entities::PARTICLE] = false;
         }
         water_mask_next.set(false);
+        polygon_offset_next.set(false);
         let shadow_entities = shadow_programs.map(|p| {
             p.zip(entity_geometry.as_ref())
                 .and_then(|(p, g)| paged(build(p, Some(g))))
