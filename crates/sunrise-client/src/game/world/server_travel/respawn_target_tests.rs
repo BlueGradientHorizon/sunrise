@@ -109,3 +109,19 @@ fn no_respawn_point_gives_the_world_spawn() {
         assert!(!target.missing_respawn_block);
     });
 }
+
+/// While a player's state is swapped in (a lifecycle event lending guest 2's body), a point in a
+/// level not in place is refused with `InPlayerHook`: putting that level in place would move the
+/// swapped-in player's level under it.
+#[test]
+#[ignore = "daily"]
+fn a_point_in_another_level_is_refused_while_a_player_is_swapped_in() {
+    mod_platform::testing::with_mods(Vec::new().into(), || {
+        let mut resources = None;
+        let (_scratch, mut game, _rx) = server_with_a_nether_anchor(&mut resources);
+        let answer = game
+            .with_cloning_player(2, |game| respawn_target(game))
+            .unwrap();
+        assert_eq!(answer, Err(RespawnTargetUnavailable::InPlayerHook));
+    });
+}

@@ -1120,8 +1120,9 @@ impl<G: ChunkGenerator> Jobs<G> {
                     Done::Generated(chunk)
                 }
                 None => {
-                    // A panic in the generator (a mod's `build_terrain`) loses this column only:
-                    // it is reported, not left generating forever.
+                    // A panic in the generator loses this column only: it is reported, not left
+                    // generating forever. This covers every generator, the vanilla one included,
+                    // not only a mod's `build_terrain`.
                     let made = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                         generator.proto(&mut *worker, x, z)
                     }));
@@ -1763,22 +1764,22 @@ impl Streaming {
     }
     /// A proto chunk back from its light view: the view waits in
     /// `light_views` for the light jobs that asked for it.
-    /// A column whose generation panicked: no longer generating, and never planned again.
-    fn receive_failed(&mut self, x: i32, z: i32) {
-        self.generation_scan.exhausted = false;
-        self.generating.remove(&(x, z));
-        if self.failed.insert((x, z)) {
-            log::error!(
-                "generating chunk [{x}, {z}] panicked; the column stays out of the level until                  it opens again"
-            );
-        }
-    }
     fn receive_light_view(&mut self, x: i32, z: i32, proto: Proto, view: Option<Chunk>) {
         self.decoration_changed = true;
         self.viewing.remove(&(x, z));
         self.protos.insert((x, z), Some(proto));
         if let Some(view) = view {
             self.light_views.insert((x, z), Arc::new(view));
+        }
+    }
+    /// A column whose generation panicked: no longer generating, and never planned again.
+    fn receive_failed(&mut self, x: i32, z: i32) {
+        self.generation_scan.exhausted = false;
+        self.generating.remove(&(x, z));
+        if self.failed.insert((x, z)) {
+            log::error!(
+                "generating chunk [{x}, {z}] panicked; the column stays out of the level until it opens again"
+            );
         }
     }
     /// Whether `light_region` would find all nine columns: the same walk
