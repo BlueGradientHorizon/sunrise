@@ -909,6 +909,8 @@ impl Game<'_> {
         if new_logical_player {
             r.abilities = sunrise_client::lan::abilities::PlayerAbilities::default();
             r.own_player_info = std::cell::OnceCell::new();
+            // The new LocalPlayer, admitted now, counts its ticks from 0.
+            r.own_tick_count = 0;
         } else if let Some((flying, flying_speed)) = body_flight {
             r.sync_body_flight(flying, flying_speed);
         }
