@@ -1202,7 +1202,8 @@ impl Renderer {
         if gpu_frame && let Some(gpu) = &self.gpu_culling {
             section_draw_calls += gpu.draw_calls();
         }
-        // The sourced-geometry pass's, one per page; the meshes it alone draws are not counted.
+        // Sourced draw calls are counted here; its kept meshes and solid draws are read back
+        // separately (`Sourced::collect`).
         if sourced_frame {
             section_draw_calls += self.sourced.draw_calls();
         }

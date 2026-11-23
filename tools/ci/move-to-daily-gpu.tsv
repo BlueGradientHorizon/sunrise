@@ -295,5 +295,3 @@ sunrise-render-shaderpack	lib	pack_post::tests::a_shader_compiler_panic_skips_th
 sunrise-render-shaderpack	lib	pack_post::tests::an_image_without_an_entry_reads_zero	crates/sunrise-render-shaderpack/src/pack_post/tests.rs:458	gpu
 sunrise-render-shaderpack	lib	pack_post::tests::pipelines_compile_together_and_a_refused_one_is_named	crates/sunrise-render-shaderpack/src/pack_post/tests.rs:210	gpu
 sunrise-render-shaderpack	lib	pack_timing::tests::counters_see_the_overdraw_that_draw_order_makes	crates/sunrise-render-shaderpack/src/pack_timing.rs:1784	gpu
-sunrise-client-render	lib	gfx::sourced_geometry::gpu::tests::the_gpu_path_draws_the_cpu_paths_image	crates/sunrise-client-render/src/gfx/sourced_geometry/gpu/tests.rs:150	gpu
-sunrise-client-render	lib	gfx::sourced_geometry::gpu::tests::the_residency_draws_the_cpu_paths_image	crates/sunrise-client-render/src/gfx/sourced_geometry/gpu/tests.rs:563	gpu

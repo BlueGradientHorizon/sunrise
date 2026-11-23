@@ -290,6 +290,7 @@ impl TileGrid {
     }
 
     /// Whether it holds no tile.
+    #[cfg(any(test, debug_assertions))]
     pub(in crate::gfx) fn is_empty(&self) -> bool {
         self.cells.is_empty()
     }

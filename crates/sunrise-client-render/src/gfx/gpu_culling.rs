@@ -209,6 +209,10 @@ const FULL_SECTION_BOX: u32 = 8 | (8 << 5) | (8 << 10) | (24 << 15) | (24 << 20)
 /// What a box's ends, -8 to 23 blocks from its section's origin, add to make
 /// their 5-bit codes.
 const CODE_OFFSET: i32 = 8;
+const BOX_CODES: i32 = 1 << 5;
+const FRUSTUM_PLANES: usize = 6;
+/// Fixed box coefficients in `tables`: each plane, axis and packed coordinate code.
+pub(super) const PLANE_BOX_WORDS: u64 = FRUSTUM_PLANES as u64 * 3 * BOX_CODES as u64;
 
 /// A record's box: its section's quad bounds (`SectionMesh::bounds`; `None` is
 /// the whole cell) rounded out to whole blocks, each low end at most 16 and
@@ -563,7 +567,7 @@ pub(super) fn tables(input: &FrameInputs<'_>, words: &mut Vec<u32>) -> Option<Pa
     });
     // Each plane's largest terms in magnitude, along each axis, which bound its
     // sums.
-    let mut largest = [0.0; 6];
+    let mut largest = [0.0; FRUSTUM_PLANES];
     for (j, p) in planes.iter().enumerate() {
         for (axis, origins) in axes.iter().enumerate() {
             let mut most: f64 = 0.0;
@@ -582,7 +586,7 @@ pub(super) fn tables(input: &FrameInputs<'_>, words: &mut Vec<u32>) -> Option<Pa
             // is at least 0 (alike in f64).
             signs |= u32::from(p[axis] >= 0.0) << (3 * j + axis);
             let mut most: f64 = 0.0;
-            for code in 0..32 {
+            for code in 0..BOX_CODES {
                 let term = (SCALE * p[axis] * f64::from(code - CODE_OFFSET)).ceil();
                 most = most.max(term.abs() * unit[axis]);
                 words.push(term as i32 as u32);
@@ -917,7 +921,7 @@ impl Records {
     pub fn at(&self, id: u32) -> Option<&Record> {
         self.records.get(id as usize).filter(|r| r.page().is_some())
     }
-    #[cfg(any(test, debug_assertions))]
+    /// The live sections on each page; its length is the page count.
     pub fn page_sections(&self) -> &[u32] {
         &self.page_sections
     }
@@ -1217,9 +1221,9 @@ impl GpuCulling {
         Self::with_buffers(device, pipelines, layout, test, false)
     }
 
-    /// A second table of records for the same pass (gfx/sourced_geometry/gpu.rs): this one's
-    /// pipelines, buffers of its own, no statistics, occlusion test or room for cave culling's
-    /// graph. `None` when the memory is missing.
+    /// A second record table for the same pass (`gfx/sourced_geometry/gpu.rs`), sharing its
+    /// pipelines but with its own buffers and statistics readback. It has no occlusion test or
+    /// cave-culling graph. `None` when the memory is missing.
     pub fn second(&self, device: &wgpu::Device) -> Option<Self> {
         Self::with_buffers(
             device,

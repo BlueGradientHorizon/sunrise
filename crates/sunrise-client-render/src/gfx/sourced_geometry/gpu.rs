@@ -35,7 +35,9 @@
 use super::super::{
     Frustum, SectionKey,
     arena::Arena,
-    gpu_culling::{Cells, FrameInputs, GpuCulling, Prepared, Record, Records, rounded_box},
+    gpu_culling::{
+        Cells, FrameInputs, GpuCulling, PLANE_BOX_WORDS, Prepared, Record, Records, rounded_box,
+    },
     lod::{self, Tile, TileGrid, Visible},
     pack_timing::PassTiming,
     resident,
@@ -48,7 +50,7 @@ use glam::{DVec3, Vec3};
 use std::{collections::BTreeMap, time::Instant};
 
 /// Cells are at least a section wide (a record's key is its corner in sections), and a box's
-/// unit is a sixteenth of one's width: `Record::units` holds 15 bits of shift.
+/// unit is a sixteenth of one's width: `Record::units` holds four bits of shift.
 const MIN_SIZE_LOG2: u8 = 4;
 const MAX_SIZE_LOG2: u8 = MIN_SIZE_LOG2 + 15;
 /// A box's step along y, in blocks, as a shift (`cell_box`): codes reach -128 to 368, past the
@@ -187,8 +189,9 @@ impl SourcedGpu {
     /// take (the CPU draws it).
     pub fn record(mesh: &Mesh, fading: bool) -> Option<Record> {
         let cell = mesh.cell;
+        let key = cell.key()?;
         let boxed = cell_box(mesh.bounds, cell);
-        let record = Record::new(cell.key()?, mesh.page, mesh.start, mesh.quads, boxed);
+        let record = Record::new(key, mesh.page, mesh.start, mesh.quads, boxed);
         Some(
             record
                 .facing(mesh.sides)
@@ -298,9 +301,8 @@ impl SourcedGpu {
         };
         let radius = reach(&self.corners[0], cx).max(reach(&self.corners[1], cz));
         // The tables' words at this spread (`gpu_culling::tables`): an origin, the six
-        // planes' terms and the eye's keys per axis entry, over `2 * radius + 1` columns
-        // of them and the one row along y, and each page's two words
-        // (`GpuCulling::prepare_buffers`).
+        // planes' terms and optional eye keys per axis entry, plus the fixed box
+        // coefficients and each page's two words (`GpuCulling::prepare_buffers`).
         let Some(span) = radius.checked_mul(2).and_then(|r| r.checked_add(1)) else {
             return Prepared::Cpu;
         };
@@ -314,7 +316,10 @@ impl SourcedGpu {
         let fits = |bytes: u64| {
             bytes <= limits.max_buffer_size && bytes <= limits.max_storage_buffer_binding_size
         };
-        if !fits(words.saturating_mul(4).saturating_add(pages * 4)) {
+        let bytes = words
+            .saturating_add(PLANE_BOX_WORDS + pages)
+            .saturating_mul(4);
+        if !fits(bytes) {
             return Prepared::Cpu;
         }
         // The origins' keys are i32 (`tables`), and so is the frame's radius.
