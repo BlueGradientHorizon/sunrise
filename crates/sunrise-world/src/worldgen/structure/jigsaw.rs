@@ -952,6 +952,12 @@ pub struct PlacedStart {
     pub position: [i32; 3],
     center: PoolPiece,
 }
+impl PlacedStart {
+    /// The start piece as placed, before any child is laid out.
+    pub fn piece(&self) -> &PoolPiece {
+        &self.center
+    }
+}
 
 /// The first half of [`assemble`]: the start piece drawn, rotated, projected to the
 /// heightmap and checked against the height limits. None when the start is invalid. The
