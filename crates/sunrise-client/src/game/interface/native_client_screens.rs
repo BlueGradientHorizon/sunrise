@@ -122,7 +122,7 @@ impl Game<'_> {
 }
 
 #[cfg(test)]
-mod client_screen_tests {
+pub(in crate::game) mod client_screen_tests {
     use super::*;
     use crate::game::books::BookScreen;
     use crate::game::native_entity_refs::tests::with_client_game;
@@ -322,10 +322,14 @@ mod client_screen_tests {
         });
     }
 
-    /// Vanilla 26.3 `BookEditScreen` Done (`saveChanges`) matches the recorded JVM witness.
+    /// Vanilla 26.3 `BookEditScreen` Done (`saveChanges`) matches the witness recorded by `tools/test_writable_book_parity.py`.
     #[test]
-    #[ignore = "daily"]
+    #[ignore = "run by tools/test_writable_book_parity.py"]
     fn done_on_an_unedited_book_sends_it_and_drops_its_filtered_text() {
+        run_done_on_an_unedited_book_sends_it_and_drops_its_filtered_text();
+    }
+
+    pub(in crate::game) fn run_done_on_an_unedited_book_sends_it_and_drops_its_filtered_text() {
         use std::fmt::Write as _;
         #[derive(serde::Deserialize)]
         struct Witness {
@@ -352,8 +356,24 @@ mod client_screen_tests {
             wire_hex: String,
         }
 
-        const WITNESS: &str = include_str!("../../../../../tools/witness/26.3/writable_book.json");
-        let witness: Witness = serde_json::from_str(WITNESS).unwrap();
+        let witness_path = std::env::var_os("SUNRISE_WRITABLE_BOOK_WITNESS").unwrap_or_else(|| {
+            panic!(
+                "SUNRISE_WRITABLE_BOOK_WITNESS is unset; run tools/test_writable_book_parity.py, which records the witness"
+            )
+        });
+        let witness_path = std::path::PathBuf::from(witness_path);
+        let witness_path = if witness_path.is_dir() {
+            witness_path.join("writable_book.json")
+        } else {
+            witness_path
+        };
+        let witness_raw = std::fs::read_to_string(&witness_path).unwrap_or_else(|e| {
+            panic!(
+                "failed to read witness {} (record via tools/test_writable_book_parity.py): {e}",
+                witness_path.display()
+            )
+        });
+        let witness: Witness = serde_json::from_str(&witness_raw).unwrap();
         assert_eq!(witness.minecraft, "26.3");
         with_client_game(|game| {
             let mut reader = logged_in(game);

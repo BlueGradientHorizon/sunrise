@@ -1158,5 +1158,21 @@
     "path": "crates/sunrise-client/src/game/mobs/creatures/projectiles_120_124_tests.rs",
     "reason": "run by tools/test_projectile_targets_parity.py",
     "rationale": "Parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_projectile_targets_parity.py records the vanilla 26.3 projectile witnesses into .local and runs this test against them through SUNRISE_PROJECTILE_WITNESS_DIR, so no recorded vanilla data is committed."
+  },
+  {
+    "package": "sunrise-items",
+    "target": "lib",
+    "test": "item_data::ingredient_components::tests::writable_book_pages_keep_their_filtered_text",
+    "path": "crates/sunrise-items/src/item_data/ingredient_components.rs",
+    "reason": "run by tools/test_writable_book_parity.py",
+    "rationale": "Parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_writable_book_parity.py records the vanilla 26.3 writable-book witness into .local and runs this test against it through SUNRISE_WRITABLE_BOOK_WITNESS, so no recorded vanilla data is committed."
+  },
+  {
+    "package": "sunrise-client",
+    "target": "lib",
+    "test": "game::native_client_screens::client_screen_tests::done_on_an_unedited_book_sends_it_and_drops_its_filtered_text",
+    "path": "crates/sunrise-client/src/game/interface/native_client_screens.rs",
+    "reason": "run by tools/test_writable_book_parity.py",
+    "rationale": "Parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_writable_book_parity.py records the vanilla 26.3 writable-book witness into .local and runs this test against it through SUNRISE_WRITABLE_BOOK_WITNESS, so no recorded vanilla data is committed."
   }
 ]

@@ -932,8 +932,9 @@ mod tests {
         assert!(!component_equal(id, &a, &written));
     }
 
-    /// Vanilla 26.3 `WritableBookContent` CODEC round-trip and equality match the recorded JVM witness.
+    /// Vanilla 26.3 `WritableBookContent` CODEC round-trip and equality match the witness recorded by `tools/test_writable_book_parity.py`.
     #[test]
+    #[ignore = "run by tools/test_writable_book_parity.py"]
     fn writable_book_pages_keep_their_filtered_text() {
         #[derive(serde::Deserialize)]
         struct Witness {
@@ -958,8 +959,24 @@ mod tests {
             stack_equal: bool,
         }
 
-        const WITNESS: &str = include_str!("../../../../tools/witness/26.3/writable_book.json");
-        let witness: Witness = serde_json::from_str(WITNESS).unwrap();
+        let witness_path = std::env::var_os("SUNRISE_WRITABLE_BOOK_WITNESS").unwrap_or_else(|| {
+            panic!(
+                "SUNRISE_WRITABLE_BOOK_WITNESS is unset; run tools/test_writable_book_parity.py, which records the witness"
+            )
+        });
+        let witness_path = std::path::PathBuf::from(witness_path);
+        let witness_path = if witness_path.is_dir() {
+            witness_path.join("writable_book.json")
+        } else {
+            witness_path
+        };
+        let witness_raw = std::fs::read_to_string(&witness_path).unwrap_or_else(|e| {
+            panic!(
+                "failed to read witness {} (record via tools/test_writable_book_parity.py): {e}",
+                witness_path.display()
+            )
+        });
+        let witness: Witness = serde_json::from_str(&witness_raw).unwrap();
         assert_eq!(witness.minecraft, "26.3");
         let id = "minecraft:writable_book_content";
         let mut parsed = std::collections::HashMap::new();
