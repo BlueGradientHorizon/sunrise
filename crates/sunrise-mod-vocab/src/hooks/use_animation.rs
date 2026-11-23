@@ -11,13 +11,14 @@ pub trait Hooks {
     /// callback, a read of `ItemStack::use_animation` for any stack of the same item (a copy
     /// with another count or components included) does not ask its Part again: it gets the
     /// item's own answer. Another item's read asks that item's Parts.
-    /// Contract version 2: version 1 was asked on the client only, with a `ClientHost`.
+    /// Contract version 3: version 2 asked no Part again for any read from inside the callback;
+    /// version 1 was asked on the client only, with a `ClientHost`.
     #[hook(
         target = "sunrise_client::game::native_hooks::base::Game<'_>::native_use_animation",
         receiver = "read",
         dispatch = "flat",
         side = "both",
-        version = 2,
+        version = 3,
         contract = "listen",
         scope = "item",
         key = "stack",
