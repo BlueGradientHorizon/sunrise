@@ -161,8 +161,6 @@ A tool built before `--help` existed prints the same usage after `error:` and ex
 The tool checks every SDK it fetches against Sunrise's release signature before it uses it, whatever the tool's own
 origin.
 
-To move to a newer tool later, run the same block again.
-
 ## Newest tool from main
 
 The release `mod-tool` holds the newest tool published from the repository's main branch, for the same three
@@ -189,6 +187,29 @@ naming one (`cargo install`); a tool older than that option answers with its usa
 [`cargo sunrise-mod release`](../how-to/publish.md#releasing) pushes a tag that runs the registry's shared
 release workflow. That workflow installs the signed `mod-tool` itself and checks it against the signed sums, so
 a release needs nothing else from this page. The mod's SDK is a separate pin.
+
+## Updating the tool
+
+<!-- quickstart-test: skip, the installed Nightly tool may predate this command; the signed update is tested separately -->
+```sh
+cargo sunrise-mod self-update
+```
+
+This replaces a standalone copy of the rolling `mod-tool` release, installed by the "Newest tool from main" block
+in `~/.local/bin` (Linux and macOS) or `%USERPROFILE%\.sunrise\bin` (Windows), with that release's newest build. It verifies Sunrise's signature and
+the checksum of the release's commit metadata before deciding whether the tool is current. If it installs an
+update, it also verifies the archive's checksum and prints the old and new commits. It never changes a mod's
+pinned SDK. On Windows, the previous executable is kept as `.cargo-sunrise-mod.exe.old` beside the new one and can
+be deleted once the command exits.
+
+On `new`, `build`, `run`, `check` and `update`, such a copy checks the signed rolling release for a newer build once
+per day at most. It prints a reminder when one is available but never installs it automatically. The check is off
+in CI and when `CARGO_NET_OFFLINE` is `true`.
+
+A copy installed from an SDK follows that SDK and is never replaced by `self-update`. If your copy does not know
+`self-update` yet, or you want to switch between an SDK's tool and the rolling release, rerun the appropriate
+install block above. Copies run from an SDK folder or managed by `cargo install` or
+another package manager are not replaced in place; update them through their own install method.
 
 ## With `cargo install`
 
