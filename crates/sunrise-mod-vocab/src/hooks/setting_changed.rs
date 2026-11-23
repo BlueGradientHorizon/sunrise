@@ -3,15 +3,20 @@
 pub trait Hooks {
     /// A registered setting changed through a typed write, Options > Mods, or a settings reload.
     /// Runs on the side that changed the value, after publishing it. Only the setting's owner
-    /// hears it and can read the new value using its [`SettingKey`](crate::SettingKey).
+    /// hears it. `value` is the new value. The
+    /// listener gets a read-only [`Host`](crate::Host): the write that caused the notice is
+    /// already committed, and a listener that wrote its own key from here would notify itself
+    /// without end. Make a follow-up write from the callback that made the first one.
     #[hook(
         target = "sunrise_client::game::native_hooks::base::Game<'_>::native_setting_changed",
         dispatch = "flat",
         side = "both",
+        receiver = "read",
+        host = "read",
         contract = "listen",
         owner = "mod_id",
         neoforge = "ModConfigEvent.Reloading",
-        version = 2
+        version = 3
     )]
-    fn setting_changed(mod_id: &str, key: &str);
+    fn setting_changed(mod_id: &str, key: &str, value: SettingValue);
 }

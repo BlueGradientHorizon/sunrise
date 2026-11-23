@@ -168,8 +168,8 @@ already, comes back as the error. On the client the settings appear on your mod'
   `SettingKey` minted at registration and return `Result<_, SettingAccessError>`.
 - Update a setting on either host with `host.set_setting(key, value) -> Result<bool, SettingAccessError>`.
   The game validates it, persists it atomically, updates that side's live store and any client Options > Mods
-  row, and synchronously tells its owner through `setting_changed`. The hook takes `HostSide<'_>` and can
-  read the new value. Writing the same value does not notify; range values compare by bits, so `-0.0` and
+  row, and synchronously tells its owner through `setting_changed`. The hook takes a read-only `&dyn Host` and can
+  read the new value, but cannot write: make a follow-up write in the callback that made the first one. Writing the same value does not notify; range values compare by bits, so `-0.0` and
   `+0.0` are distinct, matching vanilla's `OptionInstance.set`.
 - Options > Mods uses the same write path. Publishing a settings reload, or reopening a mod's settings page
   after an external edit, also notifies the owner of changed values.

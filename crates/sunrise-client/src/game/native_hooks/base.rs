@@ -867,8 +867,13 @@ impl Game<'_> {
         Self::fire_standalone_models(context, registrations);
     }
     /// A registered setting changed; notify its owner after publishing the new value.
-    pub(in crate::game) fn native_setting_changed(&mut self, mod_id: &str, key: &str) {
-        self.fire_setting_changed(mod_id, key);
+    pub(in crate::game) fn native_setting_changed(
+        &self,
+        mod_id: &str,
+        key: &str,
+        value: mod_api::SettingValue,
+    ) {
+        self.fire_setting_changed(mod_id, key, value);
     }
     /// The player did `event` on mod `mod_id`'s panel (`panel_items`):
     /// act on it when it is yours.

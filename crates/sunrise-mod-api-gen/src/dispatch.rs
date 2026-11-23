@@ -2939,24 +2939,20 @@ mod runtime {{
     }}
 }}
 impl Owner {{
-    fn setting_changed(&self, _: generated::HostSide<'_>, _: &mut generated::SettingChangedEvent<'_>) {{
+    fn setting_changed(&self, _: &dyn generated::Host, _: &mut generated::SettingChangedEvent<'_>) {{
         if self.id == "a" {{ A.fetch_add(1, Ordering::Relaxed); }} else {{ B.fetch_add(1, Ordering::Relaxed); }}
     }}
 }}
 mod generated {{
-    pub enum HostSide<'a> {{ Client(&'a mut ()), Server(&'a mut ()) }}
-    impl HostSide<'_> {{
-        fn reborrow(&mut self) -> HostSide<'_> {{
-            match self {{ Self::Client(host) => HostSide::Client(host), Self::Server(host) => HostSide::Server(host) }}
-        }}
-    }}
+    pub trait Host {{}}
+    impl Host for () {{}}
     pub enum HookId {{ SettingChanged }}
-    pub struct SettingChangedEvent<'a> {{ pub mod_id: &'a str, pub key: &'a str }}
+    pub struct SettingChangedEvent<'a> {{ pub mod_id: &'a str, pub key: &'a str, pub value: u8 }}
     {function}
 }}
 fn main() {{
-    generated::dispatch_setting_changed(generated::HostSide::Client(&mut ()), "a", "toggle");
-    generated::dispatch_setting_changed(generated::HostSide::Server(&mut ()), "a", "toggle");
+    generated::dispatch_setting_changed(&(), "a", "toggle", 0);
+    generated::dispatch_setting_changed(&(), "a", "toggle", 0);
     assert_eq!(A.load(Ordering::Relaxed), 2);
     assert_eq!(B.load(Ordering::Relaxed), 0);
 }}
