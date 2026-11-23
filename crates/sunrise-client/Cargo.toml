@@ -153,10 +153,6 @@ windows-segment-heap = []
 name = "it"
 path = "tests/it/main.rs"
 
-[[test]]
-name = "item_stack_fire"
-path = "tests/item_stack_fire.rs"
-
 [lints]
 workspace = true
 
