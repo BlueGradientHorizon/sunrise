@@ -1,26 +1,66 @@
-"""Vanilla 26.3 X11 mouse-look parity tests: recording fixture, committed 26.3 witness, raw IEEE-754
+"""Vanilla 26.3 X11 mouse-look parity tests: .local recording/witness generation, raw IEEE-754
 float-bit comparator, witness builder/verifier, and CLI exit codes."""
 import contextlib
 import hashlib
 import io
 import json
+import os
 from pathlib import Path
 import struct
 import tempfile
 import unittest
+from unittest import mock
 
 from tools import client_packet_diff as diff
 from tools import client_packet_routes as routes
 from tools import input_recording as recording
+from tools import lab
+from tools import packet_parity_runs
 from tools import test_x11_mouse_look_parity as harness
 
-ROOT = Path(__file__).resolve().parents[1]
-RECORDING = ROOT / "tools/fixtures/26.3/x11_mouse_look_recording.jsonl"
-WITNESS = ROOT / "tools/witness/26.3/x11_mouse_look.json"
+SAMPLE_FIXTURE = {
+    "inventory": "System chat: Steve has the following entity data: []",
+    "mode": "System chat: Steve has the following entity data: 0",
+    "effects": [],
+}
+
+# Synthetic angles used solely to exercise the comparator and witness serializer without committing
+# any recorded vanilla game data.
+SAMPLE_ANGLES = {
+    "look_x": [(1.5, 0.0), (3.0, 0.0), (0.0, 0.0)],
+    "look_y": [(0.0, 1.5), (0.0, 3.0), (0.0, 0.0)],
+    "look_counts": [(0.25, -0.25), (0.5, -0.5), (0.75, -0.75)],
+    "regrab": [(0.0, 2.0), (4.0, 2.0)],
+}
 
 
-def _load_witness():
-    return json.loads(WITNESS.read_text(encoding="utf-8"))
+def _sample_witness():
+    route_data = {}
+    for route_name in routes.MOUSE_LOOK:
+        rots = []
+        for idx, (yaw, pitch) in enumerate(SAMPLE_ANGLES[route_name]):
+            pkt = "move_player_pos_rot" if route_name == "look_x" and idx == 2 else "move_player_rot"
+            rots.append({
+                "packet": pkt,
+                "yaw": yaw,
+                "pitch": pitch,
+                "yaw_bits": diff.float_bits_hex(yaw),
+                "pitch_bits": diff.float_bits_hex(pitch),
+            })
+        route_data[route_name] = {"fixture": dict(SAMPLE_FIXTURE), "rotations": rots, "actions": []}
+    return {
+        **diff.LOOK_WITNESS_FORMAT,
+        "recording": ".local/witness/26.3/x11_mouse_look/x11_mouse_look_recording.jsonl",
+        "recording_file_sha256": "a" * 64,
+        "recording_digest": "b" * 64,
+        "settings_digest": "c" * 64,
+        "course_digest": "d" * 64,
+        "vanilla_server_jar_sha256": "e" * 64,
+        "vanilla_client_jar_sha256": "f" * 64,
+        "java_version": 'openjdk version "25.0.0"',
+        "runs_verified": 2,
+        "routes": route_data,
+    }
 
 
 def _varint(value):
@@ -80,7 +120,7 @@ def _player_action(action, pos, direction, sequence):
 def _write_run(runs_dir, folder_name, index, route_streams, *, client="vanilla", build="sha-v",
                witness=None, recording_digest=None, settings=None, course=None, server_jar=None,
                diagnostic=False, fixtures=None):
-    w = witness if witness is not None else _load_witness()
+    w = witness if witness is not None else _sample_witness()
     run_dir = Path(runs_dir) / folder_name
     run_dir.mkdir(parents=True, exist_ok=True)
     entries, played = [], []
@@ -110,8 +150,8 @@ def _write_run(runs_dir, folder_name, index, route_streams, *, client="vanilla",
 
 
 def _witness_streams(witness=None, *, scale=1.0, pos_rot_on_look_y=False, extra_action=None):
-    """Builds exact wire streams directly from the recorded vanilla 26.3 witness bits."""
-    w = witness if witness is not None else _load_witness()
+    """Builds exact wire streams directly from a witness's rotation bits."""
+    w = witness if witness is not None else _sample_witness()
     streams = []
     for route_name in routes.MOUSE_LOOK:
         tick_packets = []
@@ -134,45 +174,118 @@ def _witness_streams(witness=None, *, scale=1.0, pos_rot_on_look_y=False, extra_
 
 
 class X11MouseLookParity263Tests(unittest.TestCase):
-    def test_26_3_recording_fixture_matches_scripted_mouse_look_routes(self):
-        header = json.loads(RECORDING.read_text(encoding="utf-8").splitlines()[0])
-        self.assertEqual(header.get("minecraft"), "26.3")
-        self.assertEqual(header.get("routes"), routes.MOUSE_LOOK)
-        events = recording.read(RECORDING)
-        parsed = recording.routes(events)
-        self.assertEqual([name for name, _ in parsed], ["look_x", "look_y", "look_counts", "regrab"])
-        self.assertEqual(events, routes.recording(routes.MOUSE_LOOK))
+    def test_26_3_local_paths_and_generated_recording_match_scripted_routes(self):
+        expected_dir = lab.LOCAL / "witness" / lab.VERSION / "x11_mouse_look"
+        self.assertEqual(harness.default_witness_dir(), expected_dir)
+        self.assertEqual(harness.default_recording_path(), expected_dir / harness.RECORDING_NAME)
+        with mock.patch.dict(os.environ, {}, clear=False):
+            os.environ.pop(harness.WITNESS_ENV, None)
+            self.assertEqual(harness.default_witness_path(), expected_dir / harness.WITNESS_NAME)
+        with mock.patch.dict(os.environ, {harness.WITNESS_ENV: "/tmp/custom-x11-witness.json"}):
+            self.assertEqual(harness.default_witness_path(), Path("/tmp/custom-x11-witness.json"))
+        with tempfile.TemporaryDirectory() as folder:
+            rec_path = harness.write_recording(Path(folder) / harness.RECORDING_NAME)
+            header = json.loads(rec_path.read_text(encoding="utf-8").splitlines()[0])
+            self.assertEqual(header.get("minecraft"), lab.VERSION)
+            self.assertEqual(header.get("routes"), routes.MOUSE_LOOK)
+            events = recording.read(rec_path)
+            parsed = recording.routes(events)
+            self.assertEqual([name for name, _ in parsed], ["look_x", "look_y", "look_counts", "regrab"])
+            self.assertEqual(events, routes.recording(routes.MOUSE_LOOK))
         # Course stays inside Minecraft's 256-chunk /forceload and 32,768-block /fill limits.
         x0, z0, x1, z1 = routes.course_bounds()
         self.assertLessEqual((x1 - x0 + 1) * (z1 - z0 + 1), 32768)
 
-    def test_26_3_committed_witness_matches_recording_and_exact_float_bits(self):
-        self.assertTrue(WITNESS.exists(), f"missing recorded 26.3 witness: {WITNESS}")
-        witness = _load_witness()
-        for key, expected in diff.LOOK_WITNESS_FORMAT.items():
-            self.assertEqual(witness.get(key), expected)
-        self.assertEqual(witness.get("recording"), harness.RECORDING_REL)
-        file_sha = hashlib.sha256(RECORDING.read_bytes()).hexdigest()
-        self.assertEqual(witness.get("recording_file_sha256"), file_sha)
-        rec_digest = hashlib.sha256(json.dumps(recording.read(RECORDING), sort_keys=True).encode()).hexdigest()
-        self.assertEqual(witness.get("recording_digest"), rec_digest)
-        self.assertIn("25.", witness.get("java_version") or "")
-        self.assertGreaterEqual(witness.get("runs_verified", 0), 2)
-        self.assertEqual(list(witness.get("routes", {})), routes.MOUSE_LOOK)
-        for route_name in routes.MOUSE_LOOK:
-            entry = witness["routes"][route_name]
-            self.assertTrue(entry["rotations"], f"{route_name} witness must contain rotations")
-            for rot in entry["rotations"]:
-                self.assertEqual(rot["yaw_bits"], diff.float_bits_hex(rot["yaw"]))
-                self.assertEqual(rot["pitch_bits"], diff.float_bits_hex(rot["pitch"]))
+    def test_26_3_record_on_demand_writes_local_witness_and_meta(self):
+        sample = _sample_witness()
         with tempfile.TemporaryDirectory() as folder:
-            _write_run(folder, "sunrise-1", 1, _witness_streams(witness, pos_rot_on_look_y=True),
-                       client="sunrise", build="s", witness=witness)
-            rep = diff.compare_look_against_witness(diff.runs_of(Path(folder), "sunrise"), witness, "sunrise")
-            self.assertTrue(rep["bit_exact"], diff.describe_look(rep))
+            root = Path(folder)
+            witness_dir = root / "witness"
+            work_dir = root / "packet-parity"
+            fake_server_jar = root / "server.jar"
+            fake_server_jar.write_bytes(b"fake-server-jar")
+            server_sha = lab.digest(fake_server_jar, "sha256")
+            calls = []
+
+            class FakePacketParity:
+                WORK = work_dir
+                PROPERTIES = {"seed": "1"}
+                OPTIONS = {"mouseSensitivity": "0.5"}
+                GAMERULES = ["advance_time false"]
+
+                @staticmethod
+                def digest(val):
+                    return hashlib.sha256(json.dumps(val, sort_keys=True).encode()).hexdigest()
+
+                @staticmethod
+                def server_jar():
+                    return fake_server_jar
+
+                @staticmethod
+                def course_current():
+                    return True
+
+                @staticmethod
+                def build_world():
+                    raise AssertionError("course_current() is True")
+
+                @staticmethod
+                def run_once(client, index, rec_events, bins=None, label=None, mouse_scale=1.0, replace=False):
+                    calls.append((client, index))
+                    prefix = packet_parity_runs.prefix(client, label)
+                    rec_digest = FakePacketParity.digest(rec_events)
+                    settings_digest = FakePacketParity.digest(
+                        [FakePacketParity.PROPERTIES, FakePacketParity.OPTIONS, FakePacketParity.GAMERULES]
+                    )
+                    _write_run(
+                        work_dir / "runs",
+                        f"{prefix}-{index}",
+                        index,
+                        _witness_streams(sample, pos_rot_on_look_y=(client == "vanilla" and index == 1)),
+                        client=client,
+                        build="sha-" + client,
+                        witness=sample,
+                        recording_digest=rec_digest,
+                        settings=settings_digest,
+                        server_jar=server_sha,
+                    )
+
+            with (
+                mock.patch.object(harness, "default_witness_dir", return_value=witness_dir),
+                mock.patch.object(harness, "_load_packet_parity", return_value=FakePacketParity),
+                mock.patch.object(harness, "_java_version", return_value='openjdk version "25.0.5"'),
+                mock.patch.dict(os.environ, {}, clear=False),
+                contextlib.redirect_stdout(io.StringIO()),
+            ):
+                os.environ.pop(harness.WITNESS_ENV, None)
+                # First run records recording + witness + meta.json on demand, then verifies Sunrise.
+                self.assertEqual(harness.main(["--bin", str(root), "--runs", "2"]), 0)
+                self.assertEqual(calls, [("vanilla", 1), ("vanilla", 2), ("sunrise", 1), ("sunrise", 2)])
+                rec_path = witness_dir / harness.RECORDING_NAME
+                wit_path = witness_dir / harness.WITNESS_NAME
+                meta_path = witness_dir / harness.META_NAME
+                self.assertTrue(rec_path.is_file())
+                self.assertTrue(wit_path.is_file())
+                self.assertTrue(meta_path.is_file())
+                witness = json.loads(wit_path.read_text(encoding="utf-8"))
+                meta = json.loads(meta_path.read_text(encoding="utf-8"))
+                for key, expected in diff.LOOK_WITNESS_FORMAT.items():
+                    self.assertEqual(witness.get(key), expected)
+                self.assertEqual(witness["recording_file_sha256"], lab.digest(rec_path, "sha256"))
+                self.assertEqual(witness["runs_verified"], 2)
+                self.assertEqual(meta["game_version"], lab.VERSION)
+                self.assertEqual(meta["java_version"], 'openjdk version "25.0.5"')
+                self.assertIn("tools/test_x11_mouse_look_parity.py", meta["command"])
+                self.assertEqual(meta["output_sha256"], lab.digest(wit_path, "sha256"))
+                self.assertEqual(meta["input_hashes"]["recording_file_sha256"], witness["recording_file_sha256"])
+
+                # Second run reuses the fresh .local witness without re-running vanilla.
+                calls.clear()
+                self.assertEqual(harness.main(["--bin", str(root), "--runs", "2"]), 0)
+                self.assertEqual(calls, [("sunrise", 1), ("sunrise", 2)])
 
     def test_26_3_raw_wire_float_bits_match_across_pos_rot_reminder_and_reject_one_ulp(self):
-        witness = _load_witness()
+        witness = _sample_witness()
         with tempfile.TemporaryDirectory() as folder:
             _write_run(folder, "vanilla-1", 1, _witness_streams(witness, pos_rot_on_look_y=True),
                        client="vanilla", build="v", witness=witness)
@@ -195,7 +308,7 @@ class X11MouseLookParity263Tests(unittest.TestCase):
             self.assertEqual([d["route"] for d in rep["differences"]], ["look_x"])
 
     def test_26_3_double_turn_negative_zero_and_action_bits_fail_exact_comparison(self):
-        witness = _load_witness()
+        witness = _sample_witness()
         with tempfile.TemporaryDirectory() as folder:
             _write_run(folder, "sunrise-1", 1, _witness_streams(witness, scale=2.0),
                        client="sunrise", build="s", witness=witness)
@@ -231,7 +344,7 @@ class X11MouseLookParity263Tests(unittest.TestCase):
                 self.assertEqual([d["route"] for d in rep["differences"]], ["regrab"])
 
     def test_26_3_missing_route_empty_rotations_diagnostic_and_fixture_mismatch_fail(self):
-        witness = _load_witness()
+        witness = _sample_witness()
         # Missing route fails.
         with tempfile.TemporaryDirectory() as folder:
             _write_run(folder, "vanilla-1", 1, _witness_streams(witness)[:3],
@@ -264,7 +377,7 @@ class X11MouseLookParity263Tests(unittest.TestCase):
             self.assertIn("fixture_differs", kinds)
 
     def test_26_3_witness_record_verify_roundtrip_and_cli_exit_codes(self):
-        witness = _load_witness()
+        witness = _sample_witness()
         with tempfile.TemporaryDirectory() as folder:
             runs = Path(folder) / "runs"
             _write_run(runs, "vanilla-1", 1, _witness_streams(witness, pos_rot_on_look_y=True),
@@ -289,14 +402,18 @@ class X11MouseLookParity263Tests(unittest.TestCase):
                 self.assertEqual(harness.main(["--compare", str(runs), "--a", "vanilla", "--b", "sunrise"]), 0)
                 self.assertEqual(harness.main(["--compare-witness", str(runs), "--client", "sunrise",
                                                "--witness", str(witness_path)]), 0)
-                self.assertEqual(harness.main(["--compare-witness", str(runs), "--client", "sunrise",
-                                               "--witness", str(WITNESS)]), 0)
 
             _write_run(runs, "bad-1", 1, _witness_streams(witness, scale=2.0),
                        client="sunrise", build="s", witness=witness)
             with contextlib.redirect_stdout(io.StringIO()):
                 self.assertEqual(harness.main(["--compare-witness", str(runs), "--client", "bad",
-                                               "--witness", str(WITNESS)]), 1)
+                                               "--witness", str(witness_path)]), 1)
+
+            # Missing witness fails loudly naming the harness script.
+            missing = Path(folder) / "does-not-exist.json"
+            with self.assertRaises(SystemExit) as cm:
+                harness.main(["--compare-witness", str(runs), "--client", "sunrise", "--witness", str(missing)])
+            self.assertIn("tools/test_x11_mouse_look_parity.py", str(cm.exception))
 
             # Disagreeing vanilla runs are refused when recording a witness.
             _write_run(runs, "flaky-1", 1, _witness_streams(witness, scale=1.0),

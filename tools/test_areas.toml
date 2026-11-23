@@ -373,7 +373,6 @@ paths = [
   "crates/sunrise-client/src/game/network/remote*", "crates/sunrise-protocol/src/packets/*",
   "crates/sunrise-client/src/game/world/tick_script.rs", "third_party/winit/*", "tools/net_capture.py",
   "tools/wire_stream.py", "tools/client_packet_*.py", "tools/input_recording.py", "tools/packet_parity_runs.py",
-  "tools/fixtures/26.3/x11_mouse_look_recording.jsonl", "tools/witness/26.3/x11_mouse_look.json",
 ]
 harnesses = ["wire_stream", "x11_mouse_look", "protocol_*", "item_wire", "stop_sound_wire", "player_sync"]
 
