@@ -232,6 +232,8 @@ pub(super) struct Crystal {
     /// The entity id a server tracks it by (0 until it is tracked).
     pub id: u32,
     pub position: Vec3,
+    pub rotation: [f32; 2],
+    pub fire: i16,
     pub show_bottom: bool,
     /// EndCrystal.time (the bob and spin), starting random.
     pub time: i32,
@@ -1492,17 +1494,8 @@ impl Game<'_> {
             // EndCrystal's constructor takes an id from the entity counter.
             self.next_entity += 1;
             self.persist.uuids.insert(self.next_entity, uuid);
-            self.crystals.push(Crystal {
-                attachment_lifetime: Default::default(),
-                join: Default::default(),
-                id: self.next_entity,
-                position: at,
-                show_bottom: true,
-                time,
-                beam: None,
-                invulnerable: false,
-                fall: (false, 0.0),
-            });
+            self.crystals
+                .push(Crystal::new(self.next_entity, at, true, time));
             self.world
                 .modified
                 .insert((at.x.floor() as i32 >> 4, at.z.floor() as i32 >> 4));
@@ -4049,15 +4042,18 @@ impl Crystal {
             "minecraft:end_crystal",
             self.position,
             Vec3::ZERO,
-            raw.map_or([0.0; 2], sunrise_client::entity_nbt::loaded_rotation),
+            self.rotation,
             self.fall,
             uuid,
             raw,
         );
         if let Tag::Compound(map) = &mut tag {
+            map.insert("Fire".into(), Tag::Short(self.fire));
             map.insert("ShowBottom".into(), Tag::Byte(i8::from(self.show_bottom)));
             if let Some(b) = self.beam {
                 map.insert("beam_target".into(), Tag::IntArray(b.to_vec()));
+            } else {
+                map.remove(&"beam_target".into());
             }
             map.insert(
                 "Invulnerable".into(),
@@ -4068,11 +4064,19 @@ impl Crystal {
     }
     pub(super) fn from_nbt(tag: &Tag, time: i32) -> Option<Self> {
         let (position, _, _) = sunrise_client::entity_nbt::boat_from_nbt(tag)?;
+        // TagValueInput.getShortOr uses NumericTag.shortValue.
+        let fire = match tag.get("Fire") {
+            Some(Tag::Float(bits)) => sunrise_core::mth::floor_f32(f32::from_bits(*bits)) as i16,
+            Some(Tag::Double(bits)) => sunrise_core::mth::floor(f64::from_bits(*bits)) as i16,
+            value => nbt_value::number(value).unwrap_or_default() as i16,
+        };
         Some(Self {
             attachment_lifetime: Default::default(),
             join: Default::default(),
             id: 0,
             position,
+            rotation: sunrise_client::entity_nbt::loaded_rotation(tag),
+            fire,
             show_bottom: sunrise_client::entity_nbt::flag_or(tag, "ShowBottom", true),
             time,
             beam: match tag.get("beam_target") {
@@ -4346,17 +4350,8 @@ impl Game<'_> {
         // EndCrystal's constructor takes an id from the entity counter, so
         // the crystal is an entity a command can name (`@e[type=end_crystal]`).
         self.next_entity += 1;
-        self.crystals.push(Crystal {
-            attachment_lifetime: Default::default(),
-            join: Default::default(),
-            id: self.next_entity,
-            position: at,
-            show_bottom: false,
-            time,
-            beam: None,
-            invulnerable: false,
-            fall: (false, 0.0),
-        });
+        self.crystals
+            .push(Crystal::new(self.next_entity, at, false, time));
         // EndCrystalItem.useOn: ENTITY_PLACE at the block above, by the player.
         self.post_block_game_event("minecraft:entity_place", above, self.sculk_actor(), None);
         self.world.modified.insert((above[0] >> 4, above[2] >> 4));

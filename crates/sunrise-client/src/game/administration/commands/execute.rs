@@ -187,7 +187,12 @@ impl Game<'_> {
                 .iter()
                 .find(|f| f.id == id)
                 .map_or([0.0; 2], |f| [f.yaw, saved_rotation(id)[1]]),
-            Target::Crystal(id) | Target::Cloud(id) => saved_rotation(id),
+            Target::Crystal(id) => self
+                .crystals
+                .iter()
+                .find(|c| c.id == id)
+                .map_or([0.0; 2], |c| c.rotation),
+            Target::Cloud(id) => saved_rotation(id),
             Target::Dragon(id) => self
                 .dragon
                 .as_ref()
