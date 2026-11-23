@@ -786,7 +786,7 @@ fn release(
             change.describe();
         }
         println!(
-            "  Commit as Release {version}, tag {tag}, and push {branch} and {tag_ref} to origin"
+            "  Commit as Release {version} (signed off), tag {tag}, and push {branch} and {tag_ref} to origin"
         );
         return Ok(());
     }
@@ -804,7 +804,11 @@ fn release(
         change.apply(root)?;
     }
     stage(root)?;
-    git.text(root, ["commit", "-m", &format!("Release {version}")])?;
+    // Signed off as the committer, for repositories that check the Developer Certificate of Origin.
+    git.text(
+        root,
+        ["commit", "--signoff", "-m", &format!("Release {version}")],
+    )?;
     // A commit hook could change what is committed after the check: tag and push only a commit
     // whose tree is the checked one, by its ID.
     let commit = git.text(root, ["rev-parse", "HEAD"])?;
