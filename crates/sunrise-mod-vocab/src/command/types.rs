@@ -64,7 +64,10 @@ pub fn split_command_registration(
 /// vanilla node replaces vanilla's executor there, as the later registration does in
 /// Brigadier. A mod argument cannot share the place of a vanilla node of the same name, and a
 /// mod literal cannot share a vanilla argument's: the usage is left out, with the reason in the
-/// log. Sunrise's own `/modprofile` and `/pregen` are never merged into.
+/// log. Sunrise's own `/modprofile` and `/pregen` are never merged into. The dedicated server's
+/// console runs a few vanilla commands itself before the dispatcher (`kick`, `say` and the
+/// others in its console handling), so a mod word merged under one of those is reached by players
+/// and functions but not from that console.
 ///
 /// Side: server. Selector arguments use vanilla's source position, permissions,
 /// cardinality and selection order; `player`/`entity` require one result and
