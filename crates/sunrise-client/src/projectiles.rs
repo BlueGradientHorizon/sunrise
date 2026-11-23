@@ -3089,10 +3089,17 @@ mod tests {
         assert_eq!(held.position, Vec3::new(0.5, 110.0, 0.5));
     }
 
-    /// Vanilla 26.3 `ShulkerBullet.tick` rotation witness (`tools/witness/26.3/shulker_bullet_turn.tsv`).
+    /// Vanilla 26.3 `ShulkerBullet.tick` rotation witness recorded by `tools/test_shulker_bullet_parity.py`.
     #[test]
+    #[ignore = "run by tools/test_shulker_bullet_parity.py"]
     fn a_shulker_bullet_turns_halfway_towards_its_motion_26_3() {
-        let witness = include_str!("../../../tools/witness/26.3/shulker_bullet_turn.tsv");
+        let path = std::env::var("SUNRISE_SHULKER_BULLET_TURN_WITNESS")
+            .expect("run through tools/test_shulker_bullet_parity.py, which records the witness");
+        let witness = std::fs::read_to_string(&path).unwrap_or_else(|err| {
+            panic!(
+                "missing shulker bullet turn witness at {path} ({err}); run tools/test_shulker_bullet_parity.py"
+            )
+        });
         let hex_f64 = |s: &str| f64::from_bits(u64::from_str_radix(s, 16).unwrap());
         let hex_u32 = |s: &str| u32::from_str_radix(s, 16).unwrap();
         let mut cases = 0usize;

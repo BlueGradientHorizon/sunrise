@@ -1158,5 +1158,13 @@
     "path": "crates/sunrise-client/src/game/mobs/creatures/projectiles_120_124_tests.rs",
     "reason": "run by tools/test_projectile_targets_parity.py",
     "rationale": "Parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_projectile_targets_parity.py records the vanilla 26.3 projectile witnesses into .local and runs this test against them through SUNRISE_PROJECTILE_WITNESS_DIR, so no recorded vanilla data is committed."
+  },
+  {
+    "package": "sunrise-client-lib",
+    "target": "lib",
+    "test": "projectiles::tests::a_shulker_bullet_turns_halfway_towards_its_motion_26_3",
+    "path": "crates/sunrise-client/src/projectiles.rs",
+    "reason": "run by tools/test_shulker_bullet_parity.py",
+    "rationale": "Parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_shulker_bullet_parity.py records the vanilla 26.3 shulker bullet turn witness into .local and runs this test against it through SUNRISE_SHULKER_BULLET_TURN_WITNESS, so no recorded vanilla data is committed."
   }
 ]

@@ -2,8 +2,10 @@
 """Compare shulker bullet origin, stand-on checks, and 26.3 tick rotation against vanilla."""
 import argparse
 import json
+import os
 from pathlib import Path
 import struct
+import subprocess
 
 try:
     from . import lab, oracle_harness as harness, test_model_baking_parity as baking, test_rust_parity as base
@@ -11,7 +13,8 @@ except ImportError:
     import lab, oracle_harness as harness, test_model_baking_parity as baking, test_rust_parity as base
 
 
-WITNESS = lab.ROOT / 'tools/witness/26.3/shulker_bullet_turn.tsv'
+WITNESS = lab.LOCAL / 'witness' / lab.VERSION / 'shulker_bullet_turn' / 'shulker_bullet_turn.tsv'
+TURN_WITNESS_TEST = 'projectiles::tests::a_shulker_bullet_turns_halfway_towards_its_motion_26_3'
 
 
 def f32(value):
@@ -98,8 +101,64 @@ def make_input(build):
     return path, len(rows)
 
 
+def java_version_string():
+    result = subprocess.run(['java', '-version'], capture_output=True, text=True, check=True)
+    return (result.stderr or result.stdout).strip().splitlines()[0]
+
+
+def format_turn_witness(version, rows, results):
+    if len(results) != len(rows):
+        raise AssertionError(f'Expected {len(rows)} oracle lines, got {len(results)}')
+    lines = [
+        f'# Vanilla {version} ShulkerBullet.tick rotation witness (recorded by tools/test_shulker_bullet_parity.py)',
+        '# Columns: name\tno_gravity\tvx\tvy\tvz\tyaw0\tpitch0\tdeflect_seed\tbreeze\tticks\tsteps',
+        '# steps: comma-separated per-tick yaw_bits:pitch_bits:prev_yaw_bits:prev_pitch_bits (raw IEEE-754 f32 hex)',
+    ]
+    for row, steps in zip(rows, results):
+        seed = '-' if row['deflect_seed'] is None else str(row['deflect_seed'])
+        breeze = '-' if 'breeze' not in row else ','.join(row['breeze'])
+        lines.append('\t'.join([
+            row['name'], '1' if row['no_gravity'] else '0',
+            *row['velocity'], row['yaw'], row['pitch'],
+            seed, breeze, str(row['ticks']), steps,
+        ]))
+    return '\n'.join(lines) + '\n'
+
+
+def write_turn_witness(output_path, lock, jars, input_path, rows, results, command):
+    version = lock['minecraft']['version']
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(format_turn_witness(version, rows, results), encoding='utf-8')
+    oracle_sources = [
+        lab.ROOT / 'mods/sunrise/src/test/java/dev/sunriselab/parity/VanillaShulkerBulletOracle.java',
+        lab.ROOT / 'mods/sunrise/src/test/java/dev/sunriselab/parity/VanillaBlockUpdateOracle.java',
+        lab.ROOT / 'mods/sunrise/src/test/java/dev/sunriselab/parity/ParityData.java',
+    ]
+    input_hashes = {
+        'research-lock.json': lab.digest(lab.LOCK, 'sha256'),
+        'client.jar': lab.digest(jars['client'], 'sha256'),
+        input_path.name: lab.digest(input_path, 'sha256'),
+        **{src.relative_to(lab.ROOT).as_posix(): lab.digest(src, 'sha256') for src in oracle_sources},
+    }
+    lab.write_json(output_path.parent / 'meta.json', {
+        'game_version': version,
+        'java_major': lock['minecraft']['java_major'],
+        'java_version': java_version_string(),
+        'harness': 'tools/test_shulker_bullet_parity.py',
+        'witness_env': 'SUNRISE_SHULKER_BULLET_TURN_WITNESS',
+        'command': command,
+        'input_hashes': input_hashes,
+        'outputs': {
+            output_path.name: {
+                'sha256': lab.digest(output_path, 'sha256'),
+                'bytes': output_path.stat().st_size,
+            },
+        },
+    })
+
+
 def record_witness(output_path):
-    """Run only the pinned vanilla 26.3 Java oracle on turn_cases() and write the witness TSV."""
+    """Run only the pinned vanilla 26.3 Java oracle on turn_cases() and write the local witness TSV and meta.json."""
     lock, jars, _ = base.verify_artifacts()
     version = lock['minecraft']['version']
     libraries = baking.client_libraries()
@@ -113,30 +172,17 @@ def record_witness(output_path):
     raw_out = build / 'turn_client.txt'
     harness.java_run(build, classes, dependencies, 'VanillaShulkerBulletOracle', [input_path, raw_out], 'client-record')
     results = raw_out.read_text(encoding='utf-8').splitlines()
-    if len(results) != len(rows):
-        raise AssertionError(f'Expected {len(rows)} oracle lines, got {len(results)}')
-    lines = [
-        f'# Vanilla {version} ShulkerBullet.tick rotation witness (python3 tools/test_shulker_bullet_parity.py --record)',
-        '# Columns: name\tno_gravity\tvx\tvy\tvz\tyaw0\tpitch0\tdeflect_seed\tbreeze\tticks\tsteps',
-        '# steps: comma-separated per-tick yaw_bits:pitch_bits:prev_yaw_bits:prev_pitch_bits (raw IEEE-754 f32 hex)',
-    ]
-    for row, steps in zip(rows, results):
-        seed = '-' if row['deflect_seed'] is None else str(row['deflect_seed'])
-        breeze = '-' if 'breeze' not in row else ','.join(row['breeze'])
-        lines.append('\t'.join([
-            row['name'], '1' if row['no_gravity'] else '0',
-            *row['velocity'], row['yaw'], row['pitch'],
-            seed, breeze, str(row['ticks']), steps,
-        ]))
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_text('\n'.join(lines) + '\n', encoding='utf-8')
+    write_turn_witness(
+        output_path, lock, jars, input_path, rows, results,
+        'python3 tools/test_shulker_bullet_parity.py --record',
+    )
     print(f'Recorded {len(rows)} vanilla {version} shulker bullet turn cases to {output_path}', flush=True)
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--record', action='store_true', help='record the 26.3 turn witness from the Java oracle only')
-    parser.add_argument('--witness', type=Path, default=WITNESS, help='witness TSV output path for --record')
+    parser.add_argument('--witness', type=Path, default=WITNESS, help='local witness TSV output path')
     args = parser.parse_args()
     if args.record:
         record_witness(args.witness)
@@ -152,6 +198,34 @@ def main():
                  lab.ROOT / 'crates/sunrise-world/src/collision_context.rs',
                  lab.ROOT / 'mods/sunrise/src/test/java/dev/sunriselab/parity/VanillaBlockUpdateOracle.java',
                  lab.ROOT / 'mods/sunrise/src/test/java/dev/sunriselab/parity/ParityData.java'])
+    lock, jars, _ = base.verify_artifacts()
+    build = lab.LOCAL / 'rust-shulker-bullet-parity'
+    input_path = build / 'inputs.jsonl'
+    all_inputs = [json.loads(line) for line in input_path.read_text(encoding='utf-8').splitlines()]
+    all_results = (build / 'client.txt').read_text(encoding='utf-8').splitlines()
+    if len(all_inputs) != len(all_results):
+        raise AssertionError(f'Expected {len(all_inputs)} oracle lines, got {len(all_results)}')
+    turn_pairs = [(row, res) for row, res in zip(all_inputs, all_results) if row.get('mode') == 'turn']
+    turn_rows = [row for row, _ in turn_pairs]
+    turn_results = [res for _, res in turn_pairs]
+    if turn_rows != turn_cases():
+        raise AssertionError('Turn cases in inputs.jsonl diverged from turn_cases()')
+    # The recorded turn witness stays in .local; the Rust test reads it from SUNRISE_SHULKER_BULLET_TURN_WITNESS.
+    write_turn_witness(
+        args.witness, lock, jars, input_path, turn_rows, turn_results,
+        'python3 tools/test_shulker_bullet_parity.py',
+    )
+    log_path = build / 'turn-witness-test.log'
+    with log_path.open('w', encoding='utf-8') as log:
+        result = subprocess.run(
+            ['cargo', 'test', '--locked', '-p', 'sunrise-client-lib', '--lib',
+             '--', '--ignored', '--exact', TURN_WITNESS_TEST],
+            cwd=lab.ROOT, timeout=3600, stdout=log, stderr=subprocess.STDOUT,
+            env={**os.environ, 'SUNRISE_SHULKER_BULLET_TURN_WITNESS': str(args.witness.resolve())},
+        )
+    if result.returncode != 0 or '1 passed; 0 failed' not in log_path.read_text(encoding='utf-8'):
+        raise SystemExit(f'{TURN_WITNESS_TEST} failed against the recorded witness; see {log_path}')
+    print(f'Shulker bullet turn witness test passed ({len(turn_rows)} cases against {args.witness})', flush=True)
 
 
 if __name__ == '__main__':
