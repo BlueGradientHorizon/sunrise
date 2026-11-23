@@ -15,7 +15,7 @@ impl Game<'_> {
     /// registration slot and its answer, the first part to answer winning; none when no part
     /// answers. A type with no subscribed part costs one table lookup. Server-side.
     pub(super) fn part_shearable(
-        &self,
+        &mut self,
         index: usize,
         player: Option<PlayerRef>,
         shears: &ItemStack,
@@ -23,7 +23,8 @@ impl Game<'_> {
         if !self.mobs[index].alive() {
             return None;
         }
-        let kind = &self.mobs[index].kind.id;
+        let kind = std::sync::Arc::clone(&self.mobs[index].kind);
+        let kind = &kind.id;
         if !mod_api::__private::has_scoped_hook(mod_api::HookId::IsShearable)
             || !mod_api::__private::entity_part_hooked(
                 mod_api::HookId::IsShearable,
@@ -138,6 +139,53 @@ impl Game<'_> {
         Ok(())
     }
 
+    /// `ShearsItem.interactLivingEntity` on a client that predicts the click: both sides ask
+    /// `isShearable` and call `onSheared` (its drops are the server's alone to spawn, and the
+    /// shears are damaged there). True when a part sheared the mob, ending the click as the
+    /// server's SUCCESS does.
+    pub(in crate::game) fn predict_part_shear(&mut self, index: usize, hand: Hand) -> bool {
+        let Some(shears) = self.with_hand(hand, |g| g.held().cloned()) else {
+            return false;
+        };
+        if shears.item.as_ref() != "minecraft:shears" {
+            return false;
+        }
+        let player = self.native_acting_player();
+        let Some((part, true)) = self.part_shearable(index, player, &shears) else {
+            return false;
+        };
+        let (id, kind) = (
+            self.mobs[index].id,
+            std::sync::Arc::clone(&self.mobs[index].kind),
+        );
+        let (Some(entity), Ok(metadata)) = (
+            self.entity(id),
+            super::api_values::stack_read_metadata(&shears),
+        ) else {
+            return false;
+        };
+        let project = |metadata| super::api_values::project_stack(&shears, metadata).ok();
+        let view = mod_api::ItemStackView::resident(metadata, &project);
+        // The drops are the server's: this copy only changes itself.
+        let mut drops = Vec::new();
+        if self
+            .native_on_sheared(
+                entity,
+                player,
+                view,
+                &mut drops,
+                &mut |_| Ok(()),
+                part,
+                &kind.id,
+            )
+            .is_err()
+        {
+            return false;
+        }
+        self.with_hand(hand, Game::swing_arm);
+        true
+    }
+
     /// Shears in the acting player's hand on mob `index` (`ShearsItem.interactLivingEntity`):
     /// the entity parts' answer, else the species' own (`Sheep`, `MushroomCow`, `SnowGolem`,
     /// `Bogged`), and a shearable mob fires `player_shear_entity`. `Some(consumed)` ends the
@@ -205,7 +253,7 @@ mod tests {
     impl mod_api::EntityPart for LeatherCow {
         fn is_shearable(
             &self,
-            _: &dyn mod_api::Host,
+            _: mod_api::HostSide,
             event: &mut mod_api::IsShearableEvent<'_>,
         ) -> Option<bool> {
             assert!(event.player.is_none(), "a dispenser has no player");
@@ -213,11 +261,7 @@ mod tests {
             assert_eq!(event.shears.damage(), 7);
             Some(true)
         }
-        fn on_sheared(
-            &self,
-            _: &mut dyn mod_api::ServerHost,
-            event: &mut mod_api::OnShearedEvent<'_>,
-        ) {
+        fn on_sheared(&self, _: mod_api::HostSide, event: &mut mod_api::OnShearedEvent<'_>) {
             assert_eq!(event.shears.damage(), 7);
             let leather = mod_api::__private::item_key("minecraft:leather").unwrap();
             event
@@ -231,7 +275,7 @@ mod tests {
     impl mod_api::EntityPart for WoollySheep {
         fn is_shearable(
             &self,
-            _: &dyn mod_api::Host,
+            _: mod_api::HostSide,
             _: &mut mod_api::IsShearableEvent<'_>,
         ) -> Option<bool> {
             Some(false)

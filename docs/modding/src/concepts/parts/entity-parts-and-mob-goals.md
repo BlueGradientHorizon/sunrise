@@ -167,6 +167,7 @@ hand and a dispenser's ask `is_shearable` first with an `IsShearableEvent` carry
 entity in `on_sheared` by pushing drops into `event.drops: &mut Vec<ItemStack>`, which the game spawns before
 damaging the shears. `Some(false)` keeps the entity unsheared, and `None` leaves it to the species (a sheep
 keeps shearing as vanilla's does).
+Both hooks run on both sides, as `ShearsItem.interactLivingEntity` does: their first parameter is a `HostSide`, a client predicting a player's click answers `is_shearable` and runs `on_sheared` on its copy of the mob, and the drops, the shears' damage and a dispenser's shearing stay the server's.
 
 ## Equipped durability
 

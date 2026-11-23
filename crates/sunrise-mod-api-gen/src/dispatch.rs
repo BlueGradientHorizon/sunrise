@@ -1382,7 +1382,8 @@ pub(super) fn emit<'a>(
                     | "register_configuration_tasks"
             ) {
                 // Let the existing journal see the unwind before invoke catches it.
-                let (host, _) = host.as_ref().unwrap();
+                let (host, host_param) = host.as_ref().unwrap();
+                let sided = host_param.ty == "HostSide";
                 let (commit, no_answer) =
                     if matches!(contract, Contract::Listen | Contract::Collect) && !answered_return
                     {
@@ -1390,8 +1391,28 @@ pub(super) fn emit<'a>(
                     } else {
                         (format!("Ok({expression})"), "Flow::Continue")
                     };
-                format!(
-                    "{{\
+                if sided {
+                    // A both-side host: the server's writes are one transaction; the client's
+                    // copy has no journal to commit, so its callback runs as it is.
+                    format!(
+                        "{{\
+                             use super::item::transaction::{{HostTransaction, TransactionError}};\
+                             match &mut {host} {{\
+                                 HostSide::Server(side) => match HostTransaction::transaction(&mut **side, |{host}, _| -> Result<_, core::convert::Infallible> {{ let mut {host} = HostSide::Server({host}); {commit} }}) {{\
+                                     Ok(answer) => answer,\
+                                     Err(TransactionError::Aborted(never)) => match never {{}},\
+                                     Err(error @ (TransactionError::InvalidContext | TransactionError::Unavailable | TransactionError::CommitRefused)) => {{\
+                                         log::warn!(\"mod {{}}: {name} callback refused: {{error:?}}\", {mod_id_expr});\
+                                         {restore_statement} {no_answer}\
+                                     }}\
+                                 }},\
+                                 HostSide::Client(side) => {{ let mut {host} = HostSide::Client(&mut **side); {expression} }}\
+                             }}\
+                         }}"
+                    )
+                } else {
+                    format!(
+                        "{{\
                          use super::item::transaction::{{HostTransaction, TransactionError}};\
                          match HostTransaction::transaction(&mut *{host}, |{host}, _| -> Result<_, core::convert::Infallible> {{ {commit} }}) {{\
                              Ok(answer) => answer,\
@@ -1402,7 +1423,8 @@ pub(super) fn emit<'a>(
                              }}\
                          }}\
                      }}"
-                )
+                    )
+                }
             } else {
                 expression
             }
