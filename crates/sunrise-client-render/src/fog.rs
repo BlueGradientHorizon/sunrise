@@ -11,7 +11,10 @@ use crate::{
 };
 pub use mod_api::client::fog::{FogData, FogType};
 use std::path::Path;
-use sunrise_core::random::{LegacyRandom, RandomSource};
+use sunrise_core::{
+    jmath,
+    random::{LegacyRandom, RandomSource},
+};
 use sunrise_world::registry::BlockStateId;
 
 /// Per-biome water fog end multipliers (`visual/water_fog_end_distance`).
@@ -272,9 +275,10 @@ pub fn setup_fog(tables: &FogTables, state: &FogState, input: &FogInputs) -> Fog
                 let m = 1.0 - input.thunder * 0.5;
                 sky_color = sky_color.map(|c| c * m);
             }
-            let sky_fog_end = (sky.sky_fog_end / 16.0).min(input.render_distance_chunks as f32);
+            let sky_fog_end =
+                jmath::min_f32(sky.sky_fog_end / 16.0, input.render_distance_chunks as f32);
             let mix = 0.25 + (sky_fog_end / 32.0).clamp(0.0, 1.0) * 0.75;
-            let mix = 1.0 - sunrise_core::jmath::pow(f64::from(mix), 0.25) as f32;
+            let mix = 1.0 - jmath::pow(f64::from(mix), 0.25) as f32;
             std::array::from_fn(|i| fog[i] + (sky_color[i] - fog[i]) * mix)
         }
     };
@@ -321,7 +325,7 @@ pub fn setup_fog(tables: &FogTables, state: &FogState, input: &FogInputs) -> Fog
         environmental_end: 1024.0,
         render_distance_start: 0.0,
         render_distance_end: rd,
-        sky_end: rd.min(sky.sky_fog_end),
+        sky_end: rd,
         cloud_end: 2048.0,
     };
     match input.fog_type {
@@ -384,6 +388,7 @@ pub fn setup_fog(tables: &FogTables, state: &FogState, input: &FogInputs) -> Fog
             fog.environmental_start = sky.fog_start + -160.0 * state.rain_fog_multiplier;
             let min_end = sky.fog_end.min(96.0);
             fog.environmental_end = min_end.max(sky.fog_end + -256.0 * state.rain_fog_multiplier);
+            fog.sky_end = jmath::min_f32(rd, sky.sky_fog_end);
             fog.cloud_end = ((input.cloud_range_chunks * 16) as f32).min(sky.cloud_fog_end);
             if input.boss_world_fog {
                 fog.environmental_start = fog.environmental_start.min(10.0);
@@ -510,6 +515,19 @@ mod tests {
             fluid_fog: Default::default(),
         }
     }
+    #[test]
+    fn atmospheric_sky_fog_distance_propagates_nan() {
+        let sky = Sky {
+            fog_color: [0.2, 0.3, 0.5],
+            sky_color: [0.8, 0.7, 0.5],
+            sky_fog_end: f32::NAN,
+            ..Sky::default()
+        };
+        let fog = setup_fog(&FogTables::default(), &FogState::default(), &inputs(&sky));
+        assert!(fog.color[..3].iter().all(|channel| channel.is_nan()));
+        assert!(fog.sky_end.is_nan());
+    }
+
     #[test]
     fn lava_fog_starts_when_a_near_plane_corner_dips_under_the_surface() {
         // Flowing lava (amount 4) on y 64: the camera sees its surface at 64 + 4/9.
