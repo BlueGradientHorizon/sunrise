@@ -235,10 +235,8 @@ Extra views also omit the sun, moon, stars, clouds and block outline. Translucen
 terrain uses the player camera's sorting. See the generated `world_views` hook notes
 for the rendering contract.
 
-Views draw only the player's own level; views targeting another level are refused. Separately,
-other levels a server opens for the client (viewed levels) are meshed only while named, after
-the player's own level's work and on one worker at a time, and their meshes stay 5 seconds after
-no request names the level.
+Views draw only the player's own level. A request targeting another level is refused with
+`WorldViewRefusalReason::Level`.
 
 ## Muffling sounds
 
