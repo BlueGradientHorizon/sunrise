@@ -1,7 +1,7 @@
 //! Read-only block, tag and fluid queries for native mods.
 use super::Game;
 use super::native_level_signals::ReadLevel;
-use mod_api::{BlockKey, FluidKey, FluidState, LevelRef, UnresolvedFluid};
+use mod_api::{BlockKey, FluidKey, FluidState, LevelRef};
 use std::cell::RefCell;
 use sunrise_client::{items::Items, world::World};
 use sunrise_core::{geometry::Direction, position::BlockPos};
@@ -257,11 +257,6 @@ impl FluidHeightWorld for FluidColumn<'_, '_> {
 }
 
 impl Game<'_> {
-    /// The saved name for an engine-issued unresolved fluid.
-    pub(super) fn unresolved_fluid_id(&self, fluid: UnresolvedFluid) -> String {
-        mod_api::__private::unresolved_fluid_name(fluid)
-    }
-
     /// The tag tables mods read: on a client the tags its server sent, once they are installed
     /// (`install_remote_tags`), elsewhere the merged tables, once the world has built them (the
     /// world lock is installed after they are built). None before that.

@@ -180,8 +180,9 @@ The optional file `data/<namespace>/sunrise/fluid/<path>.json` describes its app
 `r.fluid_part("mymod:oil", Part)` attaches a `FluidPart`, whose `fluid_rules` can change the
 declared values by position on the server. It is asked for every cell a spread looks at, so answer fast.
 
-A saved tank whose fluid's mod is absent carries an opaque unresolved identity. Its stack's
-`key()` is `None`; `UnresolvedFluid::id(host)` reads its saved name. It can move between
+A saved tank whose fluid's mod is absent carries its saved name as an `UnresolvedFluid`. Its
+stack's `key()` is `None`; `UnresolvedFluid::id()` borrows the name. A payload sends the name,
+and the receiving game refuses one it has registered. It can move between
 name-backed mod tanks, but not into vanilla buckets or cauldrons.
 
 `ActiveEffect::id` and effect hook payloads carry `EffectKey`; living effect queries,

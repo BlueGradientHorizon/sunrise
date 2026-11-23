@@ -337,8 +337,10 @@ fn newtype_widths_and_unit_enum_tags_match_their_encodings() {
     fields(BlockKey::from_slot(0).unwrap(), (0u32,));
     fields(ItemKey::from_slot(0).unwrap(), (0u32,));
     fields(FluidKey::from_slot(0).unwrap(), (0u32,));
-    // Issuance is platform-owned; this layer pins the encoded 64-bit field only.
-    fields(crate::UnresolvedFluid(0x100000003), (0x100000003u64,));
+    fields(
+        crate::UnresolvedFluid(id("absent:fluid")),
+        (id("absent:fluid"),),
+    );
     fields(WorldEpoch::new(47), (47u64,));
     fields(TickId::new(19), (19u64,));
     fields(SoundRef { id: 71 }, (71u64,));

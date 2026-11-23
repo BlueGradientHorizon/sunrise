@@ -8,9 +8,6 @@ pub trait TagsHost {
     #[service]
     fn tags(&self) -> &dyn Tags;
     /// Side: both.
-    /// The saved name for an engine-issued unresolved fluid.
-    fn unresolved_fluid_id(&self, fluid: UnresolvedFluid) -> String;
-    /// Side: both.
     /// Whether the resolved block is in the world's merged block tag, on a client the tag its
     /// server sent. Unknown tags return false; unavailable tags or owning-thread block mappings
     /// return None.

@@ -1198,7 +1198,7 @@ pub(super) fn make_streaming(
         shape,
         Some(res.shared_items()),
     );
-    save.enable_trusted_fluid_load();
+    save.mark_server_owned();
     save.set_save_reporting(
         world_root.to_path_buf(),
         dim.id(),
