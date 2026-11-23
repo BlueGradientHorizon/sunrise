@@ -1997,7 +1997,13 @@ fn mob_from_nbt_at(
                         v,
                     )
                 }
-                "minecraft:max_health" => m.attrs.max_health = v as f32,
+                "minecraft:max_health" => {
+                    m.attrs.max_health = m
+                        .kind
+                        .attribute_bounds
+                        .sanitize(crate::mobs::finalize::Attr::MaxHealth, v)
+                        as f32
+                }
                 "minecraft:movement_speed"
                     if crate::mobs::finalize::base_value(
                         &m,
