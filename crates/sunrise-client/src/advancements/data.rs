@@ -48,6 +48,13 @@ impl<'a, 'o> PredicateSource<'a, 'o> {
         }
     }
 
+    /// Bind `player` predicates against `types` instead of the process's captured registry.
+    #[cfg(test)]
+    pub(super) fn with_types(mut self, types: sunrise_world::loot::types::Types) -> Self {
+        self.captured_types = Some(types);
+        self
+    }
+
     fn bind_player(&mut self, value: &Value) -> Result<BoundCondition, String> {
         let predicates = match self.predicates {
             Some(predicates) => predicates,
@@ -64,7 +71,7 @@ impl<'a, 'o> PredicateSource<'a, 'o> {
         types
             .validate_condition_field(value, predicates, "conditions.player")
             .map_err(|error| error.to_string())?;
-        Ok(bind_condition(value, predicates, &mut self.bound))
+        bind_condition(value, predicates, types, &mut self.bound)
     }
 }
 
@@ -258,8 +265,9 @@ fn validate_builtin_conditions(c: &Value) -> Result<(), String> {
 fn bind_condition(
     root: &Value,
     predicates: &HashMap<String, Value>,
+    types: &sunrise_world::loot::types::Types,
     bound: &mut HashMap<String, BoundCondition>,
-) -> BoundCondition {
+) -> Result<BoundCondition, String> {
     enum Work<'a> {
         Visit(&'a Value),
         FinishReference(String),
@@ -301,12 +309,9 @@ fn bind_condition(
                         };
                         (group, terms)
                     }
-                    _ => {
+                    leaf => {
                         values.push(BoundCondition::new(
-                            BoundConditionKind::Leaf {
-                                kind: kind.into_owned(),
-                                data: value.clone(),
-                            },
+                            bind_leaf(leaf, value, types)?,
                             Vec::new(),
                         ));
                         continue;
@@ -324,5 +329,53 @@ fn bind_condition(
             }
         }
     }
-    values.pop().expect("bound root condition")
+    Ok(values.pop().expect("bound root condition"))
+}
+
+/// A leaf of a `player` predicate: one this evaluator answers, a literal `random_chance`, or a
+/// mod's registered kind. Any other kind would silently never match, so the file is refused.
+fn bind_leaf(
+    kind: &str,
+    value: &Value,
+    types: &sunrise_world::loot::types::Types,
+) -> Result<BoundConditionKind, String> {
+    const ANSWERED: [&str; 7] = [
+        "minecraft:entity_scores",
+        "minecraft:entity_properties",
+        "minecraft:location_check",
+        "minecraft:match_block",
+        "minecraft:block_state_property",
+        "minecraft:match_tool",
+        "minecraft:weather_check",
+    ];
+    if ANSWERED.contains(&kind) {
+        return Ok(BoundConditionKind::Leaf {
+            kind: kind.to_owned(),
+            data: value.clone(),
+        });
+    }
+    if kind == "minecraft:random_chance" {
+        let literal = value.as_object().is_some_and(|o| {
+            o.keys()
+                .all(|k| matches!(k.as_str(), "condition" | "type" | "chance"))
+        });
+        return match value["chance"].as_f64() {
+            Some(chance) if literal => Ok(BoundConditionKind::RandomChance(chance as f32)),
+            _ => Err("conditions.player: random_chance supports only a literal chance".into()),
+        };
+    }
+    match types
+        .bind_registered_condition(kind, value, "conditions.player")
+        .map_err(|error| error.to_string())?
+    {
+        Some(entry) => Ok(BoundConditionKind::Registered(Arc::new(
+            RegisteredCondition {
+                kind: kind.to_owned(),
+                entry,
+            },
+        ))),
+        None => Err(format!(
+            "conditions.player: condition type {kind} is not supported in an advancement"
+        )),
+    }
 }

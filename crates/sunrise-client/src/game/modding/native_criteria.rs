@@ -118,6 +118,9 @@ impl Game<'_> {
             interacting: None,
         };
         let mut refused = None;
+        // The level's random is lent to the tests and given back advanced, as a loot roll does.
+        let mut random = self.world.random.clone();
+        let loot = self.server_loot.get();
         self.trigger_custom(trigger, |criterion, world| {
             if refused.is_some() {
                 return false;
@@ -129,10 +132,20 @@ impl Game<'_> {
             match mod_api::__private::game::run_criterion_test(trigger, test, &context) {
                 Ok(matched) => {
                     matched
-                        && criterion
-                            .player
-                            .as_ref()
-                            .is_none_or(|pred| pred.test(&player, world))
+                        && criterion.player.as_ref().is_none_or(|pred| {
+                            let tags: &dyn sunrise_world::loot::LootTags = match &loot {
+                                Some(data) => &**data,
+                                None => &NoTags,
+                            };
+                            pred.test(
+                                &player,
+                                world,
+                                &mut adv::LootRuntime {
+                                    random: &mut random,
+                                    tags,
+                                },
+                            )
+                        })
                 }
                 Err(error) => {
                     refused = Some(error);
@@ -140,6 +153,18 @@ impl Game<'_> {
                 }
             }
         });
+        self.world.random = random;
         refused.map_or(Ok(()), Err)
+    }
+}
+
+/// No tag registry is bound: no tag has members.
+struct NoTags;
+impl sunrise_world::loot::LootTags for NoTags {
+    fn members(&self, _registry: &str, _tag: &str) -> Option<Vec<String>> {
+        None
+    }
+    fn item_tag_names(&self) -> Option<&sunrise_world::loot::ItemTagNames> {
+        None
     }
 }

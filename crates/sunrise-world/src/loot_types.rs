@@ -130,6 +130,33 @@ impl Types {
             .as_ref()
             .is_none_or(|registry| registry.conditional(kind))
     }
+    /// Decode one mod-registered condition node, for an evaluator that owns its own tree walk
+    /// (an advancement's `player` predicate). `None` when `kind` is not registered by a mod;
+    /// a decode the registry refuses is an error naming `path`.
+    pub fn bind_registered_condition(
+        &self,
+        kind: &str,
+        data: &Value,
+        path: &str,
+    ) -> io::Result<Option<BoundEntry<dyn BoundCondition>>> {
+        let Some(registry) = self
+            .registry
+            .as_ref()
+            .filter(|registry| registry.contains(kind, false))
+        else {
+            return Ok(None);
+        };
+        let decoded = registry
+            .decode_condition(kind, data)
+            .map_err(|reason| invalid(path, kind, reason))?;
+        Ok(Some(BoundEntry {
+            kind: kind.into(),
+            location: Arc::from(path),
+            referenced_params: decoded.referenced_params.into(),
+            rule: decoded.rule,
+        }))
+    }
+
     /// Decode an inline `LootItemCondition.CODEC` field embedded in another record
     /// against the active predicate registry (`RegistryFileCodec.decode`).
     pub fn validate_condition_field(
