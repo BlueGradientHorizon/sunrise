@@ -164,6 +164,7 @@ pub struct ServerPacks {
     /// statuses are only logged, as for a local world.
     reporting: bool,
     replies: Vec<(u128, i32)>,
+    recorded_feedback: Option<Vec<(u128, i32)>>,
 }
 impl Default for ServerPacks {
     fn default() -> Self {
@@ -176,6 +177,7 @@ impl Default for ServerPacks {
             update: false,
             reporting: false,
             replies: Vec::new(),
+            recorded_feedback: None,
         }
     }
 }
@@ -190,9 +192,25 @@ impl ServerPacks {
     }
     fn report(&mut self, id: u128, status: i32) {
         log::debug!("Sunrise: server pack {id:032x} changed status to {status}");
+        if let Some(recorded) = &mut self.recorded_feedback {
+            recorded.push((id, status));
+        }
         if self.reporting {
             self.replies.push((id, status));
         }
+    }
+    /// Observe every status reported through [`Self::report`], including local-only feedback.
+    #[doc(hidden)]
+    pub fn record_feedback(&mut self) {
+        self.recorded_feedback = Some(Vec::new());
+    }
+    /// Drain the statuses observed since [`Self::record_feedback`].
+    #[doc(hidden)]
+    pub fn take_recorded_feedback(&mut self) -> Vec<(u128, i32)> {
+        self.recorded_feedback
+            .as_mut()
+            .map(std::mem::take)
+            .unwrap_or_default()
     }
     /// The statuses to send the server, oldest first.
     pub fn take_replies(&mut self) -> Vec<(u128, i32)> {

@@ -600,10 +600,45 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         sunrise_client::logging::set_player_dir(dir.path().to_owned());
         let file = dir.path().join("servers.dat");
-        let shown = servers::ServerEntry::new("Shown", ADDRESS);
-        let mut hidden = servers::ServerEntry::new("Hidden", ADDRESS);
-        hidden.accept_textures = Some(true);
-        servers::save_all(&file, &[shown], &[hidden]).unwrap();
+        if required {
+            // Start the joined shown row at Disabled (`0`) and include an unrelated entry
+            // whose Disabled policy is encoded as an NBT Int `0` (valid under vanilla's
+            // NbtOps.getBooleanValue) so a lossy decoder or policy reset would be caught.
+            let root = sunrise_core::nbt::NamedTag {
+                name: sunrise_core::nbt::JavaString::from(""),
+                tag: sunrise_core::nbt::Tag::compound([(
+                    "servers",
+                    sunrise_core::nbt::Tag::List(vec![
+                        sunrise_core::nbt::Tag::compound([
+                            ("name", sunrise_core::nbt::Tag::String("Shown".into())),
+                            ("ip", sunrise_core::nbt::Tag::String(ADDRESS.into())),
+                            ("acceptTextures", sunrise_core::nbt::Tag::Byte(0)),
+                            ("hidden", sunrise_core::nbt::Tag::Byte(0)),
+                        ]),
+                        sunrise_core::nbt::Tag::compound([
+                            ("name", sunrise_core::nbt::Tag::String("Numeric".into())),
+                            ("ip", sunrise_core::nbt::Tag::String("other.invalid".into())),
+                            ("acceptTextures", sunrise_core::nbt::Tag::Int(0)),
+                            ("hidden", sunrise_core::nbt::Tag::Byte(0)),
+                        ]),
+                        sunrise_core::nbt::Tag::compound([
+                            ("name", sunrise_core::nbt::Tag::String("Hidden".into())),
+                            ("ip", sunrise_core::nbt::Tag::String(ADDRESS.into())),
+                            ("acceptTextures", sunrise_core::nbt::Tag::Byte(1)),
+                            ("hidden", sunrise_core::nbt::Tag::Byte(1)),
+                        ]),
+                    ]),
+                )]),
+            };
+            let bytes = sunrise_core::nbt::write_named(&root, sunrise_core::nbt::Limits::default())
+                .unwrap();
+            std::fs::write(&file, bytes).unwrap();
+        } else {
+            let shown = servers::ServerEntry::new("Shown", ADDRESS);
+            let mut hidden = servers::ServerEntry::new("Hidden", ADDRESS);
+            hidden.accept_textures = Some(true);
+            servers::save_all(&file, &[shown], &[hidden]).unwrap();
+        }
 
         with_client_game(|game| {
             let mut peer = Connection::local(logged_client(game));
@@ -612,12 +647,12 @@ mod tests {
                 .unwrap();
             finish_login(game, &mut peer);
             game.server_packs_connect(Some(ADDRESS), ("SessionReadTest".into(), 42));
-            for (index, id) in PACK_IDS.into_iter().enumerate() {
+            for id in PACK_IDS {
                 game.handle_pack_push(ResourcePackPush {
                     id,
                     url: "https://pack-test.invalid/server.zip".into(),
                     hash: String::new(),
-                    required: required && index == 1,
+                    required,
                     prompt: None,
                 });
             }
@@ -631,26 +666,10 @@ mod tests {
         in_own_process(
             "game::server_packs::tests::required_decline_closes_the_wire_but_reports_locally_and_saves",
             || {
-                struct Feedback(std::sync::Mutex<Vec<String>>);
-                impl log::Log for Feedback {
-                    fn enabled(&self, meta: &log::Metadata<'_>) -> bool {
-                        meta.target().ends_with("::server_packs")
-                            && meta.level() == log::Level::Debug
-                    }
-                    fn log(&self, record: &log::Record<'_>) {
-                        if self.enabled(record.metadata()) {
-                            self.0.lock().unwrap().push(record.args().to_string());
-                        }
-                    }
-                    fn flush(&self) {}
-                }
-                static FEEDBACK: Feedback = Feedback(std::sync::Mutex::new(Vec::new()));
-                log::set_logger(&FEEDBACK).unwrap();
-                log::set_max_level(log::LevelFilter::Debug);
-
                 with_pack_prompt(true, |game, peer, file| {
-                    let before = servers::load_all(file);
-                    // The list is unchanged, so mark its old mtime to detect an actual save.
+                    let original_bytes = std::fs::read(file).unwrap();
+                    let backup = file.with_file_name("servers.dat_old");
+                    // Mark an old mtime to detect an actual rewrite.
                     std::fs::OpenOptions::new()
                         .write(true)
                         .open(file)
@@ -658,6 +677,7 @@ mod tests {
                         .set_modified(std::time::UNIX_EPOCH)
                         .unwrap();
                     let old_modified = file.metadata().unwrap().modified().unwrap();
+                    game.server_packs.packs.record_feedback();
                     game.answer_pack_prompt(false).unwrap();
 
                     assert!(game.remote.is_none());
@@ -678,15 +698,36 @@ mod tests {
                         }
                     }
                     assert_eq!(
-                        *FEEDBACK.0.lock().unwrap(),
-                        PACK_IDS.map(|id| format!(
-                            "Sunrise: server pack {id:032x} changed status to 1"
-                        ))
+                        game.server_packs.packs.take_recorded_feedback(),
+                        PACK_IDS.map(|id| (id, action::DECLINED))
                     );
                     assert_eq!(game.server_packs.packs.prompt(), Prompt::Pending);
                     assert!(game.server_packs.packs.take_replies().is_empty());
-                    assert_eq!(servers::load_all(file), before);
                     assert_ne!(file.metadata().unwrap().modified().unwrap(), old_modified);
+                    assert_eq!(std::fs::read(&backup).unwrap(), original_bytes);
+                    // Read the saved raw NBT directly to prove Disabled policies were not cleared.
+                    let (saved, _) = sunrise_core::nbt::read_named(
+                        &std::fs::read(file).unwrap(),
+                        sunrise_core::nbt::Limits::default(),
+                    )
+                    .unwrap();
+                    let Some(sunrise_core::nbt::Tag::List(entries)) = saved.tag.get("servers")
+                    else {
+                        panic!("expected servers list");
+                    };
+                    assert_eq!(entries.len(), 3);
+                    assert_eq!(
+                        entries[0].get("acceptTextures"),
+                        Some(&sunrise_core::nbt::Tag::Byte(0))
+                    );
+                    assert_eq!(
+                        entries[1].get("acceptTextures"),
+                        Some(&sunrise_core::nbt::Tag::Byte(0))
+                    );
+                    assert_eq!(
+                        entries[2].get("acceptTextures"),
+                        Some(&sunrise_core::nbt::Tag::Byte(1))
+                    );
                 });
             },
         );

@@ -58,8 +58,15 @@ impl ServerEntry {
             name: string("name").unwrap_or_default(),
             ip: string("ip")?,
             icon: string("icon"),
+            // ServerData.ServerPackStatus.FIELD_CODEC -> NbtOps.getBooleanValue:
+            // any numeric tag whose doubleValue() != 0.0.
             accept_textures: match tag.get("acceptTextures") {
-                Some(Tag::Byte(b)) => Some(*b != 0),
+                Some(Tag::Byte(n)) => Some(f64::from(*n) != 0.0),
+                Some(Tag::Short(n)) => Some(f64::from(*n) != 0.0),
+                Some(Tag::Int(n)) => Some(f64::from(*n) != 0.0),
+                Some(Tag::Long(n)) => Some((*n as f64) != 0.0),
+                Some(Tag::Float(n)) => Some(f64::from(*n) != 0.0),
+                Some(Tag::Double(n)) => Some(*n != 0.0),
                 _ => None,
             },
             accepted_code_of_conduct: match tag.get("acceptedCodeOfConduct") {
@@ -218,10 +225,38 @@ fn insert(
 }
 fn write(path: &Path, root: &NamedTag) -> std::io::Result<()> {
     let bytes = nbt::write_named(root, nbt::Limits::default()).map_err(std::io::Error::other)?;
-    // Its own temporary file: another game on the same folder writes at the same time.
+    // ServerList.save + Util.safeReplaceFile: write a temp file, back up the
+    // preceding servers.dat to servers.dat_old, then move the new file into place.
     let tmp = path.with_extension(format!("dat_tmp.{}", std::process::id()));
     std::fs::write(&tmp, bytes)?;
-    std::fs::rename(tmp, path)
+    let mut backup_os = path.as_os_str().to_os_string();
+    backup_os.push("_old");
+    let backup = std::path::PathBuf::from(backup_os);
+    let backed_up = if path.exists() {
+        match std::fs::remove_file(&backup) {
+            Ok(()) => {}
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+            Err(e) => {
+                let _ = std::fs::remove_file(&tmp);
+                return Err(e);
+            }
+        }
+        if let Err(e) = std::fs::rename(path, &backup) {
+            let _ = std::fs::remove_file(&tmp);
+            return Err(e);
+        }
+        true
+    } else {
+        false
+    };
+    if let Err(e) = std::fs::rename(&tmp, path) {
+        if backed_up {
+            let _ = std::fs::rename(&backup, path);
+        }
+        let _ = std::fs::remove_file(&tmp);
+        return Err(e);
+    }
+    Ok(())
 }
 
 /// ServerAddress.parseString: `host`, `host:port` or `[v6]:port`; default 25565.
@@ -382,5 +417,83 @@ mod tests {
         assert_eq!(parse_address("host:-0"), Some(("host".into(), 0)));
         assert_eq!(parse_address("host:0"), Some(("host".into(), 0)));
         assert_eq!(parse_address("[::1]:65535"), Some(("::1".into(), 65535)));
+    }
+
+    #[test]
+    fn accept_textures_decodes_numeric_tags_and_save_retains_backup() {
+        let dir = std::env::temp_dir().join(format!(
+            "sunrise-servers-numeric-backup-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("servers.dat");
+        let backup = dir.join("servers.dat_old");
+
+        let entry = |name: &str, ip: &str, accept: Tag| {
+            Tag::compound([
+                ("name", Tag::String(JavaString::from(name))),
+                ("ip", Tag::String(JavaString::from(ip))),
+                ("acceptTextures", accept),
+            ])
+        };
+        let raw_root = NamedTag {
+            name: JavaString::from(""),
+            tag: Tag::compound([(
+                "servers",
+                Tag::List(vec![
+                    entry("IntZero", "int0.example", Tag::Int(0)),
+                    entry("Int256", "int256.example", Tag::Int(256)),
+                    entry("LongOne", "long1.example", Tag::Long(1)),
+                    entry("FloatNegZero", "fneg0.example", Tag::Float(-0.0)),
+                    entry("DoubleHalf", "dhalf.example", Tag::Double(0.5)),
+                    entry(
+                        "StringIgnored",
+                        "str.example",
+                        Tag::String(JavaString::from("1")),
+                    ),
+                ]),
+            )]),
+        };
+        let initial_bytes = nbt::write_named(&raw_root, nbt::Limits::default()).unwrap();
+        std::fs::write(&path, &initial_bytes).unwrap();
+
+        let loaded = load(&path);
+        assert_eq!(
+            loaded
+                .iter()
+                .map(|e| (e.ip.as_str(), e.accept_textures))
+                .collect::<Vec<_>>(),
+            vec![
+                ("int0.example", Some(false)),
+                ("int256.example", Some(true)),
+                ("long1.example", Some(true)),
+                ("fneg0.example", Some(false)),
+                ("dhalf.example", Some(true)),
+                ("str.example", None),
+            ]
+        );
+
+        save(&path, &loaded).unwrap();
+        assert_eq!(std::fs::read(&backup).unwrap(), initial_bytes);
+        let (saved_root, _) =
+            nbt::read_named(&std::fs::read(&path).unwrap(), nbt::Limits::default()).unwrap();
+        let Some(Tag::List(saved_list)) = saved_root.tag.get("servers") else {
+            panic!("expected servers list");
+        };
+        assert_eq!(saved_list[0].get("acceptTextures"), Some(&Tag::Byte(0)));
+        assert_eq!(saved_list[1].get("acceptTextures"), Some(&Tag::Byte(1)));
+        assert_eq!(saved_list[2].get("acceptTextures"), Some(&Tag::Byte(1)));
+        assert_eq!(saved_list[3].get("acceptTextures"), Some(&Tag::Byte(0)));
+        assert_eq!(saved_list[4].get("acceptTextures"), Some(&Tag::Byte(1)));
+        assert_eq!(saved_list[5].get("acceptTextures"), None);
+
+        // An unreadable file that gets replaced by save_all is kept in servers.dat_old.
+        let corrupt = b"corrupt servers.dat";
+        std::fs::write(&path, corrupt).unwrap();
+        save_all(&path, &[], &[]).unwrap();
+        assert_eq!(std::fs::read(&backup).unwrap(), corrupt);
+
+        std::fs::remove_dir_all(dir).unwrap();
     }
 }
