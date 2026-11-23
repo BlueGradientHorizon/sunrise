@@ -96,7 +96,7 @@ fn cache_in(env: &dyn Fn(&str) -> Option<OsString>, platform: Platform) -> Resul
 }
 
 /// The target triple of the SDK slices for this computer.
-fn computer() -> Result<&'static str, String> {
+pub(crate) fn computer() -> Result<&'static str, String> {
     match (std::env::consts::OS, std::env::consts::ARCH) {
         ("linux", "x86_64") => Ok("x86_64-unknown-linux-gnu"),
         ("macos", "aarch64") => Ok("aarch64-apple-darwin"),

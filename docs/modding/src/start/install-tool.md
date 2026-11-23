@@ -161,8 +161,6 @@ A tool built before `--help` existed prints the same usage after `error:` and ex
 The tool checks every SDK it fetches against Sunrise's release signature before it uses it, whatever the tool's own
 origin.
 
-To move to a newer tool later, run the same block again.
-
 ## Newest tool from main
 
 The release `mod-tool` holds the newest tool published from the repository's main branch, for the same three
@@ -182,7 +180,7 @@ Which to take:
   pinned SDK as long as that SDK has what the tool needs; when it does not, `build` stops and names both ways out:
   `cargo sunrise-mod update --sunrise nightly`, or the tool in that SDK's own release.
 
-`cargo sunrise-mod --version` prints the commit a tool is built from, or `dev` for a tool you built yourself without
+`cargo sunrise-mod --version` prints the commit a tool is built from, or `local` for a tool you built yourself without
 naming one (`cargo install`); a tool older than that option answers with its usage instead. The newest tool's commit is `commit` in
 [`tool.json`](https://github.com/sunrise-org/sunrise/releases/download/mod-tool/tool.json).
 
@@ -191,6 +189,26 @@ that supports both `cargo sunrise-mod release plan` and `cargo sunrise-mod relea
 verifies the tool and `tool.json` against the signed sums before running it, pins the same tool commit across all
 jobs and extracts the release scripts shipped in that tool. The mod's stable SDK is a separate pin, even if that
 SDK ships an older tool.
+
+## Updating the tool
+
+<!-- quickstart-test: skip, the installed Nightly tool may predate this command; the signed update is tested separately -->
+```sh
+cargo sunrise-mod self-update
+```
+
+This replaces the standalone copy installed by the blocks above in `~/.local/bin` (Linux and macOS) or
+`%USERPROFILE%\.sunrise\bin` (Windows) with the rolling `mod-tool` release. It verifies Sunrise's signature and the
+archive's checksum before replacing the executable, and prints the old and new commits. It never changes a mod's
+pinned SDK. On Windows, the previous executable is kept as `.cargo-sunrise-mod.exe.old` beside the new one and can
+be deleted once the command exits.
+
+On everyday commands the standalone tool checks for a different rolling release once per day at most. It prints a
+reminder when one is available but never installs it automatically. The check stays quiet offline and in CI.
+
+If your copy does not know `self-update` yet, or you want the tool from a particular SDK instead of the rolling
+release, rerun the appropriate install block above. Copies run from an SDK folder or managed by `cargo install` or
+another package manager are not replaced in place; update them through their own install method.
 
 ## With `cargo install`
 

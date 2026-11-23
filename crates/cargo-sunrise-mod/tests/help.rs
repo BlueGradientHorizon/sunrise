@@ -23,8 +23,16 @@ fn help_lists_the_everyday_commands_and_each_command_says_its_usage() {
             );
         }
         assert!(text.contains("cargo sunrise-mod help all"), "{args:?}");
+        assert!(!text.contains("self-update"), "{args:?}");
         assert!(output.stderr.is_empty(), "{args:?}");
     }
+    let all = run(&["help", "all"]);
+    assert!(all.status.success());
+    assert!(
+        String::from_utf8_lossy(&all.stdout)
+            .lines()
+            .any(|line| line == "cargo sunrise-mod self-update")
+    );
     let output = run(&["build", "--help"]);
     assert!(output.status.success());
     let text = String::from_utf8(output.stdout).unwrap();
