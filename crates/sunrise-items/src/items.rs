@@ -2598,10 +2598,19 @@ impl<R: RandomSource> LootContext<'_, R> {
                     && (!sunrise_world::loot::reads_block_entity(c) || {
                         let place = sunrise_world::loot::current_native_loot_place();
                         let place = place.as_deref();
+                        let item_tags = |registry: &str, tag: &str, id: &str| {
+                            registry == "item"
+                                && self
+                                    .items
+                                    .item_tags
+                                    .get(tag)
+                                    .is_some_and(|t| t.contains(id))
+                        };
                         sunrise_world::loot::block_entity_matches(
                             c,
                             place.and_then(|p| p.block_entity.as_ref()),
                             || place.and_then(|p| p.block_components.clone()),
+                            &item_tags,
                         )
                     })
             }
