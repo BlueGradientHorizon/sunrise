@@ -147,6 +147,7 @@ sunrise-client-render gfx::pack_post::destination_tests::frame_clear_and_retaine
 sunrise-client-render gfx::pack_post::destination_tests::partial_writes_retain_the_alternate_with_flip_scale_and_mrt_controls lib daily gpu
 sunrise-client-render gfx::pack_post::end_fan_tests::the_end_under_the_dragons_fog_has_the_packs_fan lib daily gpu
 sunrise-client-render gfx::pack_post::end_fan_tests::the_end_without_the_fog_has_no_fan lib daily gpu
+sunrise-client-render gfx::pack_post::far_location_tests::an_output_far_past_the_buffers_does_not_size_the_targets lib daily gpu
 sunrise-client-render gfx::pack_post::float_into_integer_tests::a_float_output_into_an_integer_buffer_writes_its_bits lib daily gpu
 sunrise-client-render gfx::pack_post::forced_flip_tests::a_forced_flip_of_a_written_buffer_leaves_it_unflipped lib daily gpu
 sunrise-client-render gfx::pack_post::full_outputs_tests::a_shadow_program_with_every_output_drops_the_boats_patches_not_its_water lib daily gpu
