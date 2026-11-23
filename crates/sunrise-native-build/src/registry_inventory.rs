@@ -230,7 +230,11 @@ impl Metadata {
     }
 
     /// The resolved external packages and executable build code, checked against the SDK's native links.
-    pub fn inventory(&self, links: &[NativeLink]) -> Result<Inventory, String> {
+    pub fn inventory(
+        &self,
+        game: &super::registry_lock::RegistryLock,
+        links: &[NativeLink],
+    ) -> Result<Inventory, String> {
         let reachable = self.reachable(false)?;
         let runtime = self.reachable(true)?;
         let mut scripts = BTreeSet::new();
@@ -241,6 +245,14 @@ impl Metadata {
                 continue;
             }
             let label = format!("{} {}", package.name, package.version);
+            // The game's own copy is reused, not compiled again, so it provides no second library.
+            if game
+                .packages
+                .keys()
+                .any(|id| id.name == package.name && id.version.to_string() == package.version)
+            {
+                continue;
+            }
             if let Some(library) = package
                 .links
                 .as_ref()
@@ -316,7 +328,9 @@ mod tests {
     }
     #[test]
     fn consent_counts_only_reachable_build_packages_and_names_executable_code() {
-        let inventory = metadata().inventory(&[]).unwrap();
+        let inventory = metadata()
+            .inventory(&super::super::registry_lock::RegistryLock::default(), &[])
+            .unwrap();
         assert_eq!(inventory.added_crates, 2);
         assert_eq!(inventory.build_scripts, ["native-sys 2.0.0"]);
         assert_eq!(inventory.proc_macros, ["derive-example 1.0.0"]);
@@ -326,11 +340,14 @@ mod tests {
         let mut metadata = metadata();
         metadata.resolve.nodes[0].deps[0].dep_kinds[0].kind = Some("build".into());
         let inventory = metadata
-            .inventory(&[NativeLink {
-                name: "sdk-sys".into(),
-                version: "1.0.0".into(),
-                library: "example".into(),
-            }])
+            .inventory(
+                &super::super::registry_lock::RegistryLock::default(),
+                &[NativeLink {
+                    name: "sdk-sys".into(),
+                    version: "1.0.0".into(),
+                    library: "example".into(),
+                }],
+            )
             .unwrap();
         assert_eq!(inventory.build_scripts, ["native-sys 2.0.0"]);
         assert_eq!(inventory.added_crates, 2);
@@ -339,13 +356,51 @@ mod tests {
     #[test]
     fn a_second_native_provider_is_refused_with_both_packages_versions_and_library() {
         let error = metadata()
-            .inventory(&[NativeLink {
-                name: "sdk-sys".into(),
-                version: "1.0.0".into(),
-                library: "example".into(),
-            }])
+            .inventory(
+                &super::super::registry_lock::RegistryLock::default(),
+                &[NativeLink {
+                    name: "sdk-sys".into(),
+                    version: "1.0.0".into(),
+                    library: "example".into(),
+                }],
+            )
             .unwrap_err();
         for detail in ["native-sys", "2.0.0", "sdk-sys", "1.0.0", "example"] {
+            assert!(error.contains(detail), "{error}");
+        }
+    }
+
+    /// The SDK's lock and its claim on native library `example`, held by `native-sys` at `version`.
+    fn sdk_with_native_sys(
+        version: &str,
+    ) -> (super::super::registry_lock::RegistryLock, NativeLink) {
+        let lock = super::super::registry_lock::RegistryLock::parse(&format!(
+            "[[package]]\nname = \"native-sys\"\nversion = \"{version}\"\nsource = \"{}\"\nchecksum = \"{}\"\n",
+            sunrise_addresses::CARGO_CRATES_IO_SOURCE,
+            "0".repeat(64)
+        ))
+        .unwrap();
+        let link = NativeLink {
+            name: "native-sys".into(),
+            version: version.into(),
+            library: "example".into(),
+        };
+        (lock, link)
+    }
+
+    #[test]
+    fn the_sdks_own_native_provider_at_the_same_version_is_reused() {
+        let (game, link) = sdk_with_native_sys("2.0.0");
+        let inventory = metadata().inventory(&game, &[link]).unwrap();
+        assert_eq!(inventory.added_crates, 1);
+        assert!(inventory.build_scripts.is_empty());
+    }
+
+    #[test]
+    fn the_sdks_native_provider_at_another_version_is_refused() {
+        let (game, link) = sdk_with_native_sys("1.0.0");
+        let error = metadata().inventory(&game, &[link]).unwrap_err();
+        for detail in ["native-sys 2.0.0", "native-sys 1.0.0", "example"] {
             assert!(error.contains(detail), "{error}");
         }
     }

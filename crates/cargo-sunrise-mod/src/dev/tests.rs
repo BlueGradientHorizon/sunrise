@@ -221,7 +221,7 @@ fn a_retained_sdk_builds_a_lower_mixin_with_its_signed_tool() {
     };
     let plan = contract::Plan {
         contract: contract::CONTRACT,
-        package: sdk.slices(sdk::Side::Client, Route::Engine, false).unwrap(),
+        package: sdk.slices(sdk::Side::Client, Route::Engine).unwrap(),
         toolchain: sdk.rust.clone(),
         target: contract::TargetName::Client,
         mods: root.path().join("mod"),

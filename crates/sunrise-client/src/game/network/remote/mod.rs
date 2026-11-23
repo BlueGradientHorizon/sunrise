@@ -600,6 +600,10 @@ pub(super) struct Remote {
     pub(super) levels: Vec<String>,
     /// Player entities in the level: entity id to profile UUID.
     pub(super) level_players: HashMap<i32, u128>,
+    /// Authoritative entity UUID index scoped to the current client level (`EntityLookup.byUuid`).
+    pub(super) level_uuids: HashMap<u128, i32>,
+    /// Reverse entity-id-to-UUID index for O(1) removal and replacement in the current client level.
+    pub(super) level_entity_uuids: HashMap<i32, u128>,
     /// First resolved `PlayerInfo` game mode cell per remote `AbstractClientPlayer` entity.
     level_player_infos: HashMap<i32, std::cell::OnceCell<Arc<std::sync::atomic::AtomicI32>>>,
     /// The profile name each player entity was created with (`RemotePlayer.getGameProfile`): it outlives the
@@ -2403,6 +2407,8 @@ mod attachment_query_tests;
 mod passage_cross_tests;
 #[cfg(test)]
 mod respawn_motion_tests;
+#[cfg(test)]
+mod riptide_tests;
 impl Remote {
     /// Project the session address for display once, dropping the memory transport's marker.
     pub(super) fn display_address_for(address: &str) -> Option<String> {
@@ -2412,6 +2418,10 @@ impl Remote {
 
 #[cfg(test)]
 pub(crate) mod tests {
+    mod client_explosion_tests {
+        include!("client_explosion_tests.rs");
+    }
+
     use super::super::api_values::TryIntoApi;
 
     mod block_entity_state_tests {

@@ -28,6 +28,13 @@ implementation, before resistance and motion changes. This matches vanilla `Livi
 completing its `strength`, `x`, and `z` rewrites before the next. Cancellation leaves the pushed
 entity's motion unchanged.
 
+On the server, `living.knockback(host, strength, [x, z])` enters the short overload. The
+entity moves away from `[x, z]`, and a player's own client gets the resulting velocity.
+It returns `false` if the handle is unavailable, the input isn't finite, the hook cancels,
+or no push remains after resistance. This call deals no damage and adds no kill credit:
+its source is unattributed `minecraft:generic`, so any attacker fallback and kill credit
+come only from the victim's existing hurt memory.
+
 A sulfur cube carrying a block handles its own launch when the source has a causing entity, so
 neither an ordinary push nor an effect push on that path fires the event. The ender dragon can
 receive its own default knockback when it is not sitting; its wing push on other entities does not

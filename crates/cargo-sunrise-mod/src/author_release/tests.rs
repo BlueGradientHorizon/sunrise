@@ -551,7 +551,10 @@ mod git_fixtures {
             fs::read_to_string(repo.root.join("mods/example/sunrise-mod.toml")).unwrap(),
             format!("{}{NATIVE}", MOD.replace("1.4.2", "1.5.0"))
         );
-        assert_eq!(repo.git(["log", "-1", "--format=%s"]), "Release 1.5.0");
+        assert_eq!(
+            repo.git(["log", "-1", "--format=%B"]),
+            "Release 1.5.0\n\nSigned-off-by: Author <author@example.invalid>\n"
+        );
         assert_eq!(
             repo.git(["show", "--pretty=format:", "--name-only", "HEAD"]),
             ".github/workflows/sunrise-release-example.yml\nmods/example/Cargo.lock\nmods/example/Cargo.toml\nmods/example/sunrise-mod.toml"

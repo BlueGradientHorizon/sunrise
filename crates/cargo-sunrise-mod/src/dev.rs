@@ -192,12 +192,7 @@ pub(crate) struct NativeSdk {
 }
 
 impl NativeSdk {
-    fn slices(
-        &self,
-        side: sdk::Side,
-        route: Route,
-        route: Route,
-    ) -> Result<prebuilt::Package, String> {
+    fn slices(&self, side: sdk::Side, route: Route) -> Result<prebuilt::Package, String> {
         sdk_fetch::fetch_slices(
             &self.base,
             &self.index,

@@ -59,18 +59,19 @@ mod tests {
             // A part can also have saved UUID metadata when it holds attachments.
             game.persist.uuids.insert(part.id(), uuid_ints(part_uuid));
 
+            let level = game.native_current_level().unwrap();
             let host: &dyn ServerHost = game;
             let dragon_uuid = EntityUuid(0x0000_0013_0000_0017_0000_001d_0000_001f);
             let part_uuid = EntityUuid(part_uuid);
-            assert_eq!(host.entity_by_uuid(dragon_uuid), Some(dragon));
-            assert_eq!(host.entity_by_uuid(part_uuid), None);
+            assert_eq!(level.entity_by_uuid(host, dragon_uuid), Some(dragon));
+            assert_eq!(level.entity_by_uuid(host, part_uuid), None);
 
             #[cfg(not(any(feature = "system-allocator", feature = "alloc-census")))]
             {
                 let (found, allocations) = sunrise_threads::allocation_count::measure(|| {
                     (
-                        host.entity_by_uuid(dragon_uuid),
-                        host.entity_by_uuid(part_uuid),
+                        level.entity_by_uuid(host, dragon_uuid),
+                        level.entity_by_uuid(host, part_uuid),
                     )
                 });
                 assert_eq!(found, (Some(dragon), None));

@@ -10,21 +10,24 @@ pub trait Hooks {
     /// attacking entity's network id, falling back to the victim's last hurt-by mob, or 0 when
     /// unknown; `attacker_main` and `attacker_off` lazily borrow what it holds as
     /// [`ItemStackView`] (a player's selected and off-hand stacks, a mob's main hand; none when
-    /// unknown, empty or unrepresentable). Vanilla's short `LivingEntity.knockback` overload
-    /// delegates directly to the full overload, firing this event once per knockback operation,
-    /// matching NeoForge's `CommonHooks.onLivingKnockBack`. Change `strength`, `x` or `z`, or
-    /// set `canceled`, and the push follows them: canceled, the entity's motion is left alone. A
-    /// `strength` of 0 or less after the hook is no push, and a direction too short to tell
-    /// draws a random one after it, as in vanilla. A value a mod leaves that is not a finite
-    /// number is put back as it was. It fires for the players, mobs and armor stands the game
-    /// knocks back: a hit's own push, a sprinting or Knockback hit, a sweep, a spear, a
-    /// shield's push on its holder, a goat's ram and a mob's melee push. The ender dragon can
-    /// also receive a default knockback when it is not sitting. The event does not fire when
-    /// `SulfurCube.knockback` launches a cube carrying a block and the source has a causing
-    /// entity, because it does not call the living implementation. Pushes that do not use
-    /// `LivingEntity.knockback` also do not fire it: the dragon's wing push, Punch arrows,
-    /// explosions, wind charges, a mace smash's area and a hoglin's throw. The level is the
-    /// hit's: its blocks, random and own attachments.
+    /// unknown, empty or unrepresentable). `LivingRef::knockback` has an unattributed
+    /// `minecraft:generic` source: this same attacker fallback and the victim's existing kill
+    /// credit still apply. The call deals no damage and creates no credit. Vanilla's short
+    /// `LivingEntity.knockback` overload delegates directly to the full overload, firing this
+    /// event once per knockback operation, matching NeoForge's `CommonHooks.onLivingKnockBack`.
+    /// Change `strength`, `x` or `z`, or set `canceled`, and the push follows them: canceled,
+    /// the entity's motion is left alone. A `strength` of 0 or less after the hook is no push,
+    /// and a direction too short to tell draws a random one after it, as in vanilla. A value a
+    /// mod leaves that is not a finite number is put back as it was. It fires for
+    /// `LivingRef::knockback` and for the players, mobs and armor stands the game knocks back:
+    /// a hit's own push, a sprinting or Knockback hit, a sweep, a spear, a shield's push on its
+    /// holder, a goat's ram and a mob's melee push. The ender dragon can also receive a default
+    /// knockback when it is not sitting. The event does not fire when `SulfurCube.knockback`
+    /// launches a cube carrying a block and the source has a causing entity, because it does
+    /// not call the living implementation. Pushes that do not use `LivingEntity.knockback` also
+    /// do not fire it: the dragon's wing push, Punch arrows, explosions, wind charges, a mace
+    /// smash's area and a hoglin's throw. The level is the victim's: its blocks, random and own
+    /// attachments.
     /// `kill_credit` is the pushed living entity's kill credit at this pre-motion moment:
     /// a remembered player takes precedence over its last hurting mob, even when that player
     /// cannot resolve (then 0, without falling back). `kill_credit_main` lazily borrows that

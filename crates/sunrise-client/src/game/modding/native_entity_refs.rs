@@ -13,6 +13,9 @@ pub(in crate::game) mod dragon_parts_table;
 #[path = "native_entity_refs/dragon_query.rs"]
 mod dragon_query;
 #[cfg(test)]
+#[path = "native_entity_refs/level_uuid_tests.rs"]
+mod level_uuid_tests;
+#[cfg(test)]
 #[path = "native_entity_refs/roll_loot_tests.rs"]
 mod roll_loot_tests;
 #[path = "native_entity_refs/save_lending.rs"]
@@ -128,7 +131,8 @@ impl Game<'_> {
         &self,
         entity: EntityRef,
     ) -> Result<Target, EntityReadError> {
-        self.resolve_server_entity(entity).map(|(target, _)| target)
+        self.resolve_server_entity_in(entity, self.dim.key())
+            .map(|(target, _)| target)
     }
 
     /// Resolve the handle and return its resident location, if admitted to the level.
@@ -136,12 +140,15 @@ impl Game<'_> {
         &self,
         entity: EntityRef,
     ) -> Option<(Target, Option<Location>)> {
-        self.resolve_server_entity(entity).ok()
+        self.resolve_server_entity_in(entity, self.dim.key()).ok()
     }
 
-    fn resolve_server_entity(
+    /// [`Self::native_entity_target_with_location`] for an entity resident in the open server
+    /// level `dimension`, the one in place or a parked one.
+    fn resolve_server_entity_in(
         &self,
         entity: EntityRef,
+        dimension: DimensionKey,
     ) -> Result<(Target, Option<Location>), EntityReadError> {
         if !self.is_logical_server() {
             return Err(EntityReadError::Unavailable);
@@ -172,7 +179,7 @@ impl Game<'_> {
         // Players are server-wide records. Ordinary body operations retain
         // their existing current-level domain; source membership is global.
         if !matches!(value, Target::Player | Target::Guest(_))
-            && location.owner.dimension != self.dim.key()
+            && location.owner.dimension != dimension
         {
             return Err(EntityReadError::Unavailable);
         }
@@ -266,12 +273,15 @@ impl Game<'_> {
         };
         found.then_some(entity)
     }
-    pub(super) fn entity_by_uuid(&self, uuid: mod_api::EntityUuid) -> Option<EntityRef> {
-        if !self.is_logical_server() {
-            return None;
-        }
-        let epoch = self.native_lifecycle.epoch()?;
-        let dimension = self.dim.key();
+    /// `ServerLevel.getEntity(UUID)` for [`LevelRef::entity_by_uuid`]: the level's UUID index,
+    /// in place or parked, then the same resolution and visibility as any handle of that level.
+    pub(super) fn level_entity_by_uuid(
+        &self,
+        level: LevelRef,
+        uuid: mod_api::EntityUuid,
+    ) -> Option<EntityRef> {
+        self.native_level_world(level)?;
+        let dimension = level.dimension();
         let uuid = sunrise_client::lan::playerdata::uuid_ints(uuid.0);
         let mut after = None;
         loop {
@@ -280,11 +290,13 @@ impl Game<'_> {
                 .table
                 .borrow_mut()
                 .level_uuid_candidate(dimension, uuid, after)?;
-            let entity = EntityRef::new(epoch, id.get());
-            if self.native_entity_target(entity).is_some_and(|target| {
-                self.resident_source_target_visible(dimension, target)
-                    && self.entity_target_accessible(target)
-            }) {
+            let entity = EntityRef::new(level.epoch(), id.get());
+            // The level in place asks that the entity's section is accessible, as `entity` does;
+            // a parked level's sections are not read here.
+            if let Ok((target, _)) = self.resolve_server_entity_in(entity, dimension)
+                && self.resident_source_target_visible(dimension, target)
+                && (dimension != self.dim.key() || self.entity_target_accessible(target))
+            {
                 return Some(entity);
             }
             // A queued departure can overlap a replacement with the same UUID.
@@ -1185,7 +1197,7 @@ impl Game<'_> {
                 if self.native_lifecycle.epoch() == Some(entity.epoch())
                     && let Some((_, mob)) = self.mob_in_other_level(entity.id())
                 {
-                    return mod_api::__private::resolved_entity_type_key(&mob.kind.id);
+                    return mob.kind.type_key;
                 }
                 mod_api::__private::resolved_entity_type_key(self.native_client_tracked(entity)?.0)
             }

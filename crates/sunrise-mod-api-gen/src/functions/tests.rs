@@ -157,6 +157,7 @@ fn the_index_lists_each_function_with_its_text_or_its_refusal() {
             path: "crates/sunrise-client/src/game.rs".into(),
             cfg: Vec::new(),
             sha256: sha256(GAME.as_bytes()),
+            include_cfg: None,
         }]
     );
     assert_eq!(ticks.module, "sunrise_client::game");
