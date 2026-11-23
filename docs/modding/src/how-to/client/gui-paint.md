@@ -95,8 +95,9 @@ For replacing or wrapping a HUD status layer, see [HUD drawing](hud-drawing.md).
   work on this path. A removed GUI sprite is refused, not drawn as a missing texture.
 - `canvas.atlas_sprite` looks up the exact packed atlas name, independently of the GUI lookup.
 - `canvas.blit` draws part of a raw texture (a path under `textures/`, without `.png`, or a live
-  or registered texture id). `GuiBlitRegion { uv, src, tex }` gives the source offset, source size
-  and whole texture size in its pixels. `Textured` blends normally, `Vignette` darkens what is under
+  or registered texture id). `GuiBlitRegion { uv, src, tex }` gives the source offset, signed source
+  extents and texture-axis divisors in pixels. A negative source extent mirrors that axis; a zero
+  divisor is refused. `Textured` blends normally, `Vignette` darkens what is under
   it (`dst * (1 - src)`), `Nausea` is additive and `Crosshair` inverts it.
 
 ## Refusals

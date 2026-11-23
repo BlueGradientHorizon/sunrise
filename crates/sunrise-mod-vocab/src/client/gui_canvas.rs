@@ -25,9 +25,9 @@ pub struct GuiSpriteRegion {
 pub struct GuiBlitRegion {
     /// Source `u, v` offset, which must be finite.
     pub uv: [f32; 2],
-    /// Positive source width and height.
+    /// Signed source extents. A negative extent reverses its UV axis.
     pub src: [i32; 2],
-    /// Positive width and height of the whole texture.
+    /// Nonzero divisors for the two source axes, normally the whole texture's pixel size.
     pub tex: [i32; 2],
 }
 
@@ -57,7 +57,7 @@ pub enum GuiDrawError {
     BadSpriteRegion,
     /// No raw texture is present at the requested id.
     UnknownTexture,
-    /// The source or texture size was not positive on both axes.
+    /// A texture-axis divisor was zero.
     BadBlitRegion,
 }
 
@@ -74,7 +74,7 @@ impl std::fmt::Display for GuiDrawError {
             Self::UnsupportedSpriteBlend => "this blend is not supported for GUI sprites",
             Self::BadSpriteRegion => "GUI sprite size must be positive",
             Self::UnknownTexture => "unknown GUI draw texture",
-            Self::BadBlitRegion => "GUI blit source and texture sizes must be positive",
+            Self::BadBlitRegion => "GUI blit texture-axis divisors must be nonzero",
         })
     }
 }

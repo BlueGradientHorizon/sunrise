@@ -435,7 +435,7 @@ impl GuiCanvas for GameGuiCanvas<'_, '_> {
         if !uv.into_iter().all(f32::is_finite) {
             return Err(GuiDrawError::NotFinite);
         }
-        if src.into_iter().chain(tex).any(|extent| extent <= 0) {
+        if tex.contains(&0) {
             return Err(GuiDrawError::BadBlitRegion);
         }
         let rect = *self
@@ -701,13 +701,6 @@ mod tests {
             ),
             (
                 GuiBlitRegion {
-                    src: [4, -1],
-                    ..REGION
-                },
-                GuiDrawError::BadBlitRegion,
-            ),
-            (
-                GuiBlitRegion {
                     uv: [f32::NAN, 0.0],
                     ..REGION
                 },
@@ -719,6 +712,55 @@ mod tests {
                 error,
             );
         }
+    }
+
+    #[test]
+    fn raw_blit_negative_source_extent_mirrors_the_texture_region() {
+        let mut atlas = HudAtlas::build(&ResourceSource::directory(
+            "/nonexistent/sunrise-test-assets".into(),
+        ))
+        .unwrap();
+        atlas.live.insert(
+            "test:mirror".into(),
+            Rect {
+                u0: 0.25,
+                v0: 0.125,
+                u1: 0.75,
+                v1: 0.625,
+                w: 8,
+                h: 8,
+            },
+        );
+        let mut batch = HudBatch::scratch([320, 240]);
+        GameGuiCanvas::draw(&mut batch, &atlas, None, None, &mut |canvas| {
+            canvas.blit(
+                "test:mirror",
+                [10.0, 20.0, 4.0, 4.0],
+                GuiBlitRegion {
+                    uv: [4.0, 0.0],
+                    src: [-4, 4],
+                    tex: [8, 8],
+                },
+                u32::MAX,
+                Blend::Textured,
+            )
+        })
+        .unwrap();
+        assert_eq!(
+            batch
+                .vertices
+                .iter()
+                .map(|v| (v.pos, v.uv))
+                .collect::<Vec<_>>(),
+            [
+                ([10.0, 20.0], [0.50, 0.125]),
+                ([14.0, 20.0], [0.25, 0.125]),
+                ([14.0, 24.0], [0.25, 0.375]),
+                ([10.0, 20.0], [0.50, 0.125]),
+                ([14.0, 24.0], [0.25, 0.375]),
+                ([10.0, 24.0], [0.50, 0.375]),
+            ]
+        );
     }
 
     #[test]
