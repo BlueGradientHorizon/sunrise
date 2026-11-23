@@ -182,6 +182,36 @@ fn a_pack_biome_is_sent_with_its_data_and_read_back_by_a_client() {
 }
 
 #[test]
+fn a_data_less_biome_the_game_lacks_keeps_its_own_key_and_renders_as_plains() {
+    let root =
+        std::env::temp_dir().join(format!("sunrise-unresolved-biomes-{}", std::process::id()));
+    let _scratch = Scratch(root.clone());
+    let base = write_base(&root);
+    let registry = vec![
+        ("minecraft:plains".to_owned(), None),
+        ("minecraft:river".to_owned(), None),
+        ("gone_mod:highland".to_owned(), None),
+    ];
+    let client = client_biomes(&base, &registry).unwrap().unwrap();
+    let id = client.id("gone_mod:highland");
+    // Not plains' slot: the stored biome reads back as the server's key.
+    assert_ne!(id, client.id("minecraft:plains"));
+    assert_eq!(client.name(id), "gone_mod:highland");
+    assert_eq!(
+        client.registered_keys()[usize::from(id)].to_string(),
+        "gone_mod:highland"
+    );
+    assert!(client.is_unresolved("gone_mod:highland"));
+    assert!(!client.is_unresolved("minecraft:river"));
+    // It renders as plains.
+    let plains = client.get(client.id("minecraft:plains"));
+    assert_eq!(client.get(id).grass, plains.grass);
+    assert_eq!(client.get(id).temperature, plains.temperature);
+    // Only names the game defines: no table at all.
+    assert!(client_biomes(&base, &registry[..2]).unwrap().is_none());
+}
+
+#[test]
 fn wire_load_without_a_world_table_uses_only_prepared_vanilla_biomes() {
     use sunrise_world::loot::PackOverlay;
     let root =

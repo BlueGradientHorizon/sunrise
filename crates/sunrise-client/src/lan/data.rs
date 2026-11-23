@@ -95,13 +95,23 @@ pub fn client_biomes(
             (!same).then(|| (name.as_str(), crate::scoreboard::tag_to_json(data)))
         })
         .collect();
-    if files.is_empty() {
+    // A name the registry lists with no data that this game does not define: it keeps a slot
+    // under its own key, so a stored biome of it is never read back as plains.
+    let unresolved: Vec<&str> = registry
+        .iter()
+        .filter(|(name, data)| data.is_none() && !known.contains(name))
+        .map(|(name, _)| name.as_str())
+        .collect();
+    if files.is_empty() && unresolved.is_empty() {
         return Ok(None);
     }
-    let table = known.with_packs(files.iter().map(|(n, v)| (*n, v)))?;
+    let table = known
+        .with_packs(files.iter().map(|(n, v)| (*n, v)))?
+        .with_unresolved(unresolved.iter().copied())?;
     log::info!(
-        "Sunrise: the server has {} biomes the game lacks or changes",
-        files.len()
+        "Sunrise: the server has {} biomes the game lacks or changes, {} without data",
+        files.len(),
+        unresolved.len()
     );
     Ok(Some(table))
 }
