@@ -13,6 +13,18 @@ pub trait PlayerSessionBackend {
     /// borrows the host; copy it only to keep it beyond that borrow.
     fn player_address(&self, player: PlayerRef) -> Option<&str>;
     /// Side: server.
+    /// The client-supplied host and port from this connection's login handshake,
+    /// distinct from the peer IP. Only the host text before the first NUL is kept.
+    /// A transfer uses the new connection's handshake. Displaced online players
+    /// keep this value. It borrows the host; clone it if it must outlive that
+    /// borrow. This is not a verified destination or necessarily the name the
+    /// player originally entered.
+    ///
+    /// `None` on a client, for a stale or unavailable player, for a fake player
+    /// or other player without a network connection (including a local memory
+    /// connection), or if the host prefix is empty.
+    fn player_virtual_host(&self, player: PlayerRef) -> Option<&VirtualHost>;
+    /// Side: server.
     /// The stable name of a connected or acting player, borrowed from the host.
     /// None for a stale or unavailable player; displaced online players retain their identity.
     fn player_name(&self, player: PlayerRef) -> Option<&str>;

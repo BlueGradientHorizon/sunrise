@@ -17,7 +17,7 @@ use super::{
     io_pool::{self, Session as _},
 };
 use crate::raw_payloads::{Side, Transport};
-use mod_api::{PayloadFrameStage, PayloadId, PayloadSendError};
+use mod_api::{PayloadFrameStage, PayloadId, PayloadSendError, VirtualHost};
 use std::{
     cell::Cell,
     net::TcpStream,
@@ -278,6 +278,7 @@ impl Undrained {
 #[derive(Clone)]
 pub struct PlayerSender {
     payload_transport: Arc<Transport>,
+    virtual_host: Option<Arc<VirtualHost>>,
     /// What the player's network thread has handed the hub and the hub hasn't taken yet.
     pub undrained: Arc<Undrained>,
     /// The bytes of the bodies sent and not framed yet.
@@ -350,6 +351,10 @@ impl PlayerSender {
     pub fn payload_transport(&self) -> &Arc<Transport> {
         &self.payload_transport
     }
+    /// The client-supplied destination from this connection's login handshake.
+    pub fn virtual_host(&self) -> Option<&VirtualHost> {
+        self.virtual_host.as_deref()
+    }
     /// Frozen physical framing, used to reject before copying a large raw body.
     pub(crate) fn payload_framing(&self) -> sunrise_protocol::connection::Framing {
         self.framing
@@ -368,6 +373,7 @@ impl PlayerSender {
             to: To::Channel(tx),
             wire: None,
             payload_transport: Transport::empty(),
+            virtual_host: None,
             datapack_offer: None,
             announced: Arc::default(),
             viewed_levels: Default::default(),
@@ -395,6 +401,7 @@ impl PlayerSender {
         let inspect = outbox.clone();
         let sender = Self {
             payload_transport: transport,
+            virtual_host: None,
             undrained: Arc::default(),
             pending,
             cap: io_pool::MAX_PENDING,
@@ -432,6 +439,7 @@ impl PlayerSender {
             to: To::Disabled,
             wire: None,
             payload_transport: Transport::empty(),
+            virtual_host: None,
             datapack_offer: None,
             announced: Arc::default(),
             viewed_levels: Default::default(),
@@ -944,10 +952,24 @@ fn serve_connection(
                 );
                 return Ok(());
             }
-            serve_login(c, address, &shared, counted)
+            let virtual_host = login_virtual_host(c.is_memory(), intention);
+            serve_login(c, address, &shared, counted, virtual_host)
         }
         other => Err(format!("unknown intent {other}")),
     }
+}
+
+/// Keep the destination of an accepted login or transfer, without proxy or loader data.
+fn login_virtual_host(is_memory: bool, intention: handshake::Intention) -> Option<VirtualHost> {
+    if is_memory {
+        return None;
+    }
+    let handshake::Intention { host, port, .. } = intention;
+    let host = match host.split_once('\0') {
+        Some((prefix, _)) => prefix.to_owned(),
+        None => host,
+    };
+    (!host.is_empty()).then_some(VirtualHost { host, port })
 }
 
 fn serve_status(c: &mut Connection, shared: &Shared) -> Result<(), String> {
@@ -1120,6 +1142,7 @@ fn serve_login(
     address: std::net::SocketAddr,
     shared: &Arc<Shared>,
     counted: Option<super::Counted>,
+    virtual_host: Option<VirtualHost>,
 ) -> Result<(), String> {
     let e = |e: sunrise_protocol::Error| e.to_string();
     let (id, payload) = c.recv().map_err(e)?;
@@ -1219,7 +1242,15 @@ fn serve_login(
     let result = login_and_configure(&mut c, shared, uuid, &name, &user, properties);
     match result {
         Ok(Some(parts)) => {
-            play(c, shared, parts, address, counted, expected.is_some());
+            play(
+                c,
+                shared,
+                parts,
+                address,
+                counted,
+                expected.is_some(),
+                virtual_host,
+            );
             Ok(())
         }
         Ok(None) => {
@@ -2053,6 +2084,7 @@ fn play(
     address: std::net::SocketAddr,
     counted: Option<super::Counted>,
     expected: bool,
+    virtual_host: Option<VirtualHost>,
 ) {
     let Some(conn) = shared.next_id() else {
         shared.release(parts.uuid);
@@ -2091,6 +2123,7 @@ fn play(
         to: To::Pool(outbox.clone(), watch.clone()),
         wire: Some(c.reader.counters.clone()),
         payload_transport: parts.payload_transport.clone(),
+        virtual_host: virtual_host.map(Arc::new),
         datapack_offer: parts.datapack_offer.map(Into::into),
         announced: parts.channels.announced.clone().unwrap_or_default(),
         viewed_levels: parts.channels.viewed_levels.answer(),
@@ -2542,6 +2575,50 @@ impl KeepAliveWatch {
 #[cfg(test)]
 mod tests {
     include!("profession_join_tests.rs");
+
+    #[test]
+    fn login_virtual_host_uses_the_packet_destination() {
+        for (intent, is_memory, host, port, expected) in [
+            (
+                handshake::LOGIN,
+                false,
+                "Play.Example.test.\0proxy\0marker",
+                25572,
+                Some(("Play.Example.test.", 25572)),
+            ),
+            (
+                handshake::TRANSFER,
+                false,
+                "next.example.test",
+                65535,
+                Some(("next.example.test", 65535)),
+            ),
+            (handshake::LOGIN, false, "", 25565, None),
+            (handshake::LOGIN, false, "\0proxy", 25565, None),
+            (handshake::LOGIN, true, "localhost", 25565, None),
+        ] {
+            let packet = handshake::Serverbound::Intention(handshake::Intention {
+                protocol: PROTOCOL_VERSION,
+                host: host.to_owned(),
+                port,
+                intent,
+            })
+            .encode();
+            let handshake::Serverbound::Intention(intention) =
+                handshake::Serverbound::decode(i32::from(packet[0]), &packet[1..]).unwrap()
+            else {
+                panic!("expected an intention packet");
+            };
+            let destination = login_virtual_host(is_memory, intention);
+            assert_eq!(
+                destination
+                    .as_ref()
+                    .map(|value| (value.host.as_str(), value.port)),
+                expected,
+                "intent {intent}, memory {is_memory}, host {host:?}, port {port}",
+            );
+        }
+    }
 
     /// Bodies shared between players reach each of them as the same bytes, in the order
     /// they were sent among the player's own.
@@ -3838,6 +3915,7 @@ mod outgoing_budget_tests {
                 .unwrap();
         PlayerSender {
             payload_transport: Transport::empty(),
+            virtual_host: None,
             undrained: Arc::default(),
             pending,
             cap: io_pool::MAX_PENDING,

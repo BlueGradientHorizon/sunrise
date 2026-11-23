@@ -112,6 +112,17 @@ pub struct ChannelRef {
     pub id: u64,
 }
 
+/// The client-supplied login destination returned by [`PlayerRef::virtual_host`].
+/// This is neither the peer address nor a verified server name.
+#[derive(Clone, Debug, PartialEq, Eq, sunrise_mod_api_macros::Wire)]
+// exhaustive: the destination consists of exactly a host and a port.
+pub struct VirtualHost {
+    /// The host string from the handshake, before its first NUL character.
+    pub host: String,
+    /// The unsigned port from the same handshake.
+    pub port: u16,
+}
+
 /// A player on the server, as a server hook sees them.
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
