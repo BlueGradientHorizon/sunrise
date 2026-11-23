@@ -6,10 +6,12 @@ folder.
 
 | Command | What it does |
 |---|---|
-| `new <path> --template native [--sunrise <build>]` | Makes a code mod pinned to the current Nightly's build, or the one named, and fetches its SDK. Without `--template` it makes a content mod, which has no SDK. Both templates scaffold [`page.toml` and `page/`](../../how-to/publish.md#your-mods-page). |
+| `new <path> --template native [--sunrise <build>]` | Makes a code mod pinned to the current Nightly's build, or the one named, and fetches its SDK. Without `--template` it makes a content mod, which has no SDK. Both templates scaffold [`page.toml` and `page/`](../../how-to/publish.md#your-mods-page) and the [release workflow caller](#release). |
 | `build [--with <path>]…` | Compiles a native mod and its [declared libraries](../../concepts/dependencies.md) against the pinned SDK, then packs only the project into a `.smod` with its [`uses.json`](04-fit.md#usesjson). For content-only mods it just packs the project. If the project has `page.toml`, writes the page and its named images separately to `target/sunrise-mod/<id>.page.tar`. See [`build` for a native mod](#build-for-a-native-mod). |
 | `build --binaries <dir> --sunrise-release <tag> --releases <file> [--server]` | Builds and packs a standalone API native mod pinned to that stable SDK. Writes the unsigned archive for this computer's SDK host; `--server` selects the dedicated-server host. |
 | `build --describe-binaries <dir> --sunrise-release <tag> --releases <file> --sdk-data <dir>` | Reads the SDK host list, checks each signed archive's structure and identity, and writes the unsigned descriptor. Does not compile or sign. |
+| [`release [<version>\|patch\|minor\|major] [--check]`](#release) | Checks a registered mod, commits the version bump, and pushes the branch and tag. `--check` previews without changing the checkout. |
+| [`release setup`](#release) | Updates only the shared workflow caller and removes old release files. No registration or commit required. |
 | [`release plan`](#release-plan) | Writes a native release or rebuild plan and fetches the SDK metadata it needs, without building or publishing. |
 | [`release scripts`](#release-scripts) | Writes the workflow scripts embedded in this tool. |
 | [`release prepare-rebuild`](#release-prepare-rebuild) | Checks the exact reviewed package and prepares a disposable project or manifest. |
@@ -59,6 +61,22 @@ live in the terminal. The full client log is normally in `target/sunrise-mod/run
 For a native mod, `run` verifies and stages the required originals after building, before replacing the development
 app or starting the game. See [Java jars as external assets](../../how-to/content-mods.md#java-jars-as-external-assets)
 for the default store, `--jars <dir>` and the development home requirements.
+
+## `release`
+
+Run from a registered mod's package folder with a clean Git working tree and `origin` pointing at GitHub.
+The default version bump is `patch`. The version must increase and its tag must not already exist, either
+locally or on `origin`. A root package gets `v<version>` and `.github/workflows/sunrise-release.yml`; a
+subfolder package gets `<id>/v<version>` and `.github/workflows/sunrise-release-<id>.yml`. A native release
+updates the mod manifest, Cargo manifest, and the mod's own entry in its committed `Cargo.lock` without
+changing its pinned dependencies.
+
+`release --check` checks the proposed version and tag in a separate checkout. `release setup` reads the
+registry's current shared workflow reference and refreshes the caller without requiring registration. It
+removes old copied Sunrise release files, but leaves the manifest, commit history and tags alone; it needs a
+clean tree, so each file it replaces or removes can be restored from Git. Without `setup`, a release makes the
+same workflow changes in its own commit. Follow
+the [releasing guide](../../how-to/publish.md#releasing) to register and publish.
 
 ## `release plan`
 

@@ -10,6 +10,8 @@
 //! - `internals add <path>… [--kind <kind>]`: declare internals from the prebuilt catalog.
 //! - `build [--update-lock]`: the `.smod` in `target/sunrise-mod/`, with the mod's `assets/`
 //!   and `data/`; a native mod is compiled first (`dev.rs`).
+//! - `release [<version>|patch|minor|major] [--check]`, `release setup`: prepare or publish a tagged
+//!   release using the registry's shared workflow (`author_release.rs`).
 //! - `publish`: build, then write the registry entry, the staged file and the pull request text (`publish.rs`).
 //! - `keygen`, `sign`: make an author-held Minisign key pair or sign a release asset (`signing.rs`).
 //! - `run [--game <sunrise-client>] [--resources <folder>] [--jars <dir>] [-- <game args>]`: build, then play with
@@ -30,6 +32,7 @@
 //! - `native-discover < plan.json`, `native-lock < plan.json`: a native mod's internals or its pinned game's build data, and its registry lock (the same page).
 //! - `native-layout < plan.json`: a local prebuilt game checked and laid out as an SDK's slices (the same page).
 use sunrise_mod_package::{Content, Manifest, Package, manifest::MANIFEST};
+mod author_release;
 mod bounded;
 mod check;
 mod dev;
@@ -99,7 +102,12 @@ fn main() -> ExitCode {
         }),
         Some("build") => build_command(entry, &args[1..]).map(drop),
         Some("publish") => publish::run(entry, &args[1..]),
-        Some("release") => release::run(Path::new("."), &args[1..]),
+        Some("release") => match args.get(1).map(String::as_str) {
+            Some("plan" | "scripts" | "prepare-rebuild") => {
+                release::run(Path::new("."), &args[1..])
+            }
+            _ => author_release::run(entry, Path::new("."), &args[1..]),
+        },
         Some("keygen") => signing::keygen(&args[1..]),
         Some("sign") => signing::sign(&args[1..]),
         Some("run") => run(&args[1..]).map_err(|e| e.to_string()),
@@ -300,6 +308,7 @@ fn build_command(
                 archive
                     .as_ref()
                     .map(|(_, tag, _, version)| (*tag, version.as_str())),
+                archive.is_some(),
             )
         })
         .transpose()?;
@@ -469,6 +478,7 @@ fn new(args: &[String], fetch: FetchSdk) -> Result<Option<PathBuf>, String> {
     let manifest =
         Manifest::parse(&std::fs::read_to_string(dir.join(MANIFEST)).map_err(|e| e.to_string())?)?;
     Content::read(dir, &manifest)?;
+    author_release::scaffold(dir)?;
     println!(
         "Created {} (mod id {id}). Next: cd {path} && cargo sunrise-mod build, then copy \
          target/sunrise-mod/{id}.smod into your game folder's sunrise-mods/ \
@@ -579,22 +589,6 @@ fn new_native(
         (MANIFEST, manifest.as_str()),
         (".gitignore", include_str!("../template/gitignore")),
         ("README.md", include_str!("../template/native/README.md")),
-        (
-            ".github/workflows/release.yml",
-            include_str!("../template/native/release.yml"),
-        ),
-        (
-            ".github/workflows/rebuild.yml",
-            include_str!("../template/native/rebuild.yml"),
-        ),
-        (
-            ".github/workflows/sunrise-release-jobs.yml",
-            include_str!("../template/native/sunrise-release-jobs.yml"),
-        ),
-        (
-            ".github/actions/sunrise-release-tool/action.yml",
-            include_str!("../template/native/release-tool.yml"),
-        ),
     ];
     for (file, text) in files.into_iter().chain(PAGE_TEMPLATE) {
         let to = dir.join(file);
@@ -605,6 +599,7 @@ fn new_native(
     for folder in ["assets", "data"] {
         std::fs::create_dir_all(dir.join(folder)).map_err(|e| e.to_string())?;
     }
+    author_release::scaffold(dir)?;
     println!(
         "Created {} (native mod id {id}). Your editor resolves sunrise-mod-api once the SDK is in .sunrise/sdk/: \
          `cargo sunrise-mod check` fetches it in a fresh clone. Next: cd {} && cargo sunrise-mod build",
@@ -633,7 +628,7 @@ fn build(
         let scanned = uses_table::scan(entry, root, &package.manifest, &surface)?;
         match scanned {
             uses_table::Scanned::Uses(uses) => Some(
-                uses_table::table(&uses, root, &package.manifest, &sdk)?
+                uses_table::table(&uses, None, &package.manifest, &sdk)?
                     .to_json()
                     .into_bytes(),
             ),
@@ -1005,6 +1000,13 @@ mod tests {
             let project = workspace.path().join(template);
             new(&code_args(&project, template), &offline).unwrap();
             assert!(project.join("page/.gitkeep").is_file());
+            let caller =
+                std::fs::read_to_string(project.join(".github/workflows/sunrise-release.yml"))
+                    .unwrap();
+            assert!(caller.contains("tags: ['v*']"));
+            assert!(caller.contains(
+                "uses: sunrise-org/sunrise-mods/.github/workflows/release.yml@release-v1"
+            ));
             let manifest = Package::read(&project).unwrap().manifest;
             let (page, _) = Page::read(&project, &manifest).unwrap().unwrap();
             assert_eq!(
@@ -1152,7 +1154,13 @@ mod tests {
         ];
         new(&new_args, &offline).unwrap();
         assert!(!path.join("Cargo.toml").exists());
-        assert!(!path.join(".github").exists());
+        // The only workflow is the release caller.
+        assert_eq!(
+            std::fs::read_dir(path.join(".github/workflows"))
+                .unwrap()
+                .count(),
+            1
+        );
         let smod = build_in(&path).unwrap();
         assert_eq!(smod, path.join("target/sunrise-mod/gems.smod"));
         let package = Package::read(&smod).unwrap();
@@ -1320,22 +1328,15 @@ mod tests {
             commit.into(),
         ];
         assert_eq!(new(&args, &offline).unwrap(), Some(path.clone()));
-        for file in [
-            "README.md",
-            ".github/workflows/release.yml",
-            ".github/workflows/rebuild.yml",
-            ".github/workflows/sunrise-release-jobs.yml",
-            ".github/actions/sunrise-release-tool/action.yml",
-        ] {
-            assert!(path.join(file).is_file(), "template missing {file}");
-        }
-        let github_files: Vec<_> = std::fs::read_dir(path.join(".github"))
-            .unwrap()
-            .map(|entry| entry.unwrap().file_name())
-            .collect();
-        assert_eq!(github_files.len(), 2);
-        assert!(github_files.contains(&"actions".into()));
-        assert!(github_files.contains(&"workflows".into()));
+        assert!(path.join("README.md").is_file());
+        assert!(path.join(".github/workflows/sunrise-release.yml").is_file());
+        assert_eq!(
+            std::fs::read_dir(path.join(".github/workflows"))
+                .unwrap()
+                .count(),
+            1
+        );
+        assert!(!path.join(".github/actions").exists());
         // The template writes none of the fields the tool derives.
         let text = std::fs::read_to_string(path.join(MANIFEST)).unwrap();
         for key in ["api", "capabilities", "mixins"] {

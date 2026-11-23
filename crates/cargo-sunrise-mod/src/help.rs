@@ -14,7 +14,7 @@ const COMMANDS: &[Command] = &[
         name: "new",
         everyday: true,
         usage: "new <path> [--name \"Name\"] [--template content|native [--sunrise <build>]]",
-        summary: "Makes a mod project in <path>; a native one is pinned to the current Nightly's SDK unless --sunrise names another build.",
+        summary: "Makes a mod project in <path> with a page template and a release workflow; a native one is pinned to the current Nightly's SDK unless --sunrise names another build.",
     },
     Command {
         name: "build",
@@ -54,9 +54,9 @@ const COMMANDS: &[Command] = &[
     },
     Command {
         name: "release",
-        everyday: false,
-        usage: crate::release::USAGE,
-        summary: "`release plan` selects a tagged native release or a rebuild and stages verified SDK metadata. `release prepare-rebuild` verifies the original reviewed source and writes a scratch manifest or project without running Cargo. `release scripts` writes the shipped workflow scripts.",
+        everyday: true,
+        usage: crate::author_release::USAGE,
+        summary: "Checks a registered mod, commits the version bump (patch by default), and pushes the release tag and branch to origin. --check previews without changing your checkout. release setup only refreshes the shared workflow caller and removes old release files.",
     },
     Command {
         name: "keygen",
