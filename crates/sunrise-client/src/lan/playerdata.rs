@@ -1190,8 +1190,10 @@ mod tests {
         // the owner loads holds the gold, as its own file does.
         let owner = sunrise_protocol::crypto::offline_uuid("Player46606");
         let dir = world("leave");
-        let mut level = Level::default();
-        level.player_uuid = Some(uuid_ints(owner));
+        let mut level = Level {
+            player_uuid: Some(uuid_ints(owner)),
+            ..Level::default()
+        };
         store(&holding(owner, "minecraft:diamond", 5), &mut level, None);
         level.write(&dir, &Default::default()).unwrap();
         save(
