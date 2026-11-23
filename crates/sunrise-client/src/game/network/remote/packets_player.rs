@@ -707,10 +707,20 @@ impl Game<'_> {
             });
             return Ok(());
         }
-        // ChatListener.handlePlayerChatMessage: capture Only Show Secure Chat
-        // and the post-validation receipt time; decorate and evaluate trust
-        // when the queue accepts the message.
+        // ChatListener.handlePlayerChatMessage: Only Show Secure Chat shows the
+        // signed content, never the server's replacement. The display is decorated
+        // here, at receipt, with the receipt time; trust is evaluated and the line
+        // is shown when the queue accepts the message (`showMessageToPlayer`).
         let only_show_secure = self.settings.file.bool("onlyShowSecureChat");
+        let displayed = if only_show_secure {
+            serde_json::Value::from(p.content.as_str())
+        } else {
+            p.unsigned_content.as_ref().map_or_else(
+                || serde_json::Value::from(p.content.as_str()),
+                sunrise_client::scoreboard::tag_to_json,
+            )
+        };
+        let line = self.decorate_chat(&p.chat_type, &displayed, Decoration::Chat);
         let signed = signature.is_some();
         let listened = mod_api::__private::listened(mod_api::HookId::ClientChatReceived);
         let info = listened.then(|| Box::new(chat_received::player_chat_info(&p, signed)));
@@ -726,6 +736,7 @@ impl Game<'_> {
                 timestamp: p.timestamp,
                 received_ms,
                 only_show_secure,
+                line,
                 signed_content: p.content,
                 unsigned_content: p.unsigned_content,
                 filter: p.filter,

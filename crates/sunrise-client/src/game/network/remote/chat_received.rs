@@ -21,6 +21,9 @@ pub(super) enum QueuedChatKind {
         timestamp: i64,
         received_ms: i64,
         only_show_secure: bool,
+        /// The display, decorated at receipt as `handlePlayerChatMessage` does
+        /// (`boundChatType.decorate(displayedMessage.decoratedContent())`).
+        line: Text,
         /// `FilterMask.applyWithFormatting` and `ChatTrustLevel.isModified` use the signed text.
         signed_content: String,
         unsigned_content: Option<Tag>,

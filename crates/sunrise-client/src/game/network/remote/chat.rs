@@ -227,24 +227,20 @@ impl Game<'_> {
                 timestamp,
                 received_ms,
                 only_show_secure,
+                line,
                 signed_content,
                 unsigned_content,
                 filter,
                 info,
             } => {
-                // Only Show Secure Chat drops unsigned replacement text; narration
-                // uses `message.decoratedContent()`. Evaluate trust and render on
-                // acceptance so language changes and expiry follow vanilla 26.3.
+                // The display was decorated at receipt; narration uses
+                // `message.decoratedContent()`, decorated here. Trust is evaluated
+                // with the receipt time when the queue accepts the message.
+                let mut line = line;
                 let decorated = unsigned_content.as_ref().map_or_else(
                     || serde_json::Value::from(signed_content.as_str()),
                     sunrise_client::scoreboard::tag_to_json,
                 );
-                let display = if only_show_secure {
-                    serde_json::Value::from(signed_content.as_str())
-                } else {
-                    decorated.clone()
-                };
-                let mut line = self.decorate_chat(&chat_type, &display, Decoration::Chat);
                 let trust = self.chat_trust(
                     sender,
                     signed,
