@@ -491,3 +491,54 @@ fn menu_links_keep_past_sixty_four_and_preserve_order_without_duplicates_or_self
         });
     });
 }
+
+/// A writable `menu_links` listener that replaces the linked menu while it answers: the old
+/// block's containers are not installed as links on the replacement.
+#[test]
+#[ignore = "daily"]
+fn menu_links_answers_do_not_reach_a_menu_the_listener_replaced() {
+    struct ReplacingLender(std::sync::atomic::AtomicBool);
+    #[mod_api::__subscriptions]
+    impl mod_api::Hooks for ReplacingLender {
+        fn menu_links(
+            &self,
+            host: &mut dyn mod_api::ServerHost,
+            event: &mut mod_api::MenuLinksEvent<'_>,
+        ) {
+            event.links.push([32, 200, 4]);
+            if !self.0.swap(true, Ordering::Relaxed) {
+                host.player(event.player)
+                    .unwrap()
+                    .open_chest_menu(
+                        host,
+                        1,
+                        mod_api::Text::literal("Replacement"),
+                        Vec::new(),
+                        mod_api::MenuReplace::InPlace,
+                    )
+                    .unwrap();
+            }
+        }
+    }
+    crate::game::native_entity_refs::tests::with_game(|game| {
+        setup(game);
+        let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
+            "replacing-lender",
+            Box::new(ReplacingLender(Default::default())),
+        )]
+        .into();
+        mod_platform::testing::with_mods(mods, || {
+            game.lan_menu_links_tick();
+            let guest = &game.lan.as_ref().unwrap().hub.guests[0];
+            assert_ne!(
+                guest.menu.as_ref().map(|menu| menu.window),
+                Some(WINDOW),
+                "the listener replaced the menu"
+            );
+            assert!(
+                guest.menu.as_ref().is_none_or(|menu| menu.links.is_empty()),
+                "the old block's links did not reach the replacement"
+            );
+        });
+    });
+}
