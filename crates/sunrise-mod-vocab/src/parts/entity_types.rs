@@ -126,7 +126,8 @@ pub enum GeneralEntityRegistrationError {
     /// Only both-side packages (and both-side served namespace suppliers) may declare entity
     /// types, which the network names.
     WrongSide,
-    /// The type's id is malformed or empty.
+    /// The type's id is malformed, empty, or too long for the pairing payload (32767 UTF-16
+    /// units) or for a saved NBT string (65535 bytes of modified UTF-8).
     InvalidId,
     /// Another declaration or built-in entity type already covers the key.
     Duplicate,
