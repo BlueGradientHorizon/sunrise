@@ -41,11 +41,11 @@ impl SectionSearch {
     }
 
     /// Only occupied keys, in absolute X and then packed Z/Y order.
-    pub fn sections<'a, T>(
+    pub fn sections<T>(
         self,
-        sections: &'a BTreeMap<SectionKey, T>,
+        sections: &BTreeMap<SectionKey, T>,
         after: Option<SectionKey>,
-    ) -> impl Iterator<Item = (&'a SectionKey, &'a T)> {
+    ) -> impl Iterator<Item = (&SectionKey, &T)> {
         let lower = after.map_or(Included(SectionKey(self.min.x, i64::MIN)), Excluded);
         let upper = SectionKey(self.max.x, i64::MAX);
         sections
