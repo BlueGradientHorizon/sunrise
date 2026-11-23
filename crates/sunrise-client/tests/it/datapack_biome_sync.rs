@@ -145,7 +145,7 @@ fn a_server_replacement_of_a_known_biome_keeps_its_id_and_changes_its_data() {
     let _scratch = Scratch(root.clone());
     let base = write_base(&root);
     let replaced: Value = serde_json::from_str(
-        r##"{"effects":{"water_color":"#112233"},"attributes":{"minecraft:visual/ambient_particles":{"argument":[{"particle":{"type":"minecraft:ash"},"probability":0.25}]}}}"##,
+        r##"{"effects":{"water_color":"#112233"},"attributes":{"minecraft:visual/ambient_particles":{"modifier":"override","argument":[{"particle":{"type":"minecraft:ash"},"probability":0.25}]}}}"##,
     )
     .unwrap();
     let received = vec![

@@ -56,7 +56,7 @@ fn load(root: &std::path::Path) -> Biomes {
 const BUNDLE: &str = r##"{
     "minecraft:plains": "{}",
     "minecraft:river": "{}",
-    "zinc:foo": "{\"effects\":{\"grass_color\":\"#445566\"},\"attributes\":{\"minecraft:visual/ambient_particles\":{\"argument\":[{\"particle\":{\"type\":\"minecraft:ash\"},\"probability\":0.25}]}}}",
+    "zinc:foo": "{\"effects\":{\"grass_color\":\"#445566\"},\"attributes\":{\"minecraft:visual/ambient_particles\":{\"modifier\":\"override\",\"argument\":[{\"particle\":{\"type\":\"minecraft:ash\"},\"probability\":0.25}]}}}",
     "alpha:zed": "{\"effects\":{\"grass_color\":\"#778899\"}}"
 }"##;
 
