@@ -1331,7 +1331,6 @@ impl<'g> Game<'g> {
                         .after
                         .extract_if(.., |after| after.level_owned())
                         .collect(),
-                    menu_click_active: level.menu_click_active,
                     ..Level::default()
                 };
                 level.save_chunks.retain(|&(dim, chunk)| {
@@ -1423,9 +1422,6 @@ impl<'g> Game<'g> {
                 }
                 for (generation, kept) in level.menu_clicks {
                     outer.menu_clicks.entry(generation).or_insert(kept);
-                }
-                if outer.menu_click_active.is_none() {
-                    outer.menu_click_active = level.menu_click_active;
                 }
                 for (generation, kept) in level.native_menu_slots {
                     outer.native_menu_slots.entry(generation).or_insert(kept);
@@ -2564,6 +2560,39 @@ impl<'g> Game<'g> {
         }
     }
 
+    /// What the mod block entity at `pos` held before a committed transaction that kept
+    /// `block_entities` and `slots`: its kept entity, or the live items with the kept slots put
+    /// back. `None` when the transaction kept nothing there.
+    fn committed_block_items_before(
+        &self,
+        block_entities: &HashMap<Pos, Kept>,
+        slots: &HashMap<(Pos, usize), KeptSlot>,
+        pos: Pos,
+    ) -> Option<Vec<Option<ItemStack>>> {
+        #[cfg(test)]
+        super::slot_changes::probe::snapshot();
+        if let Some(kept) = block_entities.get(&pos) {
+            return match kept.entity.as_ref() {
+                Some(BlockEntity::Mod(entity)) => Some(entity.items.clone()),
+                _ => None,
+            };
+        }
+        let Some(BlockEntity::Mod(entity)) = self.world.block_entities.get(&pos) else {
+            return None;
+        };
+        let mut before = entity.items.clone();
+        let mut patched = false;
+        for (&(slot_pos, slot), kept) in slots {
+            if slot_pos == pos {
+                if before.len() <= slot {
+                    before.resize(slot + 1, None);
+                }
+                before[slot] = kept.stack.clone();
+                patched = true;
+            }
+        }
+        patched.then_some(before)
+    }
     fn root_commit(&mut self, mut level: Level) {
         // Storage is final. Publish save marks before any callback can unwind or start a save.
         for (dim, chunk) in level.save_chunks {
@@ -2793,52 +2822,34 @@ impl<'g> Game<'g> {
                 self.guest_craft_result(*conn);
             }
         }
-        // Any open mod menu whose inputs changed through a transactional host write (not already
-        // reconciled inside a click) receives one deduplicated `menu_slot_changed` notice here.
+        // `menu_slot_changed` for the open mod menus whose storage this transaction changed: one
+        // batch per menu, owned menus by ascending generation, then block-backed menus by
+        // ascending position. A touched block costs one lookup in the open-menu index unless a
+        // menu is open on it; only then is anything collected or copied.
         if mod_api::__private::has_part_hook(mod_api::HookId::MenuSlotChanged) {
-            let mut owned_generations: Vec<_> = level.native_menu_slots.into_iter().collect();
+            let owned = std::mem::take(&mut level.native_menu_slots);
+            let mut owned_generations: Vec<_> = owned.into_iter().collect();
             owned_generations.sort_by_key(|(generation, _)| *generation);
             for (generation, before) in owned_generations {
-                self.notify_owned_menu_slot_changed(generation, &before, level.menu_click_active);
+                self.notify_owned_menu_slot_changed(generation, &before);
             }
-            let mut block_positions: Vec<_> = level
-                .block_entities
-                .keys()
-                .copied()
-                .chain(level.slots.keys().map(|&(pos, _)| pos))
-                .collect();
-            block_positions.sort_unstable();
-            block_positions.dedup();
-            for pos in block_positions {
-                let fallback_before = match level
-                    .block_entities
-                    .get(&pos)
-                    .and_then(|kept| kept.entity.as_ref())
-                {
-                    Some(BlockEntity::Mod(entity)) => Some(entity.items.clone()),
-                    _ => match self.world.block_entities.get(&pos) {
-                        Some(BlockEntity::Mod(entity)) => {
-                            let mut before = entity.items.clone();
-                            let mut patched = false;
-                            for (&(slot_pos, slot), kept) in &level.slots {
-                                if slot_pos == pos {
-                                    if before.len() <= slot {
-                                        before.resize(slot + 1, None);
-                                    }
-                                    before[slot] = kept.stack.clone();
-                                    patched = true;
-                                }
-                            }
-                            patched.then_some(before)
-                        }
-                        _ => None,
-                    },
-                };
-                self.notify_block_menu_slot_changed(
-                    pos,
-                    fallback_before.as_deref(),
-                    level.menu_click_active,
-                );
+            let mut viewed = Vec::new();
+            if let Some(host) = self.lan.as_ref() {
+                let touched = level.block_entities.keys().copied();
+                for pos in touched.chain(level.slots.keys().map(|&(pos, _)| pos)) {
+                    if super::slot_changes::block_menu_viewed(&host.hub.guests, pos)
+                        && !viewed.contains(&pos)
+                    {
+                        viewed.push(pos);
+                    }
+                }
+            }
+            viewed.sort_unstable();
+            for pos in viewed {
+                let (kept, slots) = (&level.block_entities, &level.slots);
+                self.notify_block_menu_slot_changed(pos, |game| {
+                    game.committed_block_items_before(kept, slots, pos)
+                });
             }
         }
         for (pos, kept) in level.block_entities {

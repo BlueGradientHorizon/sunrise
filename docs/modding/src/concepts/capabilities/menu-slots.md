@@ -208,27 +208,31 @@ Nothing is asked when no mod listens.
 
 ## Reacting to slot changes
 
-`MenuPart::menu_slot_changed` is the server-side counterpart to vanilla's `Container.setItem` →
-`AbstractContainerMenu.slotsChanged` for mod menu types. It runs for every authoritative non-result
-input change on an open mod menu:
+`MenuPart::menu_slot_changed` lets a mod menu type's outputs follow its inputs, as vanilla processing menus do in
+`AbstractContainerMenu.slotsChanged`. Its contract is Sunrise's own design. Vanilla calls `slotsChanged` from the
+menu's own transient container on each `setItem`, one slot at a time, and a block entity's container never notifies
+an open menu. Sunrise reports batches instead, and reports block writes too:
 
-- **Clicks**: default clicks on blockless `owned_slots` or block-backed mod menus, `menu_quick_move`
-  handlers, and `menu_clicked` overrides returning `Flow::Cancel`, as well as after a `menu_slot_take`
-  listener edits inputs on a block-backed menu. Runs inside the click savepoint before commit.
-- **Host writes**: committed transactional writes through `ItemPlace::MenuSlot`,
-  `ItemPlace::BlockEntity`, `BlockEntityRef::set_item_slot`, and transactional
-  `BlockEntityRef::merge_data` / `replace_data`, deduplicated to one call per outermost committed
-  transaction (never firing on abort).
-- **External container writes**: non-transactional writes to a block-backed mod menu such as hoppers,
-  `/item replace block`, or non-transactional `merge_data`, delivered immediately with all open
-  viewers synced.
+- **One call per batch.** A batch is the non-result slots of the menu's own container that differ between two points,
+  in `event.changed` in ascending menu slot order (`MenuSlotChange { container, slot, before, after }`). Result,
+  hidden, linked and player inventory slots never count, and a count-0 stack counts as empty.
+- **Clicks** report each click step, inside the click's transaction: a whole multi-slot drag, a swap, a throw or a
+  pickup-all is one step, and a take whose `menu_slot_take` listener changes the inputs adds a step before the click
+  continues. This covers default clicks on blockless `owned_slots` and block-backed mod menus, `menu_quick_move`
+  handlers, and `menu_clicked` overrides returning `Flow::Cancel`.
+- **Committed host writes** (`ItemPlace::MenuSlot`, `ItemPlace::BlockEntity`, `BlockEntityRef::set_item_slot`,
+  transactional `merge_data` / `replace_data`) are one batch per menu for each outermost committed transaction,
+  never on abort: owned menus by menu generation, then block-backed menus by block position.
+- **Writes outside a transaction** to the block entity behind an open block-backed menu (a hopper,
+  `/item replace block`, non-transactional `merge_data`) are one batch at the write.
 
-Multiple non-result slot changes within one click step (such as a multi-slot drag) or one committed
-transaction are batched into a single `menu_slot_changed` call with `event.changed` sorted in
-ascending menu slot order (`MenuSlotChange { container, slot, before, after }`). `event.context`
-gives a read-only `MenuSlotContext` of the menu's own slots (with `pos: None` for blockless menus),
-and `event.outputs` accepts authoritative `MenuSlotWrite { container, slot, stack }` updates that
-the server applies atomically before viewers sync:
+Batches give a listener a whole action and a consistent `event.context` rather than the states in between, and block
+writes report so a menu a hopper fills shows the output a click would have made. A write to a block nobody has a
+listening menu open on costs one lookup in the open-menu index. `event.context` gives a read-only `MenuSlotContext`
+of the menu's own slots (with `pos: None` for blockless menus), and `event.outputs` accepts authoritative
+`MenuSlotWrite { container, slot, stack }` updates, applied atomically and never reported again. Viewers see a
+click's outputs in the click's reply and any other write's at the next `broadcastChanges`, as for any container
+write:
 
 ```rust,ignore
 use mod_api::{MenuContainer, MenuSlotWrite};
@@ -254,13 +258,13 @@ impl mod_api::MenuPart for Combiner {
 }
 ```
 
-Result slots, hidden slots, linked slots and player inventory slots never trigger `menu_slot_changed`, and applying
-`event.outputs` never re-fires it. On a blockless `owned_slots` menu, `outputs` may target any declared non-hidden
-owned `MenuContainer::Main` slot up to its declared slot limit and item limit; on a block-backed menu, `outputs` may
-target declared non-hidden `results` slots in `MenuContainer::Main`. A listener panic or an invalid output write
-(wrong container, undeclared/hidden/linked slot, unknown item, or count over the slot or item cap) aborts the entire
-click transaction and resends the menu during a click, or rolls back the listener's own writes without corrupting the
-committed container outside a click. Nothing runs when no part subscribes.
+On a blockless `owned_slots` menu, `outputs` may target any declared non-hidden owned `MenuContainer::Main` slot up
+to its declared slot limit and item limit; on a block-backed menu, `outputs` may target declared non-hidden
+`results` slots in `MenuContainer::Main`. A listener panic, an invalid output write (wrong container,
+undeclared/hidden/linked slot, unknown item, or count over the slot or item cap), or a changed slot holding a stack
+the mod API can't carry (an item with no API key, or a component patch the API rejects) undoes the whole click and
+resends the menu. Outside a click the write itself stands: the listener's own writes roll back, and an unreportable
+change is logged and not reported. Nothing runs when no part subscribes.
 
 ## Crafted-by processing for held stacks
 

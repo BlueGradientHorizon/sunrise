@@ -1,28 +1,28 @@
-//! Server-side `menu_slot_changed`: vanilla `Container.setItem` / `AbstractContainerMenu.slotsChanged`
-//! for mod menu types.
+//! Server-side `menu_slot_changed`: `AbstractContainerMenu.slotsChanged` for mod menu types.
 //!
-//! Routes every authoritative input change on an open mod menu through one unified path:
-//! - Clicks (default clicks on blockless owned or block-backed mod menus, `menu_quick_move`, and
-//!   custom `menu_clicked` overrides returning `Flow::Cancel`), running inside the click savepoint
-//!   so a listener panic or invalid `MenuSlotWrite` rolls back the entire click.
-//! - Transactional host writes (`ItemPlace::MenuSlot`, `ItemPlace::BlockEntity`,
-//!   `BlockEntityRef::set_item_slot`, transactional `BlockEntityRef::merge_data` / `replace_data`),
-//!   deduplicated once per outermost committed transaction and never firing on abort.
-//! - Non-transactional external container writes to a block-backed mod menu (hoppers,
-//!   `/item replace block`, non-transactional `merge_data`), delivered immediately with all open
-//!   viewers synced.
+//! The contract (a Sunrise design, stated in the hook's docs): one call per batch of changes to
+//! the non-result slots of an open mod menu's own container, never per slot.
+//! - A click reports each click step's changes (a multi-slot drag, a swap, a pickup-all: one
+//!   step, one batch; a take that refills inputs: one more batch) inside the click's transaction,
+//!   so a failed listener or an invalid `MenuSlotWrite` undoes the whole click.
+//! - A committed host write (`ItemPlace::MenuSlot`, `ItemPlace::BlockEntity`, `BlockEntityRef`
+//!   writes) is reported once per outermost committed transaction, never on abort, in ascending
+//!   menu generation and then block position order.
+//! - A write outside any transaction to the block entity behind an open block-backed mod menu (a
+//!   hopper, `/item replace block`) is reported at the write. Vanilla's block containers never
+//!   notify an open menu; Sunrise does so the menu's outputs can follow its inputs.
 //!
-//! Multiple non-result slot changes within one click step (such as a multi-slot drag) or one
-//! transaction are batched into a single `menu_slot_changed` call in ascending menu slot order.
-//! Result-slot changes and `MenuSlotWrite` outputs never re-fire `menu_slot_changed`.
-use super::api_values::{TryIntoApi, TryIntoEngine};
+//! Within a batch the changes are in ascending menu slot order. Viewers see listener outputs from a
+//! click in the click's reply, and from any other write at the next `broadcastChanges`, as for any
+//! container write. Outputs never report again.
+use super::api_values::{StackReadError, TryIntoApi, TryIntoEngine};
 use super::{Game, transactions::After};
 use mod_api::{MenuContainer, MenuSlotChange, MenuSlotContext, MenuSlotWrite};
 use sunrise_client::{
     block_entities::Pos,
     containers::{BlockEntity, ModMenuType},
     items::{ItemStack, Items},
-    lan::menu::Slots,
+    lan::{guest::Guest, guest_list::GuestList, menu::Slots},
     menu::Menu,
 };
 
@@ -37,6 +37,58 @@ pub(in crate::game) enum SlotChangedTarget {
     Block(Pos),
 }
 
+/// Where an open mod menu's own slots live.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum SlotChangedBacking {
+    /// A blockless owned menu's transient slots, for the opening with this menu generation.
+    Owned { generation: u64 },
+    /// The block entity at `pos`, of the generation the menu was admitted on.
+    Block { pos: Pos, generation: Option<u64> },
+}
+
+/// The open mod menu a `menu_slot_changed` call is about, and the guest whose turn it runs in.
+#[derive(Clone, Copy, Debug)]
+pub(super) struct SlotChangedMenu {
+    pub(super) conn: u32,
+    pub(super) uuid: u128,
+    pub(super) window: i32,
+    pub(super) layout: &'static ModMenuType,
+    pub(super) backing: SlotChangedBacking,
+}
+
+impl SlotChangedMenu {
+    fn target(&self) -> SlotChangedTarget {
+        match self.backing {
+            SlotChangedBacking::Owned { generation } => SlotChangedTarget::Owned(generation),
+            SlotChangedBacking::Block { pos, .. } => SlotChangedTarget::Block(pos),
+        }
+    }
+
+    fn pos(&self) -> Option<[i32; 3]> {
+        match self.backing {
+            SlotChangedBacking::Owned { .. } => None,
+            SlotChangedBacking::Block { pos, .. } => Some([pos.0, pos.1, pos.2]),
+        }
+    }
+}
+
+/// The menu's own container before and after one click step or one write.
+#[derive(Clone, Copy)]
+pub(super) struct SlotSnapshots<'a> {
+    pub(super) before: &'a [Option<ItemStack>],
+    pub(super) after: &'a [Option<ItemStack>],
+}
+
+/// A slot whose stack the mod API can't carry (an item with no API key, or a component patch the
+/// API rejects), so the batch it belongs to can't be reported. A click with one is refused; any
+/// other write has already happened and goes unreported, with this reason logged.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(super) struct UnreportableSlot {
+    pub(super) container: MenuContainer,
+    pub(super) slot: usize,
+    pub(super) reason: StackReadError,
+}
+
 struct SlotChangedGuard<'a, 'g> {
     game: &'a mut Game<'g>,
 }
@@ -47,13 +99,37 @@ impl Drop for SlotChangedGuard<'_, '_> {
     }
 }
 
-/// Collect non-result owned container slot changes between `before` and `after`, in ascending menu
-/// slot order. Result slots and linked slots never trigger `menu_slot_changed`.
+/// What a slot holds for reporting: a mod may leave a count-0 stack in its own slots, which is
+/// empty, as `machines::get` reads it.
+fn held(items: &[Option<ItemStack>], slot: usize) -> Option<&ItemStack> {
+    items
+        .get(slot)
+        .and_then(Option::as_ref)
+        .filter(|stack| stack.count > 0)
+}
+
+/// `stack` as the API carries it, or why it can't be reported.
+fn reportable(
+    stack: Option<&ItemStack>,
+    container: MenuContainer,
+    slot: usize,
+) -> Result<Option<mod_api::ItemStack>, UnreportableSlot> {
+    stack
+        .map(TryIntoApi::try_into_api)
+        .transpose()
+        .map_err(|reason| UnreportableSlot {
+            container,
+            slot,
+            reason,
+        })
+}
+
+/// The non-result slots of `layout`'s own container that differ between the snapshots, as one
+/// batch in ascending menu slot order. Result, crafting-result and linked slots never count.
 pub(super) fn collect_slot_changes(
     layout: &ModMenuType,
-    before: &[Option<ItemStack>],
-    after: &[Option<ItemStack>],
-) -> Vec<MenuSlotChange> {
+    snapshots: SlotSnapshots<'_>,
+) -> Result<Vec<MenuSlotChange>, UnreportableSlot> {
     let mut changes = Vec::new();
     for slot in 0..layout.slots {
         if !layout.owns_slot(slot)
@@ -62,8 +138,7 @@ pub(super) fn collect_slot_changes(
         {
             continue;
         }
-        let old = before.get(slot).and_then(Option::as_ref);
-        let new = after.get(slot).and_then(Option::as_ref);
+        let (old, new) = (held(snapshots.before, slot), held(snapshots.after, slot));
         if old == new {
             continue;
         }
@@ -71,14 +146,14 @@ pub(super) fn collect_slot_changes(
             Some(c) if c.grid_slots().contains(&slot) => (MenuContainer::Grid, slot - c.grid),
             _ => (MenuContainer::Main, slot),
         };
-        let old_api = old.and_then(|stack| stack.try_into_api().ok());
-        let new_api = new.and_then(|stack| stack.try_into_api().ok());
-        if old.is_some() && old_api.is_none() || new.is_some() && new_api.is_none() {
-            continue;
-        }
-        changes.push(MenuSlotChange::new(container, index, old_api, new_api));
+        changes.push(MenuSlotChange::new(
+            container,
+            index,
+            reportable(old, container, index)?,
+            reportable(new, container, index)?,
+        ));
     }
-    changes
+    Ok(changes)
 }
 
 /// Owned snapshot of a menu's own containers used to lend a read-only [`MenuSlotContext`] across
@@ -105,26 +180,26 @@ impl SlotChangedSnapshot {
     }
 }
 
-/// Build a read-only [`SlotChangedSnapshot`] from a `Menu`'s own containers.
+/// Build a read-only [`SlotChangedSnapshot`] from a `Menu`'s own containers. A slot the API can't
+/// carry refuses the snapshot rather than reading as empty.
 pub(super) fn context_from_menu(
     menu: &Menu,
     player: u128,
     pos: Option<[i32; 3]>,
-) -> SlotChangedSnapshot {
-    let copy = |slots: &[Option<ItemStack>]| -> Vec<Option<mod_api::ItemStack>> {
-        slots
-            .iter()
-            .map(|slot| slot.as_ref().and_then(|stack| stack.try_into_api().ok()))
-            .collect()
+) -> Result<SlotChangedSnapshot, UnreportableSlot> {
+    let copy = |slots: &[Option<ItemStack>], container| {
+        (0..slots.len())
+            .map(|slot| reportable(held(slots, slot), container, slot))
+            .collect::<Result<Vec<_>, _>>()
     };
     let (main, grid, result) = menu.slot_containers();
-    SlotChangedSnapshot {
+    Ok(SlotChangedSnapshot {
         player,
         pos,
-        main: copy(main),
-        grid: copy(grid),
-        result: copy(result),
-    }
+        main: copy(main, MenuContainer::Main)?,
+        grid: copy(grid, MenuContainer::Grid)?,
+        result: copy(result, MenuContainer::Result)?,
+    })
 }
 
 /// Why [`validate_slot_writes`] refused a requested [`MenuSlotWrite`].
@@ -155,17 +230,21 @@ impl SlotWriteRefusal {
     }
 }
 
+/// Which of a menu's own slots a `menu_slot_changed` listener may write, and how much each holds.
+#[derive(Clone, Copy, Debug)]
+enum WriteScope<'a> {
+    /// A blockless owned menu: any declared owned `Main` slot, up to its declared limit.
+    Owned(&'a [u8]),
+    /// A block-backed menu: only its declared `results` slots, up to the block's container limit.
+    Block(Option<u32>),
+}
+
 /// Validate every requested [`MenuSlotWrite`] before applying any of them.
-///
-/// On a blockless owned menu (`owned_limits.is_some()`), any declared owned `Main` slot
-/// may be written up to its declared slot limit and item limit. On a block-backed menu
-/// (`owned_limits.is_none()`), only declared `results` slots in `Main` may be written.
 fn validate_slot_writes(
     items: &Items,
     max_stack: impl Fn(&ItemStack) -> u32,
     layout: &ModMenuType,
-    owned_limits: Option<&[u8]>,
-    block_limit: Option<u32>,
+    scope: WriteScope<'_>,
     outputs: Vec<MenuSlotWrite>,
 ) -> Result<Vec<(usize, Option<ItemStack>)>, SlotWriteRefusal> {
     let mut validated = Vec::with_capacity(outputs.len());
@@ -183,14 +262,14 @@ fn validate_slot_writes(
         {
             return Err(SlotWriteRefusal::CraftingSlot);
         }
-        let slot_cap = match owned_limits {
-            Some(limits) => {
+        let slot_cap = match scope {
+            WriteScope::Owned(limits) => {
                 let Some(&limit) = limits.get(slot) else {
                     return Err(SlotWriteRefusal::OwnedSlotBounds);
                 };
                 u32::from(limit)
             }
-            None => {
+            WriteScope::Block(block_limit) => {
                 if !layout.results.contains(&slot) {
                     return Err(SlotWriteRefusal::NonResultBlockSlot);
                 }
@@ -221,31 +300,101 @@ fn resized_items(items: &[Option<ItemStack>], len: usize) -> Vec<Option<ItemStac
     out
 }
 
+fn log_unreportable(menu: &SlotChangedMenu, refusal: &UnreportableSlot) {
+    log::warn!(
+        "menu_slot_changed: {} {:?} slot {} holds a stack the mod API can't carry ({:?}); the change is not reported",
+        menu.layout.id,
+        refusal.container,
+        refusal.slot,
+        refusal.reason
+    );
+}
+
+/// What the block-backed fast path costs, counted on the production path for the dailies: the
+/// container snapshots taken and the menu contexts built for `menu_slot_changed`.
+#[cfg(test)]
+pub(in crate::game) mod probe {
+    use std::cell::Cell;
+
+    thread_local! {
+        static SNAPSHOTS: Cell<usize> = const { Cell::new(0) };
+        static CONTEXTS: Cell<usize> = const { Cell::new(0) };
+    }
+
+    pub(in crate::game) fn snapshot() {
+        SNAPSHOTS.set(SNAPSHOTS.get() + 1);
+    }
+
+    pub(super) fn context() {
+        CONTEXTS.set(CONTEXTS.get() + 1);
+    }
+
+    /// `(snapshots, contexts)` since the last call, which starts the count again.
+    pub(in crate::game) fn take() -> (usize, usize) {
+        (SNAPSHOTS.replace(0), CONTEXTS.replace(0))
+    }
+}
+
 impl Game<'_> {
-    /// Build a read-only [`MenuSlotContext`] through [`context_from_menu`] on every path: uses the
-    /// live lifted `Menu` during a click, or lifts a read-only `Menu::new(Kind::Mod(layout))`
-    /// loaded with the live container items (including linked slots and recomputed crafting
-    /// result) so clicks, `menu_clicked` overrides, `menu_quick_move`, `ItemPlace` writes,
-    /// `BlockEntityRef` writes, hoppers, `/item replace`, and `merge_data` all present identical
-    /// container snapshots to listeners.
+    /// `menu_slot_changed` for one batch of `menu`'s non-result slot changes: inside a click step
+    /// (`live` is the click's lifted `Menu`), or for a committed or external write (`None`).
+    /// Validated outputs go into the menu's own storage (and `live`) without reporting again, and
+    /// the menu's last reported snapshot becomes the result. `false` means the caller undoes its
+    /// action: a listener failed, an output was invalid, or a slot can't be reported.
+    pub(super) fn mod_menu_slot_changed(
+        &mut self,
+        menu: &SlotChangedMenu,
+        live: Option<&mut Menu>,
+        snapshots: SlotSnapshots<'_>,
+    ) -> bool {
+        let changed = match collect_slot_changes(menu.layout, snapshots) {
+            Ok(changed) => changed,
+            Err(refusal) => {
+                log_unreportable(menu, &refusal);
+                return false;
+            }
+        };
+        if changed.is_empty() {
+            self.record_slot_changed_seen(menu);
+            return true;
+        }
+        let context = match self.slot_changed_context(menu, snapshots.after, live.as_deref()) {
+            Ok(context) => context,
+            Err(refusal) => {
+                log_unreportable(menu, &refusal);
+                return false;
+            }
+        };
+        // Outputs land inside the guard too, so writing them reports nothing again.
+        let outcome = self.with_slot_changed_guard(menu.target(), |game| {
+            let writes = game.fire_slot_changed_for_guest(menu, &changed, &context)?;
+            game.apply_slot_writes(menu, &writes, live);
+            Some(())
+        });
+        // A listener writing the menu it hears is reported once, by the outer call.
+        outcome.is_none_or(|fired| fired.is_some())
+    }
+
+    /// Build a read-only [`MenuSlotContext`] through [`context_from_menu`] on every path: the
+    /// live lifted `Menu` during a click, or a read-only `Menu::new(Kind::Mod(layout))` loaded
+    /// with the live container items (including linked slots and the recomputed crafting result),
+    /// so every path presents listeners the same snapshot.
     fn slot_changed_context(
         &self,
-        conn: u32,
-        uuid: u128,
-        layout: &'static ModMenuType,
-        pos: Option<[i32; 3]>,
+        menu: &SlotChangedMenu,
         items: &[Option<ItemStack>],
-        live_menu: Option<&Menu>,
-    ) -> SlotChangedSnapshot {
-        if let Some(menu) = live_menu {
-            return context_from_menu(menu, uuid, pos);
+        live: Option<&Menu>,
+    ) -> Result<SlotChangedSnapshot, UnreportableSlot> {
+        #[cfg(test)]
+        probe::context();
+        if let Some(live) = live {
+            return context_from_menu(live, menu.uuid, menu.pos());
         }
+        let layout = menu.layout;
+        let guest = self.lan.as_ref().and_then(|host| host.hub.guest(menu.conn));
         let mut full_items = resized_items(items, layout.slots);
         if let Some(l) = layout.links
-            && let Some(links) = self
-                .lan
-                .as_ref()
-                .and_then(|host| host.hub.guest(conn))
+            && let Some(links) = guest
                 .and_then(|g| g.menu.as_ref())
                 .map(|m| m.links.as_slice())
         {
@@ -257,19 +406,19 @@ impl Game<'_> {
                 full_items[k] = stack;
             }
         }
-        let mut menu = Menu::new(sunrise_client::menu::Kind::Mod(layout));
+        let mut lifted = Menu::new(sunrise_client::menu::Kind::Mod(layout));
         let mut env = self.menu_env();
         env.loop_context = &self.loop_context;
         if let Some(host) = self.lan.as_ref()
-            && let Some(guest) = host.hub.guest(conn)
+            && let Some(guest) = guest
         {
             env.player = Some(guest.uuid);
             env.player_entity_id = Some(guest.entity_id);
             env.limited_crafting = host.hub.limited_crafting;
             env.known_recipes = Some(&guest.recipe_book);
         }
-        menu.load_container(&env, &full_items, None);
-        context_from_menu(&menu, uuid, pos)
+        lifted.load_container(&env, &full_items, None);
+        context_from_menu(&lifted, menu.uuid, menu.pos())
     }
 
     fn with_slot_changed_guard<R>(
@@ -285,17 +434,32 @@ impl Game<'_> {
         Some(f(guard.game))
     }
 
-    /// Invoke `menu_slot_changed` and return validated writes, or `None` on
-    /// listener panic or invalid write.
-    fn fire_validated_slot_changed(
+    /// Invoke `menu_slot_changed` as `menu`'s guest and return the validated writes, or `None`
+    /// on a listener panic or an invalid write.
+    fn fire_slot_changed_for_guest(
         &mut self,
-        layout: &ModMenuType,
-        owned_limits: Option<&[u8]>,
-        block_limit: Option<u32>,
+        menu: &SlotChangedMenu,
         changed: &[MenuSlotChange],
         context: &SlotChangedSnapshot,
     ) -> Option<Vec<(usize, Option<ItemStack>)>> {
-        let menu_id = layout.id;
+        let conn = menu.conn;
+        if self.lan_acting == Some(conn) || self.lan_guest_swaps.contains(&conn) {
+            self.fire_validated_slot_changed(menu, changed, context)
+        } else {
+            self.as_guest(conn, |game| {
+                game.fire_validated_slot_changed(menu, changed, context)
+            })
+            .flatten()
+        }
+    }
+
+    fn fire_validated_slot_changed(
+        &mut self,
+        menu: &SlotChangedMenu,
+        changed: &[MenuSlotChange],
+        context: &SlotChangedSnapshot,
+    ) -> Option<Vec<(usize, Option<ItemStack>)>> {
+        let menu_id = menu.layout.id;
         let mut outputs = Vec::new();
         let failures = mod_api::runtime::isolated_failures();
         context.with_context(|context| {
@@ -310,12 +474,19 @@ impl Game<'_> {
             log::error!("menu_slot_changed: a listener failed for {menu_id}; the change is undone");
             return None;
         }
+        let scope = match menu.backing {
+            SlotChangedBacking::Owned { .. } => {
+                WriteScope::Owned(menu.layout.owned_slots.as_deref().unwrap_or_default())
+            }
+            SlotChangedBacking::Block { pos, .. } => {
+                WriteScope::Block(self.world.container_stack_limit(pos))
+            }
+        };
         match validate_slot_writes(
             self.items(),
             |stack| self.containers().max_stack(stack),
-            layout,
-            owned_limits,
-            block_limit,
+            menu.layout,
+            scope,
             outputs,
         ) {
             Ok(writes) => Some(writes),
@@ -329,35 +500,109 @@ impl Game<'_> {
         }
     }
 
-    /// Fire `menu_slot_changed` under `conn`'s guest turn when not already inside a turn for `conn`.
-    #[allow(clippy::too_many_arguments)]
-    fn fire_slot_changed_for_guest(
+    /// Write validated outputs into `menu`'s own storage and `live`, then remember what the menu
+    /// holds as its last reported snapshot. An owned menu's storage is the opening's, so a menu a
+    /// listener closed or replaced keeps nothing; a block's is the block entity's, kept while it
+    /// is the one the menu was admitted on.
+    fn apply_slot_writes(
         &mut self,
-        conn: u32,
-        layout: &ModMenuType,
-        owned_limits: Option<&[u8]>,
-        block_limit: Option<u32>,
-        changed: &[MenuSlotChange],
-        context: &SlotChangedSnapshot,
-    ) -> Option<Vec<(usize, Option<ItemStack>)>> {
-        if self.lan_acting == Some(conn) || self.lan_guest_swaps.contains(&conn) {
-            self.fire_validated_slot_changed(layout, owned_limits, block_limit, changed, context)
-        } else {
-            self.as_guest(conn, |game| {
-                game.fire_validated_slot_changed(
-                    layout,
-                    owned_limits,
-                    block_limit,
-                    changed,
-                    context,
-                )
-            })
-            .flatten()
+        menu: &SlotChangedMenu,
+        writes: &[(usize, Option<ItemStack>)],
+        live: Option<&mut Menu>,
+    ) {
+        let slots = menu.layout.slots;
+        let stored = match menu.backing {
+            SlotChangedBacking::Owned { generation } => {
+                if let Some(player) = self.player(menu.uuid) {
+                    self.journal_menus(player);
+                }
+                let Some(host) = self.lan.as_mut() else {
+                    return;
+                };
+                let Some(gi) = host.hub.guests.connection_index(menu.conn) else {
+                    return;
+                };
+                let guest = &host.hub.guests[gi];
+                if guest.menu_generation != generation
+                    || guest.menu.as_ref().is_none_or(|m| m.window != menu.window)
+                {
+                    return;
+                }
+                // Host writes the listener made to the transient slots, then its outputs.
+                let mut stored = resized_items(&guest.native_menu, slots);
+                for (slot, stack) in writes {
+                    stored[*slot] = stack.clone();
+                }
+                host.hub
+                    .guests
+                    .update(gi, |g| g.native_menu = stored.clone());
+                stored
+            }
+            SlotChangedBacking::Block { pos, generation } => {
+                if generation != self.world.block_entities.generation(&pos) {
+                    return;
+                }
+                if !writes.is_empty() {
+                    self.journal_block_entity(pos);
+                }
+                let Some(BlockEntity::Mod(entity)) = self.world.block_entities.get_mut(&pos) else {
+                    return;
+                };
+                if entity.items.len() < slots {
+                    entity.items.resize(slots, None);
+                }
+                let mut mutated = false;
+                for (slot, stack) in writes {
+                    if entity.items[*slot] != *stack {
+                        entity.items[*slot] = stack.clone();
+                        mutated = true;
+                    }
+                }
+                let stored = entity.items.clone();
+                if mutated {
+                    self.after_commit(After::Changed(pos));
+                }
+                stored
+            }
+        };
+        if let Some(live) = live {
+            for slot in 0..slots {
+                if menu.layout.owns_slot(slot)
+                    && menu.layout.crafting.is_none_or(|c| c.result != slot)
+                {
+                    live.load_slot(slot, stored.get(slot).cloned().flatten());
+                }
+            }
+        }
+        self.record_slot_changed_seen(menu);
+    }
+
+    /// Remember what `menu`'s own storage holds now as its last reported snapshot (every listening
+    /// viewer's, for a block), journaled inside a transaction so a rollback restores the previous.
+    fn record_slot_changed_seen(&mut self, menu: &SlotChangedMenu) {
+        match menu.backing {
+            SlotChangedBacking::Owned { generation } => {
+                let Some(seen) = self
+                    .lan
+                    .as_ref()
+                    .and_then(|host| host.hub.guest(menu.conn))
+                    .filter(|g| g.menu_generation == generation)
+                    .map(|g| resized_items(&g.native_menu, menu.layout.slots))
+                else {
+                    return;
+                };
+                self.record_owned_slot_changed_seen(menu.conn, generation, seen);
+            }
+            SlotChangedBacking::Block { pos, .. } => {
+                let Some(BlockEntity::Mod(entity)) = self.world.block_entities.get(&pos) else {
+                    return;
+                };
+                let items = entity.items.clone();
+                self.record_block_slot_changed_seen(pos, &items);
+            }
         }
     }
 
-    /// Record the last notified snapshot for an open blockless owned menu, journaled when inside
-    /// an open transaction so rollback restores the previous baseline.
     fn record_owned_slot_changed_seen(
         &mut self,
         conn: u32,
@@ -379,8 +624,6 @@ impl Game<'_> {
         }
     }
 
-    /// Record the last notified snapshot for every open viewer of a block-backed mod menu at `pos`
-    /// in the active dimension, journaled when inside an open transaction.
     fn record_block_slot_changed_seen(&mut self, pos: Pos, items: &[Option<ItemStack>]) {
         let viewers: Vec<(u32, usize)> = self
             .lan
@@ -422,435 +665,220 @@ impl Game<'_> {
         }
     }
 
-    /// Sync `conn`'s open container immediately, temporarily swapping the acting guest's live
-    /// inventory/cursor back into its hub record if `conn` is currently active in `Game`.
-    pub(super) fn sync_guest_container(&mut self, conn: u32) {
-        let Some(gi) = self.guest_index(conn) else {
-            return;
-        };
-        let own = self.lan_acting == Some(conn);
-        if own && let Some(host) = self.lan.as_mut() {
-            host.hub.guests.update(gi, |g| {
-                std::mem::swap(&mut self.inventory, &mut g.inventory);
-                std::mem::swap(&mut self.armor, &mut g.armor);
-                std::mem::swap(&mut self.location_armor, &mut g.location_armor);
-                std::mem::swap(&mut self.offhand, &mut g.offhand);
-                std::mem::swap(&mut self.equipment, &mut g.equipment);
-                std::mem::swap(&mut self.carried, &mut g.carried);
-            });
-        }
-        if let Some(host) = self.lan.as_mut() {
-            host.hub.sync_container(conn, &self.world);
-        }
-        if own && let Some(host) = self.lan.as_mut() {
-            host.hub.guests.update(gi, |g| {
-                std::mem::swap(&mut self.inventory, &mut g.inventory);
-                std::mem::swap(&mut self.armor, &mut g.armor);
-                std::mem::swap(&mut self.location_armor, &mut g.location_armor);
-                std::mem::swap(&mut self.offhand, &mut g.offhand);
-                std::mem::swap(&mut self.equipment, &mut g.equipment);
-                std::mem::swap(&mut self.carried, &mut g.carried);
-            });
-        }
-    }
-
-    /// Fire `menu_slot_changed` for a blockless owned menu inside a click transaction if any
-    /// non-result container slot changed between `before` and `after`, applying any validated
-    /// output writes to `guest.native_menu` and `menu` (when present) without re-firing.
-    #[allow(clippy::too_many_arguments)]
-    pub(super) fn mod_menu_slot_changed_owned(
-        &mut self,
+    /// The menu `conn` has open as a `menu_slot_changed` target with its two snapshots, when it is
+    /// a listening mod menu whose storage holds unreported changes.
+    fn click_slot_changed_target(
+        &self,
         conn: u32,
-        uuid: u128,
-        generation: u64,
-        window: i32,
-        layout: &'static ModMenuType,
-        menu: Option<&mut Menu>,
-        before: &[Option<ItemStack>],
-        after: &[Option<ItemStack>],
-    ) -> bool {
-        let changed = collect_slot_changes(layout, before, after);
-        if changed.is_empty() {
-            self.record_owned_slot_changed_seen(
-                conn,
-                generation,
-                resized_items(after, layout.slots),
-            );
-            return true;
+    ) -> Option<(
+        SlotChangedMenu,
+        Vec<Option<ItemStack>>,
+        Vec<Option<ItemStack>>,
+    )> {
+        let guest = self.lan.as_ref()?.hub.guest(conn)?;
+        let open = guest.menu.as_ref()?;
+        let layout = open.mod_type?;
+        if !mod_api::__private::menu_listens(mod_api::HookId::MenuSlotChanged, layout.id) {
+            return None;
         }
-        let context = self.slot_changed_context(conn, uuid, layout, None, after, menu.as_deref());
-        let owned_limits = layout.owned_slots.as_deref();
-        let Some(writes) =
-            self.with_slot_changed_guard(SlotChangedTarget::Owned(generation), |game| {
-                game.fire_slot_changed_for_guest(
-                    conn,
-                    layout,
-                    owned_limits,
-                    None,
-                    &changed,
-                    &context,
+        let before = open
+            .slot_changed_seen
+            .clone()
+            .or_else(|| (!open.sent.is_empty()).then(|| resized_items(&open.sent, layout.slots)))?;
+        let (backing, after) = match open.slots {
+            Slots::Native if layout.owned_slots.is_some() => (
+                SlotChangedBacking::Owned {
+                    generation: guest.menu_generation,
+                },
+                resized_items(&guest.native_menu, layout.slots),
+            ),
+            Slots::Block(pos) => {
+                let Some(BlockEntity::Mod(entity)) = self.world.block_entities.get(&pos) else {
+                    return None;
+                };
+                (
+                    SlotChangedBacking::Block {
+                        pos,
+                        generation: self.world.block_entities.generation(&pos),
+                    },
+                    resized_items(&entity.items, layout.slots),
                 )
-            })
-        else {
-            return true;
-        };
-        let Some(writes) = writes else {
-            return false;
-        };
-        if let Some(player) = self.player(uuid) {
-            self.journal_menus(player);
-        }
-        let Some(host) = self.lan.as_mut() else {
-            return false;
-        };
-        let Some(gi) = host.hub.guests.connection_index(conn) else {
-            return false;
-        };
-        let still_live = host.hub.guests[gi].menu_generation == generation
-            && host.hub.guests[gi]
-                .menu
-                .as_ref()
-                .is_some_and(|m| m.window == window);
-        if !still_live {
-            return true;
-        }
-        // Sync any Host writes the listener made to transient slots, then apply authoritative
-        // output writes on top without re-firing `menu_slot_changed`.
-        let mut live_items = resized_items(&host.hub.guests[gi].native_menu, layout.slots);
-        for (slot, stack) in writes {
-            live_items[slot] = stack;
-        }
-        host.hub.guests.update(gi, |g| {
-            g.native_menu = live_items.clone();
-        });
-        if let Some(menu) = menu {
-            for (slot, stack) in live_items.iter().enumerate() {
-                menu.load_slot(slot, stack.clone());
             }
-        }
-        self.record_owned_slot_changed_seen(conn, generation, live_items);
-        true
+            _ => return None,
+        };
+        let menu = SlotChangedMenu {
+            conn,
+            uuid: guest.uuid,
+            window: open.window,
+            layout,
+            backing,
+        };
+        Some((menu, before, after))
     }
 
-    /// Fire `menu_slot_changed` for a block-backed mod menu inside a click transaction if any
-    /// non-result owned container slot changed between `before` and `after`, applying any
-    /// validated result-slot outputs to both the block entity and `menu` (when present) without
-    /// re-firing.
-    #[allow(clippy::too_many_arguments)]
-    pub(super) fn mod_menu_slot_changed_block(
-        &mut self,
-        conn: u32,
-        uuid: u128,
-        pos: Pos,
-        generation: Option<u64>,
-        window: i32,
-        layout: &'static ModMenuType,
-        menu: Option<&mut Menu>,
-        before: &[Option<ItemStack>],
-        after: &[Option<ItemStack>],
-    ) -> bool {
-        let changed = collect_slot_changes(layout, before, after);
-        if changed.is_empty() {
-            if let Some(BlockEntity::Mod(entity)) = self.world.block_entities.get(&pos) {
-                let items = entity.items.clone();
-                self.record_block_slot_changed_seen(pos, &items);
-            }
-            return true;
-        }
-        let pos_arr = [pos.0, pos.1, pos.2];
-        let context =
-            self.slot_changed_context(conn, uuid, layout, Some(pos_arr), after, menu.as_deref());
-        let block_limit = self.world.container_stack_limit(pos);
-        let Some(writes) = self.with_slot_changed_guard(SlotChangedTarget::Block(pos), |game| {
-            game.fire_slot_changed_for_guest(conn, layout, None, block_limit, &changed, &context)
-        }) else {
-            return true;
-        };
-        let Some(writes) = writes else {
-            return false;
-        };
-        if generation != self.world.block_entities.generation(&pos)
-            || !self
-                .lan
-                .as_ref()
-                .and_then(|host| host.hub.guest(conn))
-                .and_then(|guest| guest.menu.as_ref())
-                .is_some_and(|open| open.window == window)
-        {
-            return true;
-        }
-        if !writes.is_empty() {
-            self.journal_block_entity(pos);
-            let mut mutated = false;
-            if let Some(BlockEntity::Mod(entity)) = self.world.block_entities.get_mut(&pos) {
-                if entity.items.len() < layout.slots {
-                    entity.items.resize(layout.slots, None);
-                }
-                for (slot, stack) in &writes {
-                    if entity.items[*slot] != *stack {
-                        entity.items[*slot] = stack.clone();
-                        mutated = true;
-                    }
-                }
-            }
-            if mutated {
-                self.after_commit(After::Changed(pos));
-            }
-        }
-        if let Some(BlockEntity::Mod(entity)) = self.world.block_entities.get(&pos) {
-            let items = entity.items.clone();
-            if let Some(menu) = menu {
-                for slot in 0..layout.slots {
-                    if layout.owns_slot(slot) && layout.crafting.is_none_or(|c| c.result != slot) {
-                        menu.load_slot(slot, items.get(slot).cloned().flatten());
-                    }
-                }
-            }
-            self.record_block_slot_changed_seen(pos, &items);
-        }
-        true
-    }
-
-    /// Reconcile non-result slot edits made by a `menu_clicked` override (`Flow::Cancel`) before
-    /// the click savepoint commits. Returning `false` rolls back the cancelled click and resends.
+    /// Reconcile the slot edits a `menu_clicked` override (`Flow::Cancel`) made before the click's
+    /// transaction settles. `false` rolls the click back and resends the menu.
     pub(super) fn reconcile_click_slot_changes(&mut self, conn: u32) -> bool {
         if !mod_api::__private::has_part_hook(mod_api::HookId::MenuSlotChanged) {
             return true;
         }
-        enum Target {
-            Owned {
-                uuid: u128,
-                generation: u64,
-                window: i32,
-                layout: &'static ModMenuType,
-                before: Vec<Option<ItemStack>>,
-                after: Vec<Option<ItemStack>>,
-            },
-            Block {
-                uuid: u128,
-                pos: Pos,
-                generation: Option<u64>,
-                window: i32,
-                layout: &'static ModMenuType,
-                before: Vec<Option<ItemStack>>,
-                after: Vec<Option<ItemStack>>,
-            },
-        }
-        let target = {
-            let Some(host) = self.lan.as_ref() else {
-                return true;
-            };
-            let Some(guest) = host.hub.guest(conn) else {
-                return true;
-            };
-            let Some(open) = guest.menu.as_ref() else {
-                return true;
-            };
-            let Some(layout) = open.mod_type else {
-                return true;
-            };
-            if !mod_api::__private::menu_listens(mod_api::HookId::MenuSlotChanged, layout.id) {
-                return true;
-            }
-            let seen_or_sent = || {
-                open.slot_changed_seen.clone().or_else(|| {
-                    (!open.sent.is_empty()).then(|| resized_items(&open.sent, layout.slots))
-                })
-            };
-            match open.slots {
-                Slots::Native if layout.owned_slots.is_some() => {
-                    let Some(before) = seen_or_sent() else {
-                        return true;
-                    };
-                    Some(Target::Owned {
-                        uuid: guest.uuid,
-                        generation: guest.menu_generation,
-                        window: open.window,
-                        layout,
-                        before,
-                        after: resized_items(&guest.native_menu, layout.slots),
-                    })
-                }
-                Slots::Block(pos) => {
-                    let Some(BlockEntity::Mod(entity)) = self.world.block_entities.get(&pos) else {
-                        return true;
-                    };
-                    let Some(before) = seen_or_sent() else {
-                        return true;
-                    };
-                    Some(Target::Block {
-                        uuid: guest.uuid,
-                        pos,
-                        generation: self.world.block_entities.generation(&pos),
-                        window: open.window,
-                        layout,
-                        before,
-                        after: resized_items(&entity.items, layout.slots),
-                    })
-                }
-                _ => None,
-            }
+        let Some((menu, before, after)) = self.click_slot_changed_target(conn) else {
+            return true;
         };
-        match target {
-            Some(Target::Owned {
-                uuid,
-                generation,
-                window,
-                layout,
-                before,
-                after,
-            }) => {
-                self.journal_guest_click(conn);
-                self.journal_menu_click(conn);
-                self.mod_menu_slot_changed_owned(
-                    conn, uuid, generation, window, layout, None, &before, &after,
-                )
-            }
-            Some(Target::Block {
-                uuid,
-                pos,
-                generation,
-                window,
-                layout,
-                before,
-                after,
-            }) => self.mod_menu_slot_changed_block(
-                conn, uuid, pos, generation, window, layout, None, &before, &after,
-            ),
-            None => true,
+        if matches!(menu.backing, SlotChangedBacking::Owned { .. }) {
+            self.journal_guest_click(conn);
+            self.journal_menu_click(conn);
         }
+        let snapshots = SlotSnapshots {
+            before: &before,
+            after: &after,
+        };
+        self.mod_menu_slot_changed(&menu, None, snapshots)
     }
 
-    /// Notify `menu_slot_changed` for a blockless owned menu whose transient slots were modified
-    /// outside a click (for example via `ItemPlace::MenuSlot`) once its transaction commits.
-    /// Runs the listener in its own savepoint so invalid writes or panics roll back listener edits
-    /// without corrupting committed storage, then syncs the open viewer immediately.
+    /// `menu_slot_changed` for a blockless owned menu whose transient slots a committed
+    /// transaction changed (`ItemPlace::MenuSlot`). The committed write stands: the listener's
+    /// outputs share a transaction of their own, which a failure aborts.
     pub(super) fn notify_owned_menu_slot_changed(
         &mut self,
         generation: u64,
         fallback_before: &[Option<ItemStack>],
-        click_active: Option<u32>,
     ) {
         if self
             .slot_changed_active
             .contains(&SlotChangedTarget::Owned(generation))
+        {
+            return;
+        }
+        let found = self.lan.as_ref().and_then(|host| {
+            let g = host
+                .hub
+                .guests
+                .iter()
+                .find(|g| g.placed && g.menu_generation == generation)?;
+            let open = g.menu.as_ref()?;
+            let layout = open.mod_type.filter(|t| t.owned_slots.is_some())?;
+            if open.slots != Slots::Native
+                || !mod_api::__private::menu_listens(mod_api::HookId::MenuSlotChanged, layout.id)
+            {
+                return None;
+            }
+            let before = open
+                .slot_changed_seen
+                .clone()
+                .unwrap_or_else(|| resized_items(fallback_before, layout.slots));
+            let menu = SlotChangedMenu {
+                conn: g.conn,
+                uuid: g.uuid,
+                window: open.window,
+                layout,
+                backing: SlotChangedBacking::Owned { generation },
+            };
+            Some((menu, before, resized_items(&g.native_menu, layout.slots)))
+        });
+        let Some((menu, before, after)) = found else {
+            return;
+        };
+        self.notify_slot_changed(&menu, &before, &after);
+    }
+
+    /// `menu_slot_changed` for the block-backed mod menus open on `pos` after a committed or
+    /// external write to its block entity, reported once for all their viewers. A position
+    /// nobody has a listening menu open on costs one lookup in the open-menu index: no container
+    /// snapshot, no `fallback_before`, no menu context. `fallback_before` gives what the block
+    /// held before a committed transaction, for viewers with nothing reported yet.
+    pub(super) fn notify_block_menu_slot_changed(
+        &mut self,
+        pos: Pos,
+        fallback_before: impl FnOnce(&Self) -> Option<Vec<Option<ItemStack>>>,
+    ) {
+        if self
+            .slot_changed_active
+            .contains(&SlotChangedTarget::Block(pos))
             || !mod_api::__private::has_part_hook(mod_api::HookId::MenuSlotChanged)
         {
             return;
         }
-        let info = {
-            let Some(host) = self.lan.as_ref() else {
-                return;
-            };
-            host.hub
-                .guests
-                .iter()
-                .find(|g| g.placed && g.menu_generation == generation)
-                .and_then(|g| {
-                    let open = g.menu.as_ref()?;
-                    let layout = open.mod_type.filter(|t| t.owned_slots.is_some())?;
-                    (open.slots == Slots::Native
-                        && mod_api::__private::menu_listens(
-                            mod_api::HookId::MenuSlotChanged,
-                            layout.id,
-                        ))
-                    .then(|| {
-                        let before = open
-                            .slot_changed_seen
-                            .clone()
-                            .unwrap_or_else(|| resized_items(fallback_before, layout.slots));
-                        let after = resized_items(&g.native_menu, layout.slots);
-                        (g.conn, g.uuid, open.window, layout, before, after)
-                    })
-                })
-        };
-        let Some((conn, uuid, window, layout, before, after)) = info else {
-            return;
-        };
-        let changed = collect_slot_changes(layout, &before, &after);
-        if changed.is_empty() {
-            self.record_owned_slot_changed_seen(conn, generation, after);
-            return;
-        }
-        let context = self.slot_changed_context(conn, uuid, layout, None, &after, None);
-        let owned_limits = layout.owned_slots.as_deref();
-        let _ = self.with_slot_changed_guard(SlotChangedTarget::Owned(generation), |game| {
-            let _ = game.storage_transaction(|game, _| {
-                let Some(writes) = game.fire_slot_changed_for_guest(
-                    conn,
-                    layout,
-                    owned_limits,
-                    None,
-                    &changed,
-                    &context,
-                ) else {
-                    return Err(());
-                };
-                if !writes.is_empty() {
-                    if let Some(player) = game.player(uuid) {
-                        game.journal_menus(player);
-                    }
-                    if let Some(host) = game.lan.as_mut()
-                        && let Some(gi) = host.hub.guests.connection_index(conn)
-                        && host.hub.guests[gi].menu_generation == generation
-                        && host.hub.guests[gi]
-                            .menu
-                            .as_ref()
-                            .is_some_and(|m| m.window == window)
-                    {
-                        let mut live =
-                            resized_items(&host.hub.guests[gi].native_menu, layout.slots);
-                        for (slot, stack) in writes {
-                            live[slot] = stack;
-                        }
-                        host.hub.guests.update(gi, |g| g.native_menu = live);
-                    }
-                }
-                Ok(())
-            });
+        let viewers = self.lan.as_ref().map_or_else(Vec::new, |host| {
+            listening_block_menu_viewers(&host.hub.guests, |g| host.hub.here(g), pos)
         });
-        let final_items = self
-            .lan
-            .as_ref()
-            .and_then(|host| host.hub.guest(conn))
-            .filter(|g| g.menu_generation == generation)
-            .map(|g| resized_items(&g.native_menu, layout.slots));
-        if let Some(final_items) = final_items {
-            self.record_owned_slot_changed_seen(conn, generation, final_items);
-            if Some(conn) != click_active {
-                self.sync_guest_container(conn);
-            }
-        }
+        let Some(rep) = viewers
+            .iter()
+            .find(|v| Some(v.conn) == self.lan_acting)
+            .or(viewers.first())
+        else {
+            return;
+        };
+        let Some(BlockEntity::Mod(entity)) = self.world.block_entities.get(&pos) else {
+            return;
+        };
+        #[cfg(test)]
+        probe::snapshot();
+        let after = resized_items(&entity.items, rep.layout.slots);
+        let before = match &rep.seen {
+            Some(seen) => seen.clone(),
+            None => match fallback_before(self) {
+                Some(fallback) => resized_items(&fallback, rep.layout.slots),
+                None if !rep.sent.is_empty() => resized_items(&rep.sent, rep.layout.slots),
+                None => {
+                    self.record_block_slot_changed_seen(pos, &after);
+                    return;
+                }
+            },
+        };
+        let menu = SlotChangedMenu {
+            conn: rep.conn,
+            uuid: rep.uuid,
+            window: rep.window,
+            layout: rep.layout,
+            backing: SlotChangedBacking::Block {
+                pos,
+                generation: self.world.block_entities.generation(&pos),
+            },
+        };
+        self.notify_slot_changed(&menu, &before, &after);
+    }
+
+    /// Report a committed or external write: the listener's outputs commit in a transaction of
+    /// their own (the write itself stands), and whatever the menu then holds is its last reported
+    /// snapshot even if the listener failed, so the same change is not reported twice.
+    fn notify_slot_changed(
+        &mut self,
+        menu: &SlotChangedMenu,
+        before: &[Option<ItemStack>],
+        after: &[Option<ItemStack>],
+    ) {
+        let snapshots = SlotSnapshots { before, after };
+        let _ = self.storage_transaction(|game, _| {
+            game.mod_menu_slot_changed(menu, None, snapshots)
+                .then_some(())
+                .ok_or(())
+        });
+        self.record_slot_changed_seen(menu);
     }
 }
 
 struct BlockMenuViewer {
     conn: u32,
     uuid: u128,
+    window: i32,
     layout: &'static ModMenuType,
     seen: Option<Vec<Option<ItemStack>>>,
     sent: Vec<Option<ItemStack>>,
 }
 
-/// O(1)-indexed lookup of placed guests passing `here` who currently view a block-backed mod menu
-/// at `pos` whose menu type listens to `menu_slot_changed`. Returns immediately without scanning
-/// the full guest list or allocating when no guest has a block-backed mod menu open at `pos`.
+/// The placed guests passing `here` with a block-backed mod menu open at `pos` whose menu type
+/// listens to `menu_slot_changed`, found through the open-menu index: a position nobody views
+/// returns at once, without scanning the guest list or allocating.
 fn listening_block_menu_viewers(
-    guests: &sunrise_client::lan::guest_list::GuestList,
-    here: impl Fn(&sunrise_client::lan::guest::Guest) -> bool,
+    guests: &GuestList,
+    here: impl Fn(&Guest) -> bool,
     pos: Pos,
 ) -> Vec<BlockMenuViewer> {
-    let viewer_indices = guests.block_mod_menu_viewers(pos);
-    if viewer_indices.is_empty() {
-        return Vec::new();
-    }
     let mut viewers = Vec::new();
-    for &gi in viewer_indices {
+    for &gi in guests.block_mod_menu_viewers(pos) {
         let g = &guests[gi];
-        if !g.placed || !here(g) {
-            continue;
-        }
-        let Some(open) = g.menu.as_ref() else {
+        let Some(open) = g.menu.as_ref().filter(|_| g.placed && here(g)) else {
             continue;
         };
         let Some(layout) = open.mod_type else {
@@ -864,6 +892,7 @@ fn listening_block_menu_viewers(
         viewers.push(BlockMenuViewer {
             conn: g.conn,
             uuid: g.uuid,
+            window: open.window,
             layout,
             seen: open.slot_changed_seen.clone(),
             sent: open.sent.clone(),
@@ -872,142 +901,19 @@ fn listening_block_menu_viewers(
     viewers
 }
 
-/// Gate external and transactional block-menu slot-change work on the O(1) open-menu index so
-/// container cloning and context lifting run only when at least one active listening viewer has
-/// the menu open at `pos`.
-fn with_listening_block_viewers<R>(
-    guests: &sunrise_client::lan::guest_list::GuestList,
-    here: impl Fn(&sunrise_client::lan::guest::Guest) -> bool,
-    pos: Pos,
-    on_viewed: impl FnOnce(Vec<BlockMenuViewer>) -> R,
-) -> Option<R> {
-    let viewers = listening_block_menu_viewers(guests, here, pos);
-    if viewers.is_empty() {
-        return None;
-    }
-    Some(on_viewed(viewers))
-}
-
-impl Game<'_> {
-    /// Notify `menu_slot_changed` for any open block-backed mod menu at `pos` whose backing block
-    /// entity changed outside a click (committed transaction write, hopper, `/item replace block`,
-    /// or `merge_data`), deduplicated across all open viewers and syncing every viewer immediately.
-    ///
-    /// Performs an O(1) open-menu index lookup first and returns immediately without touching
-    /// `world.block_entities`, cloning container items, scanning guests, or lifting a `Menu`
-    /// context when no active listening viewer has a menu open at `pos`.
-    pub(super) fn notify_block_menu_slot_changed(
-        &mut self,
-        pos: Pos,
-        fallback_before: Option<&[Option<ItemStack>]>,
-        click_active: Option<u32>,
-    ) {
-        if self
-            .slot_changed_active
-            .contains(&SlotChangedTarget::Block(pos))
-            || !mod_api::__private::has_part_hook(mod_api::HookId::MenuSlotChanged)
-        {
-            return;
-        }
-        let Some((viewers, generation, live_before_hook)) = self.lan.as_ref().and_then(|host| {
-            with_listening_block_viewers(
-                &host.hub.guests,
-                |g| host.hub.here(g),
-                pos,
-                |viewers| {
-                    let Some(BlockEntity::Mod(entity)) = self.world.block_entities.get(&pos) else {
-                        return None;
-                    };
-                    Some((
-                        viewers,
-                        self.world.block_entities.generation(&pos),
-                        entity.items.clone(),
-                    ))
-                },
-            )
-            .flatten()
-        }) else {
-            return;
-        };
-        let rep = viewers
-            .iter()
-            .find(|v| Some(v.conn) == self.lan_acting)
-            .unwrap_or(&viewers[0]);
-        let before = match (&rep.seen, fallback_before) {
-            (Some(seen), _) => seen.clone(),
-            (None, Some(fallback)) => resized_items(fallback, rep.layout.slots),
-            (None, None) if !rep.sent.is_empty() => resized_items(&rep.sent, rep.layout.slots),
-            (None, None) => {
-                self.record_block_slot_changed_seen(pos, &live_before_hook);
-                return;
-            }
-        };
-        let after = resized_items(&live_before_hook, rep.layout.slots);
-        let changed = collect_slot_changes(rep.layout, &before, &after);
-        if !changed.is_empty() {
-            let (conn, uuid, layout) = (rep.conn, rep.uuid, rep.layout);
-            let context = self.slot_changed_context(
-                conn,
-                uuid,
-                layout,
-                Some([pos.0, pos.1, pos.2]),
-                &after,
-                None,
-            );
-            let block_limit = self.world.container_stack_limit(pos);
-            let _ = self.with_slot_changed_guard(SlotChangedTarget::Block(pos), |game| {
-                let _ = game.storage_transaction(|game, _| {
-                    let Some(writes) = game.fire_slot_changed_for_guest(
-                        conn,
-                        layout,
-                        None,
-                        block_limit,
-                        &changed,
-                        &context,
-                    ) else {
-                        return Err(());
-                    };
-                    if !writes.is_empty()
-                        && generation == game.world.block_entities.generation(&pos)
-                    {
-                        game.journal_block_entity(pos);
-                        let mut mutated = false;
-                        if let Some(BlockEntity::Mod(entity)) =
-                            game.world.block_entities.get_mut(&pos)
-                        {
-                            if entity.items.len() < layout.slots {
-                                entity.items.resize(layout.slots, None);
-                            }
-                            for (slot, stack) in &writes {
-                                if entity.items[*slot] != *stack {
-                                    entity.items[*slot] = stack.clone();
-                                    mutated = true;
-                                }
-                            }
-                        }
-                        if mutated {
-                            game.after_commit(After::Changed(pos));
-                        }
-                    }
-                    Ok(())
-                });
-            });
-        }
-        if let Some(BlockEntity::Mod(entity)) = self.world.block_entities.get(&pos) {
-            let final_items = entity.items.clone();
-            self.record_block_slot_changed_seen(pos, &final_items);
-        }
-        for viewer in viewers {
-            if Some(viewer.conn) != click_active {
-                self.sync_guest_container(viewer.conn);
-            }
-        }
-    }
+/// Whether any guest has a block-backed mod menu open at `pos`: the one index lookup a write to
+/// an unviewed block costs before `notify_block_menu_slot_changed`.
+pub(super) fn block_menu_viewed(guests: &GuestList, pos: Pos) -> bool {
+    !guests.block_mod_menu_viewers(pos).is_empty()
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{SlotWriteRefusal, collect_slot_changes, context_from_menu, validate_slot_writes};
+    use super::{
+        SlotSnapshots, SlotWriteRefusal, UnreportableSlot, WriteScope, collect_slot_changes,
+        context_from_menu, validate_slot_writes,
+    };
+    use crate::game::api_values::StackReadError;
     use mod_api::{MenuContainer, MenuSlotWrite};
     use sunrise_client::{
         containers::{ModCrafting, ModLinks, ModMenuType},
@@ -1072,7 +978,11 @@ mod tests {
                 Some(ItemStack::new("minecraft:potion", 1)),
                 Some(ItemStack::new("minecraft:potion", 4)),
             ];
-            let changes = collect_slot_changes(&layout, &before, &after);
+            let snapshots = SlotSnapshots {
+                before: &before,
+                after: &after,
+            };
+            let changes = collect_slot_changes(&layout, snapshots).unwrap();
             assert_eq!(changes.len(), 1);
             assert_eq!(changes[0].container, MenuContainer::Main);
             assert_eq!(changes[0].slot, 0);
@@ -1111,7 +1021,11 @@ mod tests {
                 None,
                 Some(ItemStack::new("minecraft:potion", 1)),
             ];
-            let changes = collect_slot_changes(&layout, &before, &after);
+            let snapshots = SlotSnapshots {
+                before: &before,
+                after: &after,
+            };
+            let changes = collect_slot_changes(&layout, snapshots).unwrap();
             assert_eq!(changes.len(), 3);
             assert_eq!(
                 changes.iter().map(|c| c.slot).collect::<Vec<_>>(),
@@ -1173,8 +1087,7 @@ mod tests {
                 &items,
                 |_| 64,
                 &owned_layout,
-                owned_layout.owned_slots.as_deref(),
-                None,
+                WriteScope::Owned(owned_layout.owned_slots.as_deref().unwrap()),
                 vec![
                     MenuSlotWrite::new(MenuContainer::Main, 2, Some(four.clone())),
                     MenuSlotWrite::new(MenuContainer::Main, 0, None),
@@ -1189,8 +1102,7 @@ mod tests {
                     &items,
                     |_| 64,
                     &owned_layout,
-                    owned_layout.owned_slots.as_deref(),
-                    None,
+                    WriteScope::Owned(owned_layout.owned_slots.as_deref().unwrap()),
                     vec![MenuSlotWrite::new(MenuContainer::Main, 2, Some(five))],
                 ),
                 Err(SlotWriteRefusal::StackLimitExceeded)
@@ -1202,8 +1114,7 @@ mod tests {
                     &items,
                     |_| 64,
                     &owned_layout,
-                    owned_layout.owned_slots.as_deref(),
-                    None,
+                    WriteScope::Owned(owned_layout.owned_slots.as_deref().unwrap()),
                     vec![MenuSlotWrite::new(
                         MenuContainer::Player,
                         0,
@@ -1219,8 +1130,7 @@ mod tests {
                     &items,
                     |_| 64,
                     &block_layout,
-                    None,
-                    Some(64),
+                    WriteScope::Block(Some(64)),
                     vec![MenuSlotWrite::new(
                         MenuContainer::Main,
                         2,
@@ -1234,8 +1144,7 @@ mod tests {
                     &items,
                     |_| 64,
                     &block_layout,
-                    None,
-                    Some(64),
+                    WriteScope::Block(Some(64)),
                     vec![MenuSlotWrite::new(
                         MenuContainer::Main,
                         0,
@@ -1249,8 +1158,7 @@ mod tests {
                     &items,
                     |_| 64,
                     &block_layout,
-                    None,
-                    Some(64),
+                    WriteScope::Block(Some(64)),
                     vec![MenuSlotWrite::new(MenuContainer::Main, 3, Some(four))],
                 ),
                 Err(SlotWriteRefusal::UnavailableSlot)
@@ -1282,7 +1190,7 @@ mod tests {
             menu.load_slot(4, Some(ItemStack::new("minecraft:potion", 1)));
             menu.load_slot(5, Some(ItemStack::new("minecraft:stick", 3)));
 
-            let snapshot = context_from_menu(&menu, 42, Some([1, 64, 1]));
+            let snapshot = context_from_menu(&menu, 42, Some([1, 64, 1])).unwrap();
             snapshot.with_context(|ctx| {
                 assert_eq!(ctx.player, Some(42));
                 assert_eq!(ctx.pos, Some([1, 64, 1]));
@@ -1305,11 +1213,48 @@ mod tests {
     }
 
     #[test]
-    fn external_block_slot_change_skips_clone_and_context_lift_without_listening_viewer() {
-        use std::sync::{
-            Arc,
-            atomic::{AtomicUsize, Ordering},
-        };
+    fn a_changed_stack_the_api_cant_carry_refuses_the_batch_and_a_count_0_stack_is_empty() {
+        with_test_item_keys(|_, _, _| {
+            let layout = ModMenuType {
+                id: "test:processor",
+                owner: "test",
+                slots: 3,
+                player_inventory: true,
+                data_slots: 0,
+                owned_slots: Some(vec![64, 64, 64]),
+                results: vec![2],
+                inputs: vec![0, 1],
+                crafting: None,
+                links: None,
+            };
+            // `minecraft:apple` has no API key in this fixture (`with_test_item_keys`).
+            let before = vec![None, Some(ItemStack::new("minecraft:stick", 0)), None];
+            let after = vec![Some(ItemStack::new("minecraft:apple", 1)), None, None];
+            let snapshots = SlotSnapshots {
+                before: &before,
+                after: &after,
+            };
+            assert_eq!(
+                collect_slot_changes(&layout, snapshots),
+                Err(UnreportableSlot {
+                    container: MenuContainer::Main,
+                    slot: 0,
+                    reason: StackReadError::UnknownItem,
+                })
+            );
+            // A count-0 stack left in slot 1 is empty: emptying it changes nothing.
+            let after = vec![None, None, None];
+            let snapshots = SlotSnapshots {
+                before: &before,
+                after: &after,
+            };
+            assert_eq!(collect_slot_changes(&layout, snapshots), Ok(Vec::new()));
+        });
+    }
+
+    #[test]
+    fn listening_block_viewers_are_the_placed_guests_here_with_a_listening_menu_open_there() {
+        use std::sync::Arc;
         use sunrise_client::lan::{
             Joined, PlayerSender,
             guest::Guest,
@@ -1361,31 +1306,21 @@ mod tests {
             g.dimension = dim.to_owned();
             g
         };
-
-        let listening_layout: &'static ModMenuType = Box::leak(Box::new(ModMenuType {
-            id: LISTENING_MENU,
-            owner: "test",
-            slots: 2,
-            player_inventory: true,
-            data_slots: 0,
-            owned_slots: None,
-            results: vec![1],
-            inputs: vec![0],
-            crafting: None,
-            links: None,
-        }));
-        let silent_layout: &'static ModMenuType = Box::leak(Box::new(ModMenuType {
-            id: SILENT_MENU,
-            owner: "test",
-            slots: 2,
-            player_inventory: true,
-            data_slots: 0,
-            owned_slots: None,
-            results: vec![1],
-            inputs: vec![0],
-            crafting: None,
-            links: None,
-        }));
+        let layout = |id: &'static str| -> &'static ModMenuType {
+            Box::leak(Box::new(ModMenuType {
+                id,
+                owner: "test",
+                slots: 2,
+                player_inventory: true,
+                data_slots: 0,
+                owned_slots: None,
+                results: vec![1],
+                inputs: vec![0],
+                crafting: None,
+                links: None,
+            }))
+        };
+        let (listening, silent) = (layout(LISTENING_MENU), layout(SILENT_MENU));
         let open_at = |layout: &'static ModMenuType, pos: super::Pos| OpenMenu {
             window: 1,
             kind: 0,
@@ -1410,66 +1345,42 @@ mod tests {
         let mods: mod_api::Mods = vec![mod_api::ModEntry::new("test", Box::new(TestMod))].into();
         mod_platform::testing::with_mods(mods.clone(), || {
             super::super::api_values::install_parts(&mods).unwrap();
-            mod_api::__private::resolve_items(["minecraft:stick"]).unwrap();
-
-            let target = (10, 64, 10);
-            let other = (20, 64, 20);
-            let backing = vec![Some(ItemStack::new("minecraft:stick", 4)), None];
-            let clones = AtomicUsize::new(0);
-            let lifts = AtomicUsize::new(0);
-            let run_path = |guests: &GuestList| {
-                super::with_listening_block_viewers(
+            let (target, other) = ((10, 64, 10), (20, 64, 20));
+            let viewers = |guests: &GuestList| {
+                super::listening_block_menu_viewers(
                     guests,
                     |g| g.placed_in("minecraft:overworld"),
                     target,
-                    |viewers| {
-                        clones.fetch_add(1, Ordering::Relaxed);
-                        let cloned = backing.clone();
-                        lifts.fetch_add(1, Ordering::Relaxed);
-                        let mut menu = Menu::new(Kind::Mod(viewers[0].layout));
-                        for (slot, stack) in cloned.into_iter().enumerate() {
-                            menu.load_slot(slot, stack);
-                        }
-                        context_from_menu(&menu, viewers[0].uuid, Some([10, 64, 10]))
-                    },
                 )
+                .iter()
+                .map(|v| v.conn)
+                .collect::<Vec<_>>()
             };
-
             let mut guests = GuestList::default();
-            // 1. No viewers at target, even with guests viewing another block, an unplaced guest,
-            //    a guest in another dimension, and a viewer of a non-listening menu at target.
+            // Nobody counts: a viewer of another block, an unplaced guest, a guest in another
+            // dimension and a viewer of a menu type no part listens on.
             guests.push(make_guest(1, true, "minecraft:overworld"));
             guests.push(make_guest(2, false, "minecraft:overworld"));
             guests.push(make_guest(3, true, "minecraft:the_nether"));
             guests.push(make_guest(4, true, "minecraft:overworld"));
-            guests.update(0, |g| g.menu = Some(open_at(listening_layout, other)));
-            guests.update(1, |g| g.menu = Some(open_at(listening_layout, target)));
-            guests.update(2, |g| g.menu = Some(open_at(listening_layout, target)));
-            guests.update(3, |g| g.menu = Some(open_at(silent_layout, target)));
-            assert!(run_path(&guests).is_none());
-            assert_eq!(clones.load(Ordering::Relaxed), 0);
-            assert_eq!(lifts.load(Ordering::Relaxed), 0);
-
-            // 2. Opening the listening menu at target for an active placed guest clones & lifts once.
-            guests.update(0, |g| g.menu = Some(open_at(listening_layout, target)));
-            let ctx = run_path(&guests).expect("listening viewer should build context");
-            assert_eq!(ctx.player, 501);
-            assert_eq!(ctx.pos, Some([10, 64, 10]));
-            assert_eq!(clones.load(Ordering::Relaxed), 1);
-            assert_eq!(lifts.load(Ordering::Relaxed), 1);
-
-            // 3. Closing the menu returns to zero-clone / zero-lift fast path.
+            guests.update(0, |g| g.menu = Some(open_at(listening, other)));
+            guests.update(1, |g| g.menu = Some(open_at(listening, target)));
+            guests.update(2, |g| g.menu = Some(open_at(listening, target)));
+            guests.update(3, |g| g.menu = Some(open_at(silent, target)));
+            // The index finds the target's open menus; the filters leave none of them.
+            assert!(super::block_menu_viewed(&guests, target));
+            assert!(viewers(&guests).is_empty());
+            // A placed guest here with the listening menu open at the target is the one viewer.
+            guests.update(0, |g| g.menu = Some(open_at(listening, target)));
+            assert_eq!(viewers(&guests), [1]);
+            // Closing the menu or leaving takes it out of the index again.
             guests.update(0, |g| g.menu = None);
-            assert!(run_path(&guests).is_none());
-            assert_eq!(clones.load(Ordering::Relaxed), 1);
-            assert_eq!(lifts.load(Ordering::Relaxed), 1);
-
-            // 4. Reopening and removing the guest (disconnect) also clears the index.
-            guests.update(0, |g| g.menu = Some(open_at(listening_layout, target)));
+            assert!(viewers(&guests).is_empty());
+            guests.update(0, |g| g.menu = Some(open_at(listening, target)));
             guests.remove(0);
-            assert!(run_path(&guests).is_none());
-            assert_eq!(clones.load(Ordering::Relaxed), 1);
-            assert_eq!(lifts.load(Ordering::Relaxed), 1);
+            assert!(viewers(&guests).is_empty());
+            // A block nobody has a menu open on costs this one lookup.
+            assert!(!super::block_menu_viewed(&guests, other));
         });
     }
 }

@@ -3,6 +3,7 @@
 //! the game's own routing.
 use super::api_values::{TryIntoApi, TryIntoEngine};
 use super::native_hooks::ResidentBlockEntityAccess;
+use super::slot_changes::{SlotChangedBacking, SlotChangedMenu, SlotSnapshots};
 use super::{BlockStateId, Game, transactions::After};
 use mod_api::{BlockEntityRef, BlockEntityScope, BlockEntityTypeKey};
 use sunrise_client::{
@@ -357,17 +358,21 @@ impl Game<'_> {
                     && let Some(BlockEntity::Mod(entity)) = game.world.block_entities.get(&pos)
                 {
                     let after = entity.items.clone();
-                    if !game.mod_menu_slot_changed_block(
+                    let menu = SlotChangedMenu {
                         conn,
                         uuid,
-                        pos,
-                        admitted.generation,
                         window,
                         layout,
-                        None,
-                        &before,
-                        &after,
-                    ) {
+                        backing: SlotChangedBacking::Block {
+                            pos,
+                            generation: admitted.generation,
+                        },
+                    };
+                    let snapshots = SlotSnapshots {
+                        before: &before,
+                        after: &after,
+                    };
+                    if !game.mod_menu_slot_changed(&menu, None, snapshots) {
                         return Err(QuickMoveOutcome::Rejected);
                     }
                 }

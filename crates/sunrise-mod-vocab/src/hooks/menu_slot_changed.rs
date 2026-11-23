@@ -1,37 +1,44 @@
 //! The `menu_slot_changed` hook: declarations the mod API generator reads (see `hooks/mod.rs`).
 
 pub trait Hooks {
-    /// One or more non-result container slots of an open mod menu of type `menu` changed on the
-    /// server (`Container.setItem` / `AbstractContainerMenu.slotsChanged`). Fires for every
-    /// authoritative input change:
+    /// The non-result slots of an open mod menu of type `menu` changed on the server, so its
+    /// outputs can follow its inputs, as vanilla processing menus do in
+    /// `AbstractContainerMenu.slotsChanged`. Nothing is asked when no part listens for `menu`.
     ///
-    /// - Clicks (default clicks on blockless owned or block-backed mod menus, `menu_quick_move`
-    ///   handlers, and `menu_clicked` overrides returning `Flow::Cancel`), running inside the
-    ///   click savepoint before commit.
-    /// - Committed host writes (`ItemPlace::MenuSlot`, `ItemPlace::BlockEntity`,
-    ///   `BlockEntityRef::set_item_slot`, transactional `BlockEntityRef::merge_data` /
-    ///   `replace_data`), delivered once per outermost committed transaction and never on abort.
-    /// - External container writes to a block-backed mod menu (hoppers, `/item replace block`,
-    ///   non-transactional `merge_data`), delivered immediately with all open viewers synced.
+    /// The contract is Sunrise's own design. Vanilla calls `slotsChanged` from the menu's own
+    /// transient container on each `setItem`, one slot at a time, and a block entity's container
+    /// never notifies an open menu. Here one call reports one batch: the slots of the menu's own
+    /// container that differ between two points, in `changed` in ascending menu slot order.
     ///
-    /// Multiple non-result slot changes within one click step (such as a multi-slot drag) or one
-    /// committed transaction are batched into a single `menu_slot_changed` call with `changed` in
-    /// ascending menu slot order. Each [`MenuSlotChange`] gives the container, backing index,
-    /// stack before and stack after; player inventory slots, linked containers, hidden slots and
-    /// result-slot changes are never included. `context` carries a viewing player, the backing
-    /// block position (`None` for a blockless owned menu even if its opener passed a screen
-    /// position hint), and a read-only snapshot of the menu's own containers after the change.
+    /// - A click reports each click step (a whole multi-slot drag, a swap, a throw or a
+    ///   pickup-all is one step; a take whose listener changes the inputs adds a step before the
+    ///   click continues), inside the click's transaction: default clicks on blockless owned or
+    ///   block-backed mod menus, `menu_quick_move` handlers and `menu_clicked` overrides returning
+    ///   `Flow::Cancel`.
+    /// - A committed host write (`ItemPlace::MenuSlot`, `ItemPlace::BlockEntity`,
+    ///   `BlockEntityRef::set_item_slot`, transactional `merge_data` / `replace_data`) is one batch
+    ///   per menu for each outermost committed transaction, never on abort: owned menus by menu
+    ///   generation, then block-backed menus by block position.
+    /// - A write outside any transaction to the block entity behind an open block-backed menu (a
+    ///   hopper, `/item replace block`, non-transactional `merge_data`) is one batch at the write.
+    ///
+    /// It is batched so a listener sees a whole action and a consistent `context` rather than
+    /// the states in between, and block writes report so a menu a hopper fills shows the output a
+    /// click would have made. Result, hidden, linked and player inventory slots never count, and a
+    /// count-0 stack counts as empty. `context` carries the viewing player, the backing block
+    /// position (`None` for a blockless menu even if its opener passed a screen position hint) and
+    /// a read-only snapshot of the menu's own containers after the change.
     ///
     /// Push [`MenuSlotWrite`] entries to `outputs` to set declared result slots (or any declared
-    /// non-hidden owned container slot on a blockless owned menu) atomically before viewers sync
-    /// and before any click continuation runs. Writes applied from `outputs` never re-fire
-    /// `menu_slot_changed`, and later entries for the same slot win. An invalid write (a
-    /// non-`Main` container, an out-of-range, hidden, linked, or non-result slot on a block-backed
-    /// menu, an invalid stack, or a count past the slot's and item's limit), or a listener panic,
-    /// rolls back the entire click (cursor, inventory, transient slots or block entity, and
-    /// effects) and resends the menu during a click, or rolls back the listener's own writes
-    /// without corrupting the already-committed container change outside a click. Nothing is asked
-    /// when no part listens for `menu`.
+    /// non-hidden owned slot of a blockless owned menu), applied atomically and never reported
+    /// again; a later entry for the same slot wins. Viewers see a click's outputs in its reply and
+    /// any other write's at the next `broadcastChanges`. An invalid write (not `Main`, an
+    /// out-of-range, hidden, linked, or, on a block-backed menu, non-result slot, an invalid stack,
+    /// or a count past the slot's and item's limit), a listener panic, or a changed slot holding a
+    /// stack the mod API can't carry (an item with no API key, a component patch the API rejects)
+    /// undoes the whole click (cursor, inventory, transient slots or block entity, effects) and
+    /// resends the menu. Outside a click the write itself stands: the listener's own writes roll
+    /// back, and an unreportable change is logged and not reported.
     #[hook(
         dispatch = "api_carrier",
         side = "server",

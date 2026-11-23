@@ -1,7 +1,7 @@
 ids = [
     "handle:PlayerRef::open_mod_menu",
     "type:ModMenuOpen",
-    "type:OpenMenuError.OwnedSlotsWithCrafting",
+    "type:OpenMenuError.OwnedSlotsWithResults",
     "type:OpenMenuError.ClickInProgress",
     "type:MenuItemsRefusal",
     "type:MenuItemsRefusal.OwnedSlots",

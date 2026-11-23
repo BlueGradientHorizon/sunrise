@@ -1402,8 +1402,8 @@ fn owned_menu_slot_changed_fires_on_item_place_writes_and_deduplicates_per_trans
         assert!(sent(&rx).is_empty());
 
         // 2. Single committed transaction writing both input slots (slot 1 then slot 0) delivers
-        // ONE deduplicated menu_slot_changed call with slots in ascending order [0, 1] and syncs
-        // the viewer immediately without duplicate next-tick packets.
+        // ONE deduplicated menu_slot_changed call with slots in ascending order [0, 1]; the next
+        // broadcastChanges sends the viewer the listener's result once.
         game.transaction(|host, tx| {
             assert_eq!(
                 ItemPlace::MenuSlot { menu, slot: 1 }.insert(
@@ -1430,19 +1430,19 @@ fn owned_menu_slot_changed_fires_on_item_place_writes_and_deduplicates_per_trans
         assert_eq!(LAST_CHANGED_SLOTS.with(|s| s.borrow().clone()), vec![0, 1]);
         let guest = game.lan.as_ref().unwrap().hub.guest(1).unwrap();
         assert_eq!(guest.native_menu, [stick(3), dirt(2), stone(2)]);
-        let immediate = sent(&rx);
+        game.lan.as_mut().unwrap().hub.sync_containers(&game.world);
         assert!(
-            immediate
+            sent(&rx)
                 .iter()
                 .any(|p| matches!(p, C::ContainerSetSlot(s) if s.container == window && s.slot == 2 && s.item.is_some())),
-            "committed host write must sync result slot immediately"
+            "broadcastChanges sends the listener's result"
         );
         game.lan.as_mut().unwrap().hub.sync_containers(&game.world);
         assert!(
             !sent(&rx)
                 .iter()
                 .any(|p| matches!(p, C::ContainerSetSlot(s) if s.container == window)),
-            "next tick sync must not duplicate already-synced slot updates"
+            "a second broadcastChanges sends nothing more"
         );
 
         // 3. Clearing slot 0 through a menu_clicked Flow::Cancel override -> first empty slot 0,
@@ -1676,14 +1676,14 @@ impl Hooks for BlockProcessingMod {
     }
 }
 
-#[test]
-#[ignore = "daily"]
-fn block_menu_slot_changed_fires_on_external_container_writes_and_syncs_lan_viewers() {
-    use std::sync::{Arc, atomic::AtomicUsize};
+/// The world with `BlockProcessingMod` listening on `BLOCK_PROC_MENU` and an empty three-slot mod
+/// processor block at `BLOCK_PROC_POS` (two inputs, one result), for guests 12 and 13 with no
+/// menu open.
+fn with_block_processor(test: impl FnOnce(&mut Game<'_>)) {
+    use std::sync::Arc;
     use sunrise_client::{
         chunk::Chunk,
         containers::{BlockEntity, ModBlockEntity, ModBlockEntityFields, ModContainer},
-        lan::{PlayerSender, menu::Slots},
     };
     let mods: Mods = vec![ModEntry::new("listen", Box::new(BlockProcessingMod))].into();
     mod_platform::testing::with_mods(mods.clone(), || {
@@ -1705,7 +1705,6 @@ fn block_menu_slot_changed_fires_on_external_container_writes_and_syncs_lan_view
                 crate::game::native_guest_turn_tests::with_guests(|game| {
                     BLOCK_CHANGE_CALLS.set(0);
                     BLOCK_LAST_SLOTS.with(|s| s.borrow_mut().clear());
-
                     game.world
                         .chunks
                         .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
@@ -1745,191 +1744,250 @@ fn block_menu_slot_changed_fires_on_external_container_writes_and_syncs_lan_view
                             },
                         ))),
                     );
+                    test(game);
+                });
+            },
+        );
+    });
+}
 
-                    // Attach observable packet channels to both LAN guests (12 and 13) and open
-                    // the block-backed mod menu for both viewers.
-                    let (tx12, rx12) = mpsc::channel();
-                    let (tx13, rx13) = mpsc::channel();
-                    let host = game.lan.as_mut().unwrap();
-                    host.hub.guests.update(0, |g| {
-                        g.sender = PlayerSender::new(tx12, Arc::new(AtomicUsize::new(0)));
-                    });
-                    host.hub.guests.update(1, |g| {
-                        g.sender = PlayerSender::new(tx13, Arc::new(AtomicUsize::new(0)));
-                    });
-                    let title = sunrise_core::nbt::Tag::String("proc".into());
-                    host.hub.open_container(
-                        12,
-                        BLOCK_PROC_MENU,
-                        title.clone(),
-                        BLOCK_PROC_POS,
-                        Slots::Block(BLOCK_PROC_POS),
-                        vec![None; 3],
-                        None,
-                    );
-                    let w12 = host.hub.guest(12).unwrap().menu.as_ref().unwrap().window;
-                    host.hub.open_container(
-                        13,
-                        BLOCK_PROC_MENU,
-                        title,
-                        BLOCK_PROC_POS,
-                        Slots::Block(BLOCK_PROC_POS),
-                        vec![None; 3],
-                        None,
-                    );
-                    let w13 = host.hub.guest(13).unwrap().menu.as_ref().unwrap().window;
-                    sent(&rx12);
-                    sent(&rx13);
+/// A hopper holding `stack` placed on top of `pos` moves once (`HopperBlockEntity.pushItemsTick`):
+/// a write outside any transaction to the block below.
+fn hopper_above(game: &mut Game<'_>, pos: (i32, i32, i32), stack: ItemStack) {
+    let hopper_pos = (pos.0, pos.1 + 1, pos.2);
+    let hopper_state = game
+        .pack
+        .assets
+        .registry
+        .default_state("minecraft:hopper")
+        .unwrap();
+    game.world
+        .set(hopper_pos.0, hopper_pos.1, hopper_pos.2, hopper_state)
+        .unwrap();
+    game.world.block_entities.insert(
+        hopper_pos,
+        sunrise_client::containers::BlockEntity::Chest(vec![Some(stack), None, None, None, None]),
+    );
+    // A fresh hopper: no transfer cooldown from an earlier move.
+    game.hoppers.remove(&hopper_pos);
+    game.hopper_try_move_items(hopper_pos);
+}
 
-                    let level = game.level("minecraft:overworld").unwrap();
-                    let entity = game
-                        .block_entity(
-                            level,
-                            [BLOCK_PROC_POS.0, BLOCK_PROC_POS.1, BLOCK_PROC_POS.2],
-                        )
-                        .unwrap();
-                    let stick_api = ItemStack::new("minecraft:stick", 1).try_into_api().unwrap();
-                    let dirt_api = ItemStack::new("minecraft:dirt", 1).try_into_api().unwrap();
+#[test]
+#[ignore = "daily"]
+fn block_menu_slot_changed_costs_one_index_lookup_at_an_unviewed_block() {
+    use crate::game::slot_changes::probe;
+    use sunrise_client::lan::menu::Slots;
+    with_block_processor(|game| {
+        let level = game.level("minecraft:overworld").unwrap();
+        let pos = [BLOCK_PROC_POS.0, BLOCK_PROC_POS.1, BLOCK_PROC_POS.2];
+        let stick = || ItemStack::new("minecraft:stick", 1);
+        let place = ItemPlace::BlockEntity {
+            level,
+            pos,
+            side: None,
+            slot: 0,
+        };
+        let resource = ItemResource::of(&stick().try_into_api().unwrap());
+        probe::take();
+        // Nobody has the menu open: a committed write and a hopper's write each cost the
+        // open-menu index lookup only, with no container snapshot and no menu context.
+        game.transaction(|host, tx| {
+            assert_eq!(place.insert(host, tx, &resource, 1), Ok(1));
+            Ok::<_, ()>(())
+        })
+        .unwrap();
+        hopper_above(game, BLOCK_PROC_POS, stick());
+        assert_eq!(probe::take(), (0, 0));
+        assert_eq!(BLOCK_CHANGE_CALLS.get(), 0);
+        // With a listening viewer the same writes are reported, through the counted path.
+        let host = game.lan.as_mut().unwrap();
+        host.hub.open_container(
+            12,
+            BLOCK_PROC_MENU,
+            sunrise_core::nbt::Tag::String("proc".into()),
+            BLOCK_PROC_POS,
+            Slots::Block(BLOCK_PROC_POS),
+            vec![None; 3],
+            None,
+        );
+        game.transaction(|host, tx| {
+            assert_eq!(place.insert(host, tx, &resource, 1), Ok(1));
+            Ok::<_, ()>(())
+        })
+        .unwrap();
+        hopper_above(game, BLOCK_PROC_POS, stick());
+        assert_eq!(BLOCK_CHANGE_CALLS.get(), 2);
+        let (snapshots, contexts) = probe::take();
+        assert!(snapshots >= 2, "{snapshots} container snapshots");
+        assert_eq!(contexts, 2);
+    });
+}
 
-                    // 1. BlockEntityRef::set_item_slot on slot 0 -> fires once across both viewers,
-                    // syncs both immediately, no duplicate packets on next tick.
-                    game.transaction(|host, tx| {
-                        assert_eq!(
-                            entity.set_item_slot(host, tx, 0, Some(stick_api.clone())),
-                            Ok(true)
-                        );
-                        Ok::<_, ()>(())
-                    })
-                    .unwrap();
-                    assert_eq!(BLOCK_CHANGE_CALLS.get(), 1);
-                    assert_eq!(BLOCK_LAST_SLOTS.with(|s| s.borrow().clone()), vec![0]);
-                    assert!(
+#[test]
+#[ignore = "daily"]
+fn block_menu_slot_changed_fires_on_external_container_writes_and_syncs_lan_viewers() {
+    use std::sync::{Arc, atomic::AtomicUsize};
+    use sunrise_client::{
+        containers::BlockEntity,
+        lan::{PlayerSender, menu::Slots},
+    };
+    with_block_processor(|game| {
+        // Attach observable packet channels to both LAN guests (12 and 13) and open
+        // the block-backed mod menu for both viewers.
+        let (tx12, rx12) = mpsc::channel();
+        let (tx13, rx13) = mpsc::channel();
+        let host = game.lan.as_mut().unwrap();
+        host.hub.guests.update(0, |g| {
+            g.sender = PlayerSender::new(tx12, Arc::new(AtomicUsize::new(0)));
+        });
+        host.hub.guests.update(1, |g| {
+            g.sender = PlayerSender::new(tx13, Arc::new(AtomicUsize::new(0)));
+        });
+        let title = sunrise_core::nbt::Tag::String("proc".into());
+        host.hub.open_container(
+            12,
+            BLOCK_PROC_MENU,
+            title.clone(),
+            BLOCK_PROC_POS,
+            Slots::Block(BLOCK_PROC_POS),
+            vec![None; 3],
+            None,
+        );
+        let w12 = host.hub.guest(12).unwrap().menu.as_ref().unwrap().window;
+        host.hub.open_container(
+            13,
+            BLOCK_PROC_MENU,
+            title,
+            BLOCK_PROC_POS,
+            Slots::Block(BLOCK_PROC_POS),
+            vec![None; 3],
+            None,
+        );
+        let w13 = host.hub.guest(13).unwrap().menu.as_ref().unwrap().window;
+        sent(&rx12);
+        sent(&rx13);
+
+        let level = game.level("minecraft:overworld").unwrap();
+        let entity = game
+            .block_entity(
+                level,
+                [BLOCK_PROC_POS.0, BLOCK_PROC_POS.1, BLOCK_PROC_POS.2],
+            )
+            .unwrap();
+        let stick_api = ItemStack::new("minecraft:stick", 1).try_into_api().unwrap();
+        let dirt_api = ItemStack::new("minecraft:dirt", 1).try_into_api().unwrap();
+
+        // 1. BlockEntityRef::set_item_slot on slot 0 -> fires once across both viewers;
+        // the next broadcastChanges sends both the change once.
+        game.transaction(|host, tx| {
+            assert_eq!(
+                entity.set_item_slot(host, tx, 0, Some(stick_api.clone())),
+                Ok(true)
+            );
+            Ok::<_, ()>(())
+        })
+        .unwrap();
+        assert_eq!(BLOCK_CHANGE_CALLS.get(), 1);
+        assert_eq!(BLOCK_LAST_SLOTS.with(|s| s.borrow().clone()), vec![0]);
+        game.lan.as_mut().unwrap().hub.sync_containers(&game.world);
+        assert!(
                         sent(&rx12)
                             .iter()
                             .any(|p| matches!(p, C::ContainerSetSlot(s) if s.container == w12 && s.slot == 0 && s.item.is_some()))
                     );
-                    assert!(
+        assert!(
                         sent(&rx13)
                             .iter()
                             .any(|p| matches!(p, C::ContainerSetSlot(s) if s.container == w13 && s.slot == 0 && s.item.is_some()))
                     );
-                    game.lan.as_mut().unwrap().hub.sync_containers(&game.world);
-                    assert!(
-                        !sent(&rx12)
-                            .iter()
-                            .any(|p| matches!(p, C::ContainerSetSlot(s) if s.container == w12))
-                    );
-                    assert!(
-                        !sent(&rx13)
-                            .iter()
-                            .any(|p| matches!(p, C::ContainerSetSlot(s) if s.container == w13))
-                    );
+        game.lan.as_mut().unwrap().hub.sync_containers(&game.world);
+        assert!(
+            !sent(&rx12)
+                .iter()
+                .any(|p| matches!(p, C::ContainerSetSlot(s) if s.container == w12))
+        );
+        assert!(
+            !sent(&rx13)
+                .iter()
+                .any(|p| matches!(p, C::ContainerSetSlot(s) if s.container == w13))
+        );
 
-                    // 2. ItemPlace::BlockEntity on slot 1 -> fires once, computes result slot 2 =
-                    // stone(1), syncs result slot 2 to BOTH viewers immediately with no tick dupes.
-                    game.transaction(|host, tx| {
-                        assert_eq!(
-                            ItemPlace::BlockEntity {
-                                level,
-                                pos: [BLOCK_PROC_POS.0, BLOCK_PROC_POS.1, BLOCK_PROC_POS.2],
-                                side: None,
-                                slot: 1,
-                            }
-                            .insert(
-                                host,
-                                tx,
-                                &ItemResource::of(&dirt_api),
-                                1
-                            ),
-                            Ok(1)
-                        );
-                        Ok::<_, ()>(())
-                    })
-                    .unwrap();
-                    assert_eq!(BLOCK_CHANGE_CALLS.get(), 2);
-                    let BlockEntity::Mod(be) =
-                        game.world.block_entities.get(&BLOCK_PROC_POS).unwrap()
-                    else {
-                        panic!("expected mod block entity");
-                    };
-                    assert_eq!(be.items[2], Some(ItemStack::new("minecraft:stone", 1)));
-                    assert!(
+        // 2. ItemPlace::BlockEntity on slot 1 -> fires once, computes result slot 2 =
+        // stone(1), which the next broadcastChanges sends BOTH viewers once.
+        game.transaction(|host, tx| {
+            assert_eq!(
+                ItemPlace::BlockEntity {
+                    level,
+                    pos: [BLOCK_PROC_POS.0, BLOCK_PROC_POS.1, BLOCK_PROC_POS.2],
+                    side: None,
+                    slot: 1,
+                }
+                .insert(host, tx, &ItemResource::of(&dirt_api), 1),
+                Ok(1)
+            );
+            Ok::<_, ()>(())
+        })
+        .unwrap();
+        assert_eq!(BLOCK_CHANGE_CALLS.get(), 2);
+        let BlockEntity::Mod(be) = game.world.block_entities.get(&BLOCK_PROC_POS).unwrap() else {
+            panic!("expected mod block entity");
+        };
+        assert_eq!(be.items[2], Some(ItemStack::new("minecraft:stone", 1)));
+        game.lan.as_mut().unwrap().hub.sync_containers(&game.world);
+        assert!(
                         sent(&rx12)
                             .iter()
                             .any(|p| matches!(p, C::ContainerSetSlot(s) if s.container == w12 && s.slot == 2 && s.item.is_some()))
                     );
-                    assert!(
+        assert!(
                         sent(&rx13)
                             .iter()
                             .any(|p| matches!(p, C::ContainerSetSlot(s) if s.container == w13 && s.slot == 2 && s.item.is_some()))
                     );
-                    game.lan.as_mut().unwrap().hub.sync_containers(&game.world);
-                    assert!(
-                        !sent(&rx12)
-                            .iter()
-                            .any(|p| matches!(p, C::ContainerSetSlot(s) if s.container == w12))
-                    );
-                    assert!(
-                        !sent(&rx13)
-                            .iter()
-                            .any(|p| matches!(p, C::ContainerSetSlot(s) if s.container == w13))
-                    );
+        game.lan.as_mut().unwrap().hub.sync_containers(&game.world);
+        assert!(
+            !sent(&rx12)
+                .iter()
+                .any(|p| matches!(p, C::ContainerSetSlot(s) if s.container == w12))
+        );
+        assert!(
+            !sent(&rx13)
+                .iter()
+                .any(|p| matches!(p, C::ContainerSetSlot(s) if s.container == w13))
+        );
 
-                    // 3. Hopper ejecting another stick into slot 0 (non-transactional external
-                    // write) -> fires once, updates result slot 2 = stone(2), syncs both viewers
-                    // immediately with no tick dupes.
-                    let hopper_pos = (BLOCK_PROC_POS.0, BLOCK_PROC_POS.1 + 1, BLOCK_PROC_POS.2);
-                    let hopper_state = game
-                        .pack
-                        .assets
-                        .registry
-                        .default_state("minecraft:hopper")
-                        .unwrap();
-                    game.world
-                        .set(hopper_pos.0, hopper_pos.1, hopper_pos.2, hopper_state)
-                        .unwrap();
-                    game.world.block_entities.insert(
-                        hopper_pos,
-                        BlockEntity::Chest(vec![
-                            Some(ItemStack::new("minecraft:stick", 1)),
-                            None,
-                            None,
-                            None,
-                            None,
-                        ]),
-                    );
-                    game.hopper_try_move_items(hopper_pos);
-                    assert_eq!(BLOCK_CHANGE_CALLS.get(), 3);
-                    let BlockEntity::Mod(be) =
-                        game.world.block_entities.get(&BLOCK_PROC_POS).unwrap()
-                    else {
-                        panic!("expected mod block entity");
-                    };
-                    assert_eq!(be.items[0], Some(ItemStack::new("minecraft:stick", 2)));
-                    assert_eq!(be.items[2], Some(ItemStack::new("minecraft:stone", 2)));
-                    assert!(
+        // 3. Hopper ejecting another stick into slot 0 (a write outside any
+        // transaction) -> fires once, updates result slot 2 = stone(2), which the next
+        // broadcastChanges sends both viewers once.
+        hopper_above(game, BLOCK_PROC_POS, ItemStack::new("minecraft:stick", 1));
+        assert_eq!(BLOCK_CHANGE_CALLS.get(), 3);
+        let BlockEntity::Mod(be) = game.world.block_entities.get(&BLOCK_PROC_POS).unwrap() else {
+            panic!("expected mod block entity");
+        };
+        assert_eq!(be.items[0], Some(ItemStack::new("minecraft:stick", 2)));
+        assert_eq!(be.items[2], Some(ItemStack::new("minecraft:stone", 2)));
+        game.lan.as_mut().unwrap().hub.sync_containers(&game.world);
+        assert!(
                         sent(&rx12)
                             .iter()
                             .any(|p| matches!(p, C::ContainerSetSlot(s) if s.container == w12 && s.slot == 2 && s.item.is_some()))
                     );
-                    assert!(
+        assert!(
                         sent(&rx13)
                             .iter()
                             .any(|p| matches!(p, C::ContainerSetSlot(s) if s.container == w13 && s.slot == 2 && s.item.is_some()))
                     );
-                    game.lan.as_mut().unwrap().hub.sync_containers(&game.world);
-                    assert!(
-                        !sent(&rx12)
-                            .iter()
-                            .any(|p| matches!(p, C::ContainerSetSlot(s) if s.container == w12))
-                    );
-                    assert!(
-                        !sent(&rx13)
-                            .iter()
-                            .any(|p| matches!(p, C::ContainerSetSlot(s) if s.container == w13))
-                    );
-                });
-            },
+        game.lan.as_mut().unwrap().hub.sync_containers(&game.world);
+        assert!(
+            !sent(&rx12)
+                .iter()
+                .any(|p| matches!(p, C::ContainerSetSlot(s) if s.container == w12))
+        );
+        assert!(
+            !sent(&rx13)
+                .iter()
+                .any(|p| matches!(p, C::ContainerSetSlot(s) if s.container == w13))
         );
     });
 }
@@ -2098,21 +2156,7 @@ fn block_menu_slot_changed_gives_identical_context_for_click_and_hopper_writes()
 
                     // 3. Hopper ejects oak_log into slot 0 -> must produce the exact same
                     // changed list and live MenuSlotContext (including Result = 4 oak planks).
-                    let hopper_pos = (BLOCK_CRAFT_POS.0, BLOCK_CRAFT_POS.1 + 1, BLOCK_CRAFT_POS.2);
-                    let hopper_state = game
-                        .pack
-                        .assets
-                        .registry
-                        .default_state("minecraft:hopper")
-                        .unwrap();
-                    game.world
-                        .set(hopper_pos.0, hopper_pos.1, hopper_pos.2, hopper_state)
-                        .unwrap();
-                    game.world.block_entities.insert(
-                        hopper_pos,
-                        BlockEntity::Chest(vec![Some(oak_log), None, None, None, None]),
-                    );
-                    game.hopper_try_move_items(hopper_pos);
+                    hopper_above(game, BLOCK_CRAFT_POS, oak_log);
                     let (hopper_changed, hopper_context) =
                         CRAFT_CONTEXT_LOG.with(|log| log.borrow_mut().pop().unwrap());
                     assert_eq!(hopper_changed, click_changed);
