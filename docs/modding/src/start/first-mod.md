@@ -99,7 +99,8 @@ A mod with crates.io dependencies is compiled with them, as `cargo build` would,
 When a build stops on a package the lock doesn't pin, its error ends with that command. The
 [build log](../how-to/native-mods/05-build-log.md) shows the compiler's output when a build fails.
 
-To publish your mod, see [Publishing your mod](../how-to/publish.md).
+The template also writes `.github/workflows/sunrise-release.yml`. To publish your mod, see
+[Releasing](../how-to/publish.md#releasing).
 
 ## 6. Run it
 

@@ -2,7 +2,9 @@
 
 Build and check this native mod with `cargo sunrise-mod build` and `cargo sunrise-mod check`.
 
-## Releasing
+## Releases
 
-Releasing to the Sunrise mod registry moves to one command, `cargo sunrise-mod release`, which is coming. See
-[Publishing your mod](https://github.com/sunrise-org/sunrise/blob/main/docs/modding/src/how-to/publish.md).
+Follow [Releasing](https://github.com/sunrise-org/sunrise/blob/main/docs/modding/src/how-to/publish.md#releasing)
+to register the repository and publish a version. `cargo sunrise-mod release patch` pushes the tag;
+the generated `.github/workflows/sunrise-release.yml` calls Sunrise's shared workflow to build and
+attest the source package. Commit `Cargo.lock` before releasing to keep the release's dependencies pinned.

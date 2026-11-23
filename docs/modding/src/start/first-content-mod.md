@@ -138,8 +138,9 @@ folder is the one that holds `options.txt`; create `sunrise-mods/` if it is miss
 cargo sunrise-mod check target/sunrise-mod/glowing_blocks.smod
 ```
 
-`check` runs the package rules on the built file. Releasing to the registry moves to `cargo sunrise-mod release`,
-which is coming: [Publishing your mod](../how-to/publish.md) says how it will work.
+Before tagging a release, `cargo sunrise-mod check` in the project folder also reports any missing page
+information. The content template includes the shared release workflow caller. Follow
+[Releasing](../how-to/publish.md#releasing) to register and publish your mod.
 
 ## Next
 

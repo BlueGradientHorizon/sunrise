@@ -502,6 +502,7 @@ dependencies = [
  "libc",
  "ring",
  "rustc-demangle",
+ "semver",
  "serde",
  "serde_json",
  "sha2",
@@ -515,9 +516,11 @@ dependencies = [
  "sunrise-proxy",
  "sunrise-release-sign",
  "sunrise-shader-api",
+ "tar",
  "tempfile",
  "toml",
  "toml_edit",
+ "url",
  "zip",
 ]
 
@@ -4787,9 +4790,11 @@ dependencies = [
  "tar",
  "tempfile",
  "toml",
+ "url",
  "windows-sys 0.61.2",
  "xz4rust",
  "zip",
+ "zune-jpeg",
 ]
 
 [[package]]

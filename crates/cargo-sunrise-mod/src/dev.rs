@@ -315,6 +315,7 @@ fn prepare(
     with: &[&Path],
     update_lock: bool,
     target: contract::TargetName,
+    release_check: bool,
 ) -> Result<Prepared, String> {
     let project =
         dunce::canonicalize(project).map_err(|e| format!("{}: {e}", project.display()))?;
@@ -353,7 +354,7 @@ fn prepare(
         .map_err(|e| format!("{}: {e}", lock_path.display()))?;
     let input = tempfile::tempdir_in(&work).map_err(|e| format!("{}: {e}", work.display()))?;
     let sdk = native_sdk(&cache, &build)?;
-    let mut origins = dependencies.stage(&bundle, &sdk, &cache, input.path())?;
+    let mut origins = dependencies.stage(&bundle, &sdk, &cache, input.path(), release_check)?;
     origins.insert(id.clone(), project.clone());
     let mixins = if bundle.needs_mixins() {
         sunrise_native_build::MixinsIdentity::resolve([&bundle], Some(&sdk.index.mixins))?
@@ -425,7 +426,14 @@ fn prepare(
 }
 
 pub(crate) fn check(project: &Path, package: &Package, with: &[&Path]) -> Result<(), String> {
-    let prepared = prepare(project, package, with, false, contract::TargetName::Client)?;
+    let prepared = prepare(
+        project,
+        package,
+        with,
+        false,
+        contract::TargetName::Client,
+        false,
+    )?;
     contract::check_rust(&prepared.plan).map_err(|error| prepared.failed(error))
 }
 
@@ -436,8 +444,9 @@ pub(crate) fn build(
     with: &[&Path],
     update_lock: bool,
     target: contract::TargetName,
+    release_check: bool,
 ) -> Result<Built, String> {
-    let prepared = prepare(project, package, with, update_lock, target)?;
+    let prepared = prepare(project, package, with, update_lock, target, release_check)?;
     let id = &prepared.id;
     let failed = |error| prepared.failed(error);
     let mut events = Events {
@@ -527,7 +536,7 @@ pub(crate) fn run(
     } else {
         contract::TargetName::Client
     };
-    let built = build(project, mod_package, with, false, target)?;
+    let built = build(project, mod_package, with, false, target, false)?;
     let mut staged = fs::read_dir(&built.prepared.plan.mods)
         .map_err(|e| e.to_string())?
         .map(|entry| {
