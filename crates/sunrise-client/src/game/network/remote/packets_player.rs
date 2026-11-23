@@ -58,6 +58,7 @@ impl Game<'_> {
             r.local_entity_silent = false;
             // handleLogin: the new LocalPlayer is the camera.
             r.camera = None;
+            r.detached_camera = None;
             r.logged_in = true;
             r.view_distance = p.chunk_radius;
             r.simulation_distance = p.simulation_distance;
@@ -198,6 +199,7 @@ impl Game<'_> {
             r.health = (20.0, 20, 5.0);
             // handleRespawn: the new LocalPlayer is the camera.
             r.camera = None;
+            r.detached_camera = None;
         }
         self.clear_spectated_entity_post_effect();
         self.capture(true);
@@ -458,6 +460,16 @@ impl Game<'_> {
                 }
                 if let Some(name) = e.name {
                     r.players.insert(e.uuid, name);
+                }
+                // `Player.isPickable` sees `AbstractClientPlayer.gameMode` as soon as
+                // `ClientPacketListener.applyPlayerInfoUpdate` publishes its new mode.
+                if mode_change.is_some()
+                    && let Some(id) = r.player_entity(e.uuid)
+                    && let Some(index) = self.mob_index.find(&self.mobs, id)
+                {
+                    let spectator = r.remote_player_info_game_mode(id as i32) == Some(SPECTATOR);
+                    self.mobs
+                        .update(index, |mob| mob.extra.spectator = spectator);
                 }
             }
         }

@@ -41,7 +41,7 @@ fn run(mode: Option<bool>, test: impl FnOnce(&mut Game<'_>)) {
 fn run_mods(mods: Mods, test: impl FnOnce(&mut Game<'_>)) {
     mod_platform::testing::with_mods(mods.clone(), || {
         mod_platform::__private::part_tests::install_parts_fixture(&mods).unwrap();
-        crate::game::native_entity_refs::tests::with_game(|game| {
+        crate::game::native_entity_refs::tests::with_client_game(|game| {
             game.gui.atlas.sprites.insert(
                 "container/bundle/slot_background".into(),
                 sunrise_client::hud::Rect {

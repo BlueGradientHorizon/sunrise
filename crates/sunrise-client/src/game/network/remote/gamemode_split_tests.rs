@@ -1547,12 +1547,13 @@ fn hud_camera_mounts_match_26_3_oracle() {
                         row["local_game_mode"].as_str().unwrap(),
                         "{label}: local_game_mode"
                     );
+                    let camera = game.camera_player();
                     assert_eq!(
-                        game.camera_player().is_some(),
+                        camera != crate::game::remote_camera::CameraPlayer::Absent,
                         row["camera_is_player"].as_bool().unwrap(),
                         "{label}: camera_is_player"
                     );
-                    let got_vehicle = game.camera_player_vehicle_health();
+                    let got_vehicle = game.camera_vehicle_health(camera);
                     assert_eq!(
                         got_vehicle.map_or(0, |(hearts, _)| hearts),
                         row["vehicle_max_hearts"].as_i64().unwrap() as i32,

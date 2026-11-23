@@ -80,7 +80,7 @@ impl Game<'_> {
     pub(super) fn native_client_entity_context(&self, entity: EntityRef) -> Option<(&Remote, i32)> {
         let remote = self.remote.as_ref().filter(|r| r.logged_in)?;
         (self.native_lifecycle.epoch() == Some(entity.epoch())).then_some(())?;
-        Some((remote, i32::try_from(entity.id()).ok()?))
+        Some((remote, entity.id() as i32))
     }
 
     /// An entity tracked by the remote client but absent from local entity lists.
@@ -139,8 +139,8 @@ impl Game<'_> {
             return self.player.as_ref().map(|_| Target::Player);
         }
         // The server tracks the dragon alone; its parts are the client's own copies of it.
-        if let Some(part) = self.level_dragon_part(entity.id()) {
-            return Some(part);
+        if self.resident_dragon_part(entity.id()).is_some() {
+            return Some(Target::DragonPart(entity.id()));
         }
         remote.tracked(id)?;
         self.level_entity(id)
@@ -5161,7 +5161,9 @@ pub(super) mod tests {
         use sunrise_core::geometry::Vec3;
         use sunrise_protocol::{
             connection::Pipe,
-            packets::play::{AddEntity, Clientbound as C, RemoveEntities},
+            packets::play::{
+                AddEntity, Clientbound as C, PlayerInfo, PlayerInfoUpdate, RemoveEntities,
+            },
         };
         with_game(|game| {
             game.options.execution_role = ExecutionRole::Client;
@@ -5182,6 +5184,15 @@ pub(super) mod tests {
                 Some(sunrise_client::motion::PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
             game.spawn_entity(15, "minecraft:pig", [2.0, 0.0, 0.0], [0.0; 3]);
             let add_player = |game: &mut crate::game::Game<'_>, id, uuid, x| {
+                game.handle_packet(C::PlayerInfoUpdate(PlayerInfoUpdate {
+                    actions: 1,
+                    entries: vec![PlayerInfo {
+                        uuid,
+                        name: Some(format!("Player{id}")),
+                        ..Default::default()
+                    }],
+                }))
+                .unwrap();
                 game.handle_packet(C::AddEntity(AddEntity {
                     id,
                     uuid,
