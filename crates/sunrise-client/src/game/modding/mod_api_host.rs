@@ -411,8 +411,8 @@ impl SidedLevel for FireOddsLevel<'_> {
 
 // Prediction uses the same implementation for reads not affected by staged blocks.
 macro_rules! base_level_reads {
-    ($(fn $method:ident($($arg:ident: $ty:ty),*) -> $ret:ty;)*) => {
-        $(fn $method(&self, $($arg: $ty),*) -> $ret {
+    ($(fn $method:ident($($arg:ident: $ty:ty),*) $(-> $ret:ty)?;)*) => {
+        $(fn $method(&self, $($arg: $ty),*) $(-> $ret)? {
             mod_api::LevelHost::$method(self.base, $($arg),*)
         })*
     };
@@ -422,17 +422,14 @@ impl mod_api::LevelHost for FireOddsLevel<'_> {
     base_level_reads! {
         fn block_states() -> mod_api::BlockStates<'_>;
         fn container_size(at: mod_api::BlockSide) -> Option<usize>;
-        fn container_stack(at: mod_api::BlockSide, slot: usize) -> Option<mod_api::ItemStack>;
+        fn lend_container_stack(at: mod_api::BlockSide, slot: usize, read: &mut dyn for<'a> FnMut(mod_api::ItemStackView<'a>));
         fn block_state_id(name: &str) -> Option<mod_api::BlockState>;
         fn block_state_default(block: mod_api::BlockKey) -> Option<mod_api::BlockState>;
         fn state_block(state: mod_api::BlockState) -> Option<&str>;
         fn state_string(state: mod_api::BlockState) -> Option<String>;
         fn min_y() -> i32;
         fn height() -> i32;
-        fn block_in_tag(block: mod_api::BlockKey, tag: &str) -> Option<bool>;
         fn tags() -> &dyn mod_api::Tags;
-        fn state_fluid_state(state: mod_api::BlockState) -> Option<mod_api::FluidState>;
-        fn fluid_in_tag(fluid: &str, tag: &str) -> Option<bool>;
         fn state_with_property(state: mod_api::BlockState, key: &str, value: &str) -> Option<mod_api::BlockState>;
         fn brightness(layer: mod_api::LightLayer, pos: [i32; 3]) -> i32;
         fn raw_brightness(pos: [i32; 3], sky_darken: i32) -> i32;
@@ -487,11 +484,11 @@ impl mod_api::LevelHost for FireOddsLevel<'_> {
         if !self.is_loaded(pos) {
             return None;
         }
-        super::native_world_read::state_fluid(
-            self.base.behaviours,
-            self.base.registry,
-            self.block(pos),
-        )
+        self.base
+            .tables
+            .block_state_fluid_state(self.block(pos))
+            .ok()
+            .flatten()
     }
     fn collision_shape(&self, pos: [i32; 3]) -> Option<Vec<[f64; 6]>> {
         if !self.is_loaded(pos) {
@@ -588,25 +585,20 @@ impl mod_api::LevelHost for super::GameLevel<'_> {
         super::native_block_entity_refs::world_block_entity(self.world, self.api_level?, pos)
     }
     fn container_size(&self, at: mod_api::BlockSide) -> Option<usize> {
-        if !self.native_authoritative
-            || self.api_level != Some(at.level)
-            || !self.world.is_loaded_at(at.pos[0], at.pos[1], at.pos[2])
-        {
+        if !self.native_authoritative || self.api_level != Some(at.level) {
             return None;
         }
         self.containers().capability_size(at)
     }
-    fn container_stack(&self, at: mod_api::BlockSide, slot: usize) -> Option<mod_api::ItemStack> {
-        if !self.native_authoritative
-            || self.api_level != Some(at.level)
-            || !self.world.is_loaded_at(at.pos[0], at.pos[1], at.pos[2])
-        {
-            return None;
+    fn lend_container_stack(
+        &self,
+        at: mod_api::BlockSide,
+        slot: usize,
+        read: &mut dyn for<'a> FnMut(mod_api::ItemStackView<'a>),
+    ) {
+        if self.native_authoritative && self.api_level == Some(at.level) {
+            self.containers().lend_capability_stack(at, slot, read);
         }
-        self.containers()
-            .capability_stack(at, slot)?
-            .try_into_api()
-            .ok()
     }
     fn attachment_read_scope(&self) -> mod_api::AttachmentReadScope<'_> {
         mod_api::__private::game::attachment_read_scope(self.attachment_query_scopes)
@@ -672,12 +664,6 @@ impl mod_api::LevelHost for super::GameLevel<'_> {
     fn height(&self) -> i32 {
         self.world.shape.height
     }
-    fn block_in_tag(&self, block: mod_api::BlockKey, tag: &str) -> Option<bool> {
-        if !self.native_authoritative {
-            return None;
-        }
-        super::native_world_read::block_in_tag(block, tag)
-    }
     fn tags(&self) -> &dyn mod_api::Tags {
         self
     }
@@ -686,18 +672,10 @@ impl mod_api::LevelHost for super::GameLevel<'_> {
         if !(self.world.shape.contains_y(y) && self.world.loaded(x, z)) {
             return None;
         }
-        super::native_world_read::state_fluid(
-            self.behaviours,
-            self.registry,
-            self.world.block(x, y, z),
-        )
-    }
-    fn state_fluid_state(&self, state: mod_api::BlockState) -> Option<mod_api::FluidState> {
-        super::native_world_read::state_fluid(
-            self.behaviours,
-            self.registry,
-            state.try_into_engine(&()).ok()?,
-        )
+        self.tables
+            .block_state_fluid_state(self.world.block(x, y, z))
+            .ok()
+            .flatten()
     }
     fn collision_shape(&self, pos: [i32; 3]) -> Option<Vec<[f64; 6]>> {
         let [x, y, z] = pos;
@@ -710,10 +688,6 @@ impl mod_api::LevelHost for super::GameLevel<'_> {
             self.world.block(x, y, z),
             pos,
         ))
-    }
-    fn fluid_in_tag(&self, fluid: &str, tag: &str) -> Option<bool> {
-        self.native_authoritative
-            .then(|| super::native_world_read::fluid_in_tag(self.items, fluid, tag))
     }
     fn state_with_property(
         &self,
@@ -823,19 +797,8 @@ impl mod_api::LevelHost for super::native_hooks::HitLevel<'_> {
         self.0.block_registries()?;
         super::api_values::default_state(block)?.try_into_api().ok()
     }
-    fn block_in_tag(&self, block: mod_api::BlockKey, tag: &str) -> Option<bool> {
-        self.0.tags()?;
-        super::native_world_read::block_in_tag(block, tag)
-    }
     fn tags(&self) -> &dyn mod_api::Tags {
         self
-    }
-    fn fluid_in_tag(&self, fluid: &str, tag: &str) -> Option<bool> {
-        Some(super::native_world_read::fluid_in_tag(
-            self.0.tags()?,
-            fluid,
-            tag,
-        ))
     }
     fn block_state(&self, pos: [i32; 3]) -> Option<mod_api::BlockState> {
         self.0.block(pos).try_into_api().ok()
@@ -957,26 +920,10 @@ impl mod_api::HitHost for super::native_hooks::HitLevel<'_> {
         };
         super::native_hooks::sound_id(sound) && hit.play(sound, at, source, volume, pitch, Some(id))
     }
-    fn entity_next_float(&mut self, entity: mod_api::EntityRef) -> Option<f32> {
-        use sunrise_core::random::RandomSource;
-        Some(self.0.hit_effects()?.entity(entity)?.2.next_float())
-    }
-    fn entity_next_double(&mut self, entity: mod_api::EntityRef) -> Option<f64> {
-        use sunrise_core::random::RandomSource;
-        Some(self.0.hit_effects()?.entity(entity)?.2.next_double())
-    }
-    fn entity_next_bool(&mut self, entity: mod_api::EntityRef) -> Option<bool> {
-        use sunrise_core::random::RandomSource;
-        Some(self.0.hit_effects()?.entity(entity)?.2.next_boolean())
-    }
-    fn entity_next_int(&mut self, entity: mod_api::EntityRef, bound: i32) -> Option<i32> {
-        use sunrise_core::random::RandomSource;
-        self.0
-            .hit_effects()?
-            .entity(entity)?
-            .2
-            .next_int_bound(bound)
-            .ok()
+    fn lend_entity_random(&mut self, entity: mod_api::EntityRef, draw: mod_api::RandomDraw<'_>) {
+        if let Some((_, _, random)) = self.0.hit_effects().and_then(|hit| hit.entity(entity)) {
+            super::api_values::with_live_level_random(random, draw);
+        }
     }
     fn victim(&self) -> Option<mod_api::LivingView<'_>> {
         mod_api::LivingView::new(self, mod_api::__private::LivingParty::Victim)
@@ -1193,14 +1140,19 @@ impl<
         }
         mod_api::LevelHost::container_size(&*self.level, at)
     }
-    fn container_stack(&self, at: mod_api::BlockSide, slot: usize) -> Option<mod_api::ItemStack> {
+    fn lend_container_stack(
+        &self,
+        at: mod_api::BlockSide,
+        slot: usize,
+        read: &mut dyn for<'a> FnMut(mod_api::ItemStackView<'a>),
+    ) {
         if self
             .previewed(BlockPos::new(at.pos[0], at.pos[1], at.pos[2]))
             .is_some()
         {
-            return None;
+            return;
         }
-        mod_api::LevelHost::container_stack(&*self.level, at, slot)
+        mod_api::LevelHost::lend_container_stack(&*self.level, at, slot, read)
     }
     fn attachment_read_scope(&self) -> mod_api::AttachmentReadScope<'_> {
         mod_api::LevelHost::attachment_read_scope(&*self.level)
@@ -1245,23 +1197,19 @@ impl<
     fn height(&self) -> i32 {
         mod_api::LevelHost::height(&*self.level)
     }
-    fn block_in_tag(&self, block: mod_api::BlockKey, tag: &str) -> Option<bool> {
-        mod_api::LevelHost::block_in_tag(&*self.level, block, tag)
-    }
     fn tags(&self) -> &dyn mod_api::Tags {
         mod_api::LevelHost::tags(&*self.level)
     }
     fn fluid_state(&self, pos: [i32; 3]) -> Option<mod_api::FluidState> {
         match self.previewed(BlockPos::new(pos[0], pos[1], pos[2])) {
-            Some(state) => self.state_fluid_state(state.try_into_api().ok()?),
+            Some(state) => self
+                .level
+                .tables
+                .block_state_fluid_state(state)
+                .ok()
+                .flatten(),
             None => mod_api::LevelHost::fluid_state(&*self.level, pos),
         }
-    }
-    fn state_fluid_state(&self, state: mod_api::BlockState) -> Option<mod_api::FluidState> {
-        mod_api::LevelHost::state_fluid_state(&*self.level, state)
-    }
-    fn fluid_in_tag(&self, fluid: &str, tag: &str) -> Option<bool> {
-        mod_api::LevelHost::fluid_in_tag(&*self.level, fluid, tag)
     }
     fn state_with_property(
         &self,
@@ -1497,16 +1445,22 @@ impl<'a: 'b, 'b, T: std::ops::DerefMut<Target = Ticks>> mod_api::LevelWriteHost
         self.level.remove_block_write(&mut self.ticks, pos, moved)
     }
 
-    fn set_block_property(&mut self, pos: [i32; 3], key: &str, value: &str, flags: i32) -> bool {
+    fn set_block_property(
+        &mut self,
+        pos: [i32; 3],
+        key: &str,
+        value: &str,
+        flags: mod_api::BlockUpdateFlags,
+    ) -> bool {
         self.level
-            .native_set_block_property(&mut self.ticks, pos, key, value, flags)
+            .native_set_block_property(&mut self.ticks, pos, key, value, flags.bits())
     }
 
     fn play_sound(
         &mut self,
         sound: &str,
         at: [f64; 3],
-        source: usize,
+        source: mod_api::SoundSource,
         volume: f32,
         pitch: f32,
     ) -> bool {

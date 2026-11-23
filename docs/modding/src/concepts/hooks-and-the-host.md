@@ -128,8 +128,8 @@ Reads such as collision, light, signals and block entities use the owning side's
 They do not load chunks. Light or a vanilla air result is not proof of residency; check `is_loaded`
 when you need a resident position. Treat `None` as unavailable where the reference says a view
 cannot answer. A client's placement or shape query must not treat unavailable server-only data
-as a server answer. Read-only slot snapshots don't open pending loot; an engine comparator read
-through a `LevelRandomHost` can. For concrete examples see
+as a server answer. Read-only slot reads (`LevelHost::with_container_stack`, which lends an
+`ItemStackView`) don't open pending loot; an engine comparator read through a `LevelRandomHost` can. For concrete examples see
 [Camera and collision reads](../how-to/client/camera-and-collision-reads.md),
 [Block-state facts](../how-to/world/block-state-facts.md) and [Capabilities](capabilities.md).
 

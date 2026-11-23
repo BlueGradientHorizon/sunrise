@@ -3487,7 +3487,7 @@ impl Game<'_> {
         &mut self,
         rule: &gamerules::Rule,
         value: Value,
-        actor: Option<&mod_api::GameRuleActor<'_>>,
+        actor: Option<mod_api::PlayerRef>,
     ) {
         if self.ui.rules.set(&rule.name, value) {
             self.game_rule_changed(&rule.name, value, actor);
@@ -3535,20 +3535,13 @@ impl Game<'_> {
         if current == value {
             return Err(err("commands.gamerule.not_set", &[&rule_id, &value]));
         }
-        let name = self.lan_acting_name.clone();
-        let actor = match (
-            self.lan_acting_uuid,
-            self.lan_acting_entity,
-            name.as_deref(),
-        ) {
-            (Some(uuid), Some(entity_id), Some(name)) => Some(mod_api::GameRuleActor {
-                uuid,
-                entity_id: entity_id as i32,
-                name,
-            }),
-            _ => None,
-        };
-        self.set_game_rule(&rule, value, actor.as_ref());
+        let actor = self.native_lifecycle.epoch().and_then(|epoch| {
+            Some(mod_api::__private::game::player_ref(
+                mod_api::EntityRef::new(epoch, self.lan_acting_entity?),
+                self.lan_acting_uuid?,
+            ))
+        });
+        self.set_game_rule(&rule, value, actor);
         self.feedback(Text::tr("commands.gamerule.set", &[&rule_id, &value]));
         Ok(match value {
             Value::Bool(b) => i32::from(b),

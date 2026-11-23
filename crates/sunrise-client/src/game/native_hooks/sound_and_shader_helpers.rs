@@ -13,11 +13,6 @@ pub(in crate::game) fn sound_id(id: &str) -> bool {
         && path.chars().all(|c| allowed(c, true))
 }
 
-/// Validate the raw event name and sound source of a level write.
-pub(in crate::game) fn mod_sound_ok(sound: &str, source: usize) -> bool {
-    sound_id(sound) && source < sunrise_client::settings::SOUND_SOURCES.len()
-}
-
 /// `params` with each value that isn't finite as 0, so a mod's mistake can't
 /// put a NaN in every pixel of a pack's picture.
 pub(super) fn finite_params(params: [[f32; 4]; 8]) -> [[f32; 4]; 8] {

@@ -1035,15 +1035,11 @@ impl Hooks for Recorder {
 
 #[test]
 fn game_rule_change_reports_optional_actor() {
-    struct ActorRecorder(Arc<Mutex<Vec<Option<(u128, i32, String)>>>>);
+    struct ActorRecorder(Arc<Mutex<Vec<Option<PlayerRef>>>>);
     #[mod_api::__subscriptions]
     impl Hooks for ActorRecorder {
         fn game_rule_changed(&self, _: &mut dyn ServerHost, event: &mut GameRuleChangedEvent<'_>) {
-            self.0.lock().unwrap().push(
-                event
-                    .actor
-                    .map(|actor| (actor.uuid, actor.entity_id, actor.name.to_owned())),
-            );
+            self.0.lock().unwrap().push(event.actor);
         }
     }
     let seen = Arc::new(Mutex::new(Vec::new()));
@@ -1053,16 +1049,12 @@ fn game_rule_change_reports_optional_actor() {
     )];
     install(mods.into());
     let mut host = FakeHost::new();
-    let actor = GameRuleActor {
-        uuid: 123,
-        entity_id: 42,
-        name: "Alex",
-    };
+    let actor = crate::__private::game::player_ref(EntityRef::new(WorldEpoch::new(1), 42), 123);
     dispatch_game_rule_changed(
         &mut host,
         "minecraft:keep_inventory",
         GameRuleValue::Bool(true),
-        Some(&actor),
+        Some(actor),
     );
     dispatch_game_rule_changed(
         &mut host,
@@ -1070,10 +1062,7 @@ fn game_rule_change_reports_optional_actor() {
         GameRuleValue::Bool(false),
         None,
     );
-    assert_eq!(
-        *seen.lock().unwrap(),
-        [Some((123, 42, "Alex".into())), None]
-    );
+    assert_eq!(*seen.lock().unwrap(), [Some(actor), None]);
 }
 
 /// API dispatch preserves each accepted rule's id and typed value for every mod.

@@ -193,8 +193,17 @@ pub trait ItemsBackend {
     /// container/port, in a level not in place, and on a client's copy of the world.
     fn container_size(&self, at: BlockSide) -> Option<usize>;
     /// Side: server.
-    /// The stack in slot `slot` of those `at`'s side reaches (`container_size`).
-    fn container_stack(&self, at: BlockSide, slot: usize) -> Option<ItemStack>;
+    /// Lend the resident stack once in side-local `slot` among those `at` reaches
+    /// ([`Self::container_size`]). For an empty, unreadable or unavailable slot, return
+    /// without invoking the reader. Never generates loot or loads chunks.
+    #[forward_api_inputs]
+    #[decline_unavailable]
+    fn lend_container_stack(
+        &self,
+        at: BlockSide,
+        slot: usize,
+        read: &mut dyn for<'a> FnMut(ItemStackView<'a>),
+    );
     /// Side: server.
     /// How many of `stack` slot `slot` of those `at`'s side reaches holds when empty, as
     /// NeoForge's `isValid` and `getCapacityAsLong` answer: none where it may not go in (a

@@ -797,8 +797,9 @@ impl Game<'_> {
         }
         let cause = src.cause;
         if self.is_logical_server() {
+            let entity = |id| Some(mod_api::EntityRef::new(self.native_lifecycle.epoch()?, id));
             let start = mod_api::ExplosionStart::from(mod_api::__private::built::ExplosionStart {
-                dimension: self.dim.id(),
+                dimension: self.dim.key(),
                 center,
                 radius,
                 fire: false,
@@ -809,8 +810,8 @@ impl Game<'_> {
                 } else {
                     "minecraft:explosion"
                 },
-                source: cause.source,
-                owner: cause.owner,
+                source: cause.source.and_then(entity),
+                owner: cause.owner.and_then(entity),
             });
             if self.explosion_start_cancelled(&start) {
                 return Ok(());

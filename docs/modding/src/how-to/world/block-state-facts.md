@@ -87,12 +87,13 @@ sound type's identity, not from the step or placement events. When constructing 
 
 `host.block_states().friction(state)` is the static coefficient. To ask the state's friction parts,
 use `level.friction(host, pos, state, entity)` on either side. Pass `None` if no entity is asking,
-or `Some((id, kind))` to forward the caller's entity. The queried state need not be the block at
+or `Some(entity)` with the caller's live `EntityRef`. The queried state need not be the block at
 `pos`. The read never loads chunks or writes blocks. It returns `Ok(None)` for a repeated active
 query or a query beyond the nesting bound, and a read error for a stale or unavailable level
-or an unknown state.
+or entity, or an unknown state.
 
-Inside `BlockPart::friction`, match `LevelSide` to borrow the read-only level. Use
+Inside `BlockPart::friction`, match `LevelSide` to borrow the read-only level. `view.entity_kind(entity)` reads the type
+key for the entity lent in `event.entity`, without looking up other entities. Use
 `view.block_entity(pos)` to get a resident block entity's handle, then
 `view.block_entity_data(handle)` to read its saved data without identity or position metadata.
 On the client this reads the local copy, not unsynced server data; synchronize any data that

@@ -88,6 +88,7 @@ macro_rules! game_side {
                 ))
             }),
             facts: $s.res.facts(),
+            tables: $crate::game::native_block_tables::BlockTables::new(&$s.res, &$s.pack),
             biomes: world_biomes!($s),
             behaviours: $s.res.behaviours(),
             features: $s
@@ -3078,7 +3079,6 @@ struct WorldTables {
 
 struct PreparedParts {
     block_states: Arc<api_values::block_state::Index>,
-    tags: HashMap<String, HashSet<mod_api::BlockKey>>,
     parts: Option<mod_api::Parts>,
     cauldrons: Arc<cauldron_interactions::Table>,
 }

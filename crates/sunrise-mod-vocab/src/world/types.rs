@@ -47,6 +47,41 @@ pub struct IntGameRuleKey(pub(crate) u32);
 // exhaustive: only the registration table creates keys
 pub struct FluidKey(pub(crate) u32);
 
+impl FluidKey {
+    /// Whether this fluid is in `tag` (`FluidState.is(TagKey)`), over `tags`'s current
+    /// authoritative snapshot. An unknown tag is `Some(false)`; unavailable tags or mappings
+    /// return `None`.
+    pub fn is_in_tag(self, tags: &dyn Tags, tag: TagKey) -> Option<bool> {
+        tags.fluid_in_tag(self, tag)
+    }
+    /// Whether this fluid and `other` are the same fluid (`Fluid.isSame`): a source and its
+    /// flowing form are, so `minecraft:water` and `minecraft:flowing_water` are the same, water
+    /// and lava not. False when either key has no world fluid or tables are unavailable.
+    pub fn is_same(self, states: &BlockStates<'_>, other: FluidKey) -> bool {
+        states.backend().fluid_is_same(self, other).unwrap_or(false)
+    }
+    /// The bucket item that picks this fluid up (`Fluid.getBucket`), `minecraft:water_bucket`
+    /// for water and flowing water. `None` for `minecraft:empty` (whose bucket is air), for a
+    /// tank-only fluid, or when tables are unavailable.
+    pub fn bucket(self, states: &BlockStates<'_>) -> Option<ItemKey> {
+        states.backend().fluid_bucket(self).ok().flatten()
+    }
+    /// The sound event a bucket plays as it picks this fluid up (`Fluid.getPickupSound`),
+    /// `minecraft:item.bucket.fill_lava` for lava and flowing lava. `None` for
+    /// `minecraft:empty`, for a tank-only fluid, or when tables are unavailable.
+    pub fn pickup_sound(self, states: &BlockStates<'_>) -> Option<&'static str> {
+        states.backend().fluid_pickup_sound(self).ok().flatten()
+    }
+    /// The sound event a bucket plays as it empties this fluid (`BucketItem.playEmptySound`,
+    /// NeoForge's `FluidType.getSound(SoundActions.BUCKET_EMPTY)`),
+    /// `minecraft:item.bucket.empty_lava` for lava and flowing lava and
+    /// `minecraft:item.bucket.empty` for water and a mod's world fluid. `None` for
+    /// `minecraft:empty`, for a tank-only fluid, or when tables are unavailable.
+    pub fn empty_sound(self, states: &BlockStates<'_>) -> Option<&'static str> {
+        states.backend().fluid_empty_sound(self).ok().flatten()
+    }
+}
+
 /// Sampling parameters for `LevelRef::find_closest_biome`, in blocks.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[non_exhaustive]
@@ -154,6 +189,12 @@ impl FluidState {
     pub fn is_source(self) -> bool {
         self.source
     }
+    /// Whether this state's fluid is in `tag` (`FluidState.is(TagKey)`), delegating through
+    /// `self.fluid`. An unknown tag is `Some(false)`; unavailable tags or mappings return
+    /// `None`.
+    pub fn is_in_tag(self, tags: &dyn Tags, tag: TagKey) -> Option<bool> {
+        self.fluid.is_in_tag(tags, tag)
+    }
     /// Match carried vanilla properties locally. Unknown names or noncanonical values
     /// do not match. Validate against `host.fluid_states()` separately for indexed errors.
     pub fn matches(self, constraints: &[StateConstraint]) -> bool {
@@ -190,7 +231,7 @@ pub struct PortalShape {
 #[non_exhaustive]
 pub struct ExplosionStart<'a> {
     /// The level it happens in (`minecraft:overworld`).
-    pub dimension: &'a str,
+    pub dimension: DimensionKey,
     /// The explosion's center in blocks.
     pub center: [f64; 3],
     /// The explosion's radius in blocks.
@@ -204,11 +245,11 @@ pub struct ExplosionStart<'a> {
     pub damage_type: &'a str,
     /// The entity that explodes (`getDirectSourceEntity`): a creeper, a wind
     /// charge, the bearer of Wind Charged, when Sunrise tracks it.
-    pub source: Option<u32>,
+    pub source: Option<EntityRef>,
     /// `getIndirectSourceEntity`: a living source itself, a primed TNT's
     /// owner, or a projectile's living owner (a ghast for its fireball, a
     /// wither for its skull, the thrower of a wind charge).
-    pub owner: Option<u32>,
+    pub owner: Option<EntityRef>,
 }
 
 /// One server world open or client level; it rejects a previous world's handles.
@@ -1348,19 +1389,6 @@ pub struct LifecycleContext {
     pub tick: TickId,
 }
 
-// no wire: borrowed call-scoped view; transport uses owned snapshots rather than serializing references.
-/// The player responsible for a game rule change.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-// exhaustive: the game builds it with a literal; mods only read it
-pub struct GameRuleActor<'a> {
-    /// Player UUID.
-    pub uuid: u128,
-    /// Server entity ID.
-    pub entity_id: i32,
-    /// Player name.
-    pub name: &'a str,
-}
-
 /// How a criterion's advancement progress changed.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[non_exhaustive]
@@ -1588,9 +1616,11 @@ impl TriState {
 /// ```
 /// A client-side level cannot write:
 /// ```compile_fail
-/// use mod_api::LevelSide;
+/// use mod_api::{BlockUpdateFlags, LevelSide};
 /// fn write(side: LevelSide<'_>) {
-///     if let LevelSide::Client(level) = side { level.set_block_property([0, 0, 0], "a", "b", 0); }
+///     if let LevelSide::Client(level) = side {
+///         level.set_block_property([0, 0, 0], "a", "b", BlockUpdateFlags::NONE);
+///     }
 /// }
 /// ```
 pub trait LevelHost {
@@ -1660,18 +1690,23 @@ pub trait LevelHost {
     fn has_item_capability(&self, _pos: [i32; 3], _side: Option<Direction>) -> Option<bool> {
         None
     }
-    /// The slots on this side, as `ItemsHost::container_size` reads them.
-    /// Snapshot only: never generates loot or loads chunks. None for unloaded positions,
-    /// clients or unsupported storage. Owning game thread only, never in worker hook bodies.
-    fn container_size(&self, _at: crate::BlockSide) -> Option<usize> {
+    /// The number of slots on this side, as [`ItemsBackend::container_size`](crate::prelude::ItemsBackend::container_size) reads it.
+    /// Never generates loot or loads chunks. None for unloaded positions, clients or
+    /// unsupported storage. Owning game thread only, never in worker hook bodies.
+    fn container_size(&self, _at: BlockSide) -> Option<usize> {
         None
     }
-    /// A side-local slot snapshot, as `ItemsHost::container_stack` reads it.
-    /// Never generates unopened container loot or loads chunks; unopened slots remain empty.
-    /// None for unloaded positions, clients, empty slots or unsupported storage.
-    /// Owning game thread only, never reachable from a worker-thread hook body.
-    fn container_stack(&self, _at: crate::BlockSide, _slot: usize) -> Option<crate::ItemStack> {
-        None
+    /// Lend the resident stack in this side-local slot once, as
+    /// [`ItemsBackend::lend_container_stack`](crate::prelude::ItemsBackend::lend_container_stack) reads it.
+    /// Never loads chunks or generates loot; unopened slots remain empty. Does not invoke `read` for empty or unreadable slots or when storage is unavailable
+    /// in this view, including at unloaded positions and on clients. Owning game thread only.
+    /// Use `with_container_stack` on `&dyn LevelHost` to return a value from the loan.
+    fn lend_container_stack(
+        &self,
+        _at: BlockSide,
+        _slot: usize,
+        _read: &mut dyn for<'a> FnMut(ItemStackView<'a>),
+    ) {
     }
     /// Borrow the host for a snapshot read in the transaction that captured it.
     /// A level view without transaction state supplies only the unscoped default.
@@ -1714,8 +1749,13 @@ pub trait LevelHost {
         &self,
         _pos: [i32; 3],
         _state: BlockState,
-        _entity: Option<(u32, &str)>,
+        _entity: Option<EntityRef>,
     ) -> Option<f32> {
+        None
+    }
+    /// The type of an entity this view lends, if it knows the entity. A friction callback
+    /// can read the type of its query entity without a full game host.
+    fn entity_kind(&self, _entity: EntityRef) -> Option<EntityTypeKey> {
         None
     }
     /// The block `state` is a state of (`BlockState.getBlock()`): `mymod:shaft`. None for an
@@ -1743,11 +1783,6 @@ pub trait LevelHost {
     fn height(&self) -> i32 {
         unimplemented!("LevelHost::height")
     }
-    /// `BlockState.is(TagKey)`: numeric membership of the resolved block in the merged block tag.
-    /// Unknown tags return false; unavailable authoritative tags or block mappings return None.
-    fn block_in_tag(&self, _block: BlockKey, _tag: &str) -> Option<bool> {
-        unimplemented!("LevelHost::block_in_tag")
-    }
     /// The merged-tag service for this level's owning-thread context: a frame resource, whose
     /// methods are the imports.
     fn tags(&self) -> &dyn Tags {
@@ -1757,15 +1792,6 @@ pub trait LevelHost {
     /// None where the position is not loaded or outside the build height; it never loads a chunk.
     fn fluid_state(&self, _pos: [i32; 3]) -> Option<FluidState> {
         unimplemented!("LevelHost::fluid_state")
-    }
-    /// `BlockState.getFluidState`: the fluid a state holds (water for a waterlogged one). None
-    /// for an id no state has.
-    fn state_fluid_state(&self, _state: BlockState) -> Option<FluidState> {
-        unimplemented!("LevelHost::state_fluid_state")
-    }
-    /// `FluidState.is(TagKey)`: whether the fluid registry name is in the merged fluid tag, as `block_in_tag` reads.
-    fn fluid_in_tag(&self, _fluid: &str, _tag: &str) -> Option<bool> {
-        unimplemented!("LevelHost::fluid_in_tag")
     }
     /// `BlockState.setValue`, through `native_state_with_property`; None if invalid.
     fn state_with_property(
@@ -1846,6 +1872,24 @@ pub trait LevelHost {
     }
 }
 
+impl dyn LevelHost + '_ {
+    /// Read a side-local resident stack without taking ownership. Returns `None` if
+    /// [`LevelHost::lend_container_stack`] cannot lend the slot. Item, count and damage need
+    /// no projection; call [`ItemStackView::project`] inside `read` to keep an owned stack
+    /// or inspect its component patch. The view itself cannot leave the callback.
+    pub fn with_container_stack<R>(
+        &self,
+        at: BlockSide,
+        slot: usize,
+        read: impl for<'a> FnOnce(ItemStackView<'a>) -> R,
+    ) -> Option<R> {
+        crate::item::item_stack::read_stack_view(read, |lend| {
+            self.lend_container_stack(at, slot, lend);
+            Some(())
+        })
+    }
+}
+
 /// Restricted access to the hook's own level and its live `Level.getRandom` stream.
 pub trait LevelRandomHost: LevelHost {
     /// Vanilla comparator container signal, 0 to 15, through the engine comparator path.
@@ -1914,24 +1958,10 @@ pub trait HitHost: LevelRandomHost {
     ) -> bool {
         unimplemented!("HitHost::play_sound_from")
     }
-    /// `RandomSource.nextFloat` on the entity's own random (0 up to, not including, 1). None
-    /// for a handle the hit does not lend.
-    fn entity_next_float(&mut self, _entity: EntityRef) -> Option<f32> {
-        unimplemented!("HitHost::entity_next_float")
-    }
-    /// `RandomSource.nextDouble` on the entity's own random.
-    fn entity_next_double(&mut self, _entity: EntityRef) -> Option<f64> {
-        unimplemented!("HitHost::entity_next_double")
-    }
-    /// `RandomSource.nextBoolean` on the entity's own random.
-    fn entity_next_bool(&mut self, _entity: EntityRef) -> Option<bool> {
-        unimplemented!("HitHost::entity_next_bool")
-    }
-    /// `RandomSource.nextInt(bound)` on the entity's own random, 0 up to `bound`. None for a
-    /// `bound` of 0 or less, which draws nothing.
-    fn entity_next_int(&mut self, _entity: EntityRef, _bound: i32) -> Option<i32> {
-        unimplemented!("HitHost::entity_next_int")
-    }
+    /// Lend the entity's live `Entity.getRandom` stream for one draw closure.
+    /// Decline an entity this hit does not lend without invoking the closure. Draws are
+    /// not rewound on panic or abort. Use [`EntityRef::with_random`] to request a loan.
+    fn lend_entity_random(&mut self, _entity: EntityRef, _draw: RandomDraw<'_>) {}
     /// The entity the hit lands on, when it is living (`LivingIncomingDamageEvent.getEntity`), at
     /// `living_incoming_damage`, `living_damage_pre` and `living_damage_post`: a mob, a player
     /// or the dragon (an armor stand's own `hurtServer` never reaches these hooks). Its reads
@@ -1978,17 +2008,17 @@ pub trait LevelWriteHost: LevelTicksHost + LevelRandomHost {
     fn remove_block(&mut self, _pos: [i32; 3], _moved: bool) -> bool {
         unimplemented!("LevelWriteHost::remove_block")
     }
-    /// Change a block property through `Level.setBlock` with vanilla update flags, preserving its block entity.
+    /// Change a block property through `Level.setBlock` with [`BlockUpdateFlags`], preserving its block entity.
     fn set_block_property(
         &mut self,
         _pos: [i32; 3],
         _key: &str,
         _value: &str,
-        _flags: i32,
+        _flags: BlockUpdateFlags,
     ) -> bool {
         unimplemented!("LevelWriteHost::set_block_property")
     }
-    /// Queue a sound for nearby players. Registered events go by ID and other valid keys by
+    /// Queue a sound for nearby players under the given [`SoundSource`]. Registered events go by ID and other valid keys by
     /// name, with volume and pitch as supplied.
     /// Inside an open transaction in the active level, the level-sound hook runs synchronously.
     /// Only the resolved sound waits for the owning level's outermost commit and draws its seed
@@ -1998,7 +2028,7 @@ pub trait LevelWriteHost: LevelTicksHost + LevelRandomHost {
         &mut self,
         _sound: &str,
         _at: [f64; 3],
-        _source: usize,
+        _source: SoundSource,
         _volume: f32,
         _pitch: f32,
     ) -> bool {

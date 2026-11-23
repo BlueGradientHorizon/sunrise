@@ -2457,7 +2457,7 @@ pub(super) const BLOCK_CONTACT_HOOKS: sunrise_client::block_contact::Hooks =
                 ))
                 .native_step_on(step, movement),
                 StepLevel::Client(level) => StepOnView(mod_api::LevelRandomSide::Client(
-                    &crate::game::native_surface::FrictionView(level),
+                    &crate::game::native_surface::FrictionView(level, None),
                 ))
                 .native_step_on(step, movement),
             }
@@ -2951,7 +2951,7 @@ impl Game<'_> {
         &mut self,
         name: &str,
         value: GameRuleValue,
-        actor: Option<&GameRuleActor<'_>>,
+        actor: Option<PlayerRef>,
     ) {
         // MinecraftServer.onGameRuleChanged refreshes the chunk source for this
         // rule, but not when spawn_mobs itself changes.

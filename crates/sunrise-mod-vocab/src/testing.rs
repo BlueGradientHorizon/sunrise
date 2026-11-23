@@ -332,6 +332,10 @@ impl FakeHost {
             },
         });
     }
+    fn container_slot(&self, at: BlockSide, slot: usize) -> Option<&ItemStack> {
+        let items = self.level.standing(at.level, at.pos)?.items.as_ref()?;
+        items.slots.get(slot)?.as_ref()
+    }
     fn max_stack(&self, resource: &crate::ItemResource) -> u32 {
         match resource.value_id(self, "minecraft:max_stack_size") {
             Some(Tag::Int(size)) if (1..=99).contains(&size) => size as u32,
@@ -528,12 +532,6 @@ impl crate::prelude::ItemsHost for FakeHost {
 impl crate::prelude::TagsHost for FakeHost {
     fn tags(&self) -> &dyn crate::Tags {
         &self.registries
-    }
-    fn fluid_pickup_sound(&self, fluid: &str) -> Option<&'static str> {
-        self.registries.fluid_sound(fluid, true)
-    }
-    fn fluid_empty_sound(&self, fluid: &str) -> Option<&'static str> {
-        self.registries.fluid_sound(fluid, false)
     }
 }
 impl crate::prelude::BlockStatesHost for FakeHost {
@@ -809,9 +807,15 @@ impl crate::prelude::ItemsBackend for FakeHost {
         let items = self.level.standing(at.level, at.pos)?.items.as_ref()?;
         Some(items.slots.len())
     }
-    fn container_stack(&self, at: BlockSide, slot: usize) -> Option<ItemStack> {
-        let items = self.level.standing(at.level, at.pos)?.items.as_ref()?;
-        items.slots.get(slot)?.clone()
+    fn lend_container_stack(
+        &self,
+        at: BlockSide,
+        slot: usize,
+        read: &mut dyn for<'a> FnMut(ItemStackView<'a>),
+    ) {
+        if let Some(stack) = self.container_slot(at, slot) {
+            read(ItemStackView::from_stack(stack));
+        }
     }
     fn container_capacity(&self, at: BlockSide, slot: usize, stack: Option<&ItemStack>) -> u32 {
         let items = self
@@ -942,10 +946,25 @@ impl crate::prelude::PlayerWorldBackend for FakeHost {
         crate::Identifier::parse(level.dimension_id()).ok()
     }
 }
+crate::block::block_states::impl_block_states_without_tables!(FakeHost {
+    fn fluid_pickup_sound(
+        &self,
+        fluid: crate::FluidKey,
+    ) -> Result<Option<&'static str>, crate::LevelReadError> {
+        Ok(self.registries.fluid_sound(fluid, true))
+    }
+    fn fluid_empty_sound(
+        &self,
+        fluid: crate::FluidKey,
+    ) -> Result<Option<&'static str>, crate::LevelReadError> {
+        Ok(self.registries.fluid_sound(fluid, false))
+    }
+});
 crate::impl_backend_areas!(
     FakeHost,
     except(
         block_entities,
+        block_states,
         entity_identity,
         fluids_energy,
         items,
@@ -1017,8 +1036,7 @@ impl crate::prelude::ItemsBackendMut for FakeHost {
                 if left == 0 {
                     break;
                 }
-                let held = self.container_stack(at, slot);
-                let pick = match &held {
+                let pick = match self.container_slot(at, slot) {
                     Some(held) => holding && resource.matches(held),
                     None => !holding,
                 };
@@ -1053,8 +1071,8 @@ impl crate::prelude::ItemsBackendMut for FakeHost {
                 break;
             }
             if self
-                .container_stack(at, slot)
-                .is_some_and(|held| resource.matches(&held))
+                .container_slot(at, slot)
+                .is_some_and(|held| resource.matches(held))
             {
                 let ask = left.min(u32::MAX as u64) as u32;
                 left -= self

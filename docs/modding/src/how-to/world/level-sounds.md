@@ -64,6 +64,9 @@ Outside a transaction, a queued level sound draws its seed at the call even if a
 one, it draws a seed only when the resolved sound is published. A directed play request draws from the request
 level's random when published. The `HitHost::play_sound_at` and `play_sound_from` calls below always queue at the call.
 
+When a block callback lends a `LevelWriteHost`, use `host.play_sound(sound, at, SoundSource::Blocks, volume, pitch)`
+to queue a positional sound for nearby players. A transaction's level writer publishes its queued sounds only on commit.
+
 ## Engine playback and live parameters
 
 `play_sound` also observes transient playback updates. `event.starting` is true for a
@@ -112,7 +115,7 @@ entity:
 ```rust,ignore
 fn living_incoming_damage(&self, hit: &mut dyn HitHost, e: &mut LivingIncomingDamageEvent<'_>) -> Flow {
     let Some(attacker) = self.attacker_ref(e.source.causing) else { return Flow::Continue };
-    if let Some(roll) = attacker.next_float(hit) {
+    if let Some(roll) = attacker.with_random(hit, |rng| rng.next_float()) {
         hit.play_sound_at("mymod:hit.crunch", e.victim.position, SoundSource::Players, 1.0, 0.8 + roll * 0.4);
     }
     Flow::Continue
@@ -122,7 +125,9 @@ fn living_incoming_damage(&self, hit: &mut dyn HitHost, e: &mut LivingIncomingDa
 `play_sound_at` is `Level.playSound(null, x, y, z, ...)` and `play_sound_from(entity, ...)` is
 `Level.playSound(null, entity, ...)`: every player in range hears it, the entity's own player included
 (unlike `EntityRef::play_sound`). The sounds queue at the call, with their seeds drawn then from the level's
-sound-seed stream, so a hit a listener cancels still plays them. The entity draws (`next_float`, `next_double`,
-`next_bool`, `next_int(host, bound)`) advance the entity's actual stream. A hit lends its attacker where the game applies a melee hit (the attacking player or mob, for player → mob, mob → mob and mob → player) and no entity at any other damage site (environment, projectiles, explosions, potions and the like); the attacking mob's own random is the one its AI draws from, and a hit built inside a mob's own tick lends none. Any other entity, a stale handle, a client and an out-of-range `bound` answer `None` (`false` for a sound). Where a hit lends no sound queue (a client's prediction, piston restitution) `play_sound_at` and `play_sound_from` return false.
+sound-seed stream, so a hit a listener cancels still plays them. `with_random(host, |random| ...)` borrows
+the entity's real random stream: a callback can make several draws on that loan (`next_float`,
+`next_double`, `next_bool`, `next_int_bound(bound)`, which returns `0` without drawing for a bound
+below 1), and they advance the stream in listener order. A hit lends its attacker where the game applies a melee hit (the attacking player or mob, for player → mob, mob → mob and mob → player) and no entity at any other damage site (environment, projectiles, explosions, potions and the like); the attacking mob's own random is the one its AI draws from, and a hit built inside a mob's own tick lends none. Any other entity, a stale handle and a client answer `None` without entering the callback (`false` for a sound). Where a hit lends no sound queue (a client's prediction, piston restitution) `play_sound_at` and `play_sound_from` return false.
 Hooks: `living_incoming_damage`, `living_damage_pre`, `living_damage_post`, `living_shield_block` and
 `living_use_totem`.

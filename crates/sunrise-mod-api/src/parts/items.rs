@@ -779,8 +779,15 @@ pub mod tests {
         fn container_size(&self, BlockSide { pos, .. }: BlockSide) -> Option<usize> {
             (pos == SHELF).then_some(3)
         }
-        fn container_stack(&self, _: BlockSide, slot: usize) -> Option<ItemStack> {
-            self.slots.get(slot)?.clone()
+        fn lend_container_stack(
+            &self,
+            _: BlockSide,
+            slot: usize,
+            read: &mut dyn for<'a> FnMut(ItemStackView<'a>),
+        ) {
+            if let Some(Some(stack)) = self.slots.get(slot) {
+                read(ItemStackView::from_stack(stack));
+            }
         }
     }
     #[cfg(test)]
@@ -938,14 +945,19 @@ pub mod tests {
                 .unwrap_or(0)
         }
         fn resource(&self, host: &mut dyn ServerHost, index: usize) -> Option<ItemResource> {
-            Some(ItemResource::of(
-                &backend_of(&*host)?.container_stack(on(SHELF, None), index)?,
-            ))
+            let mut resource = None;
+            backend_of(&*host)?.lend_container_stack(on(SHELF, None), index, &mut |view| {
+                resource = view.project().as_ref().map(ItemResource::of);
+            });
+            resource
         }
         fn amount(&self, host: &mut dyn ServerHost, index: usize) -> u32 {
-            backend_of(&*host)
-                .and_then(|backend| backend.container_stack(on(SHELF, None), index))
-                .map_or(0, |held| held.count())
+            let mut count = 0;
+            if let Some(backend) = backend_of(&*host) {
+                backend
+                    .lend_container_stack(on(SHELF, None), index, &mut |view| count = view.count());
+            }
+            count
         }
         fn capacity(
             &self,

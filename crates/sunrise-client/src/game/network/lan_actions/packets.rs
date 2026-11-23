@@ -948,14 +948,13 @@ impl Game<'_> {
                                 return;
                             };
                             let guest = &host.hub.guests[gi];
-                            let (uuid, entity_id, name) =
-                                (guest.uuid, guest.entity_id, guest.name.clone());
-                            let actor = mod_api::GameRuleActor {
-                                uuid,
-                                entity_id,
-                                name: &name,
-                            };
-                            self.game_rule_changed(&rule.name, value, Some(&actor));
+                            let actor = self.native_lifecycle.epoch().map(|epoch| {
+                                mod_api::__private::game::player_ref(
+                                    mod_api::EntityRef::new(epoch, guest.entity_id as u32),
+                                    guest.uuid,
+                                )
+                            });
+                            self.game_rule_changed(&rule.name, value, actor);
                         }
                         let message = sunrise_client::text::Text::tr(
                             "commands.gamerule.set",

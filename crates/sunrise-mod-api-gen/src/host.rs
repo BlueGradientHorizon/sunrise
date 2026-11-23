@@ -432,7 +432,7 @@ pub(super) fn areas_source(root: &Path) -> Result<String, String> {
                 } else {
                     format!("self, {args}")
                 };
-                let value = refusal(&entry.sig, name)?;
+                let value = refusal(entry)?;
                 let refused = if args.is_empty() {
                     format!("{sig} {{ {value} }}")
                 } else {
@@ -940,8 +940,17 @@ fn signature_args(sig: &syn::Signature, name: &str) -> Result<String, String> {
 }
 
 /// A backend read's typed answer where there is no backend to ask.
-fn refusal(sig: &syn::Signature, name: &str) -> Result<&'static str, String> {
-    let syn::ReturnType::Type(_, ty) = &sig.output else {
+fn refusal(entry: &Entry) -> Result<&'static str, String> {
+    let name = &entry.name;
+    let syn::ReturnType::Type(_, ty) = &entry.sig.output else {
+        if entry
+            .attrs
+            .iter()
+            .any(|attr| attr.path().is_ident("decline_unavailable"))
+        {
+            // The caller's callback is not invoked; the refusal body returns implicit `()`.
+            return Ok("");
+        }
         return Err(format!("{name}: a backend read returns a value"));
     };
     let syn::Type::Path(path) = &**ty else {
@@ -1213,7 +1222,7 @@ fn goal_view(
             entry.name.as_str(),
             signature_args(&entry.sig, &entry.name)?,
         );
-        let refusal = refusal(&entry.sig, name)?;
+        let refusal = refusal(entry)?;
         let mut sig = entry.sig.clone();
         sig.ident = syn::parse_str(name).map_err(|e| format!("{name}: {e}"))?;
         // Entity data answers the tick's view; residency and non-entity reads forward to the real
@@ -1232,6 +1241,7 @@ fn goal_view(
         // How a forwarded read answers a host without a backend: its typed refusal.
         let forwarded = match refusal {
             "None" => ".flatten()".to_string(),
+            "" => ".unwrap_or_default()".to_string(),
             // A `Result` read's no-backend answer is its error type's own `NoBackend` value,
             // wrapped back in the `Err`.
             refusal if refusal.starts_with("Err(") => {

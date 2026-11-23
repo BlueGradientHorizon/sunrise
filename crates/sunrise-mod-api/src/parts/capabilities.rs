@@ -320,17 +320,17 @@ pub mod tests {
         let aborted: Result<(), crate::TransactionError<u32>> =
             host.transaction(|host, tx| Err(pipe.insert_at(host, tx, 0, &stick_, 1).unwrap()));
         assert_eq!(aborted, Err(crate::TransactionError::Aborted(1)));
-        assert!(
-            backend_of(&*host)
-                .and_then(|backend| backend.container_stack(on(CHEST, None), 0))
-                .is_none()
-        );
+        let backend = backend_of(&*host).unwrap();
+        backend.lend_container_stack(on(CHEST, None), 0, &mut |_| {
+            panic!("empty slot must not be lent");
+        });
         let went = host.transaction(|host, tx| pipe.insert_at(host, tx, 0, &stick_, 1));
         assert_eq!(went, Ok(1));
-        assert_eq!(
-            backend_of(&*host).and_then(|backend| backend.container_stack(on(CHEST, None), 0)),
-            Some(stick())
-        );
+        let mut stack = None;
+        backend_of(&*host)
+            .unwrap()
+            .lend_container_stack(on(CHEST, None), 0, &mut |view| stack = view.project());
+        assert_eq!(stack, Some(stick()));
         let went = host.transaction(|host, tx| pipe.insert_at(host, tx, 0, &stick_, 1));
         assert_eq!(went, Ok(0));
         // No block entity with slots: no answer. A mod's own capability has no game answer.

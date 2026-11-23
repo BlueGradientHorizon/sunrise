@@ -149,23 +149,15 @@ impl EntityRef {
     pub fn epoch(self) -> WorldEpoch {
         self.epoch
     }
-    /// A float from the entity's own random (`Entity.getRandom().nextFloat()`), drawn from the
-    /// actual stream, which keeps it. None where the hit does not lend the entity.
-    pub fn next_float(self, hit: &mut dyn HitHost) -> Option<f32> {
-        hit.entity_next_float(self)
-    }
-    /// A double from the entity's own random, as [`Self::next_float`] draws.
-    pub fn next_double(self, hit: &mut dyn HitHost) -> Option<f64> {
-        hit.entity_next_double(self)
-    }
-    /// A boolean from the entity's own random, as [`Self::next_float`] draws.
-    pub fn next_bool(self, hit: &mut dyn HitHost) -> Option<bool> {
-        hit.entity_next_bool(self)
-    }
-    /// An int from 0 up to `bound` from the entity's own random, as [`Self::next_float`] draws.
-    /// None as well for a `bound` of 0 or less.
-    pub fn next_int(self, hit: &mut dyn HitHost, bound: i32) -> Option<i32> {
-        hit.entity_next_int(self, bound)
+    /// Use the entity's live `Entity.getRandom` stream for `draw`. The hit leaves the
+    /// draws in the stream in listener order. Returns `None` without running `draw`
+    /// if this hit does not lend the entity.
+    pub fn with_random<T>(
+        self,
+        hit: &mut dyn HitHost,
+        draw: impl FnOnce(&mut dyn crate::RandomSource) -> T,
+    ) -> Option<T> {
+        crate::world::random::with_random_draw(draw, |draw| hit.lend_entity_random(self, draw))
     }
 }
 

@@ -1715,8 +1715,9 @@ impl Game<'_> {
         fire: bool,
         damage_type: &'a str,
     ) -> ExplosionStart<'a> {
+        let entity = |id| Some(mod_api::EntityRef::new(self.native_lifecycle.epoch()?, id));
         ExplosionStart::from(mod_api::__private::built::ExplosionStart {
-            dimension: self.dim.id(),
+            dimension: self.dim.key(),
             center,
             radius,
             fire,
@@ -1727,9 +1728,9 @@ impl Game<'_> {
                 BlockInteraction::Trigger => mod_api::BlockInteraction::TriggerBlock,
             },
             damage_type,
-            source: self.combat.explosion_source,
+            source: self.combat.explosion_source.and_then(entity),
             // `getIndirectSourceEntity`, as the blast's attacker is.
-            owner: self.blast_attacker().map(|(id, _)| id),
+            owner: self.blast_attacker().and_then(|(id, _)| entity(id)),
         })
     }
     /// `server_explode` with the damage type the player takes and a block
@@ -2321,7 +2322,7 @@ mod tests {
                     game.world.set(x, y, z, dirt).unwrap();
                 }
                 let start = ExplosionStart::from(mod_api::__private::built::ExplosionStart {
-                    dimension: "minecraft:overworld",
+                    dimension: mod_api::DimensionKey::OVERWORLD,
                     center: [0.0; 3],
                     radius: 4.0,
                     fire: false,
@@ -2610,7 +2611,7 @@ mod tests {
             let expected = exploded_positions_stepwise(&mut game, center, radius, resists);
             game.world.random.set_seed(7);
             let start = ExplosionStart::from(mod_api::__private::built::ExplosionStart {
-                dimension: "minecraft:overworld",
+                dimension: mod_api::DimensionKey::OVERWORLD,
                 center,
                 radius,
                 fire: false,

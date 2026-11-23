@@ -264,9 +264,9 @@ pub trait Notes {
   `randomTick` itself) don't fire it. The hook may change the block with the level's
   `LevelWriteHost::set_block_property(pos, key, value, flags)` and set `handled` to skip the block's own random tick, so a
   mod crop grows its own way. Without `handled`, the block then takes its own random tick as it is now (if it still
-  ticks randomly), and lava's fluid random tick runs either way. It needs the level mutably, which only `random_tick` and `tick_block` give. The tick's level writer uses vanilla's `Level.setBlock` flags: a
-  vanilla crop grows with `flags::UPDATE_CLIENTS` (neighbours' shapes update, so an observer fires, but no neighbour
-  gets `neighborChanged` and comparators aren't told), a furnace sets its `lit` with `flags::UPDATE_ALL` (both). Sunrise
+  ticks randomly), and lava's fluid random tick runs either way. It needs the level mutably, which only `random_tick` and `tick_block` give. The tick's level writer uses vanilla's `Level.setBlock` flags via `BlockUpdateFlags`: a
+  vanilla crop grows with `BlockUpdateFlags::CLIENTS` (neighbours' shapes update, so an observer fires, but no neighbour
+  gets `neighborChanged` and comparators aren't told), a furnace sets its `lit` with `BlockUpdateFlags::NEIGHBORS | BlockUpdateFlags::CLIENTS` (both). Sunrise
   sends updates when `UPDATE_CLIENTS` (2) is set; `UPDATE_INVISIBLE` (4) suppresses notification only on the client, as in `Level.setBlock`. `UPDATE_IMMEDIATE` (8) has no effect yet. It writes at any loaded position, returns false off an authoritative server (the `Game` one too: a window that isn't a server), for a property or
   value the block doesn't have, a position that isn't loaded, or a property that already has the value (nothing is written:
   vanilla's `Level.setBlock` returns false for an unchanged state, as `LevelWriteHost::set_block` does), and true when the block changed. From a server Host, use `level.set_block_property(host, pos, key, value, flags)` with typed
@@ -276,7 +276,7 @@ pub trait Notes {
   scheduled tick of a block that is still there (`ServerLevel.tickBlock` → `BlockState.tick`), with its dimension,
   position and state, before the block handles it. The hook may change the block with
   `LevelWriteHost::set_block_property` and the flags the block's own tick would write with (an observer's tick
-  uses `flags::UPDATE_CLIENTS`) and set `handled` to skip the block's own tick. Without `handled`, the block then takes
+  uses `BlockUpdateFlags::CLIENTS`) and set `handled` to skip the block's own tick. Without `handled`, the block then takes
   its own tick as it is now, if it is still the tick's block.
 
 - The commands a mod owns on the client, as NeoForge's `RegisterClientCommandsEvent`: push a `ClientCommandRegistration` made by `Command::new("x <mode:word>").executes_client(...)`. The chat display combines the two trees, while client and server execute in separate dispatchers. Only an unknown client command or argument is sent to the server. The client refuses nonzero operator levels, server-only argument kinds and custom argument types with a server suggestion provider. Asked at connect and when the server sends its tree, never per frame.
