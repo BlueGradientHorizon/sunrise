@@ -795,7 +795,7 @@ impl Lan {
         } else {
             (None, None)
         };
-        let (profile_tx, profile_rx) = if drive_configuration {
+        let (profile_tx, profile_rx) = if drive_game {
             let (tx, rx) = channel();
             (Some(tx), Some(rx))
         } else {
