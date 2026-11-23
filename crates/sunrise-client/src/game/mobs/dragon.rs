@@ -432,6 +432,8 @@ pub(in crate::game) struct Dragon {
     /// only damage above the last hit lands, and only the excess.
     invulnerable: i32,
     last_hurt: f32,
+    /// Transient `LivingEntity.lastHurtMob`; an owned arrow or wind charge can set it.
+    pub(super) last_hurt_mob: Option<(u32, i32)>,
     /// `lastHurtByPlayer` with its 100 tick memory: the player credited with
     /// the kill, and the dragon tick of their last hit.
     hurt_by_player: Option<(FightWho, i32)>,
@@ -684,6 +686,7 @@ impl Dragon {
             hurt_time: 0,
             invulnerable: 0,
             last_hurt: 0.0,
+            last_hurt_mob: None,
             hurt_by_player: None,
             last_source: None,
             death_time: 0,
@@ -2773,13 +2776,21 @@ impl Game<'_> {
         if let Some(id) = self.dragon.as_ref().map(|d| d.id) {
             self.tick_saved_invulnerable_time(id);
         }
+        let target_dead = self
+            .dragon
+            .as_ref()
+            .and_then(|d| d.last_hurt_mob)
+            .is_some_and(|(id, _)| !self.last_hurt_target_alive(id));
         let Some(d) = self.dragon.as_mut() else {
             return;
         };
         d.previous = d.position;
         d.previous_yaw = d.yaw;
         d.old_flap = d.flap;
-        d.ticks += 1;
+        d.ticks = d.ticks.wrapping_add(1);
+        if target_dead {
+            d.last_hurt_mob = None;
+        }
         d.hurt_time = (d.hurt_time - 1).max(0);
         d.invulnerable = (d.invulnerable - 1).max(0);
         for part in &mut d.parts {

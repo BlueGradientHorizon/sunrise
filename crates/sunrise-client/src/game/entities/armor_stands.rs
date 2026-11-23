@@ -792,6 +792,9 @@ impl Game<'_> {
                 magic.then_some(id as i32),
             );
             g.special_attack_slowdown(knockback);
+            if admitted {
+                g.remember_player_target(Some(id));
+            }
         });
         // Player.onAttack: the hit starts the attack strength again, hurt or
         // not (skipAttackInteraction only asks mayInteract).
@@ -1037,7 +1040,15 @@ impl Game<'_> {
                 self.armor_stands[i].previous_yaw = self.armor_stands[i].yaw;
                 continue;
             }
-            self.armor_stands[i].first_tick = false;
+            let target_dead = self.armor_stands[i]
+                .last_hurt_mob
+                .is_some_and(|(id, _)| !self.last_hurt_target_alive(id));
+            let stand = &mut self.armor_stands[i];
+            stand.tick_count = stand.tick_count.wrapping_add(1);
+            stand.first_tick = false;
+            if target_dead {
+                stand.last_hurt_mob = None;
+            }
             // Entity.baseTick: the saved invulnerability window counts down
             // (#916).
             self.tick_saved_invulnerable_time(self.armor_stands[i].id);

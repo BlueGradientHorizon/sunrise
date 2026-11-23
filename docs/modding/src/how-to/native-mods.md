@@ -51,6 +51,16 @@ the player reference survives the tick that decrements its timer to zero and
 expires on the next tick. Death loot and experience still use the positive timer
 to determine whether a player hit the mob recently.
 
+### Last attacker and last hurt target
+
+On the server, `LivingRef::last_attacker(host)` reads who last hurt the entity,
+within its recent-attacker window. `LivingRef::last_hurt_mob(host)` instead
+reads the living target the entity last attacked, as `(EntityRef, i32)`. The
+number is the holder's `tick_count` at the hit, not level time. Melee records
+a successful hit; arrow and wind-charge impacts record the target before
+damage, even if damage is refused. There is no expiry window on this read.
+It returns `None` for a stale holder, an empty record, or a dead or gone target.
+
 ### Custom statistics
 
 Declare custom statistic identities in `Hooks::register`, using `Registrar`:
