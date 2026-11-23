@@ -536,6 +536,11 @@ impl StreamingUpdate {
     pub fn keep_columns(&mut self) {
         self.far.clear();
     }
+
+    /// Keep only columns that may be committed by this sweep.
+    pub fn retain_unloading_columns(&mut self, can_unload: impl FnMut(&(i32, i32)) -> bool) {
+        self.far.retain(can_unload);
+    }
 }
 
 /// Result of processing generation results, pausing before a late full save.

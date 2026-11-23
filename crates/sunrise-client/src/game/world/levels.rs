@@ -2188,6 +2188,109 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "daily"]
+    fn idle_eviction_keeps_the_refused_column_and_retires_its_neighbor() {
+        use crate::game::native_entity_refs::tests::{run_fresh_cases, with_game};
+        use mod_api::{ChunkUnloadEvent, EntitiesUnloadEvent, Hooks, ModEntry, ServerHost};
+        use std::sync::Mutex;
+        use sunrise_client::{chunk::Chunk, items::ItemStack};
+        use sunrise_core::nbt::{DISK_WRITE_NESTING_GUARD, Tag};
+
+        if run_fresh_cases(
+            "game::levels::tests::idle_eviction_keeps_the_refused_column_and_retires_its_neighbor",
+            "SUNRISE_IDLE_EVICTION_WRITE_CASE",
+            &["refused-entities"],
+        ) {
+            return;
+        }
+
+        #[derive(Debug, PartialEq)]
+        enum Notice {
+            Chunk([i32; 2]),
+            Entities([i32; 2], usize),
+        }
+        struct Log(Arc<Mutex<Vec<Notice>>>);
+        #[mod_api::__subscriptions]
+        impl Hooks for Log {
+            fn chunk_unload(&self, _: &mut dyn ServerHost, event: &mut ChunkUnloadEvent<'_>) {
+                if event.dimension == "minecraft:the_nether" {
+                    self.0.lock().unwrap().push(Notice::Chunk(event.chunk));
+                }
+            }
+            fn entities_unload(&self, _: &mut dyn ServerHost, event: &mut EntitiesUnloadEvent<'_>) {
+                if event.dimension == "minecraft:the_nether" {
+                    self.0
+                        .lock()
+                        .unwrap()
+                        .push(Notice::Entities(event.chunk, event.count));
+                }
+            }
+        }
+        let notices = Arc::new(Mutex::new(Vec::new()));
+        mod_platform::testing::with_mods(
+            vec![ModEntry::new(
+                "idle_eviction",
+                Box::new(Log(notices.clone())),
+            )]
+            .into(),
+            || {
+                with_game(|game| {
+                    let root = tempfile::tempdir().unwrap();
+                    game.world_root = root.path().to_owned();
+                    game.enter_level(Dim::Nether).unwrap();
+                    for (x, item) in [(0, "minecraft:diamond"), (1, "minecraft:gold_ingot")] {
+                        game.world.chunks.insert(
+                            (x, 0),
+                            Arc::new(Chunk::with_layout(x, 0, game.world.layout())),
+                        );
+                        game.world.modified.insert((x, 0));
+                        game.spawn_item(
+                            ItemStack {
+                                item: item.into(),
+                                count: 1,
+                                damage: 0,
+                                extra: None,
+                            },
+                            [f64::from(x * 16) + 0.5, 64.0, 0.5],
+                            [0.0; 3],
+                            0,
+                        );
+                    }
+                    let previous = Tag::compound([("marker", Tag::Int(47))]);
+                    game.save
+                        .save_entities(vec![((0, 0), vec![previous.clone()])])
+                        .unwrap();
+                    let invalid = (0..=DISK_WRITE_NESTING_GUARD)
+                        .fold(Tag::Int(0), |nested, _| Tag::List(vec![nested]));
+                    game.spawn_loaded_entity((0, 0), invalid, None);
+                    let disk = SaveDir::new(game.save.root.clone(), game.save.shape, None);
+                    game.enter_level(Dim::Overworld).unwrap();
+                    game.evict_idle_level_chunks(Dim::Nether).unwrap();
+                    game.enter_level(Dim::Nether).unwrap();
+                    assert!(game.world.chunks.contains_key(&(0, 0)));
+                    assert!(game.world.modified.contains(&(0, 0)));
+                    assert!(!game.world.chunks.contains_key(&(1, 0)));
+                    assert!(!game.world.modified.contains(&(1, 0)));
+                    assert_eq!(game.dropped.len(), 1);
+                    assert_eq!(game.dropped[0].stack.item.as_ref(), "minecraft:diamond");
+                    assert_eq!(disk.load_entities(0, 0).unwrap(), [previous]);
+                    let neighbor = disk.load_entities(1, 0).unwrap();
+                    assert_eq!(neighbor.len(), 1);
+                    assert_eq!(
+                        neighbor[0].get("Item").and_then(|item| item.get("id")),
+                        Some(&Tag::String("minecraft:gold_ingot".into()))
+                    );
+                    assert!(disk.raw_chunk(1, 0).is_some());
+                })
+            },
+        );
+        assert_eq!(
+            *notices.lock().unwrap(),
+            [Notice::Chunk([1, 0]), Notice::Entities([1, 0], 1)]
+        );
+    }
+
+    #[test]
     fn levels_clear_retires_the_level_order() {
         let mut levels = Levels::default();
         levels.order.push(Dim::Nether);

@@ -6,3 +6,4 @@ sunrise-client game::saving::tests::both_successful_save_paths_resolve_the_banne
 sunrise-client game::saving::tests::closing_and_control_saves_complete_after_reporting_a_record_failure lib daily resources
 sunrise-client game::server_lifecycle::tests::integrated_stop_finishes_after_an_unencodable_record lib daily resources
 sunrise-client game::server_lifecycle::tests::integrated_stop_propagates_metadata_errors_even_after_a_record_failure lib daily resources
+sunrise-client game::levels::tests::idle_eviction_keeps_the_refused_column_and_retires_its_neighbor lib daily child-process

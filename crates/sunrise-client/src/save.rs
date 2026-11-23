@@ -27,7 +27,7 @@ mod horizon_names_tests;
 pub mod level_mods;
 mod respawn;
 mod writes;
-use writes::{Outstanding, Writer};
+use writes::{EvictionWrites, Outstanding, Writer};
 
 use crate::{
     Result,
@@ -3114,15 +3114,22 @@ impl SaveDir {
         Ok(chunks.len())
     }
     fn save_poi(&self, chunks: &[Arc<Chunk>], wait: bool) -> Result<()> {
-        let Some(tables) = self.tables.get() else {
+        if self.tables.get().is_none() {
             return Ok(());
+        }
+        self.queue(Folder::Poi, self.poi_records(chunks), wait)
+    }
+
+    fn poi_records(&self, chunks: &[Arc<Chunk>]) -> Vec<((i32, i32), Record)> {
+        let Some(tables) = self.tables.get() else {
+            return Vec::new();
         };
         let professions = self
             .professions
             .read()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .clone();
-        let records = chunks
+        chunks
             .iter()
             .map(|c| {
                 (
@@ -3130,9 +3137,9 @@ impl SaveDir {
                     Record::Poi(c.clone(), tables.clone(), professions.clone()),
                 )
             })
-            .collect();
-        self.queue(Folder::Poi, records, wait)
+            .collect()
     }
+
     /// `save` on the writer thread: returns before the files are written;
     /// loads see the chunks meanwhile.
     pub fn save_later(
@@ -3141,6 +3148,17 @@ impl SaveDir {
         registry: &'static BlockRegistry,
         biomes: &Arc<Biomes>,
     ) -> Result<usize> {
+        self.enqueue_chunk_saves(chunks, registry, biomes, None)?;
+        Ok(chunks.len())
+    }
+
+    fn enqueue_chunk_saves(
+        &self,
+        chunks: &[Arc<Chunk>],
+        registry: &'static BlockRegistry,
+        biomes: &Arc<Biomes>,
+        eviction: Option<&EvictionWrites>,
+    ) -> Result<()> {
         let encoding = self.encoding_for_save_later(chunks, registry, biomes)?;
         let records = chunks
             .iter()
@@ -3152,41 +3170,77 @@ impl SaveDir {
                 )
             })
             .collect();
-        self.queue(Folder::Region, records, false)?;
-        self.save_poi(chunks, false)?;
-        Ok(chunks.len())
+        self.enqueue_records(Folder::Region, records, eviction)?;
+        self.enqueue_records(Folder::Poi, self.poi_records(chunks), eviction)
     }
+
+    /// Save the records required by an idle column eviction. A successful
+    /// barrier returns the columns whose own records were refused or skipped.
+    /// If the barrier fails, eviction cannot assume any column is durable.
+    pub fn save_eviction(
+        &self,
+        chunks: &[Arc<Chunk>],
+        registry: &'static BlockRegistry,
+        biomes: &Arc<Biomes>,
+        entities: Vec<((i32, i32), Vec<Tag>)>,
+    ) -> Result<HashSet<(i32, i32)>> {
+        let eviction = EvictionWrites::default();
+        if !chunks.is_empty() {
+            self.enqueue_chunk_saves(chunks, registry, biomes, Some(&eviction))?;
+        }
+        let records = self.entity_records(entities, Some(&eviction));
+        self.enqueue_records(Folder::Entities, records, Some(&eviction))?;
+        self.flush()?;
+        Ok(eviction.refused())
+    }
+
     /// Write the entity chunks (`EntityStorage`): an empty list deletes it.
     pub fn save_entities(&self, chunks: Vec<((i32, i32), Vec<Tag>)>) -> Result<()> {
-        self.write_entities(chunks, true)
+        self.queue(Folder::Entities, self.entity_records(chunks, None), true)
     }
     /// `save_entities` on the writer thread.
     pub fn save_entities_later(&self, chunks: Vec<((i32, i32), Vec<Tag>)>) -> Result<()> {
-        self.write_entities(chunks, false)
+        self.queue(Folder::Entities, self.entity_records(chunks, None), false)
     }
     /// `PersistentEntitySectionManager.storeChunkSections`: never store a pending entity chunk.
-    fn write_entities(&self, mut chunks: Vec<((i32, i32), Vec<Tag>)>, wait: bool) -> Result<()> {
+    fn entity_records(
+        &self,
+        mut chunks: Vec<((i32, i32), Vec<Tag>)>,
+        eviction: Option<&EvictionWrites>,
+    ) -> Vec<((i32, i32), Record)> {
         {
             let failed = self.failed_entity_reads.lock().unwrap();
             if !failed.is_empty() {
-                chunks.retain(|(key, _)| !failed.contains(key));
+                chunks.retain(|(key, _)| {
+                    if failed.contains(key) {
+                        if let Some(eviction) = eviction {
+                            eviction.refuse(*key);
+                        }
+                        false
+                    } else {
+                        true
+                    }
+                });
             }
         }
-        let records = chunks
+        chunks
             .into_iter()
             .map(|((x, z), entities)| {
-                let tag = (!entities.is_empty()).then(|| NamedTag {
-                    name: "".into(),
-                    tag: Tag::compound([
-                        ("DataVersion", Tag::Int(DATA_VERSION)),
-                        ("Position", Tag::IntArray(vec![x, z])),
-                        ("Entities", Tag::List(entities)),
-                    ]),
-                });
-                ((x, z), tag)
+                let record = if entities.is_empty() {
+                    Record::Delete
+                } else {
+                    Record::Tag(Arc::new(NamedTag {
+                        name: "".into(),
+                        tag: Tag::compound([
+                            ("DataVersion", Tag::Int(DATA_VERSION)),
+                            ("Position", Tag::IntArray(vec![x, z])),
+                            ("Entities", Tag::List(entities)),
+                        ]),
+                    }))
+                };
+                ((x, z), record)
             })
-            .collect();
-        self.write_records("entities", records, wait)
+            .collect()
     }
 }
 

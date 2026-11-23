@@ -216,7 +216,13 @@ impl Game<'_> {
                 }
             }
         });
-        let keys: std::collections::HashSet<_> = plan.unloading_columns().iter().copied().collect();
+        if wait {
+            // Like PersistentEntitySectionManager.storeChunkSections, a pending load must
+            // complete before its live entities can replace the stored ones.
+            plan.retain_unloading_columns(|key| !self.world.entities_pending.contains(key));
+        }
+        let mut keys: std::collections::HashSet<_> =
+            plan.unloading_columns().iter().copied().collect();
         let saved = (|| -> Result<_> {
             if keys.is_empty() {
                 return Ok(Vec::new());
@@ -229,13 +235,29 @@ impl Game<'_> {
                     .filter_map(|key| self.world.chunks.get(key)),
             );
             self.native_full_chunk_snapshots(&chunks);
-            if !chunks.is_empty() {
-                self.save
-                    .save_later(&chunks, self.pack.assets.registry, world_biomes!(self))?;
+            let entities = self.unloading_entity_snapshots(&keys);
+            let mut counts = Vec::new();
+            if mod_api::__private::listened(mod_api::HookId::EntitiesUnload) {
+                counts.extend(entities.iter().map(|(key, rows)| (*key, rows.len())));
             }
-            let counts = self.save_unloading_entities(&keys)?;
             if wait {
-                self.save.flush()?;
+                let refused = self.save.save_eviction(
+                    &chunks,
+                    self.pack.assets.registry,
+                    world_biomes!(self),
+                    entities,
+                )?;
+                plan.retain_unloading_columns(|key| !refused.contains(key));
+                keys.retain(|key| !refused.contains(key));
+            } else {
+                if !chunks.is_empty() {
+                    self.save.save_later(
+                        &chunks,
+                        self.pack.assets.registry,
+                        world_biomes!(self),
+                    )?;
+                }
+                self.save.save_entities_later(entities)?;
             }
             Ok(counts)
         })();
@@ -301,7 +323,9 @@ impl Game<'_> {
             self.remove_unloading_entities(&keys);
             if let Ok(counts) = &saved {
                 for &(chunk, count) in counts {
-                    self.native_entities_unload(self.dim.id(), [chunk.0, chunk.1], count);
+                    if keys.contains(&chunk) {
+                        self.native_entities_unload(self.dim.id(), [chunk.0, chunk.1], count);
+                    }
                 }
             }
             let gone: sunrise_client::fast_hash::FxHashSet<(i32, i32)> =

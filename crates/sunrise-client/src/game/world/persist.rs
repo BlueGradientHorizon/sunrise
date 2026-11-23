@@ -2366,20 +2366,14 @@ impl Game<'_> {
                 _ => None,
             };
     }
-    /// `PersistentEntitySectionManager.processChunkUnload`: store the entity
-    /// records before dropping the live rows. A refused write leaves them live.
-    pub(super) fn save_unloading_entities(
+    /// Capture the entity records before committing a chunk unload
+    /// (`PersistentEntitySectionManager.processChunkUnload`).
+    pub(super) fn unloading_entity_snapshots(
         &mut self,
         keys: &HashSet<ChunkKey>,
-    ) -> Result<Vec<(ChunkKey, usize)>> {
+    ) -> Vec<(ChunkKey, Vec<Tag>)> {
         self.spawn_loaded_entities();
-        let chunks = self.entity_chunks(keys, false);
-        let counts = chunks
-            .iter()
-            .map(|(key, rows)| (*key, rows.len()))
-            .collect();
-        self.save.save_entities_later(chunks)?;
-        Ok(counts)
+        self.entity_chunks(keys, false)
     }
 
     pub(super) fn remove_unloading_entities(&mut self, keys: &HashSet<ChunkKey>) {

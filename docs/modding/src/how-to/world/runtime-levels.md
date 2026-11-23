@@ -102,7 +102,9 @@ when it is applied: move the players out first with `entity.teleport_to_level`. 
 answer for a level that is not open (or still waiting to open). When a non-Overworld level has
 no players, views, or forced chunks for 300 ticks, the server evicts its chunks and entities from
 memory without closing the level: `is_open` stays true, neither `level_unload` nor `level_save`
-fires, and revisiting it does not fire `level_load` again. Only `unload`, `delete`, or server
+fires, and revisiting it does not fire `level_load` again. The sweep leaves a column and its live
+entities resident if a required record cannot be saved; other eligible columns can still evict.
+Only `unload`, `delete`, or server
 shutdown closes it and fires `level_unload`.
 
 ## Deleting
