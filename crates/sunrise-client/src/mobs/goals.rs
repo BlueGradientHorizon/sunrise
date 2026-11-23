@@ -4684,9 +4684,7 @@ mod check_and_perform_attack_tests {
                 }));
             }
         });
-        if !ran {
-            return;
-        }
+        assert!(ran, "prepared mob resources required");
         assert_eq!(outcomes, [(1, false, 0), (20, true, 1), (20, true, 1)]);
     }
 
