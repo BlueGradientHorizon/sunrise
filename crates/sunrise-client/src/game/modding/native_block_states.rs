@@ -604,21 +604,9 @@ mod tests {
         );
         let vanilla = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
         let root = super::super::mods::content_root(&vanilla, &sources).unwrap();
-        let world_fluids = [
-            "measured:brine",
-            "measured:flowing_brine",
-            "measured:plain",
-            "measured:flowing_plain",
-        ];
         super::super::native_entity_refs::tests::with_game_at(
             root.prepared().to_path_buf(),
             |game| {
-                // The fixture resolves only vanilla's fluid keys; resolve the mod's world fluids
-                // after them, as `content_root` does at startup.
-                let engine = sunrise_world::fluid::FluidKind::ALL.map(|kind| kind.name());
-                let mut names = engine.to_vec();
-                names.extend(world_fluids);
-                mod_api::__private::resolve_fluids(&names, &engine).unwrap();
                 let host: &dyn Host = game;
                 let read = |id: &str| -> FluidTypeProperties {
                     host.fluid_states()
