@@ -217,12 +217,11 @@ Entities a transaction spawns or removes follow the same commit and rollback rul
 - Travel between levels is not journaled: an entity that arrives in another level during an aborted
   transaction stays where it arrived.
 
-`mob_split` and `baby_entity_spawn` open a transaction after constructing the pending children.
-An accepted list is validated and applied before deferred join callbacks run. A veto, empty list,
-stale inputs (including a parent marked for removal), invalid child or contained listener panic
-discards the children and rolls back journaled listener writes in that level. Work in another level
-commits at once when that level has no open transaction. Construction draws stay spent, and the
-parent's death or the parents' breeding cooldown is not undone.
+`mob_split` and `baby_entity_spawn` lend children that have already been constructed.
+Canceling or discarding a child drops its unpublished identity and attachments, not unrelated
+Host writes or constructor draws. A panic restores that listener's cancellation flag but does
+not journal direct child or collection edits. An enclosing Host transaction still governs the
+writes it journals and any deferred joins.
 
 For batched projectiles and thrown tridents, `projectile_impact` runs in the same transaction
 as the captured hit. Canceling the hit does not abort listener writes. Discarding the

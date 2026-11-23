@@ -202,7 +202,7 @@ fn sulfur_cube_splits_two_babies_unless_primed_and_size_one_asks_nobody() {
     let record = seen.clone();
     let do_push = push_when_empty.clone();
     with_split(
-        move |_, event| {
+        move |host, event| {
             let empty = event.children.is_empty();
             record.lock().unwrap().push((
                 event.kind.to_owned(),
@@ -213,13 +213,16 @@ fn sulfur_cube_splits_two_babies_unless_primed_and_size_one_asks_nobody() {
             if empty && *do_push.lock().unwrap() {
                 let extra = event
                     .children
-                    .construct(spec(
-                        "minecraft:slime",
-                        [10.0, 64.5, 20.0],
-                        15.0,
-                        Some(2),
-                        event.dimension,
-                    ))
+                    .construct(
+                        host,
+                        spec(
+                            "minecraft:slime",
+                            [10.0, 64.5, 20.0],
+                            15.0,
+                            Some(2),
+                            event.dimension,
+                        ),
+                    )
                     .unwrap();
                 event.children.push(extra).unwrap();
             }
@@ -289,32 +292,38 @@ fn edit_remove_push_commits_a_c_d_once() {
     let record = second_saw.clone();
     with_splits(
         vec![
-            Box::new(move |_, event| {
+            Box::new(move |host, event| {
                 event.children.get_mut(0).unwrap().set_yaw(90.0).unwrap();
                 let removed = event.children.remove(1).unwrap();
                 assert_eq!(removed.kind().unwrap().to_string(), "minecraft:slime");
                 drop(removed);
                 let d = event
                     .children
-                    .construct(spec(
-                        "minecraft:slime",
-                        [3.0, 70.0, 4.0],
-                        12.0,
-                        Some(2),
-                        event.dimension,
-                    ))
+                    .construct(
+                        host,
+                        spec(
+                            "minecraft:slime",
+                            [3.0, 70.0, 4.0],
+                            12.0,
+                            Some(2),
+                            event.dimension,
+                        ),
+                    )
                     .unwrap();
                 event.children.push(d).unwrap();
                 // A detached child dropped without attaching never joins.
                 let _dropped = event
                     .children
-                    .construct(spec(
-                        "minecraft:slime",
-                        [9.0, 70.0, 9.0],
-                        0.0,
-                        Some(2),
-                        event.dimension,
-                    ))
+                    .construct(
+                        host,
+                        spec(
+                            "minecraft:slime",
+                            [9.0, 70.0, 9.0],
+                            0.0,
+                            Some(2),
+                            event.dimension,
+                        ),
+                    )
                     .unwrap();
                 assert_eq!(event.children.len(), 3);
                 Flow::Continue
@@ -360,16 +369,19 @@ fn replace_c_with_e_commits_a_b_e() {
     let replaced_kind = Arc::new(Mutex::new(None));
     let record = replaced_kind.clone();
     with_split(
-        move |_, event| {
+        move |host, event| {
             let e = event
                 .children
-                .construct(spec(
-                    "minecraft:magma_cube",
-                    [8.0, 65.0, 9.0],
-                    33.0,
-                    Some(2),
-                    event.dimension,
-                ))
+                .construct(
+                    host,
+                    spec(
+                        "minecraft:magma_cube",
+                        [8.0, 65.0, 9.0],
+                        33.0,
+                        Some(2),
+                        event.dimension,
+                    ),
+                )
                 .unwrap();
             let prev = event.children.replace(2, e).unwrap();
             *record.lock().unwrap() = Some(prev.kind().unwrap().to_string());
@@ -401,56 +413,62 @@ fn invalid_input_fails_before_mutation_and_the_valid_list_stands() {
     let errors = Arc::new(Mutex::new(Vec::new()));
     let record = errors.clone();
     with_split(
-        move |_, event| {
+        move |host, event| {
             let dim = event.dimension;
             let mut out = vec![
                 event
                     .children
-                    .construct(spec(
-                        "minecraft:slime",
-                        [f64::NAN, 64.0, 0.0],
-                        0.0,
-                        Some(2),
-                        dim,
-                    ))
+                    .construct(
+                        host,
+                        spec("minecraft:slime", [f64::NAN, 64.0, 0.0], 0.0, Some(2), dim),
+                    )
                     .map(|_| ()),
                 event
                     .children
-                    .construct(spec(
-                        "minecraft:not_a_mob",
-                        [0.0, 64.0, 0.0],
-                        0.0,
-                        None,
-                        dim,
-                    ))
+                    .construct(
+                        host,
+                        spec("minecraft:not_a_mob", [0.0, 64.0, 0.0], 0.0, None, dim),
+                    )
                     .map(|_| ()),
                 event
                     .children
-                    .construct(spec(
-                        "minecraft:slime",
-                        [0.0, 64.0, 0.0],
-                        0.0,
-                        Some(2),
-                        "minecraft:the_end",
-                    ))
+                    .construct(
+                        host,
+                        spec(
+                            "minecraft:slime",
+                            [0.0, 64.0, 0.0],
+                            0.0,
+                            Some(2),
+                            "minecraft:the_end",
+                        ),
+                    )
                     .map(|_| ()),
             ];
             // Out-of-bounds insert and replace refuse without mutating the list.
             let oob_insert = event
                 .children
-                .construct(spec("minecraft:slime", [0.0, 64.0, 0.0], 0.0, Some(2), dim))
+                .construct(
+                    host,
+                    spec("minecraft:slime", [0.0, 64.0, 0.0], 0.0, Some(2), dim),
+                )
                 .unwrap();
             out.push(event.children.insert(99, oob_insert));
             let oob_replace = event
                 .children
-                .construct(spec("minecraft:slime", [0.0, 64.0, 0.0], 0.0, Some(2), dim))
+                .construct(
+                    host,
+                    spec("minecraft:slime", [0.0, 64.0, 0.0], 0.0, Some(2), dim),
+                )
                 .unwrap();
             out.push(event.children.replace(99, oob_replace).map(|_| ()));
             // Unbounded list grows past the former 64-child cap (Audit [69]).
             while event.children.len() < 70 {
                 let more = event
                     .children
-                    .construct(spec("minecraft:slime", [0.0, 64.0, 0.0], 0.0, Some(2), dim))
+                    .construct(
+                        host,
+                        spec("minecraft:slime", [0.0, 64.0, 0.0], 0.0, Some(2), dim),
+                    )
                     .unwrap();
                 event.children.push(more).unwrap();
             }
@@ -491,22 +509,32 @@ fn invalid_input_fails_before_mutation_and_the_valid_list_stands() {
 #[test]
 #[ignore = "daily"]
 fn split_edits_do_not_publish_on_engine_unwind() {
+    if crate::game::native_entity_refs::tests::run_fresh_cases(
+        "game::creatures::pending_birth_tests::split_edits_do_not_publish_on_engine_unwind",
+        "SUNRISE_SPLIT_DISPATCH_UNWIND_CASE",
+        &["replacement"],
+    ) {
+        return;
+    }
     use std::sync::atomic::{AtomicUsize, Ordering};
 
     let edits = Arc::new(AtomicUsize::new(0));
     let recorded = edits.clone();
     with_split(
-        move |_, event| {
+        move |host, event| {
             event.children.get_mut(0).unwrap().set_yaw(1.0).unwrap();
             let replacement = event
                 .children
-                .construct(spec(
-                    "minecraft:magma_cube",
-                    [1.0, 64.0, 1.0],
-                    0.0,
-                    Some(2),
-                    event.dimension,
-                ))
+                .construct(
+                    host,
+                    spec(
+                        "minecraft:magma_cube",
+                        [1.0, 64.0, 1.0],
+                        0.0,
+                        Some(2),
+                        event.dimension,
+                    ),
+                )
                 .unwrap();
             drop(event.children.replace(1, replacement).unwrap());
             recorded.fetch_add(1, Ordering::Relaxed);
@@ -522,10 +550,10 @@ fn split_edits_do_not_publish_on_engine_unwind() {
             assert!(game.mobs.is_empty(), "no child joined");
             assert_eq!(
                 game.next_entity,
-                next_id + 3,
-                "all proposals were constructed"
+                next_id + 4,
+                "all proposals and the replacement were constructed"
             );
-            for id in next_id + 1..=next_id + 3 {
+            for id in next_id + 1..=next_id + 4 {
                 assert!(!game.persist.uuids.contains_key(&id));
                 assert!(!game.entity_attachments.contains_key(&id));
                 assert!(
@@ -566,16 +594,19 @@ fn panicking_spawn_listeners_lose_cancellation_but_keep_direct_child_edits() {
         },
     );
     with_baby(
-        |_, event| {
+        |host, event| {
             let pig = event
                 .child
-                .construct(spec(
-                    "minecraft:pig",
-                    [0.5, 64.0, 0.0],
-                    0.0,
-                    None,
-                    event.dimension,
-                ))
+                .construct(
+                    host,
+                    spec(
+                        "minecraft:pig",
+                        [0.5, 64.0, 0.0],
+                        0.0,
+                        None,
+                        event.dimension,
+                    ),
+                )
                 .unwrap();
             drop(event.child.replace(pig).unwrap());
             event.cancelled = true;
@@ -657,7 +688,7 @@ fn breeding_replaces_the_cow_baby_with_a_pig_baby() {
     let seen = Arc::new(Mutex::new(Vec::new()));
     let record = seen.clone();
     with_baby(
-        move |_, event| {
+        move |host, event| {
             record.lock().unwrap().push((
                 event.dimension.to_owned(),
                 event.child.is_present(),
@@ -665,13 +696,16 @@ fn breeding_replaces_the_cow_baby_with_a_pig_baby() {
             ));
             let mut pig = event
                 .child
-                .construct(PendingMobSpec::new(
-                    mod_api::Identifier::parse("minecraft:pig").unwrap(),
-                    mod_api::Identifier::parse(event.dimension).unwrap(),
-                    [0.5, 64.0, 0.0],
-                    0.0,
-                    false,
-                ))
+                .construct(
+                    host,
+                    PendingMobSpec::new(
+                        mod_api::Identifier::parse("minecraft:pig").unwrap(),
+                        mod_api::Identifier::parse(event.dimension).unwrap(),
+                        [0.5, 64.0, 0.0],
+                        0.0,
+                        false,
+                    ),
+                )
                 .unwrap();
             pig.set_yaw(15.0).unwrap();
             pig.add_tag("replaced_pig").unwrap();
@@ -685,13 +719,16 @@ fn breeding_replaces_the_cow_baby_with_a_pig_baby() {
             // A detached child dropped without being placed in the slot never joins.
             let _detached = event
                 .child
-                .construct(PendingMobSpec::new(
-                    mod_api::Identifier::parse("minecraft:pig").unwrap(),
-                    mod_api::Identifier::parse(event.dimension).unwrap(),
-                    [0.5, 64.0, 0.0],
-                    0.0,
-                    true,
-                ))
+                .construct(
+                    host,
+                    PendingMobSpec::new(
+                        mod_api::Identifier::parse("minecraft:pig").unwrap(),
+                        mod_api::Identifier::parse(event.dimension).unwrap(),
+                        [0.5, 64.0, 0.0],
+                        0.0,
+                        true,
+                    ),
+                )
                 .unwrap();
             let mut pig = event.child.get_mut().unwrap();
             pig.set_baby(true).unwrap();
@@ -882,17 +919,20 @@ fn breeding_dispatches_when_proposed_child_is_none_and_accepts_replacement() {
     };
     // Populating an initially empty slot spawns the replacement and resets both parents.
     with_baby(
-        |_, event| {
+        |host, event| {
             assert!(event.child.is_empty());
             let mut pig = event
                 .child
-                .construct(PendingMobSpec::new(
-                    mod_api::Identifier::parse("minecraft:pig").unwrap(),
-                    mod_api::Identifier::parse(event.dimension).unwrap(),
-                    [9.0, 70.0, 9.0],
-                    45.0,
-                    true,
-                ))
+                .construct(
+                    host,
+                    PendingMobSpec::new(
+                        mod_api::Identifier::parse("minecraft:pig").unwrap(),
+                        mod_api::Identifier::parse(event.dimension).unwrap(),
+                        [9.0, 70.0, 9.0],
+                        45.0,
+                        true,
+                    ),
+                )
                 .unwrap();
             pig.add_tag("from_empty_slot").unwrap();
             assert!(event.child.replace(pig).unwrap().is_none());
@@ -954,29 +994,35 @@ fn breeding_dispatches_when_proposed_child_is_none_and_accepts_replacement() {
 #[ignore = "daily"]
 fn fox_breeding_rejects_non_fox_and_trusts_breeders_on_replaced_fox() {
     with_baby(
-        |_, event| {
+        |host, event| {
             assert_eq!(
                 event
                     .child
-                    .construct(PendingMobSpec::new(
-                        mod_api::Identifier::parse("minecraft:cow").unwrap(),
-                        mod_api::Identifier::parse(event.dimension).unwrap(),
-                        [0.0, 64.0, 0.0],
-                        0.0,
-                        true,
-                    ))
+                    .construct(
+                        host,
+                        PendingMobSpec::new(
+                            mod_api::Identifier::parse("minecraft:cow").unwrap(),
+                            mod_api::Identifier::parse(event.dimension).unwrap(),
+                            [0.0, 64.0, 0.0],
+                            0.0,
+                            true,
+                        )
+                    )
                     .err(),
                 Some(UnspawnedMobError::Invalid)
             );
             let mut kit = event
                 .child
-                .construct(PendingMobSpec::new(
-                    mod_api::Identifier::parse("minecraft:fox").unwrap(),
-                    mod_api::Identifier::parse(event.dimension).unwrap(),
-                    [5.0, 70.0, 5.0],
-                    42.0,
-                    false,
-                ))
+                .construct(
+                    host,
+                    PendingMobSpec::new(
+                        mod_api::Identifier::parse("minecraft:fox").unwrap(),
+                        mod_api::Identifier::parse(event.dimension).unwrap(),
+                        [5.0, 70.0, 5.0],
+                        42.0,
+                        false,
+                    ),
+                )
                 .unwrap();
             kit.add_tag("custom_kit").unwrap();
             let prev = event.child.replace(kit).unwrap();
@@ -1191,16 +1237,19 @@ fn baby_slot_replacement_does_not_publish_on_engine_unwind() {
     let replaced = Arc::new(AtomicBool::new(false));
     let observed = replaced.clone();
     with_baby(
-        move |_, event| {
+        move |host, event| {
             let pig = event
                 .child
-                .construct(spec(
-                    "minecraft:pig",
-                    [0.5, 64.0, 0.0],
-                    0.0,
-                    None,
-                    event.dimension,
-                ))
+                .construct(
+                    host,
+                    spec(
+                        "minecraft:pig",
+                        [0.5, 64.0, 0.0],
+                        0.0,
+                        None,
+                        event.dimension,
+                    ),
+                )
                 .unwrap();
             let original = event.child.replace(pig).unwrap().unwrap();
             assert_eq!(original.kind().unwrap().to_string(), "minecraft:cow");
@@ -1855,5 +1904,129 @@ fn a_later_birth_unwind_does_not_lose_or_replay_a_cube_removal() {
                 "neither the split nor Oozing runs again"
             );
         })
+    });
+}
+
+#[test]
+#[ignore = "daily"]
+fn split_and_detached_construction_precede_admission() {
+    use crate::game::native_entity_refs::tests::run_fresh_cases;
+
+    const CASE: &str = "SUNRISE_SPLIT_CONSTRUCTOR_CASE";
+    if run_fresh_cases(
+        "game::creatures::pending_birth_tests::split_and_detached_construction_precede_admission",
+        CASE,
+        &["unsubscribed", "detached"],
+    ) {
+        return;
+    }
+
+    struct Trace {
+        calls: Arc<Mutex<Vec<(&'static str, u32)>>>,
+        marker: Arc<Mutex<Option<AttachmentKey<i32>>>>,
+    }
+    #[mod_api::__subscriptions]
+    impl Hooks for Trace {
+        fn register(&self, r: &mut dyn mod_api::Registrar, _: &mod_api::RegistrationContext) {
+            *self.marker.lock().unwrap() = Some(
+                r.register_attachment_type(AttachmentDescriptor::new(
+                    "split_construct_trace:marker",
+                    || 0i32,
+                ))
+                .unwrap(),
+            );
+        }
+        fn entity_constructing(&self, host: HostSide<'_>, event: &mut EntityConstructingEvent) {
+            if let (HostSide::Server(host), Holder::Entity(id)) = (host, event.holder) {
+                self.calls.lock().unwrap().push(("construct", id));
+                let marker = self.marker.lock().unwrap().clone().unwrap();
+                marker.set(host, event.holder, 41).unwrap();
+            }
+        }
+        fn entity_join_level(
+            &self,
+            _: &mut dyn ServerHost,
+            event: &mut EntityJoinLevelEvent<'_>,
+        ) -> Flow {
+            self.calls.lock().unwrap().push(("join", event.entity));
+            Flow::Continue
+        }
+    }
+
+    let calls = Arc::new(Mutex::new(Vec::new()));
+    let marker = Arc::new(Mutex::new(None));
+    let detached = std::env::var(CASE).unwrap() == "detached";
+    let mut entries = vec![mod_api::ModEntry::new(
+        "split_construct_trace",
+        Box::new(Trace {
+            calls: calls.clone(),
+            marker: marker.clone(),
+        }),
+    )];
+    if detached {
+        entries.push(mod_api::ModEntry::new(
+            "split_construct_replace",
+            Box::new(Split(Box::new(|host, event| {
+                event.children.clear();
+                let proposed = || {
+                    spec(
+                        "minecraft:pig",
+                        [0.5, 64.0, 0.5],
+                        0.0,
+                        None,
+                        event.dimension,
+                    )
+                };
+                drop(event.children.construct(host, proposed()).unwrap());
+                let kept = event.children.construct(host, proposed()).unwrap();
+                event.children.push(kept).unwrap();
+                Flow::Continue
+            }))),
+        ));
+    }
+    let mods: mod_api::Mods = entries.into();
+    mod_platform::testing::with_mods(mods.clone(), || {
+        crate::game::api_values::install_parts(&mods).unwrap();
+        with_game(|game| {
+            calls.lock().unwrap().clear();
+            let mut dying = cube(game, "minecraft:slime", 4, SEED);
+            let first = game.next_entity + 1;
+            game.split_cube_children(&mut dying);
+            let mut expected = vec![
+                ("construct", first),
+                ("construct", first + 1),
+                ("construct", first + 2),
+            ];
+            if detached {
+                let (discarded, kept) = (first + 3, first + 4);
+                expected.extend([
+                    ("construct", discarded),
+                    ("construct", kept),
+                    ("join", kept),
+                ]);
+                assert_eq!(game.mobs.len(), 1);
+                assert_eq!(game.mobs[0].kind.id, "minecraft:pig");
+                assert_eq!(
+                    marker.lock().unwrap().clone().unwrap().get(
+                        game,
+                        Holder::Entity(kept),
+                        |&value| value
+                    ),
+                    Ok(41)
+                );
+                assert!(!game.persist.uuids.contains_key(&discarded));
+                assert!(!game.entity_attachments.contains_key(&discarded));
+                assert!(
+                    !game
+                        .entity_initialization
+                        .initialized
+                        .contains(&Holder::Entity(discarded))
+                );
+            } else {
+                expected.extend([("join", first), ("join", first + 1), ("join", first + 2)]);
+                assert_eq!(game.mobs.len(), 3);
+            }
+            assert_eq!(*calls.lock().unwrap(), expected);
+        });
     });
 }

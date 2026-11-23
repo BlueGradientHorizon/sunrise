@@ -7,7 +7,7 @@
 
 use super::Game;
 use super::native_pending_children::{BabyChildSlot, ChildConstraint, PendingMob, SplitChildList};
-use mod_api::{BabyEntitySpawnChild, MobSplitChildren};
+use mod_api::{BabyEntitySpawnChild, MobSplitChildren, UnspawnedMob, UnspawnedMobError};
 use std::panic::{AssertUnwindSafe, catch_unwind, resume_unwind};
 use std::sync::atomic::{AtomicU64, Ordering};
 use sunrise_client::mobs::Mob;
@@ -39,14 +39,7 @@ impl Game<'_> {
     /// the owned value now discards just this child's unpublished data.
     fn stash_pending_child(&mut self, mut mob: Mob, action: u64) -> PendingMob {
         let id = std::mem::replace(&mut mob.id, 0);
-        let uuid = self.persist.uuids.remove(&id);
-        let mut attachments = self.entity_attachments.remove(&id).unwrap_or_default();
-        attachments.unbind_index();
-        let initialized = self
-            .entity_initialization
-            .initialized
-            .remove(&mod_api::Holder::Entity(id));
-        self.forget_entity(id);
+        let (uuid, attachments, initialized) = self.take_pending_state(id);
         PendingMob {
             mob,
             uuid,
@@ -59,11 +52,55 @@ impl Game<'_> {
         }
     }
 
-    /// Publish one pending child's unpublished state under an entity ID belonging to this world
-    /// and complete `EntityConstructing` if it has not already run.
-    ///
-    /// If construction itself unwinds past dispatch, `initialize_unpublished_mob` retires the
-    /// child's unpublished UUID, attachments and initialization marker before resuming the unwind.
+    fn take_pending_state(
+        &mut self,
+        id: u32,
+    ) -> (
+        Option<[i32; 4]>,
+        sunrise_mod_runtime::attachments::Attachments,
+        bool,
+    ) {
+        let uuid = self.persist.uuids.remove(&id);
+        let mut attachments = self.entity_attachments.remove(&id).unwrap_or_default();
+        attachments.unbind_index();
+        let initialized = self
+            .entity_initialization
+            .initialized
+            .remove(&mod_api::Holder::Entity(id));
+        self.forget_entity(id);
+        (uuid, attachments, initialized)
+    }
+
+    /// Reborrow the active server Host through the scoped editor to run the constructor now,
+    /// not if and when the caller puts this detached mob in a slot or list.
+    pub(super) fn initialize_pending_child(
+        &mut self,
+        child: UnspawnedMob,
+        action: u64,
+    ) -> Result<UnspawnedMob, UnspawnedMobError> {
+        let mut child = child
+            .into_any()
+            .downcast::<PendingMob>()
+            .map_err(|_| UnspawnedMobError::Invalid)?;
+        if child.dimension != self.dim || child.origin_reservation.is_some() {
+            return Err(UnspawnedMobError::Invalid);
+        }
+        let id = self
+            .next_entity
+            .checked_add(1)
+            .ok_or(UnspawnedMobError::Unsupported)?;
+        self.next_entity = id;
+        if let Some(uuid) = child.uuid {
+            self.persist.uuids.insert(id, uuid);
+        }
+        let kind = super::native_hooks::mob_kind(&child.mob);
+        self.initialize_unpublished_mob(id, &kind);
+        (child.uuid, child.attachments, child.initialized) = self.take_pending_state(id);
+        child.origin_reservation = Some((action, id));
+        Ok(UnspawnedMob::new(child))
+    }
+
+    /// Publish one pending child's constructor state immediately before it is offered to the level.
     fn issue_pending_child(&mut self, child: PendingMob, action: u64) -> Mob {
         let PendingMob {
             mut mob,
@@ -104,53 +141,60 @@ impl Game<'_> {
             self.entity_initialization
                 .initialized
                 .insert(mod_api::Holder::Entity(id));
-        } else {
-            let kind = super::native_hooks::mob_kind(&mob);
-            self.initialize_unpublished_mob(id, &kind);
         }
         mob
     }
 
-    /// `AbstractCubeMob.remove`'s children once the parent `dying` is dead: the count is drawn,
-    /// then each half-size child is constructed in order with its yaw draw from the parent. With a
-    /// `mob_split` listener the whole list is constructed first on the stack and lent via
-    /// [`MobSplitChildren`] (even when `drawn == 0`, e.g. a primed sulfur cube above size 1,
-    /// matching NeoForge's `AbstractCubeMob.remove` patch); otherwise each child joins as it is
-    /// made, with zero extra work when no listener is present.
+    /// Construct each original split proposal, including its own UUID and the parent's yaw draw.
+    fn split_proposal(
+        &mut self,
+        dying: &mut Mob,
+        index: u32,
+        action: u64,
+        kind: &str,
+    ) -> PendingMob {
+        self.next_entity += 1;
+        let (random, uuid) = sunrise_client::mobs::living_random();
+        let mut child = Mob::with_random(
+            self.next_entity,
+            dying.kind.clone(),
+            dying.position,
+            0.0,
+            random,
+        );
+        self.persist.uuids.insert(child.id, uuid);
+        self.initialize_unpublished_mob(child.id, kind);
+        sunrise_client::mobs::cube::split_child(dying, &mut child, index);
+        self.stash_pending_child(child, action)
+    }
+
+    /// NeoForge's `AbstractCubeMob.remove` collects the whole proposal list before admission.
+    /// The unedited list fits inline; only a split listener needs a growable list.
     pub(super) fn split_cube_children(&mut self, dying: &mut Mob) {
         let drawn = sunrise_client::mobs::cube::split_count(dying);
+        let action = NEXT_CHILD_ACTION.fetch_add(1, Ordering::Relaxed);
+        let mob_type = dying.kind.clone();
+        let kind = &mob_type.id;
         if !mod_api::__private::listened(mod_api::HookId::MobSplit) {
+            // AbstractCubeMob.getSplitCount yields 2–4; SulfurCube.getSplitCount yields 0 or 2.
+            let mut proposals: [Option<PendingMob>; 4] = std::array::from_fn(|_| None);
             for i in 0..drawn {
-                self.next_entity += 1;
-                let mut child = Mob::new(self.next_entity, dying.kind.clone(), dying.position, 0.0);
-                sunrise_client::mobs::cube::split_child(dying, &mut child, i);
-                self.mobs.push(child);
-                self.native_mobs_joined(self.mobs.len() - 1, false);
+                proposals[i as usize] = Some(self.split_proposal(dying, i, action, kind));
             }
+            self.admit_split_children(proposals.into_iter().flatten(), action);
             return;
         }
         let dimension = self.dim;
         let resources = self.res.clone();
         let attributes = self.motion.attributes.clone();
-        let action = NEXT_CHILD_ACTION.fetch_add(1, Ordering::Relaxed);
-        let (parent, kind, size) = (
-            dying.id,
-            super::native_hooks::mob_kind(dying),
-            dying.extra.size,
-        );
-        let mut pending = Vec::with_capacity(drawn as usize);
-        for i in 0..drawn {
-            self.next_entity += 1;
-            let mut child = Mob::new(self.next_entity, dying.kind.clone(), dying.position, 0.0);
-            // The conversion constructs each proposal even if the split event will later
-            // remove it. The constructor runs before this child's split setup draws its yaw.
-            self.initialize_unpublished_mob(child.id, &kind);
-            sunrise_client::mobs::cube::split_child(dying, &mut child, i);
-            pending.push(self.stash_pending_child(child, action));
-        }
+        let (parent, size) = (dying.id, dying.extra.size);
+        let mut pending = (0..drawn)
+            .map(|i| self.split_proposal(dying, i, action, kind))
+            .collect();
         let mut cancel = false;
         {
             let mut editor = SplitChildList {
+                action,
                 children: &mut pending,
                 resources,
                 attributes,
@@ -159,7 +203,7 @@ impl Game<'_> {
             self.native_mob_split(mod_api::__private::MobSplitCall {
                 dimension: dimension.id(),
                 parent,
-                kind: &kind,
+                kind,
                 size,
                 child_size: size / 2,
                 children: MobSplitChildren::new(&mut editor),
@@ -168,36 +212,22 @@ impl Game<'_> {
         }
         #[cfg(test)]
         escaping_fault::reach(escaping_fault::At::SplitDispatched, parent);
-        if cancel {
-            return;
+        if !cancel {
+            self.admit_split_children(pending, action);
         }
-        // Issue survivors in order, completing construction for mod-made replacements that
-        // have not been told yet. On unwind retire only issued children that have not joined.
-        let mut issued = Vec::with_capacity(pending.len());
-        for child in pending {
-            let run = catch_unwind(AssertUnwindSafe(|| self.issue_pending_child(child, action)));
-            match run {
-                Ok(mob) => issued.push(mob),
-                Err(panic) => {
-                    for unjoined in issued {
-                        self.forget_entity(unjoined.id);
-                    }
-                    resume_unwind(panic);
-                }
-            }
-        }
-        let mut remaining = issued.into_iter();
-        while let Some(child) = remaining.next() {
-            let run = catch_unwind(AssertUnwindSafe(|| {
-                self.mobs.push(child);
-                self.native_mobs_joined(self.mobs.len() - 1, false);
-            }));
-            if let Err(panic) = run {
-                for unjoined in remaining {
-                    self.forget_entity(unjoined.id);
-                }
-                resume_unwind(panic);
-            }
+    }
+
+    fn admit_split_children(
+        &mut self,
+        children: impl IntoIterator<Item = PendingMob>,
+        action: u64,
+    ) {
+        for child in children {
+            // A failure admitting one child leaves earlier joins alone and drops the rest
+            // with their unpublished state, with no state on the level to clean up.
+            let mob = self.issue_pending_child(child, action);
+            self.mobs.push(mob);
+            self.native_mobs_joined(self.mobs.len() - 1, false);
         }
     }
 
@@ -220,6 +250,7 @@ impl Game<'_> {
         let mut cancel = false;
         {
             let mut editor = BabyChildSlot {
+                action,
                 slot: &mut slot,
                 resources,
                 attributes,

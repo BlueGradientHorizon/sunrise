@@ -70,6 +70,7 @@ impl sunrise_client::mobs::goals::Goal for NeverClone {
 #[ignore = "daily"]
 fn direct_edits_and_raii_drop_preserve_actual_mob_without_publishing() {
     with_game(|game| {
+        let dim = game.dim.id();
         let before = (
             game.mobs.len(),
             game.persist.uuids.len(),
@@ -84,6 +85,7 @@ fn direct_edits_and_raii_drop_preserve_actual_mob_without_publishing() {
         let mut pending = vec![a, b, initial(game, 73, false)];
         {
             let mut list_backing = SplitChildList {
+                action: 0,
                 children: &mut pending,
                 resources: game.res.clone(),
                 attributes: game.motion.attributes.clone(),
@@ -115,7 +117,7 @@ fn direct_edits_and_raii_drop_preserve_actual_mob_without_publishing() {
                 "dropping a removed UnspawnedMob runs its RAII Drop immediately"
             );
             let mut d = list
-                .construct(slime_spec(game.dim.id(), [4.5, 64.0, 8.5], 45.0, Some(2)))
+                .construct(game, slime_spec(dim, [4.5, 64.0, 8.5], 45.0, Some(2)))
                 .unwrap();
             d.set_size(4).unwrap();
             assert_eq!(d.add_tag("test:detached_edit"), Ok(true));
@@ -123,7 +125,7 @@ fn direct_edits_and_raii_drop_preserve_actual_mob_without_publishing() {
             list.push(d).unwrap();
             // A detached mob constructed and dropped without attaching leaves no world state.
             let _dropped = list
-                .construct(cow_spec(game.dim.id(), [2.0, 64.0, 2.0], 0.0, true))
+                .construct(game, cow_spec(dim, [2.0, 64.0, 2.0], 0.0, true))
                 .unwrap();
             assert_eq!(
                 (
@@ -162,8 +164,10 @@ fn direct_edits_and_raii_drop_preserve_actual_mob_without_publishing() {
 #[ignore = "daily"]
 fn split_child_list_grows_unbounded_past_sixty_four_and_supports_list_ops() {
     with_game(|game| {
+        let dim = game.dim.id();
         let mut pending = vec![initial(game, 71, false)];
         let mut list_backing = SplitChildList {
+            action: 0,
             children: &mut pending,
             resources: game.res.clone(),
             attributes: game.motion.attributes.clone(),
@@ -174,24 +178,22 @@ fn split_child_list_grows_unbounded_past_sixty_four_and_supports_list_ops() {
         while list.len() < 80 {
             let i = list.len();
             let child = list
-                .construct(slime_spec(
-                    game.dim.id(),
-                    [i as f64, 64.0, 0.0],
-                    i as f32,
-                    Some(2),
-                ))
+                .construct(
+                    game,
+                    slime_spec(dim, [i as f64, 64.0, 0.0], i as f32, Some(2)),
+                )
                 .unwrap();
             list.push(child).unwrap();
         }
         assert_eq!(list.len(), 80);
         let front = list
-            .construct(cow_spec(game.dim.id(), [0.5, 65.0, 0.5], 15.0, false))
+            .construct(game, cow_spec(dim, [0.5, 65.0, 0.5], 15.0, false))
             .unwrap();
         list.insert(0, front).unwrap();
         assert_eq!(list.len(), 81);
         assert_eq!(list.get(0).unwrap().position(), Ok([0.5, 65.0, 0.5]));
         let replacement = list
-            .construct(slime_spec(game.dim.id(), [9.5, 66.0, 9.5], 25.0, Some(1)))
+            .construct(game, slime_spec(dim, [9.5, 66.0, 9.5], 25.0, Some(1)))
             .unwrap();
         let prev = list.replace(1, replacement).unwrap();
         assert_eq!(prev.kind().unwrap().to_string(), "minecraft:cow");
@@ -209,10 +211,12 @@ fn split_child_list_grows_unbounded_past_sixty_four_and_supports_list_ops() {
 #[ignore = "daily"]
 fn invalid_spec_and_edits_refuse_without_mutating_slot_or_list() {
     with_game(|game| {
+        let dim = game.dim.id();
         // Breeding slot atomic refusal.
         let mut slot = Some(initial(game, 71, true));
         {
             let mut slot_backing = BabyChildSlot {
+                action: 0,
                 slot: &mut slot,
                 resources: game.res.clone(),
                 attributes: game.motion.attributes.clone(),
@@ -220,7 +224,7 @@ fn invalid_spec_and_edits_refuse_without_mutating_slot_or_list() {
                 constraint: ChildConstraint::BreedingAgeable,
             };
             let mut baby = BabyEntitySpawnChild::new(&mut slot_backing);
-            let valid = cow_spec(game.dim.id(), [8.5, 64.0, 8.5], 0.0, true);
+            let valid = cow_spec(dim, [8.5, 64.0, 8.5], 0.0, true);
             for invalid in [
                 {
                     let mut s = valid.clone();
@@ -250,21 +254,21 @@ fn invalid_spec_and_edits_refuse_without_mutating_slot_or_list() {
                 // NeoForge BabyEntitySpawnEvent.setChild takes AgeableMob, not baby monsters.
                 PendingMobSpec::new(
                     Identifier::parse("minecraft:zombie").unwrap(),
-                    Identifier::parse(game.dim.id()).unwrap(),
+                    Identifier::parse(dim).unwrap(),
                     [8.5, 64.0, 8.5],
                     0.0,
                     true,
                 ),
                 PendingMobSpec::new(
                     Identifier::parse("minecraft:piglin").unwrap(),
-                    Identifier::parse(game.dim.id()).unwrap(),
+                    Identifier::parse(dim).unwrap(),
                     [8.5, 64.0, 8.5],
                     0.0,
                     true,
                 ),
             ] {
                 assert_eq!(
-                    baby.construct(invalid).err(),
+                    baby.construct(game, invalid).err(),
                     Some(UnspawnedMobError::Invalid)
                 );
             }
@@ -272,19 +276,23 @@ fn invalid_spec_and_edits_refuse_without_mutating_slot_or_list() {
             let mut split_tmp = Vec::new();
             let baby_zombie = {
                 let mut list_backing = SplitChildList {
+                    action: 0,
                     children: &mut split_tmp,
                     resources: game.res.clone(),
                     attributes: game.motion.attributes.clone(),
                     dimension: game.dim,
                 };
                 MobSplitChildren::new(&mut list_backing)
-                    .construct(PendingMobSpec::new(
-                        Identifier::parse("minecraft:zombie").unwrap(),
-                        Identifier::parse(game.dim.id()).unwrap(),
-                        [8.5, 64.0, 8.5],
-                        0.0,
-                        true,
-                    ))
+                    .construct(
+                        game,
+                        PendingMobSpec::new(
+                            Identifier::parse("minecraft:zombie").unwrap(),
+                            Identifier::parse(dim).unwrap(),
+                            [8.5, 64.0, 8.5],
+                            0.0,
+                            true,
+                        ),
+                    )
                     .unwrap()
             };
             assert_eq!(
@@ -311,6 +319,7 @@ fn invalid_spec_and_edits_refuse_without_mutating_slot_or_list() {
         let mut fox_slot = None;
         {
             let mut slot_backing = BabyChildSlot {
+                action: 0,
                 slot: &mut fox_slot,
                 resources: game.res.clone(),
                 attributes: game.motion.attributes.clone(),
@@ -320,7 +329,7 @@ fn invalid_spec_and_edits_refuse_without_mutating_slot_or_list() {
             let mut fox_baby = BabyEntitySpawnChild::new(&mut slot_backing);
             assert_eq!(
                 fox_baby
-                    .construct(cow_spec(game.dim.id(), [8.5, 64.0, 8.5], 0.0, true))
+                    .construct(game, cow_spec(dim, [8.5, 64.0, 8.5], 0.0, true))
                     .err(),
                 Some(UnspawnedMobError::Invalid)
             );
@@ -330,13 +339,16 @@ fn invalid_spec_and_edits_refuse_without_mutating_slot_or_list() {
                 Some(UnspawnedMobError::Invalid)
             );
             let kit = fox_baby
-                .construct(PendingMobSpec::new(
-                    Identifier::parse("minecraft:fox").unwrap(),
-                    Identifier::parse(game.dim.id()).unwrap(),
-                    [8.5, 64.0, 8.5],
-                    0.0,
-                    true,
-                ))
+                .construct(
+                    game,
+                    PendingMobSpec::new(
+                        Identifier::parse("minecraft:fox").unwrap(),
+                        Identifier::parse(dim).unwrap(),
+                        [8.5, 64.0, 8.5],
+                        0.0,
+                        true,
+                    ),
+                )
                 .unwrap();
             assert!(fox_baby.replace(kit).unwrap().is_none());
             assert_eq!(
@@ -349,6 +361,7 @@ fn invalid_spec_and_edits_refuse_without_mutating_slot_or_list() {
         let mut pending = vec![initial(game, 72, false)];
         {
             let mut list_backing = SplitChildList {
+                action: 0,
                 children: &mut pending,
                 resources: game.res.clone(),
                 attributes: game.motion.attributes.clone(),
@@ -356,16 +369,16 @@ fn invalid_spec_and_edits_refuse_without_mutating_slot_or_list() {
             };
             let mut list = MobSplitChildren::new(&mut list_backing);
             assert_eq!(
-                list.construct(slime_spec(game.dim.id(), [0.0, 64.0, 0.0], 0.0, None))
+                list.construct(game, slime_spec(dim, [0.0, 64.0, 0.0], 0.0, None))
                     .err(),
                 Some(UnspawnedMobError::Invalid)
             );
             let extra = list
-                .construct(slime_spec(game.dim.id(), [1.0, 64.0, 1.0], 0.0, Some(2)))
+                .construct(game, slime_spec(dim, [1.0, 64.0, 1.0], 0.0, Some(2)))
                 .unwrap();
             assert_eq!(list.insert(2, extra), Err(UnspawnedMobError::Invalid));
             let extra2 = list
-                .construct(slime_spec(game.dim.id(), [1.0, 64.0, 1.0], 0.0, Some(2)))
+                .construct(game, slime_spec(dim, [1.0, 64.0, 1.0], 0.0, Some(2)))
                 .unwrap();
             assert_eq!(
                 list.replace(1, extra2).err(),
@@ -406,12 +419,14 @@ fn scoped_editors_coexist_with_mutable_server_host() {
         let mut slot = Some(initial(game, 72, true));
         {
             let mut split_backing = SplitChildList {
+                action: 0,
                 children: &mut pending,
                 resources: game.res.clone(),
                 attributes: game.motion.attributes.clone(),
                 dimension: game.dim,
             };
             let mut baby_backing = BabyChildSlot {
+                action: 0,
                 slot: &mut slot,
                 resources: game.res.clone(),
                 attributes: game.motion.attributes.clone(),
@@ -437,6 +452,7 @@ fn nested_pending_editors_use_independent_stack_frames() {
         let mut outer_children = vec![initial(game, 71, false)];
         {
             let mut outer_backing = SplitChildList {
+                action: 0,
                 children: &mut outer_children,
                 resources: game.res.clone(),
                 attributes: game.motion.attributes.clone(),
@@ -449,6 +465,7 @@ fn nested_pending_editors_use_independent_stack_frames() {
             let mut inner_slot = Some(initial(game, 80, true));
             {
                 let mut inner_backing = BabyChildSlot {
+                    action: 0,
                     slot: &mut inner_slot,
                     resources: game.res.clone(),
                     attributes: game.motion.attributes.clone(),

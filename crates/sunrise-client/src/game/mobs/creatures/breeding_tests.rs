@@ -524,6 +524,7 @@ fn empty_mod_never_defers_breeding_xp() {
             let mut slot = None;
             let mut cancel = false;
             let mut editor = super::super::native_pending_children::BabyChildSlot {
+                action: 0,
                 slot: &mut slot,
                 resources: game.res.clone(),
                 attributes: game.motion.attributes.clone(),
