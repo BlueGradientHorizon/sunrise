@@ -90,12 +90,15 @@ class IgnoredTests(unittest.TestCase):
                     self.assertNotIn("synthetic payload", log)
                     (kept / "example.test.log").unlink()
             # A split leg whose listing fails keeps the listing's output under the leg's name.
-            listing = subprocess.CompletedProcess([], 101, "", "error[E0425]: private compiler text\n")
+            listing = subprocess.CompletedProcess([], 101, "listed text on stdout\n",
+                                                  "error[E0425]: private compiler text\n")
             with patch.object(ignored_tests.subprocess, "run", return_value=listing), \
                     contextlib.redirect_stdout(io.StringIO()) as log:
                 self.assertIsNone(ignored_tests.run("example", [], 1, 2))
-            self.assertEqual((kept / "example#1of2.list.log").read_text(), "error[E0425]: private compiler text\n")
+            self.assertEqual((kept / "example#1of2.list.log").read_text(),
+                             "listed text on stdout\nerror[E0425]: private compiler text\n")
             self.assertNotIn("private compiler text", log.getvalue())
+            self.assertNotIn("listed text on stdout", log.getvalue())
             (kept / "example#1of2.list.log").unlink()
             # A passing run keeps nothing.
             self.run_output(target(1, "test good ... ok\n", summary(passed=1)))
@@ -467,10 +470,15 @@ class IgnoredTests(unittest.TestCase):
                              {"holder::tests::slow": True})
         self.assertEqual(execute.call_args_list[0].args[0], prepare)
         self.assertEqual(execute.call_args_list[1].args[0][LIMIT:LIMIT + 2], ["cargo", "test"])
-        # A failed build stops the run, saying why, before any test runs.
-        with patch.object(ignored_tests.subprocess, "run", return_value=subprocess.CompletedProcess([], 101, "error: x\n")) as execute, \
-                patch.object(ignored_tests, "workspace_features", return_value={}), contextlib.redirect_stdout(io.StringIO()):
+        # A failed build stops the run, saying why, before any test runs, and keeps the build's output privately.
+        with tempfile.TemporaryDirectory() as private, \
+                patch.dict(os.environ, {"IGNORED_TESTS_PRIVATE_LOGS": private}), \
+                patch.object(ignored_tests.subprocess, "run",
+                             return_value=subprocess.CompletedProcess([], 101, "error: private build text\n")) as execute, \
+                patch.object(ignored_tests, "workspace_features", return_value={}), \
+                contextlib.redirect_stdout(io.StringIO()):
             self.assertIsNone(ignored_tests.run("sunrise-mod-package", [], only=(["lib"], ["holder::tests::slow"])))
+            self.assertEqual((Path(private) / "sunrise-mod-package.build.log").read_text(), "error: private build text\n")
         self.assertEqual(execute.call_count, 1)
         self.assertEqual(ignored_tests._stopped["reason"], "what the tests need could not be built")
         # verify builds it with the same command.
