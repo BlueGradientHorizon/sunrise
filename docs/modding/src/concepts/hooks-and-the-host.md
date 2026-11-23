@@ -463,12 +463,16 @@ the hit's living victim and that attacker as a `LivingView`, read-only and valid
 reads take the same names, arguments and answers as the `LivingRef` reads (`health`, `absorption`, `max_health`,
 `effect`, `effects`, `potion_affected`, `attribute_value`, `with_hand_item`, and `MobRef::no_ai` as `no_ai`), and
 go through the same engine function, so each answers the entity's live state at that moment: Pre sees the health
-before the hit takes it, Post the health after. The victim is any mob, player or the dragon at the three damage
-moments, and a mob or the dragon at `living_shield_block` and `living_use_totem` (a player's body is not lent
-there). `causing()` is `None` where the hit lends no attacker, as for its random. `view.holder()` names the
-entity's attachments: `has` and `get_existing` through the hit's host read them, and `get` that would store its
-default, `set`, `remove` and `sync_data` refuse with `AttachmentError::ReadOnlyHolder`, writing nothing. A
-player's holder is lent during that player's turn.
+before the hit takes it, Post the health after. Both are lent at `living_incoming_damage`, `living_damage_pre` and
+`living_damage_post`, never at `living_shield_block` or `living_use_totem`. The victim is any mob, player or the
+dragon. `causing()` is the entity the hit already lends for its random, and only when the hit's source names it:
+`None` for a removed entity, where the source names none (a wither skull whose shooter was removed), and at a
+damage site that lends no entity. `view.holder()` names the entity's attachments: `has` and `get_existing`
+through the hit's host read them (a saved value decodes for that read alone), while a `get` that would store its
+default, `set`, a `remove` of a held value and a `sync_data` of a synced type refuse with
+`AttachmentError::ReadOnlyHolder` before any of the type's callbacks run, writing nothing. A `remove` of an
+absent value and a `sync_data` of an unsynced type stay no-ops. A player's holder is lent during that player's
+turn.
 Outside a write, a `LevelRef` plays level events, and their global form for every player on the server
 ([Playing level events](../how-to/world/level-events.md)).
 `set_block(pos, state, flags)` is `Level.setBlock` on a whole state, as `LevelRef::set_block` takes it: it
