@@ -33,7 +33,7 @@ pub(super) use sunrise_gameplay::container_openers::recheck_opener_count;
 /// What a client tick of the animated block entities shares between them.
 pub(super) struct AnimTick {
     /// The tags of bells and conduits, copied when the first of them ticks.
-    raiders: Option<std::collections::HashSet<String>>,
+    raiders: Option<sunrise_client::items::EntityTypeTags>,
     frames: Option<std::collections::HashSet<String>>,
 }
 
@@ -285,8 +285,7 @@ impl Game<'_> {
         }
         let mut positions: Vec<_> = self.be_anims.bells.keys().copied().collect();
         positions.sort_unstable();
-        let raiders = self.items().entity_type_tags.clone();
-        let raiders = raiders.members().get("minecraft:raiders");
+        let tags = self.items().entity_type_tags.clone();
         for pos in positions {
             if self
                 .be_anims
@@ -295,13 +294,13 @@ impl Game<'_> {
             {
                 self.be_anims.bells.remove(&pos);
             } else if self.block_ticking_area()(pos[0], pos[2]) {
-                self.tick_bell(pos, raiders);
+                self.tick_bell(pos, &tags);
             }
         }
     }
 
     /// `BellBlockEntity.tick` and `makeRaidersGlow`, using live entity/tag state.
-    fn tick_bell(&mut self, pos: [i32; 3], raiders: Option<&std::collections::HashSet<String>>) {
+    fn tick_bell(&mut self, pos: [i32; 3], tags: &sunrise_client::items::EntityTypeTags) {
         let player = self.player_view().map(|p| BellEntity {
             position: [p.position.x, p.position.y, p.position.z],
             alive: p.alive,
@@ -316,7 +315,10 @@ impl Game<'_> {
             Some(BellEntity {
                 position: [m.position.x, m.position.y, m.position.z],
                 alive: m.alive() && !m.removed,
-                raider: raiders.is_some_and(|raiders| raiders.contains(&m.kind.id)),
+                raider: tags.has_bit(
+                    m.kind.flags.entity_tag_slot,
+                    sunrise_client::items::EntityTypeTags::RAIDERS,
+                ),
             })
         };
         let tick = self
@@ -442,16 +444,12 @@ impl Game<'_> {
                     // Integrated servers already ticked this state above, independently
                     // of drawn block entities. Remote clients only animate their copy.
                     if self.remote.is_some() {
-                        let raiders = anim.raiders.get_or_insert_with(|| {
-                            let tags = self.items().entity_type_tags.clone();
-                            tags.members()
-                                .get("minecraft:raiders")
-                                .cloned()
-                                .unwrap_or_default()
-                        });
-                        let raiders = std::mem::take(raiders);
-                        self.tick_bell(pos, Some(&raiders));
-                        anim.raiders = Some(raiders);
+                        let tags = match anim.raiders.take() {
+                            Some(tags) => tags,
+                            None => self.items().entity_type_tags.clone(),
+                        };
+                        self.tick_bell(pos, &tags);
+                        anim.raiders = Some(tags);
                     }
                 }
                 Ticker::Conduit => {

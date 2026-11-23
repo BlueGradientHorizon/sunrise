@@ -422,7 +422,10 @@ fn controller<'a>(m: &Mob, w: &'a MobWorld) -> Option<&'a Seen> {
     m.extra
         .rider
         .and_then(|id| w.passenger_object(id))
-        .filter(|r| r.alive && !w.entity_has("minecraft:non_controlling_rider", &r.kind.id))
+        .filter(|r| {
+            r.alive
+                && !w.entity_tag_bit(&r.kind, crate::items::EntityTypeTags::NON_CONTROLLING_RIDER)
+        })
 }
 /// Vehicle goal flags are independent of whether the rider has a combat target.
 /// Ravager.updateControlFlags permits raiders, unlike Mob.updateControlFlags.

@@ -7500,10 +7500,10 @@ impl Game<'_> {
         } else {
             false
         };
-        let cannot = self
-            .items()
-            .entity_type_tags
-            .contains("minecraft:cannot_be_age_locked", &m.kind.id);
+        let cannot = self.items().entity_type_tags.has_bit(
+            m.kind.flags.entity_tag_slot,
+            sunrise_client::items::EntityTypeTags::CANNOT_BE_AGE_LOCKED,
+        );
         sunrise_client::mobs::ai::can_use_golden_dandelion(
             item,
             baby,

@@ -2441,8 +2441,11 @@ fn sense_axolotl_attackables(m: &mut Mob, w: &MobWorld) {
         super::axolotl::prey_eligible(
             m.distance_sqr(s.position),
             s.in_water,
-            w.entity_has("minecraft:axolotl_always_hostiles", &s.kind.id),
-            w.entity_has("minecraft:axolotl_hunt_targets", &s.kind.id),
+            w.entity_tag_bit(
+                &s.kind,
+                crate::items::EntityTypeTags::AXOLOTL_ALWAYS_HOSTILES,
+            ),
+            w.entity_tag_bit(&s.kind, crate::items::EntityTypeTags::AXOLOTL_HUNT_TARGETS),
             cooldown,
             s.alive && !s.playing_dead,
         )

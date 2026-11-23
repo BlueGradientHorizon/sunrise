@@ -3293,7 +3293,7 @@ impl Game<'_> {
         let mobs: Vec<(u32, Aabb, Vec3)> = if no_breath {
             Vec::new()
         } else {
-            let tags = &self.stations().enchantments.entity_tags;
+            let tags = &self.items().entity_type_tags;
             self.mobs
                 .iter()
                 .filter(|m| m.alive() && mob_can_be_affected(tags, &m.kind.id, "instant_damage"))
