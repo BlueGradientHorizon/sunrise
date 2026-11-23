@@ -3624,6 +3624,21 @@ mod tests {
 
         let u64_hex = |s: &str| u64::from_str_radix(s, 16).expect("witness f64 hex");
         let u32_hex = |s: &str| u32::from_str_radix(s, 16).expect("witness f32 hex");
+        // Vanilla's `DoubleTag.valueOf` / `FloatTag.valueOf` store `-0.0` as `ZERO` (`+0.0`) on save.
+        let nbt_double_bits = |bits: u64| {
+            if bits == (-0.0_f64).to_bits() {
+                0
+            } else {
+                bits
+            }
+        };
+        let nbt_float_bits = |bits: u32| {
+            if bits == (-0.0_f32).to_bits() {
+                0
+            } else {
+                bits
+            }
+        };
         let double_bits = |tag: &Tag, key: &str| -> [u64; 3] {
             let Some(Tag::List(values)) = tag.get(key) else {
                 panic!("missing {key} list in saved fireball tag");
@@ -3810,21 +3825,21 @@ mod tests {
                             .expect("fireball_to_nbt");
                     assert_eq!(
                         double_bits(&saved, "Pos"),
-                        exp_pos,
+                        exp_pos.map(nbt_double_bits),
                         "{} t={} saved Pos",
                         spec.name,
                         exp.tick
                     );
                     assert_eq!(
                         double_bits(&saved, "Motion"),
-                        exp_vel,
+                        exp_vel.map(nbt_double_bits),
                         "{} t={} saved Motion",
                         spec.name,
                         exp.tick
                     );
                     assert_eq!(
                         float_bits(&saved, "Rotation"),
-                        exp_rot,
+                        exp_rot.map(nbt_float_bits),
                         "{} t={} saved Rotation",
                         spec.name,
                         exp.tick
