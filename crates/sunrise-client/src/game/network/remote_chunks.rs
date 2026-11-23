@@ -301,6 +301,8 @@ impl Game<'_> {
     pub(super) fn poll_remote_light(&mut self) {
         let Some(r) = &self.remote else { return };
         let size = r.chunk_light.queue.len();
+        // `ClientLevel.pollLightUpdates`: under 1000 queued, the greater of 10 and a
+        // tenth of them; otherwise all of them.
         let limit = if size < 1000 { 10.max(size / 10) } else { size };
         for _ in 0..limit {
             let Some(r) = &mut self.remote else { break };

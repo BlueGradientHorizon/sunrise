@@ -44,8 +44,9 @@ impl Game<'_> {
             let range = ClientChunkRange::new(r.chunk_center, distance);
             r.view_distance = distance;
             if old != range && !r.awaiting_viewed_chunk_center && !self.replay.playing() {
-                // updateViewRadius copies in-range slots into new storage. Abandoned
-                // slots do not call ClientLevel.unload (nor the corresponding mod hooks).
+                // ClientChunkCache.updateViewRadius copies the in-range slots into new
+                // storage and abandons the rest. Their data is freed here, so each tells
+                // its `client_chunk_unload`, unlike a centre move's hidden slots.
                 let mut gone = self
                     .world
                     .chunks
@@ -55,7 +56,7 @@ impl Game<'_> {
                 for &(x, z) in &gone {
                     self.forget_chunk_passages(x, z);
                 }
-                self.free_remote_columns(&mut gone, true);
+                self.forget_remote_columns(&mut gone, true);
                 self.update_remote_chunk_view(range);
             }
         }

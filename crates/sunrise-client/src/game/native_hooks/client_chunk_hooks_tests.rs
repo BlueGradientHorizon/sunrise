@@ -1,6 +1,7 @@
 //! `client_chunk_load` and `client_chunk_unload` through a loopback client (#3425): a chunk
-//! packet adopts a column and tells its load once the blocks are in; eviction and level close
-//! tell unload, but moving or resizing the view does not.
+//! packet adopts a column and tells its load once the blocks are in; every route that frees a
+//! column (eviction, a radius shrink, the forget packet, level close) tells its unload, and the
+//! view centre moving away hides slots untold.
 use crate::game::Game;
 use crate::game::execution_role::ExecutionRole;
 use crate::game::native_entity_refs::tests::{run_fresh_cases, with_game_role};
@@ -210,8 +211,9 @@ fn a_client_tells_a_chunk_packet_and_its_forget_once() {
     });
 }
 
-/// SyntheticChunkCache: a centre move only hides slots, a negative alias replaces
-/// exactly its occupant, and a real resize abandons out-of-range slots without unload.
+/// SyntheticChunkCache: a centre move only hides slots and shows them again untold, a negative
+/// alias replaces exactly its occupant, and a real resize frees out-of-range slots, each with
+/// its unload.
 #[test]
 #[ignore = "daily"]
 fn cache_packets_hide_replace_and_resize_slots() {
@@ -291,7 +293,7 @@ fn cache_packets_hide_replace_and_resize_slots() {
                     &alias,
                     &game.world.chunks[&(-11, 0)]
                 ));
-                assert!(take_calls().is_empty());
+                assert_eq!(without_blocks(take_calls()), unloaded([-3, 0]));
                 assert_eq!(game.forget_all_remote_columns(), [(-11, 0)]);
                 assert_eq!(without_blocks(take_calls()), unloaded([-11, 0]));
             })
