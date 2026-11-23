@@ -4239,12 +4239,7 @@ impl Level {
             .map(|v| v as f32);
         self.abilities = p.get("abilities").map(|a| {
             let flag = |key: &str, default: bool| number(a.get(key)).map_or(default, |v| v != 0);
-            let speed = |key: &str, default: f32| {
-                float(a.get(key))
-                    .map(|v| v as f32)
-                    .filter(|v| v.is_finite())
-                    .unwrap_or(default)
-            };
+            let speed = |key: &str, default: f32| float(a.get(key)).map_or(default, |v| v as f32);
             crate::lan::abilities::PlayerAbilities {
                 invulnerable: flag("invulnerable", false),
                 flying: flag("flying", false),
