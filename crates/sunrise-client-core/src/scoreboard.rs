@@ -1373,9 +1373,20 @@ fn strip_click_events_in_place(c: &mut Comp) {
         }
     }
 }
+/// Build a [`Text`] from a canonicalized component without collapsing a plain
+/// root literal to a bare JSON string: in-memory [`Text`] literals hold
+/// `{"text": s}` (matching [`Text::literal`]), while serialization through
+/// [`canonical_component`] and [`component_tag`] collapses them per vanilla's
+/// `ComponentSerialization.CODEC`.
+pub fn text_from_canonical_component(c: Comp) -> Text {
+    match c {
+        Value::String(s) => Text::from(serde_json::json!({ "text": s })),
+        other => Text::from(other),
+    }
+}
 /// [`remove_click_events_comp`] on a [`Text`].
 pub fn remove_click_events(text: &Text) -> Text {
-    Text::from(remove_click_events_comp(&text.component()))
+    text_from_canonical_component(remove_click_events_comp(&text.component()))
 }
 /// A component's own fields (content and style) and its siblings.
 fn decompose(c: &Comp) -> (serde_json::Map<String, Value>, Vec<Comp>) {

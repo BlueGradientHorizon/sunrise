@@ -1874,7 +1874,7 @@ pub fn decode_custom_name_text(tag: &Tag) -> Option<crate::text::Text> {
     if !valid_custom_name_tag(tag) {
         return None;
     }
-    Some(crate::text::Text::from(
+    Some(crate::scoreboard::text_from_canonical_component(
         crate::scoreboard::canonical_component(&crate::scoreboard::tag_to_json(tag)),
     ))
 }
