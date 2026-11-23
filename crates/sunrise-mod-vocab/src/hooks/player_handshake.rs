@@ -9,20 +9,23 @@ pub trait Hooks {
     /// sees the previous accepted rewrite; an allowed login keeps the final text verbatim.
     /// The 255 UTF-16 code-unit limit from `ClientIntentionPacket` and
     /// `Utf8String.read` applies only to decoding, not to a listener's rewrite.
-    /// `requested_port` and `protocol_version` are read-only values from the handshake.
+    /// `requested_port`, `protocol_version` and `peer_ip` are the handshake's own values: each
+    /// listener gets its own event with them, so no listener changes what the next one reads.
     /// `peer_ip` is the numeric transport address without a port, or `None` for an
     /// integrated server's memory connection. Rewriting the host does not change the
     /// peer address or bypass the normal login checks.
     ///
     /// Set `cancelled` to refuse login. The connection receives a login disconnect with
-    /// `reason`, or the standard localized "Disconnected" text if the reason is unset
-    /// or fails Text serialization validation.
+    /// `reason`, or the standard localized "Disconnected" text if the reason is unset,
+    /// fails Text serialization validation, or is too long for the login disconnect's
+    /// reason string (`ClientboundLoginDisconnectPacket`).
     #[hook(
         target = "sunrise_client::game::native_hooks::base::Game<'_>::native_player_handshake",
         dispatch = "direct",
         side = "server",
         contract = "cancel",
         out = "cancel",
+        event_per_listener = true,
         paper = "PlayerHandshakeEvent"
     )]
     fn player_handshake(

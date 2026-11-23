@@ -2521,10 +2521,7 @@ impl Game<'_> {
             .level_pass
             .first
             .then(|| host.hub.lan.configuration_requests().collect::<Vec<_>>());
-        let handshake_requests = self
-            .level_pass
-            .first
-            .then(|| host.hub.lan.handshake_requests().collect::<Vec<_>>());
+        let handoffs = self.level_pass.first.then(|| host.hub.lan.take_handoffs());
         let holding = lan::Holding::start();
         // Last tick's tracked entities: enough for place collision and joins
         // before this tick moves anyone.
@@ -2614,8 +2611,8 @@ impl Game<'_> {
         self.level_pass.packets_drained = true;
         drop(holding);
         self.lan = Some(host);
-        if let Some(requests) = handshake_requests {
-            self.tick_lan_player_handshakes(requests);
+        if let Some(handoffs) = handoffs {
+            self.tick_lan_player_handshakes(handoffs);
         }
         if let Some(requests) = configuration_requests {
             sunrise_client::spans::time("lan_configuration_tasks", || {
@@ -2624,39 +2621,41 @@ impl Game<'_> {
         }
     }
 
-    fn tick_lan_player_handshakes(&mut self, requests: Vec<lan::HandshakeRequest>) {
-        for mut request in requests {
-            if !request.is_pending() {
-                continue;
-            }
-            let peer_ip = request.peer_ip.map(|ip| ip.to_string());
+    fn tick_lan_player_handshakes(&mut self, handoffs: Vec<lan::Handoff>) {
+        for mut handoff in handoffs {
+            let peer_ip = handoff.peer_ip.map(|ip| ip.to_string());
             let mut cancel = false;
             let mut reason = None;
             self.native_player_handshake(
-                &mut request.intention.host,
-                request.intention.port,
-                request.intention.protocol,
+                &mut handoff.intention.host,
+                handoff.intention.port,
+                handoff.intention.protocol,
                 peer_ip.as_deref(),
                 &mut cancel,
                 &mut reason,
             );
-            let decision = if cancel {
+            let refusal = cancel.then(|| {
+                // The reason is checked once more where it becomes the packet's JSON.
                 let reason = reason.and_then(|text| {
-                    match sunrise_client::api_text::to_serialized_engine(&text) {
-                        Ok(text) => Some(lan::data::component_nbt(&text.component_view())),
-                        Err(error) => {
-                            log::warn!("player_handshake disconnect reason refused: {error}");
-                            None
-                        }
-                    }
+                    let json = sunrise_client::api_text::to_serialized_engine(&text)
+                        .map_err(|error| error.to_string())
+                        .and_then(|text| {
+                            lan::conn::login_disconnect_json(&text.component_view())
+                                .ok_or_else(|| "too long for a login disconnect".to_owned())
+                        });
+                    json.inspect_err(|error| {
+                        log::warn!("player_handshake disconnect reason refused: {error}");
+                    })
+                    .ok()
                 });
-                Err(reason.unwrap_or_else(|| {
-                    sunrise_protocol::text::translatable("multiplayer.disconnect.generic", &[])
-                }))
-            } else {
-                Ok(request.intention)
-            };
-            let _ = request.reply.send(decision);
+                reason.unwrap_or_else(|| {
+                    lan::conn::component_json(&sunrise_protocol::text::translatable(
+                        "multiplayer.disconnect.generic",
+                        &[],
+                    ))
+                })
+            });
+            handoff.answer(refusal);
         }
     }
 
@@ -3868,6 +3867,7 @@ mod tests {
     fn player_handshake_dispatch_before_login() {
         use crate::game::native_entity_refs::tests::{run_fresh_cases, with_game};
         use mod_api::{Flow, Hooks, ModEntry, PlayerHandshakeEvent, ServerHost, Text};
+        use serde_json::{Value, json};
         use std::{
             net::{Shutdown, TcpStream},
             sync::{Arc, Mutex, mpsc},
@@ -3875,6 +3875,7 @@ mod tests {
             time::{Duration, Instant},
         };
         use sunrise_client::lan::{Lan, NetConfig, chunks::ChunkEncoder, data::SyncData};
+        use sunrise_core::nbt::Tag;
         use sunrise_protocol::{
             PROTOCOL_VERSION,
             connection::Connection,
@@ -3920,12 +3921,38 @@ mod tests {
                     thread: thread::current().id(),
                 });
                 if self.rewrite {
+                    // The handshake's own values are this listener's copy: the next one
+                    // still reads what the connection sent.
+                    event.requested_port = 1;
+                    event.protocol_version = 0;
+                    event.peer_ip = Some("10.0.0.1");
                     match event.requested_host.as_str() {
                         "closed.test" => {
                             event.cancelled = true;
                             *event.reason = Some(Text::literal("Fixture refused"));
                         }
                         "default.test" => event.cancelled = true,
+                        "item.test" => {
+                            event.cancelled = true;
+                            let mut style = mod_api::text::TextStyle::default();
+                            style.hover = Some(mod_api::text::TextHover::Item {
+                                id: "minecraft:stone".into(),
+                                count: 1,
+                                components: Some(Tag::compound([(
+                                    "minecraft:custom_model_data",
+                                    Tag::compound([(
+                                        "floats",
+                                        Tag::List(vec![Tag::Float(0.5f32.to_bits())]),
+                                    )]),
+                                )])),
+                            });
+                            *event.reason = Some(Text::literal("Fixture item").with_style(style));
+                        }
+                        "long.test" => {
+                            event.cancelled = true;
+                            // Valid Text, longer than the login disconnect's 262144-unit string.
+                            *event.reason = Some(Text::literal("a".repeat(262_145)));
+                        }
                         "deep.test" => {
                             event.cancelled = true;
                             let mut text = Text::literal("too deep to serialize");
@@ -3934,7 +3961,7 @@ mod tests {
                             }
                             *event.reason = Some(text);
                         }
-                        _ if event.requested_port == 0 => {
+                        _ if event.requested_host.starts_with("local") => {
                             *event.requested_host = format!("{REWRITTEN}{}", "a".repeat(255));
                         }
                         _ => *event.requested_host = REWRITTEN.into(),
@@ -4079,16 +4106,13 @@ mod tests {
                 assert_login(&mut c, "FirstPeer", stream.local_addr().unwrap());
                 drop((c, stream));
 
+                let generic = json!({"translate": "multiplayer.disconnect.generic"});
                 for (host, expected) in [
-                    ("closed.test", r#""Fixture refused""#),
-                    (
-                        "default.test",
-                        r#"{"translate":"multiplayer.disconnect.generic"}"#,
-                    ),
-                    (
-                        "deep.test",
-                        r#"{"translate":"multiplayer.disconnect.generic"}"#,
-                    ),
+                    ("closed.test", json!("Fixture refused")),
+                    ("default.test", generic.clone()),
+                    ("deep.test", generic.clone()),
+                    ("long.test", generic.clone()),
+                    ("item.test", Value::Null),
                 ] {
                     let (mut c, _stream) = tcp();
                     intention(&mut c, host, 25565, PROTOCOL_VERSION, handshake::LOGIN);
@@ -4096,7 +4120,21 @@ mod tests {
                     let login::Clientbound::Disconnect(refusal) = login_packet(&mut c) else {
                         panic!("expected login disconnect");
                     };
-                    assert_eq!(refusal.reason_json, expected);
+                    let reason: Value = serde_json::from_str(&refusal.reason_json).unwrap();
+                    if expected.is_null() {
+                        assert_eq!(reason["text"], "Fixture item");
+                        let hover = &reason["hover_event"];
+                        assert_eq!(
+                            (&hover["action"], &hover["id"]),
+                            (&json!("show_item"), &json!("minecraft:stone"))
+                        );
+                        assert_eq!(
+                            hover["components"]["minecraft:custom_model_data"]["floats"],
+                            json!([0.5])
+                        );
+                    } else {
+                        assert_eq!(reason, expected);
+                    }
                     assert_closed(&mut c);
                 }
 
@@ -4104,41 +4142,14 @@ mod tests {
                     Connection::local(game.lan.as_ref().unwrap().hub.lan.connect_local().unwrap());
                 c.reader.set_read_timeout(Some(WAIT)).unwrap();
                 intention(&mut c, "local.test", 0, PROTOCOL_VERSION, handshake::LOGIN);
-                let deadline = Instant::now() + WAIT;
-                let mut request = loop {
-                    if let Some(pending) = game
-                        .lan
-                        .as_ref()
-                        .unwrap()
-                        .hub
-                        .lan
-                        .handshake_requests()
-                        .next()
-                    {
-                        break pending;
-                    }
-                    assert!(Instant::now() < deadline, "memory handshake was not queued");
-                    thread::yield_now();
-                };
-                // Inspect the real tick's reply, then return that same intention to the worker.
-                let (audit, result) = mpsc::channel();
-                let worker = std::mem::replace(&mut request.reply, audit);
-                game.tick_lan_player_handshakes(vec![request]);
-                let accepted = result.try_recv().unwrap().unwrap();
                 let long_host = format!("{REWRITTEN}{}", "a".repeat(255));
-                assert_eq!(accepted.host, long_host);
                 assert_eq!(
-                    (accepted.port, accepted.protocol, accepted.intent),
-                    (0, PROTOCOL_VERSION, handshake::LOGIN)
-                );
-                assert_eq!(
-                    std::mem::take(&mut *seen.lock().unwrap()),
+                    pump(game, 2),
                     [
                         observed("local.test", 0, None),
                         observed(&long_host, 0, None)
                     ]
                 );
-                worker.send(Ok(accepted)).unwrap();
                 hello(&mut c, "LocalPeer");
                 assert_login(
                     &mut c,
@@ -4146,6 +4157,30 @@ mod tests {
                     sunrise_client::lan::conn::MEMORY_ADDRESS,
                 );
                 drop(c);
+
+                // A peer that leaves a whole Hello behind once its handshake was taken reaches
+                // no admission.
+                let mut c =
+                    Connection::local(game.lan.as_ref().unwrap().hub.lan.connect_local().unwrap());
+                intention(&mut c, "local.left", 0, PROTOCOL_VERSION, handshake::LOGIN);
+                let deadline = Instant::now() + WAIT;
+                let handoffs = loop {
+                    let handoffs = game.lan.as_ref().unwrap().hub.lan.take_handoffs();
+                    if !handoffs.is_empty() {
+                        break handoffs;
+                    }
+                    assert!(Instant::now() < deadline, "memory handshake was not queued");
+                    thread::yield_now();
+                };
+                hello(&mut c, "LeftPeer");
+                drop(c);
+                game.tick_lan_player_handshakes(handoffs);
+                assert_eq!(seen.lock().unwrap().len(), 2);
+                seen.lock().unwrap().clear();
+                assert_eq!(
+                    gate_calls.recv_timeout(Duration::from_millis(500)),
+                    Err(mpsc::RecvTimeoutError::Timeout)
+                );
 
                 let (mut c, _stream) = tcp();
                 intention(&mut c, ORIGINAL, 25565, PROTOCOL_VERSION, handshake::STATUS);
@@ -4255,6 +4290,32 @@ mod tests {
                 // No tick is needed; the worker uses the captured table's current enabled set.
                 assert_login(&mut c, "NoListenerPeer", stream.local_addr().unwrap());
                 assert!(seen.lock().unwrap().is_empty());
+                drop((c, stream));
+
+                // A server draining for a stop still listens and refuses an accepted login.
+                for id in ["handshake_rewrite", "handshake_observe"] {
+                    assert!(mod_api::__private::set_mod_enabled(id, true));
+                }
+                shared.refuse_logins();
+                let (mut c, _stream) = tcp();
+                intention(&mut c, ORIGINAL, 25565, PROTOCOL_VERSION, handshake::LOGIN);
+                hello(&mut c, "DrainPeer");
+                assert_eq!(
+                    pump(game, 2),
+                    [
+                        observed(ORIGINAL, 25565, tcp_ip),
+                        observed(REWRITTEN, 25565, tcp_ip)
+                    ]
+                );
+                let login::Clientbound::Disconnect(refusal) = login_packet(&mut c) else {
+                    panic!("expected the shutdown refusal");
+                };
+                assert_eq!(
+                    serde_json::from_str::<Value>(&refusal.reason_json).unwrap(),
+                    json!({"translate": "multiplayer.disconnect.server_shutdown"})
+                );
+                assert_closed(&mut c);
+                assert_eq!(gate_calls.try_recv(), Err(mpsc::TryRecvError::Empty));
             });
         });
     }

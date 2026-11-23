@@ -12,7 +12,7 @@ mod payloads;
 pub mod transaction_packets;
 use super::config_payloads::ConfigIo;
 use super::{
-    Body, HandshakeRequest, Joined, NetEvent, Out, Shared,
+    Body, Joined, NetEvent, Out, Shared,
     data::{CORE_PACK, SyncData},
     io_pool::{self, Session as _},
 };
@@ -67,9 +67,50 @@ fn login_disconnect(c: &mut Connection, reason: &sunrise_core::nbt::Tag) {
 pub fn component_json(tag: &sunrise_core::nbt::Tag) -> String {
     component_value(tag).compact()
 }
-fn component_value(tag: &sunrise_core::nbt::Tag) -> crate::server::json::Json {
+
+/// A login disconnect's reason JSON for a component already in its JSON form, written as
+/// [`component_json`] writes one, or None when `ClientboundLoginDisconnectPacket`'s codec
+/// would refuse it.
+pub fn login_disconnect_json(component: &serde_json::Value) -> Option<String> {
+    let reason_json = json_component_value(component).compact();
+    let packet = login::Clientbound::Disconnect(login::Disconnect { reason_json }).encode();
+    // The packet id, 0, is one VarInt byte.
+    match login::Clientbound::decode(i32::from(packet[0]), &packet[1..]) {
+        Ok(login::Clientbound::Disconnect(login::Disconnect { reason_json })) => Some(reason_json),
+        _ => None,
+    }
+}
+
+/// [`component_value`] for a JSON component: its numbers keep their JSON form.
+fn json_component_value(value: &serde_json::Value) -> crate::server::json::Json {
     use crate::server::json::Json;
-    use sunrise_core::nbt::Tag;
+    use serde_json::Value;
+    match value {
+        Value::Null => Json::Null,
+        Value::Bool(b) => Json::Bool(*b),
+        Value::Number(n) => Json::Number(n.to_string()),
+        Value::String(s) => Json::String(s.clone()),
+        Value::Array(items) => Json::Array(items.iter().map(json_component_value).collect()),
+        Value::Object(map) => {
+            if map.len() == 1
+                && let Some(Value::String(t)) = map.get("text")
+            {
+                return Json::String(t.clone());
+            }
+            let mut members: Vec<(&String, &Value)> = map.iter().collect();
+            members.sort_by_key(|(k, _)| component_key_rank(k));
+            Json::Object(
+                members
+                    .into_iter()
+                    .map(|(k, v)| (k.clone(), json_component_value(v)))
+                    .collect(),
+            )
+        }
+    }
+}
+
+/// Where ComponentSerialization.CODEC writes the field `key`: unknown fields last.
+fn component_key_rank(key: &str) -> usize {
     const ORDER: &[&str] = &[
         "type",
         "text",
@@ -104,6 +145,12 @@ fn component_value(tag: &sunrise_core::nbt::Tag) -> crate::server::json::Json {
         "insertion",
         "font",
     ];
+    ORDER.iter().position(|o| *o == key).unwrap_or(ORDER.len())
+}
+
+fn component_value(tag: &sunrise_core::nbt::Tag) -> crate::server::json::Json {
+    use crate::server::json::Json;
+    use sunrise_core::nbt::Tag;
     match tag {
         Tag::String(s) => Json::String(s.to_string_lossy()),
         Tag::List(items) => Json::Array(items.iter().map(component_value).collect()),
@@ -114,7 +161,7 @@ fn component_value(tag: &sunrise_core::nbt::Tag) -> crate::server::json::Json {
                 return Json::String(t.to_string_lossy());
             }
             let mut keys: Vec<String> = map.keys().map(|k| k.to_string_lossy()).collect();
-            keys.sort_by_key(|k| ORDER.iter().position(|o| o == k).unwrap_or(ORDER.len()));
+            keys.sort_by_key(|k| component_key_rank(k));
             Json::Object(
                 keys.into_iter()
                     .map(|k| {
@@ -944,52 +991,35 @@ fn serve_connection(
                 );
                 return Ok(());
             }
-            let (intention, hello_timeout) = if let Some(requests) = &shared.handshake_requests
-                && shared.handshake_listeners.any()
-            {
-                // The handoff and Hello share the existing login read budget.
-                let deadline = Instant::now() + LOGIN_TIMEOUT;
-                let (reply, decision) = channel();
-                let waiting = Arc::new(());
-                if requests
-                    .send(HandshakeRequest {
-                        intention,
-                        peer_ip: (!c.is_memory()).then_some(address.ip()),
-                        reply,
-                        deadline,
-                        waiting: Arc::downgrade(&waiting),
-                    })
-                    .is_err()
-                {
-                    return Ok(());
-                }
-                let decision =
-                    decision.recv_timeout(deadline.saturating_duration_since(Instant::now()));
-                drop(waiting);
-                let Ok(decision) = decision else {
+            let handed_off = shared.handoffs.is_some() && shared.handshake_listeners.any();
+            let intention = if handed_off {
+                let id = counted.as_ref().map_or_else(
+                    || shared.next_connection.fetch_add(1, Ordering::Relaxed),
+                    |counted| counted.2,
+                );
+                let peer_ip = (!c.is_memory()).then_some(address.ip());
+                let Some(decision) = shared.hand_off(id, intention, peer_ip) else {
                     return Ok(());
                 };
-                if shared.stop.load(Ordering::Relaxed)
-                    || shared.shutting_down.load(Ordering::Relaxed)
-                {
-                    return Ok(());
-                }
-                c.reader.check_peer_open().map_err(e)?;
-                let hello_timeout = deadline.saturating_duration_since(Instant::now());
-                if hello_timeout.is_zero() {
+                // A server draining its players for a stop keeps listening: `try_admit` refuses
+                // an accepted login there as it refuses one no listener heard.
+                if shared.stop.load(Ordering::Relaxed) {
                     return Ok(());
                 }
                 match decision {
-                    Ok(accepted) => (accepted, Some(hello_timeout)),
-                    Err(reason) => {
-                        login_disconnect(&mut c, &reason);
+                    Ok(accepted) => accepted,
+                    Err(reason_json) => {
+                        let _ = c.send(
+                            &login::Clientbound::Disconnect(login::Disconnect { reason_json })
+                                .encode(),
+                        );
                         return Ok(());
                     }
                 }
             } else {
-                (intention, None)
+                intention
             };
-            serve_login(c, intention, hello_timeout, address, &shared, counted)
+            serve_login(c, intention, handed_off, address, &shared, counted)
         }
         other => Err(format!("unknown intent {other}")),
     }
@@ -1164,23 +1194,22 @@ fn serve_login(
     mut c: Connection,
     // The accepted intention is the only requested host; login does not route by host yet.
     _intention: handshake::Intention,
-    hello_timeout: Option<Duration>,
+    handed_off: bool,
     address: std::net::SocketAddr,
     shared: &Arc<Shared>,
     counted: Option<super::Counted>,
 ) -> Result<(), String> {
     let e = |e: sunrise_protocol::Error| e.to_string();
-    if let Some(timeout) = hello_timeout {
-        c.reader.set_read_timeout(Some(timeout)).map_err(e)?;
-    }
     let (id, payload) = c.recv().map_err(e)?;
-    if hello_timeout.is_some() {
-        c.reader.set_read_timeout(Some(LOGIN_TIMEOUT)).map_err(e)?;
-    }
     let hello = match login::Serverbound::decode(id, &payload).map_err(e)? {
         login::Serverbound::Hello(h) => h,
         _ => return Err("expected a login hello".into()),
     };
+    // A peer that left while the server tick decided its handshake may have left a whole
+    // Hello behind: its connection is gone before authentication or admission sees it.
+    if handed_off && c.reader.peer_closed() {
+        return Ok(());
+    }
     if !valid_name(&hello.name) {
         // handleHello's validState throws; Connection.exceptionCaught sends the
         // exception as the login disconnect.
