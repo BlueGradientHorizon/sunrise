@@ -432,6 +432,8 @@ pub(in crate::game) struct Dragon {
     /// only damage above the last hit lands, and only the excess.
     invulnerable: i32,
     last_hurt: f32,
+    /// Transient `LivingEntity.lastHurtMob`; an owned arrow or wind charge can set it.
+    pub(super) last_hurt_mob: Option<(u32, i32)>,
     /// `lastHurtByPlayer` with its 100 tick memory: the player credited with
     /// the kill, and the dragon tick of their last hit.
     hurt_by_player: Option<(FightWho, i32)>,
@@ -684,6 +686,7 @@ impl Dragon {
             hurt_time: 0,
             invulnerable: 0,
             last_hurt: 0.0,
+            last_hurt_mob: None,
             hurt_by_player: None,
             last_source: None,
             death_time: 0,
@@ -882,7 +885,12 @@ impl Dragon {
             position: [self.position.x, self.position.y, self.position.z],
             view: [view.x, view.y, view.z],
         };
-        if level.incoming_canceled(hurting, victim, &mut container) {
+        let body = super::native_living_body::dragon_body(self);
+        if level
+            .reborrow()
+            .with_victim(body)
+            .incoming_canceled(hurting, victim, &mut container)
+        {
             return Hurt::Landed { full: false };
         }
         damage = container.new_damage();
@@ -928,7 +936,11 @@ impl Dragon {
         dealt = container.reduce(Reduction::Armor, before_armor, before_armor - dealt, dealt);
         let hurting = sunrise_client::health::Hurting::Dragon(self.id as i32, source);
         container.record_new_damage(dealt);
-        level.damage_pre(hurting, &mut container);
+        let body = super::native_living_body::dragon_body(self);
+        level
+            .reborrow()
+            .with_victim(body)
+            .damage_pre(hurting, &mut container);
         dealt = container.capture_inflicted();
         // LivingEntity.actuallyHurt: absorption runs after Pre even with 0.0 absorption hearts.
         let (remaining, _, _) = container.absorb(dealt, 0.0);
@@ -971,7 +983,11 @@ impl Dragon {
         // The last of `LivingEntity.hurtServer` (`reallyHurt`'s `super.hurtServer`):
         // `LivingDamageEvent.Post`, health taken or not.
         let hurting = sunrise_client::health::Hurting::Dragon(self.id as i32, source);
-        level.damage_post(hurting, &container);
+        let body = super::native_living_body::dragon_body(self);
+        level
+            .reborrow()
+            .with_victim(body)
+            .damage_post(hurting, &container);
         if self.phase.sitting() {
             self.sitting_damage += before - self.health.max(0.0);
             if self.sitting_damage > 0.25 * MAX_HEALTH {
@@ -2773,13 +2789,21 @@ impl Game<'_> {
         if let Some(id) = self.dragon.as_ref().map(|d| d.id) {
             self.tick_saved_invulnerable_time(id);
         }
+        let target_dead = self
+            .dragon
+            .as_ref()
+            .and_then(|d| d.last_hurt_mob)
+            .is_some_and(|(id, _)| !self.last_hurt_target_alive(id));
         let Some(d) = self.dragon.as_mut() else {
             return;
         };
         d.previous = d.position;
         d.previous_yaw = d.yaw;
         d.old_flap = d.flap;
-        d.ticks += 1;
+        d.ticks = d.ticks.wrapping_add(1);
+        if target_dead {
+            d.last_hurt_mob = None;
+        }
         d.hurt_time = (d.hurt_time - 1).max(0);
         d.invulnerable = (d.invulnerable - 1).max(0);
         for part in &mut d.parts {
