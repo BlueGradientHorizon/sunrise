@@ -185,12 +185,14 @@ impl<'a> HitLend<'a> {
             },
         })
     }
-    /// The mob among `mobs` with id `attacker`, if it is there to borrow.
+    /// The mob among `mobs` with id `attacker`, if it is there to borrow and the hit's
+    /// subscription decision (`listened`, [`hit_host_listened`]) is to lend.
     pub fn attacking_mob(
+        listened: bool,
         mut mobs: impl Iterator<Item = &'a mut crate::mobs::Mob>,
         attacker: i32,
     ) -> Option<Self> {
-        hit_host_listened().then_some(())?;
+        listened.then_some(())?;
         Self::mob(mobs.find(|m| m.id as i32 == attacker)?)
     }
     fn id(&self) -> i32 {

@@ -2292,7 +2292,9 @@ impl Game<'_> {
         // The victim as the death or protection callback left it, beside the lent attacker:
         // the player in place, or a mob split from the attacker in the same list.
         let victim_mob = self.mobs.iter().position(|m| m.id as i32 == entity);
-        let original_lend = original_lend.filter(|_| sunrise_client::health::hit_host_listened());
+        // One subscription decision for the deferred Post: its loans and its reads.
+        let listened = sunrise_client::health::hit_host_listened();
+        let original_lend = original_lend.filter(|_| listened);
         let lend_mob = original_lend
             .and_then(|id| self.mobs.iter().position(|m| m.id as i32 == id))
             .filter(|&index| Some(index) != victim_mob);
@@ -2338,7 +2340,8 @@ impl Game<'_> {
             self,
             &sunrise_client::health::NO_ATTACK,
             no_push,
-            lend
+            lend;
+            listened
         );
         let level = match victim {
             Some(victim) => level.reborrow().with_victim(victim),

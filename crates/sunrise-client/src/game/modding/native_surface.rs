@@ -33,7 +33,9 @@ pub(crate) struct GameSide<'a> {
     pub(in crate::game) items: &'a Items,
     pub(in crate::game) damage_types: &'a sunrise_world::damage_source::Catalog,
     pub(in crate::game) player_equipment: sunrise_client::health::PlayerEquipment<'a>,
-    /// What a hit on the player in place needs to name and read the living entities it lends.
+    /// What a hit on the player in place needs to name and read the living entities it lends,
+    /// borrowed without asking whether a `HitHost` hook listens: only a hit asks
+    /// ([`SideLevel::hit_reads`](sunrise_client::motion::SideLevel::hit_reads)).
     pub(in crate::game) hit_reads: Option<sunrise_client::health::HitReads<'a>>,
     pub(in crate::game) tag_items: Option<&'a Items>,
 }
@@ -64,7 +66,10 @@ impl sunrise_client::motion::SideLevel for GameSide<'_> {
     }
 
     fn hit_reads(&self) -> Option<sunrise_client::health::HitReads<'_>> {
-        self.hit_reads
+        // Asked once for the hit that builds its level, never for this side's other reads.
+        sunrise_client::health::hit_host_listened()
+            .then_some(self.hit_reads)
+            .flatten()
     }
 
     fn damage_types(&self) -> &sunrise_world::damage_source::Catalog {

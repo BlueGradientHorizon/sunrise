@@ -23,7 +23,8 @@ pub trait SideLevel {
         [None; 8]
     }
     /// What a hit on that player needs to name and read the living entities it lends; none
-    /// where this side has no open world.
+    /// where this side has no open world, or while no `HitHost` hook listens. Only a hit's
+    /// level asks, once.
     fn hit_reads(&self) -> Option<crate::health::HitReads<'_>> {
         None
     }

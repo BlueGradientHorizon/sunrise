@@ -99,7 +99,7 @@ macro_rules! game_side {
             items: $s.res.items(),
             damage_types: &$s.health_resources.damage,
             player_equipment: acting_equipment!($s),
-            hit_reads: $crate::game::entity::hit_reads_of!($s),
+            hit_reads: $crate::game::entity::hit_reads_of!($s, true),
             tag_items: if $s.options.execution_role.is_client() {
                 $s.remote.as_ref().and_then(|remote| remote.tags.as_ref())
             } else {
