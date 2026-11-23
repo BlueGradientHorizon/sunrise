@@ -410,7 +410,20 @@ fn living_death_post_hears_the_entity_the_blow_and_the_attacker() {
     let heard = Arc::new(Mutex::new(Vec::new()));
     testing::with_dispatch(
         vec![ModEntry::new("post", Box::new(Post(heard.clone())))].into(),
-        || dispatch_living_death_post(&mut FakeHost::new(), 7, "minecraft:fall", 0),
+        || {
+            dispatch_living_death_post(
+                &mut FakeHost::new(),
+                crate::__private::LivingDeathPostCall {
+                    entity: 7,
+                    kind: "minecraft:sheep",
+                    damage_type: "minecraft:fall",
+                    attacker: 0,
+                    player: None,
+                    credited_player: None,
+                    message_key: None,
+                },
+            );
+        },
     );
     assert_eq!(
         *heard.lock().unwrap(),

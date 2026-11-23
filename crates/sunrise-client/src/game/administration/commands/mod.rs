@@ -3467,9 +3467,8 @@ impl Game<'_> {
             }
             return true;
         }
-        let old_level = self.experience.level;
         if levels {
-            self.experience.level = amount;
+            self.set_experience_levels(amount);
         } else {
             let needed = sunrise_client::entities::Experience::needed(self.experience.level);
             if amount > needed - 1 {
@@ -3477,8 +3476,14 @@ impl Game<'_> {
             }
             self.experience.progress = amount as f32 / needed as f32;
         }
-        self.native_player_level_changed(old_level);
         true
+    }
+
+    /// `ServerPlayer.setExperienceLevels`: an absolute write is not a level grant.
+    pub(super) fn set_experience_levels(&mut self, level: i32) {
+        let old_level = self.experience.level;
+        self.experience.level = level;
+        self.native_player_level_changed(old_level);
     }
     /// `GameRules.set` as the `/gamerule` command and the management protocol call it: the rule changes, the
     /// world follows it, and a dedicated server tells the event stream (`MinecraftServer.onGameRuleChanged`

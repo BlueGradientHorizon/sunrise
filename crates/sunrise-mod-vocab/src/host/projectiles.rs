@@ -9,7 +9,7 @@ pub trait ProjectilesServerHost {
     /// or a registered mod thrown type. Constructs at the owner's eyes minus
     /// 0.1F blocks (wind charges use eye height directly), sets ownership before
     /// shooting, inherits known movement
-    /// (vertical only while airborne), adds to the level and fires projectile_launch.
+    /// (vertical only while airborne), adds to the level and asks `entity_join_level` whether to admit it.
     /// Spread draws x, y, z triangular noise from the new projectile's own random.
     /// Once it is in the level, `stack`'s enchantments run their
     /// `projectile_spawned` effects on it (`Projectile.applyOnProjectileSpawned`):

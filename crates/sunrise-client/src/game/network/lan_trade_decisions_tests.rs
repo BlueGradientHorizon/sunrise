@@ -2,7 +2,7 @@
 use super::{Game, native_guest_turn_tests::with_guests};
 use mod_api::{
     Flow, Hooks, HostSide, HostTransaction, ItemPlace, ItemResource, ItemStackedOnOtherEvent,
-    ModEntry, Mods, PlayerTradeEvent, ServerHost, TradeWithVillagerEvent,
+    ModEntry, Mods, ServerHost, TradeWithVillagerEvent,
 };
 use std::cell::{Cell, RefCell};
 use std::sync::{Arc, mpsc};
@@ -33,7 +33,6 @@ const SPEED: &str = "minecraft:movement_speed";
 #[derive(Clone, Default)]
 struct Script {
     panic_on: Option<usize>,
-    panic_on_completion: bool,
     answer: bool,
     invalid: bool,
     /// An answer whose result stack is not a valid one for the game.
@@ -49,7 +48,6 @@ thread_local! {
     static SCRIPT: RefCell<Script> = RefCell::new(Script::default());
     static CALLS: Cell<usize> = const { Cell::new(0) };
     static STACKED: Cell<usize> = const { Cell::new(0) };
-    static COMPLETED: Cell<usize> = const { Cell::new(0) };
     static STAGED_WRITES: Cell<bool> = const { Cell::new(false) };
     static USES: RefCell<Vec<i32>> = const { RefCell::new(Vec::new()) };
     static IN_ACTION: RefCell<Vec<bool>> = const { RefCell::new(Vec::new()) };
@@ -58,7 +56,6 @@ fn script(value: Script) {
     SCRIPT.with(|s| *s.borrow_mut() = value);
     CALLS.set(0);
     STACKED.set(0);
-    COMPLETED.set(0);
     STAGED_WRITES.set(false);
     USES.with(|uses| uses.borrow_mut().clear());
     IN_ACTION.with(|a| a.borrow_mut().clear());
@@ -73,14 +70,6 @@ impl Hooks for Mod {
         event: &mut TradeWithVillagerEvent<'_>,
     ) {
         trade(host, event);
-    }
-
-    fn player_trade(&self, _: &mut dyn ServerHost, _: &mut PlayerTradeEvent<'_>) {
-        COMPLETED.set(COMPLETED.get() + 1);
-        assert!(
-            !SCRIPT.with(|s| s.borrow().panic_on_completion),
-            "completion listener failed"
-        );
     }
 }
 /// The same trade listener, also hearing `item_stacked_on_other`: the result pickup is both.
@@ -1163,7 +1152,6 @@ fn accepted_trade_keeps_the_collect_answer() {
                 (6, 19, -7, -4, 11)
             );
             assert_eq!(offer.price_multiplier, 0.25);
-            assert_eq!(COMPLETED.get(), 1);
             let received = packets(&rx);
             let [
                 Clientbound::MerchantOffers(offers),
@@ -1186,14 +1174,13 @@ fn accepted_trade_keeps_the_collect_answer() {
 
 #[test]
 #[ignore = "daily"]
-fn a_panicking_completion_listener_cannot_drop_success_packets() {
+fn a_committed_take_publishes_success_packets() {
     with_mod(|| {
         with_guests(|game| {
             let click = open(game, 2);
             let rx = record_packets(game);
             script(Script {
                 answer: true,
-                panic_on_completion: true,
                 ..Script::default()
             });
             game.storage_scope(|game, _| {

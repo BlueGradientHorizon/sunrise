@@ -417,7 +417,6 @@ impl Game<'_> {
             }
             // `getKillCredit`, as the death finds it.
             let killer = self.guest_kill_credit_type(conn);
-            self.native_player_died(uuid, cause.as_deref());
             // ServerPlayer.die: the neutral mobs near a guest in this level
             // forget their anger at them.
             if here {
@@ -438,8 +437,8 @@ impl Game<'_> {
                 .bool_at(sunrise_client::gamerules::vanilla::SHOW_DEATH_MESSAGES)
             {
                 let me = self.player_text(&name, uuid);
-                let text = match cause {
-                    Some(key) => sunrise_client::text::Text::translate(&key, &[me]),
+                let text = match cause.as_deref() {
+                    Some(key) => sunrise_client::text::Text::translate(key, &[me]),
                     None if at[1] < self.world.below_world_y() => {
                         sunrise_client::text::Text::translate("death.attack.outOfWorld", &[me])
                     }
@@ -570,7 +569,15 @@ impl Game<'_> {
             if let Some(fatal) = &fatal
                 && mod_api::__private::listened(mod_api::HookId::LivingDeathPost)
             {
-                self.native_living_death_post(id as u32, &fatal.damage_type, fatal.causing);
+                self.native_living_death_post(mod_api::__private::LivingDeathPostCall {
+                    entity: id as u32,
+                    kind: "minecraft:player",
+                    damage_type: &fatal.damage_type,
+                    attacker: fatal.causing,
+                    player: Some(uuid),
+                    credited_player: None,
+                    message_key: cause.as_deref(),
+                });
             }
         }
     }

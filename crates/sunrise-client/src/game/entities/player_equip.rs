@@ -69,7 +69,6 @@ impl Game<'_> {
         if self.remote.is_some() || self.spectator() {
             return;
         }
-        self.native_on_equip(slot, new);
         // The equip sound plays at the player: none for one in another level than this one.
         let Some(at) = self
             .player

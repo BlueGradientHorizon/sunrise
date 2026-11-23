@@ -315,14 +315,7 @@ impl Game<'_> {
             None => sunrise_client::mobs::Damage::of(sunrise_client::mobs::DamageKind::Generic),
         };
         let (id, join) = (self.mobs[index].id, self.mobs[index].join);
-        let (landed, killed) = self.hurt_by_player(index, amount, source);
-        if killed
-            && let Some(i) = self.mob_index.find(&self.mobs, id)
-            && self.mobs[i].join == join
-            && !self.mobs[i].removed
-        {
-            self.native_kill_event(i);
-        }
+        let (landed, _) = self.hurt_by_player(index, amount, source);
         let Some(index) = self
             .mob_index
             .find(&self.mobs, id)

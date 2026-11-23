@@ -226,10 +226,13 @@ impl Game<'_> {
                 }
                 // A totem that fired saves the player inside hurtServer:
                 // still alive, so no heal.
-                let killed = self
-                    .player
-                    .as_ref()
-                    .is_some_and(|pl| killed(hit, pl.health.dead_or_dying(), pl.health.totem_used));
+                let killed = self.player.as_ref().is_some_and(|pl| {
+                    killed(
+                        hit,
+                        pl.health.dead_or_dying(),
+                        pl.health.has_pending_protection(),
+                    )
+                });
                 if killed {
                     self.heal_skull_owner(p, live_owner);
                 }

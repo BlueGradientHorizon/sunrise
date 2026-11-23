@@ -776,15 +776,8 @@ impl Game<'_> {
             // hurtServer first; the knockback and post-attack effects follow
             // only when it landed.
             let join = self.mobs[i].join;
-            let (hurt, killed) = self.hurt_by_player(i, amount, source);
+            let (hurt, _) = self.hurt_by_player(i, amount, source);
             if hurt {
-                if killed
-                    && let Some(i) = self.mob_index.find(&self.mobs, id)
-                    && self.mobs[i].join == join
-                    && !self.mobs[i].removed
-                {
-                    self.native_kill_event(i);
-                }
                 let Some(i) = self
                     .mob_index
                     .find(&self.mobs, id)

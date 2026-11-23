@@ -34,7 +34,8 @@ pub trait PlayerExperienceBackendMut {
     fn player_set_experience_points(&mut self, player: PlayerRef, points: i32) -> bool;
     /// Side: server.
     /// `ServerPlayer.setExperienceLevels`: sets the level, keeping the
-    /// progress and the total.
+    /// progress and the total. An actual change fires `player_level_change`;
+    /// this absolute write does not ask `player_xp_level_change`.
     fn player_set_experience_levels(&mut self, player: PlayerRef, levels: i32) -> bool;
     /// Side: server.
     /// Sets `Player.totalExperience`, the `total` that `PlayerRef::experience`

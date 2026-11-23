@@ -134,8 +134,6 @@ For mods that run where the world is simulated: a dedicated server, a LAN host, 
   single-player world, and changes that are no text edit (dye, glow ink, wax, `/data`, `/setblock`).
 - **`player_client_loaded_world(player, name)`**: the server heard that a guest's client finished loading
   the level around them after joining, respawning or changing dimension. The player's state is not swapped in.
-- **`player_stop_using_item(player, name)`**: a server player released the use-item key, or a mod's
-  `release_using_item` did, before the item finished being used. The player's state is swapped in.
 - **`player_recipe_book_settings_change(player, name, book, open, filtering)`**: a server player's recipe
   book open or filter setting changed; `book` is the book type's protocol id. The player's state is not swapped in.
 - **`player_command(player, name, command, canceled, replies)`**: any command a player typed (without the
@@ -255,7 +253,6 @@ For mods that run where the world is simulated: a dedicated server, a LAN host, 
 - **`player_lectern_page_change(player, name, pos, page)`**: a server player changed the lectern at `pos` to zero-based `page`, after its page and redstone pulse changed.
 - **`player_item_frame_change(player, name, entity_id, action, item, rotation)`**: a server player changed a frame (`put`, `rotate`, `remove_item` or `break`), after its contents and comparator output changed. `item` is empty when none remains.
 - **`player_item_mend(player, name, item, repair, experience)`**: an orb actually repaired `repair` durability on `item` for a server player, after the item changed. `experience` is the orb value.
-- **`player_trade(player, name, entity_id)`**: a server player completed a villager or wandering trader trade, after the merchant applied it. `entity_id` is the merchant network id.
 - **`player_shield_disable(player, name, ticks)`**: a blocked melee hit disabled the server player’s shield for `ticks` ticks. It fires just before the cooldown is set.
 - **`player_loom_pattern_select(player, name, pattern)`**: a server player selected loom pattern button `pattern`, after the menu accepted it.
 - **`player_name_entity(player, name, entity_id, entity_name)`**: a server player used a named name tag on a mob, after it became persistent and was named.
@@ -292,14 +289,11 @@ For mods that run where the world is simulated: a dedicated server, a LAN host, 
 - **`item_spawn(entity, item, count, pos)`**: a dropped item entity was successfully added to the server level. The count is its stack size and `pos` is its spawn position.
 - **`entity_pose_change(player, name, from, to)`**: a guest player's synchronized pose changed. Pose names are `STANDING`, `CROUCHING`, `SWIMMING`, `FALL_FLYING`, `SPIN_ATTACK` or `SLEEPING`.
 - **`entity_toggle_glide(player, name, gliding)`**: a guest player's fall flying state changed after the server accepted or ended a glide.
-- **`entity_shoot_bow(player, name, projectile, force)`**: a player fired an arrow from a bow or crossbow, after the arrow entered the level. `force` is the shooting power. This reports the completed shot.
 - **`arrow_nock(player, name, bow, hand, has_ammo, cancel)`**: a player is about to start using a bow, where `BowItem.use` runs on the server (NeoForge's `ArrowNockEvent`). `has_ammo` is whether `getProjectile` found ammunition, always true in creative. Set `cancel` to fail the use: the bow is not drawn. Crossbows and tridents do not ask, and the client's own prediction does not.
 - **`living_get_projectile(player, name, entity, kind, weapon, projectile)`**: the ammunition `LivingEntity.getProjectile(weapon)` returns (NeoForge's `LivingGetProjectileEvent`). Every mod gets the event with `projectile` set to the vanilla ammunition (the stack found in the hands or inventory, a mob's held projectile or a new arrow, a creative player's default arrow, or empty) and may change or empty it. It is asked on the bow's start and release, the crossbow's start and draw, the client's prediction of those starts, a skeleton's or illusioner's shot, and a pillager's or piglin's crossbow load (`entity` and `kind` name the mob, `player` is empty); a mob's arrow takes the replaced arrow's item and effect, a mob's crossbow also fires a replaced firework rocket, and an emptied stack leaves its crossbow uncharged and silent. A replaced stack is not taken from the inventory: the hook owns it.
-- **`projectile_launch(player, name, entity, kind)`**: a projectile was added to the server level. `kind` is its entity type; `player` and `name` identify a player launcher, and are `None` and empty for other sources.
 - **`entity_portal(dimension, entity, pos)`**: a server entity finished its portal wait and is beginning to leave through the portal block at `pos`. The destination follows the existing portal rules; the hook reports the transfer without changing it.
 - **`item_smelted(player, stack, amount_removed)`**: a player took furnace, blast furnace or smoker output with a nonzero `removeCount` (`FurnaceResultSlot.checkTakeAchievements`, NeoForge `PlayerEvent.ItemSmeltedEvent`). Fires on both logical sides (`HostSide::Server` on the server after the furnace awarded its used recipes and popped experience; `HostSide::Client` during client click prediction without awarding experience). `player` is the live player handle and `stack` lends the stack vanilla passed there (`ItemStackView<'_>`).
 - **`furnace_start_smelt(pos, item)`**: a furnace at `pos` begins cooking `item`, when its cooking timer first advances. Server-side.
-- **`brewing_complete(pos)`**: a brewing stand finished brewing at `pos`, after the bottle contents changed.
 - **`brewing_fuel(pos, fuel)`**: a brewing stand at `pos` consumed `fuel` and gained brewing fuel. Server-side.
 - **`enchant_item(player, name, pos, item, levels)`**: a player applied an enchantment at `pos`; `item` is the finished item and `levels` the levels charged. Guest state is not swapped in.
 - **`prepare_item_enchant(player, name, pos, costs)`**: enchanting offers were calculated at `pos`; change the three offer costs before they are sent to the player's menu. Guest state is not swapped in.
@@ -323,8 +317,8 @@ For mods that run where the world is simulated: a dedicated server, a LAN host, 
   item, vehicle or other entity whose box meets the strike box. Set `cancel` to spare it: no fire, damage or
   conversion, and `creeper_power` is not called. It still counts as struck for Channeling's advancement, as
   in NeoForge. A visual-only bolt asks nothing. With no listener the cost is one `listened` check per struck entity.
-- **`time_skip(dimension, from, to, cause, cancel)`**: the server clock is about to jump after enough players
-  sleep or through `/time set`, `/time add`, or `/time set <marker>`. Set `cancel` to keep the old time.
+- **`time_skip(dimension, from, to, cause, cancel)`**: `/time` and level-clock setters may be vetoed
+  before they change the clock. Sleeping uses `sleep_finished_time` instead.
 - **`sleep_finished_time(dimension, current, new_time, adjustment)`**: enough players slept and `advance_time`
   is on (NeoForge's `SleepFinishedTimeEvent`). `adjustment`, a `ClockAdjustment`, starts as vanilla's
   `wake_up_from_sleep` marker; a mod may set `Absolute`, `Relative` or another `Marker`, read with
@@ -348,8 +342,6 @@ For mods that run where the world is simulated: a dedicated server, a LAN host, 
 - **`whitelist_state_update(enabled)`**: the dedicated server's player whitelist was enabled or disabled.
 - **`player_bundle_item_select(player, name, slot, index)`**: a server player selected an item in a bundle;
   `slot` is the packet's menu slot and `index` is the chosen item index.
-- **`player_ready_arrow(player, name, arrow)`**: a server player released a drawn bow, by the use-item key or a
-  mod's `release_using_item`, with `arrow` naming the selected projectile item. The player's state is swapped in.
 - **`prepare_hopper_transfer(pos)`**: a hopper at `pos` begins a transfer attempt, after its cooldown and enabled checks and before pushing or pulling items.
 - **`inventory_move_item(source, destination, item, cancel)`**: a hopper is about to move one item between containers (a composter's bone meal too). Set `cancel` to leave it in the source slot. A chest boat or minecart is reported at the block it is in.
 - **`hopper_inventory_search(hopper, container, entity)`**: a hopper selects a block container or container entity while searching for items.
@@ -357,8 +349,6 @@ For mods that run where the world is simulated: a dedicated server, a LAN host, 
 - **`world_border_bounds_change_finish(host, event)`** (version 2): when an actual moving extent
   reaches its target size at the start of `event.level`'s normal tick, even when the level is idle and
   parked. Starting or replacing an extent is not a finish.
-- **`player_launch_projectile(player, name, item)`**: a server player launched a snowball, egg, ender pearl,
-  potion or trident. It fires after the projectile is created and only for guest players in a LAN world.
 - **`entity_unleash(entity, kind)`**: a mob's leash was removed, before any lead drop is handled.
 - **`entity_drop_item(entity, item, count, pos)`**: a mob is about to drop `count` of `item` at `pos`.
 - **`explosion_prime(center, radius)`**: a server explosion is about to begin at `center` with `radius`.
@@ -373,7 +363,6 @@ For mods that run where the world is simulated: a dedicated server, a LAN host, 
 - **`player_toggle_sneak(player, name, sneaking)`**: a guest's player input changed sneaking, after the hub applied the state. The guest's state is swapped in; only actual changes are reported.
 - **`player_input(player, name, flags)`**: a loaded guest sent a `PlayerInput` packet, after its flags were applied to the hub. `flags` is the packet's bit field, and the guest's state is swapped in.
 - **`player_arm_swing(player, name, hand)`**: a guest's arm swing was handled and their attack strength reset. The packet currently swings `mainhand`; the guest's state is swapped in.
-- **`player_jump(player, name)`**: accepted guest movement made the server player jump from the ground, after movement simulation finishes. The guest's state is swapped in.
 - **`player_kicked(player, name, reason)` (version 2)**: a network or fake guest was kicked after the hub recorded the rendered disconnect reason; a network guest also receives the disconnect packet. The guest's state is swapped in, unless the guest was already removed in the same poll: the hook still fires, without it.
 - **`player_level_change(player, name, from, to)`**: a server player's experience change altered their level, after the new level was applied. The guest's state is swapped in when the player is a guest.
 - **`player_swap_hands(player, name, to_main_hand, to_off_hand, cancel)` (version 3)**: a player pressed the swap-hands key (not a spectator), heard
@@ -393,10 +382,6 @@ For mods that run where the world is simulated: a dedicated server, a LAN host, 
   negative, taken off. Only actual orb pickup repairs items with Mending; canceling an orb and giving points instead
   does not run Mending. Both writes return false for an unavailable, dead or displaced player. A merged orb is
   worth `value` × `count`.
-- **`player_totem(player, name)`**: a totem of undying saved a player whose hurt would have killed them, on a server
-  (`checkTotemDeathProtection`), heard just before it is used up. Listen only: the health state machine decides before a
-  mod is asked, so a mod cannot veto it. The player's state is swapped in, so `host.players().acting_player`, `PlayerRef::tell` and the
-  item helpers reach them. Not heard: the host of a LAN world.
 - `host.players().acting_player()`, the player whose state is swapped in (inside a command executor,
   `right_click_block`, `native_use_on`, `break_block`...; None elsewhere);
   `host.commands().run_command(line)`, a command run as the server's console (level 4, no output), including during a guest's
@@ -1452,7 +1437,8 @@ mod mixin or use it replaces in its design or PR."#]
   out, and a `/summon` of it fails with vanilla's "duplicate UUIDs" message. It tells every kind in the game's entity
   lists (items, orbs, mobs, boats, minecarts, armor stands, primed TNT, falling blocks, projectiles, rockets, tridents),
   once each, in creation order, so check `kind`. A drop, an orb, a mob, a `/summon` and a chunk's entities are told at
-  once; other gameplay spawns when the next tick starts, and a cancelled one is removed then.
+  once. Arrow and throwable spawns, and fresh falling blocks, are also told at insertion. Other gameplay spawns are
+  offered between tick phases, before they tick again.
 
 - [A block's items](#a-blocks-items) are available to server mods through the item capability and
   `move_resources`, so a pipe or machine can move items transactionally.
@@ -1851,7 +1837,7 @@ game `Host`, handle constructors or transactions. Declarations still go on each 
   its item pass through it, with `LootDrops::used` set and the player named.
 
 - Server experience: `level.visit_experience_orbs(host, min, max, visit)` visits the experience orb handles in a box; `PlayerRef::give_experience_points` adds or removes signed points without Mending, and `PlayerRef::give_levels` gives or, for a negative amount, takes levels.
-- Server player death location: `PlayerRef::last_death_location(host)` reads where the player last died as a `GlobalPos`, the dimension's key and the block (`Player.getLastDeathLocation`, saved as `LastDeathLocation`, which the recovery compass follows). The dimension is data: a death in a dimension that is not open still reads, and `host.level(&pos.dimension().to_string())` gives the level when it is. `GlobalPos::new` takes an `Identifier` and `dimension()` returns `&Identifier`, so dimension keys are validated before they enter the typed API. Players resolve as in the other `PlayerRef` reads, so the acting player works too. It is `None` for a player who never died, a stale handle, and a player who is not online or whose record is swapped out. `set_last_death_location(host, location)` stores a location or, for `None`, forgets it (`Player.setLastDeathLocation`); the client hears of it with the player's next respawn, as in vanilla. It returns false in the same cases and for a dead player (so inside `player_died` the read works and the write does not).
+- Server player death location: `PlayerRef::last_death_location(host)` reads where the player last died as a `GlobalPos`, the dimension's key and the block (`Player.getLastDeathLocation`, saved as `LastDeathLocation`, which the recovery compass follows). The dimension is data: a death in a dimension that is not open still reads, and `host.level(&pos.dimension().to_string())` gives the level when it is. `GlobalPos::new` takes an `Identifier` and `dimension()` returns `&Identifier`, so dimension keys are validated before they enter the typed API. Players resolve as in the other `PlayerRef` reads, so the acting player works too. It is `None` for a player who never died, a stale handle, and a player who is not online or whose record is swapped out. `set_last_death_location(host, location)` stores a location or, for `None`, forgets it (`Player.setLastDeathLocation`); the client hears of it with the player's next respawn, as in vanilla. It returns false in the same cases and for a dead player (so inside `living_death_post` the read works and the write does not).
 - Server player rules: `PlayerRef::may_use_item_at(host, pos, face, stack)` is `Player.mayUseItemAt`: a player who may build always may, anyone else only with a stack whose `can_place_on` matches the block `pos` lies against (the check the game's own item use asks), `None` for a player in another level than the one in place. `can_harm(host, other)` is `ServerPlayer.canHarmPlayer`: the `pvp` rule and the two teams (attacks, arrows and tridents ask the same). `respawn_config(host)` reads the respawn point as `Some(Some(PlayerRespawnConfig { position, yaw, forced }))`, `Some(None)` for a player with none (the world spawn), and `set_respawn_config(host, config)` is `/spawnpoint`'s write, `None` forgetting it: the yaw wraps, `player_set_spawn` may cancel (false), and a dead player (except the removed original during `player_respawn_position`), a dimension the game doesn't have and a yaw that is not finite are refused. `text_filtering(host)` is the client's `ClientInformation.textFilteringEnabled` (false for the player running the server); it is the client's own option, so there is no write. The sleep reads are `sleep_ignored(host)` (what `set_sleep_ignored` left), `counts_for_sleep(host)` (the night's count: not a spectator, not a fake, not ignored while out of bed) and `sleep_timer(host)` (`Player.sleepCounter`: 100 once asleep long enough, 101 to 109 on the way up); `set_sleep_timer(host, ticks)` writes the signed counter without entering or leaving a bed. Writes take a `ServerHost`.
 
 - Lead drops to `loot_drops`: untying a lead or cutting it with shears (`used`), and the lead a mob a
@@ -2305,7 +2291,7 @@ registration path.
 
 - `entity_tick_pre` and `entity_tick_post` observe the entity families described in the hook catalog on both logical sides. Pre and Post carry matching `entities` and `kinds` arrays. Push a current ID onto `canceled` in Pre to skip the corresponding tick work and Post. Individual delivery applies to minecarts, boats and general rows and to observed types requested through `entity_tick_each`; other calls are batched by family. The server's player entity tick is separate from the player connection body. The local client avatar is not observed by these hooks. Version 4 checks `entity_tick_pre` and `entity_tick_post` subscriptions directly with zero preparation when neither is subscribed.
 
-- A mob's, an armor stand's or a player's equipment changing, on the single player server thread and on a dedicated server: `living_equipment_change(entity, slot, from, to)` (version 3) once for each `EquipmentSlot` (`MainHand`, `OffHand`, `Feet`, `Legs`, `Chest`, `Head`, `Body`, `Saddle`) that holds another stack than `LivingEntity.detectEquipmentUpdates` / `collectEquipmentChanges` last saw (NeoForge's `LivingEquipmentChangeEvent`, vanilla's `LivingEntity.detectEquipmentUpdates` / `collectEquipmentChanges` and `PlayerEquipment`). `entity` is a `LivingRef` and `from`/`to` lend `Option<ItemStackView<'_>>` lazily (call `project()` on demand for components or an owned copy). Unchanged entities are compared by borrow without cloning their equipment, only changed slots retain history, and each entity's check runs at its authoritative `detectEquipmentUpdates` site before attribute modifier updates (for connected players inside the server body tick after item use, skipping spectators touching unloaded chunks; for mobs during their body tick after despawn, base tick and item use, before `aiStep` and Post; for armor stands inside `armor_stand_location_effects` with live per-slot re-checks). A mob or connected player new to the level counts from empty on its first body tick. An enabled `living_equipment_change` subscription is sufficient for delivery; changes observed with no subscriber are not replayed. Players connected to the server (a dedicated server's, a published world's guests) are told across all eight slots, with `MainHand` reading the selected hotbar slot (so a hotbar selection or finished item use counts). The world host's own player isn't told here: `on_equip` hears it. It only hears.
+- A mob's, an armor stand's or a player's equipment changing, on the single player server thread and on a dedicated server: `living_equipment_change(entity, slot, from, to)` (version 3) once for each `EquipmentSlot` (`MainHand`, `OffHand`, `Feet`, `Legs`, `Chest`, `Head`, `Body`, `Saddle`) that holds another stack than `LivingEntity.detectEquipmentUpdates` / `collectEquipmentChanges` last saw (NeoForge's `LivingEquipmentChangeEvent`, vanilla's `LivingEntity.detectEquipmentUpdates` / `collectEquipmentChanges` and `PlayerEquipment`). `entity` is a `LivingRef` and `from`/`to` lend `Option<ItemStackView<'_>>` lazily (call `project()` on demand for components or an owned copy). Unchanged entities are compared by borrow without cloning their equipment, only changed slots retain history, and each entity's check runs at its authoritative `detectEquipmentUpdates` site before attribute modifier updates (for connected players inside the server body tick after item use, skipping spectators touching unloaded chunks; for mobs during their body tick after despawn, base tick and item use, before `aiStep` and Post; for armor stands inside `armor_stand_location_effects` with live per-slot re-checks). A mob or connected player new to the level counts from empty on its first body tick. An enabled `living_equipment_change` subscription is sufficient for delivery; changes observed with no subscriber are not replayed. Players connected to the server (a dedicated server's, a published world's guests) are told across all eight slots, with `MainHand` reading the selected hotbar slot (so a hotbar selection or finished item use counts). The integrated server's owner is a connected player too. It only hears.
 
 - `render_player_pre(player, who, draw, model, canceled)` fires once a frame for each other player in view and for this window's player in third person, before its `render_living_pre`, with the same frame (`MobRender`, a `BlockEntityDraw` at the feet turned with the body) and `who` (profile name, whether it is the local player); set `canceled` to skip the player's own drawing this frame (its flames and shadow still draw) (`RenderPlayerEvent.Pre`). `render_living_post(entity, model, draw)` and then, for a player, `render_player_post(player, who, model, draw)` fire once a frame after the vanilla model and layers of every mob and player in view whose pre hooks weren't canceled (but a player whose `render_living_pre` alone was canceled still gets `render_player_post`, with no model), and what the mod adds in that frame is drawn with it (`RenderLivingEvent.Post`, `RenderPlayerEvent.Post`; layers of one type's renderer are `register_entity_layers`, `EntityRenderersEvent.AddLayers`). The draw starts in the entity's frame; the optional model lends the final poses and hierarchy to anyone attaching geometry to bones. The game asks once a frame whether any mod listens to the four, and with none builds nothing for them.
 
@@ -2408,8 +2394,6 @@ registration path.
 
 - TNT about to be primed: `tnt_primed(player, pos, cancel)` is heard before a flint and steel, a fire charge, fire, a redstone signal, an arrow or a dispenser lights the TNT at `pos`, with the player whose click lit it (None when no player did). A mod sets `cancel` and it is not primed: the block stays, or is put back when fire or a signal had already taken it out. The clicking player's state is swapped in. TNT set off by a blast, a TNT minecart and a sulfur cube are not asked.
 
-- A totem saving a player: `player_totem(player, name)` is heard for a server player whose hurt would have killed them and whose totem fired (`LivingEntity.checkTotemDeathProtection`, Bukkit's `EntityResurrectEvent`), just before the totem is used up. Listen only. The player's state is swapped in.
-
 - `anvil_damaged(dimension, pos, from, to)` runs after an anvil at `pos` changes from `from` to `to`; `to` is air when it broke.
 
 - `beacon_state_change(dimension, pos, active)` is called after the beacon at `pos` gains or loses its complete beam pyramid; `active` says whether it is active now.
@@ -2439,8 +2423,6 @@ registration path.
 - A sculk sensor, calibrated sensor or shrieker received vibration event `event` at `pos`; `block` is its identifier. Set `cancel` to suppress the block's response.
 
 - A dispenser sheared entity `entity` of kind `kind` at the block in front of the dispenser at `pos`, after the shearing effects.
-
-- A brewing stand finished brewing: `brewing_complete(pos)` is heard after the bottles at `pos` received their brewed contents. Server-side.
 
 - A brewing stand consumed fuel: `brewing_fuel(pos, fuel)` is heard after the stand at `pos` consumed the item `fuel` and gained brewing fuel. Server-side.
 
@@ -2481,8 +2463,6 @@ registration path.
 - A server entity finished its portal wait and is beginning to leave through the portal block at `pos`: `entity_portal(dimension, entity, pos)` reports the entity's network id, source dimension and entry block. The transfer destination follows the existing portal rules.
 
 - A guest player's synchronized pose changed: `entity_pose_change(player, name, from, to)` reports the old and new pose names.
-
-- A player fired an arrow from a bow or crossbow: `entity_shoot_bow(player, name, projectile, force)` reports the arrow id and shooting power after the completed shot.
 
 - A mob became tamed after its owner and persistence were set: `entity_tame(entity, kind, owner)` reports the entity type and owner UUID when known.
 
@@ -2607,8 +2587,6 @@ registration path.
 
 - A server player used a golden dandelion on an ageable mob: `player_toggle_entity_age_lock(player, name, entity_id, locked)` fires after the lock and item use changed.
 
-- A server player completed a villager or wandering trader trade, after the merchant menu applied the trade: `player_trade(player, name, entity_id)` gives the merchant's network id.
-
 - A server player's action removed an entity's leash: `player_unleash_entity(player, name, entity_id)` fires after the leash state is cleared.
 
 - The server synced changed motion to a player: `player_velocity(player, name, velocity)` fires with velocity in blocks per tick.
@@ -2623,8 +2601,6 @@ registration path.
 
 - A smithing result was prepared: `prepare_smithing(player, name, pos, result)` is called for a server player at `pos`; change the result before it is sent to the menu. Guest state is not swapped in.
 
-- A projectile was added to the server level: `projectile_launch(player, name, entity, kind)` reports the entity id and type, plus the player launcher when there is one.
-
 - A raid wave has spawned at its position, with its raid id, wave number and raider count (riders' mounts not counted).
 
 - A raid is triggered or reaches `victory`, `loss` or `stopped`: `raid_state_change(raid, pos, state)` reports its owning `RaidRef`, center and new state. The handle retains its level even when that level is parked; an already removed raid cannot be read.
@@ -2637,7 +2613,7 @@ registration path.
 
 - `target_hit(dimension, pos, strength)` is called after a projectile hits the target block at `pos` and it takes the reported redstone output strength.
 
-- The overworld clock is about to jump after sleep or a `/time` command: `time_skip(dimension, from, to, cause, cancel)`. Set `cancel` to keep the old time.
+- A `/time` command or mod clock setter is about to change the clock: `time_skip(dimension, from, to, cause, cancel)`. Set `cancel` to keep the old time.
 
 - A player selected a trade: `trade_select(player, name, villager, index)` is heard after the trading menu updates; `villager` is the entity id when known. The player's state is not swapped in.
 
@@ -2655,7 +2631,7 @@ registration path.
 
 - The server completed a world save cycle: `world_saved(wait)` reports whether chunk writes were flushed before returning.
 
-- The time players wake at after sleeping, as NeoForge's `SleepFinishedTimeEvent`: `sleep_finished_time(dimension, current, new_time, adjustment)` runs on the server once enough players have slept and the `advance_time` rule is on, before the clock moves. `adjustment` (a `ClockAdjustment`: `Absolute`, `Relative` or `Marker`, starting as vanilla's `wake_up_from_sleep` marker) says where the clock goes and a mod may change it; `new_time` is the vanilla morning, read only. A time before `current`, or an undefined marker, is refused. `time_skip` then hears the jump to the chosen time.
+- The time players wake at after sleeping, as NeoForge's `SleepFinishedTimeEvent`: `sleep_finished_time(dimension, current, new_time, adjustment)` runs on the server once enough players have slept and the `advance_time` rule is on, before the clock moves. `adjustment` (a `ClockAdjustment`: `Absolute`, `Relative` or `Marker`, starting as vanilla's `wake_up_from_sleep` marker) says where the clock goes and a mod may change it; `new_time` is the vanilla morning, read only. A time before `current`, or an undefined marker, is refused. Set `canceled` to keep the old time without stopping waking or the weather reset.
 
 - A shift-click in a mod container's menu routed by the mod, `AbstractContainerMenu.quickMoveStack`: `menu_quick_move(kind, subject, container_slots, slot, stack, handled)` (version 6) runs on the server before the game's own routing, for a mod container on a vanilla menu type or its own menu type, lending the live resident block entity and server `Host` through `subject: BlockEntityScope<'_>`. The mod takes what it moves out of `stack` and sets `handled`; the slot keeps the rest and the client gets the menu again.
 
@@ -2676,7 +2652,7 @@ registration path.
   even before it decodes (NeoForge's `hasData`), and `AttachmentType::get_existing` returns `None` instead of the default
   (NeoForge's `getExistingData`). Neither adds anything to the holder's saved data.
 
-- A player releases a bow: `arrow_loose(stack, has_ammo, charge, canceled)` may change held-tick `charge` or cancel the shot; negative charge also prevents it. Unlike `living_entity_use_item_stop`, it does not skip the whole item release; `entity_shoot_bow` reports the spawned arrow afterward with read-only force. Fires on the Game running the bow release, including LAN guests; a remote client's own release path, crossbows, and ArrowNockEvent are not covered.
+- A player releases a bow or fires a charged crossbow: `arrow_loose(stack, has_ammo, charge, canceled)` may change the held-tick `charge` for a bow or prevent either shot. The crossbow asks with charge 1 before spending its loaded projectiles. A negative charge refuses the shot. Projectile admission is a separate `entity_join_level` decision.
 
 - An item frame or painting about to break: `hanging_break(player, kind, pos, cancel)` is heard before a server player's hit, a blast or the loss of its wall breaks an item frame, a glow item frame or a painting, with the hitting player (None for a blast or a lost wall). A mod sets `cancel` and it stays. The hitting player's state is swapped in. A hit that only takes a frame's item out, the game's own player and `/kill` are not asked.
 
@@ -2723,19 +2699,11 @@ registration path.
 
 - A guest's player input flags: `player_input(player, name, flags)` is called after a loaded guest's `PlayerInput` packet is applied to the hub. `flags` is the packet's bit field; the guest's state is swapped in.
 
-- A guest jumped: `player_jump(player, name)` is called after accepted movement made the server player jump from the ground, once the guest's movement simulation finished. The guest's state is swapped in.
-
 - A network or fake guest was kicked: `player_kicked(player, name, reason)` (version 2) is called after the hub records the rendered reason; a network guest also receives the disconnect. The guest's state is swapped in unless already removed in the same poll.
-
-- A LAN guest launched a snowball, egg, ender pearl, potion or trident: `player_launch_projectile(player, name, item)` runs after the projectile is created.
 
 - A server player's experience level changed: `player_level_change(player, name, from, to)` is called after experience points or levels change their level, including orb points. The player's state is swapped in when they are a guest.
 
-- A server player released a drawn bow, by the use-item key or a mod's `release_using_item`, with `player_ready_arrow(player, name, arrow)`: the name of the selected projectile item.
-
 - A server player's recipe book open or filter setting changed: `player_recipe_book_settings_change(player, name, book, open, filtering)`, where `book` is its typed `RecipeBookIdentity`.
-
-- A server player released the use-item key, or a mod's `release_using_item` did, before the item finished being used: `player_stop_using_item(player, name)`.
 
 - A guest's player input changed sneaking: `player_toggle_sneak(player, name, sneaking)` is called after the hub applies the new state, only when it changes. The guest's state is swapped in.
 

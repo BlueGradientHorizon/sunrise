@@ -47,9 +47,10 @@ pub trait Hooks {
     /// tridents, end crystals, the dragon, cushions, paintings, item frames,
     /// block/item/text displays, markers and interactions),
     /// once each; check `kind`. A drop, an orb, a mob, a `/summon` and a chunk's
-    /// entities are told at once. A fresh falling block is told at its spawn call,
-    /// before the next scheduled block tick for a natural fall, or before
-    /// `LevelRef::spawn_falling_block` returns. A natural fall's source block
+    /// entities are told at once. Arrows and projectiles in the same spawn list
+    /// (including thrown potions and fireballs) are told at spawn with their owner
+    /// already set. Fresh falling blocks are also told at spawn, before
+    /// the next scheduled block tick or before `LevelRef::spawn_falling_block` returns. A natural fall's source block
     /// replacement is not undone by a veto. Other spawns are batched in insertion
     /// order between tick phases and a veto removes them before they tick again.
     /// Inside a transaction (`Host::transaction`) opened
@@ -77,7 +78,7 @@ pub trait Hooks {
         contract = "cancel",
         out = "canceled",
         neoforge = "EntityJoinLevelEvent",
-        version = 4
+        version = 5
     )]
     fn entity_join_level(
         dimension: &str,

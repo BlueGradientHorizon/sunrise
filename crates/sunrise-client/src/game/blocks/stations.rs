@@ -1107,7 +1107,6 @@ impl Game<'_> {
     /// or cancel the levels, and every fifth level gained plays the level-up sound
     /// (at most every 100 ticks).
     pub(super) fn add_experience_levels(&mut self, mut levels: i32) {
-        // ServerPlayer.giveExperienceLevels
         if levels == 0 {
             return;
         }
@@ -1124,12 +1123,10 @@ impl Game<'_> {
         let level = self.experience.level;
         self.play_level_up(levels, level);
     }
-    /// `Player.onEnchantmentPerformed`: the cost leaves the level directly, not
-    /// through `giveExperienceLevels`, and the mods hear of the level change.
+    /// NeoForge's `Player.onEnchantmentPerformed` delegates the debit to
+    /// `giveExperienceLevels`; the separate enchantment seed update still follows.
     pub(super) fn enchantment_performed(&mut self, cost: i32) {
-        let old_level = self.experience.level;
-        self.experience.add_levels(-cost);
-        self.native_player_level_changed(old_level);
+        self.give_levels(-cost);
     }
     /// `Player.giveExperienceLevels`: all players near its feet hear the sound.
     pub(super) fn play_level_up(&mut self, amount: i32, level: i32) {
@@ -2564,27 +2561,44 @@ impl Game<'_> {
         );
         let started = was_idle && b.brew_time > 0;
         let ingredient = started.then(|| b.ingredient.clone()).flatten();
-        let hooked = !mod_api::__private::mods().is_empty();
-        let stacks = (due && hooked).then(|| b.items.clone());
         let at = [pos.0, pos.1, pos.2];
-        let mut post = false;
         if due {
-            // `doBrew`, with PotionBrewEvent.Pre before it and .Post after.
-            let asked = stacks.map(|mut stacks| {
+            let pre = mod_api::__private::listened(mod_api::HookId::PotionBrewPre)
+                .then(|| b.items.clone());
+            let replacement = pre.and_then(|mut stacks| {
                 let mut cancel = false;
                 self.native_potion_brew_pre(at, &mut stacks, &mut cancel);
-                (stacks, cancel)
+                cancel.then_some(stacks)
             });
-            // A cancelled Pre fires Post itself, with the slots the mods left.
-            let cancelled = matches!(asked, Some((_, true)));
-            let rest = self.brewing_ingredient_remainder(pos, cancelled);
             let Some(BlockEntity::Brewing(b)) = self.world.block_entities.get_mut(&pos) else {
                 return Ok(());
             };
-            let brewing = &world_stations!(self).brewing;
-            b.brew_after_pre(asked, brewing, &|_| rest.clone(), &mut out);
+            // `EventHooks.onPotionAttemptBrew` still posts after cancellation
+            // if any slot matches its prior value. Otherwise `doBrew` posts
+            // after replacing the bottles, with the captured ingredient intact.
+            let (ingredient, post) = if let Some(stacks) = replacement {
+                let post = b.items.iter().zip(&stacks).any(|(old, new)| old == new);
+                b.items = stacks;
+                (None, post)
+            } else {
+                let ingredient = b.brew_bottles(&world_stations!(self).brewing);
+                let post = ingredient.is_some();
+                (ingredient, post)
+            };
+            if post && mod_api::__private::listened(mod_api::HookId::PotionBrewPost) {
+                let mut stacks = b.items.clone();
+                self.native_potion_brew_post(at, &mut stacks);
+                if let Some(BlockEntity::Brewing(b)) = self.world.block_entities.get_mut(&pos) {
+                    b.items = stacks;
+                }
+            }
+            if let Some(ingredient) = ingredient {
+                let rest = self.crafting_remainder(&ingredient);
+                if let Some(BlockEntity::Brewing(b)) = self.world.block_entities.get_mut(&pos) {
+                    b.finish_brew(ingredient, rest, &mut out);
+                }
+            }
             self.world.modified.insert((pos.0 >> 4, pos.2 >> 4));
-            post = hooked && (out.brewed || cancelled);
         }
         if out.fuel_taken
             && let Some(item) = fuel_item
@@ -2605,17 +2619,7 @@ impl Game<'_> {
             self.drop_item_stack_containers(at, d);
         }
         if out.brewed {
-            self.native_brewing_complete(at);
             self.play_at("minecraft:block.brewing_stand.brew", at, 1.0, 1.0);
-        }
-        // PotionBrewEvent.Post ends `doBrew`, after its sound and the
-        // ingredient's remainder; the bottles' block state follows it.
-        if post && let Some(BlockEntity::Brewing(b)) = self.world.block_entities.get(&pos) {
-            let mut stacks = b.items.clone();
-            self.native_potion_brew_post(at, &mut stacks);
-            if let Some(BlockEntity::Brewing(b)) = self.world.block_entities.get_mut(&pos) {
-                b.items = stacks;
-            }
         }
         let Some(BlockEntity::Brewing(b)) = self.world.block_entities.get_mut(&pos) else {
             return Ok(());

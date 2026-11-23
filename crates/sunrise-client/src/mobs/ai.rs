@@ -6351,7 +6351,7 @@ mod poison_effect_tests {
         let pig_kind = Arc::new(data.types.get("minecraft:pig").unwrap().clone());
         let mut pig = Mob::new(1, pig_kind, Vec3::new(0.0, 4.0, 0.0), 0.0);
         pig.extra
-            .set_main_hand(Some("minecraft:totem_of_undying".into()));
+            .set_main_hand_stack(Some(crate::mobs::totem_tests::totem_with_components()));
         pig.extra.effects.push(crate::mobs::StoredEffect::new(
             "minecraft:instant_damage",
             5,

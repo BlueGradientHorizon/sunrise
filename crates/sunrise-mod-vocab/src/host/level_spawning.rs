@@ -63,7 +63,7 @@ pub trait LevelSpawningBackendMut {
     /// - [`SpawnBody::Thrown`]: `Projectile.spawnProjectile`, the route a
     ///   thrown snowball takes. The owner is set before it joins, as
     ///   `Projectile.setOwner` (hit credit, `Owner`, and the shot keeps clear
-    ///   of its owner until it leaves the owner's box); `projectile_launch`
+    ///   of its owner until it leaves the owner's box); `entity_join_level`
     ///   fires. It carries `item` (`ThrowableItemProjectile.setItem`), checked
     ///   as `ServerHost::spawn_projectile_from_rotation` checks its stack. The
     ///   owner is a player, a mob, a boat or a minecart: the shot needs its

@@ -527,11 +527,10 @@ fn mod_config_events_are_answered_by_registrar_and_config_event() {
 #[test]
 fn the_built_in_catalog_parses() {
     let c = Catalog::parse(events::CATALOG).unwrap();
-    let (Status::Hooked(hooks), None) = c.status("LivingDeathEvent") else {
-        panic!("LivingDeathEvent has no hook");
-    };
-    assert!(hooks.contains(&"living_death".to_owned()), "{hooks:?}");
     for (counterpart, hook) in [
+        ("LivingDeathEvent", "living_death"),
+        ("EntityJoinLevelEvent", "entity_join_level"),
+        ("ArrowLooseEvent", "arrow_loose"),
         ("AnvilUpdateEvent", "anvil_update"),
         ("RenderTooltipEvent.Pre", "render_tooltip_pre"),
         // The system subclass is a name of its own to a tool reading listeners.
@@ -543,12 +542,6 @@ fn the_built_in_catalog_parses() {
         };
         assert_eq!(hooks, [hook]);
     }
-    // A label that names two events with a comma, as `mob_spawned` does:
-    // a tool listening to the name finds it beside the other hooks of the event.
-    let (Status::Hooked(hooks), None) = c.status("EntityJoinLevelEvent") else {
-        panic!("EntityJoinLevelEvent has no hook");
-    };
-    assert!(hooks.contains(&"mob_spawned".to_owned()), "{hooks:?}");
     // A 1.21.1 mod's core shaders: answered by the hook of the event that replaced theirs.
     assert_eq!(
         c.status("RegisterShadersEvent"),

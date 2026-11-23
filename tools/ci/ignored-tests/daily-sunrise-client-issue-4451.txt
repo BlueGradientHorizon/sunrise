@@ -1841,7 +1841,7 @@ sunrise-client game::native_player_spectating_tests::a_target_that_is_gone_sets_
 sunrise-client game::native_player_spectating_tests::switching_straight_to_another_target_is_one_start_and_no_stop lib daily resources
 sunrise-client game::native_player_spectating_tests::the_start_is_heard_once_the_camera_has_moved lib daily resources
 sunrise-client game::native_player_stats::tests::a_resting_guest_reads_from_their_own_record lib daily resources
-sunrise-client game::native_projectile_launch_tests::owner_launch_reports_explicit_guest_to_launch_listeners lib daily resources
+sunrise-client game::native_projectile_launch_tests::owner_launch_reports_explicit_guest_to_join_listeners lib daily resources
 sunrise-client game::native_projectile_launch_tests::owner_launch_sets_owner_before_insertion_and_uses_projectile_random lib daily resources
 sunrise-client game::native_projectile_refs::tests::a_boat_owned_snowball_excludes_its_owner_until_it_leaves lib daily resources
 sunrise-client game::native_projectile_refs::tests::a_vehicle_owned_trident_does_not_scale_damage_as_a_living_attacker lib daily resources
@@ -2484,7 +2484,6 @@ sunrise-client game::sulfur_prime_phase_tests::a_warmed_cube_primes_on_the_first
 sunrise-client game::sulfur_prime_phase_tests::control_a_primed_cube_on_power_is_not_primed_again lib daily resources
 sunrise-client game::sulfur_prime_phase_tests::control_an_adopted_cube_without_power_stays_unprimed lib daily resources
 sunrise-client game::sync_background_tests::cancelled_background_keeps_custom_geometry_and_one_blur_request lib daily resources
-sunrise-client game::sync_background_tests::cancelled_landing_restores_farmland_before_its_crop_is_notified lib daily resources
 sunrise-client game::test_pos_guest_tests::test_pos_as_a_guest_uses_the_guest_s_view lib daily resources
 sunrise-client game::test_pos_guest_tests::test_pos_refuses_other_sources_and_restores_the_views lib daily resources
 sunrise-client game::text_displays::tests::handle_teleport_keeps_display_easing lib daily resources

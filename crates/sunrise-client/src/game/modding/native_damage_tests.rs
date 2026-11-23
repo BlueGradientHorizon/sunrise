@@ -492,6 +492,7 @@ struct DeathOrder {
     cancel: std::sync::atomic::AtomicBool,
     revive: std::sync::atomic::AtomicBool,
     clear_cooldown: bool,
+    refuse_main_protection: bool,
     dry_out_velocity: Mutex<Option<[f64; 3]>>,
 }
 
@@ -538,7 +539,11 @@ impl Hooks for DeathProbe {
             .lock()
             .unwrap()
             .push(("totem", i64::from(event.entity)));
-        mod_api::Flow::Continue
+        if self.0.refuse_main_protection && event.hand == mod_api::Hand::Main {
+            mod_api::Flow::Cancel
+        } else {
+            mod_api::Flow::Continue
+        }
     }
     fn living_death_post(
         &self,
@@ -1603,7 +1608,10 @@ fn borrowed_mod_effect_posts_before_the_next_action() {
 #[ignore = "daily"]
 fn guest_protection_consumes_the_item_and_posts_inside_the_hit() {
     use crate::game::native_player_death::tests::add_guest;
-    let trace = Arc::new(DeathOrder::default());
+    let trace = Arc::new(DeathOrder {
+        refuse_main_protection: true,
+        ..Default::default()
+    });
     let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
         "death-order",
         Box::new(DeathProbe(trace.clone())),
@@ -1612,21 +1620,31 @@ fn guest_protection_consumes_the_item_and_posts_inside_the_hit() {
     mod_platform::testing::with_mods(mods, || {
         with_game(|game| {
             add_guest(game);
+            let main = ItemStack::new("minecraft:totem_of_undying", 1);
+            let mut off = ItemStack::new("minecraft:stick", 2);
+            off.data_mut().set_other(
+                "minecraft:death_protection",
+                Some(sunrise_core::nbt::Tag::compound(
+                    [] as [(&str, sunrise_core::nbt::Tag); 0]
+                )),
+            );
             game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
                 guest.load_timeout = 0;
-                guest.inventory[guest.selected] =
-                    Some(ItemStack::new("minecraft:totem_of_undying", 1));
+                guest.inventory[guest.selected] = Some(main.clone());
+                guest.offhand = Some(off);
             });
             let entity = i64::from(game.lan.as_ref().unwrap().hub.guests[0].entity_id);
             game.guest_struck_by(1, |game| {
                 assert!(game.hurt_player_from(100.0, None, "minecraft:generic", Some(None), false));
-                assert!(game.inventory[game.selected].is_none());
+                assert_eq!(game.inventory[game.selected].as_ref(), Some(&main));
+                assert_eq!(game.offhand.as_ref().unwrap().count, 1);
                 assert_eq!(game.player.as_ref().unwrap().health.health(), 1.0);
                 assert_eq!(
                     *trace.heard.lock().unwrap(),
                     [
                         ("incoming", entity),
                         ("pre", entity),
+                        ("totem", entity),
                         ("totem", entity),
                         ("post", entity)
                     ]

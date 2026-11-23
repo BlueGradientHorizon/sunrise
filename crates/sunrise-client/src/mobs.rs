@@ -1439,10 +1439,6 @@ pub struct Extra {
     pub live: crate::living_attributes::LivingAttributes,
     /// The knockback resistance modifiers of the items it wears or holds.
     pub gear_knockback: Option<Box<GearKnockback>>,
-    /// What the game last read from the hands' `minecraft:death_protection`
-    /// components (`game/totem.rs`); `None` until it has, when the totem's id
-    /// stands in for the component.
-    pub hand_protection: Option<HandProtection>,
 }
 /// The knockback resistance modifiers of the items a mob wears or holds, with
 /// the stacks they were read from: the game reads them again only when one
@@ -1452,13 +1448,6 @@ pub struct GearKnockback {
     /// The hand and armor stacks, mainhand to head.
     pub worn: [Option<crate::items::ItemStack>; 6],
     pub modifiers: Vec<(f64, finalize::Op)>,
-}
-/// The `death_effects` of the `death_protection` component each hand's stack
-/// carries; `None` for a hand without the component.
-#[derive(Clone, Debug, Default, PartialEq)]
-pub struct HandProtection {
-    pub main: Option<Vec<crate::items::ConsumeEffect>>,
-    pub off: Option<Vec<crate::items::ConsumeEffect>>,
 }
 impl Extra {
     /// The body item id (`getItemBySlot(BODY)`).
@@ -5168,46 +5157,23 @@ impl Mob {
         if source.kind.bypasses_invulnerability() {
             return None;
         }
-        // `getItemInHand`: the main hand first. The game reads the components
-        // (`hand_protection`); before it has, the totem is the only item in the
-        // shipped data with `minecraft:death_protection`.
-        const TOTEM: &str = "minecraft:totem_of_undying";
-        let (main, off) = match self.extra.hand_protection.clone() {
-            Some(h) => (h.main, h.off),
-            None => {
-                let totem = || Some(living::totem_death_effects());
-                (
-                    (self.extra.main_hand_id() == Some(TOTEM))
-                        .then(totem)
-                        .flatten(),
-                    (self.extra.off_hand_id() == Some(TOTEM))
-                        .then(totem)
-                        .flatten(),
-                )
-            }
-        };
-        let (slot, effects) = if let Some(effects) = main {
-            (sunrise_items::equipment::MAINHAND, effects)
-        } else {
-            (sunrise_items::equipment::OFFHAND, off?)
-        };
-        if level.totem_canceled(
-            crate::health::Hurting::Mob(self, source),
-            slot == sunrise_items::equipment::OFFHAND,
-        ) {
-            return None;
-        }
-        let protector = self
-            .extra
-            .slot_stack(slot)
-            .cloned()
-            .unwrap_or_else(|| crate::items::ItemStack::new(TOTEM, 1));
-        let remaining = self.extra.slot_stack(slot).cloned().and_then(|mut s| {
-            s.count -= 1;
-            (s.count > 0).then_some(s)
+        let (slot, protector, effects) =
+            crate::health::PROTECTION_HANDS
+                .into_iter()
+                .find_map(|(hand, slot)| {
+                    let stack = self.extra.slot_stack(slot)?;
+                    let effects = level.death_protection(stack)?;
+                    if level.totem_canceled(crate::health::Hurting::Mob(self, source), hand, stack)
+                    {
+                        return None;
+                    }
+                    Some((slot, stack.clone(), effects.to_vec()))
+                })?;
+        let cell = &mut self.extra.equipment[slot];
+        *cell = cell.take().and_then(|mut remaining| {
+            remaining.count -= 1;
+            (remaining.count > 0).then_some(remaining)
         });
-        self.extra.set_slot_stack(slot, remaining);
-        self.extra.hand_protection = None;
         self.health = 1.0;
         if level.defers_death_protection_effects() {
             return Some((protector, effects));
@@ -7178,6 +7144,39 @@ mod totem_tests {
         Mob::new(1, Arc::new(t), Vec3::ZERO, 0.0)
     }
 
+    pub(super) fn totem_with_components() -> crate::items::ItemStack {
+        use sunrise_core::nbt::Tag;
+        let effect = |id: &str, duration, amplifier| {
+            Tag::compound([
+                ("id", Tag::String(id.into())),
+                ("duration", Tag::Int(duration)),
+                ("amplifier", Tag::Int(amplifier)),
+            ])
+        };
+        let mut stack = crate::items::ItemStack::new("minecraft:totem_of_undying", 1);
+        stack.data_mut().set_other(
+            "minecraft:death_protection",
+            Some(Tag::compound([(
+                "death_effects",
+                Tag::List(vec![
+                    Tag::compound([("type", Tag::String("minecraft:clear_all_effects".into()))]),
+                    Tag::compound([
+                        ("type", Tag::String("minecraft:apply_effects".into())),
+                        (
+                            "effects",
+                            Tag::List(vec![
+                                effect("minecraft:regeneration", 900, 1),
+                                effect("minecraft:absorption", 100, 1),
+                                effect("minecraft:fire_resistance", 800, 0),
+                            ]),
+                        ),
+                    ]),
+                ]),
+            )])),
+        );
+        stack
+    }
+
     #[test]
     fn a_death_component_adds_an_instant_effect_without_ticking_it() {
         let mut level = crate::health::TestLevel::new(0);
@@ -7218,8 +7217,7 @@ mod totem_tests {
         let mut test_level = crate::health::TestLevel::new(0);
         let level = &mut test_level.level();
         let mut m = fox();
-        m.extra
-            .set_main_hand(Some("minecraft:totem_of_undying".into()));
+        m.extra.set_main_hand_stack(Some(totem_with_components()));
         assert!(m.damage(level, 1000.0, Damage::of(DamageKind::Generic)));
         assert!(m.alive(), "the totem kept it alive");
         assert_eq!(m.health, 1.0);
@@ -7246,9 +7244,9 @@ mod totem_tests {
         let mut test_level = crate::health::TestLevel::new(0);
         let level = &mut test_level.level();
         let mut m = fox();
-        m.extra.set_slot_id(
+        m.extra.set_slot_stack(
             sunrise_items::equipment::OFFHAND,
-            Some("minecraft:totem_of_undying".into()),
+            Some(totem_with_components()),
         );
         assert!(m.damage(level, 1000.0, Damage::of(DamageKind::Generic)));
         assert!(m.alive());
@@ -7275,8 +7273,7 @@ mod totem_tests {
         let mut test_level = crate::health::TestLevel::new(0);
         let level = &mut test_level.level();
         let mut m = fox();
-        m.extra
-            .set_main_hand(Some("minecraft:totem_of_undying".into()));
+        m.extra.set_main_hand_stack(Some(totem_with_components()));
         assert!(m.damage(level, 1000.0, Damage::of(DamageKind::GenericKill)));
         assert!(!m.alive());
         assert_eq!(

@@ -271,18 +271,11 @@ impl Game<'_> {
             0.0
         };
         let (old_health, join) = (self.mobs[index].health, self.mobs[index].join);
-        let (hurt, killed) = if deals_damage {
+        let (hurt, _) = if deals_damage {
             self.hurt_by_player(index, total, Damage::spear(from))
         } else {
             (false, false)
         };
-        if killed
-            && let Some(i) = self.mob_index.find(&self.mobs, id)
-            && self.mobs[i].join == join
-            && !self.mobs[i].removed
-        {
-            self.native_kill_event(i);
-        }
         let Some(index) = self
             .mob_index
             .find(&self.mobs, id)

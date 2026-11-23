@@ -813,12 +813,13 @@ impl Game<'_> {
     /// many as the weapon's `projectile_count` says, fanned by its
     /// `projectile_spread`.
     pub(super) fn release_bow(&mut self, stack: &ItemStack, ticks: u32) {
-        let ammo = self.get_projectile(stack);
+        let Some(ammo) = self.get_projectile(stack) else {
+            return;
+        };
         let mut charge = i32::try_from(ticks).unwrap_or(i32::MAX);
         let mut canceled = false;
-        self.native_arrow_loose(stack, ammo.is_some(), &mut charge, &mut canceled);
-        let power = item_use::bow_release_power(ammo.is_some(), charge, canceled);
-        let (Some(power), Some(ammo)) = (power, ammo) else {
+        self.native_arrow_loose(stack, true, &mut charge, &mut canceled);
+        let Some(power) = item_use::bow_release_power(true, charge, canceled) else {
             return;
         };
         let arrow_slot = ammo.slot;
@@ -891,12 +892,6 @@ impl Game<'_> {
                 on_ground,
             );
             self.spawn_projectile(arrow, &ammo);
-            let (player, name, projectile) = (
-                sunrise_client::lan::playerdata::ints_uuid(self.acting_player_uuid()),
-                self.acting_player_name().to_owned(),
-                self.next_entity,
-            );
-            self.native_entity_shoot_bow(player, &name, projectile, power * 3.0);
             // ProjectileWeaponItem.shoot: one point of wear per arrow, and a
             // bow that breaks mid-volley shoots no more.
             let held = self.held().is_some();

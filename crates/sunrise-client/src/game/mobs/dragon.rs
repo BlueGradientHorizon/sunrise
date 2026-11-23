@@ -3222,7 +3222,7 @@ impl Game<'_> {
         );
         p.acceleration = 0.1;
         p.velocity = Vec3::new(n.x * 0.1, n.y * 0.1, n.z * 0.1);
-        self.add_projectile(p);
+        self.add_fresh_projectile(p);
     }
     /// `DragonFireball.onHit` where it burst (`next`): the dragon's breath
     /// cloud and level event 2006, as the fireballs of the dragon's own list

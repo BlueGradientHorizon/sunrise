@@ -683,14 +683,6 @@ impl Game<'_> {
     /// `handlePlayerPositionChange` jumps from the pre-move position and yaw.
     /// A later attack packet reads the resulting velocity even before travel.
     pub(in crate::game) fn guest_jump(&mut self, conn: u32, from: [f64; 3], yaw: f32) {
-        let identity = if !mod_api::__private::listened(mod_api::HookId::PlayerJump) {
-            None
-        } else {
-            self.lan
-                .as_ref()
-                .and_then(|host| host.hub.guest(conn))
-                .map(|g| (g.uuid, g.name.clone()))
-        };
         self.as_guest(conn, |game| {
             let Some(player) = game.player.as_mut() else {
                 return;
@@ -718,9 +710,6 @@ impl Game<'_> {
             let _ = w.jump_from_ground();
             (w.player.position, w.player.yaw, w.player.ground.on_ground) =
                 (position, yaw_after, ground);
-            if let Some((uuid, name)) = identity {
-                game.native_player_jump(uuid, &name);
-            }
         });
     }
 }

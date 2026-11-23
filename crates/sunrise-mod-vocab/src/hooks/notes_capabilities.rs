@@ -312,10 +312,10 @@ pub trait Notes {
 - Item behaviour, on the server for every player: `hurt_enemy` hears a player's hit land on a mob with the
   held stack, `inventory_tick` runs each tick, on the `ItemPart`s of every stack a player carries (armour and off hand included), and
   the stack is the place `ItemPlace::PlayerSlot { player, slot }`, read and written as any item place, and
-  `on_equip` hears an equipment slot take a different item.
+  `living_equipment_change` hears an equipment slot take a different stack.
 
-- Hearing players and mobs on the server for every player: `player_died`, `mob_spawned`,
-  `mob_killed` (a player's melee blow, a sweep or a spear thrust too),
+- Hearing players and mobs on the server: `entity_join_level` for admissions, `living_death` before
+  death and `living_death_post` after death effects, including player deaths and player kill credit;
   `item_toss` (`ItemTossEvent`: a throw, with the item entity made but not yet in the level, which the `item_entity_*` methods read and change; not the items scattered when a player dies; `canceled` keeps the entity out of the level and the items are lost) and `item_picked_up` (the ground item entity; `can_pickup`: `False` leaves the stack on the ground, `True` takes it despite its pickup delay or another player's target), then `item_picked_up_post` (`ItemEntityPickupEvent.Post`: the same item entity, a copy of the stack before the pickup and the live remainder on it, which a listener may set; heard on a whole or partial pickup, never when nothing went in). They name a player by UUID.
 
 - [Server data reload listeners](#server-data-reload-listeners) read a mod's pack resources with datapack overrides, once per reload.

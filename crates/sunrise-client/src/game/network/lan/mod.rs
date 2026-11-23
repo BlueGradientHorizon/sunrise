@@ -6759,7 +6759,7 @@ mod merchant_packet_tests {
                 .push(Mob::new(78, kind.clone(), Vec3::new(1.0, 4.0, 1.0), 0.0));
             game.mobs
                 .push(Mob::new(79, kind, Vec3::new(1.5, 4.0, 1.0), 0.0));
-            game.native_mobs_joined(0, false);
+            game.admit_new_mobs(0);
             assert!(game.mob_hits_mob(77, 5.0, Damage::mob(78, at)));
             assert!(!game.mob_hits_mob(77, 2.0, Damage::mob(79, at)));
             assert!(game.mob_hits_mob(77, 7.0, Damage::mob(78, at)));

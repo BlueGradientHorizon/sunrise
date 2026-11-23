@@ -7188,9 +7188,8 @@ impl Game<'_> {
     ///
     /// A mod hears the change first (`native_entity_change_block_pre`, Bukkit's
     /// `EntityChangeBlockEvent`): cancelling puts the block back and skips the
-    /// updates and the events, so nothing the change would have caused happens -
-    /// the crop on trampled farmland stays, because breaking it is the
-    /// neighbour update below and not a write of its own.
+    /// updates and events. `FarmlandBlock.fallOn` is decided separately by
+    /// `trample_farmland` before it writes.
     ///
     /// The game event the rule posts comes back for the caller to post with the
     /// landing player in place (`post_landing_vibration`).
@@ -7296,7 +7295,7 @@ impl Game<'_> {
             .default_state("minecraft:air")
             .unwrap_or(BlockStateId(0))
     }
-    /// Whether a mod cancelled a landing's block change
+    /// Whether a mod cancelled a generic landing write (not `FarmlandBlock.fallOn`)
     /// (`native_entity_change_block_pre`): asked with the two blocks' names and
     /// the player whose landing it was (`None` when no player did it).
     fn landing_change_cancelled(
@@ -10655,14 +10654,9 @@ impl Game<'_> {
                 .rules
                 .bool_at(sunrise_client::gamerules::vanilla::ADVANCE_TIME)
             {
-                // SleepFinishedTimeEvent on the level's own clock (game/world/wake_time.rs): None
-                // when a mod canceled, so `native_time_skip` is not asked, or no time fits.
-                if let Some((clock, t, target)) = self.sleep_finished_move() {
-                    let mut cancel = false;
-                    self.native_time_skip(self.dim.id(), t, target, "sleep", &mut cancel);
-                    if !cancel {
-                        self.set_command_clock_time(&clock, target);
-                    }
+                // SleepFinishedTimeEvent is the sleep clock's only decision.
+                if let Some((clock, target)) = self.sleep_finished_move() {
+                    self.set_command_clock_time(&clock, target);
                 }
             }
             // Level.isRaining: the rain level is above 0.2.

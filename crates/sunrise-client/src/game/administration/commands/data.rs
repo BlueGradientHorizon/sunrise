@@ -1940,7 +1940,7 @@ impl Game<'_> {
         let from = self.mobs.len();
         let canceled = self.persist.joins_canceled;
         let target = self.spawn_staged_entity_from_nbt(tree);
-        self.native_mobs_joined(from, false);
+        self.admit_new_mobs(from);
         // A mod kept the entity out: tryAddFreshEntityWithPassengers is false.
         if self.persist.joins_canceled != canceled
             && target.is_none_or(|t| self.target_position(t).is_none())

@@ -871,7 +871,7 @@ impl Game<'_> {
                     self.pitch, self.yaw, -20.0, power, 1.0, velocity, on_ground,
                 );
                 shot.guest = self.lan_acting;
-                self.add_projectile(shot);
+                self.add_fresh_projectile(shot);
                 // ThrowablePotionItem.use / ExperienceBottleItem.use: awardStat(ITEM_USED).
                 self.award_stat("used", &stack.item, 1);
                 self.swing_arm();

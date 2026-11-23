@@ -1137,11 +1137,11 @@ impl<'a> Game<'a> {
         self.resolve_spawn_ids([&mut pending, &mut created], &rides);
         for mob in pending {
             self.mobs.push(mob);
-            self.native_mobs_joined(self.mobs.len() - 1, true);
+            self.admit_new_mobs(self.mobs.len() - 1);
         }
         for mob in created {
             self.mobs.push(mob);
-            self.native_mobs_joined(self.mobs.len() - 1, true);
+            self.admit_new_mobs(self.mobs.len() - 1);
         }
     }
     /// Every player in the level in place: the local player, and the LAN

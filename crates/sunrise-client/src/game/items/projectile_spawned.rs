@@ -81,11 +81,15 @@ impl Game<'_> {
     /// `Projectile.spawnProjectile` once the shot is aimed: adds `projectile`
     /// to the level, then runs `applyOnProjectileSpawned` with `stack`, the
     /// item it was made from (the held or dispensed stack, an arrow's ammo).
-    /// The projectile's id.
-    pub(super) fn spawn_projectile(&mut self, projectile: Projectile, stack: &ItemStack) -> u32 {
-        let id = self.add_projectile(projectile);
+    /// The projectile's id if admitted.
+    pub(super) fn spawn_projectile(
+        &mut self,
+        projectile: Projectile,
+        stack: &ItemStack,
+    ) -> Option<u32> {
+        let id = self.add_fresh_projectile(projectile)?;
         self.apply_on_projectile_spawned(id, stack);
-        id
+        Some(id)
     }
 
     /// `Projectile.spawnProjectile` for a mob's shot: an arrow is made from its
@@ -94,8 +98,8 @@ impl Game<'_> {
     /// shared arrow-state continuation for ordinary arrows and tridents.
     pub(super) fn spawn_mob_projectile(&mut self, projectile: Projectile) {
         let ammo = projectile.arrow.as_ref().map(|a| a.pickup_item.clone());
-        let id = self.add_projectile(projectile);
-        if let Some(ammo) = ammo {
+        let id = self.add_fresh_projectile(projectile);
+        if let (Some(id), Some(ammo)) = (id, ammo) {
             self.apply_on_projectile_spawned(id, &ammo);
         }
     }

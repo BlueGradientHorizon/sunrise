@@ -1898,11 +1898,6 @@ impl Game<'_> {
     pub(in crate::game) fn native_brewing_fuel(&mut self, pos: [i32; 3], fuel: &str) {
         self.fire_brewing_fuel(pos, fuel);
     }
-    /// A brewing stand finished brewing at `pos`, after its bottle contents
-    /// were changed. Server-side.
-    pub(in crate::game) fn native_brewing_complete(&mut self, pos: [i32; 3]) {
-        self.fire_brewing_complete(pos);
-    }
     /// An item was placed on a campfire at `pos` and began cooking.
     pub(in crate::game) fn native_campfire_start(&mut self, pos: [i32; 3], item: &str) {
         self.fire_campfire_start(pos, item);
@@ -2134,16 +2129,6 @@ impl Game<'_> {
     ) {
         self.fire_player_item_mend(player, name, item, repair, experience);
     }
-    /// A server player completed a villager or wandering trader trade. `entity_id` is the merchant
-    /// network id. Server-side.
-    pub(in crate::game) fn native_player_trade(
-        &mut self,
-        player: u128,
-        name: &str,
-        entity_id: u32,
-    ) {
-        self.fire_player_trade(player, name, entity_id);
-    }
     /// Non-cancellable collect for one villager or wandering-trader take. True when a
     /// validated answer changed the offer; observing alone leaves the input untouched.
     pub(in crate::game) fn native_trade_with_villager(
@@ -2355,30 +2340,6 @@ impl Game<'_> {
         self.fire_entity_portal(dimension, entity, pos);
     }
 
-    /// A server projectile was added to the level. `player` is set only for
-    /// a player launch; other sources have an empty `name`.
-    pub(in crate::game) fn native_projectile_launch(
-        &mut self,
-        player: Option<u128>,
-        name: &str,
-        entity: u32,
-        kind: &str,
-    ) {
-        self.fire_projectile_launch(player, name, entity, kind);
-    }
-
-    /// A player bow or crossbow launched an arrow with `force`, after the
-    /// projectile entered the level.
-    pub(in crate::game) fn native_entity_shoot_bow(
-        &mut self,
-        player: u128,
-        name: &str,
-        projectile: u32,
-        force: f32,
-    ) {
-        self.fire_entity_shoot_bow(player, name, projectile, force);
-    }
-
     /// A guest's fall flying state changed on the server. The change has
     /// already been applied.
     pub(in crate::game) fn native_entity_toggle_glide(
@@ -2558,14 +2519,7 @@ impl Game<'_> {
         self.fire_lightning_strike(player, pos, cause, cancel);
     }
 
-    /// Enough players slept through the night in level `dimension` and the clock is about to
-    /// move to the morning (NeoForge's `SleepFinishedTimeEvent`). `adjustment` comes in as
-    /// `Marker(minecraft:wake_up_from_sleep)` and a mod may set `Absolute`, `Relative` (from
-    /// `current`) or another marker; `new_time` is the vanilla morning, read only (contract 2: in
-    /// version 1 a mod wrote it). Times are the level's own clock's; resolved once after every mod
-    /// (`game/world/wake_time.rs`): a time before `current` or past `i64::MAX`, or a marker the
-    /// clock lacks, moves to the morning. `native_time_skip` then hears the jump and may cancel
-    /// it. Set `canceled` and the clock stays, and `native_time_skip` is not asked.
+    /// The wake-up clock decision, as NeoForge's `SleepFinishedTimeEvent`.
     pub(in crate::game) fn native_sleep_finished_time(
         &mut self,
         dimension: &str,
@@ -2577,8 +2531,7 @@ impl Game<'_> {
         self.fire_sleep_finished_time(dimension, current, new_time, adjustment, canceled);
     }
 
-    /// The overworld clock is about to jump, from sleep or `/time`. Set
-    /// `cancel` to keep `from`.
+    /// A manual clock write from `/time` or a level clock setter. Set `cancel` to leave it alone.
     pub(in crate::game) fn native_time_skip(
         &mut self,
         dimension: &str,
@@ -2775,11 +2728,6 @@ impl Game<'_> {
     pub(in crate::game) fn native_player_client_loaded_world(&mut self, player: u128, name: &str) {
         self.fire_player_client_loaded_world(player, name);
     }
-    /// A server player released the use-item key, or a mod's `LivingRef::release_using_item` did,
-    /// before the item finished being used. The player's state is swapped in.
-    pub(in crate::game) fn native_player_stop_using_item(&mut self, player: u128, name: &str) {
-        self.fire_player_stop_using_item(player, name);
-    }
     /// A server player's authoritative recipe book flags changed.
     /// Typed identity keeps custom books separate from vanilla ordinals.
     pub(in crate::game) fn native_player_recipe_book_settings_change(
@@ -2791,16 +2739,6 @@ impl Game<'_> {
         filtering: bool,
     ) {
         self.fire_player_recipe_book_settings_change(player, name, book, open, filtering);
-    }
-    /// A server player released a drawn bow with `arrow` selected, by the use-item
-    /// key or a mod's `LivingRef::release_using_item`. The player's state is swapped in.
-    pub(in crate::game) fn native_player_ready_arrow(
-        &mut self,
-        player: u128,
-        name: &str,
-        arrow: &str,
-    ) {
-        self.fire_player_ready_arrow(player, name, arrow);
     }
     /// A server player selected a bundle item in `slot` at `index`. The guest's
     /// state is not swapped in during packet handling.
@@ -2862,16 +2800,6 @@ impl Game<'_> {
         self.fire_world_border_bounds_change_finish(level);
     }
 
-    /// A server player launched a projectile item, after it was created.
-    /// `item` is the projectile's held item.
-    pub(in crate::game) fn native_player_launch_projectile(
-        &mut self,
-        player: u128,
-        name: &str,
-        item: &str,
-    ) {
-        self.fire_player_launch_projectile(player, name, item);
-    }
     /// A server explosion is about to begin at `center`, with `radius` (Bukkit's
     /// `ExplosionPrimeEvent`). This is listen-only: the explosion proceeds as
     /// usual. Server-side, including the single-player server.
@@ -2928,10 +2856,6 @@ impl Game<'_> {
         hand: &str,
     ) {
         self.fire_player_arm_swing(player, name, hand);
-    }
-    /// A guest's accepted movement made the server jump them from the ground. Server-side.
-    pub(in crate::game) fn native_player_jump(&mut self, player: u128, name: &str) {
-        self.fire_player_jump(player, name);
     }
     /// A network or fake guest was kicked, after the hub recorded the rendered `reason`. The guest's state is
     /// swapped in unless they were already removed in the same poll.
@@ -3188,14 +3112,10 @@ impl Game<'_> {
     ) {
         self.fire_living_entity_use_item_stop(stack, entity, hand, duration, canceled);
     }
-    /// NeoForge's `ArrowLooseEvent`: the player releases a bow `stack` with
-    /// `has_ammo` and `charge` ticks held. Change `charge` or set `canceled`
-    /// to prevent the shot; negative charge also prevents it. Unlike
-    /// `native_living_entity_use_item_stop`, this does not skip the whole item
-    /// release; `native_entity_shoot_bow` reports a spawned arrow afterward
-    /// with read-only force. Fires on the Game running the bow release, including
-    /// LAN guests; a remote client's own release path is not covered. Crossbows
-    /// are not covered; `native_arrow_nock` is the bow's start.
+    /// NeoForge's `ArrowLooseEvent`: an armed bow is released or a player fires
+    /// a loaded crossbow. Cancel or set `charge` negative to prevent the shot;
+    /// a crossbow starts at `1` and other non-negative values do not change its
+    /// shot. A bow uses the edited held-tick charge. `has_ammo` is always true.
     pub(in crate::game) fn native_arrow_loose(
         &mut self,
         stack: &ItemStack,
@@ -3574,36 +3494,12 @@ impl Game<'_> {
     /// `to` a lazy `ItemStackView` of what it holds now. Once per changed slot across all
     /// eight `EquipmentSlot`s, after the mobs' tick; one new to the level
     /// counts from empty. A player's `MainHand` is the selected hotbar slot.
-    /// The world host's own player is heard by `native_on_equip`. It only
-    /// hears. Server-side.
+    /// It only hears. Server-side.
     pub(in crate::game) fn native_living_equipment_change(
         &mut self,
         call: mod_api::__private::LivingEquipmentChangeCall<'_>,
     ) {
         self.fire_living_equipment_change(call);
-    }
-    /// `player` died: where `ServerPlayer.die` starts, with the death
-    /// message's key when the game knows it (`death.attack.lava`; none for a
-    /// message it builds from the combat). It only hears. Server-side, for
-    /// every player of the world, whether death messages are shown or not.
-    pub(in crate::game) fn native_player_died(&mut self, player: u128, cause: Option<&str>) {
-        self.fire_player_died(player, cause);
-    }
-    /// A new mob of `kind` joined `dimension` at `pos`: `natural` when the
-    /// world's spawning made it, false when something else did (a breed, a
-    /// raid, a spawner, a conversion, `/summon`, and the second mob of a
-    /// jockey the world spawned). One call a mob: a `/summon` with passengers
-    /// tells each. Not told of a mob loaded with its chunk, leaving a hive or
-    /// changing level. It only hears; the mob is already among the game's
-    /// mobs. Server-side.
-    pub(in crate::game) fn native_mob_spawned(
-        &mut self,
-        dimension: &str,
-        kind: &str,
-        pos: [f64; 3],
-        natural: bool,
-    ) {
-        self.fire_mob_spawned(dimension, kind, pos, natural);
     }
     /// An entity leaves the server level `dimension` (NeoForge's
     /// `EntityLeaveLevelEvent`): vanilla's `onTrackingEnd`, when it is removed
@@ -3725,24 +3621,6 @@ impl Game<'_> {
     ) {
         self.fire_experience_orb_merge(call);
     }
-    /// A totem of undying saved the server player `player` (`name`): their
-    /// hurt would have killed them and the totem held in either hand fired
-    /// (`LivingEntity.checkTotemDeathProtection`; Bukkit's
-    /// `EntityResurrectEvent`), heard just before it is used up and its
-    /// effects apply. Listen only: whether the totem saves is decided inside
-    /// the health state machine, before a mod is asked, so a mod cannot veto
-    /// it from here. The player's state is swapped in, so
-    /// `native_acting_player`, `native_tell` and the item helpers reach them.
-    /// Once for each totem, on a server; the host of a LAN world's totem is
-    /// not heard.
-    pub(in crate::game) fn native_player_totem(&mut self, player: u128, name: &str) {
-        self.fire_player_totem(player, name);
-    }
-    /// `player`'s melee blow killed the mob `entity` of `kind` (other deaths
-    /// aren't told yet). It only hears, after the blow landed. Server-side.
-    pub(in crate::game) fn native_mob_killed(&mut self, player: u128, entity: u32, kind: &str) {
-        self.fire_mob_killed(player, entity, kind);
-    }
     /// A block broke or a mob died, and `drops` are the items about to drop, in
     /// the order they drop: what the loot tables rolled (after
     /// `native_loot_table_load`'s changes), and for a mob what it wore, held or
@@ -3844,15 +3722,6 @@ impl Game<'_> {
         selected: bool,
     ) {
         self.fire_inventory_tick(item, place, slot, selected);
-    }
-    /// A player's equipment slot `slot` (`head`, `chest`, `legs`, `feet`,
-    /// `offhand`, and `mainhand` on a swap of the hands or `/item`) took a different
-    /// item, `new` (none when it was emptied): `LivingEntity.onEquipItem`,
-    /// before the equip sound. It only hears. Never for a spectator.
-    /// Server-side, for every player of the world (the helpers read the
-    /// acting one).
-    pub(in crate::game) fn native_on_equip(&mut self, slot: &str, new: Option<&ItemStack>) {
-        self.fire_on_equip(slot, new);
     }
     /// A projectile hit something (NeoForge's `ProjectileImpactEvent`, posted
     /// where vanilla's projectile has found what it meets, before the hit
