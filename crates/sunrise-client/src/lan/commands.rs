@@ -265,7 +265,10 @@ fn add_mod_commands(root: &mut Value, extra: &Value) {
     let Some(mods) = extra.get("children").and_then(Value::as_object) else {
         return;
     };
-    let Some(children) = root.get_mut("children").and_then(Value::as_object_mut) else {
+    if !root["children"].is_object() {
+        root["children"] = Value::Object(serde_json::Map::new());
+    }
+    let Some(children) = root["children"].as_object_mut() else {
         return;
     };
     for (name, node) in mods {
