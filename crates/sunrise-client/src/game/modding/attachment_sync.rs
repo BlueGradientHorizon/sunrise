@@ -11,7 +11,7 @@ use crate::lan::entity::{project_attachment_sync, report_attachment_sync_refusal
 use crate::lan::{conn::PlayerSender, hub::AttachmentSnapshot};
 use mod_api::{PayloadBytes, PayloadId, PayloadSendError};
 use sunrise_client::raw_payloads::Endpoint;
-use sunrise_mod_runtime::attachments::{Attachments, Holder};
+use sunrise_mod_runtime::attachments::{Attachments, Holder, attachment_sync_watermark};
 use sunrise_protocol::attachment_sync::{self, Message};
 
 impl Game<'_> {
@@ -66,14 +66,14 @@ impl Game<'_> {
     /// The holders players started seeing are sent whole to them, in the pass
     /// of the level they are in (another's stay queued), then the block
     /// entities a piston landed whole to the players who see them, then the
-    /// synced changes of the holders lent to mods since the last pass to the
-    /// players who see them.
+    /// accepted updates since the last pass to the players who see those holders.
     pub(super) fn flush_attachment_sync(&mut self) {
         let landings = std::mem::take(&mut self.world.attachment_landings);
-        let Some(host) = self.lan.as_mut() else {
-            return;
-        };
-        let snapshots = std::mem::take(&mut host.hub.attachment_snapshots);
+        let snapshots = self
+            .lan
+            .as_mut()
+            .map(|host| std::mem::take(&mut host.hub.attachment_snapshots))
+            .unwrap_or_default();
         // Colliders: the changes first, to those who already track the entity; the players who
         // just started to are sent the whole collider below instead.
         let fresh = Self::fresh_collider_pairs(
@@ -82,9 +82,16 @@ impl Game<'_> {
                 .map(|s| (s.player, s.holder))
                 .collect::<Vec<_>>(),
         );
-        self.flush_collider_sync(&fresh);
+        if self.lan.is_some() {
+            self.flush_collider_sync(&fresh);
+        }
+        let mut delta_cutoffs = std::collections::HashMap::new();
         for snapshot in snapshots {
-            let AttachmentSnapshot { player, holder } = snapshot;
+            let AttachmentSnapshot {
+                player,
+                holder,
+                paired_sync_from,
+            } = snapshot;
             let collider_entity = match holder {
                 Holder::Entity(id) => Some(id),
                 _ => None,
@@ -113,6 +120,13 @@ impl Game<'_> {
             // `Holder::Entity` snapshots here for collider sync only. The recipient's own
             // `Holder::Player(uuid)` from `send_level_info` still sends with `replace: true`
             // even when empty, clearing stale replica fields on join or respawn.
+            if reads {
+                if let Some((paired, from)) = paired_sync_from {
+                    delta_cutoffs.insert((player, paired), from);
+                } else if !matches!(holder, Holder::Entity(_)) {
+                    delta_cutoffs.insert((player, holder), attachment_sync_watermark());
+                }
+            }
             let messages = if reads && !matches!(holder, Holder::Entity(_)) {
                 self.attachment_snapshot(holder)
             } else {
@@ -146,6 +160,8 @@ impl Game<'_> {
                 self.send_attachment_sync(&senders, &message);
             }
         }
+        let mut recipients = Vec::new();
+        let mut ordered = Vec::new();
         for holder in std::mem::take(&mut self.world.attachment_syncs) {
             if !self
                 .attachment_map_read(holder)
@@ -155,16 +171,29 @@ impl Game<'_> {
             {
                 continue;
             }
-            let senders = self
+            let senders: Vec<_> = self
                 .lan
                 .as_ref()
-                .map_or_else(Vec::new, |host| host.hub.attachment_recipients(holder));
+                .into_iter()
+                .flat_map(|host| host.hub.attachment_recipient_rows(holder))
+                .map(|guest| (guest.uuid, guest.sender.clone()))
+                .collect();
             let Ok(map) = self.attachment_map_quiet(holder, mod_api::AttachmentAccess::Existing)
             else {
                 continue;
             };
             if senders.is_empty() {
                 map.discard_sync_changes();
+                continue;
+            }
+            if !matches!(holder, Holder::BlockEntity(_)) {
+                let index = recipients.len();
+                recipients.push((holder, senders));
+                ordered.extend(
+                    map.take_ordered_sync()
+                        .into_iter()
+                        .map(|change| (index, change)),
+                );
                 continue;
             }
             let changes = map.take_sync_changes(project_attachment_sync(holder));
@@ -176,7 +205,37 @@ impl Game<'_> {
                 replace: false,
                 changes,
             };
-            self.send_attachment_sync(&senders, &message);
+            self.send_attachment_sync(senders.iter().map(|(_, sender)| sender), &message);
+        }
+        // Do not merge unrelated writes into one frame: project and send each
+        // accepted update in its original order, even across different holders.
+        ordered.sort_unstable_by_key(|(_, change)| change.order());
+        for (index, pending) in ordered {
+            let (holder, senders) = &recipients[index];
+            let order = pending.order();
+            let mut senders = senders
+                .iter()
+                .filter(|(player, _)| {
+                    delta_cutoffs
+                        .get(&(*player, *holder))
+                        .is_none_or(|from| order >= *from)
+                })
+                .map(|(_, sender)| sender)
+                .peekable();
+            if senders.peek().is_none() {
+                continue;
+            }
+            let Some(change) = pending.project(project_attachment_sync(*holder)) else {
+                continue;
+            };
+            self.send_attachment_sync(
+                senders,
+                &Message {
+                    holder: *holder,
+                    replace: false,
+                    changes: vec![change],
+                },
+            );
         }
     }
 
@@ -186,8 +245,13 @@ impl Game<'_> {
     /// past the connection's frame limits or one that cannot be written is not sent and the
     /// player stays joined; a full outgoing queue closes the connection, as a full queue
     /// did before, since the replica would miss the update.
-    fn send_attachment_sync(&mut self, senders: &[PlayerSender], message: &Message) {
-        if senders.is_empty() {
+    fn send_attachment_sync<'sender>(
+        &mut self,
+        senders: impl IntoIterator<Item = &'sender PlayerSender>,
+        message: &Message,
+    ) {
+        let mut senders = senders.into_iter().peekable();
+        if senders.peek().is_none() {
             return;
         }
         let body = match attachment_sync::encode_retaining(message, |change, error| {

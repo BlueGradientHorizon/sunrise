@@ -936,6 +936,8 @@ pub struct TrackEvent {
     /// packet (`Hub::cut_tracking_out`). None for a stop without a packet of the pass: the caller
     /// removes the entities itself (`Tracker::clear`, `Tracker::forget`).
     pub at: Option<usize>,
+    /// The holder and exclusive watermark covered by this viewer's initial attachment state.
+    pub attachment_sync_from: Option<(AttachmentHolder, u64)>,
 }
 
 /// The entities one client tracks (`TrackedEntity.seenBy`, from the
@@ -969,6 +971,7 @@ impl Tracker {
             entity,
             tracked,
             at: None,
+            attachment_sync_from: None,
         }));
     }
     /// Stop tracking `id` without a packet: the caller removes it from the
@@ -982,6 +985,7 @@ impl Tracker {
             entity: id,
             tracked,
             at: None,
+            attachment_sync_from: None,
         });
         true
     }
@@ -1398,9 +1402,11 @@ fn prepare_pairing_attachment_sync(
 /// starting to track it. The attachment snapshot is collected and encoded lazily
 /// on the first attachment-capable viewer and shared across all eligible recipients
 /// of the same pairing pass.
+type PairingAttachments = ((AttachmentHolder, u64), Option<EncodedAttachmentSnapshot>);
+
 struct PairingBodies {
     base: Bodies,
-    attachment_sync: std::sync::OnceLock<Option<EncodedAttachmentSnapshot>>,
+    attachment_sync: std::sync::OnceLock<PairingAttachments>,
 }
 
 impl PairingBodies {
@@ -1422,16 +1428,28 @@ impl PairingBodies {
             AttachmentSyncInput<'_>,
         ) -> Option<mod_api::Compound>,
     ) {
-        self.attachment_sync
-            .get_or_init(|| encode_initial_attachment_snapshot(entity, attachments, project));
+        self.attachment_sync.get_or_init(|| {
+            let holder = if entity.kind == "minecraft:player" {
+                AttachmentHolder::Player(entity.uuid)
+            } else {
+                AttachmentHolder::Entity(entity.id as u32)
+            };
+            let from = sunrise_mod_runtime::attachments::attachment_sync_watermark();
+            (
+                (holder, from),
+                encode_initial_attachment_snapshot(entity, attachments, project),
+            )
+        });
     }
 
-    fn write_to(&self, viewer: &mut Viewer) {
+    fn write_to(&self, viewer: &mut Viewer) -> Option<(AttachmentHolder, u64)> {
         let delimiter = bundle_delimiter();
         let base = self.base.to(viewer);
+        let mut attachment_sync_from = None;
         let prepared_sync = viewer.attachment_sender.as_ref().and_then(|sender| {
-            let snapshot = self.attachment_sync.get()?.as_ref()?;
-            prepare_pairing_attachment_sync(sender, snapshot)
+            let (from, snapshot) = self.attachment_sync.get()?;
+            attachment_sync_from = Some(*from);
+            prepare_pairing_attachment_sync(sender, snapshot.as_ref()?)
         });
         viewer.out.push(delimiter.clone());
         viewer.out.extend(base.iter().cloned());
@@ -1439,6 +1457,7 @@ impl PairingBodies {
             viewer.out.push(sync);
         }
         viewer.out.push(delimiter);
+        attachment_sync_from
     }
 }
 
@@ -1513,13 +1532,14 @@ impl Entities {
                 if v.attachment_sender.is_some() {
                     bodies.prepare_attachments(e, attachments, &project);
                 }
-                bodies.write_to(v);
+                let attachment_sync_from = bodies.write_to(v);
                 v.tracker.seen.insert(e.id, Arc::clone(&s.tracked));
                 v.tracker.events.push(TrackEvent {
                     start: true,
                     entity: e.id,
                     tracked: Arc::clone(&s.tracked),
                     at: Some(v.out.len()),
+                    attachment_sync_from,
                 });
             }
             self.states.insert(e.id, s);
@@ -1842,6 +1862,7 @@ impl Entities {
                                     tracked: Arc::clone(tracked),
                                     // Set once the removal below is in `out`.
                                     at: None,
+                                    attachment_sync_from: None,
                                 });
                                 false
                             }
@@ -1971,7 +1992,7 @@ impl Entities {
                     if v.attachment_sender.is_some() {
                         bodies.prepare_attachments(e, attachments, &project);
                     }
-                    bodies.write_to(v);
+                    let attachment_sync_from = bodies.write_to(v);
                     // The bundle ends here: its changes follow (sendChanges), after
                     // what a mod sends for the pairing.
                     let at = v.out.len();
@@ -1992,6 +2013,7 @@ impl Entities {
                             entity: e.id,
                             tracked: Arc::clone(&s.tracked),
                             at: Some(at),
+                            attachment_sync_from,
                         });
                     }
                 }
@@ -2105,7 +2127,7 @@ impl Entities {
                         && let Some(pairing) = &m.pairing
                         && m.state.kind.is_some_and(|kind| v.pairs_with(kind))
                     {
-                        pairing.write_to(v);
+                        let attachment_sync_from = pairing.write_to(v);
                         // As `send_in_order`: the bundle ends before its changes.
                         let at = v.out.len();
                         if m.synced {
@@ -2122,6 +2144,7 @@ impl Entities {
                                 entity: id,
                                 tracked: Arc::clone(&m.state.tracked),
                                 at: Some(at),
+                                attachment_sync_from,
                             });
                         }
                     }

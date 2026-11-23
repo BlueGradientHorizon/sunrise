@@ -218,7 +218,17 @@ impl<T: Send + Sync + 'static> From<AttachmentDescriptor<T>> for ErasedAttachmen
                     )
                     .map_err(|_| AttachmentError::Encode)
                 },
-            )?;
+            )?
+            .with_sync_release(move |entry| {
+                let operation = "attachment_sync_drop";
+                let _mod = crate::runtime::mark_mod(owner, operation);
+                crate::runtime::contain_callback(
+                    || drop(entry),
+                    |payload| {
+                        crate::runtime::log_and_queue_panic(operation, owner, payload);
+                    },
+                );
+            });
             Ok(Arc::new(AttachmentRegistration { id, owner, checked })
                 as Arc<dyn Any + Send + Sync>)
         });
@@ -1232,6 +1242,42 @@ mod tests {
         assert_eq!(level.0.take_sync_changes(&mut project), expected);
         assert_eq!(failures.len(), 1);
         assert!(failures[0].contains("panicked"));
+    }
+
+    #[test]
+    fn retiring_an_ordered_binding_cannot_unwind_the_sync_pass() {
+        struct RetiredValue(i32);
+        impl Drop for RetiredValue {
+            fn drop(&mut self) {
+                assert_ne!(self.0, 17, "the superseded binding panics on drop");
+            }
+        }
+        let key = install_attachment_fixture(
+            "demo",
+            AttachmentDescriptor::new("demo:retired", || RetiredValue(0)).sync(AttachmentCodec {
+                encode: |value| Ok([("v".into(), Tag::Int(value.0))].into()),
+                decode: |_| Err(AttachmentError::Decode),
+            }),
+        );
+        let mut level = FakeLevel(Attachments::default());
+        key.set_in(&mut level, Holder::Level, RetiredValue(17))
+            .unwrap();
+        key.set_in(&mut level, Holder::Level, RetiredValue(37))
+            .unwrap();
+        let project = attachment_sync_projection();
+        let changes = level
+            .0
+            .take_sync_changes(|ns, name, input| project(ns, name, input).unwrap());
+        assert_eq!(
+            changes
+                .into_iter()
+                .map(|change| change.value)
+                .collect::<Vec<_>>(),
+            [
+                Some([("v".into(), Tag::Int(17))].into()),
+                Some([("v".into(), Tag::Int(37))].into()),
+            ]
+        );
     }
 
     #[test]

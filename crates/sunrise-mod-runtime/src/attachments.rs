@@ -285,7 +285,10 @@ pub struct AttachmentStoreKey<'a> {
     descriptor: &'a (dyn Any + Send + Sync),
     engine_owned: bool,
     policy: AttachmentPolicy,
+    sync_release: Option<&'a SyncSnapshotRelease>,
 }
+
+type SyncSnapshotRelease = Arc<dyn Fn(AttachmentEntry) + Send + Sync>;
 
 impl AttachmentStoreKey<'_> {
     pub fn id(&self) -> (&'static str, &'static str) {
@@ -416,6 +419,7 @@ impl<H: AttachmentHost + ?Sized> AttachmentStore for H {
             return Err(AttachmentError::Decode);
         }
         let AttachmentStoreWrite {
+            key,
             value,
             persistence,
             form,
@@ -423,8 +427,8 @@ impl<H: AttachmentHost + ?Sized> AttachmentStore for H {
         } = prepared;
         Attachments::store(
             map,
-            namespace,
-            name,
+            holder,
+            &key,
             Decoded {
                 value,
                 persistence,
@@ -451,7 +455,7 @@ impl<H: AttachmentHost + ?Sized> AttachmentStore for H {
         };
         if map.entry(namespace, name)?.is_some() {
             let map = self.attachments(holder, AttachmentAccess::Existing)?;
-            Attachments::discard(map, namespace, name, key.policy.sync);
+            Attachments::discard(map, holder, key);
             self.attachment_changed(holder, true, key.policy.sync);
         }
         Ok(())
@@ -464,11 +468,8 @@ impl<H: AttachmentHost + ?Sized> AttachmentStore for H {
         self.validate_attachment_key(key)?;
         let (namespace, name) = key.id();
         if self.read_attachments(holder)?.is_some() {
-            Attachments::queue_sync(
-                self.attachments(holder, AttachmentAccess::Existing)?,
-                namespace,
-                name,
-            );
+            self.attachments(holder, AttachmentAccess::Existing)?
+                .record_sync(holder, (namespace.into(), name.into()), key.sync_release);
             self.attachment_changed(holder, false, true);
         }
         Ok(())
@@ -537,6 +538,7 @@ impl<T> AttachmentType<T> {
 pub struct CheckedAttachmentType<T: 'static> {
     raw: AttachmentType<T>,
     persistence: Option<PersistenceEncoder>,
+    sync_release: Option<SyncSnapshotRelease>,
 }
 
 impl<T: 'static> CheckedAttachmentType<T> {
@@ -558,7 +560,22 @@ impl<T: 'static> CheckedAttachmentType<T> {
     ) -> Result<Self, AttachmentError> {
         raw.validate_policy()?;
         let persistence = raw.codec.map(|codec| persistence_encoder(codec, invoke));
-        Ok(Self { raw, persistence })
+        Ok(Self {
+            raw,
+            persistence,
+            sync_release: None,
+        })
+    }
+    /// Install the owning mod's callback fence for values retired after sync.
+    #[doc(hidden)]
+    pub fn with_sync_release(
+        mut self,
+        release: impl Fn(AttachmentEntry) + Send + Sync + 'static,
+    ) -> Self {
+        if self.is_synced() {
+            self.sync_release = Some(Arc::new(release));
+        }
+        self
     }
     /// Borrow the underlying unchecked descriptor.
     pub fn as_type(&self) -> &AttachmentType<T> {
@@ -598,6 +615,7 @@ impl<T: 'static> CheckedAttachmentType<T> {
                 sync_codec: None,
             },
             persistence: self.persistence.clone(),
+            sync_release: None,
         }
     }
     /// Borrow a value from an immutable attachment entry without re-running policy checks.
@@ -720,6 +738,10 @@ impl<T: Send + Sync + 'static> AttachmentOps<'_, T> {
             descriptor: raw,
             engine_owned: matches!(self, Self::Raw(_)),
             policy: raw.policy(),
+            sync_release: match self {
+                Self::Raw(_) => None,
+                Self::Checked(checked) => checked.sync_release.as_ref(),
+            },
         }
     }
 
@@ -1281,6 +1303,58 @@ impl AttachmentRegistration {
     }
 }
 
+// Tokens order committed batches from different holders in the same level. An
+// aborted edit drops its token with the journaled map; gaps are unobservable.
+static NEXT_SYNC_ORDER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+/// Exclusive watermark for a whole snapshot: earlier events are already covered.
+#[doc(hidden)]
+pub fn attachment_sync_watermark() -> u64 {
+    NEXT_SYNC_ORDER.load(std::sync::atomic::Ordering::Relaxed)
+}
+
+/// One accepted non-block-entity update and the binding it wrote.
+#[doc(hidden)]
+#[derive(Clone)]
+pub struct OrderedAttachmentSync {
+    order: u64,
+    key: index::AttachmentKey,
+    entry: Option<Arc<AttachmentEntry>>,
+    release: Option<SyncSnapshotRelease>,
+}
+
+impl Drop for OrderedAttachmentSync {
+    fn drop(&mut self) {
+        if let Some(release) = &self.release
+            && let Some(entry) = self.entry.take().and_then(Arc::into_inner)
+        {
+            release(entry);
+        }
+    }
+}
+
+impl OrderedAttachmentSync {
+    pub fn order(&self) -> u64 {
+        self.order
+    }
+
+    pub fn project(
+        mut self,
+        mut project: impl FnMut(&JavaString, &JavaString, AttachmentSyncInput<'_>) -> Option<Compound>,
+    ) -> Option<AttachmentSync> {
+        let (namespace, name) = std::mem::take(&mut self.key);
+        let value = match &self.entry {
+            None => None,
+            Some(entry) => Some(project(&namespace, &name, entry.sync_input())?),
+        };
+        Some(AttachmentSync {
+            namespace,
+            name,
+            value,
+        })
+    }
+}
+
 /// The data held by one entity, block entity, chunk or level.
 #[derive(Default)]
 // no wire: host-local canonical map and publication authority; only saved values cross the boundary.
@@ -1289,8 +1363,10 @@ pub struct Attachments {
     // Keep malformed or otherwise unrecognized NBT exactly as it was read.
     // Empty holders need no shared allocation.
     raw: Option<Arc<Compound>>,
-    // Keys to send to clients at the next flush; never saved.
-    pending: BTreeSet<(JavaString, JavaString)>,
+    // Block entities publish their final field per key. Other holders publish each
+    // accepted binding, in order. Both queues move and roll back with their map.
+    pending: BTreeSet<index::AttachmentKey>,
+    ordered: Vec<OrderedAttachmentSync>,
     registration: Option<AttachmentRegistration>,
 }
 
@@ -1301,6 +1377,7 @@ impl Clone for Attachments {
             entries: self.entries.clone(),
             raw: self.raw.clone(),
             pending: self.pending.clone(),
+            ordered: self.ordered.clone(),
             registration: None,
         }
     }
@@ -1637,8 +1714,15 @@ impl Attachments {
             },
         )
     }
-    fn store(&mut self, namespace: &str, name: &str, value: Decoded, write: AttachmentWrite) {
+    fn store(
+        &mut self,
+        holder: Holder,
+        descriptor: &AttachmentStoreKey<'_>,
+        value: Decoded,
+        write: AttachmentWrite,
+    ) {
         let sync = value.policy.sync;
+        let (namespace, name) = descriptor.id();
         // UTF-8 byte length is an upper bound on UTF-16 units. Reserve once
         // instead of repeatedly growing the short key buffers during encoding.
         let [owned_namespace, owned_name] = [namespace, name].map(|text| {
@@ -1658,17 +1742,18 @@ impl Attachments {
             })),
         );
         if sync && write != AttachmentWrite::Decoded {
-            self.pending.insert(key);
+            self.record_sync(holder, key, descriptor.sync_release);
         }
         if write == AttachmentWrite::Set {
             self.remove_saved(namespace, name);
         }
     }
-    fn discard(&mut self, namespace: &str, name: &str, sync: bool) {
+    fn discard(&mut self, holder: Holder, descriptor: &AttachmentStoreKey<'_>) {
+        let (namespace, name) = descriptor.id();
         let key: (JavaString, JavaString) = (namespace.into(), name.into());
         self.write_entry(&key, None);
-        if sync {
-            self.pending.insert(key);
+        if descriptor.policy.sync {
+            self.record_sync(holder, key, descriptor.sync_release);
         }
         self.remove_saved(namespace, name);
     }
@@ -1679,43 +1764,65 @@ impl Attachments {
             names.remove(&name.into());
         }
     }
-    fn queue_sync(&mut self, namespace: &str, name: &str) {
-        self.pending.insert((namespace.into(), name.into()));
+    fn record_sync(
+        &mut self,
+        holder: Holder,
+        key: index::AttachmentKey,
+        release: Option<&SyncSnapshotRelease>,
+    ) {
+        if matches!(holder, Holder::BlockEntity(_)) {
+            self.pending.insert(key);
+        } else {
+            let order = NEXT_SYNC_ORDER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            let entry = self.entries.get(&key).cloned();
+            self.ordered.push(OrderedAttachmentSync {
+                order,
+                key,
+                entry,
+                release: release.cloned(),
+            });
+        }
     }
-    /// The changes to send to clients since the last call: the current projected value
-    /// of each queued key from the active registered descriptor, or `None` for one that
-    /// is gone.
+
+    /// Drain ordered updates for this map so the owner can merge them with other holders.
+    pub fn take_ordered_sync(&mut self) -> Vec<OrderedAttachmentSync> {
+        std::mem::take(&mut self.ordered)
+    }
+    /// Project accepted updates in order and coalesced block-entity keys at their final state.
     pub fn take_sync_changes(
         &mut self,
         mut project: impl FnMut(&JavaString, &JavaString, AttachmentSyncInput<'_>) -> Option<Compound>,
     ) -> Vec<AttachmentSync> {
-        std::mem::take(&mut self.pending)
+        let mut changes: Vec<_> = self
+            .take_ordered_sync()
             .into_iter()
-            .filter_map(|key| match self.entries.get(&key) {
-                None => Some(AttachmentSync {
+            .filter_map(|change| change.project(&mut project))
+            .collect();
+        changes.extend(std::mem::take(&mut self.pending).into_iter().filter_map(
+            |(namespace, name)| {
+                let key = (namespace, name);
+                let value = match self.entries.get(&key) {
+                    None => None,
+                    Some(entry) => Some(project(&key.0, &key.1, entry.sync_input())?),
+                };
+                Some(AttachmentSync {
                     namespace: key.0,
                     name: key.1,
-                    value: None,
-                }),
-                Some(entry) => {
-                    let value = project(&key.0, &key.1, entry.sync_input())?;
-                    Some(AttachmentSync {
-                        namespace: key.0,
-                        name: key.1,
-                        value: Some(value),
-                    })
-                }
-            })
-            .collect()
+                    value,
+                })
+            },
+        ));
+        changes
     }
     /// Whether a delivery pass has anything to project for this holder.
     pub fn has_pending_sync(&self) -> bool {
-        !self.pending.is_empty()
+        !self.pending.is_empty() || !self.ordered.is_empty()
     }
 
     /// Discard queued changes when no client sees this holder. A new tracker gets a snapshot.
     pub fn discard_sync_changes(&mut self) {
         self.pending.clear();
+        self.ordered.clear();
     }
 
     /// Every synced value resolved against the active registered descriptors, for a client
@@ -2548,16 +2655,46 @@ mod tests {
         assert_eq!(old.read(&COUNTER), Err(AttachmentError::Decode));
     }
     #[test]
-    fn synced_set_and_remove_report_the_last_state_once() {
+    fn block_entity_sync_coalesces_writes_and_removal_to_one_final_state() {
         let mut map = Attachments::default();
-        SYNCED.set(&mut map, Holder::Level, 1).unwrap();
-        SYNCED.set(&mut map, Holder::Level, 2).unwrap();
-        SYNCED.remove(&mut map, Holder::Level).unwrap();
+        let holder = Holder::BlockEntity([0, 65, 0]);
+        SYNCED.set(&mut map, holder, 1).unwrap();
+        SYNCED.set(&mut map, holder, 2).unwrap();
+        SYNCED.remove(&mut map, holder).unwrap();
         assert_eq!(
             map.take_sync_changes(project_standard),
             [change("synced", None)]
         );
         assert!(map.take_sync_changes(project_standard).is_empty());
+    }
+    #[test]
+    fn non_block_entity_sync_keeps_each_accepted_write_in_order() {
+        for holder in [
+            Holder::Entity(7),
+            Holder::Player(17),
+            Holder::Chunk([2, 3]),
+            Holder::Level,
+        ] {
+            let mut map = Attachments::default();
+            SYNCED.set(&mut map, holder, 18).unwrap();
+            SYNCED.set(&mut map, holder, 29).unwrap();
+            assert_eq!(
+                map.take_sync_changes(project_standard),
+                [
+                    AttachmentSync {
+                        namespace: "test".into(),
+                        name: "synced".into(),
+                        value: Some([("value".into(), Tag::Int(18))].into())
+                    },
+                    AttachmentSync {
+                        namespace: "test".into(),
+                        name: "synced".into(),
+                        value: Some([("value".into(), Tag::Int(29))].into())
+                    },
+                ]
+            );
+            assert!(map.take_sync_changes(project_standard).is_empty());
+        }
     }
     #[test]
     fn default_creation_is_synced_and_a_later_read_is_not() {

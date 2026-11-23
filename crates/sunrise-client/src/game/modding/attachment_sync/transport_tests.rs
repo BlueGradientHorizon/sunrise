@@ -447,8 +447,23 @@ fn attachment_sync_follows_the_negotiated_route() {
                 "the failed encoder's panic payload and temporary disk-decoded owner were fenced independently"
             );
             set_level(game, 11, false);
-            set_pair(game, 12);
-            assert_eq!(values_until(&mut sunrise, Holder::Level, 12), [12]);
+            let ordered_key = value_key.clone();
+            game.integrated
+                .as_ref()
+                .unwrap()
+                .call(move |server| {
+                    server.storage_scope(|server, _| {
+                        ordered_key.set(server, Holder::Level, 120).unwrap();
+                        server.storage_scope(|server, _| {
+                            ordered_key.set(server, Holder::Level, 999).unwrap();
+                            ((), false)
+                        });
+                        ordered_key.set(server, Holder::Level, 12).unwrap();
+                        ((), true)
+                    });
+                })
+                .unwrap();
+            assert_eq!(values_until(&mut sunrise, Holder::Level, 12), [120, 12]);
             let authority = {
                 let key = value_key.clone();
                 game.integrated
