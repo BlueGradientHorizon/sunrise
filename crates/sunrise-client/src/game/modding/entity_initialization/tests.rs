@@ -520,11 +520,11 @@ fn player_construction_precedes_disk_load_and_clone() {
             assert_eq!(SAVED.has(host, PLAYER), Ok(false));
             assert_eq!(COPIED.has(host, PLAYER), Ok(false));
             // The unplaced player's constructor still uses the ordinary attachment journal.
-            let aborted: Result<(), ()> = host.transaction(|host, _| {
+            let aborted: Result<(), mod_api::TransactionError<()>> = host.transaction(|host, _| {
                 VALUE.set(host, PLAYER, 99).unwrap();
                 Err(())
             });
-            assert_eq!(aborted, Err(()));
+            assert_eq!(aborted, Err(mod_api::TransactionError::Aborted(())));
             assert_eq!(VALUE.has(host, PLAYER), Ok(false));
             VALUE.set(host, PLAYER, 41).unwrap();
             SAVED.set(host, PLAYER, 42).unwrap();
@@ -597,7 +597,7 @@ fn player_construction_precedes_disk_load_and_clone() {
                     .unwrap()
                     .hub
                     .update_guest(12, |guest| guest.placed = false);
-                game.lan_guest_joined(12, &[], [0.5, 64.0, 0.5]);
+                game.lan_guest_joined(12, &[], [0.5, 64.0, 0.5], None);
                 assert_eq!(
                     notices.lock().unwrap().as_slice(),
                     &[Notice::Constructed, Notice::Loaded]
@@ -616,7 +616,7 @@ fn player_construction_precedes_disk_load_and_clone() {
                     guest.spawn = Some([3.5, 64.0, 5.5]);
                     guest.dead = death;
                 });
-                host.play.entry(12).or_default().won_game = !death;
+                host.hub.update_guest(12, |guest| guest.won_game = !death);
                 game.guest_respawn(12);
                 assert_eq!(
                     notices.lock().unwrap().as_slice(),

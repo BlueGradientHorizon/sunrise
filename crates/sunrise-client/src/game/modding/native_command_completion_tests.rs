@@ -373,7 +373,7 @@ fn oversized_provider_entries_drop_individually_and_large_regular_replies_sort_b
             mod_api::Command::new("mixed <value:test:mixed>"),
             mod_api::Command::new("probe <value:test:many>"),
         ],
-        |_| false,
+        &sunrise_client::command::Dispatcher::new(),
         &arguments,
     );
     assert!(problems.is_empty(), "{problems:?}");

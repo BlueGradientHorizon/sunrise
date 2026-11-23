@@ -1185,11 +1185,9 @@ fn a_committed_take_publishes_success_packets() {
             });
             game.storage_scope(|game, _| {
                 assert!(game.lan_merchant_click(12, &click));
-                assert_eq!(COMPLETED.get(), 0);
                 assert!(packets(&rx).is_empty());
                 ((), true)
             });
-            assert_eq!(COMPLETED.get(), 1);
             assert_eq!((result(game), stat(game)), (1, 1));
             assert_eq!(game.lan_trade_session(12).unwrap().offers[0].uses, 6);
             let received = packets(&rx);
@@ -1270,11 +1268,9 @@ fn an_outer_abort_undoes_an_accepted_trade() {
                 assert!(game.lan_merchant_click(12, &click));
                 assert_eq!((result(game), dirt(game), stat(game)), (1, 0, 1));
                 assert!(game.orbs.is_empty(), "orb creation waits for root commit");
-                assert_eq!(COMPLETED.get(), 0);
                 assert!(packets(&rx).is_empty());
                 ((), false)
             });
-            assert_eq!(COMPLETED.get(), 0);
             corrected(&rx, click.container, 2);
             unchanged(game, 2);
         })

@@ -188,7 +188,7 @@ fn client_player_logging_out_fires_once_before_teardown_and_handles_no_player_tr
             let title = game.new_title(saves.path().to_path_buf());
             game.show_title(title);
             take();
-            game.connect_server_with_options("[invalid]", "BadAddr", None, false, false)
+            game.connect_server_with_options("[invalid]", "BadAddr", None, false, false, None)
                 .unwrap();
             assert_eq!(
                 take(),

@@ -589,17 +589,12 @@ fn a_driven_mounts_effects_count_down_in_its_own_tick() {
 #[test]
 #[ignore = "daily"]
 fn a_canceled_tick_counts_no_effect_down() {
-    use mod_api::{
-        EntityTickListenedEvent, EntityTickPreEvent, Hooks, HostSide, ModEntry, Mods, Registrar,
-    };
+    use mod_api::{EntityTickPreEvent, Hooks, HostSide, ModEntry, Mods, Registrar};
     const HUSK: i32 = 34;
     const TICKING: i32 = 36;
     struct Cancel;
     #[mod_api::__subscriptions]
     impl Hooks for Cancel {
-        fn entity_tick_listened(&self, _: HostSide<'_>, event: &mut EntityTickListenedEvent) {
-            event.listened = true;
-        }
         fn register(&self, r: &mut dyn Registrar, _: &mod_api::RegistrationContext) {
             r.entity_tick_each("minecraft:husk");
         }

@@ -250,7 +250,9 @@ fn a_mod_type_assembles_from_pools_past_the_jigsaw_types_depth() {
             _: &dyn BlockMetadata,
             _: &Compound,
         ) -> Result<Arc<dyn StructurePiece>, StructureError> {
-            Err(StructureError("the type saves no piece of its own".into()))
+            Err(StructureError::new(std::io::Error::other(
+                "the type saves no piece of its own",
+            )))
         }
     }
     mod_platform::__private::part_tests::install_parts_fixture(&[]).unwrap();
@@ -353,7 +355,7 @@ fn a_mod_type_assembles_from_pools_past_the_jigsaw_types_depth() {
     );
     let mut random = WorldgenRandom::new(LegacyRandom::new(0));
     random.set_large_feature_seed(0, 0, 0);
-    let (_, pieces) = Adapter::new("testmod:deep", Arc::new(Deep))
+    let (_, pieces) = Adapter::new("testmod:deep", "testmod", Arc::new(Deep))
         .find_generation_point(
             &mut StubContext,
             &inputs,
@@ -1347,7 +1349,7 @@ fn start_panic_skips_only_that_callback_without_disabling_independent_type() {
                 broken
                     .find_generation_point(
                         &mut StubContext,
-                        resources,
+                        &inputs(resources),
                         ChunkPos::new(0, 0),
                         &empty,
                         &mut random,
@@ -1358,7 +1360,7 @@ fn start_panic_skips_only_that_callback_without_disabling_independent_type() {
                 broken
                     .find_generation_point(
                         &mut StubContext,
-                        resources,
+                        &inputs(resources),
                         ChunkPos::new(1, 0),
                         &empty,
                         &mut random,
@@ -1377,7 +1379,7 @@ fn start_panic_skips_only_that_callback_without_disabling_independent_type() {
             let (position, pieces) = healthy
                 .find_generation_point(
                     &mut StubContext,
-                    resources,
+                    &inputs(resources),
                     ChunkPos::new(0, 0),
                     &empty,
                     &mut random,
@@ -1469,7 +1471,7 @@ fn piece_metadata_and_save_panics_stay_local_and_debug_skips_mod_fmt() {
     let (_, pieces) = adapter
         .find_generation_point(
             &mut StubContext,
-            resources,
+            &inputs(resources),
             ChunkPos::new(0, 0),
             &Arc::new(Tag::Compound(Compound::new())),
             &mut random,
@@ -1489,7 +1491,7 @@ fn piece_metadata_and_save_panics_stay_local_and_debug_skips_mod_fmt() {
     let (_, other_pieces) = other
         .find_generation_point(
             &mut StubContext,
-            resources,
+            &inputs(resources),
             ChunkPos::new(0, 0),
             &Arc::new(Tag::Compound(Compound::new())),
             &mut random,
@@ -1591,7 +1593,7 @@ fn test_structure_registry(
 
 #[test]
 fn failing_mod_piece_preserves_writes_draws_and_continues_via_place_in_chunk() {
-    use sunrise_world::worldgen::structure::start::{Piece, StructureStart, place_in_chunk};
+    use sunrise_world::worldgen::structure::start::{StructureStart, place_in_chunk};
 
     #[derive(Debug)]
     struct InnerCause;
@@ -1716,19 +1718,14 @@ fn failing_mod_piece_preserves_writes_draws_and_continues_via_place_in_chunk() {
     let (_, pieces) = adapter
         .find_generation_point(
             &mut StubContext,
-            resources,
+            &inputs(resources),
             ChunkPos::new(0, 0),
             &Arc::new(Tag::Compound(Compound::new())),
             &mut start_random,
         )
         .unwrap();
     let registry = test_structure_registry("testmod:ordered");
-    let start = StructureStart::new(
-        0,
-        &registry.structures[0],
-        ChunkPos::new(0, 0),
-        pieces.into_iter().map(Piece::Legacy).collect(),
-    );
+    let start = StructureStart::new(0, &registry.structures[0], ChunkPos::new(0, 0), pieces);
 
     let mut world = ChunkWorld {
         air: air_id,
@@ -1992,7 +1989,7 @@ fn piece_and_after_place_panics_poison_only_their_operation_with_toast_notices()
         Hooks, ModEntry, PackageInfo, PackageKind, Registrar, RegistrationContext, Side,
     };
     use std::sync::atomic::{AtomicUsize, Ordering};
-    use sunrise_world::worldgen::structure::start::{Piece, StructureStart, place_in_chunk};
+    use sunrise_world::worldgen::structure::start::{StructureStart, place_in_chunk};
 
     // Run the worldgen fixture in its own process.
     const CHILD: &str = "SUNRISE_STRUCTURE_PANIC_TEST_CHILD";
@@ -2217,7 +2214,7 @@ fn piece_and_after_place_panics_poison_only_their_operation_with_toast_notices()
                 let (_, pieces) = types[id]
                     .find_generation_point(
                         &mut StubContext,
-                        resources,
+                        &inputs(resources),
                         ChunkPos::new(0, 0),
                         &empty,
                         start_random,
@@ -2228,7 +2225,7 @@ fn piece_and_after_place_panics_poison_only_their_operation_with_toast_notices()
                     0,
                     &structure_registry.structures[0],
                     ChunkPos::new(0, 0),
-                    pieces.into_iter().map(Piece::Legacy).collect(),
+                    pieces,
                 )
             };
 

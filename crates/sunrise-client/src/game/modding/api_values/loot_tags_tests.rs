@@ -330,16 +330,17 @@ impl Hooks for ItemTagLister {
         );
     }
 }
-impl ModLootFunction for ItemTagLister {
-    fn validate(&self, _: &LootEntryData) -> Result<(), String> {
-        Ok(())
+impl mod_api::ModLootFunctionCodec for ItemTagLister {
+    fn decode(&self, _: &serde_json::Value) -> Result<std::sync::Arc<dyn ModLootFunction>, String> {
+        Ok(std::sync::Arc::new(ItemTagLister(self.0.clone())))
     }
+}
+impl ModLootFunction for ItemTagLister {
     fn apply(
         &self,
-        _: &LootEntryData,
-        stack: LootStack,
+        _: &mut mod_api::LootStackEditor<'_>,
         context: &mut dyn LootTypeContext,
-    ) -> Result<LootStack, String> {
+    ) -> Result<(), String> {
         let tags = context.tags();
         let stick = mod_api::__private::item_key("minecraft:stick").unwrap();
         let sorted = |list: Option<Vec<mod_api::Identifier>>| {
@@ -352,7 +353,7 @@ impl ModLootFunction for ItemTagLister {
             .lock()
             .unwrap()
             .push((sorted(tags.item_tags(stick)), sorted(tags.item_tag_names())));
-        Ok(stack)
+        Ok(())
     }
 }
 

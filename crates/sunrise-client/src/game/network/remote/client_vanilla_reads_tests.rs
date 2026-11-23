@@ -166,7 +166,7 @@ fn a_client_counts_its_copies_ticks_and_a_respawned_player_starts_at_zero() {
 #[test]
 #[ignore = "daily"]
 fn the_client_count_follows_the_entity_tick_not_the_motion() {
-    use mod_api::{EntityTickListenedEvent, EntityTickPreEvent, HostSide, PlayerTickPreEvent};
+    use mod_api::{EntityTickPreEvent, HostSide, PlayerTickPreEvent};
     use std::sync::{Arc, Mutex};
     crate::game::in_own_process(
         "game::remote::tests::client_vanilla_reads_tests::the_client_count_follows_the_entity_tick_not_the_motion",
@@ -175,13 +175,6 @@ fn the_client_count_follows_the_entity_tick_not_the_motion() {
             struct Seen(Arc<Mutex<Vec<(u32, Option<i32>)>>>);
             #[mod_api::__subscriptions]
             impl mod_api::Hooks for Seen {
-                fn entity_tick_listened(
-                    &self,
-                    _: HostSide<'_>,
-                    event: &mut EntityTickListenedEvent,
-                ) {
-                    event.listened = true;
-                }
                 fn entity_tick_pre(&self, host: HostSide<'_>, event: &mut EntityTickPreEvent<'_>) {
                     let HostSide::Client(host) = host else {
                         return;
@@ -257,7 +250,7 @@ fn the_client_count_follows_the_entity_tick_not_the_motion() {
 #[test]
 #[ignore = "daily"]
 fn a_canceled_root_does_not_count_and_a_passenger_does() {
-    use mod_api::{EntityTickListenedEvent, EntityTickPreEvent, HostSide};
+    use mod_api::{EntityTickPreEvent, HostSide};
     use std::sync::{Arc, Mutex};
     crate::game::in_own_process(
         "game::remote::tests::client_vanilla_reads_tests::a_canceled_root_does_not_count_and_a_passenger_does",
@@ -266,13 +259,6 @@ fn a_canceled_root_does_not_count_and_a_passenger_does() {
             struct Cancel(Arc<Mutex<Vec<(u32, Option<i32>)>>>);
             #[mod_api::__subscriptions]
             impl mod_api::Hooks for Cancel {
-                fn entity_tick_listened(
-                    &self,
-                    _: HostSide<'_>,
-                    event: &mut EntityTickListenedEvent,
-                ) {
-                    event.listened = true;
-                }
                 fn entity_tick_pre(&self, host: HostSide<'_>, event: &mut EntityTickPreEvent<'_>) {
                     let HostSide::Client(host) = host else {
                         return;
@@ -334,7 +320,7 @@ fn a_canceled_root_does_not_count_and_a_passenger_does() {
 #[test]
 #[ignore = "daily"]
 fn callbacks_read_other_entities_counts_as_their_visits_left_them() {
-    use mod_api::{EntityTickListenedEvent, EntityTickPostEvent, EntityTickPreEvent, HostSide};
+    use mod_api::{EntityTickPostEvent, EntityTickPreEvent, HostSide};
     use std::sync::{Arc, Mutex};
     crate::game::in_own_process(
         "game::remote::tests::client_vanilla_reads_tests::callbacks_read_other_entities_counts_as_their_visits_left_them",
@@ -363,13 +349,6 @@ fn callbacks_read_other_entities_counts_as_their_visits_left_them() {
                     _: &mod_api::RegistrationContext,
                 ) {
                     registrar.entity_tick_each("minecraft:pig");
-                }
-                fn entity_tick_listened(
-                    &self,
-                    _: HostSide<'_>,
-                    event: &mut EntityTickListenedEvent,
-                ) {
-                    event.listened = true;
                 }
                 fn entity_tick_pre(&self, host: HostSide<'_>, event: &mut EntityTickPreEvent<'_>) {
                     self.read(host, "pre", event.entities);
