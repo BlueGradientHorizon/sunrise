@@ -528,7 +528,8 @@ impl Game<'_> {
         }
     }
 
-    /// A part that refuses or falls through does not keep its tentative writes.
+    /// `LiquidBlockContainer.placeLiquid`: what the part writes stays in the ambient transaction
+    /// whatever it answers. A panicking part's scope aborts with it.
     pub(super) fn journalled_place_liquid(
         &mut self,
         level: LevelRef,
@@ -549,7 +550,7 @@ impl Game<'_> {
             self.storage_scope(|game, _| {
                 let reply = JournalLevelWrite::new(game, level)
                     .and_then(|mut host| part.place_liquid(&mut host, event));
-                (reply, reply == Some(true))
+                (reply, true)
             })
         });
         answer

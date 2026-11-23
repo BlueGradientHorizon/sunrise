@@ -722,7 +722,7 @@ fn dispenser_uses_the_liquid_part_with_no_user() {
 
 #[test]
 #[ignore = "daily"]
-fn validated_fluid_utility_keeps_only_accepted_writes_in_its_outer_transaction() {
+fn validated_fluid_utility_keeps_a_refusing_parts_writes_in_its_outer_transaction() {
     use std::sync::atomic::Ordering::Relaxed;
     with_liquid_part(|game, level, calls| {
         let dandelion = state(game, "minecraft:dandelion");
@@ -733,17 +733,12 @@ fn validated_fluid_utility_keeps_only_accepted_writes_in_its_outer_transaction()
                 game.level_place_fluid(level, AT, lava, None, true, tx),
                 Ok(false)
             );
-            assert_eq!(block(game), dandelion);
-            calls.refuse_place.store(false, Relaxed);
-            assert_eq!(
-                game.level_place_fluid(level, AT, lava, None, true, tx),
-                Ok(true)
-            );
+            // LiquidBlockContainer.placeLiquid's writes stand whatever it answers.
             assert_eq!(block(game), state(game, "minecraft:emerald_block"));
             Err::<(), ()>(())
         });
         assert_eq!(block(game), dandelion);
-        assert_eq!(calls.placed.lock().unwrap().len(), 2);
+        assert_eq!(calls.placed.lock().unwrap().len(), 1);
     });
 }
 
@@ -781,11 +776,8 @@ impl mod_api::BlockPart for AcceptingLiquidPart {
         _: &mut mod_api::PlaceLiquidEvent,
     ) -> Option<bool> {
         let floor = [AT[0], AT[1] - 1, AT[2]];
-        assert_eq!(
-            level.block_state(floor),
-            level.block_state_id("minecraft:dirt")
-        );
         let emerald = level.block_state_id("minecraft:emerald_block").unwrap();
+        assert_eq!(level.block_state(floor), Some(emerald));
         Some(level.set_block(AT, emerald, mod_api::BlockUpdateFlags::CLIENTS))
     }
 }
@@ -801,7 +793,7 @@ impl mod_api::Hooks for DecliningLiquidPart {
 
 #[test]
 #[ignore = "daily"]
-fn declining_liquid_part_writes_never_reach_the_next_part_or_commit() {
+fn a_declining_liquid_parts_writes_stay_for_the_next_part_and_commit() {
     let declined = Arc::new(std::sync::atomic::AtomicBool::new(false));
     let mods = vec![mod_api::ModEntry::new(
         "liquid_isolation",
@@ -825,7 +817,7 @@ fn declining_liquid_part_writes_never_reach_the_next_part_or_commit() {
             assert_eq!(block(game), state(game, "minecraft:emerald_block"));
             assert_eq!(
                 game.world.block(AT[0], AT[1] - 1, AT[2]),
-                state(game, "minecraft:dirt")
+                state(game, "minecraft:emerald_block")
             );
         });
     });
