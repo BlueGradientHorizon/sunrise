@@ -1662,9 +1662,7 @@ impl ParticleEngine {
         override_limiter: bool,
         always_show: bool,
     ) -> bool {
-        if let Some(requested) = &mut self.requested {
-            requested.push((options.clone(), p, v));
-            REQUESTED.set(REQUESTED.get() + 1);
+        if self.capture(options, p, v) {
             return true;
         }
         if self.admit_particle_at(p, override_limiter, always_show) {
@@ -1672,6 +1670,28 @@ impl ParticleEngine {
         } else {
             true
         }
+    }
+
+    /// A capture (`requested`) takes the request in place of the particle it would create.
+    fn capture(&mut self, options: &ParticleOptions, p: [f64; 3], v: [f64; 3]) -> bool {
+        let Some(requested) = &mut self.requested else {
+            return false;
+        };
+        requested.push((options.clone(), p, v));
+        REQUESTED.set(REQUESTED.get() + 1);
+        true
+    }
+
+    /// An option its caller admitted already (`ClientLevel.doAddParticle` admits before it
+    /// invokes a provider): a capture takes it as `add`'s, else it is created.
+    pub fn add_admitted_with_world(
+        &mut self,
+        world: Option<&World>,
+        options: &ParticleOptions,
+        p: [f64; 3],
+        v: [f64; 3],
+    ) -> bool {
+        !self.capture(options, p, v) && self.create_with_world(world, options, p, v)
     }
 
     /// `ClientLevel.doAddParticle`'s admission step, before invoking a provider.

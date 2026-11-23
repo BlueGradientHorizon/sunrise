@@ -1086,7 +1086,7 @@ impl Game<'_> {
         };
         if let Some(options) = options {
             self.particles
-                .create_with_world(Some(&self.world), &options, at, [0.0; 3]);
+                .add_admitted_with_world(Some(&self.world), &options, at, [0.0; 3]);
         }
     }
 
