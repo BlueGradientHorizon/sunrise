@@ -921,6 +921,7 @@ impl Game<'_> {
                     | "dialog"
                     | "dialog_warning"
                     | "confirm_link"
+                    | "demo_intro"
                     | "link_prompt"
                     | "code_of_conduct"
                     | "world_select"

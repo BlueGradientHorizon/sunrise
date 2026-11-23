@@ -343,8 +343,30 @@ mod tests {
                                 intro.buttons.each_ref().map(Text::translation_key),
                                 [Some("demo.help.buy"), Some("demo.help.later")]
                             );
+                            // Buy opens the trusted link confirmation on the HUD; closing
+                            // it is `Gui.setScreen(null)` there, which grabs the mouse.
                             let (w, h) = game.gui_size();
                             let layout = intro.layout(&game.gui.atlas, w, h);
+                            game.cursor = (layout.button_x[0] + 1.0, layout.button_y + 1.0);
+                            game.agent_pointer = true;
+                            assert!(game.demo_intro_click());
+                            assert_eq!(game.screen, Screen::ConfirmLink);
+                            game.close_confirm_link();
+                            assert_eq!(game.screen, Screen::Playing, "Buy returns to the HUD");
+                            assert!(
+                                !game.agent_pointer,
+                                "closing the link confirmation requests capture"
+                            );
+
+                            game.set_screen(Screen::Paused);
+                            send(game, zero);
+                            assert_eq!(game.screen, Screen::DemoIntro);
+                            let (w, h) = game.gui_size();
+                            let layout =
+                                game.demo_intro
+                                    .as_ref()
+                                    .unwrap()
+                                    .layout(&game.gui.atlas, w, h);
                             game.cursor = (layout.button_x[1] + 1.0, layout.button_y + 1.0);
                             game.agent_pointer = true;
                             veto.store(true, Ordering::Relaxed);
