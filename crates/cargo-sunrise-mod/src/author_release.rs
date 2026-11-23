@@ -148,14 +148,15 @@ fn workflow(fetch: Fetch<'_>) -> Result<String, String> {
 
 fn caller(prefix: &str, path: &str, uses: &str) -> String {
     // Ordinary paths stay plain YAML. Quote strings that YAML might coerce, strip or interpret.
-    let path = if path
-        .bytes()
-        .all(|c| c.is_ascii_alphanumeric() || b"_.-/".contains(&c))
-        && path.starts_with(|c: char| c.is_ascii_alphabetic() || c == '.')
-        && !matches!(
-            path.to_ascii_lowercase().as_str(),
-            "true" | "false" | "null" | "yes" | "no" | "on" | "off" | "y" | "n"
-        ) {
+    let path = if path == "."
+        || (path.starts_with(|c: char| c.is_ascii_alphabetic())
+            && path
+                .bytes()
+                .all(|c| c.is_ascii_alphanumeric() || b"_.-/".contains(&c))
+            && !matches!(
+                path.to_ascii_lowercase().as_str(),
+                "true" | "false" | "null" | "yes" | "no" | "on" | "off" | "y" | "n"
+            )) {
         path.into()
     } else {
         serde_json::json!(path).to_string()
@@ -239,78 +240,87 @@ impl Project {
 
     fn workflow_changes(&self, uses: &str) -> Result<Vec<Change>, String> {
         let root = &self.root;
-        for folder in [".github", ".github/workflows", ".github/actions"] {
+        for folder in [".github", ".github/workflows"] {
             internals::check_output_dir(&root.join(folder))?;
         }
         let mut changes = vec![Change::write(
             &self.caller,
             caller(&self.prefix, &self.path, uses),
         )];
-        let legacy = ".github/workflows/release.yml";
-        if let Some(meta) = metadata(&root.join(legacy))?
-            && meta.is_file()
-        {
-            let text =
-                fs::read_to_string(root.join(legacy)).map_err(|e| format!("{legacy}: {e}"))?;
-            // Both shipped revisions named these; a differently named release workflow is not ours.
-            if text.contains("sunrise-release-tool") || text.contains("sunrise_release.py") {
-                changes.push(Change {
-                    path: legacy.into(),
-                    kind: Kind::RemoveFile,
-                });
+        // These names aren't reserved. Only remove files with the old templates' signatures.
+        let workflows = [
+            ("release.yml", "Release native mod"),
+            ("rebuild.yml", "Rebuild reviewed native mod source"),
+            (
+                "sunrise-release-jobs.yml",
+                "Build and publish a planned mod release",
+            ),
+        ];
+        for (file, name) in workflows {
+            let path = Path::new(".github/workflows").join(file);
+            let title = format!("name: {name}");
+            if legacy_file(
+                &root.join(&path),
+                &[&title, "./.github/actions/sunrise-release-tool"],
+            )? {
+                changes.push(Change::remove(path, false));
             }
         }
-        for (path, directory) in [
-            (PathBuf::from(".github/workflows/rebuild.yml"), false),
-            (".github/workflows/sunrise-release-jobs.yml".into(), false),
-            (".github/actions/sunrise-release-tool".into(), true),
-        ]
-        .into_iter()
-        .chain(
-            ["sunrise_release.py", "sunrise_release_github.py"]
-                .into_iter()
-                .flat_map(|name| {
-                    std::iter::once((PathBuf::from(name), false)).chain(
-                        (!self.package.as_os_str().is_empty())
-                            .then(|| (self.package.join(name), false)),
-                    )
-                }),
-        ) {
-            if let Some(meta) = metadata(&root.join(&path))? {
-                let kind = if meta.is_symlink() || (!directory && meta.is_file()) {
-                    Kind::RemoveFile
-                } else if directory && meta.is_dir() {
-                    Kind::RemoveDir
-                } else {
-                    return Err(format!(
-                        "{} is not the expected legacy release file or directory",
-                        path.display()
-                    ));
-                };
-                changes.push(Change { path, kind });
+        let actions = Path::new(".github/actions");
+        let action = actions.join("sunrise-release-tool");
+        let script = action.join("action.yml");
+        if metadata(&root.join(actions))?.is_some_and(|meta| meta.is_dir())
+            && metadata(&root.join(action))?.is_some_and(|meta| meta.is_dir())
+            && legacy_file(
+                &root.join(&script),
+                &[
+                    "Install the verified Sunrise release tool",
+                    "SUNRISE_RELEASE_SCRIPTS",
+                ],
+            )?
+        {
+            changes.push(Change::remove(script, true));
+        }
+        for (file, signature) in [
+            (
+                "sunrise_release.py",
+                "Build, sign and stage a native mod release",
+            ),
+            (
+                "sunrise_release_github.py",
+                "from sunrise_release import Batch",
+            ),
+        ] {
+            let repo_path = PathBuf::from(file);
+            let nested_path =
+                (!self.package.as_os_str().is_empty()).then(|| self.package.join(file));
+            for path in std::iter::once(repo_path).chain(nested_path) {
+                if legacy_file(&root.join(&path), &[signature])? {
+                    changes.push(Change::remove(path, false));
+                }
             }
         }
         Ok(changes)
     }
 
-    fn bump(&self, version: &Version, changes: &mut Vec<Change>) -> Result<(), String> {
+    fn version_changes(&self, git: &Git, version: &Version) -> Result<Vec<Change>, String> {
         let version = version.to_string();
         let path = self.package.join(MANIFEST);
-        let mut mod_doc = read_toml(&self.root.join(&path))?;
+        let mut mod_doc = read_tracked_toml(git, &self.root, &path)?;
         internals::set_string(
             mod_doc["version"]
                 .as_value_mut()
                 .expect("parsed manifest version"),
             &version,
         );
-        changes.push(Change::write(path, mod_doc.to_string()));
+        let mut changes = vec![Change::write(path, mod_doc.to_string())];
         if self.manifest.native.is_none() {
-            return Ok(());
+            return Ok(changes);
         }
         let cargo_path = self.package.join("Cargo.toml");
         let lock_path = self.package.join("Cargo.lock");
-        let mut cargo = read_toml(&self.root.join(&cargo_path))?;
-        let mut lock = read_toml(&self.root.join(&lock_path))?;
+        let mut cargo = read_tracked_toml(git, &self.root, &cargo_path)?;
+        let mut lock = read_tracked_toml(git, &self.root, &lock_path)?;
         let package = cargo
             .get_mut("package")
             .and_then(|p| p.as_table_like_mut())
@@ -365,7 +375,7 @@ impl Project {
         internals::set_string(value, &version);
         changes.push(Change::write(cargo_path, cargo.to_string()));
         changes.push(Change::write(lock_path, lock.to_string()));
-        Ok(())
+        Ok(changes)
     }
 }
 
@@ -377,11 +387,23 @@ fn metadata(path: &Path) -> Result<Option<fs::Metadata>, String> {
     }
 }
 
-fn read_toml(path: &Path) -> Result<DocumentMut, String> {
+fn legacy_file(path: &Path, signatures: &[&str]) -> Result<bool, String> {
     if !metadata(path)?.is_some_and(|m| m.is_file()) {
-        return Err(format!("{}: expected a regular file", path.display()));
+        return Ok(false);
     }
-    fs::read_to_string(path)
+    let bytes = fs::read(path).map_err(|e| format!("{}: {e}", path.display()))?;
+    Ok(std::str::from_utf8(&bytes).is_ok_and(|text| signatures.iter().all(|&s| text.contains(s))))
+}
+
+fn read_tracked_toml(git: &Git, root: &Path, relative: &Path) -> Result<DocumentMut, String> {
+    let path = root.join(relative);
+    if !metadata(&path)?.is_some_and(|m| m.is_file()) || !git.tracked(root, relative)? {
+        return Err(format!(
+            "{} must be a committed regular file before releasing",
+            relative.display()
+        ));
+    }
+    fs::read_to_string(&path)
         .map_err(|e| format!("{}: {e}", path.display()))?
         .parse()
         .map_err(|e| format!("{}: {e}", path.display()))
@@ -394,8 +416,7 @@ struct Change {
 
 enum Kind {
     Write(String),
-    RemoveFile,
-    RemoveDir,
+    Remove { prune_parent: bool },
 }
 
 impl Change {
@@ -406,28 +427,42 @@ impl Change {
         }
     }
 
+    fn remove(path: PathBuf, prune_parent: bool) -> Self {
+        Self {
+            path,
+            kind: Kind::Remove { prune_parent },
+        }
+    }
+
     fn apply(&self, root: &Path) -> Result<(), String> {
         let path = root.join(&self.path);
-        let result = match &self.kind {
+        let parent = path.parent().expect("path in checkout");
+        match &self.kind {
             Kind::Write(text) => {
-                let parent = path.parent().expect("path in checkout");
                 fs::create_dir_all(parent).map_err(|e| format!("{}: {e}", parent.display()))?;
-                return internals::atomic_write(&path, text);
+                internals::atomic_write(&path, text)
             }
-            Kind::RemoveFile => fs::remove_file(&path),
-            Kind::RemoveDir => fs::remove_dir_all(&path),
-        };
-        match result {
-            Ok(()) => Ok(()),
-            Err(e) if e.kind() == ErrorKind::NotFound => Ok(()),
-            Err(e) => Err(format!("{}: {e}", path.display())),
+            Kind::Remove { prune_parent } => {
+                if let Err(e) = fs::remove_file(&path)
+                    && e.kind() != ErrorKind::NotFound
+                {
+                    return Err(format!("{}: {e}", path.display()));
+                }
+                if *prune_parent
+                    && let Err(e) = fs::remove_dir(parent)
+                    && !matches!(e.kind(), ErrorKind::NotFound | ErrorKind::DirectoryNotEmpty)
+                {
+                    return Err(format!("{}: {e}", parent.display()));
+                }
+                Ok(())
+            }
         }
     }
 
     fn describe(&self) {
         let verb = match self.kind {
             Kind::Write(_) => "Write",
-            Kind::RemoveFile | Kind::RemoveDir => "Remove",
+            Kind::Remove { .. } => "Remove",
         };
         println!("  {verb} {}", self.path.display());
     }
@@ -473,6 +508,18 @@ impl Git {
             .or_else(|| stdout.strip_suffix('\n'))
             .unwrap_or(&stdout)
             .to_owned())
+    }
+
+    fn tracked(&self, root: &Path, path: &Path) -> Result<bool, String> {
+        Ok(!self
+            .text(
+                root,
+                ["--literal-pathspecs", "ls-files", "--"]
+                    .map(OsStr::new)
+                    .into_iter()
+                    .chain(std::iter::once(path.as_os_str())),
+            )?
+            .is_empty())
     }
 
     fn clean(&self, root: &Path) -> Result<(), String> {
@@ -530,7 +577,10 @@ fn release(
     fetch: Fetch<'_>,
     check: impl FnOnce(&Path, &str) -> Result<(), String>,
 ) -> Result<(), String> {
-    if args == ["setup"] {
+    if let Some((command, rest)) = args.split_first()
+        && command == "setup"
+    {
+        Options::new("release setup", rest, &[]).finish()?;
         let project = Project::read(package, git)?;
         for change in project.workflow_changes(&workflow(fetch)?)? {
             change.apply(&project.root)?;
@@ -538,7 +588,7 @@ fn release(
         }
         return Ok(());
     }
-    let mut options = Options::new("release", args, &[]).usage(USAGE);
+    let mut options = Options::new("release", args, &[]);
     let preview = options.switch("--check");
     let requested = options.at_most_one()?.unwrap_or("patch");
     options.finish()?;
@@ -578,21 +628,18 @@ fn release(
             &branch,
         ],
     )?;
-    let mut upstream_head = None;
-    if let Some((remote_name, remote_ref)) = upstream
-        .split_once('\0')
-        .filter(|(name, r)| !name.is_empty() && !r.is_empty())
-    {
-        if remote_name != "origin" || remote_ref != branch {
-            let upstream =
-                git.text(root, ["ls-remote", "--refs", "--", remote_name, remote_ref])?;
-            upstream_head = upstream.split_once('\t').map(|(oid, _)| oid.to_owned());
+    let upstream_refs = match upstream.split_once('\0') {
+        Some((name, reference))
+            if !name.is_empty()
+                && !reference.is_empty()
+                && (name != "origin" || reference != branch) =>
+        {
+            git.text(root, ["ls-remote", "--refs", "--", name, reference])?
         }
-    }
-    for oid in [find_ref(&branch), upstream_head.as_deref()]
-        .into_iter()
-        .flatten()
-    {
+        _ => String::new(),
+    };
+    let upstream_head = upstream_refs.split_once('\t').map(|(oid, _)| oid);
+    for oid in [find_ref(&branch), upstream_head].into_iter().flatten() {
         let status = git
             .command(root)
             .args(["merge-base", "--is-ancestor", oid, &head])
@@ -605,7 +652,7 @@ fn release(
     }
 
     let mut changes = project.workflow_changes(&workflow(fetch)?)?;
-    project.bump(&version, &mut changes)?;
+    changes.extend(project.version_changes(git, &version)?);
 
     // The same check as CI sees the proposed version and tag, not the previous version.
     // Clone to a separate Git repository: the check can fetch an SDK and build native code,
@@ -651,19 +698,7 @@ fn release(
     let mut tracked = Vec::new();
     for change in &changes {
         let path = change.path.as_os_str();
-        if matches!(change.kind, Kind::Write(_))
-            || !git
-                .text(
-                    root,
-                    [
-                        OsStr::new("--literal-pathspecs"),
-                        OsStr::new("ls-files"),
-                        OsStr::new("--"),
-                        path,
-                    ],
-                )?
-                .is_empty()
-        {
+        if matches!(change.kind, Kind::Write(_)) || git.tracked(root, &change.path)? {
             tracked.push(path);
         }
         change.apply(root)?;

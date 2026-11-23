@@ -10,6 +10,8 @@
 //! - `internals add <path>… [--kind <kind>]`: declare internals from the prebuilt catalog.
 //! - `build [--update-lock]`: the `.smod` in `target/sunrise-mod/`, with the mod's `assets/`
 //!   and `data/`; a native mod is compiled first (`dev.rs`).
+//! - `release [<version>|patch|minor|major] [--check]`, `release setup`: prepare or publish a tagged
+//!   release using the registry's shared workflow (`author_release.rs`).
 //! - `publish`: build, then write the registry entry, the staged file and the pull request text (`publish.rs`).
 //! - `keygen`, `sign`: make an author-held Minisign key pair or sign a release asset (`signing.rs`).
 //! - `run [--game <sunrise-client>] [--resources <folder>] [--jars <dir>] [-- <game args>]`: build, then play with
@@ -997,6 +999,13 @@ mod tests {
             let project = workspace.path().join(template);
             new(&code_args(&project, template), &offline).unwrap();
             assert!(project.join("page/.gitkeep").is_file());
+            let caller =
+                std::fs::read_to_string(project.join(".github/workflows/sunrise-release.yml"))
+                    .unwrap();
+            assert!(caller.contains("tags: ['v*']"));
+            assert!(caller.contains(
+                "uses: sunrise-org/sunrise-mods/.github/workflows/release.yml@release-v1"
+            ));
             let manifest = Package::read(&project).unwrap().manifest;
             let (page, _) = Page::read(&project, &manifest).unwrap().unwrap();
             assert_eq!(

@@ -2,21 +2,24 @@
 
 ## Releasing
 
-Commit your mod's source, `page.toml` and screenshots (and `Cargo.lock` for a native mod).
-If your repository doesn't already have the Sunrise release workflow, run `cargo sunrise-mod release setup`
-from the mod's folder, then commit and push the changes. Register the repository at
-[Submit a mod](https://playsunrise.net/mods/submit) before your first release.
+Commit your mod's source, [`page.toml` and screenshots](#your-mods-page), and `Cargo.lock` for a native mod.
+`cargo sunrise-mod new` includes a release workflow for a new repository. If you're setting up an existing
+repository or a package in a subfolder, run `cargo sunrise-mod release setup` from the mod's folder. It writes
+only the workflow and removes the old copied Sunrise release files. Review, commit and push those changes,
+then register the repository at [Submit a mod](https://playsunrise.net/mods/submit).
 
-From the mod's folder on a clean branch:
+From the mod's folder on a clean branch that is up to date with its upstream:
 
 ```sh
+cargo sunrise-mod release patch --check
 cargo sunrise-mod release patch
 ```
 
-Use `minor`, `major`, or a higher SemVer instead of `patch` to choose another version. Add `--check`
-to run the release checks and preview the changes without touching your checkout. The release command
-refreshes the workflow, commits the version bump, and pushes the branch and a tag. GitHub Actions builds
-and attests the `.smod` and its page bundle; the registry bot submits them for review.
+Use `minor`, `major`, or a higher SemVer instead of `patch` to choose another version. `--check` runs the
+release checks for the proposed version without changing the checkout. Without it, `release` refreshes the
+workflow, commits the version bump, and pushes the branch and tag together to `origin`. The tag is `v<version>`
+at the repository root or `<id>/v<version>` for a subfolder package. GitHub Actions builds and attests both the
+`.smod` and its page bundle, with no signing key for you to manage. The registry bot submits them for review.
 
 ## The old registry
 
@@ -278,10 +281,10 @@ pin and the target commit. To describe the archives with `--describe-binaries`, 
 
 ## Tagged native releases in GitHub Actions
 
-New native projects include `.github/workflows/release.yml`, `.github/workflows/rebuild.yml`, a shared workflow
-and an action that verifies and installs the release tool. The repository does not carry the release scripts: every job extracts them
-from its verified tool with `cargo sunrise-mod release scripts`. Development still starts on Nightly. When
-you are ready to publish a stable version from GitHub:
+Older copies of the native template include `.github/workflows/release.yml`, `.github/workflows/rebuild.yml`,
+a shared workflow and an action that verifies and installs the release tool. Every job extracts the release
+scripts with `cargo sunrise-mod release scripts`. The following applies only to repositories still using those
+copied workflows; [Releasing](#releasing) uses the new shared workflow instead.
 
 1. Set `homepage` to your mod's GitHub repository and pin the mod to the commit of a stable Sunrise release.
    The tag you push must be `v` followed by the full version in `sunrise-mod.toml`, such as `v0.1.0`. Check in

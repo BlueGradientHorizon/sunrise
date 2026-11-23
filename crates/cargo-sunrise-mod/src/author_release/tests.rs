@@ -54,7 +54,8 @@ fn registry(url: &str) -> Result<Option<String>, String> {
         "https://raw.githubusercontent.com/sunrise-org/sunrise-mods/main/registry/watched.toml" => {
             WATCHED.into()
         }
-        "https://raw.githubusercontent.com/sunrise-org/sunrise-mods/main/registry/release-workflow.toml" => {
+        "https://raw.githubusercontent.com/sunrise-org/sunrise-mods/main/registry/release-workflow.toml" =>
+        {
             format!("uses = '{USES}'")
         }
         _ => panic!("unexpected URL: {url}"),
@@ -122,6 +123,7 @@ fn caller_matches_root_and_subfolder_workflow_contract() {
             .replace("path: .", "path: mods/example")
     );
     assert!(caller("example/", "mods/a: b", USES).ends_with("path: \"mods/a: b\"\n"));
+    assert!(caller("example/", ".nan", USES).ends_with("path: \".nan\"\n"));
 }
 
 #[test]
@@ -143,7 +145,11 @@ fn bumps_use_semver_precedence() {
 #[cfg(unix)]
 mod git_fixtures {
     use super::*;
+    use std::os::unix::fs::PermissionsExt;
     use tempfile::TempDir;
+
+    const OLD_RELEASE: &str =
+        "name: Release native mod\nuses: ./.github/actions/sunrise-release-tool\n";
 
     struct Repo {
         _dir: TempDir,
@@ -161,7 +167,11 @@ mod git_fixtures {
             fs::create_dir(&root).unwrap();
             // Keep the ordinary SSH GitHub URL while Git talks to the bare local test repository.
             let ssh = dir.path().join("ssh.sh");
-            fs::write(&ssh, "#!/bin/sh\ncommand=${2%% *}\nexec git \"${command#git-}\" \"$TEST_ORIGIN\"\n").unwrap();
+            fs::write(
+                &ssh,
+                "#!/bin/sh\ncommand=${2%% *}\nexec git \"${command#git-}\" \"$TEST_ORIGIN\"\n",
+            )
+            .unwrap();
             let git = Git {
                 env: vec![
                     ("GIT_CONFIG_GLOBAL", "/dev/null".into()),
@@ -227,18 +237,37 @@ mod git_fixtures {
     fn setup_refreshes_only_workflow_files_and_keeps_foreign_release() {
         let repo = Repo::new();
         repo.put("mods/example/sunrise-mod.toml", MOD);
-        let foreign = ".github/workflows/release.yml";
-        repo.put(foreign, "name: custom");
-        repo.put(".gitignore", "/target\n");
-        let obsolete = [
-            ".github/workflows/rebuild.yml",
-            ".github/workflows/sunrise-release-jobs.yml",
-            ".github/actions/sunrise-release-tool/action.yml",
-            "sunrise_release.py",
-            "mods/example/sunrise_release_github.py",
+        let release_workflow = ".github/workflows/release.yml";
+        let preserved = [
+            (release_workflow, "name: custom release"),
+            (".github/workflows/rebuild.yml", "name: rebuild my site"),
+            (
+                ".github/actions/sunrise-release-tool/notes.md",
+                "author notes",
+            ),
+            ("mods/example/sunrise_release.py", "print('author script')"),
+            (".gitignore", "/target\n"),
         ];
-        for path in obsolete {
-            repo.put(path, "old");
+        let obsolete = [
+            (
+                ".github/workflows/sunrise-release-jobs.yml",
+                "name: Build and publish a planned mod release\nuses: ./.github/actions/sunrise-release-tool",
+            ),
+            (
+                ".github/actions/sunrise-release-tool/action.yml",
+                "name: Install the verified Sunrise release tool\n# writes SUNRISE_RELEASE_SCRIPTS",
+            ),
+            (
+                "sunrise_release.py",
+                "\"\"\"Build, sign and stage a native mod release\"\"\"",
+            ),
+            (
+                "mods/example/sunrise_release_github.py",
+                "from sunrise_release import Batch",
+            ),
+        ];
+        for (path, text) in preserved.into_iter().chain(obsolete) {
+            repo.put(path, text);
         }
         repo.commit();
         repo.git(["remote", "remove", "origin"]);
@@ -247,15 +276,10 @@ mod git_fixtures {
             .unwrap();
         assert_eq!(repo.git(["rev-parse", "HEAD"]), head);
         assert!(repo.git(["tag", "--list"]).is_empty());
-        assert_eq!(
-            fs::read_to_string(repo.root.join(foreign)).unwrap(),
-            "name: custom"
-        );
-        assert_eq!(
-            fs::read_to_string(repo.root.join(".gitignore")).unwrap(),
-            "/target\n"
-        );
-        for path in obsolete {
+        for (path, text) in preserved {
+            assert_eq!(fs::read_to_string(repo.root.join(path)).unwrap(), text);
+        }
+        for (path, _) in obsolete {
             assert!(!repo.root.join(path).exists(), "{path}");
         }
         assert!(
@@ -266,10 +290,13 @@ mod git_fixtures {
             .unwrap()
             .ends_with("path: mods/example\n")
         );
-        repo.put(foreign, "uses: ./.github/actions/sunrise-release-tool");
+        repo.put(release_workflow, OLD_RELEASE);
+        let rebuild = ".github/workflows/rebuild.yml";
+        repo.put(rebuild, "name: Rebuild reviewed native mod source\nuses: ./.github/actions/sunrise-release-tool\n");
         repo.release("mods/example", &["setup"], refused_check)
             .unwrap();
-        assert!(!repo.root.join(foreign).exists());
+        assert!(!repo.root.join(release_workflow).exists());
+        assert!(!repo.root.join(rebuild).exists());
     }
 
     #[test]
@@ -319,7 +346,7 @@ mod git_fixtures {
         repo.commit();
         let head = repo.git(["rev-parse", "HEAD"]);
         let check = |package: &Path, tag: &str| {
-            assert_ne!(package, repo.root);
+            assert_ne!(package, repo.root.as_path());
             assert_eq!(tag, "v1.4.3");
             assert_eq!(read_manifest(package).unwrap().version.to_string(), "1.4.3");
             fs::write(package.join("compile-output"), "only in scratch").unwrap();
@@ -350,15 +377,20 @@ mod git_fixtures {
         repo.put("mods/example/sunrise-mod.toml", &format!("{MOD}{NATIVE}"));
         repo.put("mods/example/Cargo.toml", CARGO);
         repo.put("mods/example/Cargo.lock", LOCK);
-        repo.put(
-            ".github/workflows/release.yml",
-            "run: python sunrise_release.py",
-        );
+        repo.put(".github/workflows/release.yml", OLD_RELEASE);
         repo.commit();
         repo.git(["push", "-u", "origin", "main"]);
         repo.release("mods/example", &["minor"], |package, tag| {
             assert_eq!(tag, "example/v1.5.0");
             assert_eq!(read_manifest(package).unwrap().version.to_string(), "1.5.0");
+            assert_eq!(
+                fs::read_to_string(package.join("Cargo.toml")).unwrap(),
+                CARGO.replace("1.4.2", "1.5.0")
+            );
+            assert_eq!(
+                fs::read_to_string(package.join("Cargo.lock")).unwrap(),
+                LOCK.replace("1.4.2", "1.5.0")
+            );
             Ok(())
         })
         .unwrap();
@@ -387,5 +419,53 @@ mod git_fixtures {
             );
         }
         assert!(repo.git(["status", "--porcelain"]).is_empty());
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn release_refuses_an_ignored_native_lock() {
+        let repo = Repo::new();
+        repo.put(MANIFEST, &format!("{MOD}{NATIVE}"));
+        repo.put("Cargo.toml", CARGO);
+        repo.put(".gitignore", "/Cargo.lock\n");
+        repo.put("Cargo.lock", LOCK);
+        repo.commit();
+        let error = repo.release(".", &["--check"], refused_check).unwrap_err();
+        assert_eq!(
+            error,
+            "Cargo.lock must be a committed regular file before releasing"
+        );
+        assert!(repo.git(["status", "--porcelain"]).is_empty());
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn rejected_branch_push_does_not_publish_the_tag() {
+        let repo = Repo::new();
+        repo.put(MANIFEST, MOD);
+        repo.commit();
+        repo.git(["push", "-u", "origin", "main"]);
+        let old = repo.git(["rev-parse", "HEAD"]);
+        let hook = repo.bare.join("hooks/update");
+        fs::write(&hook, "#!/bin/sh\ntest \"$1\" != refs/heads/main\n").unwrap();
+        fs::set_permissions(&hook, fs::Permissions::from_mode(0o755)).unwrap();
+
+        let error = repo.release(".", &["patch"], |_, _| Ok(())).unwrap_err();
+        assert!(error.contains("remain local"), "{error}");
+        assert_eq!(
+            repo.git
+                .text(&repo.bare, ["rev-parse", "refs/heads/main"])
+                .unwrap(),
+            old
+        );
+        assert!(
+            repo.git
+                .text(&repo.bare, ["rev-parse", "--verify", "refs/tags/v1.4.3"])
+                .is_err()
+        );
+        assert_eq!(
+            repo.git(["rev-parse", "refs/tags/v1.4.3"]),
+            repo.git(["rev-parse", "HEAD"])
+        );
     }
 }
