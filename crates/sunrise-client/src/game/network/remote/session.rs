@@ -838,11 +838,6 @@ impl Game<'_> {
         entry: RemoteDimensionEntry,
         reason: sunrise_client::level_loading::Reason,
     ) {
-        // Every level has the sea level its server says (`CommonPlayerSpawnInfo.seaLevel`): the
-        // table may still hold a local world's (a superflat Overworld's).
-        if let Ok(key) = sunrise_core::LevelKey::parse(&spawn.dimension) {
-            sunrise_world::level::register_sea_level(key, spawn.sea_level);
-        }
         self.track_remote_levels(&spawn.dimension);
         // The replacement player starts with its inventory menu, even if the
         // server switched levels without closing the previous container.
@@ -872,6 +867,11 @@ impl Game<'_> {
             None
         };
         if !same {
+            // A new ClientLevel gets the sea level in CommonPlayerSpawnInfo. Respawning in
+            // the same level keeps the old ClientLevel, including its sea level.
+            if let Ok(key) = sunrise_core::LevelKey::parse(&spawn.dimension) {
+                sunrise_world::level::register_sea_level(key, spawn.sea_level);
+            }
             self.forget_all_remote_columns();
         }
         let adjust_mode = if matches!(

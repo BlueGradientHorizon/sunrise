@@ -3,6 +3,20 @@
 //! effects each tick and `Level.getSkyDarken` with `isDarkOutside`.
 use super::*;
 
+/// `ClientLevel.getPrecipitationAt`: a loaded column's biome and the level's sea level
+/// decide whether it snows, rains, or has no precipitation.
+pub(super) fn precipitation_at(
+    world: &World,
+    biomes: &Biomes,
+    pos: BlockPos,
+    sea_level: i32,
+) -> Option<bool> {
+    let chunk = world.chunks.get(&(pos.x >> 4, pos.z >> 4))?;
+    biomes
+        .get(chunk.biome(pos.x, pos.y, pos.z))
+        .snows_at(pos, sea_level)
+}
+
 impl Game<'_> {
     /// `Level.isDarkOutside`.
     pub(super) fn dark_outside(&self) -> bool {
@@ -57,23 +71,14 @@ impl Game<'_> {
         darken
     }
 
-    /// Whether precipitation at a column is snow (Biome.coldEnoughToSnow:
-    /// height adjusted temperature) or none (no precipitation).
-    pub(super) fn precipitation(&self, x: i32, y: i32, z: i32) -> Option<bool> {
-        let chunk = self.world.chunks.get(&(x >> 4, z >> 4))?;
-        self.res
-            .biomes()
-            .get(chunk.biome(x, y, z))
-            .snows_at(x, y, z)
-    }
-
     /// `Level.isRainingAt`: it rains, the sky light is 15, nothing that stops
     /// motion is above, and the biome's precipitation there is rain.
     pub(super) fn raining_at(&self, p: BlockPos) -> bool {
         self.weather_levels(1.0).0 > 0.2
             && self.world.light(p.x, p.y, p.z) >> 4 == 15
             && self.rain_height(p.x, p.z) <= p.y
-            && self.precipitation(p.x, p.y, p.z) == Some(false)
+            && precipitation_at(&self.world, world_biomes!(self), p, self.dim.sea_level())
+                == Some(false)
     }
 
     /// `getHeight(Heightmap.Types.MOTION_BLOCKING, x, z)`: one above the

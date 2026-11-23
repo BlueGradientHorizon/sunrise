@@ -147,12 +147,11 @@ impl BiomeInfo {
         }
         .height_adjusted(pos, sea_level)
     }
-    /// `Biome.getPrecipitationAt` in the Overworld (sea level 63): None
-    /// without precipitation, else whether it falls as snow
-    /// (`getHeightAdjustedTemperature` below 0.15).
-    pub fn snows_at(&self, x: i32, y: i32, z: i32) -> Option<bool> {
+    /// `Biome.getPrecipitationAt`: None without precipitation, otherwise whether
+    /// the temperature adjusted for the level's sea level is below 0.15 (snow).
+    pub fn snows_at(&self, pos: BlockPos, sea_level: i32) -> Option<bool> {
         self.precipitation
-            .then(|| self.temperature_at(BlockPos::new(x, y, z), 63) < 0.15)
+            .then(|| self.temperature_at(pos, sea_level) < 0.15)
     }
 }
 /// The game's biomes, by id. The built-in (vanilla) biomes come first, in

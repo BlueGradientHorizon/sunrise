@@ -265,6 +265,157 @@ fn a_joined_levels_synced_cloud_height_reaches_the_frame_under_its_own_pack_laye
     });
 }
 
+/// Cloud preparation and atmospheric fog read the synced attributes, not the skybox, while
+/// precipitation in a loaded column uses the joined level's sea level from the spawn packet.
+#[test]
+#[ignore = "daily"]
+fn client_clouds_fog_and_precipitation_follow_the_joined_level() {
+    use glam::DVec3;
+    use serde_json::json;
+    use sunrise_client::chunk::Chunk;
+    use sunrise_core::position::BlockPos;
+
+    let precipitation_at = |game: &Game<'_>, x, y| {
+        crate::game::weather::precipitation_at(
+            &game.world,
+            world_biomes!(game),
+            BlockPos::new(x, y, 0),
+            game.dim.sea_level(),
+        )
+    };
+    crate::game::in_own_process(
+        "game::remote::tests::client_level_environment_tests::client_clouds_fog_and_precipitation_follow_the_joined_level",
+        || {
+            with_client_game(|game| {
+                let mut ty = with_height("overworld", 192.33);
+                ty["timelines"] = json!([]);
+                ty["attributes"] = json!({
+                    "minecraft:visual/cloud_color": "#804db5ed",
+                    "minecraft:visual/fog_color": "#335580",
+                    "minecraft:visual/sky_color": "#2a4099",
+                    "minecraft:visual/sun_angle": 90.0,
+                    "minecraft:visual/sunrise_sunset_color": "#99df6619",
+                    "minecraft:visual/sky_fog_end_distance": 512.0,
+                });
+                let types = [
+                    ("test:overworld", "overworld"),
+                    ("test:none", "none"),
+                    ("test:end", "end"),
+                    ("test:near", "none"),
+                ]
+                .map(|(name, skybox)| {
+                    let mut ty = ty.clone();
+                    ty["skybox"] = json!(skybox);
+                    if name == "test:near" {
+                        ty["attributes"]["minecraft:visual/sky_fog_end_distance"] = json!(64.0);
+                    }
+                    (name, ty)
+                });
+                let (client, _server) = Pipe::pair();
+                game.connect_local(client, "ClientWeatherTest").unwrap();
+                send_types(game, &types);
+                game.settings.sunrise.fog = true;
+                let camera = DVec3::new(0.0, 64.0, 0.0);
+                let mut clouds = Vec::new();
+                let mut fog = Vec::new();
+                let mut precipitation = Vec::new();
+
+                for (index, (dimension, sea_level)) in [
+                    ("minecraft:overworld", 0),
+                    ("minecraft:the_nether", 63),
+                    ("minecraft:the_end", 120),
+                    ("test:near", 120),
+                ]
+                .into_iter()
+                .enumerate()
+                {
+                    let mut entered = spawn(index as i32, dimension);
+                    entered.sea_level = sea_level;
+                    if index == 0 {
+                        login(game, entered);
+                    } else {
+                        respawn(game, entered);
+                    }
+                    assert_eq!(game.overworld_skybox(), index == 0);
+                    assert_eq!(game.end_skybox(), index == 2);
+                    let sky = drawn(game);
+                    let mut transparent = sky;
+                    transparent.cloud_color[3] = 0.0;
+                    game.settings.clouds = "true".into();
+                    let enabled = game.frame_cloud_uv(false, &sky).is_some();
+                    let zero_alpha = game.frame_cloud_uv(false, &transparent).is_some();
+                    game.settings.clouds = "false".into();
+                    let off = game.frame_cloud_uv(false, &sky).is_some();
+                    clouds.push([enabled, zero_alpha, off]);
+
+                    let mut no_tint = sky;
+                    no_tint.sunrise_color[3] = 0.0;
+                    let mut sample = |forward, distance, sky, draws_sky| {
+                        game.view.forwards = [forward, 0.0, 0.0];
+                        game.streaming.radius = distance;
+                        game.settings.sunrise.sky = draws_sky;
+                        let f = game.frame_fog(camera, sky, 0, [0.0; 3]);
+                        let [r, g, b, _] = f.color;
+                        ([r, g, b].map(f32::to_bits), f.sky_end)
+                    };
+                    fog.push([
+                        sample(-1.0, 8, &sky, true),
+                        sample(-1.0, 8, &sky, false),
+                        sample(1.0, 8, &sky, true),
+                        sample(-1.0, 8, &no_tint, true),
+                        sample(-1.0, 3, &sky, true),
+                        sample(-1.0, 3, &no_tint, true),
+                    ]);
+
+                    if index < 3 {
+                        assert_eq!(precipitation_at(game, 16, 100), None);
+                        let biomes = world_biomes!(game);
+                        let taiga = biomes.id("minecraft:taiga");
+                        let desert = biomes.id("minecraft:desert");
+                        let mut chunk = Chunk::with_layout(0, 0, game.world.layout());
+                        for y in [100, 170] {
+                            chunk.set_biome_cell(0, (y - game.world.bottom_y()) >> 2, 0, taiga);
+                        }
+                        game.world.chunks.insert((0, 0), Arc::new(chunk.clone()));
+                        let taiga_100 = precipitation_at(game, 0, 100);
+                        let taiga_170 = precipitation_at(game, 0, 170);
+                        chunk.set_biome_cell(0, (100 - game.world.bottom_y()) >> 2, 0, desert);
+                        game.world.chunks.insert((0, 0), Arc::new(chunk));
+                        precipitation.push([taiga_100, taiga_170, precipitation_at(game, 0, 100)]);
+                        if index == 2 {
+                            // A same-level respawn keeps the existing ClientLevel's sea level.
+                            let mut same_level = spawn(index as i32, dimension);
+                            same_level.sea_level = 0;
+                            respawn(game, same_level);
+                            assert_eq!(precipitation_at(game, 0, 170), taiga_170);
+                        }
+                    }
+                }
+
+                assert_eq!(clouds, [[true, false, false]; 4]);
+                assert_eq!(fog[0], fog[1], "no skybox");
+                assert_eq!(fog[0], fog[2], "End skybox");
+                for [toward, sky_off, away, transparent, close, close_transparent] in &fog {
+                    assert_eq!(toward, sky_off);
+                    assert_ne!(toward.0, away.0);
+                    assert_eq!(away, transparent);
+                    assert_eq!(close, close_transparent);
+                }
+                assert_ne!(fog[0][0].0, fog[3][0].0, "sky fog distance changes the mix");
+                assert_eq!(fog[3][0].1, 64.0);
+                assert_eq!(
+                    precipitation,
+                    [
+                        [Some(true), Some(true), None],
+                        [Some(false), Some(true), None],
+                        [Some(false), Some(false), None],
+                    ]
+                );
+            })
+        },
+    );
+}
+
 /// A built-in level whose synchronized type is a mod's has no pack stack of its type: it draws
 /// the type as the server sent it, not the packs' Overworld.
 #[test]
