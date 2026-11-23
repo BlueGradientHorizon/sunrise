@@ -69,7 +69,7 @@ impl ChunkDiskData {
         let disk = checked.disk_only();
         let mut store = Attachments::from_nbt((*self.entries).clone());
         let value = apply(&disk, &mut store).map_err(refused)?;
-        let encoded = store.to_nbt();
+        let encoded = store.to_staged_nbt();
         // Mount the envelopes at their real depth in the saved record. The region writer's
         // write guard is not the reader's depth limit (vanilla NbtIo.write/read).
         let mut root = NamedTag {

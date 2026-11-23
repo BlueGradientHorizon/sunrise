@@ -207,6 +207,24 @@ pub trait AttachmentHost {
 // no wire: host-local erased Arc value; attachment values cross through their registered codec.
 pub type AttachmentValue = Arc<dyn Any + Send + Sync>;
 
+type PersistenceEncoder =
+    Arc<dyn Fn(&(dyn Any + Send + Sync)) -> Result<Compound, AttachmentError> + Send + Sync>;
+
+fn persistence_encoder<T: 'static>(
+    codec: AttachmentCodec<T>,
+    invoke: impl Fn(&dyn Fn() -> Result<Compound, AttachmentError>) -> Result<Compound, AttachmentError>
+    + Send
+    + Sync
+    + 'static,
+) -> PersistenceEncoder {
+    Arc::new(move |value| {
+        let value = value
+            .downcast_ref::<T>()
+            .ok_or(AttachmentError::TypeMismatch)?;
+        invoke(&|| (codec.encode)(value))
+    })
+}
+
 /// How a policy-checked type declared its value: what saving, respawning and syncing do with it.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 // no wire: local store metadata; disk and sync records carry their own flags.
@@ -261,6 +279,7 @@ pub struct AttachmentStoreWrite<'descriptor> {
     descriptor: &'descriptor (dyn Any + Send + Sync),
     engine_owned: bool,
     value: AttachmentValue,
+    persistence: Option<PersistenceEncoder>,
     form: AttachmentForm,
     promotion: Option<RawAttachment>,
 }
@@ -417,6 +436,7 @@ impl<H: AttachmentHost + ?Sized> AttachmentStore for H {
         {
             return Err(AttachmentError::Decode);
         }
+        let persistence = prepared.persistence.clone();
         let (
             _,
             value,
@@ -433,6 +453,7 @@ impl<H: AttachmentHost + ?Sized> AttachmentStore for H {
             name,
             Decoded {
                 value,
+                persistence,
                 encoded,
                 synced,
                 policy,
@@ -531,13 +552,29 @@ impl<T> AttachmentType<T> {
 // no wire: host-local checked descriptor with callback pointers; attachment calls cross by id and codec.
 pub struct CheckedAttachmentType<T: 'static> {
     raw: AttachmentType<T>,
+    persistence: Option<PersistenceEncoder>,
 }
 
 impl<T: 'static> CheckedAttachmentType<T> {
     /// Validate `raw`'s copy policy once.
     pub fn new(raw: AttachmentType<T>) -> Result<Self, AttachmentError> {
+        Self::with_persistence_boundary(raw, |encode| encode())
+    }
+
+    /// Install the owner's fence for save-time serializer calls on canonical values.
+    #[doc(hidden)]
+    pub fn with_persistence_boundary(
+        raw: AttachmentType<T>,
+        invoke: impl Fn(
+            &dyn Fn() -> Result<Compound, AttachmentError>,
+        ) -> Result<Compound, AttachmentError>
+        + Send
+        + Sync
+        + 'static,
+    ) -> Result<Self, AttachmentError> {
         raw.validate_policy()?;
-        Ok(Self { raw })
+        let persistence = raw.codec.map(|codec| persistence_encoder(codec, invoke));
+        Ok(Self { raw, persistence })
     }
     /// Borrow the underlying unchecked descriptor.
     pub fn as_type(&self) -> &AttachmentType<T> {
@@ -576,6 +613,7 @@ impl<T: 'static> CheckedAttachmentType<T> {
                 copy_on_death: self.raw.copy_on_death,
                 sync_codec: None,
             },
+            persistence: self.persistence.clone(),
         }
     }
     /// Borrow a value from an immutable attachment entry without re-running policy checks.
@@ -669,6 +707,14 @@ impl<T: 'static> AttachmentOps<'_, T> {
             Self::Checked(checked) => &checked.raw,
         }
     }
+    fn persistence(&self) -> Option<PersistenceEncoder> {
+        match self {
+            Self::Raw(raw) => raw
+                .codec
+                .map(|codec| persistence_encoder(codec, |encode| encode())),
+            Self::Checked(checked) => checked.persistence.clone(),
+        }
+    }
     fn validate<S: AttachmentStore + ?Sized>(&self, store: &mut S) -> Result<(), AttachmentError> {
         let raw = self.raw();
         match self {
@@ -747,6 +793,9 @@ impl<T: Send + Sync + 'static> AttachmentOps<'_, T> {
                 descriptor: raw,
                 engine_owned: matches!(self, Self::Raw(_)),
                 value: value.clone(),
+                persistence: (*kind == AttachmentRawKind::Saved)
+                    .then(|| self.persistence())
+                    .flatten(),
                 form,
                 promotion: Some(binding),
             },
@@ -835,6 +884,7 @@ impl<T: Send + Sync + 'static> AttachmentOps<'_, T> {
                 descriptor: raw,
                 engine_owned: matches!(self, Self::Raw(_)),
                 value,
+                persistence: self.persistence(),
                 form,
                 promotion: None,
             },
@@ -963,26 +1013,31 @@ impl<T: Clone + Send + Sync + 'static> AttachmentType<T> {
     }
 }
 
-/// A decoded value, its persistence encoding or original replica bytes, and its type's policy.
+/// A canonical value and its registered persistence encoder, separate from the
+/// prepared encoding for a disk proposal and from original client-replica bytes.
 struct Decoded {
     value: AttachmentValue,
+    persistence: Option<PersistenceEncoder>,
     encoded: Option<Compound>,
     synced: Option<Compound>,
     policy: AttachmentPolicy,
 }
 
-/// The saved form of a decoded value: its persistence encoding and the copy-on-death policy
-/// it was declared with. `None` when the type has no persistence codec.
-fn envelope(value: &Decoded) -> Option<Compound> {
-    value.encoded.as_ref().map(|encoded| {
-        let mut envelope = Compound::new();
-        envelope.insert("value".into(), Tag::Compound(encoded.clone()));
-        if value.policy.copy_on_death {
-            envelope.insert("copy_on_death".into(), Tag::Byte(1));
-        }
-        envelope
-    })
+impl Decoded {
+    fn encode_current(&self) -> Option<Compound> {
+        self.persistence.as_ref()?.as_ref()(self.value.as_ref()).ok()
+    }
 }
+
+fn envelope(encoded: Compound, copy_on_death: bool) -> Compound {
+    let mut envelope = Compound::new();
+    envelope.insert("value".into(), Tag::Compound(encoded));
+    if copy_on_death {
+        envelope.insert("copy_on_death".into(), Tag::Byte(1));
+    }
+    envelope
+}
+
 fn raw_value(raw: &Compound) -> Option<&Compound> {
     static VALUE: LazyLock<JavaString> = LazyLock::new(|| "value".into());
     match raw.get(&VALUE) {
@@ -1408,21 +1463,42 @@ impl Attachments {
             }
         }
     }
-    /// Encode changed values, preserving raw entries and unrecognized tags.
+    /// Whether a save must run a live codec before handing the immutable record to a worker.
+    pub fn has_live_persistence(&self) -> bool {
+        self.entries.values().any(
+            |entry| matches!(&entry.state, Entry::Decoded(value) if value.persistence.is_some()),
+        )
+    }
+
+    /// Save canonical objects with their persistence codec. Unread entries and
+    /// unrecognized tags stay as received; replica-only values are not saved.
     pub fn to_nbt(&self) -> Compound {
+        self.saved_nbt(Decoded::encode_current)
+    }
+
+    /// The staged disk edit already ran its codec; publish that validated proposal
+    /// rather than invoking the codec a second time.
+    #[doc(hidden)]
+    pub fn to_staged_nbt(&self) -> Compound {
+        self.saved_nbt(|value| value.encoded.clone())
+    }
+
+    fn saved_nbt(&self, encode: impl Fn(&Decoded) -> Option<Compound>) -> Compound {
         let mut raw = self.raw.as_deref().cloned().unwrap_or_default();
         for ((namespace, name), entry) in &self.entries {
             let value = match &entry.state {
                 Entry::Raw {
-                    saved,
                     kind: AttachmentRawKind::Saved,
+                    saved,
                     ..
                 } => Some(saved.clone()),
                 Entry::Raw {
                     kind: AttachmentRawKind::Synced,
                     ..
-                } => None,
-                Entry::Decoded(value) => envelope(value),
+                } => continue,
+                Entry::Decoded(decoded) => {
+                    encode(decoded).map(|value| envelope(value, decoded.policy.copy_on_death))
+                }
             };
             if let Some(value) = value {
                 let tag = raw
@@ -1432,6 +1508,8 @@ impl Attachments {
                     unreachable!("attachment namespace checked before mutation");
                 };
                 names.insert(name.clone(), Tag::Compound(value));
+            } else if let Some(Tag::Compound(names)) = raw.get_mut(namespace) {
+                names.remove(name);
             }
         }
         raw
@@ -1474,7 +1552,9 @@ impl Attachments {
                 Entry::Decoded(value)
                     if !is_death || current.unwrap_or(value.policy.copy_on_death) =>
                 {
-                    envelope(value)
+                    value.encode_current().map(|encoded| {
+                        envelope(encoded, current.unwrap_or(value.policy.copy_on_death))
+                    })
                 }
                 _ => None,
             };
@@ -2335,6 +2415,43 @@ mod tests {
             holder.take_sync_changes(project_type(&key)),
             [change("live", Some(42))]
         );
+    }
+
+    #[test]
+    fn saved_and_copied_values_encode_interior_mutation_through_a_loan() {
+        use std::sync::atomic::{AtomicU32, Ordering};
+        let key = CheckedAttachmentType::new(AttachmentType {
+            namespace: "test",
+            name: "atomic",
+            default: || AtomicU32::new(7),
+            codec: Some(AttachmentCodec {
+                encode: |value| {
+                    Ok([("n".into(), Tag::Int(value.load(Ordering::Relaxed) as i32))].into())
+                },
+                decode: |tag| match tag.get(&"n".into()) {
+                    Some(Tag::Int(value)) => Ok(AtomicU32::new(*value as u32)),
+                    _ => Err(AttachmentError::Decode),
+                },
+            }),
+            copy_on_death: true,
+            sync_codec: None,
+        })
+        .unwrap();
+        let mut holder = Attachments::default();
+        assert_eq!(
+            key.get(&mut holder, Holder::Level, |value| value
+                .swap(42, Ordering::Relaxed)),
+            Ok(7)
+        );
+        let mut saved = Attachments::from_nbt(holder.to_nbt());
+        let mut copied = holder.copy_on_death(|_, _| None);
+        for replacement in [&mut saved, &mut copied] {
+            assert_eq!(
+                key.get_existing(replacement, Holder::Level, |value| value
+                    .map(|value| value.load(Ordering::Relaxed))),
+                Ok(Some(42))
+            );
+        }
     }
 
     #[test]

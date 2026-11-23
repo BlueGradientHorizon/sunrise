@@ -177,7 +177,7 @@ impl SaveDir {
     ) -> Result<()> {
         if !records.is_empty() {
             // Run snapshot callbacks before publishing pending records or taking writer locks.
-            let records = if self.disk.get().is_some() {
+            let records = if folder == Folder::Region {
                 records
                     .into_iter()
                     .map(|(key, record)| (key, self.capture_disk_record(record)))

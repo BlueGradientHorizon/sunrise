@@ -76,7 +76,9 @@ decodes a saved or synced value. The read returns only what the closure projects
 copy or clone the data you need beyond the call. Reads and `set` need
 `T: Send + Sync + 'static`; `remove` also needs `Clone` to return the previous value. `set` runs the optional persistence codec
 before changing the value, returning an `AttachmentError` if persistence encoding
-fails. The sync codec runs only when there is a value to send to tracking clients.
+fails. Saving and serialized copies encode the current canonical object, including
+changes made through its interior mutability; unread saved entries remain opaque.
+The sync codec runs only when there is a value to send to tracking clients.
 Keys are identified by `(namespace, name)` and bound to the installation that
 issued them; a key already decoded as another Rust type is an error, and a key
 from an earlier installation fails with `AttachmentError::StaleKey`. On a server,

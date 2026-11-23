@@ -1301,7 +1301,29 @@ pub fn encode_with(
     shape: LevelShape,
     items: &crate::items::Items,
 ) -> NamedTag {
-    encode_full(chunk, registry, biomes, tables, shape, items, true)
+    encode_full(
+        chunk,
+        registry,
+        biomes,
+        tables,
+        shape,
+        items,
+        ChunkEncodingEdits::default(),
+    )
+}
+
+struct ChunkEncodingEdits<'a> {
+    block_entities: bool,
+    attachments: Option<&'a Compound>,
+}
+
+impl Default for ChunkEncodingEdits<'_> {
+    fn default() -> Self {
+        Self {
+            block_entities: true,
+            attachments: None,
+        }
+    }
 }
 
 fn encode_full(
@@ -1311,7 +1333,7 @@ fn encode_full(
     tables: Option<&SaveTables>,
     shape: LevelShape,
     items: &crate::items::Items,
-    apply_block_entity_edits: bool,
+    edits: ChunkEncodingEdits<'_>,
 ) -> NamedTag {
     let sky_light = shape.sky_light;
     let mut sections = Vec::new();
@@ -1467,7 +1489,7 @@ fn encode_full(
                 },
                 items,
                 |_| {
-                    if apply_block_entity_edits {
+                    if edits.block_entities {
                         extras?.block_entity_save_edits.as_ref()?.get(p).cloned()
                     } else {
                         None
@@ -1608,10 +1630,11 @@ fn encode_full(
         put(&mut root, key, value);
     }
     if let Some(Tag::Compound(map)) = Some(&mut root) {
-        if let Some(extras) = extras
-            && attachment_compound(map.get(&ATTACHMENTS_KEY.into())).is_ok()
-        {
-            let attachments = extras.attachments.to_nbt();
+        if let Some(attachments) = edits.attachments.cloned().or_else(|| {
+            let extras = extras?;
+            attachment_compound(map.get(&ATTACHMENTS_KEY.into())).ok()?;
+            Some(extras.attachments.to_nbt())
+        }) {
             if attachments.is_empty() {
                 map.remove(&ATTACHMENTS_KEY.into());
             } else {
@@ -1884,7 +1907,30 @@ pub fn encode_proto(
     shape: LevelShape,
     items: &crate::items::Items,
 ) -> NamedTag {
-    let mut root = encode_with(&proto.column, registry, biomes, tables, shape, items);
+    encode_proto_with_attachments(proto, registry, biomes, tables, shape, items, None)
+}
+
+fn encode_proto_with_attachments(
+    proto: &SavedProto,
+    registry: &BlockRegistry,
+    biomes: &Biomes,
+    tables: Option<&SaveTables>,
+    shape: LevelShape,
+    items: &crate::items::Items,
+    attachments: Option<&Compound>,
+) -> NamedTag {
+    let mut root = encode_full(
+        &proto.column,
+        registry,
+        biomes,
+        tables,
+        shape,
+        items,
+        ChunkEncodingEdits {
+            block_entities: true,
+            attachments,
+        },
+    );
     let status = if proto.decorated {
         ChunkStatus::Features
     } else {

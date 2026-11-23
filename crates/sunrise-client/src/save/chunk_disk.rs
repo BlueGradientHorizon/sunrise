@@ -65,11 +65,10 @@ impl DiskRecord {
             .get_or_init(|| {
                 // Cache the encoded record so pending readers share the writer's outcome.
                 super::compression_pool::catch_encoding_panic(|| {
-                    let mut tag = self.original.tag_for_write().ok_or_else(|| {
-                        std::io::Error::other("captured chunk has no disk record")
-                    })?;
-                    replace_entries(Arc::make_mut(&mut tag), self.entries.clone())?;
-                    Ok(Some(tag))
+                    self.original
+                        .encode_tag(true, Some(&self.entries))
+                        .map(Some)
+                        .ok_or_else(|| std::io::Error::other("captured chunk has no disk record"))
                 })
                 .map_err(|e| e.to_string())
             })
@@ -78,9 +77,7 @@ impl DiskRecord {
     }
 
     pub(super) fn without_block_entity_edits(&self) -> Option<Arc<NamedTag>> {
-        let mut tag = self.original.without_block_entity_edits()?;
-        replace_entries(Arc::make_mut(&mut tag), self.entries.clone()).ok()?;
-        Some(tag)
+        self.original.stored_block_entities(Some(&self.entries))
     }
 
     // Readers may wait for the owning writer, but never execute save callbacks.
@@ -98,18 +95,6 @@ pub(super) fn encode_record(record: &Record) -> std::io::Result<Option<Arc<Named
         Some(record) => record.encode(),
         None => Ok(record.tag_for_write()),
     }
-}
-
-fn replace_entries(tag: &mut NamedTag, entries: Compound) -> std::io::Result<()> {
-    let Tag::Compound(root) = &mut tag.tag else {
-        return Err(std::io::Error::other("invalid chunk root"));
-    };
-    if entries.is_empty() {
-        root.remove(&ATTACHMENTS_KEY.into());
-    } else {
-        root.insert(ATTACHMENTS_KEY.into(), Tag::Compound(entries));
-    }
-    Ok(())
 }
 
 impl SaveDir {
@@ -142,16 +127,17 @@ impl SaveDir {
             Record::Proto(proto, ..) => (&proto.column, ChunkDiskKind::Proto),
             _ => return record,
         };
-        if !mod_api::__private::listened(mod_api::HookId::ChunkDataSave) {
-            return record;
-        }
-        let Some(runtime) = self.disk.get() else {
+        let entries = if let Some(runtime) = self.disk.get()
+            && let Some(job) = runtime.capture(chunk, kind, ChunkDiskPhase::Save)
+        {
+            runtime.run(&job)
+        } else if let Some(extras) = &chunk.saved
+            && extras.attachments.has_live_persistence()
+        {
+            extras.attachments.to_nbt()
+        } else {
             return record;
         };
-        let Some(job) = runtime.capture(chunk, kind, ChunkDiskPhase::Save) else {
-            return record;
-        };
-        let entries = runtime.run(&job);
         Record::Disk(Arc::new(DiskRecord {
             original: record,
             entries,
@@ -207,17 +193,20 @@ impl SaveDir {
                         let key = (chunk.x, chunk.z);
                         let tag = compression_pool::catch_encoding_panic(|| {
                             let blending = self.calculated_blending(chunk.x, chunk.z);
-                            let mut tag = encode_saved(
+                            let mut tag = encode_full(
                                 chunk,
                                 registry,
                                 biomes,
                                 self.tables.get().map(|t| &**t),
                                 self.shape,
-                                blending.as_deref(),
                                 items,
+                                ChunkEncodingEdits {
+                                    block_entities: true,
+                                    attachments: entries.as_ref(),
+                                },
                             );
-                            if let Some(entries) = entries {
-                                replace_entries(&mut tag, entries)?;
+                            if let Some(blending) = blending {
+                                put_calculated_blending(&mut tag, &blending);
                             }
                             Ok(tag)
                         });

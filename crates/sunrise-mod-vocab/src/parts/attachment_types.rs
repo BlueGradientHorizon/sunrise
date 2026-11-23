@@ -199,14 +199,26 @@ impl<T: Send + Sync + 'static> From<AttachmentDescriptor<T>> for ErasedAttachmen
             if let Some(error) = descriptor.refusal {
                 return Err(error);
             }
-            let checked = CheckedAttachmentType::new(AttachmentType {
-                namespace,
-                name,
-                default: descriptor.default,
-                codec: descriptor.codec,
-                copy_on_death: descriptor.copy_on_death,
-                sync_codec: descriptor.sync_codec,
-            })?;
+            let poisoned = AtomicBool::new(false);
+            let checked = CheckedAttachmentType::with_persistence_boundary(
+                AttachmentType {
+                    namespace,
+                    name,
+                    default: descriptor.default,
+                    codec: descriptor.codec,
+                    copy_on_death: descriptor.copy_on_death,
+                    sync_codec: descriptor.sync_codec,
+                },
+                move |encode| {
+                    crate::runtime::invoke_registered_codec(
+                        owner,
+                        "attachment_save",
+                        &poisoned,
+                        || encode().map_err(|error| format!("{id}: {error:?}")),
+                    )
+                    .map_err(|_| AttachmentError::Encode)
+                },
+            )?;
             Ok(Arc::new(AttachmentRegistration { id, owner, checked })
                 as Arc<dyn Any + Send + Sync>)
         });
