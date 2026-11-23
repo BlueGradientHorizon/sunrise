@@ -936,7 +936,8 @@ mod tests {
         };
         for text in [title, value] {
             let bytes = nbt::write_network(text, nbt::Limits::unlimited_heap()).unwrap();
-            assert!(nbt::read_network(&bytes, nbt::Limits::network()).is_err());
+            // Vanilla's network NbtAccounter (2 MiB, two bytes per string unit) refuses it.
+            assert!(Tag::from_network_bytes(&bytes, None).is_err());
             assert!(matches!(text.get("extra"), Some(Tag::List(children)) if children.len() == 19));
         }
     }
