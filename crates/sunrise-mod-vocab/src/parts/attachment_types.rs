@@ -328,6 +328,16 @@ impl RegisteredAttachment {
             .map_err(|_| AttachmentError::TypeMismatch)
     }
 
+    fn key_for<T: Send + Sync + 'static>(
+        &self,
+        id: &str,
+    ) -> Result<AttachmentKey<T>, AttachmentError> {
+        if self.id != id {
+            return Err(AttachmentError::RegistrationMismatch);
+        }
+        self.downcast_key::<T>()
+    }
+
     pub(crate) fn project_sync(
         &self,
         input: AttachmentSyncInput<'_>,
@@ -662,10 +672,11 @@ impl dyn Registrar + '_ {
         &mut self,
         descriptor: AttachmentDescriptor<T>,
     ) -> Result<AttachmentKey<T>, String> {
+        let id = descriptor.id();
         let record = self.submit_attachment(descriptor.into())?;
-        Ok(record
-            .downcast_key::<T>()
-            .expect("submitted descriptor carries type T"))
+        record
+            .key_for::<T>(id)
+            .map_err(|error| format!("attachment {id}: {error:?}"))
     }
 
     /// Look up a typed [`AttachmentKey<T>`] registered earlier in this pass (for example by a
@@ -673,11 +684,13 @@ impl dyn Registrar + '_ {
     ///
     /// Returns [`AttachmentError::Undeclared`] if `id` has not been registered yet and
     /// [`AttachmentError::TypeMismatch`] if `id` was registered with a different Rust type `T`.
+    /// A custom registrar that returns a record for another ID is refused with
+    /// [`AttachmentError::RegistrationMismatch`].
     pub fn attachment_key<T: Send + Sync + 'static>(
         &self,
         id: &str,
     ) -> Result<AttachmentKey<T>, AttachmentError> {
-        self.lookup_attachment(id)?.downcast_key::<T>()
+        self.lookup_attachment(id)?.key_for::<T>(id)
     }
 }
 
@@ -854,6 +867,21 @@ mod tests {
         fn attachments(&mut self) -> &mut dyn AttachmentStore {
             &mut self.0
         }
+    }
+
+    #[test]
+    fn registrar_reply_must_match_both_requested_id_and_type() {
+        let (record, key) =
+            registered_attachment_fixture("demo", AttachmentDescriptor::new("demo:a", || 1u32));
+        assert_eq!(record.key_for::<u32>("demo:a"), Ok(key));
+        assert_eq!(
+            record.key_for::<i64>("demo:a"),
+            Err(AttachmentError::TypeMismatch)
+        );
+        assert_eq!(
+            record.key_for::<u32>("demo:b"),
+            Err(AttachmentError::RegistrationMismatch)
+        );
     }
 
     #[test]

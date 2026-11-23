@@ -101,6 +101,8 @@ pub enum AttachmentError {
     MissingHolder,
     /// The key was used with a different Rust type.
     TypeMismatch,
+    /// The registrar returned a registration for a different attachment ID.
+    RegistrationMismatch,
     /// The saved value could not be decoded.
     Decode,
     /// The value could not be encoded.
