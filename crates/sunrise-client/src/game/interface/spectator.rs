@@ -208,8 +208,8 @@ mod tests {
                         .position(|t| t.name.plain() == "hidden")
                         .expect("hidden team present");
                     assert_eq!(shown_teams[hidden_slot].icon, "entity/player/slim/ari");
-                    teams.select_slot(hidden_slot);
-                    teams.select_slot(hidden_slot);
+                    teams.select_slot(hidden_slot as i32);
+                    teams.select_slot(hidden_slot as i32);
                     assert!(matches!(teams.item(0), Item::Player(p) if p.uuid == UNLISTED));
                     assert_eq!(teams.item(1), Item::Empty);
                     assert_eq!(teams.select_slot(0), Outcome::None);
