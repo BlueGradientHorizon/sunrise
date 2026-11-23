@@ -146,6 +146,8 @@ enum LentBody<'a> {
         effects: &'a crate::effects::PlayerEffects,
         equipment: PlayerEquipment<'a>,
     },
+    /// A guest not in place, read from its hub record: lent for its reads, not its random.
+    Parked(&'a crate::lan::guest::Guest),
 }
 /// Whether any native mod listens to a hook whose host is a `HitHost`. A site looks up its
 /// attacker only then; without one nothing is looked up, borrowed or drawn.
@@ -185,6 +187,13 @@ impl<'a> HitLend<'a> {
             },
         })
     }
+    /// The guest `conn` of `hub`, which is not in place: its record, for reading only. The caller
+    /// names a guest the `LivingRef` reads resolve to its hub record at this moment.
+    pub fn parked_guest(hub: Option<&'a crate::lan::hub::Hub>, conn: u32) -> Option<Self> {
+        Some(Self {
+            body: LentBody::Parked(hub?.guest(conn)?),
+        })
+    }
     /// The mob among `mobs` with id `attacker`, if it is there to borrow and the hit's
     /// subscription decision (`listened`, [`hit_host_listened`]) is to lend.
     pub fn attacking_mob(
@@ -199,20 +208,20 @@ impl<'a> HitLend<'a> {
         match &self.body {
             LentBody::Mob(mob) => mob.id as i32,
             LentBody::Player { motion, .. } => motion.entity_id,
+            LentBody::Parked(guest) => guest.entity_id,
         }
     }
-    fn position(&self) -> [f64; 3] {
-        let position = match &self.body {
-            LentBody::Mob(mob) => mob.position,
-            LentBody::Player { motion, .. } => motion.position,
+    /// The lent entity's position and own random, for its sounds and draws; none for a parked
+    /// guest, whose random the hit does not hold.
+    fn position_and_random(
+        &mut self,
+    ) -> Option<([f64; 3], &mut sunrise_core::random::LegacyRandom)> {
+        let (position, random) = match &mut self.body {
+            LentBody::Mob(mob) => (mob.position, &mut mob.random),
+            LentBody::Player { motion, .. } => (motion.position, &mut *motion.random),
+            LentBody::Parked(_) => return None,
         };
-        [position.x, position.y, position.z]
-    }
-    fn random(&mut self) -> &mut sunrise_core::random::LegacyRandom {
-        match &mut self.body {
-            LentBody::Mob(mob) => &mut mob.random,
-            LentBody::Player { motion, .. } => &mut motion.random,
-        }
+        Some(([position.x, position.y, position.z], random))
     }
     fn body(&self) -> LivingBody<'_> {
         match &self.body {
@@ -228,7 +237,9 @@ impl<'a> HitLend<'a> {
                 attributes: Some(&motion.attributes),
                 effects: Some(effects),
                 equipment: *equipment,
+                attachments: None,
             }),
+            LentBody::Parked(guest) => LivingBody::Player(PlayerBody::of_record(guest)),
         }
     }
     fn reborrow(&mut self) -> HitLend<'_> {
@@ -244,6 +255,7 @@ impl<'a> HitLend<'a> {
                     effects,
                     equipment: *equipment,
                 },
+                LentBody::Parked(guest) => LentBody::Parked(guest),
             },
         }
     }
@@ -324,7 +336,9 @@ impl<'a> HitEffects<'a> {
         }
         let lent = self.lent.as_mut()?;
         let id = lent.id();
-        (i32::try_from(entity.id()).ok()? == id).then(|| (id, lent.position(), lent.random()))
+        (i32::try_from(entity.id()).ok()? == id).then_some(())?;
+        let (position, random) = lent.position_and_random()?;
+        Some((id, position, random))
     }
     /// The body of the entity the hit lends, for its reads; none where it lends none.
     pub fn lent_body(&self) -> Option<LivingBody<'_>> {
@@ -378,6 +392,55 @@ pub struct PlayerBody<'a> {
     pub effects: Option<&'a crate::effects::PlayerEffects>,
     /// The stacks in vanilla `EquipmentSlot` order.
     pub equipment: PlayerEquipment<'a>,
+    /// The player's attachments, where the body keeps them apart from the player in place's
+    /// (a parked guest's hub row); none for the player in place.
+    pub attachments: Option<&'a sunrise_mod_runtime::attachments::Attachments>,
+}
+impl<'a> PlayerBody<'a> {
+    /// A guest's body as its hub record keeps it while the guest is not in place: its stored
+    /// health, the attributes of its body, its effects, stacks and attachments.
+    pub fn of_record(g: &'a crate::lan::guest::Guest) -> Self {
+        Self {
+            id: g.entity_id,
+            uuid: Some(g.uuid),
+            health: PlayerHealthRead::Record {
+                health: &g.health,
+                body: g.motion.as_deref().map(|m| &m.health),
+                saved_absorption: &g.saved_absorption,
+            },
+            attributes: g.motion.as_deref().map(|m| &m.attributes),
+            effects: Some(&g.effects),
+            equipment: player_equipment(
+                &g.inventory,
+                g.selected,
+                &g.armor,
+                &g.offhand,
+                &g.equipment,
+            ),
+            attachments: Some(&g.attachments),
+        }
+    }
+}
+/// A player's stacks in vanilla `EquipmentSlot` order, from its inventory, armour (head first)
+/// and off hand.
+pub fn player_equipment<'a>(
+    inventory: &'a [Option<ItemStack>],
+    selected: usize,
+    armor: &'a [Option<ItemStack>; 4],
+    offhand: &'a Option<ItemStack>,
+    equipment: &'a sunrise_items::equipment::Equipment,
+) -> PlayerEquipment<'a> {
+    use sunrise_items::equipment::{BODY, SADDLE};
+    [
+        inventory.get(selected).and_then(Option::as_ref),
+        offhand.as_ref(),
+        armor[3].as_ref(),
+        armor[2].as_ref(),
+        armor[1].as_ref(),
+        armor[0].as_ref(),
+        equipment.get(BODY),
+        equipment.get(SADDLE),
+    ]
 }
 /// The registry keys of the living types that are not mob types (`EntityType.PLAYER`,
 /// `ARMOR_STAND`, `ENDER_DRAGON`), resolved with the accepted resources, as a mob type keeps its
@@ -590,6 +653,14 @@ impl<'a> DamageLevel<'a> {
             victim: None,
             causing: 0,
         }
+    }
+    /// The same level, whose hit lends `lend` (its causing entity) to its listeners, where the
+    /// level carries what a hit lends at all ([`Self::with_effects`]).
+    pub fn lending(mut self, lend: Option<HitLend<'a>>) -> Self {
+        if let Some(effects) = self.effects.as_mut() {
+            effects.lent = lend;
+        }
+        self
     }
     /// Lend the UUID owner when mobs can start attacks inside this borrow.
     pub fn with_mob_uuids(mut self, uuids: &'a std::collections::HashMap<u32, [i32; 4]>) -> Self {
@@ -2437,6 +2508,7 @@ fn player_hook_level<'b>(
             attributes: Some(body.attributes),
             effects: reads.and_then(|reads| reads.player_effects),
             equipment: reads.map_or([None; 8], |reads| reads.player_equipment),
+            attachments: None,
         })
     });
     let level = level.reborrow();

@@ -898,20 +898,21 @@ impl mod_api::AttachmentHost for super::native_hooks::HitLevel<'_> {
         holder: mod_api::Holder,
     ) -> Option<Result<Option<&mod_api::Attachments>, mod_api::AttachmentError>> {
         use mod_api::__private::LivingParty;
-        let lent = [LivingParty::Victim, LivingParty::Causing]
+        let body = [LivingParty::Victim, LivingParty::Causing]
             .into_iter()
-            .any(|party| {
+            .find_map(|party| {
                 self.party_body(party)
-                    .and_then(super::native_living_body::body_holder)
-                    == Some(holder)
-            });
-        if !lent {
-            return None;
-        }
+                    .filter(|&body| super::native_living_body::body_holder(body) == Some(holder))
+            })?;
         let reads = self.0.reads()?;
-        Some(Ok(match holder {
-            mod_api::Holder::Entity(id) => reads.entity_attachments.and_then(|maps| maps.get(&id)),
-            mod_api::Holder::Player(_) => reads.player_attachments,
+        Some(Ok(match (holder, body) {
+            (mod_api::Holder::Entity(id), _) => {
+                reads.entity_attachments.and_then(|maps| maps.get(&id))
+            }
+            // A parked guest's map is its hub row's; the player in place's is the game's.
+            (mod_api::Holder::Player(_), sunrise_client::health::LivingBody::Player(player)) => {
+                player.attachments.or(reads.player_attachments)
+            }
             _ => None,
         }))
     }
