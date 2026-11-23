@@ -902,7 +902,11 @@ mod tests {
         let mut rider = of(72, Species::Skeleton);
         rider.extra.mount = Some(vehicle.id);
         vehicle.extra.rider = Some(rider.id);
-        std::sync::Arc::make_mut(&mut rider.kind).id = "test:custom_rider".into();
+        let custom = std::sync::Arc::make_mut(&mut rider.kind);
+        custom.id = "test:custom_rider".into();
+        // Its place in the one-type registry the tags below bind, as a content type's is set
+        // at load; in the resource world's registry that slot is a type outside the tag.
+        custom.flags.entity_tag_slot = Some(0);
         let retained = [rider.seen(None, &crate::items::Items::empty())];
         let root = std::env::var_os("SUNRISE_TEST_RESOURCES").expect("prepared resources required");
         assert!(crate::mobs::world::with_resource_test_world(
