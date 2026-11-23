@@ -20,9 +20,42 @@ impl Game<'_> {
                 .iter()
                 .find(|m| m.id == id)
                 .map_or_else(String::new, |m| m.command_name().plain()),
+            Target::Bolt(id) => self.bolt_plain_name(id).plain(),
             // No other entity's name is team-formatted.
             other => self.target_name(other).plain(),
         }
+    }
+    pub(in crate::game) fn bolt_plain_name(&self, id: u32) -> Text {
+        if let Some(name) = self
+            .bolts
+            .iter()
+            .find(|b| b.id == id)
+            .and_then(|b| b.custom_name.as_ref())
+        {
+            return sunrise_client::entity_nbt::name_text(name);
+        }
+        Text::translate("entity.minecraft.lightning_bolt", &[])
+    }
+    /// `Entity.getDisplayName` for a live lightning bolt: validated `CustomName`
+    /// or type name, formatted with its team, plus `show_entity` hover and UUID insertion.
+    pub(in crate::game) fn bolt_command_name(&self, id: u32) -> Text {
+        let name = self.bolt_plain_name(id);
+        let Some(uuid) = self.persist.uuid_of(id) else {
+            return name;
+        };
+        let uuid = sunrise_client::save::uuid_text(uuid);
+        let shown = match self.score.board.players_team(&uuid) {
+            Some(team) => team.formatted_name(name.clone()),
+            None => name.clone(),
+        };
+        shown.with_component_fields(vec![
+            (
+                "hover_event".into(),
+                serde_json::json!({"action": "show_entity", "id": "minecraft:lightning_bolt", "uuid": uuid,
+                    "name": name.component()}),
+            ),
+            ("insertion".into(), uuid.into()),
+        ])
     }
     /// `Entity.getDisplayName` for the mob `id`: `PlayerTeam.formatNameForTeam`
     /// of `getName()`, then `withHoverEvent(createHoverEvent())` (a `ShowEntity`
