@@ -426,20 +426,17 @@ mod tests {
                 parts.is_some(),
                 "a part that answers collision_shape opens the tick's parts"
             );
-            assert!(
-                (walk(7) - 1.0).abs() < 1e-9,
-                "the barrier is open for player 7"
-            );
-            assert!(
-                (walk(8) - 0.1).abs() < 1e-9,
-                "player 8 stops at the stone's face"
-            );
+            // The body's east face is at x = 0.9 and the stone's west face at x = 1.0, so a
+            // stopped player moves 1.0 - 0.9 in f64, which is 0.09999999999999998, not 0.1.
+            const TO_THE_FACE: f64 = 0.09999999999999998;
+            assert_eq!(walk(7), 1.0, "the barrier is open for player 7");
+            assert_eq!(walk(8), TO_THE_FACE, "player 8 stops at the stone's face");
             assert!(ASKED.load(Ordering::SeqCst) > 0);
             // Outside the tick's parts the stone is its own cube for everyone, and the part is
             // not asked.
             drop(parts);
             ASKED.store(0, Ordering::SeqCst);
-            assert!((walk(7) - 0.1).abs() < 1e-9);
+            assert_eq!(walk(7), TO_THE_FACE);
             assert_eq!(ASKED.load(Ordering::SeqCst), 0);
         });
     }
