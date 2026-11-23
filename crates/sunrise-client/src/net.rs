@@ -2919,7 +2919,7 @@ mod tests {
                 }),
             ),
         ];
-        mod_api::testing::with_dispatch(mods.into(), || {
+        mod_platform::testing::with_mods(mods.into(), || {
             let local = crate::raw_payloads::Local::empty();
             for (address, expected) in [
                 (
@@ -2987,7 +2987,7 @@ mod tests {
         use mod_api::{ClientIdentity, ClientIdentityPayload, ModEntry};
         use sunrise_protocol::connection::Pipe;
 
-        mod_api::testing::with_dispatch(
+        mod_platform::testing::with_mods(
             vec![ModEntry::new(
                 "refused_identity",
                 Box::new(JoinIdentityMod {
