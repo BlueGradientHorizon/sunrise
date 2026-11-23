@@ -1118,7 +1118,7 @@ mod ambient_particle_tests {
                 ParticleType::Block,
                 BlockState {
                     name: "minecraft:stone".into(),
-                    properties: Default::default(),
+                    properties: std::default::Default::default(),
                 }
             )
         );
