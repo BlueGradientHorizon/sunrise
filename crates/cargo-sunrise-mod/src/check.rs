@@ -157,7 +157,7 @@ pub fn check_release(
         let kind = kind
             .or_else(|| kind_of(path))
             .ok_or("pass --kind mod|modpack|resourcepack: the extension doesn't say")?;
-        return inspect(path, kind, true);
+        return inspect(path, kind);
     }
     if kind.as_ref().is_some_and(|_| !as_mod) {
         return Err("a mod package must be checked as a mod or native-mod".into());
@@ -200,7 +200,7 @@ pub fn check_release(
             Kind::Mod
         }
     });
-    let mut report = inspect(&copy, kind, true)?;
+    let mut report = inspect(&copy, kind)?;
     report.attestation = Some(attested);
     report.signed = true;
     Ok(report)
@@ -238,9 +238,7 @@ fn require_release_signer(attested: Attested, repository: Option<u64>) -> Result
 }
 
 /// Validate a package's contents, independent of signature or registry policy.
-/// A legacy reviewed source being republished with only a new build stays exact
-/// to its pin and need not carry a uses list.
-pub(crate) fn inspect(path: &Path, kind: Kind, require_uses: bool) -> Result<Report, String> {
+pub(crate) fn inspect(path: &Path, kind: Kind) -> Result<Report, String> {
     let size = std::fs::metadata(path)
         .map_err(|e| format!("{}: {e}", path.display()))?
         .len();
@@ -249,7 +247,7 @@ pub(crate) fn inspect(path: &Path, kind: Kind, require_uses: bool) -> Result<Rep
     }
     index::open(&kind)?;
     let facts = index::inspect(&kind, path)?;
-    if require_uses && kind == Kind::NativeMod {
+    if kind == Kind::NativeMod {
         uses_list(path)?;
     }
     Ok(Report {
@@ -385,7 +383,7 @@ mod tests {
     #[test]
     fn checks_each_kind_its_own_way() {
         let pack = fixture("cozy-1.0.0.spack");
-        let report = inspect(&pack, kind_of(&pack).unwrap(), true).unwrap();
+        let report = inspect(&pack, kind_of(&pack).unwrap()).unwrap();
         assert_eq!(report.facts.requires[0].id, "coords_hud");
         assert!(
             report
@@ -393,11 +391,11 @@ mod tests {
                 .contains("cozy 1.0.0 (modpack, format 1, for 26.3)")
         );
         let smod = fixture("coords_hud-0.1.0.smod");
-        let report = inspect(&smod, Kind::Mod, true).unwrap();
+        let report = inspect(&smod, Kind::Mod).unwrap();
         assert!(report.text().contains("no code: content only"));
-        let e = inspect(&pack, Kind::Shader, true).err().unwrap();
+        let e = inspect(&pack, Kind::Shader).err().unwrap();
         assert!(e.contains("sunrise-shaders.toml"), "{e}");
-        assert!(inspect(&pack, Kind::Mod, true).is_err());
+        assert!(inspect(&pack, Kind::Mod).is_err());
     }
 
     #[test]

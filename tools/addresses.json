@@ -41,7 +41,6 @@
     "crates/sunrise-attestation/src/lib.rs token.actions.githubusercontent.com": "OIDC issuer identity matched in a certificate, never contacted"
   },
   "allowed": [
-    "crates/cargo-sunrise-mod/src/registry.rs horizon-rust.github.io",
     "crates/sunrise-client-render/src/pack_browser.rs api.modrinth.com",
     "crates/sunrise-client/src/mod_registry.rs horizon-rust.github.io",
     "crates/sunrise-client/src/mod_registry.rs playsunrise.net",

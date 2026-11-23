@@ -64,9 +64,7 @@ cargo sunrise-mod check             # validate the project before release
   the source file, the relevant field or member index, and the ID.
 - `check <file>` reads `.smod`, `.spack`, resource pack `.zip` and `.sshader` files. A `.smod` also
   needs its [release attestation](../reference/sdk/05-commands.md#check-a-released-package).
-- `registry build|review|check|list|release|releases|page` supports the registry repository's CI
-  ([the registry index](../reference/registry-index.md)). `registry releases --out releases.json` discovers stable
-  release tags and commits. The workflow verifies the signed SDK separately.
+- To release a mod to the registry, follow [Publishing your mod](publish.md).
 - `use-jar <path>` records and caches an original Java jar as an external asset/data source, without copying it into the mod
   ([Java jars as external assets](#java-jars-as-external-assets)).
 
