@@ -156,7 +156,7 @@ fn a_client_cannot_place_a_block_as_a_player() {
 }
 
 /// `BlockBehaviour.onPlace` runs for every write, so a part on glass that finds a signal beside
-/// it lights itself within the write (`GemLampBlock.onPlace`): by a level write and by a
+/// it lights itself within the write (`CopperBulbBlock.onPlace`): by a level write and by a
 /// player's placement, with the lit state in the level before any tick. Glass that is not
 /// powered stays, and a block with no part is unchanged.
 #[test]

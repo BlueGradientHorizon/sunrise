@@ -12,8 +12,8 @@ pub trait Hooks {
     /// State IDs are valid in this level's registries for this call.
     ///
     /// The host is the level writer `neighbor_changed` gets: a part may read its inputs
-    /// (`signal`, `has_neighbor_signal`), schedule its tick and set blocks, as `GemLampBlock`
-    /// does through `checkAndUpdateState` (`level.setBlock(pos, state.cycle(LIT), 2)`). A write
+    /// (`signal`, `has_neighbor_signal`), schedule its tick and set blocks, as `CopperBulbBlock`
+    /// does through `checkAndFlip` (`level.setBlockAndUpdate`). A write
     /// goes through the level's ticks, so its neighbour updates run as vanilla's do, before the
     /// rest of the write that delivered this call. The part runs before the block's own
     /// `onPlace` handling, which then runs with the state it was called with. Dispatched only
