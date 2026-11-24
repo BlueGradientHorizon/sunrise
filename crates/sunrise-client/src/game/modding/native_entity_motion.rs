@@ -458,6 +458,23 @@ impl Game<'_> {
             Vec3::new(x, y, z),
         ))
     }
+    fn entity_pick_view_vector(&self, entity: EntityRef) -> Option<[f64; 3]> {
+        let target = self.native_entity_read_target(entity)?;
+        let [mut yaw, pitch] = self.target_rotation(target);
+        // LivingEntity.getViewYRot(1.0F) is head yaw, not body yaw.
+        match target {
+            Target::Mob(id) => {
+                yaw = self.mobs.iter().find(|m| m.id == id)?.head_yaw;
+            }
+            Target::Player | Target::Guest(_) => {
+                if let Some(guest) = self.native_target_guest(target) {
+                    yaw = guest.head_yaw;
+                }
+            }
+            _ => {}
+        }
+        Some(turned_view_vector(yaw, pitch, 0.0))
+    }
     /// What the entity looks at within `distance` blocks of its eyes (`Entity.pick`):
     /// block outlines with `ClipFluid::Any` when `include_fluids` is true else `None`.
     pub(super) fn entity_pick(
@@ -470,7 +487,7 @@ impl Game<'_> {
             return None;
         }
         let from = self.entity_eye_position(entity)?;
-        let to = ray_end(from, self.entity_view_vector(entity)?, distance);
+        let to = ray_end(from, self.entity_pick_view_vector(entity)?, distance);
         let fluids = if include_fluids {
             ClipFluid::Any
         } else {
@@ -713,12 +730,15 @@ mod tests {
                 .get("minecraft:zombie")
                 .unwrap()
                 .clone();
-            let mut mob = Mob::new(41, kind, Vec3::new(4.5, 65.0, 4.5), 0.0);
+            let mut mob = Mob::new(41, kind.clone(), Vec3::new(4.5, 65.0, 4.5), 90.0);
+            mob.head_yaw = 0.0;
             mob.head_pitch = 0.0;
             game.mobs.push(mob);
             let entity = game.entity(41).unwrap();
             let eye_y = game.entity_eye_position(entity).unwrap()[1];
             let y = eye_y.floor() as i32;
+            // Decoy along body yaw (west) must not intercept a head-yaw (south) pick.
+            game.world.set(2, y, 4, stone).unwrap();
             // Zombie eyes sit at +0.74 inside cell y: above shallow water (3/9) and below level=1 (7/9).
             game.world.set(4, y, 5, shallow).unwrap();
             game.world.set(4, y, 6, flowing).unwrap();
@@ -739,12 +759,65 @@ mod tests {
                 ([4, y, 6], BlockFace::North)
             );
 
-            // Signed negative distance casts backward along -view_vector.
+            // Signed negative distance casts backward along -head view vector.
             let backward = entity.pick(game, -3.0, false).unwrap();
             assert!(!backward.miss);
             assert_eq!(
                 (backward.block, backward.face),
                 ([4, y, 2], BlockFace::South)
+            );
+
+            // GoalCx::r_entity_pick follows head_yaw rather than body yaw too.
+            let mut goal_mob = Mob::new(42, kind, Vec3::new(4.5, 65.0, 4.5), 90.0);
+            goal_mob.head_yaw = 0.0;
+            goal_mob.head_pitch = 0.0;
+            let goal_entity = EntityRef::new(entity.epoch(), 42);
+            let goal_block = super::super::native_goal_ticks::test_goal_pick(
+                game,
+                &mut goal_mob,
+                goal_entity,
+                5.0,
+                false,
+            )
+            .unwrap();
+            assert_eq!(
+                (goal_block.block, goal_block.face),
+                ([4, y, 7], BlockFace::North)
+            );
+            let goal_fluid = super::super::native_goal_ticks::test_goal_pick(
+                game,
+                &mut goal_mob,
+                goal_entity,
+                5.0,
+                true,
+            )
+            .unwrap();
+            assert_eq!(
+                (goal_fluid.block, goal_fluid.face),
+                ([4, y, 6], BlockFace::North)
+            );
+
+            // Non-living entities keep entity yaw (west -> decoy stone at x=2).
+            game.others.push(super::super::commands::OtherEntity {
+                size_answer: None,
+                attachment_lifetime: Default::default(),
+                knot_check: None,
+                eye: None,
+                join: Default::default(),
+                item_transformation: None,
+                interaction: None,
+                id: 43,
+                kind: "minecraft:marker".into(),
+                position: Vec3::new(4.5, eye_y, 4.5),
+                yaw: 90.0,
+                pitch: 0.0,
+            });
+            let marker = game.entity(43).unwrap();
+            let marker_hit = marker.pick(game, 5.0, false).unwrap();
+            assert!(!marker_hit.miss);
+            assert_eq!(
+                (marker_hit.block, marker_hit.face),
+                ([2, y, 4], BlockFace::East)
             );
 
             assert!(entity.pick(game, f64::NAN, true).is_none());

@@ -357,8 +357,6 @@ impl Game<'_> {
                 },
                 context,
                 clip_data: None,
-                fluid_clip: None,
-                last_block: None,
             },
             facts: self.res.facts(),
         };

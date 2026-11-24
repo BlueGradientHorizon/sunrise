@@ -1023,23 +1023,14 @@ impl Game<'_> {
         blocks: ClipBlock,
         fluids: ClipFluid,
     ) -> Option<ClipHit> {
-        use sunrise_client::collisions::SceneCollisions;
+        use sunrise_client::{collisions::SceneCollisions, motion::clip_world_with_fluids};
         use sunrise_core::geometry::Direction;
         use sunrise_world::{
             collision_context::CollisionContext,
-            world_ray::{RayBlockMode, RayFluidMode, clip_world},
+            world_ray::{RayBlockMode, RayFluidMode},
         };
         let world = self.native_level_view_world(level)?;
-        let items = if self.options.execution_role.is_client() {
-            self.remote
-                .as_ref()
-                .and_then(|r| r.tags.as_ref())
-                .unwrap_or_else(|| self.items())
-        } else {
-            self.items()
-        };
-        let fluid_resources = &self.res.motion().fluids;
-        let mut rays = super::explosion::ColliderRays {
+        let rays = super::explosion::ColliderRays {
             scene: SceneCollisions {
                 world,
                 binding: self.collision,
@@ -1052,12 +1043,6 @@ impl Game<'_> {
                 tables: &self.pack.context.tables,
                 registry: self.pack.assets.registry,
             }),
-            fluid_clip: Some(sunrise_client::motion::FluidClip {
-                states: fluid_resources.states(),
-                items,
-                shapes: &fluid_resources.shapes,
-            }),
-            last_block: None,
         };
         let mode = match blocks {
             ClipBlock::Collider => RayBlockMode::Collider,
@@ -1071,13 +1056,30 @@ impl Game<'_> {
             ClipFluid::Water => RayFluidMode::Water,
             _ => unreachable!("ClipFluid: unhandled variant"),
         };
-        let result = clip_world(
-            &mut rays,
+        let result = clip_world_with_fluids(
+            rays,
+            world,
             Vec3::new(from[0], from[1], from[2]),
             Vec3::new(to[0], to[1], to[2]),
             mode,
             fluid,
             usize::MAX,
+            || {
+                let items = if self.options.execution_role.is_client() {
+                    self.remote
+                        .as_ref()
+                        .and_then(|r| r.tags.as_ref())
+                        .unwrap_or_else(|| self.items())
+                } else {
+                    self.items()
+                };
+                let fluid_resources = &self.res.motion().fluids;
+                sunrise_client::motion::FluidClip {
+                    states: fluid_resources.states(),
+                    items,
+                    shapes: &fluid_resources.shapes,
+                }
+            },
         )
         .ok()?;
         let h = result.hit;
@@ -4677,8 +4679,6 @@ pub(super) mod tests {
                 },
                 context: sunrise_world::collision_context::CollisionContext::empty(false),
                 clip_data: None,
-                fluid_clip: None,
-                last_block: None,
             };
             assert!(
                 ordinary

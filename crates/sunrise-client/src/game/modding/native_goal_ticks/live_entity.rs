@@ -260,7 +260,9 @@ impl GoalCx<'_, '_> {
         }
         let mob = self.entity_mob(entity)?;
         let from = [mob.position.x, mob.eye_y(), mob.position.z];
-        let look = self.r_entity_view_vector(entity)?;
+        // LivingEntity.getViewYRot(1.0F) is head yaw, not body yaw.
+        let v = sunrise_world::view_direction::view_vector(mob.head_pitch, mob.head_yaw);
+        let look = [v.x, v.y, v.z];
         let to = std::array::from_fn(|i| from[i] + look[i] * distance);
         let level = self.r_entity_level(entity)?;
         let fluids = if include_fluids {
@@ -273,4 +275,22 @@ impl GoalCx<'_, '_> {
         })
         .flatten()
     }
+}
+
+#[cfg(test)]
+pub(in crate::game) fn test_goal_pick(
+    game: &crate::game::Game<'_>,
+    mob: &mut Mob,
+    entity: EntityRef,
+    distance: f64,
+    include_fluids: bool,
+) -> Option<mod_api::ClipHit> {
+    let mut world = game.mob_world_base(&[]);
+    world.goal_host = Some(game);
+    let context = GoalCx {
+        m: mob,
+        w: &world,
+        host: game,
+    };
+    entity.pick(&context, distance, include_fluids)
 }

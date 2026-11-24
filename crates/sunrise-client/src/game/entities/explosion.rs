@@ -37,7 +37,8 @@ pub(super) struct ExplosionCause {
     pub species: Option<sunrise_client::mobs::Species>,
 }
 
-/// `Level.clip` block-outline and interaction lookup tables.
+/// `Level.clip` with `ClipContext.Block.COLLIDER`, no fluids and the
+/// collision context of the entity whose exposure is measured.
 pub(super) struct ClipData<'a, 'r> {
     pub facts: &'a sunrise_client::blocks::BlockFacts,
     pub behaviours: &'a sunrise_world::level::Behaviours,
@@ -48,36 +49,23 @@ pub(super) struct ColliderRays<'a, 'r> {
     pub scene: SceneCollisions<'a, 'r>,
     pub context: CollisionContext<'static>,
     pub clip_data: Option<ClipData<'a, 'r>>,
-    pub fluid_clip: Option<sunrise_client::motion::FluidClip<'a>>,
-    pub last_block: Option<(BlockPos, BlockStateId)>,
 }
 impl RayWorld for ColliderRays<'_, '_> {
     type Error = io::Error;
     type Block = BlockStateId;
-    type Fluid = sunrise_world::fluid::FluidState;
+    type Fluid = ();
     fn block_state(&mut self, p: BlockPos) -> io::Result<BlockStateId> {
         let world = self.scene.world;
-        if (self.clip_data.is_some() || self.fluid_clip.is_some())
+        if self.clip_data.is_some()
             && (!(world.bottom_y()..world.top_y()).contains(&p.y)
                 || !world.chunks.contains_key(&(p.x >> 4, p.z >> 4)))
         {
             return Err(io::Error::other("ray entered an unloaded block"));
         }
-        let state = world.block(p.x, p.y, p.z);
-        self.last_block = Some((p, state));
-        Ok(state)
+        Ok(world.block(p.x, p.y, p.z))
     }
-    fn fluid_state(&mut self, p: BlockPos) -> io::Result<sunrise_world::fluid::FluidState> {
-        let Some(states) = self.fluid_clip.as_ref().map(|clip| clip.states) else {
-            return Ok(sunrise_world::fluid::FluidState::EMPTY);
-        };
-        let state = match self.last_block {
-            Some((at, state)) if at == p => state,
-            _ => self.block_state(p)?,
-        };
-        Ok(states
-            .get(state)
-            .unwrap_or(sunrise_world::fluid::FluidState::EMPTY))
+    fn fluid_state(&mut self, _: BlockPos) -> io::Result<()> {
+        Ok(())
     }
     fn block_shape(
         &mut self,
@@ -154,33 +142,17 @@ impl RayWorld for ColliderRays<'_, '_> {
             None => Ok(VoxelShape::empty()),
         }
     }
-    fn fluid_is_source(&mut self, state: sunrise_world::fluid::FluidState) -> io::Result<bool> {
-        Ok(self
-            .fluid_clip
-            .as_ref()
-            .is_some_and(|clip| clip.is_source(state)))
+    fn fluid_is_source(&mut self, _: ()) -> io::Result<bool> {
+        Ok(false)
     }
-    fn fluid_is_empty(&mut self, state: sunrise_world::fluid::FluidState) -> io::Result<bool> {
-        Ok(self
-            .fluid_clip
-            .as_ref()
-            .is_none_or(|clip| clip.is_empty(state)))
+    fn fluid_is_empty(&mut self, _: ()) -> io::Result<bool> {
+        Ok(true)
     }
-    fn fluid_is_water(&mut self, state: sunrise_world::fluid::FluidState) -> io::Result<bool> {
-        Ok(self
-            .fluid_clip
-            .as_ref()
-            .is_some_and(|clip| clip.is_water(state)))
+    fn fluid_is_water(&mut self, _: ()) -> io::Result<bool> {
+        Ok(false)
     }
-    fn fluid_shape(
-        &mut self,
-        state: sunrise_world::fluid::FluidState,
-        p: BlockPos,
-    ) -> io::Result<VoxelShape> {
-        match &self.fluid_clip {
-            Some(clip) => clip.shape(self.scene.world, state, p),
-            None => Ok(VoxelShape::empty()),
-        }
+    fn fluid_shape(&mut self, _: (), _: BlockPos) -> io::Result<VoxelShape> {
+        Ok(VoxelShape::empty())
     }
 }
 
@@ -580,8 +552,6 @@ impl Game<'_> {
         // ClipContext(..., entity): the entity standing at the box's bottom.
         let mut rays = ColliderRays {
             clip_data: None,
-            fluid_clip: None,
-            last_block: None,
             scene: SceneCollisions {
                 world: &self.world,
                 binding: self.collision,

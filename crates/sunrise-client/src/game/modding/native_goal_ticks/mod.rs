@@ -26,6 +26,8 @@ use sunrise_core::random::RandomSource as EngineRandom;
 mod interception_tests;
 mod live_backend;
 mod live_entity;
+#[cfg(test)]
+pub(super) use live_entity::test_goal_pick;
 mod live_living;
 mod live_merchant;
 mod live_mob;

@@ -13,6 +13,7 @@ use sunrise_world::{
     fluid_flow::FluidFlowWorld,
     fluid_shape::FluidShapeCache,
     water_splash::{self, SplashParticle, WaterSplashWorld},
+    world_ray::{RayBlockMode, RayError, RayFluidMode, RayResult, RayWorld, clip_world},
 };
 
 /// `FluidTags.WATER` and `FluidTags.LAVA`, the fluids with a current.
@@ -134,6 +135,132 @@ impl FluidClip<'_> {
             pos,
         )
     }
+}
+
+pub trait FluidRayProvider {
+    fn state_of(&mut self, state: BlockStateId) -> FluidState;
+    fn is_source(&mut self, state: FluidState) -> bool;
+    fn is_empty(&mut self, state: FluidState) -> bool;
+    fn is_water(&mut self, state: FluidState) -> bool;
+    fn shape(
+        &mut self,
+        world: &World,
+        state: FluidState,
+        pos: BlockPos,
+    ) -> std::io::Result<VoxelShape>;
+}
+
+impl FluidRayProvider for FluidClip<'_> {
+    fn state_of(&mut self, state: BlockStateId) -> FluidState {
+        FluidClip::state_of(self, state)
+    }
+    fn is_source(&mut self, state: FluidState) -> bool {
+        FluidClip::is_source(self, state)
+    }
+    fn is_empty(&mut self, state: FluidState) -> bool {
+        FluidClip::is_empty(self, state)
+    }
+    fn is_water(&mut self, state: FluidState) -> bool {
+        FluidClip::is_water(self, state)
+    }
+    fn shape(
+        &mut self,
+        world: &World,
+        state: FluidState,
+        pos: BlockPos,
+    ) -> std::io::Result<VoxelShape> {
+        FluidClip::shape(self, world, state, pos)
+    }
+}
+
+struct FluidRays<'a, W, F> {
+    inner: W,
+    world: &'a World,
+    fluids: F,
+    last_block: Option<(BlockPos, BlockStateId)>,
+}
+
+impl<W, F> RayWorld for FluidRays<'_, W, F>
+where
+    W: RayWorld<Error = std::io::Error, Block = BlockStateId>,
+    F: FluidRayProvider,
+{
+    type Error = std::io::Error;
+    type Block = BlockStateId;
+    type Fluid = FluidState;
+    fn block_state(&mut self, p: BlockPos) -> std::io::Result<BlockStateId> {
+        let state = self.inner.block_state(p)?;
+        self.last_block = Some((p, state));
+        Ok(state)
+    }
+    fn fluid_state(&mut self, p: BlockPos) -> std::io::Result<FluidState> {
+        let state = match self.last_block {
+            Some((at, state)) if at == p => state,
+            _ => self.block_state(p)?,
+        };
+        Ok(self.fluids.state_of(state))
+    }
+    fn block_shape(
+        &mut self,
+        state: BlockStateId,
+        p: BlockPos,
+        mode: RayBlockMode,
+    ) -> std::io::Result<VoxelShape> {
+        self.inner.block_shape(state, p, mode)
+    }
+    fn interaction_shape(
+        &mut self,
+        state: BlockStateId,
+        p: BlockPos,
+    ) -> std::io::Result<VoxelShape> {
+        self.inner.interaction_shape(state, p)
+    }
+    fn fluid_is_source(&mut self, state: FluidState) -> std::io::Result<bool> {
+        Ok(self.fluids.is_source(state))
+    }
+    fn fluid_is_empty(&mut self, state: FluidState) -> std::io::Result<bool> {
+        Ok(self.fluids.is_empty(state))
+    }
+    fn fluid_is_water(&mut self, state: FluidState) -> std::io::Result<bool> {
+        Ok(self.fluids.is_water(state))
+    }
+    fn fluid_shape(&mut self, state: FluidState, p: BlockPos) -> std::io::Result<VoxelShape> {
+        self.fluids.shape(self.world, state, p)
+    }
+}
+
+// Skip FluidRays on RayFluidMode::None because clip_world still polls fluid_state per cell for vanilla parity.
+pub fn clip_world_with_fluids<W, F>(
+    mut inner: W,
+    world: &World,
+    start: Vec3,
+    end: Vec3,
+    blocks: RayBlockMode,
+    fluids: RayFluidMode,
+    max_visits: usize,
+    make_fluids: impl FnOnce() -> F,
+) -> std::result::Result<RayResult, RayError<std::io::Error>>
+where
+    W: RayWorld<Error = std::io::Error, Block = BlockStateId>,
+    F: FluidRayProvider,
+{
+    if fluids == RayFluidMode::None {
+        return clip_world(
+            &mut inner,
+            start,
+            end,
+            blocks,
+            RayFluidMode::None,
+            max_visits,
+        );
+    }
+    let mut rays = FluidRays {
+        inner,
+        world,
+        fluids: make_fluids(),
+        last_block: None,
+    };
+    clip_world(&mut rays, start, end, blocks, fluids, max_visits)
 }
 
 impl FluidResources {
@@ -662,6 +789,7 @@ impl WaterSplashWorld for MotionWorld<'_, '_, '_> {
 mod fluid_clip_tests {
     use super::*;
     use crate::{chunk::Chunk, collisions::SceneCollisions, items::Items};
+    use std::cell::Cell;
     use std::collections::HashSet;
     use std::io;
     use std::sync::{Arc, Mutex};
@@ -677,20 +805,18 @@ mod fluid_clip_tests {
         fluid::{FluidStateTable, ModFluidRules, ModFluidType, register_mod_fluid},
         fluid_shape::FluidShapeCache,
         registry::BlockStateId,
-        world_ray::{RayBlockMode, RayFluidMode, RayWorld, clip_world},
+        world_ray::{RayBlockMode, RayFluidMode, RayWorld},
     };
 
-    struct SceneFluidRays<'a, 'r> {
+    struct SceneBlockRays<'a, 'r> {
         scene: SceneCollisions<'a, 'r>,
         context: CollisionContext<'static>,
-        fluids: FluidClip<'a>,
-        last_block: Option<(BlockPos, BlockStateId)>,
     }
 
-    impl RayWorld for SceneFluidRays<'_, '_> {
+    impl RayWorld for SceneBlockRays<'_, '_> {
         type Error = io::Error;
         type Block = BlockStateId;
-        type Fluid = FluidState;
+        type Fluid = ();
         fn block_state(&mut self, p: BlockPos) -> io::Result<BlockStateId> {
             let world = self.scene.world;
             if !(world.bottom_y()..world.top_y()).contains(&p.y)
@@ -698,16 +824,10 @@ mod fluid_clip_tests {
             {
                 return Err(io::Error::other("ray entered an unloaded block"));
             }
-            let state = world.block(p.x, p.y, p.z);
-            self.last_block = Some((p, state));
-            Ok(state)
+            Ok(world.block(p.x, p.y, p.z))
         }
-        fn fluid_state(&mut self, p: BlockPos) -> io::Result<FluidState> {
-            let state = match self.last_block {
-                Some((at, state)) if at == p => state,
-                _ => self.block_state(p)?,
-            };
-            Ok(self.fluids.state_of(state))
+        fn fluid_state(&mut self, _: BlockPos) -> io::Result<()> {
+            Ok(())
         }
         fn block_shape(
             &mut self,
@@ -723,17 +843,50 @@ mod fluid_clip_tests {
         fn interaction_shape(&mut self, _: BlockStateId, _: BlockPos) -> io::Result<VoxelShape> {
             Ok(VoxelShape::empty())
         }
-        fn fluid_is_source(&mut self, state: FluidState) -> io::Result<bool> {
-            Ok(self.fluids.is_source(state))
+        fn fluid_is_source(&mut self, _: ()) -> io::Result<bool> {
+            Ok(false)
         }
-        fn fluid_is_empty(&mut self, state: FluidState) -> io::Result<bool> {
-            Ok(self.fluids.is_empty(state))
+        fn fluid_is_empty(&mut self, _: ()) -> io::Result<bool> {
+            Ok(true)
         }
-        fn fluid_is_water(&mut self, state: FluidState) -> io::Result<bool> {
-            Ok(self.fluids.is_water(state))
+        fn fluid_is_water(&mut self, _: ()) -> io::Result<bool> {
+            Ok(false)
         }
-        fn fluid_shape(&mut self, state: FluidState, p: BlockPos) -> io::Result<VoxelShape> {
-            self.fluids.shape(self.scene.world, state, p)
+        fn fluid_shape(&mut self, _: (), _: BlockPos) -> io::Result<VoxelShape> {
+            Ok(VoxelShape::empty())
+        }
+    }
+
+    struct CountingFluidClip<'a> {
+        inner: FluidClip<'a>,
+        lookups: &'a Cell<usize>,
+    }
+
+    impl FluidRayProvider for CountingFluidClip<'_> {
+        fn state_of(&mut self, state: BlockStateId) -> FluidState {
+            self.lookups.set(self.lookups.get() + 1);
+            self.inner.state_of(state)
+        }
+        fn is_source(&mut self, state: FluidState) -> bool {
+            self.lookups.set(self.lookups.get() + 1);
+            self.inner.is_source(state)
+        }
+        fn is_empty(&mut self, state: FluidState) -> bool {
+            self.lookups.set(self.lookups.get() + 1);
+            self.inner.is_empty(state)
+        }
+        fn is_water(&mut self, state: FluidState) -> bool {
+            self.lookups.set(self.lookups.get() + 1);
+            self.inner.is_water(state)
+        }
+        fn shape(
+            &mut self,
+            world: &World,
+            state: FluidState,
+            pos: BlockPos,
+        ) -> io::Result<VoxelShape> {
+            self.lookups.set(self.lookups.get() + 1);
+            self.inner.shape(world, state, pos)
         }
     }
 
@@ -983,29 +1136,41 @@ mod fluid_clip_tests {
         world.set(13, 64, 2, stone).unwrap();
         world.set(13, 64, 3, water_src).unwrap();
 
-        let clip = |world: &World, from: Vec3, to: Vec3, mode: RayFluidMode| {
-            let mut rays = SceneFluidRays {
+        let clip_counted = |world: &World, from: Vec3, to: Vec3, mode: RayFluidMode| {
+            let builds = Cell::new(0usize);
+            let lookups = Cell::new(0usize);
+            let rays = SceneBlockRays {
                 scene: SceneCollisions {
                     world,
                     binding: &binding,
                     subject: None,
                 },
                 context: CollisionContext::empty(false),
-                fluids: FluidClip {
-                    states: &states,
-                    items: &items,
-                    shapes: &shapes,
-                },
-                last_block: None,
             };
-            clip_world(
-                &mut rays,
+            let result = clip_world_with_fluids(
+                rays,
+                world,
                 from,
                 to,
                 RayBlockMode::Collider,
                 mode,
                 usize::MAX,
-            )
+                || {
+                    builds.set(builds.get() + 1);
+                    CountingFluidClip {
+                        inner: FluidClip {
+                            states: &states,
+                            items: &items,
+                            shapes: &shapes,
+                        },
+                        lookups: &lookups,
+                    }
+                },
+            );
+            (result, builds.get(), lookups.get())
+        };
+        let clip = |world: &World, from: Vec3, to: Vec3, mode: RayFluidMode| {
+            clip_counted(world, from, to, mode).0
         };
 
         let modes = [
@@ -1017,13 +1182,19 @@ mod fluid_clip_tests {
         for &(x, state, height, stops) in &cells {
             let cx = f64::from(x) + 0.5;
             for (mode, expect_fluid) in modes.into_iter().zip(stops) {
-                let res = clip(
+                let (res, builds, lookups) = clip_counted(
                     &world,
                     Vec3::new(cx, 65.5, 0.5),
                     Vec3::new(cx, 62.5, 0.5),
                     mode,
-                )
-                .unwrap();
+                );
+                let res = res.unwrap();
+                if mode == RayFluidMode::None {
+                    assert_eq!((builds, lookups), (0, 0), "x={x} None skips fluid lookups");
+                } else {
+                    assert_eq!(builds, 1, "x={x} mode={mode:?}");
+                    assert!(lookups > 0, "x={x} mode={mode:?}");
+                }
                 assert!(!res.miss, "x={x} mode={mode:?}");
                 if expect_fluid {
                     assert_eq!(
