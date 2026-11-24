@@ -840,7 +840,7 @@ pub(super) fn creation_worldgen_overrides(
 }
 /// The worldgen entries of the world's enabled data packs, and what the
 /// generator leaves out of them.
-fn worldgen_overrides_of(
+pub(super) fn worldgen_overrides_of(
     world_root: &std::path::Path,
     resources: &std::path::Path,
     biomes: &sunrise_client::biome::Biomes,
@@ -1752,14 +1752,20 @@ mod tests {
 
         with_game(|game| {
             let shape = LevelShape::NETHER;
-            let (overrides, _) = worldgen_overrides_of(
+            let packs = super::pack_finders::data_repository(
                 root,
                 &game.options.resources,
-                game.res.biomes(),
-                &game.level.enabled_features,
                 &game.pack.additional_data,
             );
-            let packed: Vec<(String, serde_json::Value)> = overrides
+            let enabled =
+                sunrise_client::datapack::enabled_ids(root, &packs, &game.level.enabled_features);
+            let enabled: Vec<_> = enabled
+                .iter()
+                .filter_map(|id| packs.iter().find(|p| &p.id == id))
+                .collect();
+            let (raw_overrides, _) =
+                sunrise_client::datapack::worldgen_overrides(&enabled, |_| true);
+            let packed: Vec<(String, serde_json::Value)> = raw_overrides
                 .entries("biomes")
                 .filter_map(|(id, json)| Some((id.to_owned(), serde_json::from_str(json).ok()?)))
                 .collect();
@@ -1773,6 +1779,13 @@ mod tests {
                         .unwrap(),
                 )
             };
+            let (overrides, _) = worldgen_overrides_of(
+                root,
+                &game.options.resources,
+                &biomes,
+                &game.level.enabled_features,
+                &game.pack.additional_data,
+            );
             let built = make_streaming(
                 &game.res,
                 &game.pack,

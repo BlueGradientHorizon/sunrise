@@ -235,10 +235,8 @@ impl Game<'_> {
     ) -> Result<(), GroupError> {
         let mut storage = self.instance_groups.borrow_mut();
         let group = storage.get(handle, self.standalone_geometry.generation())?;
-        if !draw.has_group(handle) {
-            group.submitted = true;
-            draw.queue_group(handle);
-        }
+        group.submitted = true;
+        draw.queue_group(handle);
         Ok(())
     }
 
@@ -250,10 +248,9 @@ impl Game<'_> {
     ) {
         let mut storage = self.instance_groups.borrow_mut();
         let mut submitted = draw.take_submitted_groups();
-        for handle in submitted.drain(..) {
+        for &handle in &submitted {
             let fields = handle.fields();
-            let retired = storage.retired.remove(&fields.generation);
-            let group = if let Some(group) = retired.as_ref() {
+            let group = if let Some(group) = storage.retired.get(&fields.generation) {
                 group
             } else if let Some(group) = storage.groups[fields.slot as usize]
                 .as_mut()
@@ -270,6 +267,9 @@ impl Game<'_> {
                 &group.composed[..group.len],
                 Some(&group.records[..group.len]),
             );
+        }
+        for handle in submitted.drain(..) {
+            storage.retired.remove(&handle.fields().generation);
         }
         draw.recycle_submitted_groups(submitted);
     }

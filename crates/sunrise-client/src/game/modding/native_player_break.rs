@@ -933,10 +933,16 @@ mod tests {
                 place(game, stone, "minecraft:stone");
                 place(game, command, "minecraft:command_block");
 
-                // Air and unloaded positions have no valid subject and do not post.
+                // Loaded air posts break_block uncanceled (ServerPlayerGameMode.destroyBlock has
+                // no air filter) and returns false; an unloaded column with no generator refuses
+                // without posting.
                 assert!(!game.player_destroy_block(player, air, false));
                 assert!(!game.player_destroy_block(player, [16, 64, 4], false));
-                assert!(canceled_seen.lock().unwrap().is_empty());
+                assert_eq!(normal_seen.swap(0, Ordering::Relaxed), 1);
+                assert_eq!(
+                    std::mem::take(&mut *canceled_seen.lock().unwrap()),
+                    vec![(air, false)]
+                );
 
                 // Adventure, spectator, and unauthorized game-master attempts post
                 // pre-canceled; clearing the cancel still leaves the block intact.

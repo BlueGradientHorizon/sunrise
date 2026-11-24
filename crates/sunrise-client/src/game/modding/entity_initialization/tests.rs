@@ -1,7 +1,7 @@
 use super::*;
 use crate::game::{
     Dim,
-    native_entity_refs::tests::{with_client_game, with_game},
+    native_entity_refs::tests::{fixture_resident_column, with_client_game, with_game},
 };
 use mod_api::{AttachmentDescriptor, AttachmentKey, EntityConstructingEvent, Hooks, HostSide};
 use std::sync::{Arc, Mutex};
@@ -175,6 +175,7 @@ fn borrowed_spawn_first_read_and_dimension_transfer_keep_one_initialization() {
                 .clone()
                 .expect("Listener registered");
             game.options.dedicated = Some(Vec::new());
+            fixture_resident_column(&mut game.world, (0, 0));
             // A borrowed simulation pass can insert without running Game's spawn helper.
             let kind = game.res.mob_types().get("minecraft:cow").unwrap().clone();
             let id = game.take_entity_id();
@@ -202,6 +203,7 @@ fn borrowed_spawn_first_read_and_dimension_transfer_keep_one_initialization() {
             game.mobs.retain(|mob| mob.id != id);
             game.detach_entity(id);
             game.enter_level(Dim::Nether).unwrap();
+            fixture_resident_column(&mut game.world, (0, 0));
             let moved = game.load_mob_transferred(saved, None, Some(state)).unwrap();
             assert_eq!(game.persist.uuid_of(moved), Some(uuid));
             assert_eq!(
@@ -665,10 +667,10 @@ fn player_construction_precedes_disk_load_and_clone() {
     let death = std::env::var(FLAG).unwrap() == "death";
     run_with_game_stack(move || {
         mod_platform::testing::with_mods(mods, || {
-            let value = value_slot.lock().unwrap().clone().unwrap();
-            let saved_key = saved_slot.lock().unwrap().clone().unwrap();
-            let copied_key = copied_slot.lock().unwrap().clone().unwrap();
             with_guests(|game| {
+                let value = value_slot.lock().unwrap().clone().unwrap();
+                let saved_key = saved_slot.lock().unwrap().clone().unwrap();
+                let copied_key = copied_slot.lock().unwrap().clone().unwrap();
                 game.options.dedicated = Some(Vec::new());
                 game.world_root = game.save.root.clone();
                 let mut saved = sunrise_mod_runtime::attachments::Attachments::default();
@@ -958,6 +960,7 @@ fn mob_constructor_first_store_binds_only_the_resident_lifetime() {
                 .clone()
                 .expect("Listener registered");
             game.options.dedicated = Some(Vec::new());
+            fixture_resident_column(&mut game.world, (0, 0));
             game.native_level_opened(Dim::Overworld);
             let id = game
                 .spawn_mob_spawned(
@@ -1093,6 +1096,7 @@ fn dragon_part_constructor_first_read_indexes_payload_and_same_id_replacement_re
                 .clone()
                 .expect("Listener registered");
             game.options.dedicated = Some(Vec::new());
+            fixture_resident_column(&mut game.world, (0, 0));
             game.native_level_opened(Dim::Overworld);
             game.spawn_remote_dragon(420, [1.0, 80.0, 1.0], 0.0);
             let holder = Holder::Entity(421);

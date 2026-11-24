@@ -12,7 +12,7 @@ tests = [
     "crates/sunrise-mod-api-gen/dispatch-tests/src/fixtures/entity_move.rs::an_invalid_move_discards_its_delta_and_veto_and_reports_each_invocation",
     "crates/sunrise-client/src/game/modding/mods/mod.rs::panicking_native_declarations_publish_neither_prefixes_nor_diagnostics",
     "crates/sunrise-client/src/game/modding/payload_transport/task_tests.rs::a_panicking_registration_does_not_fail_the_peer_or_leave_its_task",
-    "crates/sunrise-client/src/game/native_hooks/render_gui_post.rs::panicking_hud_draw_discards_quads_and_clips_before_next_listener",
+    "crates/sunrise-client/src/game/native_hooks/render_gui_post.rs::panicking_hud_draw_discards_quads_and_reservations_before_next_listener",
     "crates/sunrise-client-render/src/crash.rs::dropping_panicking_startup_parts_does_not_crash_the_server_thread",
     "crates/sunrise-client/src/game/modding/mod_menu_decisions_tests.rs::a_panicking_live_quick_move_rolls_back_and_disables_only_its_callback",
     "crates/sunrise-client/src/game/world/server_packs.rs::hook_panic_toast_cannot_be_vetoed_or_rewritten_by_toast_add",

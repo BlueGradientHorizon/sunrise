@@ -340,7 +340,8 @@ fn an_unencoded_handler_bulk_extracts_in_order_without_walking_gaps() {
             Ok(2)
         );
         assert_eq!(
-            memory.get_existing(&mut host as &mut dyn ServerHost, CHUNK, |value| value.cloned()),
+            memory.get_existing(&mut host as &mut dyn ServerHost, CHUNK, |value| value
+                .cloned()),
             Ok(Some(StackList::from([(last, (slate, 2))])))
         );
         assert_eq!(
@@ -348,7 +349,8 @@ fn an_unencoded_handler_bulk_extracts_in_order_without_walking_gaps() {
             Ok(2)
         );
         assert_eq!(
-            memory.get_existing(&mut host as &mut dyn ServerHost, CHUNK, |value| value.cloned()),
+            memory.get_existing(&mut host as &mut dyn ServerHost, CHUNK, |value| value
+                .cloned()),
             Ok(None)
         );
     });
@@ -369,7 +371,8 @@ fn bulk_insert_skips_a_sparse_range_that_rejects_the_resource() {
             Ok(0)
         );
         assert_eq!(
-            memory.get_existing(&mut host as &mut dyn ServerHost, CHUNK, |value| value.cloned()),
+            memory.get_existing(&mut host as &mut dyn ServerHost, CHUNK, |value| value
+                .cloned()),
             Ok(None)
         );
         let last = usize::MAX - 1;
@@ -459,7 +462,8 @@ fn bulk_insert_refuses_a_view_beyond_the_stock_codec() {
         Ok(0)
     );
     assert_eq!(
-        fluids.get_existing(&mut host as &mut dyn ServerHost, CHUNK, |value| value.cloned()),
+        fluids.get_existing(&mut host as &mut dyn ServerHost, CHUNK, |value| value
+            .cloned()),
         Ok(None)
     );
 }
@@ -496,7 +500,8 @@ fn bulk_insert_skips_a_refused_attachment_and_still_visits_the_next_handler() {
         AttachmentDescriptor::new("attached_storage_test:memory", || 0u32),
     );
     assert_eq!(
-        wrong_type.get_existing(&mut host as &mut dyn ServerHost, CHUNK, |value| value.copied()),
+        wrong_type.get_existing(&mut host as &mut dyn ServerHost, CHUNK, |value| value
+            .copied()),
         Ok(Some(7))
     );
 }
@@ -536,11 +541,24 @@ fn bulk_moves_follow_sparse_source_order_through_wrappers() {
     };
 
     in_world(|| {
-        let memory = install_memory();
-        let destination_key = crate::parts::install_attachment_fixture(
+        let (memory_record, memory) = crate::parts::registered_attachment_fixture(
+            "attached_storage_test",
+            AttachmentDescriptor::new("attached_storage_test:memory", StackList::new),
+        );
+        let (destination_record, destination_key) = crate::parts::registered_attachment_fixture(
             "attached_storage_test",
             AttachmentDescriptor::new("attached_storage_test:destination", StackList::new),
         );
+        crate::parts::install_input(crate::parts::installation::InstalledInput {
+            attachment_types: std::collections::HashMap::from([(
+                "attached_storage_test",
+                std::collections::HashMap::from([
+                    ("memory", memory_record),
+                    ("destination", destination_record),
+                ]),
+            )]),
+            ..Default::default()
+        });
         let mut host = FakeHost::new();
         let high = usize::MAX - 2;
         let source = AttachedStacks::new(&memory, CHUNK, usize::MAX, 4, |_| true);
@@ -590,7 +608,8 @@ fn bulk_moves_follow_sparse_source_order_through_wrappers() {
         assert_eq!(destination.resource(&mut host, 0), Some(Pebble::Quartz));
         assert_eq!(destination.amount(&mut host, 1), 3);
         assert_eq!(
-            memory.get_existing(&mut host as &mut dyn ServerHost, CHUNK, |value| value.cloned()),
+            memory.get_existing(&mut host as &mut dyn ServerHost, CHUNK, |value| value
+                .cloned()),
             Ok(Some(StackList::from([(high + 1, (Pebble::Slate, 4))])))
         );
     });

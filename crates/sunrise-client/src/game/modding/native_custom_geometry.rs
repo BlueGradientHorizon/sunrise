@@ -976,6 +976,7 @@ mod tests {
                 );
                 draw.reset([0.0; 3], Mat4::IDENTITY, [0.0; 2]);
                 context(game, &mut draw).draw_instance_group(group).unwrap();
+                game.resolve_submitted_groups(&mut draw);
                 assert_eq!(game.prepared_model_draws.borrow().len(), 1);
                 game.prepared_model_draws.borrow_mut().clear();
             }
@@ -1018,7 +1019,7 @@ mod tests {
             context(game, &mut draw).draw_instance_group(group).unwrap();
             context(game, &mut draw).draw_instance_group(group).unwrap();
             game.resolve_submitted_groups(&mut draw);
-            assert_eq!(expected, render(game));
+            assert_eq!(game.prepared_model_draws.borrow().len(), 2);
             draw.reset([0.0; 3], Mat4::IDENTITY, [0.0; 2]);
             game.prepared_model_draws.borrow_mut().clear();
             context(game, &mut draw).draw_instance_group(group).unwrap();

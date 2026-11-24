@@ -4499,10 +4499,7 @@ pub(in crate::game) mod tests {
     }
 
     mod content_admission {
-        include!(concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/src/game/modding/mods/content_admission_tests.rs"
-        ));
+        include!("content_admission_tests.rs");
     }
 
     mod inventory {

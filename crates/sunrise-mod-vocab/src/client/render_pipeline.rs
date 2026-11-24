@@ -257,12 +257,15 @@ mod tests {
                 "other:glow".to_owned(),
                 "minecraft:glow".to_owned(),
                 "other:beam".to_owned(),
-                "minecraft:custom_beam".to_owned(),
+                "other:glow".to_owned(),
+                "mine:beam".to_owned(),
             ]
         );
+        assert_eq!(pipelines[0].owner(), "first_mod");
         assert_eq!(pipelines[1].owner(), "owning_mod");
         assert_eq!(pipelines[2].owner(), "owning_mod");
         assert_eq!(pipelines[3].owner(), "owning_mod");
+        assert_eq!(pipelines[4].owner(), "owning_mod");
     }
 
     #[test]

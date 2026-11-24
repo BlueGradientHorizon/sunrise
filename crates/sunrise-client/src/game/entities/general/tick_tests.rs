@@ -253,6 +253,10 @@ fn with_counter(test: impl FnOnce(&mut Game<'_>, Levers)) {
             game.native_level_opened(crate::game::Dim::Overworld);
             game.build_registries();
             game.reset_entity_residency();
+            crate::game::native_entity_refs::tests::fixture_resident_column(
+                &mut game.world,
+                (0, 0),
+            );
             // The registration phase ends before the test's own ticks: a
             // part's writes are storage writes, which only a world's phases
             // take, as the server's own tick runs in World.

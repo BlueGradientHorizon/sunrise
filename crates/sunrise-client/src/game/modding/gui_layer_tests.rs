@@ -688,10 +688,22 @@ fn failed_gui_layer_keeps_completed_paint_and_isolates_following_layers() {
                         "post hud_test:next",
                     ]
                 );
-                assert_eq!(color_bounds(&batch, red), Some([10.0, 10.0, 15.0, 15.0]));
-                assert_eq!(color_bounds(&batch, blue), Some([20.0, 20.0, 24.0, 24.0]));
+                assert_eq!(
+                    batch.vertices.iter().map(|v| v.color).collect::<Vec<_>>(),
+                    [[red; 6], [blue; 6], [green; 6]].concat()
+                );
+                assert_eq!(color_bounds(&batch, red), Some([0.0, 0.0, 100.0, 100.0]));
+                assert_eq!(color_bounds(&batch, blue), Some([0.0, 0.0, 100.0, 100.0]));
                 assert_eq!(color_bounds(&batch, green), Some([0.0, 0.0, 100.0, 100.0]));
                 assert_eq!(color_bounds(&batch, rgba(255, 255, 0, 255)), None);
+                assert_eq!(
+                    batch.scissors_in(0..18).collect::<Vec<_>>(),
+                    [
+                        (0..6, Some([10.0, 10.0, 15.0, 15.0])),
+                        (6..12, Some([20.0, 20.0, 24.0, 24.0])),
+                        (12..18, None),
+                    ]
+                );
                 assert_eq!(
                     take_hook_panics(),
                     [HookPanicReport {
@@ -714,9 +726,17 @@ fn failed_gui_layer_keeps_completed_paint_and_isolates_following_layers() {
                         "post hud_test:next",
                     ]
                 );
-                assert_eq!(color_bounds(&batch, red), Some([10.0, 10.0, 15.0, 15.0]));
+                assert_eq!(
+                    batch.vertices.iter().map(|v| v.color).collect::<Vec<_>>(),
+                    [[red; 6], [green; 6]].concat()
+                );
+                assert_eq!(color_bounds(&batch, red), Some([0.0, 0.0, 100.0, 100.0]));
                 assert_eq!(color_bounds(&batch, blue), None);
                 assert_eq!(color_bounds(&batch, green), Some([0.0, 0.0, 100.0, 100.0]));
+                assert_eq!(
+                    batch.scissors_in(0..12).collect::<Vec<_>>(),
+                    [(0..6, Some([10.0, 10.0, 15.0, 15.0])), (6..12, None)]
+                );
                 assert!(take_hook_panics().is_empty());
             });
         },
@@ -819,10 +839,9 @@ fn a_gui_wrapper_panic_is_contained_but_delegated_engine_paint_is_fatal() {
                 ]
                 .concat()
             );
-            assert!(
-                batch.vertices[30..36]
-                    .iter()
-                    .all(|v| (0.0..=4.0).contains(&v.pos[0]) && (0.0..=4.0).contains(&v.pos[1]))
+            assert_eq!(
+                batch.scissors_in(0..36).collect::<Vec<_>>(),
+                [(0..30, None), (30..36, Some([0.0, 0.0, 4.0, 4.0]))]
             );
             assert_eq!(
                 batch.blends,

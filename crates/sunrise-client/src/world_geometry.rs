@@ -136,7 +136,6 @@ pub struct WorldGeometry {
     /// `PipelineFrame.time` for this view.
     time: f32,
     copies: Vec<ModelCopy>,
-    groups: std::collections::HashSet<mod_api::InstanceGroupRef>,
     submitted_groups: Vec<mod_api::InstanceGroupRef>,
     model_cut: u32,
     /// The standard pass stage (`0..=6`) lines and quads go to now.
@@ -175,7 +174,6 @@ impl Default for WorldGeometry {
             label_scratch: Vec::with_capacity(CAPACITY as usize * 4),
             time: 0.0,
             copies: Vec::with_capacity(INSTANCE_CAPACITY as usize),
-            groups: std::collections::HashSet::with_capacity(INSTANCE_CAPACITY as usize),
             submitted_groups: Vec::new(),
             model_cut: 0,
             stage: 0,
@@ -209,7 +207,6 @@ impl WorldGeometry {
         self.label_runs.clear();
         self.clear_copies();
         self.model_cut = 0;
-        self.groups.clear();
         self.submitted_groups.clear();
         self.stage = 0;
         self.stage_ends = [[0; 4]; STAGES - 1];
@@ -428,11 +425,7 @@ impl WorldGeometry {
             }
         }
     }
-    pub fn has_group(&self, group: mod_api::InstanceGroupRef) -> bool {
-        self.groups.contains(&group)
-    }
     pub fn queue_group(&mut self, group: mod_api::InstanceGroupRef) {
-        self.groups.insert(group);
         self.submitted_groups.push(group);
     }
     pub fn drain_submitted_groups(

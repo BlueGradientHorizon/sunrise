@@ -424,7 +424,8 @@ impl Game<'_> {
         else {
             return ControlFlow::Continue(());
         };
-        self.loaded_dims()
+        self.loaded_level_order()
+            .into_iter()
             .map(|dim| self.level_ref(epoch, dim.key()))
             .try_for_each(visit)
     }
