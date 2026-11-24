@@ -903,12 +903,11 @@ mod tests {
             creative: false,
             from: [3.0, 64.0, 5.0],
             damage: 1.0,
-            custom_damage: None,
+            enchanted_damage: None,
             knockback: (0.0, 0.0),
             team: attacker_team,
             hit_box: Aabb::new(Vec3::new(0.0, 60.0, 0.0), Vec3::new(6.0, 70.0, 10.0)),
             skip: None,
-            ignite: 0.0,
         };
         let before = health(game, 13);
         game.sweep_players(&sweep);

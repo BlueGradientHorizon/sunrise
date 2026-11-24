@@ -403,7 +403,11 @@ impl Game<'_> {
         let refused = !self.guest_may_harm(t.guest, conn);
         let shooter = self.player_attacker(t.guest);
         let from = [t.previous.x, t.previous.y, t.previous.z];
-        let victim = host.hub.guest(conn).map(|g| g.entity_id as u32);
+        let victim = self
+            .lan
+            .as_ref()
+            .and_then(|host| host.hub.guest(conn))
+            .map(|g| g.entity_id as u32);
         let hurt = self.guest_hit_by(conn, |g| {
             g.with_attack(attack.clone(), |g| {
                 g.combat.refuse_player_hit = refused;

@@ -242,10 +242,12 @@ fn try_decode_custom_tag(items: &Items, tag: &Tag) -> Result<Vec<ItemStack>, Cus
     entries
         .iter()
         .map(|entry| {
-            crate::item_nbt::item_from_persistent_nbt(entry)
-                .ok()
-                .filter(|stack| items.get(&stack.item).is_some())
-                .ok_or(CustomBundleError::UnsupportedFormat)
+            crate::item_nbt::item_from_persistent_nbt_with(
+                entry,
+                |id| !id.starts_with("minecraft:"),
+                |id| items.get(id).is_some(),
+            )
+            .map_err(|_| CustomBundleError::UnsupportedFormat)
         })
         .collect()
 }
@@ -295,7 +297,7 @@ impl Held<'_> {
 /// bundle, or a stack carrying `nested` (the custom component being weighed). A malformed
 /// nested custom payload is [`CustomBundleError::UnsupportedFormat`].
 fn held<'a>(
-    items: &Items,
+    items: &'a Items,
     stack: &'a ItemStack,
     nested: Option<&str>,
 ) -> Result<Option<Held<'a>>, CustomBundleError> {
@@ -347,7 +349,7 @@ struct Frame<'a> {
 /// by its count), so the overflow points are vanilla's. `nested` is
 /// [`BundleSpec::nested_component`].
 fn contents_weight<'a>(
-    items: &Items,
+    items: &'a Items,
     inside: &'a [ItemStack],
     nested: Option<&str>,
 ) -> Result<Fraction, CustomBundleError> {
@@ -1454,7 +1456,14 @@ mod custom_bundle_tests {
         let mut beehive = ItemStack::new("minecraft:stone", 1);
         beehive.data_mut().set_other(
             "minecraft:bees",
-            Some(Tag::List(vec![Tag::Compound(Default::default())])),
+            Some(Tag::List(vec![Tag::compound([
+                (
+                    "entity_data",
+                    Tag::compound([("id", Tag::String("minecraft:bee".into()))]),
+                ),
+                ("ticks_in_hive", Tag::Int(0)),
+                ("min_ticks_in_hive", Tag::Int(600)),
+            ])])),
         );
 
         let mut outer = ItemStack::new("runes:pouch", 1);
@@ -2370,7 +2379,7 @@ mod custom_bundle_tests {
                 .unwrap()
                 .has_refused_consume_effects()
         );
-        assert!(crate::item_nbt::item_from_persistent_nbt(&refused).is_none());
+        assert!(crate::item_nbt::item_from_persistent_nbt(&refused).is_err());
         assert_eq!(
             read(Tag::List(vec![refused])),
             Err(CustomBundleError::UnsupportedFormat)

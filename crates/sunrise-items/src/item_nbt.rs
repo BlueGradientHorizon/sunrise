@@ -352,16 +352,16 @@ mod tests {
             }
             item_from_persistent_nbt(&tag)
         };
-        assert!(with(None).is_some());
+        assert!(with(None).is_ok());
         assert!(
             with(Some(Tag::compound([(
                 "minecraft:repair_cost",
                 Tag::Int(2)
             )])))
-            .is_some()
+            .is_ok()
         );
-        assert!(with(Some(string("not-a-compound"))).is_none());
-        assert!(with(Some(Tag::Int(1))).is_none());
+        assert!(with(Some(string("not-a-compound"))).is_err());
+        assert!(with(Some(Tag::Int(1))).is_err());
     }
 
     #[test]
