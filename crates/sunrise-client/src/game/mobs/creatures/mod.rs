@@ -7903,7 +7903,8 @@ impl Game<'_> {
         };
         let credit_plan =
             self.prepare_knockback_credit(self.mobs[index].id as i32, Some(Who::Player), &feeder);
-        let removes_armor = self.held_shears(ability::SHEARS_REMOVE_ARMOR);
+        let removes_armor = self.mobs[index].species() == Species::Wolf
+            && self.held_shears(ability::SHEARS_REMOVE_ARMOR);
         let m = &mut self.mobs[index];
         if !m.alive() {
             return Ok(false);
