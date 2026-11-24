@@ -64,7 +64,7 @@ pub trait Hooks {
         context = "loop",
         cancellable = true,
         version = 4,
-        neoforge = "none (fork addition; see travel-and-move.md, #2308)",
+        neoforge = "none (fork addition, #2308)",
         target = "sunrise_client_lib::travel_gate::native_living_travel"
     )]
     fn living_travel(

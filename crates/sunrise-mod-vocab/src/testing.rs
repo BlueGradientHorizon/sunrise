@@ -954,6 +954,18 @@ impl crate::prelude::PlayerWorldBackend for FakeHost {
     }
 }
 crate::block::block_states::impl_block_states_without_tables!(FakeHost {
+    fn fluid_bucket(
+        &self,
+        fluid: crate::FluidKey,
+    ) -> Result<Option<crate::ItemKey>, crate::LevelReadError> {
+        Ok(self.registries.bucket_of(fluid))
+    }
+    fn bucket_fluid(
+        &self,
+        bucket: crate::ItemKey,
+    ) -> Result<Option<crate::FluidKey>, crate::LevelReadError> {
+        Ok(self.registries.fluid_of(bucket))
+    }
     fn fluid_pickup_sound(
         &self,
         fluid: crate::FluidKey,

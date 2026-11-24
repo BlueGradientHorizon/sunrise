@@ -179,6 +179,7 @@ fn encode(draws: &[GuiDraw]) -> Vec<Value> {
                 continue;
             }
             GuiDraw::PlayerFace { .. } => unreachable!("the HUD layout draws no player face op"),
+            GuiDraw::Texture { .. } => unreachable!("the HUD layout draws no texture op"),
         };
         if pose != IDENTITY {
             v["matrix"] = json!(pose);

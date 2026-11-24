@@ -140,6 +140,7 @@ impl Goal for GuardianAttack {
                         amount: magic,
                         from,
                         kind: "minecraft:indirect_magic",
+                        wielder: None,
                     })),
                 Who::Mob(id) => cx.events.push(MobEvent::DamageMob {
                     target: id,
@@ -324,6 +325,7 @@ pub fn hurt_server(m: &mut Mob, d: &Damage) {
             amount: 2.0,
             from,
             kind: "minecraft:thorns",
+            wielder: None,
         }),
         Some(Who::Mob(id)) => m.outbox.push(MobEvent::DamageMob {
             target: id,

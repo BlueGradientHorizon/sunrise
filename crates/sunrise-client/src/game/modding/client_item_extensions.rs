@@ -262,6 +262,34 @@ impl Game<'_> {
             .flatten()
             .map_or(default, Cow::Owned)
     }
+    /// Whether a dropped stack bobs and whether its copies spread
+    /// (`IClientItemExtensions.shouldBobAsEntity` and `shouldSpreadAsEntity`).
+    ///
+    /// Both are `true` when no extension is registered, the stack cannot cross the API boundary,
+    /// or the provider panics.
+    pub(super) fn dropped_stack_motion(
+        &self,
+        stack: &sunrise_client::items::ItemStack,
+    ) -> DroppedStackMotion {
+        use super::api_values::TryIntoApi;
+        let state = &self.armor_stand_assets.extensions;
+        if state.items.is_empty() {
+            return DroppedStackMotion::VANILLA;
+        }
+        let Some(part) =
+            mod_api::__private::item_key(&stack.item).and_then(|item| state.items.get(&item))
+        else {
+            return DroppedStackMotion::VANILLA;
+        };
+        if !part.attached.enabled() || part.failed.load(Ordering::Relaxed) {
+            return DroppedStackMotion::VANILLA;
+        }
+        let Ok(api_stack) = stack.try_into_api() else {
+            return DroppedStackMotion::VANILLA;
+        };
+        dispatch_dropped_stack_motion(self, part, &api_stack)
+    }
+
     pub(super) fn extended_equipment_materials<'a>(
         &'a self,
         piece: &super::equipment_piece::EquipmentPiece<'_>,
@@ -308,6 +336,47 @@ impl Game<'_> {
                 },
             )
         })
+    }
+}
+
+/// How a dropped stack moves and spreads, as its item's client extensions answer.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) struct DroppedStackMotion {
+    /// `shouldBobAsEntity`: the stack bobs up and down as it spins.
+    pub bob: bool,
+    /// `shouldSpreadAsEntity`: a stack's copies are drawn apart.
+    pub spread: bool,
+}
+impl DroppedStackMotion {
+    /// Vanilla's dropped stack: it bobs and its copies spread.
+    pub const VANILLA: Self = Self {
+        bob: true,
+        spread: true,
+    };
+}
+
+type MotionAnswer =
+    fn(&dyn ClientItemExtensions, &dyn mod_api::ClientHost, &mod_api::ItemStack) -> bool;
+fn dispatch_dropped_stack_motion(
+    host: &dyn mod_api::ClientHost,
+    part: &ItemExtensionsPart,
+    stack: &mod_api::ItemStack,
+) -> DroppedStackMotion {
+    let provider = &**part.attached.part();
+    let ask = |operation, answer: MotionAnswer| {
+        part.callback_owner
+            .call("client_item_extensions", operation, || {
+                answer(provider, host, stack)
+            })
+            .unwrap_or(true)
+    };
+    DroppedStackMotion {
+        bob: ask("should_bob_as_entity", |p, host, stack| {
+            p.should_bob_as_entity(host, stack)
+        }),
+        spread: ask("should_spread_as_entity", |p, host, stack| {
+            p.should_spread_as_entity(host, stack)
+        }),
     }
 }
 
@@ -1702,5 +1771,146 @@ mod tests {
                 });
             },
         );
+    }
+
+    #[test]
+    fn dropped_stack_motion_takes_the_item_answers_and_vanilla_after_a_panic() {
+        mod_platform::testing::with_mods(
+            vec![mod_api::ModEntry::new("flat_test", Box::new(Empty))].into(),
+            || {
+                use mod_api::prelude::ItemsHost;
+                struct Flat;
+                impl ClientItemExtensions for Flat {
+                    fn should_bob_as_entity(
+                        &self,
+                        _: &dyn ClientHost,
+                        _: &mod_api::ItemStack,
+                    ) -> bool {
+                        false
+                    }
+                    fn should_spread_as_entity(
+                        &self,
+                        _: &dyn ClientHost,
+                        _: &mod_api::ItemStack,
+                    ) -> bool {
+                        false
+                    }
+                }
+                struct Spreads;
+                impl ClientItemExtensions for Spreads {
+                    fn should_bob_as_entity(
+                        &self,
+                        _: &dyn ClientHost,
+                        _: &mod_api::ItemStack,
+                    ) -> bool {
+                        false
+                    }
+                }
+                struct Panics;
+                impl ClientItemExtensions for Panics {
+                    fn should_bob_as_entity(
+                        &self,
+                        _: &dyn ClientHost,
+                        _: &mod_api::ItemStack,
+                    ) -> bool {
+                        panic!("bob refused")
+                    }
+                    fn should_spread_as_entity(
+                        &self,
+                        _: &dyn ClientHost,
+                        _: &mod_api::ItemStack,
+                    ) -> bool {
+                        panic!("spread refused")
+                    }
+                }
+                let mut host = mod_api::testing::FakeHost::new();
+                let ids = ["flat_test:picture", "flat_test:spread", "flat_test:panics"]
+                    .map(|id| mod_api::Identifier::parse(id).unwrap());
+                host.registries.resolve_items(ids.clone()).unwrap();
+                let [flat, spread, panics] = ids.map(|id| host.item_key(&id).unwrap());
+                let mut owners = ItemExtensionOwners::default();
+                let mut registry = Registration::new(&|_| Some([0.0, 0.0, 1.0, 1.0]), &mut owners);
+                let _owner = owner("flat_test");
+                registry
+                    .client_item_extensions(flat, Arc::new(Flat))
+                    .unwrap();
+                registry
+                    .client_item_extensions(spread, Arc::new(Spreads))
+                    .unwrap();
+                registry
+                    .client_item_extensions(panics, Arc::new(Panics))
+                    .unwrap();
+                let motion = |item| {
+                    let stack = mod_api::ItemStack::of(item);
+                    dispatch_dropped_stack_motion(&host, &registry.state.items[&item], &stack)
+                };
+                assert_eq!(
+                    motion(flat),
+                    DroppedStackMotion {
+                        bob: false,
+                        spread: false
+                    }
+                );
+                assert_eq!(
+                    motion(spread),
+                    DroppedStackMotion {
+                        bob: false,
+                        spread: true
+                    }
+                );
+                assert_eq!(motion(panics), DroppedStackMotion::VANILLA);
+                let _ = mod_api::__private::take_hook_panics();
+            },
+        );
+    }
+
+    #[test]
+    fn served_by_armor_model_delegates_to_serving_host_only() {
+        let packages = vec![
+            mod_api::PackageInfo::new(
+                "host".into(),
+                "1".into(),
+                mod_api::PackageKind::Code,
+                mod_api::Side::Both,
+                vec!["host".into()],
+                vec![],
+            ),
+            mod_api::PackageInfo::new(
+                "other".into(),
+                "1".into(),
+                mod_api::PackageKind::Code,
+                mod_api::Side::Both,
+                vec!["other".into()],
+                vec![],
+            ),
+            mod_api::PackageInfo::new(
+                "runes".into(),
+                "1".into(),
+                mod_api::PackageKind::Content,
+                mod_api::Side::Both,
+                vec!["runes".into()],
+                vec![],
+            )
+            .with_served_by(Some("host".into())),
+        ];
+        mod_platform::__private::with_test_package_inventory(packages, || {
+            let mut owners = ItemExtensionOwners::default();
+            let mut registry = Registration::new(&|_| Some([0.0, 0.0, 1.0, 1.0]), &mut owners);
+            {
+                let _owner = owner("host");
+                registry.register_model("runes:helm", &tree(0.0)).unwrap();
+                assert!(
+                    registry
+                        .register_model("minecraft:helm", &tree(0.0))
+                        .is_err()
+                );
+            }
+            {
+                let _owner = owner("other");
+                assert!(registry.register_model("runes:other", &tree(0.0)).is_err());
+            }
+            assert_eq!(registry.state.models.len(), 1);
+            assert_eq!(registry.state.models[0].name, "runes:helm");
+        });
     }
 }

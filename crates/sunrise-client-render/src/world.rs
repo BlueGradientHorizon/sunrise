@@ -943,6 +943,52 @@ impl World {
     pub fn is_loaded_at(&self, x: i32, y: i32, z: i32) -> bool {
         self.shape.contains_y(y) && self.loaded(x, z)
     }
+    /// The block entities of loaded chunks (taken-out ones included) in the box from `min`
+    /// (inclusive) to `max` (exclusive) and the build height, in no order. Empty for a box of
+    /// zero volume; None for reversed bounds. Walks the box's columns or the loaded chunks,
+    /// whichever are fewer, so no corner overflows or makes it scan past what is loaded.
+    pub fn block_entities_in_box(
+        &self,
+        min: [i32; 3],
+        max: [i32; 3],
+    ) -> Option<Vec<crate::block_entities::Pos>> {
+        if (0..3).any(|axis| min[axis] > max[axis]) {
+            return None;
+        }
+        if (0..3).any(|axis| min[axis] == max[axis]) {
+            return Some(Vec::new());
+        }
+        // `max > min` on every axis, so `max - 1` cannot overflow.
+        let (x0, x1) = (min[0] >> 4, (max[0] - 1) >> 4);
+        let (z0, z1) = (min[2] >> 4, (max[2] - 1) >> 4);
+        let span = (i64::from(x1 - x0) + 1) * (i64::from(z1 - z0) + 1);
+        let columns: Vec<(i32, i32)> = if span <= self.chunks.len() as i64 {
+            (x0..=x1)
+                .flat_map(|x| (z0..=z1).map(move |z| (x, z)))
+                .filter(|key| self.chunks.contains_key(key))
+                .collect()
+        } else {
+            self.chunks
+                .keys()
+                .copied()
+                .filter(|&(x, z)| (x0..=x1).contains(&x) && (z0..=z1).contains(&z))
+                .collect()
+        };
+        Some(
+            columns
+                .into_iter()
+                .flat_map(|chunk| self.block_entities.in_chunk(chunk))
+                .copied()
+                .filter(|&(x, y, z)| self.in_box(min, max, [x, y, z]))
+                .collect(),
+        )
+    }
+    /// Whether `pos` lies in the box from `min` (inclusive) to `max` (exclusive) and the build
+    /// height.
+    pub fn in_box(&self, min: [i32; 3], max: [i32; 3], pos: [i32; 3]) -> bool {
+        (0..3).all(|axis| (min[axis]..max[axis]).contains(&pos[axis]))
+            && self.shape.contains_y(pos[1])
+    }
     /// Persisted container capacity override; absence preserves vanilla capacity.
     pub fn container_stack_limit(&self, key: (i32, i32, i32)) -> Option<u32> {
         self.chunks
@@ -1147,6 +1193,68 @@ mod tests {
         assert_eq!(world.block(16, 64, 0), BlockStateId(0));
         assert_eq!(world.chunks.len(), count);
         assert!(!world.loaded(16, 0));
+    }
+
+    #[test]
+    fn block_entities_in_box_reads_loaded_chunks_inside_the_build_height() {
+        use crate::containers::BlockEntity;
+        let mut world = World::new(BlockStateId(0), 0);
+        for key in [(0, 0), (-1, 0)] {
+            world
+                .chunks
+                .insert(key, Arc::new(Chunk::empty(key.0, key.1)));
+        }
+        let inside = [(1, 64, 1), (-16, -64, 15), (15, 319, 0)];
+        for pos in inside.into_iter().chain([(0, 320, 0), (40, 64, 40)]) {
+            world
+                .block_entities
+                .insert(pos, BlockEntity::Campfire(Box::default()));
+        }
+        // Above the build height, and in chunk (2, 2), which is not loaded: never listed.
+        let sorted = |found: Option<Vec<_>>| {
+            let mut found = found.unwrap();
+            found.sort_unstable();
+            found
+        };
+        let mut expected = inside.to_vec();
+        expected.sort_unstable();
+        let all = [i32::MIN; 3];
+        let top = [i32::MAX; 3];
+        assert_eq!(sorted(world.block_entities_in_box(all, top)), expected);
+        assert_eq!(
+            sorted(world.block_entities_in_box([-16, -64, 0], [16, 320, 16])),
+            expected,
+            "the box's own columns"
+        );
+        // A block entity taken out for its tick is still listed.
+        let taken = world.block_entities.take(&(1, 64, 1)).unwrap();
+        assert_eq!(
+            world.block_entities_in_box([1, 64, 1], [2, 65, 2]),
+            Some(vec![(1, 64, 1)])
+        );
+        assert_eq!(
+            world.block_entities.taken_type(&(1, 64, 1)),
+            Some(crate::block_entities::TakenType::Vanilla(
+                "minecraft:campfire"
+            ))
+        );
+        assert!(world.block_entities.put(taken.0, taken.1));
+        assert_eq!(world.block_entities.taken_type(&(1, 64, 1)), None);
+        // The maximum is exclusive on every axis; the build height clips the box.
+        for max in [[1, 65, 2], [2, 64, 2], [2, 65, 1]] {
+            assert_eq!(world.block_entities_in_box([0, 63, 0], max), Some(vec![]));
+        }
+        assert_eq!(
+            world.block_entities_in_box([0, 320, 0], [16, top[1], 16]),
+            Some(vec![])
+        );
+        assert_eq!(
+            world.block_entities_in_box([32, 0, 32], [48, 100, 48]),
+            Some(vec![])
+        );
+        assert_eq!(world.block_entities_in_box(top, top), Some(vec![]));
+        assert_eq!(world.block_entities_in_box([2, 0, 0], [1, 10, 10]), None);
+        assert_eq!(world.block_entities_in_box(top, all), None);
     }
 
     #[test]

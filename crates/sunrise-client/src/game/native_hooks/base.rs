@@ -836,6 +836,20 @@ impl Game<'_> {
     pub(in crate::game) fn native_shader_params(&self, partial: f32, params: &mut [[f32; 4]; 8]) {
         self.fire_shader_params(partial, params);
     }
+    /// `WorldlyContainer.canTakeItemThroughFace` for a block entity's subscribed part: whether
+    /// `stack` in `slot` may leave through `face`, replacing the declared output slots.
+    pub(in crate::game) fn native_can_take_item_through_face(
+        &self,
+        entity: &ModBlockEntity,
+        pos: BlockPos,
+        state: mod_api::BlockState,
+        slot: usize,
+        stack: &mod_api::ItemStack,
+        face: Direction,
+        allowed: &mut Option<bool>,
+    ) {
+        self.fire_can_take_item_through_face(entity, pos, state, slot, stack, face, allowed);
+    }
     /// Register namespaced NBT component types before content loads.
     pub(in crate::game) fn native_component_types(
         context: &mod_api::RegistrationContext,
@@ -2551,6 +2565,20 @@ impl Game<'_> {
         self.fire_sleep_finished_time(dimension, current, new_time, adjustment, canceled);
     }
 
+    /// Enough players sleep in level `dimension` to skip the night (`ServerLevel.tick`), before
+    /// the clock moves, the sleepers wake and the rain ends. Set `canceled` and none of it
+    /// happens this tick.
+    pub(in crate::game) fn native_sleep_skip_night(
+        &mut self,
+        dimension: &str,
+        percentage: i32,
+        sleeping: i64,
+        active: i64,
+        canceled: &mut bool,
+    ) {
+        self.fire_sleep_skip_night(dimension, percentage, sleeping, active, canceled);
+    }
+
     /// A manual clock write from `/time` or a level clock setter. Set `cancel` to leave it alone.
     pub(in crate::game) fn native_time_skip(
         &mut self,
@@ -3154,7 +3182,11 @@ impl Game<'_> {
     /// particles); `damage_multiplier` starts at 1.5 for vanilla's critical and
     /// 1.0 otherwise, and scales the damage only while `critical` ends true. Not fired for a
     /// target that is no living entity (a dragon part) or when the hit does
-    /// no damage. Fires on the Game that runs the attack.
+    /// no damage. Fires on the Game that runs the attack, and on the attacking
+    /// client, which only asks: once for each melee attack the local player
+    /// sends on a living entity, with `vanilla_critical` from what the client
+    /// knows; what a listener writes there changes no packet, no server
+    /// decision and nothing drawn.
     pub(in crate::game) fn native_critical_hit(
         &mut self,
         target_kind: &str,

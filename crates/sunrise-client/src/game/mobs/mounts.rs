@@ -2,7 +2,7 @@
 //! armour and chests, mounting, the rider's control and jump bar
 //! (`LocalPlayer.aiStep`'s riding jump), positioning, dismounting, and the
 //! mount's health and jump bar on the HUD.
-use super::Game;
+use super::{Game, item_abilities::ability};
 use sunrise_client::actions::Action;
 use sunrise_client::{
     blocks::Fluid,
@@ -123,7 +123,7 @@ impl Game<'_> {
     /// / `Mob.shearItem`: the saddle of a `#can_equip_saddle` mob comes off
     /// before its mobInteract can ride it, with the saddle's shearing sound.
     /// An occupied mount is not sheared: its mobInteract runs instead.
-    pub(super) fn shear_saddle(&mut self, index: usize, item: &str) -> Option<bool> {
+    pub(super) fn shear_saddle(&mut self, index: usize) -> Option<bool> {
         let m = &self.mobs[index];
         // EntityTypeTags.CAN_EQUIP_SADDLE.
         let saddleable = matches!(
@@ -140,7 +140,11 @@ impl Game<'_> {
                 | Species::Nautilus
                 | Species::ZombieNautilus
         );
-        if item != "minecraft:shears" || !saddleable || m.is_baby() || !m.alive() {
+        if !self.held_shears(ability::SHEARS_REMOVE_ARMOR)
+            || !saddleable
+            || m.is_baby()
+            || !m.alive()
+        {
             return None;
         }
         let id = m.id;

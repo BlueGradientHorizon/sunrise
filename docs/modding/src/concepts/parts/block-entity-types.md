@@ -257,3 +257,55 @@ checked when data is actually serialized, not by the placement callback.
 Callbacks are registered at startup and frozen with the block registry snapshot. A data-pack
 `/reload` keeps that registry and its existing callbacks; it does not register replacement code.
 A newly prepared registry receives its own callback snapshot.
+
+## Load callback
+
+Use `block_entity_on_load` to initialize a mod block entity after attachment and
+saved-data application, before it ticks. The hook fires for fresh placement,
+saved chunk loads and client chunk reception. It corresponds to NeoForge's
+`IBlockEntityExtension.onLoad`.
+
+The event supplies `event.subject: BlockEntitySideScope<'_>`: match
+`BlockEntitySideScope::Server(scope)` for a mutable `BlockEntityView` and `&mut dyn ServerHost`
+sequentially, or `BlockEntitySideScope::Client(scope)` for a read-only `BlockEntityReadView`
+and `&mut dyn ClientHost` sequentially. Both views already see the applied saved data. Dispatch
+is keyed by the block entity type ID.
+
+- The hook fires once per attached identity, on each logical side. Writing a
+  payload to an existing identity does not fire it again.
+- Unloading and loading a chunk creates new identities and delivers new notices.
+  Vanilla block entities do not receive this hook.
+- Notices are drained before block entity ticking. Each drain handles only the
+  notices pending when it begins; a listener's replacement block queues a notice
+  for a later drain.
+- If a pre-tick drain replaces the entity about to tick, that tick waits. The
+  replacement receives its own notice before ticking.
+- Worlds without subscribers collect no notices.
+
+## Mod container openers
+
+A declared mod block entity with a container menu uses the server's
+`ContainerOpenersCounter`. Non-spectator players increment it when their menu
+opens, and decrement it when the menu closes, including disconnects. Copper
+golems count too. Each block entity owns its own counter. Native menus do not
+count simply because they carry a position; a combined container counts both
+block entities.
+
+`mod_container_viewers` version 2 reports the previous and current counts
+synchronously at these moments. The counter rechecks users in range five ticks
+after the first open, then every five ticks while open; these rechecks report
+counts even when unchanged. Open and close callbacks can therefore occur in the
+same tick. The player is in place during their open or close callback; a recheck
+has no acting player. Removing or replacing the block entity drops its pending
+recheck without a viewer notice or a game event. A guest's open menu belongs to
+that block entity instance, not its position: closing or rechecking the old menu
+does not affect a replacement's count or viewer list.
+
+A zero-to-positive transition posts `minecraft:container_open`; a
+positive-to-zero transition posts `minecraft:container_close`. The opening or
+closing entity is the source. A recheck has no entity source. These game events
+reach vibration listeners just as vanilla container events do.
+
+A mod can update its block state or play its own sound from the viewer callback.
+Use `previous == 0 && viewers > 0` for an open edge and
+`previous > 0 && viewers == 0` for a close edge.

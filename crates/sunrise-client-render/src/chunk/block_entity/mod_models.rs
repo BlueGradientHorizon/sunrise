@@ -22,6 +22,8 @@ pub struct ModBlockEntity {
     /// Looked up once when the entity is made. `None` for an unknown type or before the
     /// process's type table is installed. Both the numeric id and keyed Parts are frozen.
     registered_type: Option<RegisteredBlockEntityType>,
+    /// Its type's key, resolved with `registered_type`; `None` for an unregistered type.
+    kind: Option<mod_api::BlockEntityTypeKey>,
     pub(crate) fields: ModBlockEntityFields,
     pub(crate) revision: ModRevision,
     /// What its block's collision and outline are while it holds some
@@ -108,16 +110,19 @@ impl ModBlockEntity {
     pub fn new(id: String, mut fields: ModBlockEntityFields) -> Self {
         fields.claim_modeled_item_rows();
         let registered_type = block_entity_types::registered(&id);
-        Self::with_type(id, registered_type, fields)
+        let kind = registered_type.and_then(|_| mod_api::__private::block_entity_type_key(&id));
+        Self::with_type(id, registered_type, kind, fields)
     }
     fn with_type(
         id: String,
         registered_type: Option<RegisteredBlockEntityType>,
+        kind: Option<mod_api::BlockEntityTypeKey>,
         fields: ModBlockEntityFields,
     ) -> Self {
         Self {
             id,
             registered_type,
+            kind,
             fields,
             revision: ModRevision {
                 born: sunrise_mod_runtime::block_entities::new_identity(),
@@ -187,6 +192,11 @@ impl ModBlockEntity {
     pub fn tick_kind(&self) -> Option<mod_api::BlockEntityTypeKey> {
         self.registered_type?.server_ticker
     }
+    /// Its type's key (`BlockEntity.getType`), resolved from [`Self::id`] when the entity was
+    /// made; `None` for a type the game has not registered.
+    pub fn kind(&self) -> Option<mod_api::BlockEntityTypeKey> {
+        self.kind
+    }
     pub fn revision(&self) -> ModRevision {
         self.revision
     }
@@ -247,7 +257,12 @@ impl Default for ModBlockEntity {
 }
 impl Clone for ModBlockEntity {
     fn clone(&self) -> Self {
-        let mut copy = Self::with_type(self.id.clone(), self.registered_type, self.fields.clone());
+        let mut copy = Self::with_type(
+            self.id.clone(),
+            self.registered_type,
+            self.kind,
+            self.fields.clone(),
+        );
         copy.shapes.clone_from(&self.shapes);
         copy.shapes_cleared = self.shapes_cleared;
         copy

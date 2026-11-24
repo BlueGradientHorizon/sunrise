@@ -1,4 +1,4 @@
-//! Server-side player bots for mods (docs/native-mods.md, "Server hooks for plugin ports: player
+//! Server-side player bots for mods (docs/modding/src/how-to/native-mods.md, "Server hooks for plugin ports: player
 //! bots"): a mod that drives a server player itself (a fake client sending its own moves) asks
 //! where the player's movement code would take them in one tick, and which block shapes are in
 //! a box. Nothing runs unless a mod calls it, and neither changes the player or the level.

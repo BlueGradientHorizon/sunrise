@@ -46,6 +46,7 @@ mod spawn_egg_mob_tests;
 mod spectator_view_tests;
 mod world_view;
 use super::api_values::{TryIntoApi, TryIntoEngine};
+use super::item_abilities::ability;
 use super::level_sounds::LevelSound;
 use super::piston_push::Lid;
 use super::{
@@ -3136,7 +3137,12 @@ impl Game<'_> {
                         self.give_player_effect(effect, ticks, amplifier);
                     }
                 }
-                MobEvent::DamagePlayer { amount, from, kind } => {
+                MobEvent::DamagePlayer {
+                    amount,
+                    from,
+                    kind,
+                    wielder: _,
+                } => {
                     let hurt = self.mob_hits_player(amount, from, kind);
                     if kind == "minecraft:spear" {
                         self.combat.hit_landed = hurt;
@@ -8207,7 +8213,7 @@ impl Game<'_> {
             return Ok(true);
         }
         // Shears ask the mob's entity parts first, then fire `player_shear_entity`.
-        if self.held_shears() {
+        if self.held_shears(ability::SHEARS_HARVEST) {
             let id = self.mobs[index].id;
             if let Some(consumed) = self.player_shear(index) {
                 return Ok(consumed);
@@ -8249,7 +8255,7 @@ impl Game<'_> {
             .as_ref()
             .map(|h| h.item.to_string())
             .unwrap_or_default();
-        let shears = self.held_shears();
+        let shears = self.held_shears(ability::SHEARS_HARVEST);
         // Bucketable.bucketMobPickup: a water bucket scoops up a fish, a
         // tadpole or an axolotl, with the data its bucket carries.
         if item == "minecraft:water_bucket"
@@ -8364,7 +8370,7 @@ impl Game<'_> {
             self.swing_arm();
             return Ok(true);
         }
-        if let Some(sheared) = self.shear_saddle(index, &item) {
+        if let Some(sheared) = self.shear_saddle(index) {
             if sheared {
                 self.swing_arm();
             }
@@ -8433,6 +8439,8 @@ impl Game<'_> {
         };
         let credit_plan =
             self.prepare_knockback_credit(self.mobs[index].id as i32, Some(Who::Player), &feeder);
+        let removes_armor = self.mobs[index].species() == Species::Wolf
+            && self.held_shears(ability::SHEARS_REMOVE_ARMOR);
         let m = &mut self.mobs[index];
         if !m.alive() {
             return Ok(false);
@@ -8544,7 +8552,7 @@ impl Game<'_> {
             }
             // Entity.interact: shears take a tamed wolf's armor off for its owner.
             Species::Wolf
-                if item == "minecraft:shears"
+                if removes_armor
                     && m.extra.tame
                     && m.extra.owner == Some(acting)
                     && m.extra.body_id().is_some()
@@ -9187,8 +9195,9 @@ impl Game<'_> {
     /// (`brushOffScute`) and loses 16 durability.
     fn interact_armadillo(&mut self, index: usize, item: &str) -> bool {
         let m = &self.mobs[index];
-        if item != "minecraft:brush"
-            || m.species() != Species::Armadillo
+        if !self.held().is_some_and(|s| {
+            self.stack_can_perform(s, ability::BRUSH_BRUSH, item == "minecraft:brush")
+        }) || m.species() != Species::Armadillo
             || !m.alive()
             || m.is_baby()
         {

@@ -22,6 +22,8 @@ use sunrise_core::geometry::Vec3;
 
 #[path = "gui_layer_tests/hidden_panic.rs"]
 mod hidden_panic;
+#[path = "gui_layer_tests/status_heights.rs"]
+mod status_heights;
 
 static LOG: Mutex<Vec<String>> = Mutex::new(Vec::new());
 

@@ -48,7 +48,7 @@ is not loaded), with no column-count or total-block cap:
 - `slice.water_color` carries the `0xRRGGBB` server-side biome JSON water colour
   (`BiomeSpecialEffects.waterColor`) at the column's top (`base - 1`). Colormap-derived
   grass and foliage tints are client-side only. See
-  [Read blended biome tints on the client](read-biome-data.md#read-blended-biome-tints-on-the-client)
+  [Read blended biome tints on the client](biomes.md#read-blended-biome-tints-on-the-client)
   for `ClientHost::biome_tint(pos, resolver)` and the equivalent read inside a block tint callback.
 
 ## Query terrain before loading chunks

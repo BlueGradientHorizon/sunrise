@@ -1,7 +1,7 @@
 //! What a mod declares of the game's own code (`[[native.mixin]]` targets, `[[native.loop]]` loops and its `internals`), as entries of the list of what it uses: one function reads them from a build's build data, for the packer to record at the pinned build and for the fit check to compare at the installed one.
 use std::path::Path;
 use sunrise_mod_package::internals::{self, ListedInternal};
-use sunrise_mod_package::mod_surface::uses::{Change, Entry, GameCode, Misfit};
+use sunrise_mod_package::mod_surface::uses::{Change, Entry, GameCode, Misfit, UsesTable};
 use sunrise_mod_package::{
     Manifest,
     build_data::{self, ReadError},
@@ -346,6 +346,30 @@ pub struct Compared {
     pub unrecorded: bool,
     /// The ids the build cannot fingerprint ([`Now::Unjudged`]).
     pub unjudged: Vec<String>,
+}
+
+/// The game code `manifest` declares, as `now` gives it in a build whose tool builds with horizon-mixins revision `revision` ([`tool`]), against `table`'s record of it. `now` is asked for only when the mod declares some; when it gives none, its error comes second and the misfits hold only what is known without it.
+pub fn compare_declared<E>(
+    manifest: &Manifest,
+    table: &UsesTable,
+    revision: &str,
+    now: impl FnOnce() -> Result<Vec<(String, Now)>, E>,
+) -> (Compared, Option<E>) {
+    let mut compared = Compared::default();
+    let mut uncompared = None;
+    if declared(manifest) {
+        let recorded: Vec<_> = table
+            .entries
+            .iter()
+            .filter(|entry| entry.id.starts_with(PREFIX))
+            .collect();
+        match now() {
+            Ok(now) => compared = compare(&recorded, now),
+            Err(why) => uncompared = Some(why),
+        }
+    }
+    compared.misfits.extend(tool(manifest, revision));
+    (compared, uncompared)
 }
 
 /// `now`, a build's [`entries`], against the list's `recorded` entries.

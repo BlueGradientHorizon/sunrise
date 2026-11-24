@@ -178,14 +178,8 @@ pub(super) fn mob_attribute_modifiers<'a>(
 impl Game<'_> {
     /// What a living handle names now: a player, a mob, an armor stand or the dragon.
     pub(super) fn native_living_target(&self, living: LivingRef) -> Option<Target> {
-        match self.native_entity_target(living.entity())? {
-            t @ (Target::Player
-            | Target::Guest(_)
-            | Target::Mob(_)
-            | Target::Stand(_)
-            | Target::Dragon(_)) => Some(t),
-            _ => None,
-        }
+        self.native_entity_target(living.entity())
+            .filter(|t| t.is_living())
     }
     /// A direct, non-damaging call to the short `LivingEntity.knockback` entry.
     pub(super) fn living_knockback(

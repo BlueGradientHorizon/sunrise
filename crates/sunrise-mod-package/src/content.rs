@@ -734,14 +734,16 @@ struct FluidFile {
     sprite: Option<String>,
     tint: Option<u32>,
     world: Option<WorldFluid>,
+    bucket_item: Option<String>,
     temperature: Option<i32>,
     density: Option<i32>,
     viscosity: Option<i32>,
+    light_level: Option<u8>,
 }
 
 /// A fluid's `FluidType` numbers, which mods read for one another's fluids: NeoForge's
-/// `FluidType.getTemperature`, `getDensity` and `getViscosity`. Each defaults to
-/// `FluidType.Properties`' own, which are water's.
+/// `FluidType.getTemperature`, `getDensity`, `getViscosity` and `getLightLevel`. Each defaults
+/// to `FluidType.Properties`' own, which are water's.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct FluidMeasures {
     /// How hot it is, room temperature in kelvin by default: 300.
@@ -750,6 +752,8 @@ pub struct FluidMeasures {
     pub density: i32,
     /// How thick it is, 0 or more, water's by default: 1000.
     pub viscosity: i32,
+    /// The light it gives, 0 to 15, water's by default: 0.
+    pub light_level: u8,
 }
 impl Default for FluidMeasures {
     fn default() -> Self {
@@ -757,6 +761,7 @@ impl Default for FluidMeasures {
             temperature: 300,
             density: 1000,
             viscosity: 1000,
+            light_level: 0,
         }
     }
 }
@@ -764,7 +769,7 @@ impl Default for FluidMeasures {
 /// What makes a fluid exist in the world: a block holding it, as `minecraft:water`'s does, and
 /// how it flows. Each value defaults to water's, in `data/<id>/sunrise/fluid/` as in code
 /// (`Registrar::declare_world_fluid`).
-#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
 #[serde(default, deny_unknown_fields)]
 pub struct WorldFluid {
     /// Game ticks between two flow steps (`Fluid.getTickDelay`).
@@ -776,8 +781,12 @@ pub struct WorldFluid {
     /// Whether two sources make a third (`FlowingFluid.canConvertToSource`). Off by default:
     /// water's comes from a game rule, which a mod's fluid does not read.
     pub source_conversion: bool,
-    /// Whether it has a filled bucket, the item `<id>_bucket`.
+    /// Whether the game registers its filled bucket, a water bucket under the id the look's
+    /// `bucket_item` names, `<id>_bucket` when it names none.
     pub bucket: bool,
+    /// The registry name of its flowing form, in the fluid's namespace;
+    /// `<namespace>:flowing_<path>` when unset.
+    pub flowing: Option<String>,
 }
 impl Default for WorldFluid {
     fn default() -> Self {
@@ -787,6 +796,7 @@ impl Default for WorldFluid {
             slope_find_distance: 4,
             source_conversion: false,
             bucket: true,
+            flowing: None,
         }
     }
 }
@@ -815,26 +825,69 @@ pub struct FluidLook {
     pub tint: Option<u32>,
     /// How it exists in the world; none for a fluid only a tank holds.
     pub world: Option<WorldFluid>,
-    /// Its temperature, density and viscosity.
+    /// The item that holds a bucket of it (`Fluid.getBucket`): another item for a tank-only
+    /// fluid or a world fluid without a generated bucket, the generated bucket's id otherwise.
+    pub bucket_item: Option<String>,
+    /// Its temperature, density, viscosity and light level.
     pub measures: FluidMeasures,
 }
 impl FluidLook {
-    /// The registry name of its flowing form: `<namespace>:flowing_<path>`.
+    /// The registry name of its flowing form: the world fluid's `flowing`, else
+    /// `<namespace>:flowing_<path>`.
     pub fn flowing_id(&self) -> String {
+        if let Some(flowing) = self.world.as_ref().and_then(|world| world.flowing.clone()) {
+            return flowing;
+        }
         match self.id.split_once(':') {
             Some((namespace, path)) => format!("{namespace}:flowing_{path}"),
             None => format!("flowing_{}", self.id),
         }
     }
-    /// The filled bucket a world fluid has.
+    /// The item a bucket of it is (`Fluid.getBucket`): `bucket_item`, else `<id>_bucket` for a
+    /// world fluid with a generated bucket. None for a fluid no bucket holds.
     pub fn bucket_id(&self) -> Option<String> {
-        self.world
-            .filter(|world| world.bucket)
-            .map(|_| format!("{}_bucket", self.id))
+        self.bucket_item.clone().or_else(|| {
+            self.world
+                .as_ref()
+                .filter(|world| world.bucket)
+                .map(|_| format!("{}_bucket", self.id))
+        })
+    }
+    /// Refuses names and numbers the game cannot register: an id that is not
+    /// `namespace:path`, a flowing form or generated bucket outside the fluid's namespace, and a
+    /// light level above 15.
+    pub fn check(&self) -> Result<(), String> {
+        let namespace = self.id.split_once(':').map(|(namespace, _)| namespace);
+        let own = |id: &str| namespaced_id(id) && id.split_once(':').map(|(n, _)| n) == namespace;
+        if let Some(world) = &self.world {
+            world.check().map_err(|e| format!("world: {e}"))?;
+            if world
+                .flowing
+                .as_deref()
+                .is_some_and(|flowing| !own(flowing) || flowing == self.id)
+            {
+                return Err(
+                    "world: flowing is an id in the fluid's namespace, not the fluid's own".into(),
+                );
+            }
+        }
+        if let Some(item) = &self.bucket_item {
+            let generated = self.world.as_ref().is_some_and(|world| world.bucket);
+            if !namespaced_id(item) || (generated && !own(item)) {
+                return Err(
+                    "bucket_item is an item id, in the fluid's namespace when the game registers it"
+                        .into(),
+                );
+            }
+        }
+        if self.measures.light_level > 15 {
+            return Err("light_level is 0 to 15".into());
+        }
+        Ok(())
     }
     /// The block a world fluid is in the world: water's behaviour and states under its own id.
     pub fn world_block(&self) -> Option<Block> {
-        self.world.map(|_| Block {
+        self.world.as_ref().map(|_| Block {
             id: self.id.clone(),
             template: "minecraft:water".into(),
             ..Block::default()
@@ -842,7 +895,8 @@ impl FluidLook {
     }
     /// The item its bucket is: a water bucket's under its own id, leaving the empty bucket.
     pub fn world_bucket(&self) -> Option<Item> {
-        self.bucket_id().map(|id| Item {
+        let generated = self.world.as_ref().is_some_and(|world| world.bucket);
+        self.bucket_id().filter(|_| generated).map(|id| Item {
             id,
             template: "minecraft:water_bucket".into(),
             crafting_remainder: Some("minecraft:bucket".into()),
@@ -1825,9 +1879,6 @@ impl Content {
                     "{name}: sprite is an atlas sprite id (namespace:path)"
                 ));
             }
-            if let Some(world) = &file.world {
-                world.check().map_err(|e| format!("{name}: world: {e}"))?;
-            }
             // `FluidType.Properties.viscosity` throws for a negative one; the others take any.
             if file.viscosity.is_some_and(|viscosity| viscosity < 0) {
                 return Err(format!("{name}: viscosity is never negative"));
@@ -1838,12 +1889,15 @@ impl Content {
                 sprite: file.sprite,
                 tint: file.tint,
                 world: file.world,
+                bucket_item: file.bucket_item,
                 measures: FluidMeasures {
                     temperature: file.temperature.unwrap_or(defaults.temperature),
                     density: file.density.unwrap_or(defaults.density),
                     viscosity: file.viscosity.unwrap_or(defaults.viscosity),
+                    light_level: file.light_level.unwrap_or(defaults.light_level),
                 },
             };
+            look.check().map_err(|e| format!("{name}: {e}"))?;
             if self.fluids.iter().any(|known| {
                 known.id == look.id
                     || (known.world.is_some() && known.flowing_id() == look.id)
@@ -4470,8 +4524,8 @@ capabilities = ["registries"]
         let content = smod("world-fluid", MANIFEST_TEXT, files).unwrap();
         let oil = content.fluids.iter().find(|f| f.id == "ruby:oil").unwrap();
         assert_eq!(oil.flowing_id(), "ruby:flowing_oil");
-        assert_eq!(oil.world.unwrap().tick_delay, 20);
-        assert!(!oil.world.unwrap().source_conversion);
+        assert_eq!(oil.world.as_ref().unwrap().tick_delay, 20);
+        assert!(!oil.world.as_ref().unwrap().source_conversion);
         let block = content.blocks.iter().find(|b| b.id == "ruby:oil").unwrap();
         assert_eq!(block.template, "minecraft:water");
         assert!(!block.item, "the fluid's block has no block item");
@@ -4483,6 +4537,70 @@ capabilities = ["registries"]
         assert_eq!(bucket.template, "minecraft:water_bucket");
         assert!(content.blocks.iter().any(|b| b.id == "ruby:mist"));
         assert!(!content.items.iter().any(|i| i.id == "ruby:mist_bucket"));
+        assert_eq!(
+            content
+                .fluids
+                .iter()
+                .find(|f| f.id == "ruby:mist")
+                .unwrap()
+                .bucket_id(),
+            None
+        );
+    }
+
+    /// A port keeps its mod's ids (Sophisticated Core's `xp_still`, `xp_flowing` and
+    /// `xp_bucket`): a world fluid names its flowing form and generated bucket, a tank-only
+    /// fluid an item of its own as its bucket, and either states its light level.
+    #[test]
+    fn fluids_name_their_bucket_flowing_form_and_light() {
+        let files: &[(&str, &[u8])] = &[
+            (
+                "data/ruby/sunrise/fluid/xp_still.json",
+                br#"{"bucket_item":"ruby:xp_bucket","light_level":10,"world":{"flowing":"ruby:xp_flowing"}}"#,
+            ),
+            (
+                "data/ruby/sunrise/fluid/essence.json",
+                br#"{"bucket_item":"ruby:essence_jar","light_level":15}"#,
+            ),
+        ];
+        let content = smod("named-fluid", MANIFEST_TEXT, files).unwrap();
+        let xp = content
+            .fluids
+            .iter()
+            .find(|f| f.id == "ruby:xp_still")
+            .unwrap();
+        assert_eq!(xp.flowing_id(), "ruby:xp_flowing");
+        assert_eq!(xp.bucket_id().as_deref(), Some("ruby:xp_bucket"));
+        assert_eq!(xp.measures.light_level, 10);
+        assert!(content.items.iter().any(|i| i.id == "ruby:xp_bucket"));
+        assert!(!content.items.iter().any(|i| i.id == "ruby:xp_still_bucket"));
+        let essence = content
+            .fluids
+            .iter()
+            .find(|f| f.id == "ruby:essence")
+            .unwrap();
+        assert_eq!(essence.bucket_id().as_deref(), Some("ruby:essence_jar"));
+        assert_eq!(essence.measures.light_level, 15);
+        assert!(
+            !content.items.iter().any(|i| i.id == "ruby:essence_jar"),
+            "a tank-only fluid's bucket is an item the mod declares"
+        );
+        for (body, refusal) in [
+            (&br#"{"light_level":16}"#[..], "light_level"),
+            (br#"{"bucket_item":"jar"}"#, "bucket_item"),
+            (br#"{"bucket_item":"other:jar","world":{}}"#, "bucket_item"),
+            (br#"{"world":{"flowing":"other:oil_flowing"}}"#, "flowing"),
+            (br#"{"world":{"flowing":"ruby:oil"}}"#, "flowing"),
+        ] {
+            let bad: &[(&str, &[u8])] = &[("data/ruby/sunrise/fluid/oil.json", body)];
+            let e = smod("bad-named-fluid", MANIFEST_TEXT, bad).unwrap_err();
+            assert!(e.contains(refusal), "{e}");
+        }
+        let tank_named_elsewhere: &[(&str, &[u8])] = &[(
+            "data/ruby/sunrise/fluid/oil.json",
+            br#"{"bucket_item":"other:jar"}"#,
+        )];
+        assert!(smod("tank-bucket", MANIFEST_TEXT, tank_named_elsewhere).is_ok());
     }
 
     #[test]
@@ -4528,6 +4646,7 @@ capabilities = ["registries"]
                     sprite: None,
                     tint: None,
                     world: None,
+                    bucket_item: None,
                     measures: FluidMeasures::default(),
                 },
                 FluidLook {
@@ -4535,6 +4654,7 @@ capabilities = ["registries"]
                     sprite: Some("ruby:gui/fluids/steam".into()),
                     tint: Some(4291343520),
                     world: None,
+                    bucket_item: None,
                     measures: FluidMeasures::default(),
                 },
             ]
@@ -4580,6 +4700,7 @@ capabilities = ["registries"]
                         temperature: -5,
                         density: 1000,
                         viscosity: 1000,
+                        light_level: 0,
                     }
                 ),
                 (
@@ -4588,6 +4709,7 @@ capabilities = ["registries"]
                         temperature: 1500,
                         density: -200,
                         viscosity: 0,
+                        light_level: 0,
                     }
                 ),
             ]

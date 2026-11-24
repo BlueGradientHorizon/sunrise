@@ -71,7 +71,7 @@ Wherever a build is given (`new --sunrise`, `pin`, `sdk diff`, `check --build`),
 | A Stable tag such as `26.3-0.1.0` | That release's build. |
 | A Dev tag `dev-YYYY-MM-DD-<short sha>` | That Dev build's; the build must start with the short SHA. |
 | 40 hex digits | That build. |
-| 7 to 39 hex digits | The one SDK whose build id starts with them, among the releases listed: this repository's 100 newest on GitHub, or a folder base's entries. Another URL base takes the full sha only. |
+| 7 to 39 hex digits | The one SDK whose build id starts with them, among the releases listed: this repository's 100 newest on GitHub, or a folder base's entries. Another URL base has no listing, so it has no short-SHA lookup; it still serves release names and full SHAs. |
 
 A release name is read from `<base>/<name>/sdk.json`. A Stable or Dev release's `sdk.json` must match its
 `SHA256SUMS`, signed with Sunrise's release key for exactly that tag (a Dev build's `SHA256SUMS.v2.sig`), so a mirror
@@ -111,4 +111,4 @@ against the public key set in `SUNRISE_SDK_TRUSTED_KEY`. The launcher's own copi
 The tool unpacks `build-data.tar.xz` into `.sunrise/cache/<build id>/build-data/`. `internals sync` checks
 pinned game source instead, as does `internals add` when the mod declares `[[native.module]]` rows. Source
 discovery uses the Rust named by the signed SDK, but does not need its compiled game slices.
-See [Native dependency tools](../registry-index.md#native-dependency-tools).
+See [Native dependency tools](05-commands.md#native-dependency-tools).

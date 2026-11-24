@@ -80,15 +80,61 @@ impl<'a> BlockTables<'a> {
         })
     }
 
-    /// `Fluid.getBucket`: the bucket item that picks `fluid` up. None for `minecraft:empty`
-    /// and for fluids without a bucket.
+    /// `Fluid.getBucket`: the bucket item that picks `fluid` up. None for `minecraft:empty`,
+    /// for fluids without a bucket, for a named item no item has, and for one of the game's own
+    /// buckets that would not keep it (the empty bucket, another fluid's or a mob's).
     pub(in crate::game) fn fluid_bucket(
         &self,
         fluid: FluidKey,
     ) -> Result<Option<mod_api::ItemKey>, mod_api::LevelReadError> {
-        Ok(engine_fluid_kind(fluid)
-            .and_then(sunrise_world::level::fluid_bucket)
-            .and_then(mod_api::__private::item_key))
+        let Some(fluid_id) = mod_api::__private::fluid_id(fluid) else {
+            return Ok(None);
+        };
+        let kind = FluidKind::from_name(fluid_id);
+        let Some(item) = (match kind {
+            Some(FluidKind::Mod(mod_fluid) | FluidKind::ModFlowing(mod_fluid)) => {
+                sunrise_client::mod_content::fluid_bucket(&mod_fluid.get().id)
+                    .and_then(|bucket| mod_api::__private::item_key(&bucket))
+            }
+            Some(kind) => {
+                sunrise_world::level::fluid_bucket(kind).and_then(mod_api::__private::item_key)
+            }
+            None => sunrise_client::mod_content::fluid_bucket(fluid_id)
+                .and_then(|bucket| mod_api::__private::item_key(&bucket)),
+        }) else {
+            return Ok(None);
+        };
+        // The game's own buckets keep what they hold: filling the empty one, or one of another
+        // fluid or a mob, would lose this fluid.
+        let Some(id) = mod_api::__private::item_key_id(item) else {
+            return Ok(None);
+        };
+        Ok(match sunrise_client::items::bucket_contents(id) {
+            Some((sunrise_world::level::BucketContent::Fluid(held), ..))
+                if kind.is_some_and(|kind| kind.same_family(held)) =>
+            {
+                Some(item)
+            }
+            Some(_) => None,
+            None if id == "minecraft:bucket" => None,
+            None => Some(item),
+        })
+    }
+
+    /// `BucketItem.content`: the fluid a filled bucket the game registers holds.
+    pub(in crate::game) fn bucket_fluid(
+        &self,
+        bucket: mod_api::ItemKey,
+    ) -> Result<Option<FluidKey>, mod_api::LevelReadError> {
+        let Some(item) = mod_api::__private::item_key_id(bucket) else {
+            return Ok(None);
+        };
+        Ok(match sunrise_client::items::bucket_contents(item) {
+            Some((sunrise_world::level::BucketContent::Fluid(kind), ..)) => {
+                mod_api::__private::fluid_key(kind.name())
+            }
+            _ => None,
+        })
     }
 
     /// `Fluid.getPickupSound`: the sound event a bucket plays as it picks `fluid` up.
@@ -96,7 +142,12 @@ impl<'a> BlockTables<'a> {
         &self,
         fluid: FluidKey,
     ) -> Result<Option<&'static str>, mod_api::LevelReadError> {
-        Ok(engine_fluid_kind(fluid).and_then(sunrise_world::level::fluid_pickup_sound))
+        Ok(match engine_fluid_kind(fluid) {
+            Some(kind) => sunrise_world::level::fluid_pickup_sound(kind),
+            None => self
+                .fluid_bucket(fluid)?
+                .map(|_| "minecraft:item.bucket.fill"),
+        })
     }
 
     /// `BucketItem.playEmptySound` / NeoForge `FluidType.getSound(BUCKET_EMPTY)`:
@@ -105,7 +156,12 @@ impl<'a> BlockTables<'a> {
         &self,
         fluid: FluidKey,
     ) -> Result<Option<&'static str>, mod_api::LevelReadError> {
-        Ok(engine_fluid_kind(fluid).and_then(sunrise_world::level::fluid_empty_sound))
+        Ok(match engine_fluid_kind(fluid) {
+            Some(kind) => sunrise_world::level::fluid_empty_sound(kind),
+            None => self
+                .fluid_bucket(fluid)?
+                .map(|_| "minecraft:item.bucket.empty"),
+        })
     }
 
     /// The exported definition of a world fluid, or a tank-only identity.
@@ -124,8 +180,8 @@ impl<'a> BlockTables<'a> {
         })
     }
 
-    /// A registered fluid's type properties: its block's light and name for a world fluid,
-    /// vanilla's `FluidTags.WATER` and `FluidTags.LAVA` behaviours by its family. None for a
+    /// A registered fluid's type properties: its block's name for a world fluid, its
+    /// `FluidType` numbers (a mod's from its fluid file, block or none), vanilla's `FluidTags.WATER` and `FluidTags.LAVA` behaviours by its family. None for a
     /// key the registry doesn't hold.
     pub(in crate::game) fn fluid_type_properties(
         &self,
@@ -148,7 +204,7 @@ impl<'a> BlockTables<'a> {
         let measures = fluid_measures(id, kind);
         Some(FluidTypeProperties {
             description_id,
-            light_level: block.map_or(0, |block| block.emission),
+            light_level: measures.light_level,
             fall_distance_modifier: match (water, lava) {
                 (true, _) => 0.0,
                 (_, true) => 0.5,
@@ -486,7 +542,7 @@ impl<'a> BlockTables<'a> {
     }
 }
 
-/// `FluidType.getTemperature`, `getDensity` and `getViscosity` of the registered fluid `id`,
+/// `FluidType.getTemperature`, `getDensity`, `getViscosity` and `getLightLevel` of the registered fluid `id`,
 /// whose world kind is `kind`. NeoForgeMod's EMPTY_TYPE and LAVA_TYPE state their own; water
 /// keeps `FluidType.Properties`' defaults, and a mod's fluid, flowing or not, what its source's
 /// file states.
@@ -496,11 +552,13 @@ fn fluid_measures(id: &str, kind: Option<FluidKind>) -> FluidMeasures {
             temperature: 0,
             density: 0,
             viscosity: 0,
+            light_level: 0,
         },
         Some(kind) if kind.same_family(FluidKind::Lava) => FluidMeasures {
             temperature: 1300,
             density: 3000,
             viscosity: 6000,
+            light_level: 15,
         },
         Some(kind) if kind.same_family(FluidKind::Water) => FluidMeasures::default(),
         _ => {

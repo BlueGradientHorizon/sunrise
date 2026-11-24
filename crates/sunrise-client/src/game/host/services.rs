@@ -27,9 +27,13 @@ impl Commands for Game<'_> {
     fn refresh_commands(&mut self) {
         CallbackOwner::call_host(|| self.native_refresh_commands())
     }
-    fn feedback(&mut self, line: Text) -> Result<(), mod_api::text::TextFormError> {
+    fn feedback(
+        &mut self,
+        line: Text,
+        broadcast_to_admins: bool,
+    ) -> Result<(), mod_api::text::TextFormError> {
         let line = sunrise_client_lib::api_text::to_serialized_engine(&line)?;
-        CallbackOwner::call_host(|| self.native_feedback(line));
+        CallbackOwner::call_host(|| self.native_feedback(line, broadcast_to_admins));
         Ok(())
     }
     fn failure(&mut self, line: Text) -> Result<(), mod_api::text::TextFormError> {

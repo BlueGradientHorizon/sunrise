@@ -831,10 +831,10 @@ impl Game<'_> {
 
     pub(super) fn send(&self, packet: S) {
         if self.remote.is_some() {
-            // MultiPlayerGameMode's attack, interact, useItem, useItemOn, releaseUsingItem, dropItem and
-            // piercingAttack run ensureHasSentCarriedItem before their packet: a slot the number keys
-            // chose this tick goes out first. A miss, a dig's start or a swap waits for the next tick.
-            if let S::Attack(_) | S::Interact(_) | S::UseItem(_) | S::UseItemOn(_) = &packet {
+            // MultiPlayerGameMode's attack, interact, useItem, releaseUsingItem, dropItem and
+            // piercingAttack sync the carried slot before their packet. useItemOn does this
+            // separately, before prediction. A miss, a dig's start or a swap waits for the next tick.
+            if let S::Attack(_) | S::Interact(_) | S::UseItem(_) = &packet {
                 self.remote_send_carried();
             } else if let S::PlayerAction(a) = &packet
                 && matches!(a.action, 4 | 5 | 6 | 8)
@@ -1715,10 +1715,11 @@ impl Game<'_> {
 
     // remote_send_carried: remote/sync.rs
 
-    /// `MultiPlayerGameMode.attack` runs `Player.attack` on this client too: its
-    /// `isSweepAttack` for a damaging hit on `target` (`living`: a
-    /// `LivingEntity`, which may be hit critically), heard by native mods on
-    /// both sides. Only the server sweeps.
+    /// `MultiPlayerGameMode.attack` runs `Player.attack` on this client too:
+    /// for a damaging hit on `target` (`living`: a `LivingEntity`, which may be
+    /// hit critically) its `CriticalHitEvent`, then its `isSweepAttack` with
+    /// the critical hit as decided, heard by native mods on both sides. This
+    /// client only asks: only the server hits critically and sweeps.
     fn remote_sweep_event(&mut self, target: &str, living: bool) {
         if mod_api::__private::mods().is_empty() {
             return;
@@ -1728,7 +1729,12 @@ impl Game<'_> {
         if damage <= 0.0 && magic <= 0.0 {
             return;
         }
-        let crit = living && self.critical_attack(scale);
+        let mut crit = living && self.critical_attack(scale);
+        if living {
+            let vanilla = crit;
+            let mut multiplier = if vanilla { 1.5 } else { 1.0 };
+            self.native_critical_hit(target, vanilla, &mut crit, &mut multiplier);
+        }
         self.sweep_decision(scale, crit, target);
     }
 

@@ -400,6 +400,7 @@ mod tests {
             kind: "minecraft:arrow".into(),
             source: Some(engine::LootEntity::new("minecraft:skeleton")),
             direct: Some(engine::LootEntity::new("minecraft:arrow")),
+            is_direct: false,
         };
         let place = engine::LootPlace {
             origin: Some([1.0, 2.0, 3.0]),

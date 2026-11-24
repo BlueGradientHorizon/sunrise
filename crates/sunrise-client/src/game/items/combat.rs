@@ -1064,7 +1064,8 @@ impl Game<'_> {
 
 /// Hits one mob's tick deals another, handled after the mob loop.
 impl Game<'_> {
-    /// A melee hit on another mob, then `postAttack`; whether it landed.
+    /// A melee hit on another mob, then `postAttack`: the victim's
+    /// equipment, then the attacker's weapon; whether it landed.
     pub(super) fn mob_attacks_mob(
         &mut self,
         target: u32,

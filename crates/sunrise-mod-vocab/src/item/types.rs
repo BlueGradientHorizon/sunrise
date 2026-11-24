@@ -49,6 +49,14 @@ impl ItemKey {
     pub fn is_in_tag(self, tags: &dyn Tags, tag: TagKey) -> Option<bool> {
         tags.is_in_tag(self, tag)
     }
+    /// The fluid a filled bucket the game registers holds (`BucketItem.content`), the inverse of
+    /// [`FluidKey::bucket`] for those buckets: `minecraft:water` for `minecraft:water_bucket`,
+    /// `minecraft:lava` for `minecraft:lava_bucket`, a mod world fluid's source for its generated
+    /// bucket. `None` for any other item (including the empty bucket and a mod-declared item) or
+    /// when tables are unavailable.
+    pub fn bucket_fluid(self, states: &BlockStates<'_>) -> Option<FluidKey> {
+        states.backend().bucket_fluid(self).ok().flatten()
+    }
 }
 
 /// A menu type (`minecraft:generic_9x3`) in the built-in menu registry, in
@@ -661,6 +669,8 @@ pub enum ToolAbility {
     ShovelDouse,
     /// A hoe tills soil.
     HoeTill,
+    /// A fire starter (flint and steel, a fire charge) lights a campfire, candle or candle cake.
+    FirestarterLight,
 }
 
 /// Read-only context for a tool modification.

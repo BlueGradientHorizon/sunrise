@@ -164,10 +164,10 @@ impl Hooks for FeedbackCommand {
             .push(Command::new("feedback_probe").executes(|host, _, _| {
                 let mut text = Text::literal("€".repeat(1500));
                 text.style.bold = Some(true);
-                host.commands().feedback(text).unwrap();
+                host.commands().feedback(text, false).unwrap();
                 for index in 1..300 {
                     host.commands()
-                        .feedback(Text::literal(format!("line {index}")))
+                        .feedback(Text::literal(format!("line {index}")), false)
                         .unwrap();
                     if index == 150 {
                         let inner = host

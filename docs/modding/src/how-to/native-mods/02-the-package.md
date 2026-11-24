@@ -42,13 +42,6 @@ nonzero square PNG, at most 512 × 512 pixels and 256 KiB encoded. It is optiona
 and code mods; the scaffold does not create one.
 
 To change game code itself, add a [`[[native.mixin]]`](../../concepts/native-route/2-mixins.md) row to
-`sunrise-mod.toml` and run `cargo sunrise-mod build`.
-
-## What a mixin cannot target
-
-For an unsupported macro in the game body or a `RETURN` target with `?`, use `HEAD` or hook a call to that
-function. Select sites outside closures, and use `AFTER_CALL` instead of `WRAP_OPERATION` to observe a call on a
-struct literal. Bind a plain `Self` result using the concrete impl type. If a lower-crate helper needs an import
-from a group, refer to the imported name explicitly or use its accessible full path. See
-[Mixins: what a mixin cannot target](../../concepts/native-route/2-mixins.md#what-a-mixin-cannot-target) for the
-reasons, selector spelling and other alternatives.
+`sunrise-mod.toml` and run `cargo sunrise-mod build`. See
+[What a mixin cannot target](../../concepts/native-route/2-mixins.md#what-a-mixin-cannot-target) for selector
+and body-hook restrictions.

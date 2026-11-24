@@ -29,6 +29,24 @@ pub trait BlockEntitiesBackend {
     /// Side: both.
     /// The block entity's level.
     fn block_entity_level(&self, entity: BlockEntityRef) -> Option<LevelRef>;
+    /// Side: server.
+    /// The block entities of the named open server level, active or parked, whose positions lie
+    /// in the box from `min` (inclusive) to `max` (exclusive) on each axis and within the level's
+    /// build height (`LevelHeightAccessor.isInsideBuildHeight`), in no order. Only chunks
+    /// already loaded are read (`ServerChunkCache.getChunkNow`), from their live entries
+    /// (`LevelChunk.getBlockEntities`): nothing is loaded or generated, and saved entries not
+    /// yet made live are not listed. A moving piston's (`minecraft:piston`) is listed, and one taken
+    /// out for its tick is still listed with its own type. Empty for a box
+    /// with no block entity, including one of zero volume, one outside the build height and one
+    /// that meets no loaded chunk; any corners are valid, `i32::MIN` and `i32::MAX` included,
+    /// and there is no cap on the chunks a box covers. None for reversed bounds (`min` above
+    /// `max` on an axis), a stale handle, or on a client.
+    fn level_block_entities(
+        &self,
+        level: LevelRef,
+        min: [i32; 3],
+        max: [i32; 3],
+    ) -> Option<Vec<BlockEntityAt>>;
     /// Side: both.
     /// An owned snapshot of the data saved without identity or position metadata
     /// (`BlockEntity.saveWithoutMetadata`). The save payload is assembled on request.

@@ -51,7 +51,15 @@ impl Game<'_> {
                 .use_start
                 .item
                 .as_ref()
-                .is_some_and(|s| &*s.item == "minecraft:spyglass")
+                .is_some_and(|s| self.stack_scopes(s))
+    }
+    /// Whether `stack` looks through as a spyglass does (`spyglass_scope`).
+    pub(super) fn stack_scopes(&self, stack: &sunrise_client::items::ItemStack) -> bool {
+        self.stack_can_perform(
+            stack,
+            super::item_abilities::ability::SPYGLASS_SCOPE,
+            &*stack.item == "minecraft:spyglass",
+        )
     }
     /// `options.fovEffectScale`.
     pub(super) fn fov_effect_scale(&self) -> f32 {
@@ -84,7 +92,12 @@ impl Game<'_> {
         let p = self.player.as_ref()?;
         let using = self.using.and_then(|(_, ticks)| {
             let stack = self.use_start.item.as_ref()?;
-            Some((fov_use_item(&stack.item), ticks as i32))
+            let item = match &*stack.item {
+                "minecraft:bow" => UseItem::Bow,
+                _ if self.stack_scopes(stack) => UseItem::Spyglass,
+                _ => UseItem::Other,
+            };
+            Some((item, ticks as i32))
         });
         Some(FovPlayer {
             flying: p.flying,

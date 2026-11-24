@@ -13,6 +13,11 @@ impl Target {
     pub(in crate::game) fn is_player(self) -> bool {
         matches!(self, Target::Player | Target::Guest(_))
     }
+
+    /// A target with a `LivingEntity` body.
+    pub(in crate::game) fn is_living(self) -> bool {
+        self.is_player() || matches!(self, Self::Mob(_) | Self::Stand(_) | Self::Dragon(_))
+    }
 }
 
 /// GameType.getName for a guest's game mode id.

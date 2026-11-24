@@ -570,9 +570,10 @@ mod tests {
         });
     }
 
-    /// A mod's fluid file through the real content loader: the numbers it states, for its
-    /// source and flowing forms alike, and `FluidType.Properties`' defaults for keys it leaves
-    /// out. Loading a mod replaces process-wide fluid tables, so this runs in its own process.
+    /// A mod's fluid file through the real content loader: the numbers it states, its light
+    /// level among them, for its source and flowing forms alike, `FluidType.Properties`' defaults
+    /// for keys it leaves out, and the bucket it names, which must be a live item that keeps the
+    /// fluid. Loading a mod replaces process-wide fluid tables, so this runs in its own process.
     #[test]
     #[ignore = "daily"]
     fn a_mod_fluid_file_states_its_temperature_density_and_viscosity() {
@@ -594,10 +595,39 @@ mod tests {
         .unwrap();
         std::fs::write(
             fluids.join("brine.json"),
-            br#"{"temperature":-40,"density":1200,"viscosity":0,"world":{}}"#,
+            br#"{"temperature":-40,"density":1200,"viscosity":0,"light_level":10,"bucket_item":"measured:brine_pail","world":{}}"#,
         )
         .unwrap();
         std::fs::write(fluids.join("plain.json"), br#"{"world":{}}"#).unwrap();
+        for (name, body) in [
+            // A file alone registers no tank-only fluid.
+            (
+                "essence",
+                &br#"{"bucket_item":"minecraft:honey_bottle"}"#[..],
+            ),
+            (
+                "salt",
+                br#"{"bucket_item":"minecraft:water_bucket","world":{"bucket":false}}"#,
+            ),
+            (
+                "shared",
+                br#"{"bucket_item":"measured:plain_bucket","world":{"bucket":false}}"#,
+            ),
+            (
+                "lost",
+                br#"{"bucket_item":"measured:no_such_jar","world":{"bucket":false}}"#,
+            ),
+            (
+                "cod",
+                br#"{"bucket_item":"minecraft:cod_bucket","world":{"bucket":false}}"#,
+            ),
+            (
+                "hollow",
+                br#"{"bucket_item":"minecraft:bucket","world":{"bucket":false}}"#,
+            ),
+        ] {
+            std::fs::write(fluids.join(format!("{name}.json")), body).unwrap();
+        }
         let mut sources = super::super::mods::ModsState {
             dev: vec![dir.path().to_path_buf()],
             ..Default::default()
@@ -629,6 +659,49 @@ mod tests {
                 assert_eq!(measures("measured:flowing_brine"), [-40, 1200, 0]);
                 assert_eq!(measures("measured:plain"), [300, 1000, 1000]);
                 assert_eq!(measures("measured:flowing_plain"), [300, 1000, 1000]);
+                // `FluidType.getLightLevel` is the file's, though the block emits none.
+                assert_eq!(read("measured:flowing_brine").light_level, 10);
+                assert_eq!(read("measured:plain").light_level, 0);
+                // `Fluid.getBucket`: the named bucket and the default one, each holding its
+                // fluid back; none for an unregistered fluid, a missing item or the game's
+                // bucket of another fluid.
+                let states = host.block_states();
+                let bucket =
+                    |fluid: &str| host.fluid_key(fluid).and_then(|key| key.bucket(&states));
+                let item = |id: &str| mod_api::__private::item_key(id);
+                assert_eq!(
+                    bucket("measured:flowing_brine"),
+                    item("measured:brine_pail")
+                );
+                assert!(item("measured:brine_bucket").is_none());
+                assert_eq!(bucket("measured:plain"), item("measured:plain_bucket"));
+                for (bucket, fluid) in [
+                    ("measured:brine_pail", "measured:brine"),
+                    ("measured:plain_bucket", "measured:plain"),
+                    ("minecraft:water_bucket", "minecraft:water"),
+                ] {
+                    assert_eq!(
+                        item(bucket).unwrap().bucket_fluid(&states),
+                        host.fluid_key(fluid)
+                    );
+                }
+                assert_eq!(
+                    item("minecraft:bucket").unwrap().bucket_fluid(&states),
+                    None
+                );
+                for fluid in [
+                    "measured:essence",
+                    "measured:salt",
+                    "measured:shared",
+                    "measured:lost",
+                    "measured:cod",
+                    "measured:hollow",
+                ] {
+                    assert_eq!(bucket(fluid), None, "{fluid}");
+                }
+                let essence = host.fluid_key("measured:essence");
+                assert_eq!(essence.and_then(|key| key.pickup_sound(&states)), None);
+                assert_eq!(essence.and_then(|key| key.empty_sound(&states)), None);
             },
         );
     }

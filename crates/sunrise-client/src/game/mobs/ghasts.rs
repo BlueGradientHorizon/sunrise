@@ -1,8 +1,8 @@
 //! Happy ghasts on the game side: putting a harness on (and shearing it
 //! off), riding, getting off on top, and the ghastling a dried ghast block
 //! hatches.
-use super::Game;
 use super::level_sounds::LevelSound;
+use super::{Game, item_abilities::ability};
 use mod_api::SoundSource;
 use sunrise_client::actions::Action;
 use sunrise_client::mobs::{MobEvent, happy_ghast};
@@ -38,7 +38,7 @@ impl Game<'_> {
             return true;
         }
         // Equippable.canBeSheared: shears take the harness off again.
-        if item == "minecraft:shears"
+        if self.held_shears(ability::SHEARS_REMOVE_ARMOR)
             && harnessed
             && !sneaking
             && let Some(harness) = self.mobs[index].take_body_equipment()

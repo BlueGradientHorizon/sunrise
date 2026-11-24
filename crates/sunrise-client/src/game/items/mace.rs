@@ -501,8 +501,9 @@ impl Game<'_> {
         self.play_audio(sound, Some(feet), 1.0, 1.0);
         Some(fall)
     }
-    /// What a server's guest does after their hit landed on another player:
-    /// the weapon's side, the exhaustion and the sprint a knockback stops.
+    /// What a server's guest does after their hit landed on the player with
+    /// entity id `victim`: the weapon's side, the exhaustion and the sprint a
+    /// knockback stops.
     /// Returns the attacker's motion when a smash set it, which
     /// `MaceItem.hurtEnemy` sends at once (`ClientboundSetEntityMotionPacket`),
     /// not at the end of the tick after gravity (#8246). The mark from before
@@ -525,8 +526,8 @@ impl Game<'_> {
         }
         sent
     }
-    /// `Player.itemAttackInteraction` after the player's hit hurt another
-    /// player: the weapon's side of it, as `weapon_hit` does for a mob. A
+    /// `Player.itemAttackInteraction` after the player's hit hurt the player
+    /// `victim`: the weapon's side of it, as `weapon_hit` does for a mob. A
     /// smash stops the fall and its Wind Burst (a `post_attack` explosion on
     /// the attacker) launches the attacker.
     fn weapon_hit_player(

@@ -371,29 +371,25 @@ impl Game<'_> {
                     }),
                 None => None,
             };
-            let direct = match d.kind {
-                DamageKind::Arrow => Some(LootEntity {
-                    kind: "minecraft:arrow".into(),
+            let projectile = match d.kind {
+                DamageKind::Arrow => Some("minecraft:arrow"),
+                DamageKind::Fireball => Some("minecraft:fireball"),
+                DamageKind::WitherSkull => Some("minecraft:wither_skull"),
+                DamageKind::Fireworks => Some("minecraft:firework_rocket"),
+                _ => None,
+            };
+            let direct = match projectile {
+                Some(kind) => Some(LootEntity {
+                    kind: kind.into(),
                     ..LootEntity::default()
                 }),
-                DamageKind::Fireball => Some(LootEntity {
-                    kind: "minecraft:fireball".into(),
-                    ..LootEntity::default()
-                }),
-                DamageKind::WitherSkull => Some(LootEntity {
-                    kind: "minecraft:wither_skull".into(),
-                    ..LootEntity::default()
-                }),
-                DamageKind::Fireworks => Some(LootEntity {
-                    kind: "minecraft:firework_rocket".into(),
-                    ..LootEntity::default()
-                }),
-                _ => source.clone(),
+                None => source.clone(),
             };
             LootDamage {
                 kind: source_damage_type(d).into(),
                 source,
                 direct,
+                is_direct: projectile.is_none(),
             }
         });
         let vehicle = m

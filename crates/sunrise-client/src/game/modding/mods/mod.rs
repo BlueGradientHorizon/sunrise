@@ -2310,8 +2310,8 @@ impl Game<'_> {
             .unwrap_or_else(|| self.settings.mods.enabled.clone())
     }
     /// The player turned content mods on or off (Options > Mods, or an
-    /// install from Browse Mods): those with only assets and data apply now
-    /// (docs/design/mod-hotload.md), through the resource reload and then the
+    /// install from Browse Mods): those with only assets and data apply now,
+    /// through the resource reload and then the
     /// server's data reload (`mods_reloaded`); those that add blocks, items or
     /// worldgen wait for a restart, and the Mods page says so.
     pub(super) fn switch_mods(&mut self) {
@@ -5214,6 +5214,7 @@ pub(in crate::game) mod tests {
                             sprite: None,
                             tint: None,
                             world: Some(Default::default()),
+                            bucket_item: None,
                             measures: Default::default(),
                         },
                     ]);

@@ -1133,6 +1133,9 @@ pub(crate) mod native_collision_shape;
 #[cfg(test)]
 #[path = "game/modding/native_command_completion_tests.rs"]
 mod native_command_completion_tests;
+#[cfg(test)]
+#[path = "game/modding/native_command_entity_tests.rs"]
+mod native_command_entity_tests;
 #[path = "game/modding/native_command_reads.rs"]
 mod native_command_reads;
 #[path = "game/modding/native_components.rs"]
@@ -1535,6 +1538,8 @@ mod native_place_feature;
 #[cfg(test)]
 #[path = "game/modding/native_place_feature_tests.rs"]
 mod native_place_feature_tests;
+#[path = "game/modding/native_placement_modifiers.rs"]
+mod native_placement_modifiers;
 #[cfg(test)]
 #[path = "game/modding/native_placement_state_tests.rs"]
 mod native_placement_state_tests;
@@ -1717,10 +1722,15 @@ mod native_spectator_shader_tests;
 mod native_state_shapes;
 #[path = "game/modding/native_structure_placement.rs"]
 mod native_structure_placement;
+#[path = "game/modding/native_structure_processors.rs"]
+mod native_structure_processors;
 #[path = "game/modding/native_structure_types.rs"]
 mod native_structure_types;
 #[path = "game/modding/native_structures.rs"]
 mod native_structures;
+#[cfg(test)]
+#[path = "game/modding/native_success_broadcast_tests.rs"]
+mod native_success_broadcast_tests;
 #[path = "game/modding/native_surface.rs"]
 pub(crate) mod native_surface;
 #[path = "game/modding/native_tags.rs"]
@@ -3610,6 +3620,8 @@ struct Game<'a> {
     /// Drawn bounding rectangles `[x, y, width, height]` in GUI pixels for HUD layers drawn so far
     /// in the current HUD pass (`ScreensClientHost::hud_layer_bounds`). Cleared before screens draw.
     hud_layer_bounds: Vec<(&'static str, [f32; 4])>,
+    /// The status columns' heights in this HUD pass (NeoForge's `Hud.leftHeight`, `rightHeight`).
+    hud_status_heights: hud_layout::StatusBarHeights,
     /// The mod block entities' view distances, asked of the parts once (`native_block_entity_draw`).
     mod_view_distances: std::cell::OnceCell<native_block_entity_draw::ViewDistances>,
     /// What drawing a block entity asks of its block, by state id (`block_entity_reach`):
@@ -4449,10 +4461,11 @@ struct Game<'a> {
     guest_player_sounds: Vec<(String, [f64; 3], f32, f32)>,
     /// Sounds bound to an entity this tick, for the players (`game/interface/level_sounds.rs`).
     bound_sounds: Vec<level_sounds::BoundSound>,
-    /// `broadcastToAdmins` lines a guest's command queued, sent once it
-    /// returns: the line, whether operators get it and whether the console
-    /// logs it.
-    admin_feedback: Vec<(sunrise_client::text::Text, bool, bool)>,
+    /// `broadcastToAdmins` lines for the other operators that a command queued,
+    /// sent once it returns (`send_admin_feedback`), each with the guest whose
+    /// command it was (`commandSource() != source`): None for a block, a
+    /// minecart, the console or the host.
+    admin_feedback: Vec<(sunrise_client::text::Text, Option<u32>)>,
     /// The server console is running a command: whether its feedback goes to
     /// the operators (`DedicatedServer.shouldInformAdmins`,
     /// `broadcast-console-to-ops`).
@@ -7665,6 +7678,7 @@ impl Game<'_> {
         );
         let dispatch_hud = !gui_canceled && !replaying;
         self.hud_layer_next = dispatch_hud.then_some(0);
+        self.hud_status_heights = Default::default();
         self.ui.room = self.hud_room(w, h, show_hud);
         let mut guide_from = 0;
         if dispatch_hud {
@@ -7761,7 +7775,6 @@ impl Game<'_> {
 
             // NeoForge's Hud.registerVanillaLayers: each status row owns its own extraction.
             // The installed vanilla bodies share the column heights and a scratch draw list.
-            let mut status_heights = hud_layout::StatusBarHeights::default();
             let mut status_rows = Vec::new();
             let mount = if !show_hud {
                 None
@@ -7786,7 +7799,7 @@ impl Game<'_> {
                         kind,
                         wi,
                         hi,
-                        &mut status_heights,
+                        &mut g.hud_status_heights,
                         &mut status_rows,
                     );
                     hud_layout::paint(batch, &g.gui.atlas, &status_rows);
@@ -7800,7 +7813,7 @@ impl Game<'_> {
                     return;
                 };
                 status_rows.clear();
-                hud_layout::armor_level(armor, wi, hi, &mut status_heights, &mut status_rows);
+                hud_layout::armor_level(armor, wi, hi, &mut g.hud_status_heights, &mut status_rows);
                 hud_layout::paint(batch, &g.gui.atlas, &status_rows);
             });
             self.gui_layer(VanillaGuiLayer::FoodLevel, &mut batch, &mut |g, batch| {
@@ -7811,8 +7824,13 @@ impl Game<'_> {
                     return;
                 };
                 status_rows.clear();
-                g.health_hud
-                    .food_level(&inputs, wi, hi, &mut status_heights, &mut status_rows);
+                g.health_hud.food_level(
+                    &inputs,
+                    wi,
+                    hi,
+                    &mut g.hud_status_heights,
+                    &mut status_rows,
+                );
                 hud_layout::paint(batch, &g.gui.atlas, &status_rows);
             });
             self.gui_layer(
@@ -7828,7 +7846,7 @@ impl Game<'_> {
                         hi,
                         hearts,
                         health,
-                        &mut status_heights,
+                        &mut g.hud_status_heights,
                         &mut status_rows,
                     );
                     hud_layout::paint(batch, &g.gui.atlas, &status_rows);
@@ -7842,9 +7860,13 @@ impl Game<'_> {
                     return;
                 };
                 status_rows.clear();
-                let pop_sound =
-                    g.health_hud
-                        .air_level(&inputs, wi, hi, &mut status_heights, &mut status_rows);
+                let pop_sound = g.health_hud.air_level(
+                    &inputs,
+                    wi,
+                    hi,
+                    &mut g.hud_status_heights,
+                    &mut status_rows,
+                );
                 hud_layout::paint(batch, &g.gui.atlas, &status_rows);
                 // Hud.playAirBubblePoppedSound: Player.playSound (PLAYERS), heard by this
                 // client only, so another player's bubbles pop silently.
@@ -9254,11 +9276,13 @@ impl Game<'_> {
             return false;
         };
         let sword = self.held().is_some_and(|s| {
-            self.res
+            let sword = self
+                .res
                 .items()
                 .item_tags
                 .get("minecraft:swords")
-                .is_some_and(|tag| tag.contains(&*s.item))
+                .is_some_and(|tag| tag.contains(&*s.item));
+            self.stack_can_perform(s, item_abilities::ability::SWORD_SWEEP, sword)
         });
         let vanilla = p.is_sweep_attack(scale, crit, sword);
         let (mut sweeping, mut canceled) = (vanilla, false);
@@ -10161,15 +10185,8 @@ impl Game<'_> {
             if !self.may_build() && !self.can_place_on_in_adventure(hit.pos) {
                 return Ok(UseResult::Fail);
             }
-            let name = self.res.facts().get(clicked).name.clone();
-            if self.can_light(clicked, &name) {
-                let registry = self.pack.assets.registry;
-                let mut state = registry
-                    .state(clicked)
-                    .cloned()
-                    .ok_or("missing lit block state")?;
-                state.properties.insert("lit".into(), "true".into());
-                self.level_set(hit.pos, registry.resolve(&state)?)?;
+            if let Some(lit) = self.fire_starter_lit(&hit, stack, true)? {
+                self.level_set(hit.pos, lit)?;
                 let sound = if item == "fire_charge" {
                     "minecraft:item.firecharge.use"
                 } else {
@@ -10721,7 +10738,7 @@ impl Game<'_> {
             }
         }
     }
-    fn tick_sleep(&mut self) {
+    pub(in crate::game) fn tick_sleep(&mut self) {
         self.sleep_timer = tick_sleep_timer(self.sleep_timer, self.sleeping.is_some());
         if let Some(head) = self.sleeping {
             // LivingEntity.tick's checkBedExists: a sleeper whose bed is
@@ -10756,8 +10773,9 @@ impl Game<'_> {
         }
         // ServerLevel.tick: once enough of the players have slept 100 ticks,
         // skip to morning if `advance_time` is on, wake everyone, and
-        // resetWeatherCycle if `advance_weather` is on and it is raining.
-        if self.enough_slept() {
+        // resetWeatherCycle if `advance_weather` is on and it is raining,
+        // unless a mod's `sleep_skip_night` cancels it.
+        if self.sleep_skips_night() {
             if self
                 .ui
                 .rules
@@ -14047,6 +14065,7 @@ impl<'a> Game<'a> {
             debug_renderers_version: None,
             hud_layer_next: None,
             hud_layer_bounds,
+            hud_status_heights: Default::default(),
             mod_view_distances: Default::default(),
             block_entity_reach: Default::default(),
             item_level_cache: Default::default(),
@@ -14687,6 +14706,14 @@ pub(crate) fn run_with(
         {
             log::warn!("Mod pool element types already installed; keeping the first table");
         }
+        // Their structure processor types, before any world decodes its processor lists.
+        if sunrise_world::worldgen::structure::mod_processors::install_mod_structure_processor_types(
+            native_structure_processors::installed_structure_processor_types(),
+        )
+        .is_err()
+        {
+            log::warn!("Mod structure processor types already installed; keeping the first table");
+        }
         // Their feature types, before any world decodes its configured features.
         if sunrise_world::worldgen::mod_features::install_mod_feature_types(
             native_feature_types::installed_feature_types(),
@@ -14694,6 +14721,14 @@ pub(crate) fn run_with(
         .is_err()
         {
             log::warn!("Mod feature types already installed; keeping the first table");
+        }
+        // Their placement modifier types, before any world decodes its placed features.
+        if sunrise_world::worldgen::placement::mod_placements::install_mod_placement_modifier_types(
+            native_placement_modifiers::installed_placement_modifier_types(),
+        )
+        .is_err()
+        {
+            log::warn!("Mod placement modifier types already installed; keeping the first table");
         }
         // The levels they registered, below the data packs of every world opened.
         if sunrise_world::worldgen::overrides::install_mod_dimensions(

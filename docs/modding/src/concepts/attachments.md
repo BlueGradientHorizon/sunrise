@@ -85,8 +85,7 @@ Restricted level hosts do not expose client attachment copies. The default takes
 and there is no custom copy handler, per-recipient predicate or partial update. For send limits,
 failure outcomes (logged drops vs. queue disconnect) and connection-epoch behavior across
 reconfigurations, see `AttachmentType::sync` and `AttachmentType::sync_data` in the
-[generated API reference](../reference/api.md). See
-[Block entity attachment](attachments/block-entity-attachment.md) for a worked sync example.
+[generated API reference](../reference/api.md).
 
 ## Player construction and saved data
 

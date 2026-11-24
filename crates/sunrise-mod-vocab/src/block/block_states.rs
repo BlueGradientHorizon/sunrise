@@ -312,12 +312,6 @@ macro_rules! impl_block_states_without_tables {
                 ) -> Result<bool, LevelReadError> {
                     Err(LevelReadError::Unavailable)
                 }
-                fn fluid_bucket(
-                    &self,
-                    _: $crate::FluidKey,
-                ) -> Result<Option<$crate::ItemKey>, LevelReadError> {
-                    Err(LevelReadError::Unavailable)
-                }
                 fn fluid_state_definition(
                     &self,
                     _: $crate::FluidKey,
@@ -349,6 +343,18 @@ macro_rules! impl_block_states_without_tables {
 pub(crate) use impl_block_states_without_tables;
 
 impl_block_states_without_tables!(NoBlockTables {
+    fn fluid_bucket(
+        &self,
+        _: crate::FluidKey,
+    ) -> Result<Option<crate::ItemKey>, LevelReadError> {
+        Err(LevelReadError::Unavailable)
+    }
+    fn bucket_fluid(
+        &self,
+        _: crate::ItemKey,
+    ) -> Result<Option<crate::FluidKey>, LevelReadError> {
+        Err(LevelReadError::Unavailable)
+    }
     fn fluid_pickup_sound(
         &self,
         _: crate::FluidKey,

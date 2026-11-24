@@ -34,6 +34,12 @@ pub enum GuiPaintError {
         /// The op's place in the buffer.
         index: u32,
     },
+    /// A `GuiDraw::Texture` whose texture size (`tex`) has a zero side, or whose `uv` is NaN or
+    /// infinite.
+    TextureSize {
+        /// The op's place in the buffer.
+        index: u32,
+    },
     /// A `GuiDraw::Sprite` the GUI atlas does not hold by GUI id (one its definition removed
     /// included), a mob effect sprite (`mob_effect/...`, namespaced or not) included, or a
     /// `GuiDraw::AtlasSprite` the packed block atlas does not hold by name.
@@ -84,6 +90,12 @@ impl std::fmt::Display for GuiPaintError {
                 write!(
                     f,
                     "gui_paint: op {index}: Blit texture size not positive or uv not finite"
+                )
+            }
+            Self::TextureSize { index } => {
+                write!(
+                    f,
+                    "gui_paint: op {index}: Texture size has a zero side or uv not finite"
                 )
             }
             Self::Sprite { index, sprite } => {

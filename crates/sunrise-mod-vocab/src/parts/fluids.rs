@@ -39,17 +39,23 @@ pub trait FluidsRegistrar {
 
     /// Declare a tank-only fluid and return its key. A bare name uses this mod's namespace; an
     /// explicit valid `namespace:path` keeps its namespace. Built-in and duplicate fluids refuse.
-    /// Its `data/<namespace>/sunrise/fluid/<path>.json`, if any, says how it looks and states its
-    /// `FluidType` numbers: `temperature` and `density` (any `i32`, defaults 300 and 1000) and
-    /// `viscosity` (0 or more, default 1000), read back through `FluidTypeProperties`.
+    /// Its `data/<namespace>/sunrise/fluid/<path>.json`, if any, says how it looks, names its
+    /// `bucket_item` (an item the mod declares, which an empty bucket fills to and
+    /// `FluidKey::bucket` answers; none by default) and states its `FluidType` numbers:
+    /// `temperature` and `density` (any `i32`, defaults 300 and 1000), `viscosity` (0 or more,
+    /// default 1000) and `light_level` (0 to 15, default 0), read back through
+    /// `FluidTypeProperties`.
     fn declare_fluid(&mut self, path: &str) -> crate::FluidKey;
 
     /// Declare a fluid that exists in the world (NeoForge's `RegisterEvent` for a `FluidType`),
-    /// with its block and, as `fluid` says, its bucket. A bare name uses this mod's namespace;
-    /// an explicit valid `namespace:path` keeps its namespace. Built-in and duplicate fluids
-    /// refuse. Its `data/<namespace>/sunrise/fluid/<path>.json`, if any, says how it looks and
-    /// states its `temperature`, `density` and `viscosity`, as for
-    /// [`declare_fluid`](Self::declare_fluid).
+    /// with its block, its flowing form and, as `fluid` says, its bucket, under the ids `fluid`
+    /// names. A bare name uses this mod's namespace; an explicit valid `namespace:path` keeps its
+    /// namespace. Built-in and duplicate fluids, a flowing name or generated bucket outside the
+    /// fluid's namespace, or a flowing form named as the fluid itself, are refused.
+    /// Its `data/<namespace>/sunrise/fluid/<path>.json`, if any, says how it looks and states its
+    /// `temperature`, `density`, `viscosity` and `light_level`, as for
+    /// [`declare_fluid`](Self::declare_fluid); its `bucket_item` applies when `fluid` names none
+    /// and registers no bucket.
     fn declare_world_fluid(&mut self, path: &str, fluid: crate::WorldFluid) -> crate::FluidKey;
 
     /// Declare what a liquid block of `interaction.source` turns into beside another fluid or
