@@ -527,6 +527,7 @@ pub(in crate::game) struct ClientConstructEffects {
     pub(in crate::game) frame_clock: sunrise_client::window::SystemClock,
     pub(in crate::game) narration: sunrise_client::screen_narrator::ScreenNarrator,
     pub(in crate::game) tick_script: tick_script::TickScript,
+    pub(in crate::game) social: social::Social,
 }
 
 impl ClientState {
@@ -760,7 +761,7 @@ impl ClientState {
             studio: Default::default(),
             options_to_world_options: false,
             test_highlights: HashMap::new(),
-            social: Default::default(),
+            social: effects.social,
             debug_keys: Default::default(),
             debug_charts: Default::default(),
             debug_options: None,

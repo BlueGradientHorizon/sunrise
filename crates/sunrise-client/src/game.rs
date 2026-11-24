@@ -12927,9 +12927,11 @@ struct ConstructPrep {
 
 struct ConstructEffects {
     structure_spawns: sunrise_client::mobs::spawn_selection::StructureSpawns,
+    clock: FixedStep,
     tick: sunrise_client::parallel::TickThread,
     skin_downloads: RefCell<sunrise_client::skins::Downloader>,
     skin_profiles: RefCell<sunrise_client::skins::Resolver>,
+    profile: profile_capture::Profile,
     registered_debug_entries: std::sync::Arc<[sunrise_client::debug_entries::RegisteredDebugEntry]>,
     debug_entries: sunrise_client::debug_entries::DebugEntries,
     ui: chat::UiState,
@@ -12966,7 +12968,7 @@ impl<'a> Game<'a> {
         let prep =
             Self::prepare_construct(res, pack, gui, options, settings, audio, prepared, initial)?;
         let effects = Self::prepare_effects(&prep);
-        Self::finish_construct(res, prep, effects)
+        Ok(Self::finish_construct(res, prep, effects))
     }
 
     #[inline(never)]
@@ -13115,9 +13117,14 @@ impl<'a> Game<'a> {
     // Evaluates all effectful literal initialisers in their original base order before tail assembly.
     #[inline(never)]
     fn prepare_effects(prep: &ConstructPrep) -> Box<ConstructEffects> {
+        let slow_frame_ms = prep
+            .options
+            .spikes
+            .unwrap_or(sunrise_client::client_perf::SLOW_FRAME_MS);
         let structure_spawns =
             sunrise_client::mobs::spawn_selection::StructureSpawns::load(&prep.options.resources);
         let fog = sunrise_client::fog::FogState::default();
+        let clock = FixedStep::default();
         let vanilla_mappings = sunrise_client::keymapping::VanillaMappings::default();
         let health_hud = hud_layout::HealthHud::default();
         let tick = sunrise_client::parallel::TickThread::mint();
@@ -13142,7 +13149,9 @@ impl<'a> Game<'a> {
             downloads
         });
         let skin_profiles = RefCell::new(sunrise_client::skins::Resolver::new());
+        let profile = profile_capture::Profile::new(slow_frame_ms);
         let tick_script = tick_script::TickScript::from_env();
+        let social = social::Social::default();
         let registered_debug_entries = sunrise_client::debug_entries::registered();
         let debug_entries = sunrise_client::debug_entries::DebugEntries::load(
             &std::env::current_dir().unwrap_or_default(),
@@ -13157,12 +13166,15 @@ impl<'a> Game<'a> {
             frame_clock,
             narration,
             tick_script,
+            social,
         });
         Box::new(ConstructEffects {
             structure_spawns,
+            clock,
             tick,
             skin_downloads,
             skin_profiles,
+            profile,
             registered_debug_entries,
             debug_entries,
             ui,
@@ -13175,7 +13187,7 @@ impl<'a> Game<'a> {
         res: &'a Arc<Resources>,
         prep: Box<ConstructPrep>,
         effects: Box<ConstructEffects>,
-    ) -> Result<Self> {
+    ) -> Self {
         let loop_side = prep.options.execution_role.loop_side();
         let mod_sources = prep.options.mods.clone();
         let registry = prep.pack.assets.registry;
@@ -13184,10 +13196,6 @@ impl<'a> Game<'a> {
         let look = prep.options.look;
         let yaw = look.map_or(prep.level.rotation[0], |l| l.0);
         let pitch = look.map_or(prep.level.rotation[1], |l| l.1);
-        let slow_frame_ms = prep
-            .options
-            .spikes
-            .unwrap_or(sunrise_client::client_perf::SLOW_FRAME_MS);
         let music_toast = prep.settings.file.int("musicToast").clamp(0, 2) as u8;
         let mut game = Game {
             world_biomes: None,
@@ -13216,7 +13224,7 @@ impl<'a> Game<'a> {
             options: prep.options,
             player: None,
             spawn: None,
-            clock: FixedStep::default(),
+            clock: effects.clock,
             previous_position: Vec3::ZERO,
             eye: 1.62,
             yaw,
@@ -13353,7 +13361,7 @@ impl<'a> Game<'a> {
             events: Default::default(),
             input_trace: Default::default(),
             repro: Default::default(),
-            profile: profile_capture::Profile::new(slow_frame_ms),
+            profile: effects.profile,
             agent: agent::Agent::default(),
             occlusion: Default::default(),
             async_particle_culler: RefCell::new(Default::default()),
@@ -13431,7 +13439,7 @@ impl<'a> Game<'a> {
             ),
         };
         game.reset_entity_residency();
-        Ok(game)
+        game
     }
 }
 
