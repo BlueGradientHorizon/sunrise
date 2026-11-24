@@ -132,6 +132,7 @@ public final class LocatorBarClient {
     private static volatile boolean hooks;
     private static volatile boolean state;
     private static volatile boolean sounds;
+    private static volatile boolean gameEvents;
     private static volatile boolean events;
     private static volatile boolean spawns;
     private static volatile boolean menus;
@@ -287,6 +288,7 @@ public final class LocatorBarClient {
                     }
                     case "state" -> state = w[1].equals("on");
                     case "sounds" -> sounds = w[1].equals("on");
+                    case "game-events" -> gameEvents = w[1].equals("on");
                     case "events" -> events = w[1].equals("on");
                     case "spawns" -> spawns = w[1].equals("on");
                     case "end" -> {
@@ -865,6 +867,23 @@ public final class LocatorBarClient {
                         record("piston-event " + e.getB0() + " " + e.getB1());
                     if (advancements && p instanceof net.minecraft.network.protocol.game.ClientboundUpdateAdvancementsPacket a) {
                         advancementUpdate(a, r.payload);
+                    }
+
+                    if (gameEvents && p instanceof net.minecraft.network.protocol.game.ClientboundGameEventPacket gameEvent) {
+                        FriendlyByteBuf buf = new FriendlyByteBuf(Unpooled.wrappedBuffer(r.payload));
+                        buf.readVarInt();
+                        int event = buf.readUnsignedByte();
+                        int wireParamBits = Float.floatToRawIntBits(buf.readFloat());
+                        int paramBits = Float.floatToRawIntBits(gameEvent.getParam());
+                        if (wireParamBits != paramBits || buf.readableBytes() != 0) {
+                            throw new IllegalStateException("unexpected game event payload: "
+                                + java.util.HexFormat.of().formatHex(r.payload));
+                        }
+                        var j = new com.google.gson.JsonObject();
+                        j.addProperty("event", event);
+                        j.addProperty("param_bits", String.format(java.util.Locale.ROOT, "%08x", paramBits));
+                        j.addProperty("payload_hex", java.util.HexFormat.of().formatHex(r.payload));
+                        record("game-event " + j);
                     }
 
                     if (sounds && p instanceof net.minecraft.network.protocol.game.ClientboundSoundPacket sound) {

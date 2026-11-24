@@ -6367,6 +6367,9 @@ impl Game<'_> {
                 };
                 self.shot_post_attack(arrow, who, direct, "minecraft:arrow");
                 self.arrow_post_hurt_effects(arrow, who);
+                if who == Who::Player {
+                    self.arrow_hit_sound_to_shooter(arrow);
+                }
             }
             return Ok(EntityHit::Hurt);
         }

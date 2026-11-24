@@ -82,3 +82,4 @@ sunrise-client-lib mobs::sulfur_cube::tnt_rule_tests::a_loaded_fuse_is_kept_as_i
 sunrise-client game::lan::sources_tests::a_loaded_sulfur_cube_fuse_matches_the_pinned_oracle tools/test_sulfur_cube_fuse_parity.py harness
 sunrise-client game::remote_mob_data::tests::sulfur_cube_max_fuse_sets_the_client_fuse tools/test_sulfur_cube_fuse_parity.py harness
 sunrise-client game::stand_low_health_tests::a_stand_breaks_on_low_health_only_through_damage_and_a_dead_one_goes_at_twenty tools/test_stand_low_health_parity.py harness
+sunrise-client game::lan_pvp::arrow_hit_sound_tests::an_arrow_that_hurts_another_player_dings_its_shooter tools/test_arrow_hit_ding_parity.py harness
