@@ -128,16 +128,19 @@ impl Game<'_> {
         if slot != 0 || max == 0 {
             return Ok(Some((None, stack.clone())));
         }
+        // Selection belongs to the UI. Automation always takes from the front.
+        let Some(out) = bundle
+            .try_extract_front(items, max)
+            .map_err(map_bundle_error)?
+        else {
+            return Ok(Some((None, stack.clone())));
+        };
         let mut changed = stack.clone();
         changed.count = 1;
-        // Selection belongs to the UI. Automation always takes from the front.
-        let out = bundle
-            .try_extract_front(items, max)
-            .map_err(map_bundle_error)?;
         bundle.store(items, &mut changed);
         changed.data_mut().wire = Default::default();
         changed.tidy();
-        Ok(Some((out, changed)))
+        Ok(Some((Some(out), changed)))
     }
 
     pub(in crate::game) fn bundle_metrics(

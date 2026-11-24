@@ -322,8 +322,8 @@ mod custom_bundle_integration_tests {
             }),
         )]
         .into();
-        crate::game::api_values::install_parts(&mods).unwrap();
-        mod_platform::testing::with_mods(mods, || {
+        mod_platform::testing::with_mods(mods.clone(), || {
+            crate::game::api_values::install_parts(&mods).unwrap();
             with_game(|game| {
                 game.creative = false;
                 let empty = empty_pouch(1);
@@ -745,8 +745,8 @@ mod custom_bundle_integration_tests {
             }),
         )]
         .into();
-        crate::game::api_values::install_parts(&mods).unwrap();
-        mod_platform::testing::with_mods(mods, || {
+        mod_platform::testing::with_mods(mods.clone(), || {
+            crate::game::api_values::install_parts(&mods).unwrap();
             with_guests(|game| {
                 // 1. Local menu click: carried pouch inserts clicked arrows (`CarriedOnOther`).
                 game.level.player_uuid = Some([0, 0, 0, 99]);
