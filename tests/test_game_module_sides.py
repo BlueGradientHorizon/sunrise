@@ -5,11 +5,15 @@ from __future__ import annotations
 import importlib.util
 import io
 import json
+import os
+import shutil
+import subprocess
 import sys
 import tempfile
 import unittest
 from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
+from textwrap import dedent
 
 ROOT = Path(__file__).resolve().parent.parent
 _SPEC = importlib.util.spec_from_file_location(
@@ -118,6 +122,8 @@ include!("srv_inc.rs");
 mod tests {
     const NAME: &str = "game::srv_mod::tests::runs";
     const SHARED: &str = "game::shared::tests::stays";
+    #[test]
+    fn runs() {}
 }
 """,
             "crates/sunrise-client/src/game/world/srv_inc.rs": "pub(super) fn from_include() {}\n",
@@ -201,6 +207,60 @@ def run_cli(*args: str) -> tuple[int, str, str]:
     with redirect_stdout(out), redirect_stderr(err):
         rc = gms.main(list(args))
     return rc, out.getvalue(), err.getvalue()
+
+
+def make_fixture_tree(
+    root: Path,
+    *,
+    decl: str = "mod moved;\n",
+    files: dict[str, str] | None = None,
+    mods: dict[str, str] | None = None,
+    fields: str | None = None,
+    game_append: str = "",
+) -> None:
+    base_game = (
+        '#[path = "game/client_state.rs"]\n'
+        "mod client_state;\n"
+        '#[path = "game/server_state.rs"]\n'
+        "mod server_state;\n"
+    )
+    sources: dict[str, str] = {
+        "crates/sunrise-client/src/lib.rs": "mod game;\n",
+        "crates/sunrise-client/src/game.rs": base_game + dedent(decl).lstrip("\n") + dedent(game_append).lstrip("\n"),
+        "crates/sunrise-client/src/game/client_state.rs": (
+            "pub(in crate::game) struct ClientState {\n"
+            "    pub(in crate::game) known: u32,\n"
+            "}\n"
+        ),
+        "crates/sunrise-client/src/game/server_state.rs": "pub(in crate::game) struct ServerState {}\n",
+    }
+    for rel, body in (files or {}).items():
+        sources[f"crates/sunrise-client/src/{rel}"] = dedent(body).lstrip("\n")
+    mod_map = mods if mods is not None else {"moved": "client"}
+    sources["tools/game_module_sides.tsv"] = "module\tside\treason\n" + "".join(
+        f"{k}\t{v}\tfixture\n" for k, v in mod_map.items()
+    )
+    sources["tools/game_field_owners.tsv"] = fields or "field\towner\tvisibility\nknown\tclient\tside\n"
+    write_tree(root, sources)
+
+
+def compile_and_test_rust(root: Path, extra_flags: tuple[str, ...] = ()) -> None:
+    rustc = shutil.which("rustc")
+    if not rustc:
+        raise unittest.SkipTest("requires rustc")
+    src = root / "crates/sunrise-client/src"
+    out_bin = root / "fixture_test_bin"
+    proc = subprocess.run(
+        [rustc, "--edition=2024", "--test", "-A", "warnings", "lib.rs", "-o", str(out_bin), *extra_flags],
+        cwd=src,
+        capture_output=True,
+        text=True,
+    )
+    if proc.returncode != 0:
+        raise AssertionError(f"rustc failed ({proc.returncode}):\n{proc.stdout}{proc.stderr}")
+    run = subprocess.run([str(out_bin)], capture_output=True, text=True)
+    if run.returncode != 0:
+        raise AssertionError(f"compiled test failed ({run.returncode}):\n{run.stdout}{run.stderr}")
 
 
 class GameModuleSidesTests(unittest.TestCase):
@@ -444,6 +504,507 @@ class GameModuleSidesTests(unittest.TestCase):
                 "sunrise_client::game::server_state::ServerState::new\tsunrise_client::game::server_side::ServerState::new\tserver",
                 lines,
             )
+
+    def test_r1_01_visibility_forms_handled_and_refused(self):
+        # Handled: plain pub(super) across item kinds while preserving comments, strings, pub(self), nested mods.
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            make_fixture_tree(
+                root,
+                files={
+                    "game/moved.rs": """
+                        //! pub(super) is written here in a doc comment
+                        /* pub(super) /* } pub(super) */ */
+                        const STRING: &str = "pub(super) {";
+                        const RAW: &str = r#"pub(super) " }"#;
+                        /// pub(super) also appears in outer docs
+                        pub(super) struct Tuple(pub(super) u32);
+                        pub(super) enum Choice { Payload { value: u32 }, Pair(u32) }
+                        impl Tuple {
+                            pub(super) fn method() {}
+                            pub(self) fn local() {}
+                        }
+                        mod nested {
+                            pub(super) fn same_parent() {}
+                            pub(in crate::game) fn available_for_reexport() {}
+                        }
+                        pub(super) mod subfile;
+                        pub(super) use self::nested::available_for_reexport as reexport;
+                    """,
+                    "game/moved/subfile.rs": "pub(super) fn sibling() {}\n",
+                },
+                game_append="""
+                    fn callers() {
+                        let t = moved::Tuple(1);
+                        let _ = t.0;
+                        moved::Tuple::method();
+                        moved::reexport();
+                    }
+                """,
+            )
+            rc, _, err = run_cli("--fix", "--no-fmt", "--root", str(root))
+            self.assertEqual(rc, 0, err)
+            rc, _, err = run_cli("--check", "--root", str(root))
+            self.assertEqual(rc, 0, err)
+            moved = (root / "crates/sunrise-client/src/game/moved.rs").read_text()
+            self.assertIn("//! pub(super) is written here", moved)
+            self.assertIn('const STRING: &str = "pub(super) {";', moved)
+            self.assertIn('const RAW: &str = r#"pub(super) " }"#;', moved)
+            self.assertIn("pub(in crate::game) struct Tuple(pub(in crate::game) u32);", moved)
+            self.assertIn("    pub(super) fn same_parent() {}", moved)
+            compile_and_test_rust(root)
+
+        # Refused atomically: pub(in super), pub(/* keep */ super), and descendant pub(in super::super).
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            make_fixture_tree(
+                root,
+                files={
+                    "game/moved.rs": """
+                        pub(super) mod subfile;
+                        pub(in super) fn long_form() {}
+                        pub(/* keep */ super) fn comment_form() {}
+                    """,
+                    "game/moved/subfile.rs": "pub(in super::super) fn ancestor() {}\n",
+                },
+            )
+            before = snapshot_tree(root)
+            rc, _, err = run_cli("--fix", "--no-fmt", "--root", str(root))
+            self.assertEqual(rc, 1)
+            self.assertIn("pub(in super)", err)
+            self.assertIn("pub(/* keep */ super)", err)
+            self.assertIn("pub(in super::super)", err)
+            self.assertEqual(before, snapshot_tree(root))
+
+    def test_r1_02_macro_visibility_refused_and_root_only_expansion_handled(self):
+        # Refused atomically: matcher pub(super), macro call pub(super), exported macro, non-root expansion use.
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            make_fixture_tree(
+                root,
+                files={
+                    "game/moved.rs": """
+                        macro_rules! matching {
+                            (pub(super)) => {};
+                            ($($tokens:tt)*) => { compile_error!("matcher no longer accepts caller"); };
+                        }
+                        matching!(pub(super));
+                        matching ! (pub (super));
+                        macro_rules! text { ($vis:vis) => { stringify!($vis) }; }
+                        pub(super) const SPELLING: &str = text!(pub(super));
+                    """,
+                },
+            )
+            before = snapshot_tree(root)
+            rc, _, err = run_cli("--fix", "--no-fmt", "--root", str(root))
+            self.assertEqual(rc, 1)
+            self.assertIn("matcher contains relative visibility", err)
+            self.assertIn("macro invocation `matching!`", err)
+            self.assertIn("macro invocation `text!`", err)
+            self.assertEqual(before, snapshot_tree(root))
+
+        # Refused atomically: #[macro_export] emitting pub(super) and private macro used in nested mod.
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            make_fixture_tree(
+                root,
+                files={
+                    "game/moved.rs": """
+                        #[macro_export]
+                        macro_rules! exported { () => { pub(super) fn f() {} }; }
+                        macro_rules! used_deep { () => { pub(super) fn g() {} }; }
+                        mod inner { used_deep!(); }
+                    """,
+                },
+            )
+            before = snapshot_tree(root)
+            rc, _, err = run_cli("--fix", "--no-fmt", "--root", str(root))
+            self.assertEqual(rc, 1)
+            self.assertIn("#[macro_export] macro_rules! `exported`", err)
+            self.assertIn("macro_rules! `used_deep`", err)
+            self.assertEqual(before, snapshot_tree(root))
+
+        # Handled: private macro_rules! emitting pub(super) invoked only at moved root scope.
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            make_fixture_tree(
+                root,
+                files={
+                    "game/moved.rs": """
+                        macro_rules! emitted { () => { pub(super) fn generated() {} }; }
+                        emitted!();
+                    """,
+                },
+                game_append="fn callers() { moved::generated(); }\n",
+            )
+            rc, _, err = run_cli("--fix", "--no-fmt", "--root", str(root))
+            self.assertEqual(rc, 0, err)
+            rc, _, err = run_cli("--check", "--root", str(root))
+            self.assertEqual(rc, 0, err)
+            compile_and_test_rust(root)
+
+    def test_r1_03_includes_all_delimiters_raw_transitive_and_unresolved_refused(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            make_fixture_tree(
+                root,
+                files={
+                    "game/moved.rs": (
+                        'include!("literal.inc");\n'
+                        'include! { "brace.inc" }\n'
+                        'include!(r#"raw.inc"#);\n'
+                        'include!["bracket.inc"];\n'
+                        'mod nested { include!("nested.inc"); }\n'
+                    ),
+                    "game/literal.inc": 'include!("transitive.inc");\n',
+                    "game/transitive.inc": "pub(super) fn literal() {}\n",
+                    "game/brace.inc": "pub(super) fn brace() {}\n",
+                    "game/raw.inc": "pub(super) fn raw() {}\n",
+                    "game/bracket.inc": "pub(super) fn bracket() {}\n",
+                    "game/nested.inc": "pub(super) fn nested() {}\n",
+                },
+                game_append="fn callers() { moved::literal(); moved::brace(); moved::raw(); moved::bracket(); }\n",
+            )
+            rc, _, err = run_cli("--fix", "--no-fmt", "--root", str(root))
+            self.assertEqual(rc, 0, err)
+            rc, _, err = run_cli("--check", "--root", str(root))
+            self.assertEqual(rc, 0, err)
+            self.assertIn("pub(super) fn nested()", (root / "crates/sunrise-client/src/game/nested.inc").read_text())
+            compile_and_test_rust(root)
+
+        # Non-literal and missing root include! targets are refused atomically.
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            make_fixture_tree(
+                root,
+                files={
+                    "game/moved.rs": 'include!(concat!(env!("OUT_DIR"), "/gen.rs"));\ninclude!("missing.inc");\n',
+                },
+            )
+            before = snapshot_tree(root)
+            rc, _, err = run_cli("--fix", "--no-fmt", "--root", str(root))
+            self.assertEqual(rc, 1)
+            self.assertIn("unresolved non-literal root-scope `include!", err)
+            self.assertIn("target does not exist", err)
+            self.assertEqual(before, snapshot_tree(root))
+
+    def test_r1_04_shared_include_across_conflicting_scopes_refused(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            make_fixture_tree(
+                root,
+                decl="mod moved;\nmod retained;\n",
+                mods={"moved": "client", "retained": "game"},
+                files={
+                    "game/moved.rs": 'include!("shared.inc");\n',
+                    "game/retained.rs": 'pub(super) mod nested { include!("shared.inc"); }\n',
+                    "game/shared.inc": "pub(super) fn shared() {}\n",
+                },
+            )
+            before = snapshot_tree(root)
+            rc, _, err = run_cli("--fix", "--no-fmt", "--root", str(root))
+            self.assertEqual(rc, 1)
+            self.assertIn("shared across conflicting scopes", err)
+            self.assertEqual(before, snapshot_tree(root))
+
+    def test_r1_05_multi_arm_cfg_reexports_complementary_vs_refused(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            make_fixture_tree(
+                root,
+                decl="""
+                    #[cfg(feature = "a")]
+                    #[path = "game/a.rs"]
+                    mod conditional;
+                    #[cfg(all(not(feature = "a"), feature = "b"))]
+                    #[path = "game/b.rs"]
+                    mod conditional;
+                """,
+                mods={"conditional": "server"},
+                files={"game/a.rs": "pub(super) fn a() {}\n", "game/b.rs": "pub(super) fn b() {}\n"},
+            )
+            before = snapshot_tree(root)
+            rc, _, err = run_cli("--fix", "--no-fmt", "--root", str(root))
+            self.assertEqual(rc, 1)
+            self.assertIn("does not have complementary", err)
+            self.assertEqual(before, snapshot_tree(root))
+
+        # Mismatched arm visibilities on complementary cfg arms are also refused.
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            make_fixture_tree(
+                root,
+                decl="""
+                    #[cfg(feature = "f")]
+                    #[path = "game/a.rs"]
+                    pub mod friends;
+                    #[cfg(not(feature = "f"))]
+                    #[path = "game/b.rs"]
+                    mod friends;
+                """,
+                mods={"friends": "client"},
+                files={"game/a.rs": "pub fn a() {}\n", "game/b.rs": "pub(super) fn b() {}\n"},
+            )
+            before = snapshot_tree(root)
+            rc, _, err = run_cli("--fix", "--no-fmt", "--root", str(root))
+            self.assertEqual(rc, 1)
+            self.assertIn("mismatched arm visibilities", err)
+            self.assertEqual(before, snapshot_tree(root))
+
+    def test_r1_06_paths_rebased_and_cfg_attr_or_missing_refused(self):
+        # Handled: #[path = "at_source.rs"] rebases to "../at_source.rs", not "at_source.rs".
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            make_fixture_tree(
+                root,
+                decl='#[path = "at_source.rs"]\nmod moved;\n',
+                files={
+                    "at_source.rs": "pub(super) fn at_source() -> u32 { 1 }\n",
+                    "game/at_source.rs": "pub(in crate::game) fn at_source() -> u32 { 2 }\n",
+                },
+                game_append="#[test]\nfn expected_source() { assert_eq!(moved::at_source(), 1); }\n",
+            )
+            rc, _, err = run_cli("--fix", "--no-fmt", "--root", str(root))
+            self.assertEqual(rc, 0, err)
+            cs = (root / "crates/sunrise-client/src/game/client_side.rs").read_text()
+            self.assertIn('#[path = "../at_source.rs"]', cs)
+            rc, _, err = run_cli("--check", "--root", str(root))
+            self.assertEqual(rc, 0, err)
+            compile_and_test_rust(root)
+
+        # Refused atomically: cfg_attr path and missing entry file.
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            make_fixture_tree(
+                root,
+                decl=(
+                    '#[cfg_attr(feature = "alternate", path = "game/alternate.rs")]\n'
+                    "mod chosen;\n"
+                    '#[path = "game/missing.rs"]\n'
+                    "mod absent;\n"
+                ),
+                mods={"chosen": "server", "absent": "client"},
+                files={"game/chosen.rs": "pub(super) fn c() {}\n", "game/alternate.rs": "pub(super) fn c() {}\n"},
+            )
+            before = snapshot_tree(root)
+            rc, _, err = run_cli("--fix", "--no-fmt", "--root", str(root))
+            self.assertEqual(rc, 1)
+            self.assertIn("cfg_attr", err)
+            self.assertIn("does not exist", err)
+            self.assertEqual(before, snapshot_tree(root))
+
+    def test_r1_07_declaration_lexer_comments_raw_strings_detached_attrs_and_raw_mod(self):
+        # Handled: comments/raw strings ignored; blank-line-separated #[cfg(any())] stays attached.
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            make_fixture_tree(
+                root,
+                decl=(
+                    "/*\nmod phantom;\n*/\n"
+                    'const EXAMPLE: &str = r#"\nmod ghost;\n"#;\n'
+                    "#[cfg(any())]\n\n"
+                    '#[path = "game/disabled.rs"]\n'
+                    "mod disabled;\n"
+                ),
+                mods={"disabled": "server"},
+                files={"game/disabled.rs": 'compile_error!("a separated cfg still applies");\n'},
+            )
+            rc, _, err = run_cli("--fix", "--no-fmt", "--root", str(root))
+            self.assertEqual(rc, 0, err)
+            rc, _, err = run_cli("--check", "--root", str(root))
+            self.assertEqual(rc, 0, err)
+            ss = (root / "crates/sunrise-client/src/game/server_side.rs").read_text()
+            self.assertIn('#[cfg(any())]\n#[path = "disabled.rs"]\npub(in crate::game) mod disabled;', ss)
+            compile_and_test_rust(root)
+
+        # Refused atomically: raw-identifier module declaration `mod r#type;`.
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            make_fixture_tree(
+                root,
+                decl="mod r#type;\n",
+                mods={"type": "client"},
+                files={"game/type.rs": "pub(super) fn raw_mod() {}\n"},
+            )
+            before = snapshot_tree(root)
+            rc, _, err = run_cli("--fix", "--no-fmt", "--root", str(root))
+            self.assertEqual(rc, 1)
+            self.assertIn("raw-identifier module declaration `mod r#type;`", err)
+            self.assertEqual(before, snapshot_tree(root))
+
+    def test_r1_08_state_file_preamble_refuses_unexpected_items(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            make_fixture_tree(
+                root,
+                files={
+                    "game/moved.rs": "",
+                    "game/client_state.rs": """
+                        #![allow(dead_code)]
+                        //! Kept module docs
+                        use std::collections::BTreeMap as Map;
+                        const LIMIT: usize = 2;
+                        pub(super) struct ClientState {
+                            pub(super) known: Map<u32, [u8; LIMIT]>,
+                        }
+                    """,
+                },
+            )
+            before = snapshot_tree(root)
+            rc, _, err = run_cli("--fix", "--no-fmt", "--root", str(root))
+            self.assertEqual(rc, 1)
+            self.assertIn("unexpected `inner_attr` item", err)
+            self.assertIn("unexpected `use` item", err)
+            self.assertIn("unexpected `const` item", err)
+            self.assertEqual(before, snapshot_tree(root))
+
+    def test_r1_09_state_struct_raw_ident_and_inline_attr_fields(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            make_fixture_tree(
+                root,
+                files={
+                    "game/moved.rs": "",
+                    "game/client_state.rs": """
+                        //! Kept module docs
+                        use super::*;
+                        pub(in crate::game) struct ClientState {
+                            pub(in crate::game) known: u32,
+                            pub(in crate::game) r#type: u32,
+                            #[cfg(all())] pub(in crate::game) inline: u32,
+                        }
+                    """,
+                },
+                fields=(
+                    "field\towner\tvisibility\n"
+                    "known\tclient\tside\n"
+                    "type\tclient\tside\n"
+                    "inline\tclient\tgame\n"
+                ),
+            )
+            rc, _, err = run_cli("--fix", "--no-fmt", "--root", str(root))
+            self.assertEqual(rc, 0, err)
+            cs = (root / "crates/sunrise-client/src/game/client_side.rs").read_text()
+            self.assertIn("pub(in crate::game::client_side) r#type: u32,", cs)
+            self.assertIn("#[cfg(all())] pub(in crate::game) inline: u32,", cs)
+            rc, _, err = run_cli("--check", "--root", str(root))
+            self.assertEqual(rc, 0, err)
+            compile_and_test_rust(root)
+
+    def test_r1_10_and_11_raw_impl_mod_and_restricted_mod_visibility(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            make_fixture_tree(
+                root,
+                decl="pub(super) mod moved;\n",
+                files={
+                    "game/moved.rs": """
+                        pub(super) struct r#mod;
+                        impl r#mod {
+                            pub(super) fn method() {}
+                        }
+                    """,
+                },
+                game_append="fn callers() { moved::r#mod::method(); }\n",
+            )
+            rc, _, err = run_cli("--fix", "--no-fmt", "--root", str(root))
+            self.assertEqual(rc, 0, err)
+            cs = (root / "crates/sunrise-client/src/game/client_side.rs").read_text()
+            game_rs = (root / "crates/sunrise-client/src/game.rs").read_text()
+            moved = (root / "crates/sunrise-client/src/game/moved.rs").read_text()
+            self.assertIn("pub(crate) mod moved;", cs)
+            self.assertIn("pub(crate) use client_side::moved;", game_rs)
+            self.assertIn("pub(in crate::game) fn method()", moved)
+            rc, _, err = run_cli("--check", "--root", str(root))
+            self.assertEqual(rc, 0, err)
+            compile_and_test_rust(root)
+
+        # Unsupported custom pub(in ...) visibility on a moved module decl is refused atomically.
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            make_fixture_tree(
+                root,
+                decl="pub(in crate::other) mod moved;\n",
+                files={"game/moved.rs": "pub(super) fn f() {}\n"},
+            )
+            before = snapshot_tree(root)
+            rc, _, err = run_cli("--fix", "--no-fmt", "--root", str(root))
+            self.assertEqual(rc, 1)
+            self.assertIn("unsupported visibility", err)
+            self.assertEqual(before, snapshot_tree(root))
+
+    def test_r1_12_selector_strings_preserve_payloads_and_rewrite_raw_test_selectors(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            make_fixture_tree(
+                root,
+                files={
+                    "game/moved.rs": """
+                        pub(super) const PAYLOAD: &str = "game::moved::protocol_name";
+                        pub(super) const BYTE_PAYLOAD: &[u8] = b"game::moved::protocol_name";
+                        pub(super) const CHILD_TEST: &str = r"game::moved::tests::child";
+                        #[test]
+                        fn check_payload() {
+                            assert_eq!(PAYLOAD, concat!("game", "::moved::protocol_name"));
+                            assert_eq!(BYTE_PAYLOAD, concat!("game", "::moved::protocol_name").as_bytes());
+                            assert_eq!(CHILD_TEST, "game::client_side::moved::tests::child");
+                        }
+                        /// Keep this exact protocol name: "game::moved::protocol_name"
+                        pub(super) mod tests {
+                            #[test]
+                            fn child() {}
+                        }
+                    """,
+                },
+            )
+            rc, _, err = run_cli("--fix", "--no-fmt", "--root", str(root))
+            self.assertEqual(rc, 0, err)
+            moved = (root / "crates/sunrise-client/src/game/moved.rs").read_text()
+            self.assertIn('const PAYLOAD: &str = "game::moved::protocol_name";', moved)
+            self.assertIn('const BYTE_PAYLOAD: &[u8] = b"game::moved::protocol_name";', moved)
+            self.assertIn('const CHILD_TEST: &str = r"game::client_side::moved::tests::child";', moved)
+            self.assertIn('/// Keep this exact protocol name: "game::moved::protocol_name"', moved)
+            rc, _, err = run_cli("--check", "--root", str(root))
+            self.assertEqual(rc, 0, err)
+            compile_and_test_rust(root)
+
+    def test_r1_13_missing_rustfmt_fails_closed_without_modifying_tree(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            make_fixture_tree(root, files={"game/moved.rs": "pub(super) fn f() {}\n"})
+            before = snapshot_tree(root)
+            old_env = os.environ.get("RUSTFMT")
+            try:
+                os.environ["RUSTFMT"] = "/nonexistent/rustfmt-binary"
+                rc, _, err = run_cli("--fix", "--root", str(root))
+            finally:
+                if old_env is None:
+                    os.environ.pop("RUSTFMT", None)
+                else:
+                    os.environ["RUSTFMT"] = old_env
+            self.assertEqual(rc, 1)
+            self.assertIn("rustfmt not found", err)
+            self.assertEqual(before, snapshot_tree(root))
+
+    def test_r1_14_refusal_is_atomic_across_multi_file_tree(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            make_fixture_tree(
+                root,
+                decl="mod ok_mod;\nmod bad_mod;\n",
+                mods={"ok_mod": "client", "bad_mod": "server"},
+                files={
+                    "game/ok_mod.rs": "pub(super) fn ok() {}\n",
+                    "game/bad_mod.rs": "pub(in super) fn bad() {}\n",
+                },
+            )
+            before = snapshot_tree(root)
+            rc, _, err = run_cli("--fix", "--no-fmt", "--root", str(root))
+            self.assertEqual(rc, 1)
+            self.assertIn("pub(in super)", err)
+            self.assertEqual(before, snapshot_tree(root))
+            self.assertTrue((root / "crates/sunrise-client/src/game/client_state.rs").exists())
+            self.assertFalse((root / "crates/sunrise-client/src/game/client_side.rs").exists())
 
 
 if __name__ == "__main__":
