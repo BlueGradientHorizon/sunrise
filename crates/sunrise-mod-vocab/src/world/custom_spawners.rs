@@ -562,7 +562,8 @@ mod tests {
         assert!(editor.remove(SpawnerKind::Patrol));
         assert!(editor.remove(SpawnerKind::Phantom));
         editor.add(DropCounter(rolled_back_drops.clone()));
-        assert_eq!(editor.len(), 4);
+        // Five built-ins, plus one, less two, plus one.
+        assert_eq!(editor.len(), 5);
         assert_eq!(rolled_back_drops.load(Ordering::Relaxed), 0);
 
         editor.rollback(checkpoint);
@@ -605,7 +606,9 @@ mod tests {
         assert_eq!(drops.load(Ordering::Relaxed), 0, "nothing was dropped");
         assert!(matches!(list.take_at(0), Some(CustomSpawnerStep::Mod(_))));
 
-        // A removal no listener undid drops the instance once the edits are applied.
+        // A removal no listener undid drops the instance once the edits are applied. (The
+        // instance taken above was dropped there: this one counts on its own.)
+        let drops = Arc::new(AtomicUsize::new(0));
         let mut list = CustomSpawners::empty();
         let mut editor = CustomSpawnersEditor::new(&list);
         editor.add(DropCounter(drops.clone()));
