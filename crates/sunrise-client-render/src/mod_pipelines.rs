@@ -159,11 +159,23 @@ pub fn register(
         .map_err(|_| RegistrationError::AlreadyPublished)
 }
 
-/// Built-in Iris/OptiFine pack sampler names that mod `PackBinding` depth targets may not
-/// claim (matches `sunrise_render_shaderpack::pack_post::construction::source`).
-fn is_reserved_pack_sampler(name: &str) -> bool {
-    sunrise_shaders::buffer_index(name).is_some()
+/// Built-in Iris/OptiFine pack GLSL sampler, image, and uniform names that mod `PackBinding`
+/// declarations may not claim. Samplers, images, and value uniforms share GLSL's `uniform`
+/// identifier namespace, so both `PackDepthTarget` samplers and `PackUniformDecl` names are
+/// checked against this full table.
+fn reserved_pack_identifier(name: &str) -> Option<&'static str> {
+    let is_color_img = name
+        .strip_prefix("colorimg")
+        .and_then(|n| n.parse::<usize>().ok())
+        .is_some_and(|n| n < sunrise_shaders::BUFFERS);
+    let is_shadow_img = name
+        .strip_prefix("shadowcolorimg")
+        .and_then(|n| n.parse::<usize>().ok())
+        .is_some_and(|n| n < 8);
+    if sunrise_shaders::buffer_index(name).is_some()
         || sunrise_shaders::shadow_color(name).is_some()
+        || is_color_img
+        || is_shadow_img
         || matches!(
             name,
             "depthtex0"
@@ -185,23 +197,26 @@ fn is_reserved_pack_sampler(name: &str) -> bool {
                 | "specular"
                 | sunrise_shaders::WATER_MASK
         )
-}
-
-/// Built-in Iris/OptiFine pack uniform names that mod `PackBinding` frame uniforms may not
-/// claim.
-fn is_reserved_pack_uniform(name: &str) -> bool {
-    sunrise_render_shaderpack::pack_uniforms::NAMES.contains(&name)
+    {
+        return Some("built-in shader-pack sampler or image");
+    }
+    if sunrise_render_shaderpack::pack_uniforms::NAMES.contains(&name) {
+        return Some("built-in shader-pack uniform");
+    }
+    None
 }
 
 /// Validate GLSL syntax, reserved Iris/OptiFine names, and cross-mod uniqueness across every
 /// registered `RenderPipeline::pack_binding`. Multiple pipelines owned by the same mod may
 /// share one `PackDepthTarget.id` (with identical samplers), compatible defines, and typed
-/// uniforms; cross-mod collisions fail startup naming both mods and the colliding name.
+/// uniforms; cross-mod collisions and GLSL uniform/sampler namespace collisions fail startup
+/// naming the offending mod(s) and identifier.
 fn validate_pack_bindings(pipelines: &[RenderPipeline]) -> Result<(), String> {
     let mut depth_targets: BTreeMap<&Identifier, (&str, &mod_api::PackDepthTarget)> =
         BTreeMap::new();
     let mut samplers: BTreeMap<&str, (&str, &Identifier)> = BTreeMap::new();
-    let mut uniforms: BTreeMap<&str, (&str, mod_api::PackUniformType)> = BTreeMap::new();
+    // Value uniforms keyed by GLSL name: `(owner, ty, is_previous)`.
+    let mut uniforms: BTreeMap<&str, (&str, mod_api::PackUniformType, bool)> = BTreeMap::new();
     let mut defines: BTreeMap<&str, (&str, Option<&str>)> = BTreeMap::new();
 
     for pipeline in pipelines {
@@ -238,10 +253,22 @@ fn validate_pack_bindings(pipelines: &[RenderPipeline]) -> Result<(), String> {
                 .iter()
                 .chain(target.opaque_depth_samplers.iter())
             {
-                if is_reserved_pack_sampler(sampler) {
+                if let Some(kind) = reserved_pack_identifier(sampler) {
                     return Err(format!(
-                        "Reserved pack sampler name {:?} on render pipeline {} (registered by {}) collides with a built-in shader-pack sampler",
+                        "Reserved pack sampler name {:?} on render pipeline {} (registered by {}) collides with a {kind}",
                         sampler, pipeline.id, owner
+                    ));
+                }
+                if let Some(&(u_owner, _, _)) = uniforms.get(sampler.as_str()) {
+                    if u_owner != owner {
+                        return Err(format!(
+                            "Pack GLSL identifier collision on {:?}: registered as a uniform by {} and as a sampler by {}",
+                            sampler, u_owner, owner
+                        ));
+                    }
+                    return Err(format!(
+                        "Conflicting pack GLSL identifier {:?} in mod {}: declared as both a uniform and a sampler",
+                        sampler, owner
                     ));
                 }
                 if let Some(&(first_owner, first_target_id)) = samplers.get(sampler.as_str()) {
@@ -264,16 +291,28 @@ fn validate_pack_bindings(pipelines: &[RenderPipeline]) -> Result<(), String> {
         }
 
         for uniform in &binding.frame_uniforms {
-            let names =
-                std::iter::once(uniform.name.as_str()).chain(uniform.previous_name.as_deref());
-            for name in names {
-                if is_reserved_pack_uniform(name) {
+            let names = std::iter::once((uniform.name.as_str(), false))
+                .chain(uniform.previous_name.as_deref().map(|n| (n, true)));
+            for (name, is_previous) in names {
+                if let Some(kind) = reserved_pack_identifier(name) {
                     return Err(format!(
-                        "Reserved pack uniform name {:?} on render pipeline {} (registered by {}) collides with a built-in shader-pack uniform",
+                        "Reserved pack uniform name {:?} on render pipeline {} (registered by {}) collides with a {kind}",
                         name, pipeline.id, owner
                     ));
                 }
-                if let Some(&(first_owner, first_ty)) = uniforms.get(name) {
+                if let Some(&(s_owner, _)) = samplers.get(name) {
+                    if s_owner != owner {
+                        return Err(format!(
+                            "Pack GLSL identifier collision on {:?}: registered as a sampler by {} and as a uniform by {}",
+                            name, s_owner, owner
+                        ));
+                    }
+                    return Err(format!(
+                        "Conflicting pack GLSL identifier {:?} in mod {}: declared as both a sampler and a uniform",
+                        name, owner
+                    ));
+                }
+                if let Some(&(first_owner, first_ty, first_is_previous)) = uniforms.get(name) {
                     if first_owner != owner {
                         return Err(format!(
                             "Duplicate pack uniform registration: {:?} (registered by {} and {})",
@@ -286,8 +325,14 @@ fn validate_pack_bindings(pipelines: &[RenderPipeline]) -> Result<(), String> {
                             name, owner, first_ty, uniform.ty
                         ));
                     }
+                    if first_is_previous != is_previous {
+                        return Err(format!(
+                            "Conflicting pack uniform role for {:?} in mod {}: declared as both current and previous_name",
+                            name, owner
+                        ));
+                    }
                 } else {
-                    uniforms.insert(name, (owner, uniform.ty));
+                    uniforms.insert(name, (owner, uniform.ty, is_previous));
                 }
             }
         }
@@ -938,8 +983,19 @@ fn pipeline_fragment(input: PipelineInput) -> vec4<f32> {
         assert!(define_err.contains("mod_one"), "{define_err}");
         assert!(define_err.contains("mod_two"), "{define_err}");
 
-        // Reserved vanilla/Iris samplers and uniforms are refused.
-        for reserved_sampler in ["depthtex0", "colortex0", "shadowtex0", "noisetex"] {
+        // Reserved vanilla/Iris samplers, built-in images, and uniforms are refused in either
+        // sampler or uniform position (they share GLSL's `uniform` namespace).
+        for reserved_sampler in [
+            "depthtex0",
+            "colortex0",
+            "shadowtex0",
+            "noisetex",
+            "colorimg0",
+            "colorimg15",
+            "shadowcolorimg0",
+            "shadowcolorimg1",
+            "cameraPosition",
+        ] {
             let err = run(vec![ModEntry::new(
                 "mod_one",
                 Box::new(Custom(Box::new(move |ev| {
@@ -954,7 +1010,14 @@ fn pipeline_fragment(input: PipelineInput) -> vec4<f32> {
             assert!(err.contains(reserved_sampler), "{err}");
             assert!(err.contains("mod_one"), "{err}");
         }
-        for reserved_uniform in ["gbufferProjection", "cameraPosition", "worldTime"] {
+        for reserved_uniform in [
+            "gbufferProjection",
+            "cameraPosition",
+            "worldTime",
+            "depthtex0",
+            "colorimg0",
+            "shadowcolorimg0",
+        ] {
             let err = run(vec![ModEntry::new(
                 "mod_one",
                 Box::new(Custom(Box::new(move |ev| {
@@ -970,6 +1033,78 @@ fn pipeline_fragment(input: PipelineInput) -> vec4<f32> {
             assert!(err.contains(reserved_uniform), "{err}");
             assert!(err.contains("mod_one"), "{err}");
         }
+
+        // Same identifier claimed as both a sampler and a uniform is refused (same-mod and cross-mod).
+        let same_mod_ns_err = run(vec![ModEntry::new(
+            "mod_one",
+            Box::new(Custom(Box::new(|ev| {
+                ev.register(
+                    pipeline("mod_one:p", "mod_one:p").pack_binding(
+                        PackBinding::new()
+                            .depth_target(
+                                PackDepthTarget::new(id("mod_one:d")).depth_sampler("sharedId"),
+                            )
+                            .frame_uniform(PackUniformDecl::new(
+                                "sharedId",
+                                PackUniformType::Float,
+                            )),
+                    ),
+                );
+            }))),
+        )])
+        .unwrap_err();
+        assert!(same_mod_ns_err.contains("sharedId"), "{same_mod_ns_err}");
+        assert!(same_mod_ns_err.contains("mod_one"), "{same_mod_ns_err}");
+
+        let cross_mod_ns_err =
+            run(vec![
+                ModEntry::new(
+                    "mod_one",
+                    Box::new(Custom(Box::new(|ev| {
+                        ev.register(pipeline("mod_one:p", "mod_one:p").pack_binding(
+                            PackBinding::new().frame_uniform(PackUniformDecl::new(
+                                "crossNs",
+                                PackUniformType::Mat4,
+                            )),
+                        ));
+                    }))),
+                ),
+                ModEntry::new(
+                    "mod_two",
+                    Box::new(Custom(Box::new(|ev| {
+                        ev.register(pipeline("mod_two:p", "mod_two:p").pack_binding(
+                            PackBinding::new().depth_target(
+                                PackDepthTarget::new(id("mod_two:d")).depth_sampler("crossNs"),
+                            ),
+                        ));
+                    }))),
+                ),
+            ])
+            .unwrap_err();
+        assert!(cross_mod_ns_err.contains("crossNs"), "{cross_mod_ns_err}");
+        assert!(cross_mod_ns_err.contains("mod_one"), "{cross_mod_ns_err}");
+        assert!(cross_mod_ns_err.contains("mod_two"), "{cross_mod_ns_err}");
+
+        // Within-mod uniform role collision across two pipelines (`name` vs `previous_name`).
+        let role_err = run(vec![ModEntry::new(
+            "mod_one",
+            Box::new(Custom(Box::new(|ev| {
+                ev.register(pipeline("mod_one:a", "mod_one:a").pack_binding(
+                    PackBinding::new().frame_uniform(
+                        PackUniformDecl::new("projA", PackUniformType::Mat4).with_previous("projB"),
+                    ),
+                ));
+                ev.register(
+                    pipeline("mod_one:b", "mod_one:b").pack_binding(
+                        PackBinding::new()
+                            .frame_uniform(PackUniformDecl::new("projB", PackUniformType::Mat4)),
+                    ),
+                );
+            }))),
+        )])
+        .unwrap_err();
+        assert!(role_err.contains("projB"), "{role_err}");
+        assert!(role_err.contains("mod_one"), "{role_err}");
 
         // Invalid define syntax is refused at registration.
         let bad_define = run(vec![ModEntry::new(
