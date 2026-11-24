@@ -26,6 +26,7 @@ impl fmt::Display for SavedChunkError {
 
 impl std::error::Error for SavedChunkError {}
 
+// hidden: engine-only backend trait; mods interact with `SavedChunkReader`.
 #[doc(hidden)]
 pub trait SavedChunkReaderBackend: Send + Sync + 'static {
     fn read(&self, pos: [i32; 2]) -> Result<Option<ChunkSnapshot>, SavedChunkError>;
@@ -37,12 +38,15 @@ pub trait SavedChunkReaderBackend: Send + Sync + 'static {
 /// Obtained from [`crate::LevelRef::saved_chunk_reader`]. Safe to clone and call from background
 /// worker threads (`Send + Sync + 'static`). Once the level closes, every call returns
 /// `Err(SavedChunkError::Unavailable)` and the handle does not retain the level's storage.
+// no wire: in-process thread-safe handle to the server's saved chunk storage for worker threads.
+// exhaustive: opaque handle with private backend field; constructed only by the engine.
 #[derive(Clone)]
 pub struct SavedChunkReader {
     backend: Arc<dyn SavedChunkReaderBackend>,
 }
 
 impl SavedChunkReader {
+    // hidden: engine-only constructor; mods obtain readers from `LevelRef::saved_chunk_reader`.
     #[doc(hidden)]
     pub fn from_backend(backend: Arc<dyn SavedChunkReaderBackend>) -> Self {
         Self { backend }
