@@ -1989,16 +1989,11 @@ impl Game<'_> {
     /// A command's success feedback: `CommandSourceStack.sendSuccess(line,
     /// broadcast_to_admins)` from the executor's source, the line to its
     /// originating source and, with `broadcast_to_admins`, the other operators
-    /// and the log (`send_success`).
+    /// and the log (`send_success`). The executing level is in place: the
+    /// entity's name is read there, the origin block or minecart in its own.
     pub(super) fn native_feedback(&mut self, line: Text, broadcast_to_admins: bool) {
         let source = self.command_source.unwrap_or_else(|| self.player_source());
-        self.with_source(
-            super::commands::execute::Source {
-                dimension: source.origin_dimension,
-                ..source
-            },
-            |game| game.send_success(line, broadcast_to_admins),
-        );
+        self.with_source(source, |game| game.send_success(line, broadcast_to_admins));
     }
     /// `CommandSourceStack.sendFailure` for a mod's executor: the red line to the originating
     /// source, using vanilla's silence and block/cart track-output rules. The command's result

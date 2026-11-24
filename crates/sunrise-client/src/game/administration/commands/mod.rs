@@ -442,6 +442,10 @@ impl Game<'_> {
     /// command block or minecart that tracks output under `send_command_feedback`;
     /// never to the `execute as` entity. Independently, with `broadcast`,
     /// `broadcastToAdmins` tells the other operators and the log.
+    ///
+    /// Runs with the executing level in place (`source.dimension`). A block or
+    /// minecart origin is read in its own level (`source.origin_dimension`),
+    /// which `execute in` does not move.
     pub(in crate::game) fn send_success(&mut self, message: Text, broadcast: bool) {
         let source = self.command_source;
         if source.is_some_and(|s| s.silent) {
@@ -449,9 +453,9 @@ impl Game<'_> {
         }
         let admins = broadcast.then(|| message.clone());
         if let Some(block) = source.and_then(|s| s.block) {
-            self.command_block_success(block, message);
+            self.in_origin_level(|g| g.command_block_success(block, message));
         } else if let Some(cart) = source.and_then(|s| s.cart) {
-            self.cart_command_success(cart, message);
+            self.in_origin_level(|g| g.cart_command_success(cart, message));
         } else if self.accepts_success() {
             self.system_message(message);
         }
@@ -459,29 +463,60 @@ impl Game<'_> {
             self.broadcast_to_admins(message);
         }
     }
+    /// `f` with the command's origin level in place (`source.origin_dimension`):
+    /// where its command block or minecart is, whatever level `execute in` named.
+    fn in_origin_level<T>(&mut self, f: impl FnOnce(&mut Self) -> T) -> T {
+        let origin = self.command_source.map(|s| s.origin_dimension);
+        let back = origin.and_then(|dim| self.enter_command_level(dim));
+        let out = f(self);
+        if let Some(back) = back {
+            self.enter_command_level(back);
+        }
+        out
+    }
     /// `CommandSource.shouldInformAdmins` of the command's origin: a player's
     /// always (`ServerPlayer`); a command block's or minecart's while it tracks
-    /// output and `command_block_output` is on (`BaseCommandBlock`); the
-    /// console's `broadcast-console-to-ops` (`DedicatedServer`) and RCON's
+    /// output and `command_block_output` is on (`BaseCommandBlock`, which reads
+    /// the block itself: looked up in its own level); the console's
+    /// `broadcast-console-to-ops` (`DedicatedServer`) and RCON's
     /// `broadcast-rcon-to-ops` (`RconConsoleSource`).
-    fn should_inform_admins(&self) -> bool {
+    fn should_inform_admins(&mut self) -> bool {
         let source = self.command_source;
-        let block_output = || {
-            self.ui
-                .rules
-                .bool_at(sunrise_client::gamerules::vanilla::COMMAND_BLOCK_OUTPUT)
+        let origin = source.and_then(|s| s.block.map(Ok).or(s.cart.map(Err)));
+        let Some(origin) = origin else {
+            return self.console_broadcast.unwrap_or(true);
         };
-        if let Some(pos) = source.and_then(|s| s.block) {
-            return self.command_block(pos).is_some_and(|c| c.track_output) && block_output();
-        }
-        if let Some(id) = source.and_then(|s| s.cart) {
-            return self.carts.iter().any(|c| {
+        let tracks = self.in_origin_level(|g| match origin {
+            Ok(pos) => g.command_block(pos).is_some_and(|c| c.track_output),
+            Err(id) => g.carts.iter().any(|c| {
                 c.id == id
                     && c.kind == super::minecarts::CartKind::CommandBlock
                     && c.command.track_output
-            }) && block_output();
+            }),
+        });
+        tracks
+            && self
+                .ui
+                .rules
+                .bool_at(sunrise_client::gamerules::vanilla::COMMAND_BLOCK_OUTPUT)
+    }
+    /// `CommandSourceStack.getDisplayName` for the admin line: the executing
+    /// entity's name, read where `execute in` put the command (`source.dimension`,
+    /// in place); a command-block minecart executing as itself, and a command
+    /// block's own name, in the origin's level; the server's for the console.
+    fn admin_display_name(&mut self) -> Text {
+        let Some(source) = self.command_source else {
+            return if self.console_broadcast.is_some() {
+                self.server_name()
+            } else {
+                self.source_display_name()
+            };
+        };
+        let own_cart = source.cart.is_some() && source.entity == source.cart.map(Target::Cart);
+        match source.entity {
+            Some(_) if !own_cart => self.source_display_name(),
+            _ => self.in_origin_level(|g| g.source_display_name()),
         }
-        self.console_broadcast.unwrap_or(true)
     }
     /// `CommandSourceStack.broadcastToAdmins` when the origin informs the
     /// operators: `[name: message]` (`chat.type.admin`, gray and italic, with
@@ -504,10 +539,7 @@ impl Game<'_> {
         if !ops && !log {
             return;
         }
-        let who = match self.command_source {
-            None if self.console_broadcast.is_some() => self.server_name(),
-            _ => self.source_display_name(),
-        };
+        let who = self.admin_display_name();
         let line = Text::translate("chat.type.admin", &[who, message])
             .with_color(text::GRAY)
             .italic();
