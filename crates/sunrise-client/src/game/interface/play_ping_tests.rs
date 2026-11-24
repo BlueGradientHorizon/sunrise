@@ -80,8 +80,8 @@ fn pass(game: &mut Game<'_>, conn: u32, packet: S) {
 
 fn complete_sender_tick(game: &mut Game<'_>) {
     // Already registered connections: this is a second level pass, without polling sockets.
-    game.level_pass.first = false;
-    game.level_pass.packets_drained = false;
+    game.server.level_pass.first = false;
+    game.server.level_pass.packets_drained = false;
     let clock_before = game.world.game_time;
     game.tick_lan_packets();
     // tick_lan_packets has ended its Holding scope; production flushes these senders later.
@@ -99,7 +99,7 @@ fn complete_sender_tick(game: &mut Game<'_>) {
         "sender completion adds no world tick"
     );
     assert!(
-        game.level_pass.packets_drained,
+        game.server.level_pass.packets_drained,
         "real Game packet phase completed"
     );
 }

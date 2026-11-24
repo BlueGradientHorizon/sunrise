@@ -90,10 +90,10 @@ mod fake_travel_tests {
             };
             // Taken (true), so no same-level teleport stands in for it, and nothing queued.
             assert!(matches!(to_nether(game, fake), Some(Ok(true))));
-            assert!(game.level_teleports.is_empty());
+            assert!(game.server.level_teleports.is_empty());
             // A real player's goes on the queue as before.
             assert!(matches!(to_nether(game, real), Some(Ok(true))));
-            assert_eq!(game.level_teleports.len(), 1);
+            assert_eq!(game.server.level_teleports.len(), 1);
         });
     }
 
@@ -120,11 +120,11 @@ mod fake_travel_tests {
                 })
             };
             assert_eq!(sent(game, Dim::Nether), Some(true));
-            assert_eq!(game.level_teleports.len(), 1);
+            assert_eq!(game.server.level_teleports.len(), 1);
             // Their own level: the same-level teleport, nothing queued.
             let home = game.target_level(Target::Guest(conn));
             assert_eq!(sent(game, home), Some(true));
-            assert_eq!(game.level_teleports.len(), 1);
+            assert_eq!(game.server.level_teleports.len(), 1);
             // No level holds this item.
             assert!(!game.teleport_to_level(Target::Item(9_999), Dim::Nether, [0.0; 3], None));
         });

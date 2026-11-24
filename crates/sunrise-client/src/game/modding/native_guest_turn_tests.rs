@@ -50,13 +50,13 @@ pub(in crate::game) fn with_guests_at(
             seed: 0,
             max_players: 2,
             integrated: true,
-            levels: game.level_shapes,
+            levels: game.server.level_shapes,
             level_seeds: game.levels.runtime.seeds(),
         };
         game.lan_host(settings, net, config).unwrap();
         for id in [12, 13] {
             // These guests bypass login's entity ID allocation; reserve their IDs before spawning.
-            game.next_entity = game.next_entity.max(id);
+            game.server.next_entity = game.server.next_entity.max(id);
             let (tx, _rx) = std::sync::mpsc::channel();
             let mut guest = Guest::new(
                 Joined {
@@ -206,7 +206,11 @@ fn player_dimensions_validate_identity_on_both_server_roles() {
 fn refused_wire_reload_preserves_hub_and_engine_generation() {
     with_guests(|game| {
         let before = game.lan.as_ref().unwrap().hub.lan.shared.sync();
-        let old_tables = game.world_tables.as_ref().map(|tables| tables as *const _);
+        let old_tables = game
+            .server
+            .world_tables
+            .as_ref()
+            .map(|tables| tables as *const _);
         let old_context = game.loop_context.clone();
         let root = std::env::temp_dir().join(format!("reload-wire-{}", std::process::id()));
         std::fs::create_dir_all(&root).unwrap();
@@ -230,7 +234,7 @@ fn refused_wire_reload_preserves_hub_and_engine_generation() {
             }
         }
         let stack = super::functions::pack_stack(
-            &game.world_root,
+            &game.server.world_root,
             &root,
             &game.pack.data_source,
             &game.pack.data_changes,
@@ -254,11 +258,14 @@ fn refused_wire_reload_preserves_hub_and_engine_generation() {
         assert!(Arc::ptr_eq(&old_context, &game.loop_context));
         assert_eq!(
             old_tables,
-            game.world_tables.as_ref().map(|tables| tables as *const _)
+            game.server
+                .world_tables
+                .as_ref()
+                .map(|tables| tables as *const _)
         );
         let good = game.options.resources.clone();
         let stack = super::functions::pack_stack(
-            &game.world_root,
+            &game.server.world_root,
             &good,
             &game.pack.data_source,
             &game.pack.data_changes,
@@ -472,8 +479,8 @@ fn a_players_move_by_stops_at_a_boat() {
         // Back to where it was, then a boat 2 blocks along, its box across the line of travel.
         game.entity_move_by(b.entity(), [-4.0, 0.0, 0.0], MoveCause::SelfMovement)
             .unwrap();
-        game.next_entity += 1;
-        let id = game.next_entity;
+        game.server.next_entity += 1;
+        let id = game.server.next_entity;
         game.boats.push(crate::game::boats::Boat::new(
             id,
             "oak".into(),
@@ -543,8 +550,8 @@ fn a_players_move_by_falls_through_a_happy_ghast_that_is_not_held_still() {
         game.as_guest(13, |_| {}).unwrap();
         let b = game.player(13).unwrap();
         let [x, y, z] = b.entity().position(game).unwrap();
-        game.next_entity += 1;
-        let id = game.next_entity;
+        game.server.next_entity += 1;
+        let id = game.server.next_entity;
         let kind = game
             .res
             .mob_types()
@@ -1204,12 +1211,12 @@ fn server_services_preserve_identity_and_message_delivery() {
             assert_eq!(invalid.permission_level(game), None);
         }
         assert!(game.commands().run_command("list"));
-        game.chat_capture = Some(Vec::new());
+        game.server.chat_capture = Some(Vec::new());
         game.commands()
             .feedback(Text::literal("command answer"), false)
             .unwrap();
         assert_eq!(
-            game.chat_capture.take().unwrap()[0].plain(),
+            game.server.chat_capture.take().unwrap()[0].plain(),
             "command answer"
         );
         game.as_guest(12, |game| {
@@ -1231,7 +1238,7 @@ fn server_services_preserve_identity_and_message_delivery() {
                 a.tab_list(game, &Text::literal("header"), &Text::literal("footer"))
                     .unwrap()
             );
-            let packets = &game.guest_packets;
+            let packets = &game.server.guest_packets;
             assert!(matches!(&packets[packets.len() - 3], C::SystemChat(p) if !p.overlay));
             assert!(matches!(&packets[packets.len() - 2], C::SystemChat(p) if p.overlay));
             assert!(matches!(&packets[packets.len() - 1], C::TabList(_)));
@@ -1304,7 +1311,7 @@ fn canonical_permissions_preserve_owner_and_fake_player_reads() {
         assert_eq!(owner.permission_level(game), Some(4));
         assert_eq!(owner.can_use_game_master_blocks(game), Some(false));
 
-        game.next_entity = 100;
+        game.server.next_entity = 100;
         let level = game.level(game.dim.id()).unwrap();
         let fake = game.fake_player(level, 1234, "machine").unwrap();
         assert!(!game.players().server_players().contains(&fake));
@@ -1409,7 +1416,7 @@ fn level_players_exclude_fake_players() {
     with_guests(|game| {
         let _serving = super::integrated::tests::install_serving(game, false);
         place_host(game);
-        game.next_entity = 100;
+        game.server.next_entity = 100;
         let level = game.level(game.dim.id()).unwrap();
         let fake = game.fake_player(level, 1234, "machine").unwrap();
         let conn = game
@@ -1636,7 +1643,7 @@ fn guest_damage_unwind_restores_and_next_same_connection_hit_lands() {
                 g.set_game_mode(GameMode::Survival);
             })
             .unwrap();
-            let outer = game.lan_acting;
+            let outer = game.server.lan_acting;
             let position = game.player.as_ref().map(|p| p.position);
             let health = |game: &super::Game<'_>| {
                 game.lan
@@ -1667,9 +1674,9 @@ fn guest_damage_unwind_restores_and_next_same_connection_hit_lands() {
                     hook: "living_incoming_damage",
                 }],
             );
-            assert!(game.lan_guest_swaps.is_empty());
-            assert!(game.interrupted_turns.is_empty());
-            assert_eq!(game.lan_acting, outer);
+            assert!(game.server.lan_guest_swaps.is_empty());
+            assert!(game.server.interrupted_turns.is_empty());
+            assert_eq!(game.server.lan_acting, outer);
             assert_eq!(game.player.as_ref().map(|p| p.position), position);
 
             expire_guest_damage_cooldown(game, 13);
@@ -1677,8 +1684,8 @@ fn guest_damage_unwind_restores_and_next_same_connection_hit_lands() {
             assert_eq!(health(game), before - 2.0);
             assert_eq!(calls.load(Ordering::SeqCst), 1);
             assert!(take_hook_panics().is_empty());
-            assert!(game.lan_guest_swaps.is_empty());
-            assert_eq!(game.lan_acting, outer);
+            assert!(game.server.lan_guest_swaps.is_empty());
+            assert_eq!(game.server.lan_acting, outer);
             assert_eq!(game.player.as_ref().map(|p| p.position), position);
             assert_eq!(
                 game.as_guest(13, |g| {
@@ -1722,11 +1729,11 @@ fn guest_message_capture_is_restored_after_a_real_native_panic() {
                 })
                 .unwrap();
             }
-            let outer = game.lan_acting;
+            let outer = game.server.lan_acting;
             let feedback = || vec![sunrise_client::text::Text::literal("outer feedback")];
-            game.chat_capture = Some(feedback());
+            game.server.chat_capture = Some(feedback());
             let hit = |game: &mut super::Game<'_>| {
-                assert_eq!(game.chat_capture, Some(Vec::new()));
+                assert_eq!(game.server.chat_capture, Some(Vec::new()));
                 game.pvp_land(
                     super::lan_pvp::Victim::Guest(12),
                     &super::lan_pvp::Strike::test_blow(13),
@@ -1740,14 +1747,15 @@ fn guest_message_capture_is_restored_after_a_real_native_panic() {
                     hook: "living_incoming_damage",
                 }],
             );
-            assert_eq!(game.chat_capture, Some(feedback()));
-            assert!(game.lan_guest_swaps.is_empty());
-            assert!(game.interrupted_turns.is_empty());
-            assert_eq!(game.lan_acting, outer);
+            assert_eq!(game.server.chat_capture, Some(feedback()));
+            assert!(game.server.lan_guest_swaps.is_empty());
+            assert!(game.server.interrupted_turns.is_empty());
+            assert_eq!(game.server.lan_acting, outer);
 
             let panic = catch_unwind(AssertUnwindSafe(|| {
                 game.as_guest_messaged(13, |game| {
-                    game.chat_capture
+                    game.server
+                        .chat_capture
                         .as_mut()
                         .unwrap()
                         .push(sunrise_client::text::Text::literal("guest feedback"));
@@ -1759,17 +1767,17 @@ fn guest_message_capture_is_restored_after_a_real_native_panic() {
                 panic.downcast_ref::<&str>(),
                 Some(&"engine panic during a messaged turn"),
             );
-            assert_eq!(game.chat_capture, Some(feedback()));
-            assert!(game.lan_guest_swaps.is_empty());
-            assert_eq!(game.lan_acting, outer);
+            assert_eq!(game.server.chat_capture, Some(feedback()));
+            assert!(game.server.lan_guest_swaps.is_empty());
+            assert_eq!(game.server.lan_acting, outer);
 
             expire_guest_damage_cooldown(game, 12);
             assert_eq!(game.as_guest_messaged(13, hit), Some(true));
             assert_eq!(calls.load(Ordering::SeqCst), 1);
             assert!(take_hook_panics().is_empty());
-            assert_eq!(game.chat_capture, Some(feedback()));
-            assert!(game.lan_guest_swaps.is_empty());
-            assert_eq!(game.lan_acting, outer);
+            assert_eq!(game.server.chat_capture, Some(feedback()));
+            assert!(game.server.lan_guest_swaps.is_empty());
+            assert_eq!(game.server.lan_acting, outer);
         });
     });
 }
@@ -1813,7 +1821,7 @@ fn a_panic_in_a_turn_end_callback_still_restores_the_guest() {
             let food =
                 |game: &super::Game<'_>| game.lan.as_ref().unwrap().hub.guest(13).unwrap().food;
             let before = food(game);
-            let outer = game.lan_acting;
+            let outer = game.server.lan_acting;
             assert_eq!(
                 game.as_guest(13, |g| g.player.as_mut().unwrap().health.food.food -= 3),
                 Some(()),
@@ -1825,9 +1833,9 @@ fn a_panic_in_a_turn_end_callback_still_restores_the_guest() {
                     hook: "food_level_changed",
                 }],
             );
-            assert!(game.lan_guest_swaps.is_empty());
-            assert!(game.interrupted_turns.is_empty());
-            assert_eq!(game.lan_acting, outer);
+            assert!(game.server.lan_guest_swaps.is_empty());
+            assert!(game.server.interrupted_turns.is_empty());
+            assert_eq!(game.server.lan_acting, outer);
             assert_eq!(food(game), before - 3);
 
             let panic = catch_unwind(AssertUnwindSafe(|| {
@@ -1841,8 +1849,8 @@ fn a_panic_in_a_turn_end_callback_still_restores_the_guest() {
                 panic.downcast_ref::<&str>(),
                 Some(&"engine panic during a guest turn"),
             );
-            assert!(game.lan_guest_swaps.is_empty());
-            assert_eq!(game.lan_acting, outer);
+            assert!(game.server.lan_guest_swaps.is_empty());
+            assert_eq!(game.server.lan_acting, outer);
             assert_eq!(food(game), before - 4);
 
             assert_eq!(
@@ -1856,8 +1864,8 @@ fn a_panic_in_a_turn_end_callback_still_restores_the_guest() {
             assert_eq!(calls.load(Ordering::SeqCst), 1);
             assert!(take_hook_panics().is_empty());
             assert_eq!(food(game), before - 5);
-            assert!(game.lan_guest_swaps.is_empty());
-            assert_eq!(game.lan_acting, outer);
+            assert!(game.server.lan_guest_swaps.is_empty());
+            assert_eq!(game.server.lan_acting, outer);
         });
     });
 }
@@ -1888,7 +1896,7 @@ fn summon_stand(game: &mut super::Game<'_>) -> mod_api::EntityRef {
 /// Whether anything the server sent the acting player since `before` is a chat line.
 fn told_since(game: &super::Game<'_>, before: usize) -> bool {
     use sunrise_protocol::packets::play::Clientbound as C;
-    game.guest_packets[before..]
+    game.server.guest_packets[before..]
         .iter()
         .any(|p| matches!(p, C::SystemChat(_)))
 }
@@ -1979,10 +1987,10 @@ fn run_command_answers_a_player_and_no_one_for_another_entity() {
         let stand = summon_stand(game);
         game.as_guest(12, |game| {
             for (line, ran) in [("tick query", true), ("kill @e[type=minecraft:pig]", false)] {
-                let before = game.guest_packets.len();
+                let before = game.server.guest_packets.len();
                 assert_eq!(a.run_command(game, line, Admins, false), ran, "{line}");
                 assert!(told_since(game, before), "the player is told: {line}");
-                let before = game.guest_packets.len();
+                let before = game.server.guest_packets.len();
                 assert_eq!(stand.run_command(game, line, Admins, false), ran, "{line}");
                 assert!(!told_since(game, before), "no one is told: {line}");
             }

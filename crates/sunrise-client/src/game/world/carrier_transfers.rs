@@ -245,14 +245,14 @@ impl Game<'_> {
             .unwrap_or(MAX_CARRIERS);
         #[cfg(not(test))]
         let capacity = MAX_CARRIERS;
-        let mut store = match Store::open_with_capacity(&self.world_root, capacity) {
+        let mut store = match Store::open_with_capacity(&self.server.world_root, capacity) {
             Ok(crate::carrier_store::Opened::Live(store)) => store,
             Ok(crate::carrier_store::Opened::NeverUsed) => {
                 // The gate reads the flag captured at world open, not
                 // the folder's existence now: a data folder created
                 // this session does not pass for an old one.
                 Store::first_use_with_capacity(
-                    &self.world_root,
+                    &self.server.world_root,
                     self.world.carrier_data_existed_at_open,
                     capacity,
                 )
@@ -261,7 +261,7 @@ impl Game<'_> {
             Err(e) => return Err(TransferError::Store(e.to_string())),
         };
 
-        store.use_retention_snapshot(&self.carrier_retention_snapshot);
+        store.use_retention_snapshot(&self.server.carrier_retention_snapshot);
 
         // Before/after images from the live world, encoded in memory —
         // a transfer that cannot be stored never lifts a block.
@@ -534,7 +534,7 @@ impl Game<'_> {
             .unwrap_or(MAX_CARRIERS);
         #[cfg(not(test))]
         let capacity = MAX_CARRIERS;
-        let mut store = match Store::open_with_capacity(&self.world_root, capacity) {
+        let mut store = match Store::open_with_capacity(&self.server.world_root, capacity) {
             Ok(crate::carrier_store::Opened::Live(store)) => store,
             _ => {
                 return Err(TransferError::Store(
@@ -542,7 +542,7 @@ impl Game<'_> {
                 ));
             }
         };
-        store.use_retention_snapshot(&self.carrier_retention_snapshot);
+        store.use_retention_snapshot(&self.server.carrier_retention_snapshot);
         if !store.journal().lists(uuid, generation) {
             return Err(TransferError::CarrierUnreadable(
                 "the journal does not list this carrier".into(),
@@ -877,8 +877,8 @@ impl Game<'_> {
     /// finished recovers before the first tick and any player. A
     /// refusal fails the open, and no save runs after it.
     pub(in crate::game) fn carrier_world_opened(&mut self) -> crate::Result<()> {
-        self.world.carrier_data_existed_at_open = self.world_root.join("data").is_dir();
-        self.carrier_retention_snapshot = match Store::open(&self.world_root) {
+        self.world.carrier_data_existed_at_open = self.server.world_root.join("data").is_dir();
+        self.server.carrier_retention_snapshot = match Store::open(&self.server.world_root) {
             Ok(crate::carrier_store::Opened::Live(store)) => store.retention_snapshot(),
             Ok(crate::carrier_store::Opened::NeverUsed) => Vec::new(),
             Err(error) => {
@@ -910,7 +910,7 @@ impl Game<'_> {
     /// while the store stays exactly as recovery found it.
     pub(crate) fn carrier_recover_all_levels(&mut self) -> crate::Result<()> {
         // No pending operation: no level is touched at all.
-        let dimension = match crate::carrier_store::Store::open(&self.world_root) {
+        let dimension = match crate::carrier_store::Store::open(&self.server.world_root) {
             Ok(crate::carrier_store::Opened::Live(store)) => {
                 match store.journal().in_progress.as_ref() {
                     Some(op) => op.dimension.clone(),
@@ -971,7 +971,7 @@ impl Game<'_> {
     /// the storage layer, run from world open. Errors are logged and
     /// swallowed: cleanup is retention work, never a load refusal.
     fn carrier_cleanup(&mut self) {
-        let mut store = match crate::carrier_store::Store::open(&self.world_root) {
+        let mut store = match crate::carrier_store::Store::open(&self.server.world_root) {
             Ok(crate::carrier_store::Opened::Live(store)) => store,
             _ => return,
         };
@@ -984,7 +984,7 @@ impl Game<'_> {
     /// store's in-progress operation replays against this level's region
     /// directory, and only if the operation names this level.
     fn carrier_recover_current(&mut self) -> Result<(), String> {
-        let mut store = match crate::carrier_store::Store::open(&self.world_root) {
+        let mut store = match crate::carrier_store::Store::open(&self.server.world_root) {
             Ok(crate::carrier_store::Opened::Live(store)) => store,
             Ok(crate::carrier_store::Opened::NeverUsed) => return Ok(()),
             Err(error) => return Err(error.to_string()),
@@ -1068,7 +1068,7 @@ mod tests {
         with_game(|game| {
             // The harness's world root is empty: give the transfer a
             // throwaway world of its own, as the save tests do.
-            game.world_root = root.clone();
+            game.server.world_root = root.clone();
             // The fixture world pre-exists with its data folder, as an
             // opened world would.
             game.world.carrier_data_existed_at_open = true;
@@ -1171,7 +1171,7 @@ mod tests {
     fn an_overflowing_destination_refuses() {
         let root = transfer_root("overflow");
         with_game(|game| {
-            game.world_root = root.clone();
+            game.server.world_root = root.clone();
             // The fixture world pre-exists with its data folder, as an
             // opened world would.
             game.world.carrier_data_existed_at_open = true;
@@ -1211,7 +1211,7 @@ mod tests {
     fn a_ticking_block_entity_refuses_before_the_lift() {
         let root = transfer_root("passive");
         with_game(|game| {
-            game.world_root = root.clone();
+            game.server.world_root = root.clone();
             // The fixture world pre-exists with its data folder, as an
             // opened world would.
             game.world.carrier_data_existed_at_open = true;
@@ -1266,7 +1266,7 @@ mod tests {
     fn repeated_transfers_beyond_the_index_capacity_stay_bounded() {
         let root = transfer_root("capacity");
         with_game(|game| {
-            game.world_root = root.clone();
+            game.server.world_root = root.clone();
             // The fixture world pre-exists with its data folder, as an
             // opened world would.
             game.world.carrier_data_existed_at_open = true;
@@ -1321,7 +1321,7 @@ mod tests {
     fn capacity_refusal_leaves_world_untouched() {
         let root = transfer_root("admission");
         with_game(|game| {
-            game.world_root = root.clone();
+            game.server.world_root = root.clone();
             game.world.carrier_data_existed_at_open = true;
             game.save = std::sync::Arc::new(sunrise_client::save::SaveDir::new(
                 root.join("dimensions/minecraft/overworld"),
@@ -1358,7 +1358,7 @@ mod tests {
     fn saved_tag_refuses_assembly_and_disassembly_without_mutation() {
         let root = transfer_root("saved-tag");
         with_game(|game| {
-            game.world_root = root.clone();
+            game.server.world_root = root.clone();
             game.world.carrier_data_existed_at_open = true;
             game.save = std::sync::Arc::new(sunrise_client::save::SaveDir::new(
                 root.join("dimensions/minecraft/overworld"),
@@ -1436,7 +1436,7 @@ mod tests {
     fn assembly_revalidation_refuses_saved_tag_without_mutation() {
         let root = transfer_root("assembly-revalidation-saved-tag");
         with_game(|game| {
-            game.world_root = root.clone();
+            game.server.world_root = root.clone();
             game.world.carrier_data_existed_at_open = true;
             game.save = std::sync::Arc::new(sunrise_client::save::SaveDir::new(
                 root.join("dimensions/minecraft/overworld"),
@@ -1521,7 +1521,7 @@ mod tests {
     fn a_crash_after_a_finished_disassembly_recovers_clean() {
         let root = transfer_root("post-disassembly");
         with_game(|game| {
-            game.world_root = root.clone();
+            game.server.world_root = root.clone();
             // The fixture world pre-exists with its data folder, as an
             // opened world would.
             game.world.carrier_data_existed_at_open = true;
@@ -1576,7 +1576,7 @@ mod tests {
             BlockPos::new(7, 71, 9),
         ];
         with_game(|game| {
-            game.world_root = root.clone();
+            game.server.world_root = root.clone();
             // The fixture world pre-exists with its data folder, as an
             // opened world would.
             game.world.carrier_data_existed_at_open = true;
@@ -1641,7 +1641,7 @@ mod tests {
     fn non_default_states_survive_the_round_trip() {
         let root = transfer_root("states");
         with_game(|game| {
-            game.world_root = root.clone();
+            game.server.world_root = root.clone();
             // The fixture world pre-exists with its data folder, as an
             // opened world would.
             game.world.carrier_data_existed_at_open = true;
@@ -1718,7 +1718,7 @@ mod tests {
     fn the_live_assembly_publishes_the_cargo_before_prepared() {
         let root = transfer_root("live-cargo");
         with_game(|game| {
-            game.world_root = root.clone();
+            game.server.world_root = root.clone();
             // The fixture world pre-exists with its data folder, as an
             // opened world would.
             game.world.carrier_data_existed_at_open = true;
@@ -1813,7 +1813,7 @@ mod tests {
         std::fs::create_dir_all(root.join("data")).unwrap();
         write_level_dat(&root);
         with_game(|game| {
-            game.world_root = root.clone();
+            game.server.world_root = root.clone();
             // The fixture world pre-exists with its data folder, as an
             // opened world would.
             game.world.carrier_data_existed_at_open = true;
@@ -1885,7 +1885,7 @@ mod tests {
     fn a_failed_commit_stops_the_session_until_recovery() {
         let root = transfer_root("fail-closed");
         with_game(|game| {
-            game.world_root = root.clone();
+            game.server.world_root = root.clone();
             // The fixture world pre-exists with its data folder, as an
             // opened world would.
             game.world.carrier_data_existed_at_open = true;
@@ -1957,7 +1957,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(&root);
         std::fs::create_dir_all(&root).unwrap();
         crate::game::native_entity_refs::tests::with_client_game(|game| {
-            game.world_root = root.clone();
+            game.server.world_root = root.clone();
 
             let refused = game.carrier_disassemble(3, 1, [0, 64, 0], [1.0, 0.0, 0.0, 0.0]);
             assert!(matches!(refused, Err(TransferError::NotLogicalServer)));
@@ -1980,7 +1980,7 @@ mod tests {
     fn assemble_then_disassemble_keeps_one_owner_at_every_step() {
         let root = transfer_root("cycle");
         with_game(|game| {
-            game.world_root = root.clone();
+            game.server.world_root = root.clone();
             // The fixture world pre-exists with its data folder, as an
             // opened world would.
             game.world.carrier_data_existed_at_open = true;
@@ -2020,7 +2020,7 @@ mod tests {
     fn a_destination_with_a_block_entity_refuses() {
         let root = transfer_root("dest");
         with_game(|game| {
-            game.world_root = root.clone();
+            game.server.world_root = root.clone();
             // The fixture world pre-exists with its data folder, as an
             // opened world would.
             game.world.carrier_data_existed_at_open = true;
@@ -2057,7 +2057,7 @@ mod tests {
     fn rotations_refuse_without_symmetry_or_an_adapter() {
         let root = transfer_root("rot");
         with_game(|game| {
-            game.world_root = root.clone();
+            game.server.world_root = root.clone();
             // The fixture world pre-exists with its data folder, as an
             // opened world would.
             game.world.carrier_data_existed_at_open = true;
@@ -2147,7 +2147,7 @@ mod tests {
         // that lookup; the test harness points its sibling variable at
         // the same folder).
         with_game(|game| {
-            game.world_root = root.clone();
+            game.server.world_root = root.clone();
             // The fixture world pre-exists with its data folder, as an
             // opened world would.
             game.world.carrier_data_existed_at_open = true;
@@ -2229,7 +2229,7 @@ mod tests {
     fn an_unknown_dimension_refuses_the_load_without_touching_levels() {
         let root = transfer_root("nope");
         with_game(|game| {
-            game.world_root = root.clone();
+            game.server.world_root = root.clone();
             // The fixture world pre-exists with its data folder, as an
             // opened world would.
             game.world.carrier_data_existed_at_open = true;
@@ -2281,7 +2281,7 @@ mod tests {
     fn an_older_snapshot_completing_late_cannot_overwrite_the_post_state() {
         let root = transfer_root("writer");
         with_game(|game| {
-            game.world_root = root.clone();
+            game.server.world_root = root.clone();
             // The fixture world pre-exists with its data folder, as an
             // opened world would.
             game.world.carrier_data_existed_at_open = true;
@@ -2338,7 +2338,7 @@ mod tests {
     fn every_save_route_refuses_under_the_obligation_and_admits_after_commit() {
         let root = transfer_root("saves");
         with_game(|game| {
-            game.world_root = root.clone();
+            game.server.world_root = root.clone();
             // The fixture world pre-exists with its data folder, as an
             // opened world would.
             game.world.carrier_data_existed_at_open = true;
@@ -2378,7 +2378,7 @@ mod tests {
     fn the_supported_backup_restores_identical_carriers_and_chunks() {
         let root = transfer_root("backup");
         with_game(|game| {
-            game.world_root = root.clone();
+            game.server.world_root = root.clone();
             // The fixture world pre-exists with its data folder, as an
             // opened world would.
             game.world.carrier_data_existed_at_open = true;
@@ -2520,7 +2520,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(&root);
         std::fs::create_dir_all(root.join("data")).unwrap();
         with_game(|game| {
-            game.world_root = root.clone();
+            game.server.world_root = root.clone();
             // The fixture world pre-exists with its data folder, as an
             // opened world would.
             game.world.carrier_data_existed_at_open = true;

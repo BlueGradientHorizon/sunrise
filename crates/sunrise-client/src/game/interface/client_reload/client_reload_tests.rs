@@ -609,7 +609,7 @@ fn initial_load_stages_and_applies_client_reload_listeners() {
                         game.pack.render.model(&id("startup_anchor:stone")),
                         Err(mod_api::ModelError::UnknownModel)
                     );
-                    let pending = game.pending_initial_models.take().unwrap();
+                    let pending = game.client.pending_initial_models.take().unwrap();
                     let candidate = pending.models.pack.render.generation;
                     let renderer = if refusal == Some("renderer") {
                         Err("renderer validation refused".into())
@@ -1540,7 +1540,7 @@ fn humanoid_arm_pose_mod_reads_mob_state_and_changes_the_model() {
         game.offhand.as_mut().unwrap().damage = 9;
         game.tick_player_model();
         let own_before =
-            anim::humanoid_arm_poses(game.player_model.as_ref().unwrap(), [None; 2], 0.0);
+            anim::humanoid_arm_poses(game.client.player_model.as_ref().unwrap(), [None; 2], 0.0);
         assert_eq!(own_before, [sunrise_core::arm_pose::ArmPose::Item; 2]);
         for (id, kind) in [
             (60, "minecraft:zombie"),
@@ -1593,7 +1593,7 @@ fn humanoid_arm_pose_mod_reads_mob_state_and_changes_the_model() {
                 assert_eq!(game.held_arm_poses(60, &empty), [None; 2]);
                 // The local player's extraction also exposes its actual off-hand stack.
                 game.tick_player_model();
-                let own = game.player_model.as_ref().unwrap();
+                let own = game.client.player_model.as_ref().unwrap();
                 assert_eq!(
                     anim::humanoid_arm_poses(own, own.extra.held_arm_pose, 0.0),
                     own_before

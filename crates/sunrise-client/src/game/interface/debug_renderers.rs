@@ -167,7 +167,7 @@ impl Game<'_> {
                 out,
             ));
         }
-        self.map_patches.extend(patches);
+        self.client.map_patches.extend(patches);
     }
 
     /// `WaterDebugRenderer`: each water block within 10 of the feet filled

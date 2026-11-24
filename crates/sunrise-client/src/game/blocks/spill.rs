@@ -1418,7 +1418,7 @@ impl Game<'_> {
                     state,
                     roll,
                     &mut self.world.random,
-                    Some((&mut self.rand_sequences, self.level.seed)),
+                    Some((&mut self.server.rand_sequences, self.level.seed)),
                 )
             })
         })
@@ -1463,7 +1463,7 @@ impl Game<'_> {
                 spawn.delay,
                 spawn.random,
             );
-            self.join_removal_item(self.next_entity, spawn.pos);
+            self.join_removal_item(self.server.next_entity, spawn.pos);
         }
         for (at, value, merge_id) in orbs {
             self.award_orb(at, value, merge_id);
@@ -1473,11 +1473,11 @@ impl Game<'_> {
     /// Add the item entities the block behaviour spawned and follow up on the
     /// block entities it removed.
     pub(super) fn flush_spill(&mut self) {
-        if self.spill.is_empty() {
+        if self.server.spill.is_empty() {
             return;
         }
         let _save_lease = sunrise_client::join_seq::visibility::PassLease::enter();
-        let mut spill = std::mem::take(&mut self.spill);
+        let mut spill = std::mem::take(&mut self.server.spill);
         self.finish_piston_position_changes(std::mem::take(&mut spill.piston_positions));
         let used = std::mem::take(&mut spill.used);
         let tool = self.held().cloned();

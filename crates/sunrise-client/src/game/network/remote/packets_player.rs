@@ -10,9 +10,9 @@ impl Game<'_> {
         // Configuration's tags, over the block ids the parts just bound.
         self.install_remote_tags();
         self.refresh_render_visibility();
-        self.test_highlights.clear();
+        self.client.test_highlights.clear();
         // handleLogin: `debugSubscriber.clear()`.
-        self.debug_charts.clear_subscriptions();
+        self.client.debug_charts.clear_subscriptions();
         self.forget_synced_recipes();
         self.level.hardcore = p.hardcore;
         // handleLogin: startWaitingForNewLevel with Reason.OTHER, which
@@ -33,7 +33,7 @@ impl Game<'_> {
         self.potions.effects.clear();
         // handleLogin creates a fresh LocalPlayer only when none exists yet.
         if self.remote.as_ref().is_none_or(|r| !r.logged_in) {
-            self.post_effects.clear();
+            self.client.post_effects.clear();
         }
         self.riding = None;
         if let Some(player) = self.player.as_mut() {
@@ -70,7 +70,7 @@ impl Game<'_> {
         self.bind_local_player_residency();
         self.refresh_debug_renderers();
         // LocalPlayer.setReducedDebugInfo always rebuilds, also on a second login.
-        self.debug_entries.invalidate();
+        self.client.debug_entries.invalidate();
         self.streaming.radius = crate::game::entity_culling::streaming_radius_for(
             self.settings.render_distance,
             Some(p.chunk_radius),
@@ -95,7 +95,7 @@ impl Game<'_> {
     pub(super) fn apply_respawn_packet(&mut self, p: play::Respawn) {
         self.reset_client_item_use();
         // The new LocalPlayer copies reduced debug info through its setter.
-        self.debug_entries.invalidate();
+        self.client.debug_entries.invalidate();
         let old_player = self.remote.as_ref().map(|r| (r.entity_id, r.profile));
         if let Some((_, uuid)) = old_player {
             self.forget_entity_initialization(Holder::Player(uuid));
@@ -106,7 +106,7 @@ impl Game<'_> {
         // A new player, without effects (the server sends them
         // again) and with no item in use.
         self.potions.effects.clear();
-        self.post_effects.clear();
+        self.client.post_effects.clear();
         // Every synced attachment but the player's is sent again; the viewed
         // levels go or stay with the level entered (`enter_respawn_level`).
         if let Some(r) = self.remote.as_mut() {
@@ -144,7 +144,7 @@ impl Game<'_> {
             .remote
             .as_ref()
             .is_some_and(|r| r.level != p.spawn.dimension);
-        let died = self.screen == Screen::Dead
+        let died = self.client.screen == Screen::Dead
             || self
                 .player
                 .as_ref()
@@ -189,9 +189,11 @@ impl Game<'_> {
         }
         if dimension_changed {
             // LevelExtractor.setLevel: a new level drops the highlights.
-            self.test_highlights.clear();
+            self.client.test_highlights.clear();
             let (music, _) = self.situational_music();
-            self.music.stop_playing(music.as_ref(), &mut self.audio);
+            self.client
+                .music
+                .stop_playing(music.as_ref(), &mut self.audio);
         }
         self.set_screen(Screen::Playing);
         if let Some(r) = self.remote.as_mut() {
@@ -231,7 +233,7 @@ impl Game<'_> {
         // The death screen opens (or the respawn is asked for) with the
         // death packet when the rule hides it.
         let shown = self.remote.as_ref().is_none_or(|r| r.show_death_screen);
-        if p.health <= 0.0 && shown && self.screen != Screen::Dead && self.player.is_some() {
+        if p.health <= 0.0 && shown && self.client.screen != Screen::Dead && self.player.is_some() {
             self.close_dialogs();
             self.set_screen(Screen::Dead);
             self.ui.death_time = 0;
@@ -302,7 +304,7 @@ impl Game<'_> {
                 s => (s as usize - 36, self.inventory[s as usize - 36].as_ref()),
             };
             if old.is_none_or(|old| old.count < new.count) {
-                self.hotbar_pop[pop] = 5;
+                self.client.hotbar_pop[pop] = 5;
             }
         }
         let before = self.creative_stacks();
@@ -500,8 +502,8 @@ impl Game<'_> {
                 .any(|span| !span.text.is_empty())
                 .then_some(text)
         };
-        self.tab_list.header = text(&p.header);
-        self.tab_list.footer = text(&p.footer);
+        self.client.tab_list.header = text(&p.header);
+        self.client.tab_list.footer = text(&p.footer);
     }
 
     /// `C::Commands`: its arms of `apply_packet`, guard and order kept.
@@ -564,9 +566,9 @@ impl Game<'_> {
 
     /// `C::ClearTitles`: its arms of `apply_packet`, guard and order kept.
     pub(super) fn apply_clear_titles_packet(&mut self, p: play::Bool1) {
-        self.titles.clear();
+        self.client.titles.clear();
         if p.value {
-            self.titles.reset_times();
+            self.client.titles.reset_times();
         }
     }
 
@@ -589,7 +591,7 @@ impl Game<'_> {
         // ClientPacketListener.handlePlayerCombatKill: the death
         // screen, whatever health was last sent, or `respawn()` at
         // once when it is hidden.
-        if me && self.screen != Screen::Dead && self.player.is_some() {
+        if me && self.client.screen != Screen::Dead && self.player.is_some() {
             if self.remote.as_ref().is_none_or(|r| r.show_death_screen) {
                 self.close_dialogs();
                 self.set_screen(Screen::Dead);
@@ -614,7 +616,7 @@ impl Game<'_> {
         }
         if p.overlay {
             self.say_system_queued(&text);
-            self.titles.set_overlay(text, false);
+            self.client.titles.set_overlay(text, false);
         } else if self.add_chat_line(text.clone(), sunrise_client::chat::ChatSource::Server) {
             // handleSystemMessage: said once the chat takes it.
             self.say_system_chat_queued(&text);

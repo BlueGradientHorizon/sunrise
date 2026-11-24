@@ -74,7 +74,7 @@ impl Game<'_> {
         let mut candidate = Painting {
             attachment_lifetime: Default::default(),
             join: Default::default(),
-            id: self.next_entity.wrapping_add(1),
+            id: self.server.next_entity.wrapping_add(1),
             pos,
             facing,
             variant: Arc::from(""),
@@ -111,7 +111,7 @@ impl Game<'_> {
         }
         // HangingEntityItem.mayPlace: never on a top or bottom face (FAIL).
         let Some(facing) = painting_facing(hit.face) else {
-            self.use_failed = true;
+            self.server.use_failed = true;
             return true;
         };
         let pos = [
@@ -119,11 +119,11 @@ impl Game<'_> {
             hit.pos[1],
             hit.pos[2] + hit.face[2],
         ];
-        self.next_entity += 1;
+        self.server.next_entity += 1;
         let mut candidate = Painting {
             attachment_lifetime: Default::default(),
             join: Default::default(),
-            id: self.next_entity,
+            id: self.server.next_entity,
             pos,
             facing,
             variant: Arc::from(""),
@@ -264,7 +264,7 @@ impl Game<'_> {
         self.entity_killed_event_by(at, source);
         let creative = match source {
             Some(super::commands::Target::Player) => self.creative,
-            Some(super::commands::Target::Guest(conn)) if self.lan_acting == Some(conn) => {
+            Some(super::commands::Target::Guest(conn)) if self.server.lan_acting == Some(conn) => {
                 self.creative
             }
             Some(super::commands::Target::Guest(conn)) => {

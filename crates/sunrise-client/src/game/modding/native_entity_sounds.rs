@@ -81,7 +81,7 @@ impl Game<'_> {
             return false;
         };
         let except = match target {
-            Target::Player => self.lan_acting,
+            Target::Player => self.server.lan_acting,
             Target::Guest(conn) => Some(conn),
             _ => {
                 if self.entity_is_silent(entity) == Some(true) {
@@ -276,11 +276,11 @@ mod tests {
             );
             game.audio.capture = Some(Vec::new());
             assert!(game.entity_broadcast_event(cow, 3));
-            assert_eq!(game.lan_entity_events, [(10, 3)]);
+            assert_eq!(game.server.lan_entity_events, [(10, 3)]);
             let stale = EntityRef::new(WorldEpoch::new(cow.epoch().get() + 1), 10);
             assert!(!game.entity_broadcast_event(stale, 3));
             assert!(!game.entity_game_event(stale, "minecraft:step"));
-            assert_eq!(game.lan_entity_events.len(), 1);
+            assert_eq!(game.server.lan_entity_events.len(), 1);
         });
     }
 

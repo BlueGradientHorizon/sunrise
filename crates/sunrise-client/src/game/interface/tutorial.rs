@@ -14,7 +14,7 @@ impl super::Game<'_> {
     pub(super) fn persist_tutorial_step(&mut self) {
         self.settings.file.set(
             "tutorialStep",
-            sunrise_client::options_file::V::Int(self.tutorial.step as i32),
+            sunrise_client::options_file::V::Int(self.client.tutorial.step as i32),
         );
         self.settings.save(&Self::options_path());
     }
@@ -22,11 +22,14 @@ impl super::Game<'_> {
 
 impl super::Game<'_> {
     pub(super) fn reset_tutorial(&mut self) {
-        self.tutorial = Tutorial::new(Step::from_option(self.settings.file.int("tutorialStep")));
-        self.toast_manager
+        self.client.tutorial =
+            Tutorial::new(Step::from_option(self.settings.file.int("tutorialStep")));
+        self.client
+            .toast_manager
             .queued
             .retain(|entry| !matches!(entry, Toast::Tutorial(_)));
-        self.toast_manager
+        self.client
+            .toast_manager
             .visible
             .retain(|entry| !matches!(entry.toast, Toast::Tutorial(_)));
     }
@@ -46,7 +49,7 @@ impl super::Game<'_> {
         // guest's tutorial is their own client's to record.
         if self.options.dedicated.is_some()
             || self.serving.is_some()
-            || self.lan_acting.is_some()
+            || self.server.lan_acting.is_some()
             || self.title.is_some()
             || self.player.is_none()
         {
@@ -57,7 +60,7 @@ impl super::Game<'_> {
         let tree = self.tutorial_tagged(true, "minecraft:completes_find_tree_tutorial", id);
         let log = self.tutorial_tagged(true, "minecraft:logs", id);
         let plank = self.tutorial_tagged(true, "minecraft:planks", id);
-        if self.tutorial.get_item(tree, log, plank) {
+        if self.client.tutorial.get_item(tree, log, plank) {
             self.persist_tutorial_step();
         }
     }
@@ -71,7 +74,7 @@ impl super::Game<'_> {
         // guest's tutorial is their own client's to record.
         if self.options.dedicated.is_some()
             || self.serving.is_some()
-            || self.lan_acting.is_some()
+            || self.server.lan_acting.is_some()
             || self.title.is_some()
             || self.player.is_none()
         {
@@ -79,7 +82,7 @@ impl super::Game<'_> {
         }
         let name = &self.res.facts().get(state).name;
         let is_log = self.tutorial_tagged(false, "minecraft:logs", name);
-        if self.tutorial.destroy(is_log, progress) {
+        if self.client.tutorial.destroy(is_log, progress) {
             self.persist_tutorial_step();
         }
     }
@@ -100,7 +103,10 @@ impl super::Game<'_> {
             && (!self.has_singleplayer_server() || self.is_published())
         {
             if let Some(toast) = self.tutorial_toast(Hint::SocialInteractions, Some(0.0)) {
-                self.toast_manager.queued.push_back(Toast::Tutorial(toast));
+                self.client
+                    .toast_manager
+                    .queued
+                    .push_back(Toast::Tutorial(toast));
             }
             self.settings.file.set(
                 "joinedFirstServer",
@@ -108,7 +114,7 @@ impl super::Game<'_> {
             );
             self.settings.save(&Self::options_path());
         }
-        if self.screen == super::Screen::Playing
+        if self.client.screen == super::Screen::Playing
             && ([
                 Action::Forward,
                 Action::Left,
@@ -122,13 +128,14 @@ impl super::Game<'_> {
                     .input_move()
                     .is_some_and(|[left, forward]| left.abs() > 0.3 || forward.abs() > 0.3))
         {
-            self.tutorial.input();
+            self.client.tutorial.input();
         }
         let items = self.res.items();
         let in_tag =
             |tag: &str, id: &str| items.item_tags.get(tag).is_some_and(|set| set.contains(id));
         let mut previous = Previous::default();
-        if self.tutorial.waiting == 0 && !matches!(self.tutorial.step, Step::Movement | Step::None)
+        if self.client.tutorial.waiting == 0
+            && !matches!(self.client.tutorial.step, Step::Movement | Step::None)
         {
             for stack in self
                 .inventory
@@ -159,10 +166,10 @@ impl super::Game<'_> {
             }
         }
         let survival = self.mode == sunrise_client::command::args::GameMode::Survival;
-        if self.tutorial.tick(survival, &previous) {
+        if self.client.tutorial.tick(survival, &previous) {
             self.persist_tutorial_step();
         }
-        if self.tutorial.step == Step::FindTree
+        if self.client.tutorial.step == Step::FindTree
             && self.pick_entity_hit().is_none()
             && let Some(hit) = self.pick()
         {
@@ -172,7 +179,7 @@ impl super::Game<'_> {
                 .get(self.world.block(hit.pos[0], hit.pos[1], hit.pos[2]))
                 .name;
             if self.tutorial_tagged(false, "minecraft:completes_find_tree_tutorial", name)
-                && self.tutorial.look_at_tree()
+                && self.client.tutorial.look_at_tree()
             {
                 self.persist_tutorial_step();
             }
@@ -194,7 +201,7 @@ pub(super) struct HintToast {
 
 impl super::Game<'_> {
     pub(super) fn hide_social_tutorial(&mut self) {
-        if let Some(toast) = self.toast_manager.find_mut(|entry| match entry {
+        if let Some(toast) = self.client.toast_manager.find_mut(|entry| match entry {
             Toast::Tutorial(t) if t.hint == Hint::SocialInteractions => Some(t),
             _ => None,
         }) {
@@ -300,12 +307,12 @@ impl super::Game<'_> {
     }
 
     pub(super) fn update_tutorial_toasts(&mut self) {
-        let wanted = self.tutorial.hint();
-        if wanted.map(|(hint, _)| hint) != self.tutorial.cancelled_hint() {
-            self.tutorial.set_cancelled_hint(None);
+        let wanted = self.client.tutorial.hint();
+        if wanted.map(|(hint, _)| hint) != self.client.tutorial.cancelled_hint() {
+            self.client.tutorial.set_cancelled_hint(None);
         }
         let mut has_current_hint = false;
-        for entry in self.toast_manager.all_mut() {
+        for entry in self.client.toast_manager.all_mut() {
             let Toast::Tutorial(t) = entry else { continue };
             if t.hint == Hint::SocialInteractions {
                 continue;
@@ -317,16 +324,20 @@ impl super::Game<'_> {
             }
         }
         if let Some((hint, progress)) = wanted
-            && self.tutorial.cancelled_hint() != Some(hint)
+            && self.client.tutorial.cancelled_hint() != Some(hint)
             && !has_current_hint
         {
             if let Some(toast) = self.tutorial_toast(hint, progress) {
-                self.toast_manager.queued.push_back(Toast::Tutorial(toast));
+                self.client
+                    .toast_manager
+                    .queued
+                    .push_back(Toast::Tutorial(toast));
             } else {
-                self.tutorial.set_cancelled_hint(Some(hint));
+                self.client.tutorial.set_cancelled_hint(Some(hint));
             }
         }
-        self.toast_manager
+        self.client
+            .toast_manager
             .queued
             .retain(|entry| !matches!(entry, Toast::Tutorial(t) if !t.wanted));
     }

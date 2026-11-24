@@ -1298,7 +1298,7 @@ impl Game<'_> {
         let cell = |v: [f64; 3]| v.map(|c| c.floor() as i32);
         // LivingEntity.collectEquipmentChanges: newly worn armor runs its
         // location_changed effects at once, even when standing still.
-        let changed = armor_changes(&mut self.location_armor, &self.armor);
+        let changed = armor_changes(&mut self.server.location_armor, &self.armor);
         let moved = cell(from) != cell(at) || (on_ground && !was_on_ground);
         if !moved && !changed.iter().any(|c| *c) {
             return;

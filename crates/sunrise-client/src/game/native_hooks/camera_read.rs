@@ -18,7 +18,7 @@ impl Game<'_> {
     /// The most recently extracted world frame's camera, if one exists.
     /// During GUI rendering this is the current frame, including bob/spin and FOV.
     pub(in crate::game) fn camera(&self) -> Option<mod_api::Camera> {
-        self.native_camera_frame.clone()
+        self.client.native_camera_frame.clone()
     }
     /// `GameRenderer.projectPointToScreen` against this frame's camera; None behind the camera,
     /// for a non-finite point, outside a world and before the first frame.
@@ -26,7 +26,7 @@ impl Game<'_> {
         if PROJECT_VIEW.get() != self as *const Self as usize {
             return None;
         }
-        let camera = self.native_camera_frame.as_ref()?;
+        let camera = self.client.native_camera_frame.as_ref()?;
         sunrise_client::camera::project_point(
             &camera.projection,
             camera.position,

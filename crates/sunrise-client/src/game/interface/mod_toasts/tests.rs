@@ -70,7 +70,7 @@ fn client_toasts_share_the_draw_list_and_admit_replacements_before_updating() {
                     draw(game);
                     assert_eq!(*seen.lock().unwrap(), ["Queued sprite", "Queued item"]);
                     assert_eq!(
-                        mod_entry(&game.toast_manager.visible[0].toast)
+                        mod_entry(&game.client.toast_manager.visible[0].toast)
                             .request
                             .toast
                             .display_time(),
@@ -81,7 +81,7 @@ fn client_toasts_share_the_draw_list_and_admit_replacements_before_updating() {
                         *seen.lock().unwrap(),
                         ["Queued sprite", "Queued item", "Follow-up"]
                     );
-                    for entry in &mut game.toast_manager.visible {
+                    for entry in &mut game.client.toast_manager.visible {
                         let Toast::Mod(entry) = &mut entry.toast else {
                             panic!("expected mod toast")
                         };
@@ -109,7 +109,7 @@ fn client_toasts_share_the_draw_list_and_admit_replacements_before_updating() {
                         "long description must wrap below the first description line"
                     );
                     assert_eq!(
-                        game.toast_manager.visible[1].slot, 3,
+                        game.client.toast_manager.visible[1].slot, 3,
                         "the first toast's three slots keep the next toast below it"
                     );
                     assert!(
@@ -143,7 +143,7 @@ fn client_toasts_share_the_draw_list_and_admit_replacements_before_updating() {
                     cancelled.kind = Some(kind.clone());
                     (&*game as &dyn ClientHost).add_toast(cancelled).unwrap();
                     draw(game);
-                    let Toast::Mod(shown) = &mut game.toast_manager.visible[0].toast else {
+                    let Toast::Mod(shown) = &mut game.client.toast_manager.visible[0].toast else {
                         panic!("expected mod toast")
                     };
                     assert_eq!(shown.request.toast.title.plain(), "Edited sprite");
@@ -156,11 +156,11 @@ fn client_toasts_share_the_draw_list_and_admit_replacements_before_updating() {
                     replacement.display_ms = Some(2500);
                     (&*game as &dyn ClientHost).add_toast(replacement).unwrap();
                     draw(game);
-                    let shown = mod_entry(&game.toast_manager.visible[0].toast);
-                    assert_eq!(game.toast_manager.visible.len(), 3);
-                    assert!(game.toast_manager.queued.is_empty());
+                    let shown = mod_entry(&game.client.toast_manager.visible[0].toast);
+                    assert_eq!(game.client.toast_manager.visible.len(), 3);
+                    assert!(game.client.toast_manager.queued.is_empty());
                     assert_eq!(shown.request.toast.title.plain(), "New content");
-                    assert_eq!(game.toast_manager.visible[0].slot, 0);
+                    assert_eq!(game.client.toast_manager.visible[0].slot, 0);
                     assert_eq!(shown.request.toast.slide.origin, Some(old_origin));
                     assert_eq!(shown.request.toast.slide.portion, 1.0);
                     assert_eq!(shown.request.toast.display_time(), 2500.0);
@@ -168,20 +168,20 @@ fn client_toasts_share_the_draw_list_and_admit_replacements_before_updating() {
                     game.add_toast(ModToast::new(Text::literal("Queued at disconnect")))
                         .unwrap();
                     draw(game);
-                    assert_eq!(game.toast_manager.queued.len(), 1);
+                    assert_eq!(game.client.toast_manager.queued.len(), 1);
                     game.add_toast(ModToast::new(Text::literal("Pending at disconnect")))
                         .unwrap();
-                    assert_eq!(game.toast_manager.pending_mod.borrow().len(), 1);
+                    assert_eq!(game.client.toast_manager.pending_mod.borrow().len(), 1);
                     game.leave_server(None).unwrap();
                     draw(game);
-                    assert!(game.toast_manager.visible.is_empty());
-                    assert!(game.toast_manager.queued.is_empty());
+                    assert!(game.client.toast_manager.visible.is_empty());
+                    assert!(game.client.toast_manager.queued.is_empty());
                     assert_eq!(seen.lock().unwrap().last().unwrap(), "Queued at disconnect");
 
                     game.add_toast(ModToast::new(Text::literal("§a"))).unwrap();
                     draw(game);
                     draw(game);
-                    let Toast::Mod(entry) = &mut game.toast_manager.visible[0].toast else {
+                    let Toast::Mod(entry) = &mut game.client.toast_manager.visible[0].toast else {
                         panic!("expected formatting-only toast");
                     };
                     entry.request.toast.slide.origin =

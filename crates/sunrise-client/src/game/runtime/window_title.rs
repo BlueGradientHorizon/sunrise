@@ -34,17 +34,17 @@ impl Game<'_> {
 
     /// `updateTitle`: on a session change (level, publishing), and a new language once back to play.
     pub(in crate::game) fn update_window_title(&mut self) {
-        let language = match self.window_title {
-            Some((_, shown)) if self.screen != Screen::Playing => shown,
+        let language = match self.client.window_title {
+            Some((_, shown)) if self.client.screen != Screen::Playing => shown,
             _ => sunrise_client::lang::generation(),
         };
         let shown = (self.title_session(), language);
-        if self.window_title == Some(shown) {
+        if self.client.window_title == Some(shown) {
             return;
         }
         if let Some(window) = &self.window {
             window.set_title(&title(shown.0));
-            self.window_title = Some(shown);
+            self.client.window_title = Some(shown);
         }
     }
 }

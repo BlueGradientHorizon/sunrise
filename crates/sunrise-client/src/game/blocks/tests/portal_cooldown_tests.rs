@@ -87,7 +87,7 @@ pub(in crate::game) fn run_portal_contact_and_waiting_handoff_match_vanilla_coun
             ("PortalCooldown", Tag::Int(5)),
         ]);
         game.load_listed(kind, Some(uuid), None, tag).unwrap();
-        ids.push(game.next_entity);
+        ids.push(game.server.next_entity);
     }
     assert_eq!(game.boats.len(), 1);
     assert_eq!(game.carts.len(), 1);
@@ -95,7 +95,8 @@ pub(in crate::game) fn run_portal_contact_and_waiting_handoff_match_vanilla_coun
     assert_eq!(game.mobs.len(), 1);
     // Direct handler calls do not refresh the headless world's chunk tickets.
     // Frozen entities retain their counters across every group/phase pass.
-    game.tickets
+    game.server
+        .tickets
         .update(Some(crate::ticket_levels::Sources::default()));
     game.handle_vehicle_portals();
     game.handle_entity_portals();
@@ -103,10 +104,12 @@ pub(in crate::game) fn run_portal_contact_and_waiting_handoff_match_vanilla_coun
     for id in &ids {
         assert_eq!(game.portals.entities.get(id).unwrap().cooldown, 5);
     }
-    game.tickets.update(Some(crate::ticket_levels::Sources {
-        forced: vec![(0, 0)],
-        ..Default::default()
-    }));
+    game.server
+        .tickets
+        .update(Some(crate::ticket_levels::Sources {
+            forced: vec![(0, 0)],
+            ..Default::default()
+        }));
     assert!(game.entity_ticking_area()(entry.x, entry.z));
     let mut runtime = Vec::new();
     for (step, ticks) in [1, 3, 1, 1, 8].into_iter().enumerate() {
@@ -161,7 +164,7 @@ pub(in crate::game) fn run_portal_contact_and_waiting_handoff_match_vanilla_coun
         let restored = arrival_from_tag(&arrival_tag(arrival)).unwrap();
         let counter = counter(&restored.tag);
         game.load_listed(kind, None, None, restored.tag).unwrap();
-        let id = game.next_entity;
+        let id = game.server.next_entity;
         assert_eq!(
             game.portals.entities.get(&id).map_or(0, |s| s.cooldown),
             counter

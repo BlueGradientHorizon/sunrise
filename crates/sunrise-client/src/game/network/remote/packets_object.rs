@@ -151,7 +151,7 @@ impl Game<'_> {
         let holder = match p.dest {
             0 => None,
             d if Some(d) == me => Some(Holder::Player),
-            d => match self.remote_knots.get(&(d as u32)) {
+            d => match self.client.remote_knots.get(&(d as u32)) {
                 Some(&block) => Some(Holder::Knot(block)),
                 // Not a known knot yet: kept by id until the knot
                 // arrives (game/network/remote_objects.rs).
@@ -378,7 +378,7 @@ impl Game<'_> {
             self.teleport_driven_vehicle(position, rotation, delta, p.on_ground);
             return Ok(());
         }
-        if self.text_displays.contains_key(&p.id) {
+        if self.client.text_displays.contains_key(&p.id) {
             self.teleport_remote_text_display(p.id, p.position, p.yaw, p.pitch, p.relatives);
             self.entity_section_moved_id(p.id as u32);
             return Ok(());
@@ -399,7 +399,7 @@ impl Game<'_> {
                     m.previous_head_pitch,
                     [m.velocity.x, m.velocity.y, m.velocity.z],
                 )
-            } else if let Some(i) = self.interactions.get(&p.id) {
+            } else if let Some(i) = self.client.interactions.get(&p.id) {
                 (
                     [i.position.x, i.position.y, i.position.z],
                     i.yaw,

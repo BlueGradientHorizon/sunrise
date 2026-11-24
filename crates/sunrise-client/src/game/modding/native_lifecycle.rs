@@ -229,7 +229,7 @@ impl Game<'_> {
     pub(super) fn native_lifecycle_open_started(&mut self) {
         self.clear_composter_randoms();
         self.reset_entity_residency();
-        self.entity_initialization = Default::default();
+        self.server.entity_initialization = Default::default();
         if let Some(remote) = &mut self.remote {
             remote.clear_attachments();
         }
@@ -279,7 +279,7 @@ impl Game<'_> {
     /// After the final save, before the lock release. Client epochs retire
     /// without dispatching server lifecycle hooks.
     pub(super) fn native_lifecycle_world_closed(&mut self) {
-        self.instance_groups.borrow_mut().clear();
+        self.client.instance_groups.borrow_mut().clear();
         // Each server level closes after the final save (`LevelEvent.Unload`).
         if self.remote.is_none() {
             self.native_levels_closing();

@@ -29,7 +29,7 @@ fn stale(player: PlayerRef) -> PlayerRef {
 
 /// A fake player: no connection, not in the server's list.
 fn fake(game: &mut super::Game<'_>) -> PlayerRef {
-    game.next_entity = 100;
+    game.server.next_entity = 100;
     let level = game.level(game.dim.id()).unwrap();
     game.fake_player(level, 1234, "machine").unwrap()
 }

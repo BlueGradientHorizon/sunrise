@@ -25,9 +25,9 @@ fn client_host_reads_playing_and_key_mappings() {
 
     with_game(|game| {
         game.options.execution_role = ExecutionRole::Client;
-        game.screen = Screen::Playing;
+        game.client.screen = Screen::Playing;
         assert!(mod_api::prelude::ClientInputClientHost::playing(game));
-        game.screen = Screen::Chat;
+        game.client.screen = Screen::Chat;
         assert!(!mod_api::prelude::ClientInputClientHost::playing(game));
 
         // Vanilla's default bindings: forward is W, attack the left mouse button.

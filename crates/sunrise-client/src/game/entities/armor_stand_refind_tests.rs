@@ -13,8 +13,8 @@ fn set_up(game: &mut Game<'_>) {
     let mut stand = ArmorStand::new(STAND as u32, Vec3::new(0.5, 64.0, 0.5), 0.0);
     stand.show_arms = true;
     game.armor_stands.push(stand);
-    game.lan_acting_uuid = Some(7);
-    game.lan_acting_name = Some("Alex".into());
+    game.server.lan_acting_uuid = Some(7);
+    game.server.lan_acting_name = Some("Alex".into());
     game.inventory[game.selected] = Some(ItemStack::new("minecraft:iron_helmet", 1));
 }
 

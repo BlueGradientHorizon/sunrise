@@ -51,7 +51,7 @@ fn a_packs_own_item_and_block_tags_admit_and_match_its_functions() {
         "execute if items entity @s weapon.mainhand #p:shiny run scoreboard players add #item p 1\n\
          execute if block ~ ~ ~ #p:stopper run scoreboard players add #block p 1\n",
     );
-    game.world_root = dir.clone();
+    game.server.world_root = dir.clone();
     game.player = Some(
         sunrise_client::motion::PlayerMotion::new(game.motion, Vec3::new(4.5, 200.0, 4.5)).unwrap(),
     );
@@ -66,12 +66,12 @@ fn a_packs_own_item_and_block_tags_admit_and_match_its_functions() {
     assert!(game.run_command("scoreboard objectives add p dummy"));
     assert!(game.run_command("reload"));
     assert!(
-        game.fns.store.errors.is_empty(),
+        game.server.fns.store.errors.is_empty(),
         "{:?}",
-        game.fns.store.errors
+        game.server.fns.store.errors
     );
     assert!(
-        game.fns.store.functions.contains_key("p:t"),
+        game.server.fns.store.functions.contains_key("p:t"),
         "the pack's function loaded against its own tags"
     );
     let stone = game

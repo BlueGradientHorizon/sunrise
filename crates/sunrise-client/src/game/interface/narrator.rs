@@ -181,9 +181,10 @@ impl Game<'_> {
     /// The narrator option changed, on the options screen or by its hotkey.
     pub(super) fn narrator_status_changed(&mut self) {
         let id = SystemToastId::Narrator;
-        if let Some(toast) =
-            update_status(self.settings.narrator(), self.toast_manager.system_mut(id))
-        {
+        if let Some(toast) = update_status(
+            self.settings.narrator(),
+            self.client.toast_manager.system_mut(id),
+        ) {
             self.add_system_toast(Some(id), toast);
         }
     }
@@ -219,7 +220,7 @@ impl Game<'_> {
     /// narrator button shows the new value. Sunrise's narrator buttons read
     /// the option each frame.
     pub(super) fn on_narrator_status_changed(&mut self, was_disabled: bool, trigger: Trigger) {
-        self.narration.status_changed(was_disabled, trigger);
+        self.client.narration.status_changed(was_disabled, trigger);
     }
     /// The open screen's narration, once a turn after the frame's widgets
     /// were read: `handleDelayedNarration` and a new screen's narration.
@@ -229,7 +230,9 @@ impl Game<'_> {
         }
         let pad_focus = self.pad_focus_rect();
         let gui = self.gui_size();
-        self.narration.frame(gui, self.cursor, pad_focus);
+        self.client
+            .narration
+            .frame(gui, self.client.cursor, pad_focus);
     }
     /// `hasNoEditboxFocused`'s opposite: the open screen's focus is an
     /// `EditBox` that `canConsumeInput`. The chat, command block, anvil
@@ -245,7 +248,7 @@ impl Game<'_> {
         if self.dialog_open() {
             return self.dialog_typing();
         }
-        match self.screen {
+        match self.client.screen {
             Screen::Chat if self.title.is_none() => true,
             Screen::Options => self.ui.options.typing(),
             Screen::WorldOptions => self.world_options_typing(),

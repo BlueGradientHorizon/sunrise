@@ -122,7 +122,7 @@ fn a_player_dead_for_twenty_ticks_sends_nothing_until_it_respawns() {
             game.remote_send_state(0);
             sent_packets(game, &mut server);
 
-            game.screen = crate::game::Screen::Dead;
+            game.client.screen = crate::game::Screen::Dead;
             game.ui.death_time = 19;
             game.yaw = 10.0;
             game.remote_send_state(1);
@@ -136,7 +136,7 @@ fn a_player_dead_for_twenty_ticks_sends_nothing_until_it_respawns() {
             }
 
             // The respawn's new player starts its death clock again.
-            game.screen = crate::game::Screen::Playing;
+            game.client.screen = crate::game::Screen::Playing;
             game.ui.death_time = 0;
             game.yaw = 90.0;
             game.remote_send_state(1);

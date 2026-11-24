@@ -30,6 +30,7 @@ impl Game<'_> {
     /// model uses. API 380.
     pub(super) fn texture_sprites(&self, textures: &[&str]) -> Vec<Option<SpriteRef>> {
         let atlas = self
+            .client
             .stitching_block_atlas
             .as_ref()
             .unwrap_or(&self.pack.render);
@@ -121,7 +122,8 @@ impl Game<'_> {
     /// For a client mod: changes each time the resources load (a resource pack turned on or off can move every
     /// sprite): ask `block_sprites` again then. API 380.
     pub(super) fn block_sprites_version(&self) -> u64 {
-        self.stitching_block_atlas
+        self.client
+            .stitching_block_atlas
             .as_ref()
             .unwrap_or(&self.pack.render)
             .generation

@@ -97,7 +97,7 @@ mod tests {
             let heard = heard.lock().unwrap();
             assert_eq!(heard.len(), 100);
             assert!(heard.iter().all(|kind| kind == "minecraft:generic_9x1"));
-            assert!(!game.lid_openers.contains_key(&POS));
+            assert!(!game.server.lid_openers.contains_key(&POS));
         });
     }
 
@@ -276,7 +276,7 @@ mod tests {
                     events.lock().unwrap().last(),
                     Some(&("minecraft:container_close".into(), None))
                 );
-                assert!(game.mod_container_viewers.is_empty());
+                assert!(game.server.mod_container_viewers.is_empty());
 
                 // Native menus can send a position as extra data without opening its container.
                 let before = notices.lock().unwrap().len();
@@ -307,7 +307,7 @@ mod tests {
                 game.player_menu_closing(13);
                 assert_eq!(notices.lock().unwrap().len(), before_notices);
                 assert_eq!(events.lock().unwrap().len(), before_events);
-                assert!(game.mod_container_viewers.is_empty());
+                assert!(game.server.mod_container_viewers.is_empty());
 
                 // If a second player opens the replacement, the first player's stale menu
                 // cannot close it, count on a recheck, or appear in its viewer list.

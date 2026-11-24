@@ -95,7 +95,7 @@ fn a_panicking_turn_leaves_play_state_and_menus_restored() {
         let host = game.lan.as_ref().unwrap();
         // The swap is undone: the guest's play state is back, and the menu is as the turn left it.
         assert_eq!(host.play[&12].chat_spam, 5);
-        assert!(game.lan_guest_swaps.is_empty());
+        assert!(game.server.lan_guest_swaps.is_empty());
         assert_eq!(carried(game, 12), None);
         let after = Target::admit(game, 12).unwrap();
         assert_eq!(after.owner_id(), before.owner_id());
@@ -140,7 +140,7 @@ fn a_lifted_host_comes_back_after_a_panic_and_is_never_lifted_twice() {
 fn removing_a_fake_player_drops_its_menu_owners() {
     with_guests(|game| {
         let _serving = super::integrated::tests::install_serving(game, false);
-        game.next_entity = 100;
+        game.server.next_entity = 100;
         let level = game.level(game.dim.id()).unwrap();
         let fake = game.fake_player(level, 1234, "machine").unwrap();
         let conn = game

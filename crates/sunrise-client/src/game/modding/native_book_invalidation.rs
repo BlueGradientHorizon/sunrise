@@ -26,7 +26,7 @@ impl Game<'_> {
         self.ensure_mod_book_catalog();
     }
     pub(super) fn invalidate_mod_book_placement_knowledge(&mut self) {
-        let Some(uuid) = self.lan_acting_uuid else {
+        let Some(uuid) = self.server.lan_acting_uuid else {
             return;
         };
         let connection = self

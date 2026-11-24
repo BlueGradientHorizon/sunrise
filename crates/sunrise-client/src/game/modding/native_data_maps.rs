@@ -341,7 +341,7 @@ impl Game<'_> {
         &mut self,
         cause: mod_api::DataMapsUpdateCause,
     ) {
-        for registry in self.data_map_registries.clone() {
+        for registry in self.server.data_map_registries.clone() {
             self.native_data_maps_updated(&registry, cause);
         }
     }
@@ -354,7 +354,8 @@ impl Game<'_> {
         if self.serving.is_none() && self.options.dedicated.is_none() {
             return Err(mod_api::DataMapError::Unavailable);
         }
-        self.world_tables
+        self.server
+            .world_tables
             .as_ref()
             .map(|tables| &tables.data_maps)
             .ok_or(mod_api::DataMapError::Unavailable)

@@ -115,7 +115,7 @@ impl Game<'_> {
     /// change waits for its body tick's detectEquipmentUpdates (`equipment_changed`), so a
     /// swap made and undone between two ticks leaves the modifiers it found.
     pub(super) fn apply_equipment(&mut self) {
-        if !self.lan_guest_swaps.is_empty() {
+        if !self.server.lan_guest_swaps.is_empty() {
             return;
         }
         self.put_equipment_modifiers();
@@ -125,7 +125,7 @@ impl Game<'_> {
         let Some(player) = self.player.as_mut() else {
             return;
         };
-        for (attribute, id) in std::mem::take(&mut self.applied_modifiers) {
+        for (attribute, id) in std::mem::take(&mut self.server.applied_modifiers) {
             let _ = player.set_modifier_unclamped(&attribute, &id, 0.0, "add_value", false);
         }
         let slots = ["head", "chest", "legs", "feet"];
@@ -159,7 +159,9 @@ impl Game<'_> {
                     .set_modifier_unclamped(attribute, id, *amount, op, true)
                     .is_ok()
                 {
-                    self.applied_modifiers.push((attribute.clone(), id.clone()));
+                    self.server
+                        .applied_modifiers
+                        .push((attribute.clone(), id.clone()));
                 }
             }
         }

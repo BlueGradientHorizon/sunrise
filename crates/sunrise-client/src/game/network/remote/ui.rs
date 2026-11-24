@@ -88,7 +88,7 @@ impl Game<'_> {
                 if self.draw_dimension_transition_screen(
                     batch,
                     &r.level_load,
-                    progress.map(|_| self.loading_progress),
+                    progress.map(|_| self.client.loading_progress),
                 ) {
                     return true;
                 }
@@ -100,7 +100,7 @@ impl Game<'_> {
             match self.integrated.as_ref().map(|i| i.load_view()) {
                 Some(view) => {
                     let status = |x: i32, z: i32| view.status(x, z);
-                    let progress = view.has_progress().then_some(self.loading_progress);
+                    let progress = view.has_progress().then_some(self.client.loading_progress);
                     sunrise_client::level_loading::draw(batch, atlas, Some(&status), progress);
                 }
                 None => sunrise_client::level_loading::draw(batch, atlas, None, None),
@@ -134,7 +134,13 @@ impl Game<'_> {
         });
         let atlas = &self.gui.atlas;
         let status = sunrise_client::text::Text::untrusted(r.status.as_str());
-        sunrise_client::level_loading::draw_connecting(batch, atlas, &status, self.cursor, cancel);
+        sunrise_client::level_loading::draw_connecting(
+            batch,
+            atlas,
+            &status,
+            self.client.cursor,
+            cancel,
+        );
         true
     }
 }

@@ -131,7 +131,7 @@ impl Game<'_> {
         if player.is_some() {
             self.trigger_loot_table(&table);
         }
-        let Some(loot) = self.server_loot.get() else {
+        let Some(loot) = self.server.server_loot.get() else {
             return;
         };
         let biome = self
@@ -188,7 +188,7 @@ impl Game<'_> {
             }
         };
         let mut random = self.world.random.clone();
-        let mut sequences = std::mem::take(&mut self.rand_sequences);
+        let mut sequences = std::mem::take(&mut self.server.rand_sequences);
         fill_with_random(
             &pending,
             &mut slots,
@@ -200,7 +200,7 @@ impl Game<'_> {
             |items| self.container_fill_hook(&table, target, origin, player, items),
         );
         self.world.random = random;
-        self.rand_sequences = sequences;
+        self.server.rand_sequences = sequences;
         match target {
             LootTarget::Block(key) => {
                 if let Some(e) = self.world.block_entities.get_mut(&key) {

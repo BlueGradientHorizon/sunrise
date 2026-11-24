@@ -27,7 +27,7 @@ fn counts(packets: &[String]) -> [usize; 3] {
 fn a_players_burst_acts_on_the_next_tick_in_handle_keybinds_order() {
     with_pressing_game(|game, packets, _| {
         game.set_local_mode(sunrise_client::command::args::GameMode::Creative);
-        game.forced_hit = None;
+        game.server.forced_hit = None;
         game.inventory[game.selected] = Some(ItemStack::new("minecraft:stone", 64));
         game.key_pressed(KeyCode::Digit2, KeyCode::Digit2).unwrap();
         game.play_mouse(MouseButton::Left, true).unwrap();
@@ -75,7 +75,7 @@ fn a_players_burst_acts_on_the_next_tick_in_handle_keybinds_order() {
 fn a_mods_burst_drains_all_clicks_in_one_tick() {
     with_pressing_game(|game, packets, triggered| {
         game.set_local_mode(sunrise_client::command::args::GameMode::Creative);
-        game.forced_hit = None;
+        game.server.forced_hit = None;
         game.inventory[game.selected] = Some(ItemStack::new("minecraft:stone", 64));
         let attack = game.vanilla_key_mapping("key.attack").unwrap();
         let drop = game.vanilla_key_mapping("key.drop").unwrap();
@@ -109,7 +109,7 @@ fn a_mods_burst_drains_all_clicks_in_one_tick() {
 fn a_large_burst_is_not_capped_at_1024() {
     with_pressing_game(|game, packets, triggered| {
         game.set_local_mode(sunrise_client::command::args::GameMode::Creative);
-        game.forced_hit = None;
+        game.server.forced_hit = None;
         game.inventory[game.selected] = Some(ItemStack::new("minecraft:stone", 64));
         let attack = game.vanilla_key_mapping("key.attack").unwrap();
         let drop = game.vanilla_key_mapping("key.drop").unwrap();
@@ -149,10 +149,10 @@ fn the_inventory_poll_releases_live_queues_only_when_it_opens_a_screen() {
         ] {
             game.key_pressed(key, key).unwrap();
         }
-        assert_eq!((game.screen, game.selected), (Screen::Playing, 0));
+        assert_eq!((game.client.screen, game.selected), (Screen::Playing, 0));
         assert!(sent(packets).is_empty());
         game.remote_handle_input();
-        assert_eq!((game.screen, game.selected), (Screen::Inventory, 2));
+        assert_eq!((game.client.screen, game.selected), (Screen::Inventory, 2));
         assert!(
             sent(packets).is_empty(),
             "ordinary E released swap and drop before they could act"
@@ -178,7 +178,7 @@ fn the_inventory_poll_releases_live_queues_only_when_it_opens_a_screen() {
         }
         assert!(sent(packets).is_empty());
         game.remote_handle_input();
-        assert_eq!(game.screen, Screen::Playing);
+        assert_eq!(game.client.screen, Screen::Playing);
         assert_eq!(game.selected, 2);
         assert_eq!(game.pending_mapping_clicks("key.hotbar.2"), 1);
         assert_eq!(

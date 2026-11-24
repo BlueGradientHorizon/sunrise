@@ -256,7 +256,7 @@ pub(super) fn save_pack_options(
 impl Game<'_> {
     pub(super) fn drop_pack_file(&mut self, path: &Path) {
         let size = self.gui_size();
-        let handled = self.screen == super::Screen::Options
+        let handled = self.client.screen == super::Screen::Options
             && self
                 .ui
                 .options
@@ -377,7 +377,7 @@ impl Game<'_> {
                 return;
             }
         }
-        if self.screen != super::Screen::Options {
+        if self.client.screen != super::Screen::Options {
             self.open_options_at(
                 self.title.is_some(),
                 sunrise_client::options_ui::Page::Packs,
@@ -395,11 +395,11 @@ impl Game<'_> {
         if kind == ReloadKind::Selection
             && reload_waits(self.rest_loader.is_some(), self.pack_reload.is_some())
         {
-            self.pending_pack_reload = true;
+            self.client.pending_pack_reload = true;
             return Ok(());
         }
         self.clear_device_keys();
-        self.physical_keys.clear();
+        self.client.physical_keys.clear();
         self.set_mapping_held("key.attack", false);
         self.set_mapping_held("key.use", false);
         let vanilla = self.vanilla_root();
@@ -461,19 +461,19 @@ impl Game<'_> {
         #[cfg(test)]
         let stage = mod_api::testing::inherit_mods(stage);
         self.pack_reload = Some(PackReload::spawn(kind, stage)?);
-        self.reload_overlay = Some(ReloadOverlay::default());
+        self.client.reload_overlay = Some(ReloadOverlay::default());
         Ok(())
     }
     /// One frame of the pack reload's `LoadingOverlay`: its bar eased toward
     /// the reload's progress (all of it once applied) and how far it has
     /// faded. `None`, and the overlay dropped, once it has faded out.
     pub(super) fn reload_overlay_frame(&mut self) -> Option<(f32, OverlayFade)> {
-        let overlay = self.reload_overlay.as_mut()?;
+        let overlay = self.client.reload_overlay.as_mut()?;
         let now = Instant::now();
         let since = |at: Instant| now.duration_since(at).as_millis() as u64;
         let fade_in = since(*overlay.fade_in.get_or_insert(now));
         let Some(fade) = OverlayFade::at(fade_in, overlay.fade_out.map(since)) else {
-            self.reload_overlay = None;
+            self.client.reload_overlay = None;
             return None;
         };
         let actual = self
@@ -493,7 +493,7 @@ impl Game<'_> {
         self.pack_reload = None;
         let result =
             staged.and_then(|staged| self.apply_staged_pack(staged).map_err(|e| e.to_string()));
-        if let Some(overlay) = &mut self.reload_overlay {
+        if let Some(overlay) = &mut self.client.reload_overlay {
             overlay.fade_out = Some(Instant::now());
         }
         match kind {
@@ -594,40 +594,44 @@ impl Game<'_> {
         // in the listener order. All renderer and model validation is finished.
         self.apply_client_reload(client_applies, |game| {
             // Refresh modifiers from the newly staged packs, including removals.
-            game.creative_screen.set_pack_modifiers(tab_modifiers);
+            game.client
+                .creative_screen
+                .set_pack_modifiers(tab_modifiers);
             game.refresh_creative_search_names();
             [
-                game.frame_model,
-                game.glow_frame_model,
-                game.map_frame_model,
-                game.glow_map_frame_model,
+                game.client.frame_model,
+                game.client.glow_frame_model,
+                game.client.map_frame_model,
+                game.client.glow_map_frame_model,
             ] = frame_models;
-            game.waypoint_styles = waypoint_styles;
-            game.armor_stand_assets.apply_resources(armor_stand_assets);
-            game.armor_stand_assets.extensions = item_extensions;
-            game.random_tick_sections.clear();
+            game.client.waypoint_styles = waypoint_styles;
+            game.client
+                .armor_stand_assets
+                .apply_resources(armor_stand_assets);
+            game.client.armor_stand_assets.extensions = item_extensions;
+            game.server.random_tick_sections.clear();
             game.portals.sections.clear();
             game.options.resources = root.clone();
-            game.falling_vertices.get_mut().clear();
+            game.client.falling_vertices.get_mut().clear();
             game.pack = pack;
             // The joined level's environment for the frame has the packs' layers over its type.
             game.build_level_environments();
-            game.standalone_geometry = standalone_geometry;
-            game.instance_groups.borrow_mut().clear();
+            game.client.standalone_geometry = standalone_geometry;
+            game.client.instance_groups.borrow_mut().clear();
             // The new atlas's skin and map slots are blank: players and maps
             // upload into it again instead of naming sprites it does not have.
-            game.skin_slots.forget();
+            game.client.skin_slots.forget();
             game.skin_downloads
                 .borrow_mut()
                 .set_resource_root(game.pack.source.clone());
             game.maps.slots.forget();
-            game.map_patches.clear();
-            game.text_patches.get_mut().clear();
+            game.client.map_patches.clear();
+            game.client.text_patches.get_mut().clear();
             // Kept mod block entities name the old atlas's sprites, and their view distances the old
             // registry's states.
-            game.kept_block_entities.get_mut().clear();
-            game.live_scenes.get_mut().clear();
-            game.mod_view_distances.take();
+            game.client.kept_block_entities.get_mut().clear();
+            game.client.live_scenes.get_mut().clear();
+            game.client.mod_view_distances.take();
             // The atlas's sprites moved: the particle engine re-reads every rect
             // and the packs' sprite sets, or every particle draws a stale region.
             game.particles.reload(
@@ -684,7 +688,7 @@ impl Game<'_> {
                 lang::Language::load(&[&game.pack.source], &code)
             });
             // Book search terms and resolved result icons belong to these resources.
-            game.recipe_ui.reset_screen();
+            game.client.recipe_ui.reset_screen();
             game.refresh_remote_language();
             game.audio.reload_with(&game.pack.source, sounds);
             game.clear_lod();
@@ -693,16 +697,16 @@ impl Game<'_> {
             game.streaming.leaf_culling = game.effective_leaf_culling();
             let context = game.worker_context();
             game.streaming.reload_resources(&mut game.world, context);
-            game.pending_uploads.clear();
+            game.client.pending_uploads.clear();
             game.install_model_upload(upload);
             if has_renderer {
                 game.apply_ui_settings();
             }
             // Sunrise's own shader pack is built again: its sprite tags name the old atlas's
             // layers, and a new renderer runs no pack.
-            game.native_shaders = super::native_shaders::NativeShaders::picking(&std::mem::take(
-                &mut game.native_shaders.picked,
-            ));
+            game.client.native_shaders = super::native_shaders::NativeShaders::picking(
+                &std::mem::take(&mut game.client.native_shaders.picked),
+            );
             game.ui.chat.rescale(&game.gui.atlas);
             game.install_loop_context(loop_context);
             game.resolve_entity_renderers();

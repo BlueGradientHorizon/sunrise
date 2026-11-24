@@ -250,15 +250,27 @@ fn borrowed_spawn_first_read_and_dimension_transfer_keep_one_initialization() {
             let retained = Holder::Entity(900_002);
             let parked = Holder::Entity(900_003);
             let player = Holder::Player(900_001);
-            game.entity_initialization
+            game.server
+                .entity_initialization
                 .initialized
                 .extend([removed, retained, parked, player]);
             game.persist.uuids.insert(900_001, [901, 2, 3, 4]);
             game.persist.uuids.insert(900_002, [901, 2, 3, 4]);
             game.prune_entity_initializations(&HashSet::from([900_002]));
-            assert!(!game.entity_initialization.initialized.contains(&removed));
+            assert!(
+                !game
+                    .server
+                    .entity_initialization
+                    .initialized
+                    .contains(&removed)
+            );
             for holder in [retained, parked, player] {
-                assert!(game.entity_initialization.initialized.contains(&holder));
+                assert!(
+                    game.server
+                        .entity_initialization
+                        .initialized
+                        .contains(&holder)
+                );
             }
         })
     });
@@ -406,7 +418,7 @@ fn server_players_initialize_on_join_and_new_respawn_but_not_rebind() {
     observe(|calls| {
         crate::game::native_guest_turn_tests::with_guests(|game| {
             game.options.dedicated = Some(Vec::new());
-            game.world_root = game.save.root.clone();
+            game.server.world_root = game.save.root.clone();
             game.lan
                 .as_mut()
                 .unwrap()
@@ -724,7 +736,7 @@ fn cancelled_mob_creation_forgets_constructor_payload_and_identity() {
                 assert_eq!(calls.lock().unwrap().len(), 1);
                 assert_eq!(*game.persist.uuids, before);
                 assert!(game.entity_attachments.is_empty());
-                assert!(game.entity_initialization.initialized.is_empty());
+                assert!(game.server.entity_initialization.initialized.is_empty());
             });
         },
     );
@@ -759,7 +771,12 @@ fn dragon_part_constructor_first_read_indexes_payload_and_same_id_replacement_re
             game.prune_entity_attachments();
             game.prune_entity_memory();
             assert!(game.entity_attachments.contains_key(&421));
-            assert!(game.entity_initialization.initialized.contains(&holder));
+            assert!(
+                game.server
+                    .entity_initialization
+                    .initialized
+                    .contains(&holder)
+            );
             assert_eq!(
                 calls
                     .lock()
@@ -772,7 +789,13 @@ fn dragon_part_constructor_first_read_indexes_payload_and_same_id_replacement_re
 
             game.spawn_remote_dragon(420, [1.0, 80.0, 1.0], 0.0);
             assert!(!game.entity_attachments.contains_key(&421));
-            assert!(!game.entity_initialization.initialized.contains(&holder));
+            assert!(
+                !game
+                    .server
+                    .entity_initialization
+                    .initialized
+                    .contains(&holder)
+            );
             assert!(
                 game.query(&VALUE)
                     .unwrap()
@@ -798,7 +821,13 @@ fn dragon_part_constructor_first_read_indexes_payload_and_same_id_replacement_re
             game.remove_remote_dragon(420);
             // No prune pass between removal and network-ID reuse.
             assert!(!game.entity_attachments.contains_key(&421));
-            assert!(!game.entity_initialization.initialized.contains(&holder));
+            assert!(
+                !game
+                    .server
+                    .entity_initialization
+                    .initialized
+                    .contains(&holder)
+            );
             game.spawn_remote_dragon(420, [1.0, 80.0, 1.0], 0.0);
             assert!(!game.entity_attachments.contains_key(&421));
             assert!(

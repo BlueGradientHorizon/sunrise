@@ -113,6 +113,7 @@ fn added_issuer_actor_missing_guest_and_restoration_controls() {
         conn: 2, command: "execute as 00000000-0000-0000-0000-000000000063 store result score result context store success score success context run test run minecraft:always_pass".into(),
         permission: 2, integrated: false, quiet: false }));
     let context = game
+        .server
         .game_tests
         .runner
         .as_ref()
@@ -147,7 +148,8 @@ fn added_issuer_actor_missing_guest_and_restoration_controls() {
         })
     );
     assert_eq!(
-        game.game_tests
+        game.server
+            .game_tests
             .runner
             .as_ref()
             .unwrap()
@@ -171,9 +173,9 @@ fn added_issuer_actor_missing_guest_and_restoration_controls() {
         silent: true,
         ..game.player_source()
     };
-    game.command_source = Some(outer);
-    game.chat_capture = Some(Vec::new());
-    let before = (game.exec.commands, game.exec.callback);
+    game.server.command_source = Some(outer);
+    game.server.chat_capture = Some(Vec::new());
+    let before = (game.server.exec.commands, game.server.exec.callback);
     let marker = Text::literal("issuer-only-context-control");
     let component = component_nbt(&marker.component());
     game.test_source_output(context, marker.clone(), false);
@@ -182,18 +184,21 @@ fn added_issuer_actor_missing_guest_and_restoration_controls() {
     }
     assert_eq!(chats(&receivers[0]), [component]);
     assert!(chats(&receivers[1]).is_empty());
-    assert!(game.chat_capture.as_ref().unwrap().is_empty());
+    assert!(game.server.chat_capture.as_ref().unwrap().is_empty());
     assert_eq!(game.dim, Dim::Nether);
-    assert_eq!(game.lan_acting, None);
+    assert_eq!(game.server.lan_acting, None);
     assert_eq!(
         game.player.as_ref().unwrap().position,
         Vec3::new(1.5, 200.0, 1.5)
     );
     assert_eq!(
-        format!("{:?}", game.command_source.unwrap()),
+        format!("{:?}", game.server.command_source.unwrap()),
         format!("{outer:?}")
     );
-    assert_eq!(before, (game.exec.commands, game.exec.callback));
+    assert_eq!(
+        before,
+        (game.server.exec.commands, game.server.exec.callback)
+    );
     // Added missing-recipient control: no host fallback or operator broadcast.
     game.lan
         .as_mut()
@@ -202,7 +207,8 @@ fn added_issuer_actor_missing_guest_and_restoration_controls() {
         .guests
         .retain(|g| g.conn != 2);
     game.test_source_output(context, marker, true);
-    game.game_tests
+    game.server
+        .game_tests
         .outbox
         .push(Out::Coordinates(context, vec![Dim::Overworld]));
     game.flush_game_test_output();
@@ -210,14 +216,17 @@ fn added_issuer_actor_missing_guest_and_restoration_controls() {
         g.sender.flush();
     }
     assert!(chats(&receivers[1]).is_empty());
-    assert!(game.chat_capture.as_ref().unwrap().is_empty());
+    assert!(game.server.chat_capture.as_ref().unwrap().is_empty());
     assert_eq!(game.dim, Dim::Nether);
-    assert_eq!(game.lan_acting, None);
+    assert_eq!(game.server.lan_acting, None);
     assert_eq!(
-        format!("{:?}", game.command_source.unwrap()),
+        format!("{:?}", game.server.command_source.unwrap()),
         format!("{outer:?}")
     );
-    assert_eq!(before, (game.exec.commands, game.exec.callback));
+    assert_eq!(
+        before,
+        (game.server.exec.commands, game.server.exec.callback)
+    );
     assert_eq!(
         game.score.board.score("result", "context").unwrap().value,
         1
@@ -242,7 +251,8 @@ fn added_issuer_actor_missing_guest_and_restoration_controls() {
     );
     game.track_and_start_runner(vec![info], false, None, false);
     assert!(
-        game.game_tests
+        game.server
+            .game_tests
             .runner
             .as_ref()
             .unwrap()

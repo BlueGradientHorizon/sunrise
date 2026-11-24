@@ -161,7 +161,7 @@ impl Game<'_> {
         // Kept while the level's sounds are captured for others, as
         // `Audio.play` keeps the rest.
         if self.audio.capture.is_some() {
-            self.bound_sounds.push(BoundSound {
+            self.server.bound_sounds.push(BoundSound {
                 name: sound.name.to_owned(),
                 at: sound.at,
                 volume: sound.volume,
@@ -175,7 +175,7 @@ impl Game<'_> {
 
     /// The tick's bound sounds, in the order they played, for the players.
     pub(super) fn send_bound_sounds(&mut self) {
-        for s in std::mem::take(&mut self.bound_sounds) {
+        for s in std::mem::take(&mut self.server.bound_sounds) {
             let sound = LevelSound {
                 name: &s.name,
                 at: s.at,
@@ -390,7 +390,7 @@ mod tests {
             seed: 0,
             max_players: 3,
             integrated: true,
-            levels: game.level_shapes,
+            levels: game.server.level_shapes,
             level_seeds: game.levels.runtime.seeds(),
         };
         let settings = LanSettings {
@@ -476,7 +476,7 @@ mod tests {
                     sources,
                     [SoundSource::Neutral as i32, SoundSource::Blocks as i32]
                 );
-                assert!(game.bound_sounds.is_empty());
+                assert!(game.server.bound_sounds.is_empty());
             });
         });
     }
@@ -513,7 +513,7 @@ mod tests {
                     seed: 0,
                     max_players: 3,
                     integrated: true,
-                    levels: game.level_shapes,
+                    levels: game.server.level_shapes,
                     level_seeds: game.levels.runtime.seeds(),
                 };
                 let settings = LanSettings {
@@ -592,7 +592,7 @@ mod tests {
                 // `Player.playSound` for the first guest (eating): the other
                 // guest hears it, and the mods were asked first.
                 game.as_guest(21, |game| {
-                    game.guest_player_sounds.push((
+                    game.server.guest_player_sounds.push((
                         "minecraft:entity.generic.eat".into(),
                         at,
                         1.0,

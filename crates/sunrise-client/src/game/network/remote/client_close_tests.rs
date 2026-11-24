@@ -53,12 +53,12 @@ fn server_close_restores_inventory_under_chat_without_echo() {
                 for container in [12, 37] {
                     game.carried = Some(inventory_carry.clone());
                     deliver(game, open_chest.clone());
-                    assert_eq!(game.screen, Screen::Inventory);
+                    assert_eq!(game.client.screen, Screen::Inventory);
                     game.carried = Some(ItemStack::new("minecraft:dirt", 3));
                     game.begin_chat_screen("draft from a container", false);
-                    assert_eq!(game.screen, Screen::Chat);
+                    assert_eq!(game.client.screen, Screen::Chat);
                     assert_eq!(game.remote_menu().0, 12);
-                    game.inv_drag = Some((0, vec![1]));
+                    game.client.inv_drag = Some((0, vec![1]));
                     deliver(game, C::ContainerClose(play::ContainerClose { container }));
                     assert_eq!(game.remote_menu().0, 0, "packet id {container}");
                     assert!(
@@ -67,9 +67,9 @@ fn server_close_restores_inventory_under_chat_without_echo() {
                             .is_some_and(|stack| stack.item == inventory_carry.item
                                 && stack.count == inventory_carry.count)
                     );
-                    assert_eq!(game.screen, Screen::Playing);
+                    assert_eq!(game.client.screen, Screen::Playing);
                     assert!(game.ui.chat_screen.is_none());
-                    assert!(game.inv_drag.is_none());
+                    assert!(game.client.inv_drag.is_none());
                     game.open_chat_method("");
                     assert_eq!(
                         game.ui.chat_screen.as_ref().unwrap().value(),
@@ -88,7 +88,7 @@ fn server_close_restores_inventory_under_chat_without_echo() {
                     game,
                     C::ContainerClose(play::ContainerClose { container: 0 }),
                 );
-                assert_eq!(game.screen, Screen::Playing);
+                assert_eq!(game.client.screen, Screen::Playing);
                 assert!(
                     !sent(&mut reader)
                         .iter()
@@ -130,12 +130,12 @@ fn server_close_runs_sign_and_inventory_removal_without_echo() {
                         front: false,
                     }),
                 );
-                assert!(game.sign_edit.is_some());
+                assert!(game.client.sign_edit.is_some());
                 game.sign_input(None, Some("unsent"));
                 game.sign_input(Some(winit::keyboard::KeyCode::Enter), None);
                 game.sign_input(None, Some("next line"));
                 close(game);
-                assert!(game.sign_edit.is_none());
+                assert!(game.client.sign_edit.is_none());
                 let packets = sent(&mut reader);
                 let mut updates = packets.iter().filter_map(|packet| match packet {
                     S::SignUpdate(update) => Some(update),
@@ -149,13 +149,13 @@ fn server_close_runs_sign_and_inventory_removal_without_echo() {
                 assert!(!packets.iter().any(|p| matches!(p, S::ContainerClose(_))));
 
                 game.open_player_inventory();
-                assert_eq!(game.screen, Screen::Inventory);
+                assert_eq!(game.client.screen, Screen::Inventory);
                 assert_eq!(game.remote_menu().0, 0);
                 game.remote.as_mut().unwrap().craft_result =
                     Some(ItemStack::new("minecraft:stick", 4));
                 game.craft_grid[0] = Some(ItemStack::new("minecraft:oak_planks", 2));
                 close(game);
-                assert_eq!(game.screen, Screen::Playing);
+                assert_eq!(game.client.screen, Screen::Playing);
                 assert!(game.remote.as_ref().unwrap().craft_result.is_none());
                 let ingredient = game.craft_grid[0].as_ref().unwrap();
                 assert_eq!(ingredient.count, 2);
@@ -227,7 +227,7 @@ fn server_close_notifies_the_outgoing_receiver_and_only_opens_real_screens() {
                     let title = game.test_observed_title().unwrap().as_ref().clone();
                     take();
                     close(game);
-                    assert_eq!(game.screen, Screen::Playing);
+                    assert_eq!(game.client.screen, Screen::Playing);
                     assert_eq!(
                         take(),
                         [Event::Close {
@@ -240,10 +240,10 @@ fn server_close_notifies_the_outgoing_receiver_and_only_opens_real_screens() {
 
                     deliver(game, open);
                     game.open_sign_editor((1, 65, 2), true);
-                    assert_eq!(game.screen, Screen::Inventory);
+                    assert_eq!(game.client.screen, Screen::Inventory);
                     take();
                     close(game);
-                    assert_eq!(game.screen, Screen::Playing);
+                    assert_eq!(game.client.screen, Screen::Playing);
                     assert_eq!(
                         take(),
                         [Event::Close {
@@ -269,7 +269,7 @@ fn server_close_notifies_the_outgoing_receiver_and_only_opens_real_screens() {
                     };
                     take();
                     close(game);
-                    assert_eq!(game.screen, Screen::Dead);
+                    assert_eq!(game.client.screen, Screen::Dead);
                     assert_eq!(take(), [Event::Open("dead"), paused]);
 
                     game.remote.as_mut().unwrap().show_death_screen = false;
@@ -281,7 +281,7 @@ fn server_close_notifies_the_outgoing_receiver_and_only_opens_real_screens() {
                     };
                     let _ = sent(&mut reader);
                     close(game);
-                    assert_eq!(game.screen, Screen::Playing);
+                    assert_eq!(game.client.screen, Screen::Playing);
                     assert_eq!(take(), [dead]);
                     assert!(
                         sent(&mut reader)
@@ -450,7 +450,7 @@ fn server_close_keeps_shown_native_screen_alive_for_closing_and_veto() {
 
                             // 1. Decoded server ContainerClose keeps live reads valid during Closing.
                             open_native(game, 14);
-                            assert_eq!(game.screen, Screen::Inventory);
+                            assert_eq!(game.client.screen, Screen::Inventory);
                             deliver(
                                 game,
                                 C::ContainerSetData(play::ContainerSetData {
@@ -467,7 +467,7 @@ fn server_close_keeps_shown_native_screen_alive_for_closing_and_veto() {
                                 game,
                                 C::ContainerClose(play::ContainerClose { container: 14 }),
                             );
-                            assert_eq!(game.screen, Screen::Playing);
+                            assert_eq!(game.client.screen, Screen::Playing);
                             assert_eq!(game.remote_menu().0, 0);
                             assert_eq!(
                                 probe.lock().unwrap().closing,
@@ -503,7 +503,7 @@ fn server_close_keeps_shown_native_screen_alive_for_closing_and_veto() {
                                 C::ContainerClose(play::ContainerClose { container: 15 }),
                             );
 
-                            assert_eq!(game.screen, Screen::Inventory);
+                            assert_eq!(game.client.screen, Screen::Inventory);
                             assert_eq!(game.remote_menu().0, 0);
                             assert!(probe.lock().unwrap().closing.is_empty());
                             assert_eq!(game.screen_pos(), Some(POS));
@@ -530,7 +530,7 @@ fn server_close_keeps_shown_native_screen_alive_for_closing_and_veto() {
                             // Leaving the vetoed screen later closes it with live reads and no echo.
                             probe.lock().unwrap().cancel_dead = false;
                             game.set_screen(Screen::Playing);
-                            assert_eq!(game.screen, Screen::Playing);
+                            assert_eq!(game.client.screen, Screen::Playing);
                             assert_eq!(
                                 probe.lock().unwrap().closing,
                                 [(Some(MENU.to_owned()), Some(POS), Some(SLOT_POS))]

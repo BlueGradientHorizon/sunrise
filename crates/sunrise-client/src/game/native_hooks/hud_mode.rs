@@ -8,7 +8,7 @@ impl Game<'_> {
 
     /// Set HUD and hand visibility outside a borrowed server guest's turn.
     pub(in crate::game) fn set_hud_mode(&mut self, mode: mod_api::HudMode) {
-        if self.native_window() && self.lan_acting.is_none() {
+        if self.native_window() && self.server.lan_acting.is_none() {
             self.ui.set_hud_mode(mode);
         }
     }
@@ -51,10 +51,10 @@ mod tests {
                     game.fire_client_tick_pre();
                     assert_eq!(game.hud_mode(), mode);
                 }
-                game.lan_acting = Some(17);
+                game.server.lan_acting = Some(17);
                 game.fire_client_tick_pre();
                 assert_eq!(game.hud_mode(), HudMode::AllVisible);
-                game.lan_acting = None;
+                game.server.lan_acting = None;
                 game.fire_client_tick_pre();
                 assert_eq!(game.hud_mode(), HudMode::NoHud);
                 assert!(game.ui.hands_drawn(false, false, true, true, false));

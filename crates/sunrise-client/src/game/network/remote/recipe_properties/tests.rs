@@ -85,7 +85,7 @@ fn guest_stonecutter_uses_packet_tags_components_and_authoritative_buttons() {
     );
     with_guests(|server| {
         let _serving = crate::game::integrated::tests::install_serving(server, false);
-        server.world_root = root.to_owned();
+        server.server.world_root = root.to_owned();
         let (tx, rx) = std::sync::mpsc::channel();
         let host = server.lan.as_mut().unwrap();
         host.play.entry(12).or_default();
@@ -322,7 +322,7 @@ fn guest_stonecutter_waits_for_deferred_recipe_publication() {
     }
     with_guests(|server| {
         let _serving = crate::game::integrated::tests::install_serving(server, false);
-        server.world_root = root.to_owned();
+        server.server.world_root = root.to_owned();
         let (tx, rx) = std::sync::mpsc::channel();
         let host = server.lan.as_mut().unwrap();
         host.play.entry(12).or_default();

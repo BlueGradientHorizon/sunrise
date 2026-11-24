@@ -20,7 +20,7 @@ impl Game<'_> {
         sunrise_client::spans::time("tick_effects", || self.tick_effects(running));
         // Player.tick's ItemCooldowns.tick for the window's player (a
         // server's players count theirs down in `tick_guests`).
-        self.shield_cooldown = self.shield_cooldown.saturating_sub(1);
+        self.server.shield_cooldown = self.server.shield_cooldown.saturating_sub(1);
         self.cooldowns.tick();
         sunrise_client::spans::time("tick_using", || self.tick_using());
         // The player's digging comes in with its packets, before the level
@@ -49,7 +49,7 @@ impl Game<'_> {
             // what joins during it waits for the next tick
             // (`ensureActiveIsNotIterated`). Primed TNT and falling blocks
             // keep their own packet cutoff (`ordered.announced`, #10063).
-            self.ticked_entities_through = self.next_entity;
+            self.server.ticked_entities_through = self.server.next_entity;
         }
         // ChunkMap still ticks while /tick freeze holds block/entity ticks.
         if !running {
@@ -124,7 +124,7 @@ impl Game<'_> {
             // Orbs, primed TNT and falling blocks still to tick, in join order.
             self.run_ordered_ticks(sunrise_client::join_seq::JoinSeq::MAX, false)?;
             // Unsimulated entities no mod named are told once for the family.
-            self.native_others_tick_family(self.ordered.told, self.ordered.born);
+            self.native_others_tick_family(self.server.ordered.told, self.server.ordered.born);
             sunrise_client::spans::time("tick_experience", || self.tick_experience());
             // Merged, despawned or picked up.
             span("mods_leaves_flush", || self.native_leaves_flush());
@@ -172,7 +172,7 @@ impl Game<'_> {
         // Everything that has joined has had its spawn packet and, if it joined
         // before the entity passes (TNT a piston or repeater primed), its first
         // tick in the late pass above (#10063).
-        self.ordered.announced = sunrise_client::join_seq::JoinSeq::upcoming();
+        self.server.ordered.announced = sunrise_client::join_seq::JoinSeq::upcoming();
         if running {
             sunrise_client::spans::time("tick_moving_pistons", || self.tick_moving_pistons())?;
             sunrise_client::spans::time("tick_block_entities", || self.tick_block_entities())?;

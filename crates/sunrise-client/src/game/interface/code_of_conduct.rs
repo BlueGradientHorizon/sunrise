@@ -141,7 +141,7 @@ impl Game<'_> {
         }
         self.open_screen_overlay("code_of_conduct", |game| {
             game.capture(false);
-            game.code_of_conduct = Some(Prompt {
+            game.client.code_of_conduct = Some(Prompt {
                 text,
                 hash,
                 stop_showing: false,
@@ -154,7 +154,7 @@ impl Game<'_> {
     /// ends the connection. The entry keeps the text only when it was
     /// accepted with the box ticked, else the stored text is cleared.
     fn answer_code_of_conduct(&mut self, accepted: bool) -> Result<()> {
-        let Some(prompt) = self.code_of_conduct.take() else {
+        let Some(prompt) = self.client.code_of_conduct.take() else {
             return Ok(());
         };
         if accepted {
@@ -162,7 +162,7 @@ impl Game<'_> {
             if let Some(r) = &self.remote {
                 r.session.accept_code_of_conduct();
             }
-            if self.player.is_some() && self.screen == Screen::Playing {
+            if self.player.is_some() && self.client.screen == Screen::Playing {
                 self.capture(true);
             }
         }
@@ -180,7 +180,7 @@ impl Game<'_> {
     }
 
     pub(super) fn draw_code_of_conduct(&self, batch: &mut HudBatch) {
-        let Some(prompt) = &self.code_of_conduct else {
+        let Some(prompt) = &self.client.code_of_conduct else {
             return;
         };
         sunrise_client::widgets::cover_frame();
@@ -201,7 +201,7 @@ impl Game<'_> {
         }
         ui::menu_background(batch, atlas, 0.0, 0.0, w, h, self.player.is_some());
         let layout = prompt.layout(&atlas.font, (w, h));
-        let cursor = self.cursor;
+        let cursor = self.client.cursor;
         let [ax, ay, aw, ah] = layout.area;
         let offset = prompt
             .scroll
@@ -266,8 +266,8 @@ impl Game<'_> {
     /// A left click: the box toggles, a button answers.
     pub(super) fn code_of_conduct_click(&mut self) -> Result<bool> {
         let size = self.gui_size();
-        let cursor = self.cursor;
-        let Some(prompt) = self.code_of_conduct.as_mut() else {
+        let cursor = self.client.cursor;
+        let Some(prompt) = self.client.code_of_conduct.as_mut() else {
             return Ok(false);
         };
         let layout = prompt.layout(&self.gui.atlas.font, size);
@@ -295,12 +295,12 @@ impl Game<'_> {
     pub(super) fn code_of_conduct_scroll(&mut self, delta: f32) -> bool {
         let size = self.gui_size();
         let stick_scroll = self.pad_stick_scroll() || self.pad_step_scroll();
-        let Some(prompt) = self.code_of_conduct.as_mut() else {
+        let Some(prompt) = self.client.code_of_conduct.as_mut() else {
             return false;
         };
         let layout = prompt.layout(&self.gui.atlas.font, size);
         let [_, ay, _, ah] = layout.area;
-        if !(ay..ay + ah).contains(&self.cursor.1) && !stick_scroll {
+        if !(ay..ay + ah).contains(&self.client.cursor.1) && !stick_scroll {
             return false;
         }
         prompt

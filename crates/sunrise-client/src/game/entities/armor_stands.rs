@@ -338,7 +338,7 @@ impl Game<'_> {
         &self,
         worn: [Option<(&str, Option<&ItemStack>)>; 4],
     ) -> Vec<(&Part, [f32; 4], u32, u32, bool)> {
-        let assets = &self.armor_stand_assets;
+        let assets = &self.client.armor_stand_assets;
         let mut out = Vec::new();
         for (item, (layer, slot)) in worn.into_iter().zip([
             ("helmet", "head"),
@@ -375,7 +375,7 @@ impl Game<'_> {
     /// goes into an atlas trim slot, a free one, else the least recently
     /// drawn. Reuse the completed preparation while the requests and atlas stay the same.
     pub(super) fn prepare_trims(&mut self) {
-        let assets = &self.armor_stand_assets;
+        let assets = &self.client.armor_stand_assets;
         let items = self.items();
         let mut wanted: Vec<TrimTexture> = Vec::new();
         let guests = self.lan.iter().flat_map(|host| host.hub.guests.iter());
@@ -435,11 +435,11 @@ impl Game<'_> {
                 wanted.push(t);
             }
         }
-        self.trim_slots.prepare(
+        self.client.trim_slots.prepare(
             wanted,
             &assets.root,
             &mut self.gui.atlas,
-            &mut self.map_patches,
+            &mut self.client.map_patches,
         );
     }
     /// `ArmorStandItem.useOn`.
@@ -471,7 +471,7 @@ impl Game<'_> {
         );
         let yaw =
             (((self.yaw - 180.0 + 180.0).rem_euclid(360.0) - 180.0 + 22.5) / 45.0).floor() * 45.0;
-        let mut stand = ArmorStand::new(self.next_entity + 1, foot, yaw);
+        let mut stand = ArmorStand::new(self.server.next_entity + 1, foot, yaw);
         // Entity.applyImplicitComponents: a name from an anvil names the stand.
         if let Some(name) = stack.custom_name() {
             stand.custom_name = Some(sunrise_client::text::Text::literal(name));
@@ -537,7 +537,7 @@ impl Game<'_> {
         // EntityType.create's spawn yaw, `level.getRandom().nextFloat() * 360`, before
         // ArmorStandItem.useOn turns the stand to face the player.
         self.world.random.next_float();
-        self.next_entity += 1;
+        self.server.next_entity += 1;
         let (_, uuid) = sunrise_client::mobs::living_random();
         self.persist.uuids.insert(stand.id, uuid);
         self.audio.play(
@@ -643,9 +643,11 @@ impl Game<'_> {
             if alive {
                 // `Player.interactOn` gives a creative player the count back.
                 self.consume_held();
-                if let (Some(player), Some(player_name), Some(name)) =
-                    (self.lan_acting_uuid, self.lan_acting_name.clone(), name)
-                {
+                if let (Some(player), Some(player_name), Some(name)) = (
+                    self.server.lan_acting_uuid,
+                    self.server.lan_acting_name.clone(),
+                    name,
+                ) {
                     self.native_player_name_entity(player, &player_name, id, &name);
                 }
             }
@@ -714,7 +716,10 @@ impl Game<'_> {
             .is_none_or(|h| h.count <= 1 || current.is_none());
         if moves
             && target.is_some()
-            && let (Some(player), Some(name)) = (self.lan_acting_uuid, self.lan_acting_name.clone())
+            && let (Some(player), Some(name)) = (
+                self.server.lan_acting_uuid,
+                self.server.lan_acting_name.clone(),
+            )
         {
             let stand = self.armor_stands[i].id as i32;
             let slot_name = ["mainhand", "offhand", "feet", "legs", "chest", "head"][slot];
@@ -804,7 +809,7 @@ impl Game<'_> {
         });
         // Player.onAttack: the hit starts the attack strength again, hurt or
         // not (skipAttackInteraction only asks mayInteract).
-        self.attack_ticks = 0;
+        self.server.attack_ticks = 0;
         if hurt {
             if admitted {
                 self.special_attack_exhaustion();
@@ -884,7 +889,7 @@ impl Game<'_> {
             direct: attacker,
             position: None,
         };
-        if super::entity::damage_level_of!(self, self.combat.attack(), no_push, None)
+        if super::entity::damage_level_of!(self, self.server.combat.attack(), no_push, None)
             .invulnerability_check(
                 sunrise_client::health::Hurting::ArmorStand(id as i32, source),
                 vanilla,
@@ -982,16 +987,20 @@ impl Game<'_> {
     /// Run stand turns that precede the level's first shulker. The mob tick
     /// interleaves the remaining turns with shulkers before applying each lid push.
     pub(super) fn begin_armor_stand_ticks(&mut self) -> Result<()> {
-        self.ordered.armor_stands.extend(
+        self.server.ordered.armor_stands.extend(
             self.armor_stands
                 .iter()
-                .filter(|stand| stand.join < self.ordered.born)
+                .filter(|stand| stand.join < self.server.ordered.born)
                 .map(|stand| stand.join),
         );
-        if self.ordered.armor_stands.is_empty() {
+        if self.server.ordered.armor_stands.is_empty() {
             return Ok(());
         }
-        self.ordered.armor_stands.make_contiguous().sort_unstable();
+        self.server
+            .ordered
+            .armor_stands
+            .make_contiguous()
+            .sort_unstable();
         let first_shulker = self
             .mobs
             .iter()
@@ -1003,6 +1012,7 @@ impl Game<'_> {
 
     pub(super) fn tick_armor_stands_before(&mut self, cut: JoinSeq) -> Result<()> {
         if self
+            .server
             .ordered
             .armor_stands
             .front()
@@ -1010,12 +1020,12 @@ impl Game<'_> {
         {
             return Ok(());
         }
-        let mut pending = std::mem::take(&mut self.ordered.armor_stands);
+        let mut pending = std::mem::take(&mut self.server.ordered.armor_stands);
         let count = pending
             .make_contiguous()
             .partition_point(|&join| join < cut);
         let result = self.tick_armor_stand_turns(pending.drain(..count));
-        self.ordered.armor_stands = pending;
+        self.server.ordered.armor_stands = pending;
         result
     }
 
@@ -1532,7 +1542,7 @@ impl Game<'_> {
                 .bool_at(sunrise_client::gamerules::vanilla::MOB_DROPS),
             dying,
             |table| {
-                let Some(loot) = self.server_loot.get() else {
+                let Some(loot) = self.server.server_loot.get() else {
                     return Vec::new();
                 };
                 if !loot.has_table(table) {
@@ -1549,7 +1559,7 @@ impl Game<'_> {
                 match loot.random_sequence(table) {
                     Some(sequence) => loot.roll_entity(
                         table,
-                        self.rand_sequences.get(sequence, self.level.seed),
+                        self.server.rand_sequences.get(sequence, self.level.seed),
                         &params,
                     ),
                     None => loot.roll_entity(table, &mut self.world.random, &params),
@@ -1673,7 +1683,7 @@ impl Game<'_> {
             direct: direct as i32,
             position,
         };
-        if super::entity::damage_level_of!(self, self.combat.attack(), no_push, None)
+        if super::entity::damage_level_of!(self, self.server.combat.attack(), no_push, None)
             .invulnerability_check(
                 sunrise_client::health::Hurting::ArmorStand(id as i32, source),
                 invulnerable,
@@ -1903,8 +1913,8 @@ impl Game<'_> {
             let light = self.world.light(probe[0], probe[1], probe[2]);
             let packed = a.render_light(light);
             let skinned = if skinning {
-                let mut models = self.skin_models.borrow_mut();
-                let mut frame = self.skin_frame.borrow_mut();
+                let mut models = self.client.skin_models.borrow_mut();
+                let mut frame = self.client.skin_frame.borrow_mut();
                 let mark = frame.mark();
                 let mut skin = sunrise_client::mobs::skin::Skin::new(&mut models, &mut frame);
                 self.armor_stand_vertices(
@@ -1982,7 +1992,7 @@ impl Game<'_> {
         out: &mut Vec<Vertex>,
     ) {
         use sunrise_client::mobs::render::put;
-        let assets = &self.armor_stand_assets;
+        let assets = &self.client.armor_stand_assets;
         let sprites = &self.gui.atlas.sprites;
         let uv_of = |name: &str| sprites.get(name).map(|r| [r.u0, r.v0, r.u1, r.v1]);
         // A texture's OptiFine emissive overlay. The lock is read per lookup and let go:
@@ -2159,7 +2169,8 @@ impl Game<'_> {
                 * glam::Mat4::from_translation(glam::Vec3::new(0.0, 1.0, 0.0))
                 * glam::Mat4::from_rotation_x(0.436_332_32)
                 * glam::Mat4::from_rotation_z(std::f32::consts::PI);
-        let glints = super::perspective::preview_glint_quads(&verts, gui, 0..0, self.glint_frame);
+        let glints =
+            super::perspective::preview_glint_quads(&verts, gui, 0..0, self.client.glint_frame);
         let quads =
             super::perspective::player_preview_quads(verts, gui, None, &self.gui.atlas.sprites);
         super::perspective::emit_preview(batch, quads, glints, [x0, y0, x1, y1]);
@@ -3178,10 +3189,12 @@ mod postbaseline_lodestone_controls {
         let (all, mixed, inactive) = (id(100), id(101), id(102));
         // Direct class ticks do not refresh the headless fixture's tickets.
         // Use the existing ticket model: only chunk zero is forced to tick.
-        game.tickets.update(Some(crate::ticket_levels::Sources {
-            forced: vec![(0, 0)],
-            ..Default::default()
-        }));
+        game.server
+            .tickets
+            .update(Some(crate::ticket_levels::Sources {
+                forced: vec![(0, 0)],
+                ..Default::default()
+            }));
         assert!(game.entity_ticking_area()(4, 4));
         assert!(!game.entity_ticking_area()(65, 65));
         assert!(game.world.loaded(65, 65));
@@ -3327,7 +3340,7 @@ mod setup_anim_tests {
                 stand.pitch = 30.0;
                 stand.vehicle = Some(9);
                 stand.pose = [[10.0, 20.0, 30.0]; 6];
-                let model = game.armor_stand_assets.main.as_ref().unwrap();
+                let model = game.client.armor_stand_assets.main.as_ref().unwrap();
                 let mut poses = Poses::new(model);
                 game.setup_armor_stand_pose(&stand, 0.5, &mut poses);
                 for name in [

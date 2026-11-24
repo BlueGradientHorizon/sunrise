@@ -13,10 +13,15 @@ pub(super) use sunrise_client_gameplay::tick_script::{TickScript, parse};
 impl Game<'_> {
     /// Before a client tick: start the scenario the harness handed over, or play this tick's lines.
     pub(super) fn tick_script_step(&mut self, event_loop: &dyn EventLoopCtl) {
-        let Some(path) = self.tick_script.path().map(std::path::Path::to_path_buf) else {
+        let Some(path) = self
+            .client
+            .tick_script
+            .path()
+            .map(std::path::Path::to_path_buf)
+        else {
             return;
         };
-        if !self.tick_script.playing() {
+        if !self.client.tick_script.playing() {
             let go = path.with_extension("go");
             if self.remote.is_none() || !go.exists() {
                 return;
@@ -26,10 +31,10 @@ impl Game<'_> {
                 log::warn!("Sunrise: tick script {} is not a scenario", path.display());
                 return;
             };
-            self.tick_script.start(script);
+            self.client.tick_script.start(script);
             self.send_signed_chat_input("/wire-mark");
         }
-        let Some((lines, finished)) = self.tick_script.advance() else {
+        let Some((lines, finished)) = self.client.tick_script.advance() else {
             return;
         };
         for line in lines {
@@ -38,7 +43,7 @@ impl Game<'_> {
             }
         }
         if let Some(name) = finished {
-            self.tick_script.finish();
+            self.client.tick_script.finish();
             let _ = std::fs::write(path.with_extension("done"), name);
         }
     }

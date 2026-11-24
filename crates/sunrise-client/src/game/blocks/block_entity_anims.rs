@@ -185,12 +185,12 @@ impl Game<'_> {
     /// One opener more (`open`) or less at `key`: the count before and after
     /// (`ContainerOpenersCounter.incrementOpeners` / `decrementOpeners`).
     fn count_opener(&mut self, key: (i32, i32, i32), open: bool) -> (i32, i32) {
-        let count = self.lid_openers.entry(key).or_default();
+        let count = self.server.lid_openers.entry(key).or_default();
         let before = *count;
         *count = (before + if open { 1 } else { -1 }).max(0);
         let after = *count;
         if after == 0 {
-            self.lid_openers.remove(&key);
+            self.server.lid_openers.remove(&key);
         }
         // `ContainerOpenersCounter.incrementOpeners`: the first opener
         // schedules the five-tick recheck of who still has the container open
@@ -527,7 +527,7 @@ impl Game<'_> {
     /// Sets `be_anims.conduit_servers` to the conduits in the
     /// chunks that tick blocks, keeping the state of those already known.
     fn find_conduits(&mut self) {
-        let levels = self.tickets.levels();
+        let levels = self.server.tickets.levels();
         let kinds = &self.be_anims.kinds;
         let is_conduit = |id: u32| matches!(kinds.get(id as usize), Some(Some(Ticker::Conduit)));
         let mut found = Vec::new();
@@ -567,7 +567,11 @@ impl Game<'_> {
             self.be_anims.conduit_servers.remove(&pos);
             return;
         }
-        if !self.tickets.levels().block_ticking_at(pos[0], pos[2])
+        if !self
+            .server
+            .tickets
+            .levels()
+            .block_ticking_at(pos[0], pos[2])
             || !self.border.contains(f64::from(pos[0]), f64::from(pos[2]))
         {
             return;

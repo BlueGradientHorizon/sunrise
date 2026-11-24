@@ -39,7 +39,7 @@ impl Game<'_> {
         // the block is nearer, so the hit is not a block and the use releases
         // the same way. A guest acts on its client's targeted block, whose view
         // we cannot trace here, so only the local aim runs the entity test.
-        if self.forced_hit.is_none()
+        if self.server.forced_hit.is_none()
             && let Some((eye, _)) = self.aim()
             && let Some((_, mob, _)) = self.mob_hit_within(self.block_reach)
         {
@@ -76,7 +76,7 @@ impl Game<'_> {
             "minecraft:suspicious_gravel" => ("minecraft:item.brush.brushing.gravel", true),
             _ => ("minecraft:item.brush.brushing.generic", false),
         };
-        if self.lan_acting.is_none() {
+        if self.server.lan_acting.is_none() {
             self.brush_dust(hit, slot == super::shield::OFFHAND_SLOT);
         }
         let at = hit.pos.map(|v| f64::from(v) + 0.5);
@@ -125,7 +125,7 @@ impl Game<'_> {
     /// `BrushableBlockEntity.brush`: whether the block changed (the brush wears).
     fn brush_block(&mut self, pos: [i32; 3], face: [i32; 3], slot: usize) -> bool {
         let time = self.world.game_time;
-        let mut brush = self.brushing.remove(&pos).unwrap_or_default();
+        let mut brush = self.server.brushing.remove(&pos).unwrap_or_default();
         brush.hit_face.get_or_insert(face);
         let direction = match brush.hit_face.unwrap() {
             [0, -1, 0] => 0,
@@ -143,7 +143,7 @@ impl Game<'_> {
         }
         brush.resets_at = time + 40;
         if time < brush.cooldown_ends_at {
-            self.brushing.insert(pos, brush);
+            self.server.brushing.insert(pos, brush);
             return false;
         }
         brush.cooldown_ends_at = time + 10;
@@ -156,7 +156,7 @@ impl Game<'_> {
         }
         self.schedule_brushable_tick(pos);
         let after = completion_state(brush.count);
-        self.brushing.insert(pos, brush);
+        self.server.brushing.insert(pos, brush);
         if before != after {
             self.set_dusted(pos, after);
         }
@@ -183,7 +183,7 @@ impl Game<'_> {
             self.res.items(),
         );
         self.trigger_loot_table(&table);
-        let loot = self.server_loot.get();
+        let loot = self.server.server_loot.get();
         let brusher = self.killer_loot_entity(None);
         let luck = self.acting_luck();
         let tool = self.stack_in(slot).map(super::creatures::to_loot);
@@ -193,7 +193,7 @@ impl Game<'_> {
                 &mut tag,
                 loot.as_deref(),
                 &mut self.world.random,
-                &mut self.rand_sequences,
+                &mut self.server.rand_sequences,
                 self.level.seed,
                 self.res.items(),
                 sunrise_world::loot::ContainerLootContext {
@@ -281,7 +281,7 @@ impl Game<'_> {
     /// left alone loses two counts, again every four ticks.
     pub(super) fn brushable_tick(&mut self, pos: [i32; 3]) {
         let time = self.world.game_time;
-        let Some(mut brush) = self.brushing.remove(&pos) else {
+        let Some(mut brush) = self.server.brushing.remove(&pos) else {
             return;
         };
         let before = completion_state(brush.count);
@@ -291,7 +291,7 @@ impl Game<'_> {
         }
         let after = completion_state(brush.count);
         if brush.count != 0 {
-            self.brushing.insert(pos, brush);
+            self.server.brushing.insert(pos, brush);
             self.schedule_brushable_tick(pos);
         } else if let Some(BlockEntity::Brushable(b)) =
             self.world.block_entities.get_mut(&(pos[0], pos[1], pos[2]))

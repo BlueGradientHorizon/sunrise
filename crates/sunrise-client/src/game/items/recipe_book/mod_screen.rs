@@ -195,7 +195,7 @@ impl Game<'_> {
                     || self.mod_book_layout(batch.width, true).is_none()
             })
         {
-            if !self.recipe_ui.custom.refused {
+            if !self.client.recipe_ui.custom.refused {
                 if let Some(block) = self.native_screen_block() {
                     eprintln!(
                         "{}",
@@ -206,7 +206,7 @@ impl Game<'_> {
                         )
                     );
                 }
-                self.recipe_ui.custom.refused = true;
+                self.client.recipe_ui.custom.refused = true;
             }
             return;
         }
@@ -220,19 +220,20 @@ impl Game<'_> {
             self.native_screen_menu().unwrap_or_default().to_owned(),
             key.as_str().to_owned(),
         );
-        if self.recipe_ui.custom.binding.as_ref() != Some(&binding) {
-            self.recipe_ui.reset_screen();
-            self.recipe_ui.custom.binding = Some(binding);
+        if self.client.recipe_ui.custom.binding.as_ref() != Some(&binding) {
+            self.client.recipe_ui.reset_screen();
+            self.client.recipe_ui.custom.binding = Some(binding);
         }
         self.ensure_recipe_search();
         if !open {
-            self.recipe_ui.custom.overlay = None;
-            if let Some(search) = self.recipe_ui.search.as_mut() {
+            self.client.recipe_ui.custom.overlay = None;
+            if let Some(search) = self.client.recipe_ui.search.as_mut() {
                 search.focused = false;
             }
             return;
         }
         let query = self
+            .client
             .recipe_ui
             .search
             .as_ref()
@@ -245,7 +246,7 @@ impl Game<'_> {
                 stocks.push(stack);
             }
         }
-        let ui = &self.recipe_ui.custom;
+        let ui = &self.client.recipe_ui.custom;
         if ui.presentation.is_some()
             && ui.presented_page == ui.page
             && ui.query == query
@@ -256,7 +257,7 @@ impl Game<'_> {
             return;
         }
         let placement_stocks = self.mod_book_placement_stocks();
-        let ui = &self.recipe_ui.custom;
+        let ui = &self.client.recipe_ui.custom;
         let mut stacked = Stacked::default();
         for (index, stack) in stocks.iter().enumerate() {
             let max = sunrise_client::menu::item_max_stack(self.items(), stack);
@@ -286,7 +287,7 @@ impl Game<'_> {
             presentation =
                 book.presentation(ui.selected.as_deref(), &query, filtering, page, &resolver);
         }
-        let ui = &mut self.recipe_ui.custom;
+        let ui = &mut self.client.recipe_ui.custom;
         if let Some(prepared) = prepared {
             ui.prepared = Some(prepared);
         }
@@ -313,7 +314,7 @@ impl Game<'_> {
         let (bx, by) = self.mod_book_button(batch);
         batch.sprite(
             &self.gui.atlas,
-            &sprite(if inside(self.cursor, bx, by, 20.0, 18.0) {
+            &sprite(if inside(self.client.cursor, bx, by, 20.0, 18.0) {
                 "button_highlighted"
             } else {
                 "button"
@@ -322,14 +323,14 @@ impl Game<'_> {
             by,
         );
         if !self.shift_down_or_ctrl() {
-            self.recipe_ui.time += self.frame_ticks;
+            self.client.recipe_ui.time += self.client.frame_ticks;
         }
         self.draw_mod_book_ghosts(batch);
         if !open {
             return None;
         }
         let (xo, yo) = self.book_origin(batch);
-        let search = match self.recipe_ui.search.as_mut() {
+        let search = match self.client.recipe_ui.search.as_mut() {
             Some(edit) => {
                 edit.x = xo + 25.0;
                 edit.y = yo + 13.0;
@@ -345,7 +346,7 @@ impl Game<'_> {
             }
             None => Search::default(),
         };
-        let ui = &self.recipe_ui.custom;
+        let ui = &self.client.recipe_ui.custom;
         let presentation = ui.presentation.as_ref()?;
         let buttons: Vec<_> = presentation
             .recipes
@@ -364,7 +365,7 @@ impl Game<'_> {
         let layout = Layout {
             book: BookType::Crafting,
             origin: (xo as i32, yo as i32),
-            mouse: (self.cursor.0 as i32, self.cursor.1 as i32),
+            mouse: (self.client.cursor.0 as i32, self.client.cursor.1 as i32),
             index: self.swap_index(),
             filtering,
             filter_look: mod_api::RecipeBookFilterLook::registered(self.native_screen_book()?),
@@ -379,7 +380,7 @@ impl Game<'_> {
             text_width: &text_width,
         };
         let (calls, first_category_arrow) =
-            draw_registered_book(&layout, ui, (xo, yo), self.cursor);
+            draw_registered_book(&layout, ui, (xo, yo), self.client.cursor);
         // The tabs and arrows as painted are the region `ScreenView::regions` reports.
         if self.screen_view_listened() {
             self.screen_state
@@ -390,7 +391,7 @@ impl Game<'_> {
     }
     pub(super) fn mod_book_click(&mut self, right: bool) -> bool {
         self.native_net.placement.client.click();
-        self.recipe_ui.ghost.clear();
+        self.client.recipe_ui.ghost.clear();
         self.refresh_mod_book();
         let Some((open, filtering)) = self.mod_book_flags() else {
             return false;
@@ -400,7 +401,7 @@ impl Game<'_> {
             return false;
         };
         let (bx, by) = self.mod_book_button(&batch);
-        let cursor = self.cursor;
+        let cursor = self.client.cursor;
         if inside(cursor, bx, by, 20.0, 18.0) {
             if let Some(book) = self.native_screen_book().cloned() {
                 self.request_custom_book_settings(
@@ -436,11 +437,11 @@ impl Game<'_> {
             }
             return true;
         }
-        if let Some(search) = self.recipe_ui.search.as_mut() {
+        if let Some(search) = self.client.recipe_ui.search.as_mut() {
             search.x = xo + 25.0;
             search.y = yo + 13.0;
             if inside(cursor, xo + 8.0, yo + 13.0, 98.0, 14.0) {
-                self.recipe_ui.search_drag = true;
+                self.client.recipe_ui.search_drag = true;
                 search.focused = true;
                 search.reset_blink();
                 if cursor.0 >= search.x {
@@ -455,7 +456,7 @@ impl Game<'_> {
         let placeable = self
             .native_screen_menu()
             .is_some_and(|menu| mod_api::RecipeBookLayout::declaring_mod(menu).is_some());
-        let ui = &mut self.recipe_ui.custom;
+        let ui = &mut self.client.recipe_ui.custom;
         let Some(presentation) = &ui.presentation else {
             return narrow;
         };
@@ -519,12 +520,12 @@ impl Game<'_> {
     pub(super) fn mod_book_area(&self, batch: &HudBatch) -> Option<(bool, bool)> {
         let (open, _) = self.mod_book_flags()?;
         let (xo, yo) = self.book_origin(batch);
-        let ui = &self.recipe_ui.custom;
+        let ui = &self.client.recipe_ui.custom;
         let hovered = ui.presentation.as_ref().is_some_and(|p| {
             ui.visible_tabs().into_iter().enumerate().any(|(n, index)| {
                 p.tabs[index].selected
                     && inside(
-                        self.cursor,
+                        self.client.cursor,
                         xo - 30.0,
                         yo + 3.0 + 27.0 * n as f32,
                         35.0,
@@ -532,8 +533,8 @@ impl Game<'_> {
                     )
             })
         });
-        let arrow =
-            tab_arrows(ui, xo, yo).any(|(_, [x, y, w, h], _, _)| inside(self.cursor, x, y, w, h));
+        let arrow = tab_arrows(ui, xo, yo)
+            .any(|(_, [x, y, w, h], _, _)| inside(self.client.cursor, x, y, w, h));
         Some((open, open && (hovered || arrow)))
     }
     pub(super) fn mod_book_targets(&self) -> Vec<sunrise_client::widgets::Target> {
@@ -551,7 +552,7 @@ impl Game<'_> {
             return targets;
         }
         let (xo, yo) = self.book_origin(&batch);
-        let ui = &self.recipe_ui.custom;
+        let ui = &self.client.recipe_ui.custom;
         if let Some(overlay) = &ui.overlay {
             let columns = if overlay.view.recipes.len() <= 16 {
                 4

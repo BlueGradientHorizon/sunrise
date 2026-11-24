@@ -38,7 +38,7 @@ impl<'g, 'a> JournalLevelWrite<'g, 'a> {
 
     pub(super) fn write_block(&mut self, pos: [i32; 3], state: BlockStateId, flags: i32) -> bool {
         let [x, y, z] = pos;
-        if self.game.world_debug
+        if self.game.server.world_debug
             || !(-30_000_000..30_000_000).contains(&x)
             || !(-30_000_000..30_000_000).contains(&z)
             || !self.game.world.is_loaded_at(x, y, z)

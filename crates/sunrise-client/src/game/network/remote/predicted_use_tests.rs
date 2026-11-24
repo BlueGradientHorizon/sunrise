@@ -56,9 +56,9 @@ fn matrix(mods: mod_api::Mods) {
                         game.world.set(0, 64, 0, target_state).unwrap();
                         game.offhand = Some(ItemStack::new("minecraft:torch", 2));
                         game.world.set(0, 65, 0, air).unwrap();
-                        game.forced_hit = (path == 1).then(hit);
-                        game.tick_hit.set(None);
-                        game.tick_mob = None;
+                        game.server.forced_hit = (path == 1).then(hit);
+                        game.server.tick_hit.set(None);
+                        game.server.tick_mob = None;
                         game.mobs.clear();
                         game.clear_device_keys();
                         game.yaw = 0.0;

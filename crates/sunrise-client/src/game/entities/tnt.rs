@@ -360,7 +360,11 @@ impl Game<'_> {
     /// (`native_tnt_primed`); the acting guest, if any, is its player.
     pub(super) fn tnt_prime_allowed(&mut self, pos: BlockPos) -> bool {
         let mut cancel = false;
-        self.native_tnt_primed(self.lan_acting_uuid, [pos.x, pos.y, pos.z], &mut cancel);
+        self.native_tnt_primed(
+            self.server.lan_acting_uuid,
+            [pos.x, pos.y, pos.z],
+            &mut cancel,
+        );
         // `TntBlock.prime` leaves the block alone with `tnt_explodes` off, for
         // redstone, fire and an unstable block breaking alike.
         !cancel
@@ -378,7 +382,7 @@ impl Game<'_> {
         }
         // Refused: the level queued the fuse sound and the game event right
         // after the prime; they are dropped as they come up.
-        self.tnt_refused = Some(pos);
+        self.server.tnt_refused = Some(pos);
         let Some(tnt) = self.pack.assets.registry.default_state("minecraft:tnt") else {
             return;
         };
@@ -434,18 +438,18 @@ impl Game<'_> {
             f64::from(pos.z) + 0.5,
         );
         // An id from the entity counter at once, so a command can name it.
-        self.next_entity += 1;
+        self.server.next_entity += 1;
         // Entity: the UUID is the first two draws of the TNT's own random.
         let uuid =
             sunrise_client::save::insecure_uuid(&mut sunrise_client::random_source::entity());
-        self.persist.uuids.insert(self.next_entity, uuid);
+        self.persist.uuids.insert(self.server.next_entity, uuid);
         self.tnts.push(PrimedTnt {
             size_answer: None,
             attachment_lifetime: Default::default(),
             rotation: [0.0, 0.0],
             join: Default::default(),
             no_gravity: false,
-            id: self.next_entity,
+            id: self.server.next_entity,
             position,
             previous: position,
             velocity: Vec3::new(-rot.sin() * 0.02, f64::from(0.2f32), -rot.cos() * 0.02),
@@ -625,8 +629,8 @@ impl Game<'_> {
             // ExplosionInteraction.TNT: the tnt_explosion_drop_decay rule.
             let interaction =
                 self.destroy_type(sunrise_client::gamerules::vanilla::TNT_EXPLOSION_DROP_DECAY);
-            self.combat.explosion_in_water = in_water;
-            self.combat.explosion_direct = Some(id);
+            self.server.combat.explosion_in_water = in_water;
+            self.server.combat.explosion_direct = Some(id);
             self.set_blast_owner(owner, guest);
             let result = self.with_hive_emptying_blast(|g| {
                 g.server_explode_from(
@@ -644,11 +648,11 @@ impl Game<'_> {
                         ),
                 )
             });
-            self.combat.blast_owner = None;
-            self.combat.blast_owner_player = false;
-            self.combat.blast_guest = None;
-            self.combat.explosion_in_water = false;
-            self.combat.explosion_direct = None;
+            self.server.combat.blast_owner = None;
+            self.server.combat.blast_owner_player = false;
+            self.server.combat.blast_guest = None;
+            self.server.combat.explosion_in_water = false;
+            self.server.combat.explosion_direct = None;
             result?;
         }
         Ok(())
@@ -720,8 +724,8 @@ impl Game<'_> {
     /// `blast_attacker`, the damage type and kill credit read. A player is the
     /// one on `guest`, the player in place without one.
     pub(super) fn set_blast_owner(&mut self, owner: Option<Who>, guest: Option<u32>) {
-        self.combat.blast_guest = guest;
-        self.combat.blast_owner = tnt_blast_owner(
+        self.server.combat.blast_guest = guest;
+        self.server.combat.blast_owner = tnt_blast_owner(
             owner,
             || match guest {
                 Some(_) => self.player_attacker(guest),
@@ -732,19 +736,20 @@ impl Game<'_> {
             },
             |id| self.mob_display_name(id),
         );
-        self.combat.blast_owner_player =
-            owner == Some(Who::Player) && self.combat.blast_owner.is_some();
+        self.server.combat.blast_owner_player =
+            owner == Some(Who::Player) && self.server.combat.blast_owner.is_some();
     }
     /// The attack a player-owned blast's hits land in: its causing player's,
     /// so a mob it kills is that player's kill.
     pub(super) fn blast_owner_attack(&self) -> sunrise_client::health::Attack {
         let id = self
+            .server
             .combat
             .blast_owner
             .as_ref()
             .map_or(0, |(id, _)| *id as i32);
         let mut attack = self.attack_of(id);
-        attack.player_uuid = self.player_uuid_of(self.combat.blast_guest);
+        attack.player_uuid = self.player_uuid_of(self.server.combat.blast_guest);
         attack
     }
     /// `PrimedTnt.getOwner` for TNT loaded with an `owner`: looked up when
@@ -798,7 +803,7 @@ impl Game<'_> {
         if !self.tnt_prime_allowed(pos) {
             return Ok(true);
         }
-        let guest = self.lan_acting;
+        let guest = self.server.lan_acting;
         self.spawn_primed_tnt(pos, false, Some(Who::Player), guest);
         let air = self.world.air;
         self.with_level(|b, level, ticks| {
@@ -2052,7 +2057,7 @@ pub(in crate::game) mod tests {
         // Preserve a live owner referencing an actually registered mob.
         game.tnts[0].owner = Some(Who::Mob(pig));
         let before = game.tnts[0].clone();
-        let next_id = game.next_entity;
+        let next_id = game.server.next_entity;
         let clock = game.world.game_time;
         assert!(before.join.is_joined());
         let reference = Target::Tnt(id);
@@ -2067,7 +2072,7 @@ pub(in crate::game) mod tests {
         );
         assert!(game.run_command("data merge entity 00000059-0000-0000-0000-000000000001 {fuse:60s,Motion:[0.125d,0d,-0.25d],Tags:[adopted]}"), "valid TNT data must reach the existing live instance");
         assert_eq!(
-            game.next_entity, next_id,
+            game.server.next_entity, next_id,
             "adoption must not spawn another entity"
         );
         assert_eq!(game.tnts.len(), 1);

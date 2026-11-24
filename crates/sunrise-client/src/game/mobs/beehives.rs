@@ -90,7 +90,7 @@ impl Game<'_> {
         player: Option<u32>,
     ) -> bool {
         if matches!(target, Some(Who::Player))
-            && (self.lan_acting_fake
+            && (self.server.lan_acting_fake
                 || player.is_some_and(|conn| {
                     self.lan
                         .as_ref()
@@ -321,7 +321,7 @@ impl Game<'_> {
                         bee::set_stay_out_of_hive_countdown(m);
                     }
                 } else {
-                    self.set_event_ai_target(id, Some(Who::Player), self.lan_acting);
+                    self.set_event_ai_target(id, Some(Who::Player), self.server.lan_acting);
                 }
             }
         }
@@ -425,7 +425,7 @@ impl Game<'_> {
                     .map(|m| m.id)
                     .collect();
                 for id in ids {
-                    self.set_event_ai_target(id, Some(Who::Player), self.lan_acting);
+                    self.set_event_ai_target(id, Some(Who::Player), self.server.lan_acting);
                 }
             }
         }

@@ -43,10 +43,10 @@ impl Game<'_> {
             return false;
         };
         let paint = batch.paint_checkpoint();
-        let sounds = self.mod_sounds.pending_checkpoint();
-        let blur_requested = self.screen_blur_requested.get();
-        let clear_particles = self.mod_clear_particles.get();
-        let camera_type = self.requested_camera_type.get();
+        let sounds = self.client.mod_sounds.pending_checkpoint();
+        let blur_requested = self.client.screen_blur_requested.get();
+        let clear_particles = self.client.mod_clear_particles.get();
+        let camera_type = self.client.requested_camera_type.get();
         if screen.draw(
             self,
             tracker.reason.into(),
@@ -56,10 +56,10 @@ impl Game<'_> {
             return true;
         }
         paint.discard(batch);
-        self.mod_sounds.discard_pending_since(sounds);
-        self.screen_blur_requested.set(blur_requested);
-        self.mod_clear_particles.set(clear_particles);
-        self.requested_camera_type.set(camera_type);
+        self.client.mod_sounds.discard_pending_since(sounds);
+        self.client.screen_blur_requested.set(blur_requested);
+        self.client.mod_clear_particles.set(clear_particles);
+        self.client.requested_camera_type.set(camera_type);
         false
     }
     /// `LevelLoadingScreen.extractBackground`.
@@ -106,11 +106,11 @@ impl Game<'_> {
         let mut len = 0;
         if self.title.is_none() && self.player.is_some() {
             set_slot(out, &mut len, "minecraft:end_of_frame");
-            for effect in &self.post_effects {
+            for effect in &self.client.post_effects {
                 set_slot(out, &mut len, effect);
             }
-            if self.spectated_post_effect_active
-                && let Some(effect) = self.spectated_post_effect
+            if self.client.spectated_post_effect_active
+                && let Some(effect) = self.client.spectated_post_effect
             {
                 set_slot(out, &mut len, effect);
             }
@@ -130,15 +130,15 @@ impl Game<'_> {
     pub(super) fn menu_blur(&self) -> Option<f32> {
         let blurred = self.remote_loading()
             || self.title.as_ref().is_some_and(|t| {
-                matches!(self.screen, Screen::Options | Screen::Win)
+                matches!(self.client.screen, Screen::Options | Screen::Win)
                     || !matches!(t.mode, sunrise_client::title::Mode::Main)
             })
             || (self.title.is_none()
                 && self.player.is_some()
-                && (self.screen.blurs_background(self.pause_menu)
+                && (self.client.screen.blurs_background(self.client.pause_menu)
                     || self.dialog_open()
-                    || (self.screen == Screen::Win && self.win_screen_pauses())))
-            || self.screen_blur_requested.get();
+                    || (self.client.screen == Screen::Win && self.win_screen_pauses())))
+            || self.client.screen_blur_requested.get();
         let radius = self.settings.menu_blur as f32;
         let mut radius = (blurred && radius >= 1.0).then_some(radius);
         self.native_menu_background(&mut radius);
@@ -177,32 +177,36 @@ impl Game<'_> {
             partial,
             camera,
             distance,
-            &mut self.border_state,
+            &mut self.client.border_state,
         );
         // `LevelRenderer.repositionCamera`: the wall is rebuilt when the camera
         // enters another `SectionPos` (it only holds the stretch in range).
         let section = camera.map(|c| (c.floor() as i32) >> 4);
-        if self.border_section != Some(section) {
-            self.border_renderer.invalidate();
-            self.border_section = Some(section);
+        if self.client.border_section != Some(section) {
+            self.client.border_renderer.invalidate();
+            self.client.border_section = Some(section);
         }
         // Camera.depthFar, as the renderer's far plane.
         let depth_far =
             sunrise_client::camera::depth_far(self.terrain_distance(), self.settings.cloud_range);
-        if !self
-            .border_renderer
-            .prepare(&self.border_state, camera, distance, depth_far)
-        {
+        if !self.client.border_renderer.prepare(
+            &self.client.border_state,
+            camera,
+            distance,
+            depth_far,
+        ) {
             return None;
         }
         let millis = self.visual_millis();
         Some(sunrise_client::gfx::BorderDraw {
-            vertices: self.border_renderer.vertices,
-            rebuilt: self.border_renderer.take_rebuilt(),
-            transforms: self
-                .border_renderer
-                .transforms(&self.border_state, camera, millis),
-            sides: BorderRenderer::sides(&self.border_state, camera, distance),
+            vertices: self.client.border_renderer.vertices,
+            rebuilt: self.client.border_renderer.take_rebuilt(),
+            transforms: self.client.border_renderer.transforms(
+                &self.client.border_state,
+                camera,
+                millis,
+            ),
+            sides: BorderRenderer::sides(&self.client.border_state, camera, distance),
         })
     }
 }
@@ -257,10 +261,10 @@ impl Game<'_> {
     /// hides the open screen (`hud_layers` draws `Playing` then), and None
     /// with no mod listening to a render hook, so nothing is built then.
     pub(super) fn screen_render_view(&self, batch: &HudBatch) -> Option<mod_api::ScreenView<'_>> {
-        let screen = self.screen;
+        let screen = self.client.screen;
         if screen == Screen::Playing
             || self.server_packs.prompt.is_some()
-            || self.book.is_some()
+            || self.client.book.is_some()
             || !self.screen_render_listened()
         {
             return None;
@@ -277,7 +281,7 @@ impl Game<'_> {
         &self,
         batch: &HudBatch,
     ) -> Option<mod_api::ScreenView<'_>> {
-        if self.screen != Screen::Playing
+        if self.client.screen != Screen::Playing
             || self.screen_over_playing()
             || self.remote_loading()
             || !self.screen_render_listened()

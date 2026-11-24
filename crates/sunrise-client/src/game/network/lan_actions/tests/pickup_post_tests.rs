@@ -188,7 +188,7 @@ fn host_case(game: &mut Game<'_>, probe: &Probe, case: &Case) -> Outcome {
 }
 
 fn host_animations(game: &Game<'_>) -> u64 {
-    game.pickups.made().get("item").copied().unwrap_or(0)
+    game.client.pickups.made().get("item").copied().unwrap_or(0)
 }
 
 fn host_stat(game: &Game<'_>) -> i64 {
@@ -209,12 +209,12 @@ fn host_pickup_tells_whole_and_partial_pickups_and_keeps_listener_changes() {
                 std::env::var_os("SUNRISE_HOME").expect("needs an isolated SUNRISE_HOME"),
             )
             .join(format!("pickup-post-{}", std::process::id()));
-            game.world_root = scratch.clone();
+            game.server.world_root = scratch.clone();
             game.enter_level(crate::game::Dim::Overworld).unwrap();
             game.player = Some(PlayerMotion::new(game.motion, Vec3::new(1.5, 64.0, 1.5)).unwrap());
             game.level.player_uuid = Some(sunrise_client::lan::playerdata::uuid_ints(7));
-            game.lan_acting_uuid = Some(7);
-            game.lan_acting_name = Some("pickup_post".into());
+            game.server.lan_acting_uuid = Some(7);
+            game.server.lan_acting_name = Some("pickup_post".into());
 
             // The whole stack goes in: one post notice, original 8, remainder empty.
             let (animations, stat) = (host_animations(game), host_stat(game));
@@ -494,7 +494,7 @@ fn guest_pickup_hooks_name_the_ground_item_entity() {
             pick.damage = 17;
             pick.data_mut().custom_name = Some(sunrise_core::nbt::Tag::String("Named pick".into()));
             game.spawn_item(pick.clone(), [3.0, 64.0, 5.0], [0.0; 3], 0);
-            let id = game.next_entity;
+            let id = game.server.next_entity;
             let gi = game.guest_index(12).unwrap();
             game.guest_pickups(gi);
             let state = probe.0.lock().unwrap();

@@ -139,8 +139,8 @@ impl Game<'_> {
             Taken::Arrow(_) => "arrow",
             Taken::Trident(_) => "trident",
         };
-        *self.pickups.made.entry(kind).or_default() += 1;
-        self.pickups.added.push(Pickup {
+        *self.client.pickups.made.entry(kind).or_default() += 1;
+        self.client.pickups.added.push(Pickup {
             taken,
             collector,
             life: 0,
@@ -151,7 +151,7 @@ impl Game<'_> {
     /// `ParticleEngine.tick` for the ITEM_PICKUP group: age (removed at
     /// `LIFE_TIME`), follow the collector, then let the new particles in.
     pub(super) fn tick_pickups(&mut self) {
-        let mut live = std::mem::take(&mut self.pickups.live);
+        let mut live = std::mem::take(&mut self.client.pickups.live);
         live.retain_mut(|p| {
             p.life += 1;
             if p.life == LIFE_TIME {
@@ -163,8 +163,8 @@ impl Game<'_> {
             }
             true
         });
-        live.append(&mut self.pickups.added);
-        self.pickups.live = live;
+        live.append(&mut self.client.pickups.added);
+        self.client.pickups.live = live;
     }
 }
 

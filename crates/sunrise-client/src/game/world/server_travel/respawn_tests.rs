@@ -328,7 +328,7 @@ fn a_cold_end_exit_keeps_ticking_the_source_player_before_the_fallback_veto() {
                 *g.stack_in_mut(slot) = Some(crate::items::ItemStack::new("minecraft:bow", 1));
                 assert!(g.start_using_item());
                 g.add_cooldown(Arc::from("minecraft:ender_pearl"), 1);
-                g.destroy_delay = 2;
+                g.server.destroy_delay = 2;
                 g.player.as_mut().unwrap().health.tick_count = 10;
                 slot
             })
@@ -341,7 +341,7 @@ fn a_cold_end_exit_keeps_ticking_the_source_player_before_the_fallback_veto() {
             game.as_guest(2, |g| {
                 (
                     g.player.as_ref().unwrap().health.tick_count,
-                    g.destroy_delay,
+                    g.server.destroy_delay,
                     g.using,
                     g.cooldowns.is_on_cooldown("minecraft:ender_pearl"),
                 )

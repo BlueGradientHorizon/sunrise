@@ -44,7 +44,7 @@ fn warning_dispatch_uses_neutral_at_tick_four() {
             .as_nanos()
     ));
     std::fs::create_dir_all(&scratch).unwrap();
-    game.world_root = scratch.clone();
+    game.server.world_root = scratch.clone();
     game.player = Some(PlayerMotion::new(game.motion, Vec3::new(4.5, 100.0, 4.5)).unwrap());
 
     const WARNING: &str = "minecraft:block.trial_spawner.about_to_spawn_item";
@@ -163,7 +163,7 @@ fn taken_spawner_tick_keeps_survivors_before_both_spawns() {
         }
         let first = game.ominous_spawners[0].id;
         let second = game.ominous_spawners[1].id;
-        let next = game.next_entity;
+        let next = game.server.next_entity;
         crate::game::entity::taken_pass_tests::with_spawn(
             |game| {
                 assert!(game.ominous_spawners.is_empty());

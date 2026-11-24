@@ -127,8 +127,8 @@ fn dedicated_language_uses_the_opening_selection_once() {
                 let prepared = game.prepare_world_and_rules(request).unwrap();
                 game.native_server_about_to_start(true);
                 let opening_packs = game.finish_open_world(prepared).unwrap();
-                assert!(game.fns.enabled().iter().any(|id| id == "file/high"));
-                assert!(!game.fns.enabled().iter().any(|id| id == "file/off"));
+                assert!(game.server.fns.enabled().iter().any(|id| id == "file/high"));
+                assert!(!game.server.fns.enabled().iter().any(|id| id == "file/off"));
                 // Publication must use what the world adopted, not a second discovery.
                 write(
                     &selection,
@@ -137,7 +137,7 @@ fn dedicated_language_uses_the_opening_selection_once() {
                 game.start_loaded_dedicated_world(&opening_packs);
                 game.reload_datapacks(true, &game.level.enabled_features.clone())
                     .unwrap();
-                assert!(game.fns.enabled().iter().any(|id| id == "file/off"));
+                assert!(game.server.fns.enabled().iter().any(|id| id == "file/off"));
                 assert_eq!(string(game, "language_test.value"), "key.jump");
                 assert_eq!(string(game, "language_test.off"), "language_test.off");
             })

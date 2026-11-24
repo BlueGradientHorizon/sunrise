@@ -1029,7 +1029,7 @@ impl Game<'_> {
         self.ui.chat_draft_shown = false;
         self.ui.chat_screen = None;
         self.ui.chat.reset_scroll();
-        if self.screen == Screen::Chat {
+        if self.client.screen == Screen::Chat {
             self.set_screen(Screen::Playing);
             self.capture(true);
         }
@@ -1042,9 +1042,9 @@ impl Game<'_> {
         // During PvP & HUD's chat search the box holds the query: the draft is the text the
         // search put aside, whichever way the chat closed.
         let aside;
-        let text = if self.pvp.chat_search {
-            self.pvp.chat_search = false;
-            aside = std::mem::take(&mut self.pvp.chat_search_aside);
+        let text = if self.client.pvp.chat_search {
+            self.client.pvp.chat_search = false;
+            aside = std::mem::take(&mut self.client.pvp.chat_search_aside);
             aside.as_str()
         } else {
             text
@@ -1076,7 +1076,7 @@ impl Game<'_> {
     /// woken (`onPlayerWokeUp`) it closes, or turns into the plain chat
     /// screen if something was typed.
     pub(super) fn tick_in_bed_chat(&mut self) {
-        if self.screen != Screen::Chat {
+        if self.client.screen != Screen::Chat {
             self.remove_chat_screen();
         }
         if self.ui.in_bed_chat {
@@ -1094,9 +1094,9 @@ impl Game<'_> {
                     self.begin_chat_screen(&text, false);
                 }
             }
-        } else if self.sleeping.is_some() && self.screen == Screen::Playing {
+        } else if self.sleeping.is_some() && self.client.screen == Screen::Playing {
             self.begin_chat_screen("", false);
-            self.ui.in_bed_chat = self.screen == Screen::Chat;
+            self.ui.in_bed_chat = self.client.screen == Screen::Chat;
         }
     }
     /// The Leave Bed button of `InBedChatScreen`: its bounds, laid out once
@@ -1142,7 +1142,7 @@ impl Game<'_> {
     }
     /// A chat message from the game (ChatComponent.addServerSystemMessage).
     pub(super) fn system_message(&mut self, text: Text) {
-        if let Some(capture) = self.chat_capture.as_mut() {
+        if let Some(capture) = self.server.chat_capture.as_mut() {
             capture.push(text);
             return;
         }
@@ -1174,7 +1174,7 @@ impl Game<'_> {
     /// Hidden drop them; command feedback (`/list`, `/tp`) is a system
     /// message and takes the system-message permission instead.
     pub(super) fn player_message(&mut self, text: Text) {
-        if let Some(capture) = self.chat_capture.as_mut() {
+        if let Some(capture) = self.server.chat_capture.as_mut() {
             capture.push(text);
             return;
         }
@@ -1190,7 +1190,7 @@ impl Game<'_> {
         if !self.ui.chat.shows(source) {
             return;
         }
-        let focused = self.screen == Screen::Chat;
+        let focused = self.client.screen == Screen::Chat;
         self.ui.chat.add(
             &self.gui.atlas,
             text,
@@ -1231,7 +1231,7 @@ impl Game<'_> {
         if self.pvp_chat().search
             && match key {
                 KeyCode::KeyF => ctrl,
-                KeyCode::Enter | KeyCode::NumpadEnter => self.pvp.chat_search,
+                KeyCode::Enter | KeyCode::NumpadEnter => self.client.pvp.chat_search,
                 _ => false,
             }
         {
@@ -1385,7 +1385,7 @@ impl Game<'_> {
                     Text::untrusted(message.as_str()),
                 ],
             );
-            let focused = self.screen == Screen::Chat;
+            let focused = self.client.screen == Screen::Chat;
             self.ui.chat.add(
                 &self.gui.atlas,
                 line,
@@ -1397,7 +1397,7 @@ impl Game<'_> {
         }
     }
     pub(super) fn chat_scroll(&mut self, amount: f32) {
-        let cursor = self.cursor;
+        let cursor = self.client.cursor;
         let mouse = (cursor.0.floor() as i32, cursor.1.floor() as i32);
         if let Some(screen) = self.ui.chat_screen.as_mut()
             && screen.scroll(mouse, amount as f64)
@@ -1410,7 +1410,7 @@ impl Game<'_> {
         self.ui.chat.scroll_by(amount as i32, true);
     }
     pub(super) fn chat_click(&mut self) -> bool {
-        let cursor = self.cursor;
+        let cursor = self.client.cursor;
         let height = self.renderer.as_ref().map_or(720.0, |r| {
             HudBatch::new(
                 [r.config.width, r.config.height],
@@ -1479,7 +1479,7 @@ impl Game<'_> {
             self.clipboard.set(message);
             let copied =
                 Text::translate_with_fallback("sunrise.chat.copied", "Message copied", &[]);
-            self.titles.set_overlay(copied, false);
+            self.client.titles.set_overlay(copied, false);
             return true;
         }
         let Some(style) = style else {
@@ -1565,7 +1565,7 @@ impl Game<'_> {
             return;
         }
         if self.settings.chat_links_prompt {
-            self.open_screen_overlay("link_prompt", |game| game.link_prompt = Some(url));
+            self.open_screen_overlay("link_prompt", |game| game.client.link_prompt = Some(url));
         } else {
             super::packs::open_uri(&url);
         }
@@ -1592,7 +1592,7 @@ impl Game<'_> {
         )
     }
     pub(super) fn draw_link_prompt(&self, batch: &mut HudBatch) {
-        let Some(url) = &self.link_prompt else {
+        let Some(url) = &self.client.link_prompt else {
             return;
         };
         sunrise_client::widgets::cover_frame();
@@ -1615,12 +1615,12 @@ impl Game<'_> {
         ];
         let mut layout = self.link_prompt_layout(url, (w, h));
         layout.declare_no(2);
-        layout.draw(batch, atlas, self.cursor, &labels);
+        layout.draw(batch, atlas, self.client.cursor, &labels);
         self.draw_overlay_mounted_widgets(batch, "link_prompt");
     }
     /// The prompt's answer: the link opens on yes; either way the chat is back.
     pub(super) fn answer_link_prompt(&mut self, yes: bool) {
-        let Some(url) = self.link_prompt.take() else {
+        let Some(url) = self.client.link_prompt.take() else {
             return;
         };
         self.refresh_screen_widgets();
@@ -1629,12 +1629,12 @@ impl Game<'_> {
         }
     }
     pub(super) fn link_prompt_click(&mut self) -> bool {
-        let Some(url) = self.link_prompt.clone() else {
+        let Some(url) = self.client.link_prompt.clone() else {
             return false;
         };
         let pressed = self
             .link_prompt_layout(&url, self.gui_size())
-            .pressed_at(self.cursor);
+            .pressed_at(self.client.cursor);
         if let Some(button) = pressed {
             self.audio.play_button_click();
             if button == LINK_COPY {
@@ -1665,13 +1665,13 @@ impl Game<'_> {
     /// when the search starts and comes back when it stops.
     fn toggle_chat_search(&mut self) {
         let typed = self.ui.chat_screen.as_ref().map(|s| s.value().to_owned());
-        let next = if self.pvp.chat_search {
-            std::mem::take(&mut self.pvp.chat_search_aside)
+        let next = if self.client.pvp.chat_search {
+            std::mem::take(&mut self.client.pvp.chat_search_aside)
         } else {
-            self.pvp.chat_search_aside = typed.unwrap_or_default();
+            self.client.pvp.chat_search_aside = typed.unwrap_or_default();
             String::new()
         };
-        self.pvp.chat_search = !self.pvp.chat_search;
+        self.client.pvp.chat_search = !self.client.pvp.chat_search;
         let m = Measure(&self.gui.atlas.font);
         let c = Commands {
             dispatcher: chat_tree(&self.remote),
@@ -1683,25 +1683,25 @@ impl Game<'_> {
     }
     /// Chat lines over the HUD (focused while the chat screen is open).
     pub(super) fn draw_chat(&mut self, batch: &mut HudBatch) {
-        let focused = self.screen == Screen::Chat;
+        let focused = self.client.screen == Screen::Chat;
         let options = self.pvp_chat();
         self.ui.chat.set_qol(&self.gui.atlas, options.qol());
         // A search ends with its option; a chat closed some other way ends it in keep_chat_draft.
-        if self.pvp.chat_search && self.ui.chat_screen.is_none() {
+        if self.client.pvp.chat_search && self.ui.chat_screen.is_none() {
             // The chat went without closing (leaving the world): nothing to give back.
-            self.pvp.chat_search = false;
-            self.pvp.chat_search_aside.clear();
-        } else if self.pvp.chat_search && !options.search {
+            self.client.pvp.chat_search = false;
+            self.client.pvp.chat_search_aside.clear();
+        } else if self.client.pvp.chat_search && !options.search {
             self.toggle_chat_search();
         }
         let query = self
             .ui
             .chat_screen
             .as_ref()
-            .filter(|_| focused && self.pvp.chat_search)
+            .filter(|_| focused && self.client.pvp.chat_search)
             .map(|s| s.value());
         self.ui.chat.set_search(&self.gui.atlas, query);
-        self.ui.chat.search_prompt = focused && self.pvp.chat_search;
+        self.ui.chat.search_prompt = focused && self.client.pvp.chat_search;
         // `ChatComponent`'s queue row: the messages Chat Delay holds back.
         self.ui.chat.queue = self.chat_queue_len();
         if self.ui.hide_gui && !focused {
@@ -1794,7 +1794,10 @@ impl Game<'_> {
         } else {
             self.settings.text_background(0.0) as i32
         };
-        let mouse = (self.cursor.0.floor() as i32, self.cursor.1.floor() as i32);
+        let mouse = (
+            self.client.cursor.0.floor() as i32,
+            self.client.cursor.1.floor() as i32,
+        );
         let blink = self
             .ui
             .chat_opened
@@ -1815,7 +1818,10 @@ impl Game<'_> {
         // The hovered message part's tooltip (`renderComponentHoverEffect`),
         // or the text of the message tag under the cursor.
         let height = batch.height as i32;
-        let (cx, cy) = (f64::from(self.cursor.0), f64::from(self.cursor.1));
+        let (cx, cy) = (
+            f64::from(self.client.cursor.0),
+            f64::from(self.client.cursor.1),
+        );
         // handleTagIcon: the chat-modified icons over the cursor or its message.
         let (tag_tooltip, tag_icons) =
             self.ui
@@ -1839,11 +1845,11 @@ impl Game<'_> {
                     sunrise_client::widgets::Cursor::PointingHand,
                 );
             }
-            self.component_hover_effect(batch, &style, self.cursor);
+            self.component_hover_effect(batch, &style, self.client.cursor);
         } else if let Some(tag) = &tag_tooltip {
             // The message tag's text, split at 210.
             let lines = self.wrapped_rows(tag, 210);
-            self.draw_tooltip_lines(batch, &lines, self.cursor.0, self.cursor.1);
+            self.draw_tooltip_lines(batch, &lines, self.client.cursor.0, self.client.cursor.1);
         }
     }
     /// `GuiGraphicsExtractor.componentHoverEffect`: the hover of the text component under the
@@ -1916,7 +1922,7 @@ impl Game<'_> {
     }
     /// Command suggestions include the world's currently named random sequences.
     pub(super) fn suggestion_registries(&mut self) -> &mut Registries {
-        self.ui.registries.random_sequences = self.rand_sequences.ids();
+        self.ui.registries.random_sequences = self.server.rand_sequences.ids();
         &mut self.ui.registries
     }
     /// Advance every clock of the world's `minecraft:world_clock` registry, the mods' own included,
@@ -2169,8 +2175,11 @@ impl Game<'_> {
         // PrimaryLevelData: the difficulty comes back from level.dat's difficulty_settings.
         self.ui.difficulty = self.level.difficulty_id();
         self.ui.active_clock = OVERWORLD_CLOCK.to_owned();
-        if let Ok(bytes) = std::fs::read(self.world_root.join("data/minecraft/world_clocks.dat"))
-            && let Ok(raw) = sunrise_world::compression::Compression::Gzip.decode(&bytes, 1 << 20)
+        if let Ok(bytes) = std::fs::read(
+            self.server
+                .world_root
+                .join("data/minecraft/world_clocks.dat"),
+        ) && let Ok(raw) = sunrise_world::compression::Compression::Gzip.decode(&bytes, 1 << 20)
             && let Ok((root, _)) =
                 sunrise_core::nbt::read_named(&raw, sunrise_core::nbt::Limits::default())
             && let Some(sunrise_core::nbt::Tag::Compound(clocks)) = root.tag.get("data")
@@ -2216,14 +2225,17 @@ impl Game<'_> {
     /// second writer of game_rules.dat could leave it with the rules loaded
     /// when the world opened).
     pub(super) fn save_world_state(&mut self) {
-        if self.world_root.as_os_str().is_empty() {
+        if self.server.world_root.as_os_str().is_empty() {
             return;
         }
         use sunrise_core::nbt::Tag;
         // Every clock the world has met is saved; the fields of a clock Sunrise does not model
         // stay as saved, and (like vanilla's codec) rate, partial tick and pause are omitted
         // while they have their defaults.
-        let path = self.world_root.join("data/minecraft/world_clocks.dat");
+        let path = self
+            .server
+            .world_root
+            .join("data/minecraft/world_clocks.dat");
         let existing = sunrise_client::save::read_dat(&path);
         let mut data = match existing.as_ref().and_then(|r| r.get("data")) {
             Some(d @ Tag::Compound(_)) => d.clone(),
@@ -2324,7 +2336,7 @@ impl Game<'_> {
     /// key.screenshot from any device: not while F3 is down, where F3+F2 is a
     /// debug key.
     pub(super) fn screenshot_action(&mut self) -> bool {
-        if self.debug_keys.modifier_down {
+        if self.client.debug_keys.modifier_down {
             return false;
         }
         let _ = self.take_screenshot();
@@ -2412,7 +2424,7 @@ impl Game<'_> {
     }
 
     fn post_screenshot_chat(&mut self, message: Text) {
-        let focused = self.screen == Screen::Chat;
+        let focused = self.client.screen == Screen::Chat;
         self.ui.chat.add(
             &self.gui.atlas,
             message,
@@ -3106,15 +3118,15 @@ mod enchantment_snapshot_tests {
             r#"{"enabled":["file/model"],"disabled":[]}"#,
         )
         .unwrap();
-        game.world_root = dir;
+        game.server.world_root = dir;
         let stack = game.reload_datapacks(false, &[]).unwrap();
         let root = game.options.resources.clone();
-        game.world_tables = game
+        game.server.world_tables = game
             .stage_world_tables(&stack, false, &root)
             .unwrap()
             .tables;
         assert!(
-            game.world_tables.is_some(),
+            game.server.world_tables.is_some(),
             "the real active table container must be available"
         );
         let base = game.stations().enchantments.clone();
@@ -3129,9 +3141,14 @@ mod enchantment_snapshot_tests {
                 .unwrap()
                 .unwrap(),
         );
-        game.world_tables.as_mut().unwrap().stations.enchantments = synced.clone();
-        std::sync::Arc::make_mut(&mut game.world_tables.as_mut().unwrap().items).enchantments =
-            synced;
+        game.server
+            .world_tables
+            .as_mut()
+            .unwrap()
+            .stations
+            .enchantments = synced.clone();
+        std::sync::Arc::make_mut(&mut game.server.world_tables.as_mut().unwrap().items)
+            .enchantments = synced;
         assert!(
             game.active_enchantment_definitions()
                 .get("h024:audit")
@@ -3174,9 +3191,14 @@ mod enchantment_snapshot_tests {
             assert_eq!(reg.ids("minecraft:item"), item_ids);
             assert_eq!(reg.effects, effects);
         }
-        game.world_tables.as_mut().unwrap().stations.enchantments = base.clone();
-        std::sync::Arc::make_mut(&mut game.world_tables.as_mut().unwrap().items).enchantments =
-            base;
+        game.server
+            .world_tables
+            .as_mut()
+            .unwrap()
+            .stations
+            .enchantments = base.clone();
+        std::sync::Arc::make_mut(&mut game.server.world_tables.as_mut().unwrap().items)
+            .enchantments = base;
         assert!(
             game.active_enchantment_definitions()
                 .get("h024:audit")
@@ -3262,10 +3284,10 @@ mod damage_type_registry_tests {
             r#"{"enabled":["file/model"],"disabled":[]}"#,
         )
         .unwrap();
-        game.world_root = dir;
+        game.server.world_root = dir;
         let stack = game.reload_datapacks(false, &[]).unwrap();
         let staged = game.stage_world_tables(&stack, false, &root).unwrap();
-        game.world_tables = staged.tables;
+        game.server.world_tables = staged.tables;
         game.health_resources = staged.health;
         game.level.allow_commands = Some(true);
         game.build_registries();

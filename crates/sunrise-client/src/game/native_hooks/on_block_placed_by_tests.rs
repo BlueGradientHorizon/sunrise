@@ -169,7 +169,7 @@ impl Hooks for Probe {
 
 fn place(game: &mut Game<'_>, pos: [i32; 3], stack: ItemStack) {
     *game.held_mut() = Some(stack);
-    game.guest_use = Some(GuestUse::on_block(mod_api::Hand::Main));
+    game.server.guest_use = Some(GuestUse::on_block(mod_api::Hand::Main));
     let [x, y, z] = pos;
     let hit = Hit {
         pos: [x, y - 1, z],
@@ -251,8 +251,8 @@ fn block_items_notify_after_setup_and_before_consumption() {
         }
         game.player = Some(PlayerMotion::new(game.motion, Vec3::new(12.5, 64.0, 12.5)).unwrap());
         bind_local_player(game, 20, 123);
-        game.lan_acting_name = Some("Placer".into());
-        game.lan_acting_permission = Some(0);
+        game.server.lan_acting_name = Some("Placer".into());
+        game.server.lan_acting_permission = Some(0);
         game.creative = false;
         game.yaw = 0.0;
 

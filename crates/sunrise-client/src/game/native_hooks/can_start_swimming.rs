@@ -22,7 +22,7 @@ impl Game<'_> {
         let (player, side) = if self.remote.is_some() {
             (self.local_player()?, LogicalSide::Client)
         } else {
-            let uuid = self.lan_acting_uuid.or_else(|| {
+            let uuid = self.server.lan_acting_uuid.or_else(|| {
                 self.level
                     .player_uuid
                     .map(sunrise_client::lan::playerdata::ints_uuid)

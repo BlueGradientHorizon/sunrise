@@ -162,7 +162,7 @@ fn hosted_guest_starting<R>(
             .guests
             .update(0, |g| g.game_mode = mode);
         game.sync_tick_chunks();
-        game.ticked_entities_through = game.next_entity;
+        game.server.ticked_entities_through = game.server.next_entity;
         body(&mut game, rx, at)
     })
 }

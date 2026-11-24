@@ -47,7 +47,7 @@ fn with_scene(test: impl FnOnce(&mut super::Game<'_>)) {
             check_interval: 0,
             ticks: 0,
         });
-        game.next_entity = game.next_entity.max(PIG);
+        game.server.next_entity = game.server.next_entity.max(PIG);
         test(game);
     });
 }

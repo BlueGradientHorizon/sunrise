@@ -150,7 +150,7 @@ impl Game<'_> {
         let triggered = self.with_level(|b, level, ticks| {
             b.client_block_event(level, ticks, pos, i32::from(p.b0), i32::from(p.b1))
         });
-        self.moving_pistons_stale = true;
+        self.client.moving_pistons_stale = true;
         self.process_level_events()?;
         if !triggered {
             let state = self.world.block(p.pos[0], p.pos[1], p.pos[2]);
@@ -202,7 +202,7 @@ impl Game<'_> {
                 }
             }
             // WIN_GAME: the poem and credits, then PERFORM_RESPAWN.
-            4 if self.screen != Screen::Win => {
+            4 if self.client.screen != Screen::Win => {
                 self.open_win_screen(true, super::super::win::Finish::RemoteRespawn);
             }
             // DEMO_EVENT: a parentless popup or a client-system hint.

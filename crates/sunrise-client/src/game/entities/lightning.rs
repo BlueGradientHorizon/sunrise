@@ -227,12 +227,12 @@ impl Game<'_> {
         let weather = self.world.shape.sky_light
             && !self.world.shape.has_ceiling
             && self.dim != super::Dim::End;
-        if rain <= 0.2 || thunder <= 0.9 || !weather || self.world_debug {
+        if rain <= 0.2 || thunder <= 0.9 || !weather || self.server.world_debug {
             return;
         }
-        let mut scratch = std::mem::take(&mut self.spawn_scratch);
+        let mut scratch = std::mem::take(&mut self.server.spawn_scratch);
         self.spawning_chunks(&self.level_players(), &mut scratch);
-        let levels = self.tickets.levels();
+        let levels = self.server.tickets.levels();
         scratch
             .candidates
             .retain(|&(x, z)| levels.random_ticking(x, z));
@@ -286,7 +286,7 @@ impl Game<'_> {
             ];
             self.spawn_bolt(at, trap);
         }
-        self.spawn_scratch = scratch;
+        self.server.spawn_scratch = scratch;
     }
     /// `ServerLevel.findLightningRod`: `PoiManager.findClosest` over the
     /// lightning rod points of interest within 128 blocks of `center` whose
@@ -403,7 +403,7 @@ impl Game<'_> {
         let id = self.take_entity_id();
         let (bolt, uuid) = Bolt::new(id, at, visual_only);
         self.persist.uuids.insert(id, uuid);
-        self.lightning_seen[0] += 1;
+        self.client.lightning_seen[0] += 1;
         self.bolts.push(bolt);
     }
     pub(super) fn lightning_strike_allowed(
@@ -431,7 +431,7 @@ impl Game<'_> {
         ];
         if from_command {
             let block = at.map(|v| v.floor() as i32);
-            if !self.lightning_strike_allowed(self.lan_acting_uuid, block, "command") {
+            if !self.lightning_strike_allowed(self.server.lan_acting_uuid, block, "command") {
                 return None;
             }
         }
@@ -463,7 +463,7 @@ impl Game<'_> {
             kept.insert("Team".into(), team.clone());
         }
         self.remember(id, Some(uuid), sunrise_core::nbt::Tag::Compound(kept));
-        self.lightning_seen[0] += 1;
+        self.client.lightning_seen[0] += 1;
         self.bolts.push(bolt);
         Some(id)
     }
@@ -588,7 +588,7 @@ impl Game<'_> {
     pub(super) fn spawn_remote_bolt(&mut self, id: u32, at: [f64; 3]) {
         self.bolts.retain(|b| b.id != id);
         let (bolt, _) = Bolt::new(id, at, true);
-        self.lightning_seen[0] += 1;
+        self.client.lightning_seen[0] += 1;
         self.bolts.push(bolt);
     }
     /// `spawnFire`: fire at the strike point and `extra` random neighbours
@@ -796,7 +796,7 @@ impl Game<'_> {
             }
             if matches!(step, Step::Reflash | Step::Active) {
                 if self.flash == 0 {
-                    self.lightning_seen[1] += 1;
+                    self.client.lightning_seen[1] += 1;
                 }
                 self.flash = 2;
                 if server && !visual_only {
@@ -1509,9 +1509,9 @@ mod tests {
                 .get("minecraft:piglin")
                 .unwrap()
                 .clone();
-            game.next_entity += 1;
+            game.server.next_entity += 1;
             let mut old = Mob::new(
-                game.next_entity,
+                game.server.next_entity,
                 piglin_type,
                 Vec3::new(100.0, 64.0, 100.0),
                 0.0,
@@ -1536,8 +1536,8 @@ mod tests {
             );
 
             let pig_type = game.res.mob_types().get("minecraft:pig").unwrap().clone();
-            game.next_entity += 1;
-            let pig_id = game.next_entity;
+            game.server.next_entity += 1;
+            let pig_id = game.server.next_entity;
             game.mobs.push(Mob::new(
                 pig_id,
                 pig_type.clone(),
@@ -1555,8 +1555,8 @@ mod tests {
                 .unwrap()
                 .clone();
             for (x, player) in [(5, true), (10, false)] {
-                game.next_entity += 1;
-                let id = game.next_entity;
+                game.server.next_entity += 1;
+                let id = game.server.next_entity;
                 game.mobs.push(Mob::new(
                     id,
                     mushroom_type.clone(),
@@ -1585,12 +1585,12 @@ mod tests {
                 assert_eq!(seen[3].mushrooms, 10);
             }
             cancel_cow.store(true, Ordering::SeqCst);
-            game.next_entity += 1;
-            let old_id = game.next_entity;
+            game.server.next_entity += 1;
+            let old_id = game.server.next_entity;
             let old = Mob::new(old_id, mushroom_type, Vec3::new(15.0, 64.0, 0.0), 0.0);
             game.mobs.push(old.clone());
-            game.next_entity += 1;
-            let rider_id = game.next_entity;
+            game.server.next_entity += 1;
+            let rider_id = game.server.next_entity;
             let mut rider = Mob::new(rider_id, pig_type, Vec3::new(15.0, 64.0, 0.0), 0.0);
             rider.extra.mount = Some(old_id);
             game.mobs.push(rider);

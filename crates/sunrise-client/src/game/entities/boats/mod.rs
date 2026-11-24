@@ -634,8 +634,8 @@ impl Game<'_> {
             [cx >> 3, top >> 3, cz >> 3],
             self.world.game_time.div_euclid(100),
         );
-        if self.water_plane_scan.replace(Some(scan)) == Some(scan) {
-            return self.water_plane_memo.get();
+        if self.client.water_plane_scan.replace(Some(scan)) == Some(scan) {
+            return self.client.water_plane_memo.get();
         }
         let mut heights = Vec::with_capacity(625);
         for x in (cx - RADIUS..=cx + RADIUS).step_by(STEP) {
@@ -656,13 +656,13 @@ impl Game<'_> {
             }
         }
         if heights.is_empty() {
-            return self.water_plane_memo.get();
+            return self.client.water_plane_memo.get();
         }
         heights.sort_by(f32::total_cmp);
         let found = heights[heights.len() / 2];
         // The plane in use stays while a quarter of the columns are still on it, so two
         // lakes at different heights do not make the mirror flicker between them.
-        let plane = match self.water_plane_memo.get() {
+        let plane = match self.client.water_plane_memo.get() {
             Some(last)
                 if 4 * heights.iter().filter(|h| (*h - last).abs() < 0.05).count()
                     >= heights.len() =>
@@ -671,7 +671,7 @@ impl Game<'_> {
             }
             _ => found,
         };
-        self.water_plane_memo.set(Some(plane));
+        self.client.water_plane_memo.set(Some(plane));
         Some(plane)
     }
     /// `FluidState.getHeight` and whether it is a source, for `fluid` or,
@@ -1940,7 +1940,7 @@ impl Game<'_> {
         let Some(boat) = self.boat_to_place(stack) else {
             return false;
         };
-        self.next_entity += 1;
+        self.server.next_entity += 1;
         let key = (
             boat.position.x.floor() as i32 >> 4,
             boat.position.z.floor() as i32 >> 4,
@@ -1984,7 +1984,7 @@ impl Game<'_> {
         let (wood, chest) = registered_boat_item(&stack.item, self.res.items())?;
         let hit = self.boat_item_hit()?;
         let mut boat = Boat::new(
-            self.next_entity + 1,
+            self.server.next_entity + 1,
             Arc::from(wood),
             Vec3::new(hit[0], hit[1], hit[2]),
             self.yaw,
@@ -2153,7 +2153,7 @@ impl Game<'_> {
         let vanilla =
             self.saved_refuses_damage(id as u32, "minecraft:player_attack", self.creative);
         let invulnerable =
-            crate::game::entity::damage_level_of!(self, self.combat.attack(), no_push, None)
+            crate::game::entity::damage_level_of!(self, self.server.combat.attack(), no_push, None)
                 .invulnerability_check(
                     sunrise_client::health::Hurting::Entity(id, &kind, source),
                     vanilla,
@@ -2198,7 +2198,7 @@ impl Game<'_> {
             self.special_attack_exhaustion();
         }
         // Player.onAttack: the hit starts the attack strength again.
-        self.attack_ticks = 0;
+        self.server.attack_ticks = 0;
     }
     /// `VehicleEntity.hurtServer`: wobble, add the damage and break past 40
     /// (`creative`: a creative player's hit discards it straight away).
@@ -2343,9 +2343,9 @@ impl Game<'_> {
             let entity_start = out.len();
             self.mark_motion(entity_start, Self::MOTION_OBJECT | u64::from(b.id));
             let models = if b.chest {
-                &self.boat_models.chest_models
+                &self.client.boat_models.chest_models
             } else {
-                &self.boat_models.models
+                &self.client.boat_models.models
             };
             let Some(model) = models.get(&*b.wood) else {
                 continue;
@@ -2421,7 +2421,7 @@ impl Game<'_> {
             );
             // BoatRenderer.submitTypeAdditions: the water patch hides the water
             // inside the hull unless the boat is under water (RaftRenderer has none).
-            if let Some(patch) = self.boat_models.water_patch.as_ref()
+            if let Some(patch) = self.client.boat_models.water_patch.as_ref()
                 && &*b.wood != "bamboo"
                 && !matches!(b.status, Status::UnderWater | Status::UnderFlowingWater)
             {

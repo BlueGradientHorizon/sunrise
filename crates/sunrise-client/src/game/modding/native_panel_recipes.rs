@@ -378,7 +378,7 @@ impl Game<'_> {
     }
     /// The recipes on the open page, each with its corner.
     fn recipes_shown(&self, layout: &Layout) -> Vec<(usize, (f32, f32))> {
-        let Some(pages) = &self.panel.recipes else {
+        let Some(pages) = &self.client.panel.recipes else {
             return Vec::new();
         };
         let starts = Self::recipe_pages(pages, layout);
@@ -400,7 +400,7 @@ impl Game<'_> {
     }
     /// What a slot of a shown recipe holds now: its stacks cycle once a second.
     fn recipe_slot_now(&self, recipe: usize, slot: usize) -> Option<&(BrowserStack, ItemStack)> {
-        let pages = self.panel.recipes.as_ref()?;
+        let pages = self.client.panel.recipes.as_ref()?;
         let stacks = pages.recipes.get(recipe)?.slots.get(slot)?;
         let n = pages.since.elapsed().as_secs() as usize;
         stacks.get(n % stacks.len().max(1))
@@ -410,10 +410,10 @@ impl Game<'_> {
         &self,
         layout: &Layout,
     ) -> Option<(usize, BrowserStack, ItemStack)> {
-        let pages = self.panel.recipes.as_ref()?;
+        let pages = self.client.panel.recipes.as_ref()?;
         let places = tab_places(pages, layout);
         places.iter().enumerate().find_map(|(i, &(x, y))| {
-            if !inside(self.cursor, [x, y, SLOT, SLOT]) {
+            if !inside(self.client.cursor, [x, y, SLOT, SLOT]) {
                 return None;
             }
             let (sent, stack) = pages.tabs.get(i)?;
@@ -422,7 +422,7 @@ impl Game<'_> {
     }
     /// The fluid in the well under the pointer.
     pub(super) fn recipe_fluid_hovered(&self, layout: &Layout) -> Option<mod_api::FluidStack> {
-        let pages = self.panel.recipes.as_ref()?;
+        let pages = self.client.panel.recipes.as_ref()?;
         self.recipes_shown(layout)
             .into_iter()
             .find_map(|(i, (x, y))| {
@@ -431,7 +431,7 @@ impl Game<'_> {
                 [(wells_in, &r.fluid_inputs), (wells_out, &r.fluid_outputs)]
                     .into_iter()
                     .flat_map(|(places, wells)| places.into_iter().zip(wells))
-                    .find(|&((sx, sy), _)| inside(self.cursor, [x + sx, y + sy, SLOT, SLOT]))
+                    .find(|&((sx, sy), _)| inside(self.client.cursor, [x + sx, y + sy, SLOT, SLOT]))
                     .map(|(_, well)| well.stack.clone())
             })
     }
@@ -440,13 +440,13 @@ impl Game<'_> {
         &self,
         layout: &Layout,
     ) -> Option<(usize, usize, BrowserStack, ItemStack)> {
-        let pages = self.panel.recipes.as_ref()?;
+        let pages = self.client.panel.recipes.as_ref()?;
         self.recipes_shown(layout)
             .into_iter()
             .find_map(|(i, (x, y))| {
                 let (at, _, _) = pages.recipes[i].places(layout.width());
                 at.iter().enumerate().find_map(|(k, &(sx, sy))| {
-                    if !inside(self.cursor, [x + sx, y + sy, SLOT, SLOT]) {
+                    if !inside(self.client.cursor, [x + sx, y + sy, SLOT, SLOT]) {
                         return None;
                     }
                     let (mod_stack, stack) = self.recipe_slot_now(i, k)?.clone();
@@ -457,10 +457,10 @@ impl Game<'_> {
 
     /// Draws the title row, the page's recipes and the page arrows.
     pub(super) fn draw_browser_recipes(&mut self, batch: &mut HudBatch, layout: &Layout) {
-        let Some(pages) = &self.panel.recipes else {
+        let Some(pages) = &self.client.panel.recipes else {
             return;
         };
-        let cursor = self.cursor;
+        let cursor = self.client.cursor;
         let starts = Self::recipe_pages(pages, layout);
         let page = pages.page.min(starts.len() - 1);
         let (title, pages_n) = (pages.title.clone(), starts.len());
@@ -533,7 +533,7 @@ impl Game<'_> {
             batch.text(atlas, &text, x, layout.arrows_y + 5.0, u32::MAX, true);
         }
         for (i, (x, y)) in self.recipes_shown(layout) {
-            let Some(r) = self.panel.recipes.as_ref().map(|p| &p.recipes[i]) else {
+            let Some(r) = self.client.panel.recipes.as_ref().map(|p| &p.recipes[i]) else {
                 break;
             };
             let (at, arrow, action) = r.places(layout.width());
@@ -560,7 +560,7 @@ impl Game<'_> {
                 x + arrow.0,
                 y + arrow.1,
             );
-            if self.screen != super::Screen::Creative
+            if self.client.screen != super::Screen::Creative
                 && let Some(enabled) = button
             {
                 let rect = [x + action.0, y + action.1, 12.0, 12.0];
@@ -641,7 +641,7 @@ impl Game<'_> {
                 }
             }
         }
-        if let Some((key, fallback)) = self.panel.transfer_warning {
+        if let Some((key, fallback)) = self.client.panel.transfer_warning {
             let warning = sunrise_client::lang::get_or(key, fallback);
             let lines = [(
                 sunrise_client::text::Text::literal(warning.clone()).resolve_legacy(),
@@ -696,7 +696,7 @@ impl Game<'_> {
 
     /// The tabs, on slots; the selected one framed.
     fn draw_recipe_tabs(&mut self, batch: &mut HudBatch, layout: &Layout) {
-        let Some(pages) = &self.panel.recipes else {
+        let Some(pages) = &self.client.panel.recipes else {
             return;
         };
         let places = tab_places(pages, layout);
@@ -718,7 +718,7 @@ impl Game<'_> {
                 batch.fill(atlas, x - 1.0, y, 1.0, SLOT, white);
                 batch.fill(atlas, x + SLOT, y, 1.0, SLOT, white);
             }
-            if inside(self.cursor, [x, y, SLOT, SLOT]) {
+            if inside(self.client.cursor, [x, y, SLOT, SLOT]) {
                 batch.fill(
                     &self.gui.atlas,
                     x + 1.0,
@@ -740,16 +740,16 @@ impl Game<'_> {
     /// A wheel notch `d` over the recipe pages: turns them as the arrows
     /// do (`wheel_turn`, telling the mod of a turn); false off the panel.
     pub(super) fn browser_recipes_wheel(&mut self, layout: &Layout, owner: &Owner, d: f32) -> bool {
-        let Some(pages) = &self.panel.recipes else {
+        let Some(pages) = &self.client.panel.recipes else {
             return false;
         };
         let starts = Self::recipe_pages(pages, layout);
         let page = pages.page.min(starts.len() - 1);
-        let Some(to) = wheel_turn(self.cursor, layout.area, page, starts.len(), d) else {
+        let Some(to) = wheel_turn(self.client.cursor, layout.area, page, starts.len(), d) else {
             return false;
         };
         // A stale stored page takes the clamp too, so a later longer list can't revive it.
-        if let Some(p) = self.panel.recipes.as_mut() {
+        if let Some(p) = self.client.panel.recipes.as_mut() {
             p.page = to;
         }
         if to != page {
@@ -765,10 +765,10 @@ impl Game<'_> {
         owner: &Owner,
         right: bool,
     ) -> bool {
-        let Some(pages) = &self.panel.recipes else {
+        let Some(pages) = &self.client.panel.recipes else {
             return false;
         };
-        let cursor = self.cursor;
+        let cursor = self.client.cursor;
         let starts = Self::recipe_pages(pages, layout);
         let page = pages.page.min(starts.len() - 1);
         let [back_arrow, forward] = layout.arrows();
@@ -780,7 +780,7 @@ impl Game<'_> {
             None
         };
         if let Some(to) = turn {
-            if let Some(p) = self.panel.recipes.as_mut() {
+            if let Some(p) = self.client.panel.recipes.as_mut() {
                 p.page = to;
             }
             self.audio
@@ -813,7 +813,7 @@ impl Game<'_> {
         let action = self.recipes_shown(layout).into_iter().find(|&(i, (x, y))| {
             let r = &pages.recipes[i];
             let (_, _, (ax, ay)) = r.places(layout.width());
-            self.screen != super::Screen::Creative
+            self.client.screen != super::Screen::Creative
                 && r.action.is_some()
                 && inside(cursor, [x + ax, y + ay, 12.0, 12.0])
         });

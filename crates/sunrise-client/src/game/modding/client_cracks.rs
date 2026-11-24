@@ -59,12 +59,13 @@ impl Game<'_> {
 
     pub(super) fn expire_client_cracks(&mut self) {
         let now = self.world.game_time;
-        self.destroying
+        self.client
+            .destroying
             .retain(|_, crack| now.saturating_sub(crack.updated_at) <= 400);
     }
 
     pub(super) fn reset_client_world(&mut self, seed: i64) {
-        self.destroying.clear();
+        self.client.destroying.clear();
         self.mining = None;
         self.world = Game::world_for_mods(self.res.facts().air, seed);
     }
@@ -284,17 +285,17 @@ mod tests {
                 assert_eq!(calls.lock().unwrap().len(), calls_before);
                 game.world.game_time += 400;
                 game.expire_client_cracks();
-                assert_eq!(game.destroying.len(), 1, "400 ticks is still live");
+                assert_eq!(game.client.destroying.len(), 1, "400 ticks is still live");
                 game.world.game_time += 1;
                 game.expire_client_cracks();
                 assert!(
-                    game.destroying.is_empty(),
+                    game.client.destroying.is_empty(),
                     "expiry drops the stored extras too"
                 );
                 game.destroy_block_progress(10, pos, 0);
                 game.set_client_mining(mining(0.25));
                 game.reset_client_world(0);
-                assert!(game.destroying.is_empty());
+                assert!(game.client.destroying.is_empty());
                 assert!(game.mining.is_none());
                 assert!(game.crack_stages().is_empty());
             })
@@ -330,7 +331,7 @@ mod tests {
                 game.world.set(pos[0], pos[1], pos[2], stone).unwrap();
                 game.destroy_block_progress(-1, pos, 3);
                 assert_eq!(*calls.lock().unwrap(), [3]);
-                let crack = &game.destroying[&-1];
+                let crack = &game.client.destroying[&-1];
                 assert_eq!((crack.pos, crack.stage), (pos, 3));
                 assert_eq!(crack.positions, [[5, 64, 4], [4, 64, 5], [5, 64, 5]]);
             })
@@ -343,16 +344,16 @@ mod tests {
         super::super::native_entity_refs::tests::with_client_game(|game| {
             game.destroy_block_progress(-10, [1, 64, 1], 4);
             game.destroy_block_progress(-11, [2, 64, 1], 9);
-            assert_eq!(game.destroying.len(), 2);
+            assert_eq!(game.client.destroying.len(), 2);
             game.destroy_block_progress(-10, [1, 64, 1], -1);
-            assert!(!game.destroying.contains_key(&-10));
-            assert!(game.destroying.contains_key(&-11));
+            assert!(!game.client.destroying.contains_key(&-10));
+            assert!(game.client.destroying.contains_key(&-11));
             game.world.game_time += 401;
             game.tick().unwrap();
-            assert!(game.destroying.is_empty());
+            assert!(game.client.destroying.is_empty());
             game.destroy_block_progress(-11, [2, 64, 1], 3);
             game.reset_client_world(0);
-            assert!(game.destroying.is_empty());
+            assert!(game.client.destroying.is_empty());
         });
     }
 }

@@ -314,7 +314,7 @@ fn client_player_ticks_on_the_death_screen_too() {
             game.tick_remote().unwrap();
             assert_eq!(game.cooldowns.remaining().next().unwrap().1, 2);
             assert_eq!(game.sleep_timer, 5);
-            game.screen = super::super::Screen::Dead;
+            game.client.screen = super::super::Screen::Dead;
             game.player
                 .as_mut()
                 .unwrap()

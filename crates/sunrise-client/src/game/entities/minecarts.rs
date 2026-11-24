@@ -2036,19 +2036,20 @@ impl Game<'_> {
                 on_rails: c.on_rails,
             })
             .collect();
-        self.cart_sounds
+        self.client
+            .cart_sounds
             .retain(|id| carts.iter().any(|c| c.id == *id));
         for cart in &carts {
-            if !self.cart_sounds.contains(&cart.id) {
+            if !self.client.cart_sounds.contains(&cart.id) {
                 let instance = SoundInstance::minecart(cart, random_source::create());
                 let (_, res) = self.audio.play_instance(instance, false);
                 if res != PlayResult::NotStarted {
-                    self.cart_sounds.insert(cart.id);
+                    self.client.cart_sounds.insert(cart.id);
                 }
             }
         }
         let vehicle = self.riding.filter(|id| carts.iter().any(|c| c.id == *id));
-        if vehicle != self.riding_cart_sounds
+        if vehicle != self.client.riding_cart_sounds
             && let Some(cart) = carts.iter().find(|c| Some(c.id) == vehicle)
         {
             let mut started = true;
@@ -2061,10 +2062,10 @@ impl Game<'_> {
                 }
             }
             if started {
-                self.riding_cart_sounds = vehicle;
+                self.client.riding_cart_sounds = vehicle;
             }
         } else if vehicle.is_none() {
-            self.riding_cart_sounds = None;
+            self.client.riding_cart_sounds = None;
         }
         (vehicle, carts)
     }
@@ -2168,13 +2169,13 @@ impl Game<'_> {
             f64::from(hit.pos[1]) + 0.0625 + offset,
             f64::from(hit.pos[2]) + 0.5,
         );
-        self.next_entity += 1;
-        let cart = Minecart::new(self.next_entity, kind, at);
+        self.server.next_entity += 1;
+        let cart = Minecart::new(self.server.next_entity, kind, at);
         self.world
             .modified
             .insert((hit.pos[0] >> 4, hit.pos[2] >> 4));
         self.carts.push(cart);
-        let id = self.next_entity;
+        let id = self.server.next_entity;
         self.apply_item_stack_config(super::commands::Target::Cart(id), kind.id(), stack, true);
         if self.serving.is_some() || self.options.dedicated.is_some() {
             let cart = self.carts.last().unwrap();
@@ -2707,7 +2708,7 @@ impl Game<'_> {
             if self.hides_as_camera(c.id) {
                 continue;
             }
-            let Some(model) = self.cart_models.models.get(&c.kind) else {
+            let Some(model) = self.client.cart_models.models.get(&c.kind) else {
                 continue;
             };
             let lerp = self.remote_minecart_lerp(c.id, a);
@@ -2733,7 +2734,7 @@ impl Game<'_> {
                 // EntityRenderer.shouldRender: the interpolated box grown by 0.5;
                 // AbstractMinecartRenderer.getBoundingBoxForCulling stretches it
                 // up by the display block's offset.
-                if let Some(view) = &self.view_frustum {
+                if let Some(view) = &self.client.view_frustum {
                     let top = HEIGHT
                         + if shown.flatten().is_none() {
                             0.0

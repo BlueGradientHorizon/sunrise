@@ -621,7 +621,7 @@ impl Game<'_> {
         &mut self,
         ops: &[(Option<usize>, i32, Input)],
     ) -> Option<bool> {
-        if self.remote.is_some() && self.screen != Screen::Creative {
+        if self.remote.is_some() && self.client.screen != Screen::Creative {
             return None;
         }
         let server = self.is_logical_server();

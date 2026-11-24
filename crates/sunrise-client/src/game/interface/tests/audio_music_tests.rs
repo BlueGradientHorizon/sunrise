@@ -217,12 +217,12 @@ fn music_selection_and_gain_follow_the_camera_across_a_biome_boundary() {
                     game.world.chunks.insert((x >> 4, 0), Arc::new(chunk));
                 }
                 game.world_biomes = Some(Arc::new(biomes));
-                game.view.position = [-20.0, 64.0, 0.0];
+                game.client.view.position = [-20.0, 64.0, 0.0];
                 let (left, volume) = game.situational_music();
                 assert_eq!(left.unwrap().sound, "minecraft:music.game");
                 assert_eq!(volume.to_bits(), 0x3e800000);
 
-                game.view.position = [20.0, 64.0, 0.0];
+                game.client.view.position = [20.0, 64.0, 0.0];
                 let (right, volume) = game.situational_music();
                 let right = right.unwrap();
                 assert_eq!(right.sound, "minecraft:music.nether.crimson_forest");

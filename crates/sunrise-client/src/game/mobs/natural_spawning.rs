@@ -899,7 +899,7 @@ impl NaturalLevel for GameLevel<'_, '_> {
             .collect()
     }
     fn structure_spawns(&self) -> &StructureSpawns {
-        &self.game.structure_spawns
+        &self.game.server.structure_spawns
     }
     fn nearest_player_positions(&self) -> &[[f64; 3]] {
         &self.nearest
@@ -1086,7 +1086,8 @@ impl<'a> Game<'a> {
     /// The natural spawning policy of the level `dimension`: vanilla's until a
     /// mod sets one.
     pub(super) fn spawn_policy(&self, dimension: mod_api::DimensionKey) -> SpawnPolicy {
-        self.spawn_policies
+        self.server
+            .spawn_policies
             .get(&dimension)
             .copied()
             .unwrap_or_default()
@@ -1132,9 +1133,9 @@ impl<'a> Game<'a> {
         let mut links: HashMap<u32, u32> = HashMap::new();
         for group in groups.iter_mut() {
             for mob in group.iter_mut() {
-                self.next_entity += 1;
-                links.insert(mob.id, self.next_entity);
-                mob.id = self.next_entity;
+                self.server.next_entity += 1;
+                links.insert(mob.id, self.server.next_entity);
+                mob.id = self.server.next_entity;
             }
         }
         for group in groups.iter_mut() {
@@ -1234,8 +1235,9 @@ impl<'a> Game<'a> {
     }
     fn local_player_in_level(&self) -> bool {
         self.player.is_some()
-            && !self.lan_acting_fake
+            && !self.server.lan_acting_fake
             && self
+                .server
                 .lan_acting
                 .is_none_or(|conn| self.command_guest(conn).is_some_and(|g| g.placed))
     }
@@ -1255,7 +1257,7 @@ impl<'a> Game<'a> {
             h.hub
                 .guests
                 .iter()
-                .filter(move |g| g.placed_in(dimension) && self.lan_acting != Some(g.conn))
+                .filter(move |g| g.placed_in(dimension) && self.server.lan_acting != Some(g.conn))
         })
     }
     /// `Level.hasNearbyAlivePlayer` before a level is built for the spawn
@@ -1287,7 +1289,7 @@ impl<'a> Game<'a> {
         scratch: &mut SpawnScratch,
     ) -> i32 {
         let tickets = self.streaming.mod_tickets();
-        let levels = self.tickets.levels();
+        let levels = self.server.tickets.levels();
         scratch.collect(
             players,
             |chunk| tickets.forces_natural_spawning(chunk),
@@ -1353,7 +1355,7 @@ impl<'a> Game<'a> {
     /// player: inhabited time, then `spawnForChunk`.
     pub(super) fn spawn_natural(&mut self) {
         // `tickChunks` does nothing in a Debug world.
-        if self.world_debug {
+        if self.server.world_debug {
             return;
         }
         let mut laps = sunrise_client::spans::laps();
@@ -1376,7 +1378,7 @@ impl<'a> Game<'a> {
         if players.is_empty() {
             return;
         }
-        let mut scratch = std::mem::take(&mut self.spawn_scratch);
+        let mut scratch = std::mem::take(&mut self.server.spawn_scratch);
         let spawnable = self.spawning_chunks(&players, &mut scratch);
         laps.lap("sn_candidates");
         for &key in &scratch.candidates {
@@ -1465,10 +1467,10 @@ impl<'a> Game<'a> {
         laps.lap("sn_attempts");
         self.world.random = random;
         // ServerChunkCache.lastSpawnState, for the debug overlay.
-        self.spawn_counts.insert(self.dim, last_state);
+        self.server.spawn_counts.insert(self.dim, last_state);
         let (created, rides) = extras;
         self.add_spawned(pending, created, rides, false);
-        self.spawn_scratch = scratch;
+        self.server.spawn_scratch = scratch;
         laps.lap("sn_finalize");
     }
     /// `NoiseBasedChunkGenerator.spawnOriginalMobs`: creature packs for a
@@ -1745,7 +1747,7 @@ mod tests {
                     game.world.chunks.insert((x, z), Arc::new(chunk));
                 }
             }
-            game.tickets.update(None);
+            game.server.tickets.update(None);
             game.player = Some(PlayerMotion::new(game.motion, Vec3::new(8.5, 64.0, 8.5)).unwrap());
             game.border.set_center([8.0, 8.0]);
             game.border.set_size(2.0);
@@ -2272,7 +2274,10 @@ mod tests {
                 assert!(natural.checked.borrow().is_none(), "no created mob is left");
                 let used = natural.provisional.get();
                 drop(natural);
-                assert!(game.lent_mobs.borrow().is_empty(), "every lend ended");
+                assert!(
+                    game.server.lent_mobs.borrow().is_empty(),
+                    "every lend ended"
+                );
                 (
                     pending.iter().map(snap).collect::<Vec<_>>(),
                     used,
@@ -2339,8 +2344,11 @@ mod tests {
                 pos: mod_api::BlockPos::new(2, 70, 2),
             };
             let tick = |game: &mut Game<'_>, extra: Option<(&str, Tag)>| {
-                let (mobs, entities, tracked) =
-                    (game.mobs.len(), game.next_entity, game.persist.uuids.len());
+                let (mobs, entities, tracked) = (
+                    game.mobs.len(),
+                    game.server.next_entity,
+                    game.persist.uuids.len(),
+                );
                 game.world.random.set_seed(7);
                 let mut entity = Compound::default();
                 entity.insert("id".into(), Tag::String(SULFUR_CUBE.into()));
@@ -2354,18 +2362,21 @@ mod tests {
                 };
                 game.server_tick_spawner_of(key, &mut spawner, None)
                     .unwrap();
-                assert!(game.lent_mobs.borrow().is_empty(), "every lend ended");
+                assert!(
+                    game.server.lent_mobs.borrow().is_empty(),
+                    "every lend ended"
+                );
                 let added: Vec<Snap> = game.mobs[mobs..].iter().map(snap).collect();
                 let out = (
                     added,
-                    game.next_entity - entities,
+                    game.server.next_entity - entities,
                     game.persist.uuids.len() - tracked,
                     game.world.random.next_int(),
                 );
                 for m in game.mobs.drain(mobs..) {
                     game.persist.uuids.remove(&m.id);
                 }
-                game.next_entity = entities;
+                game.server.next_entity = entities;
                 out
             };
             let (unlistened, _) = with_checks(None, Vec::new, || tick(game, None));
@@ -2429,8 +2440,11 @@ mod tests {
                 pos: mod_api::BlockPos::new(2, 70, 2),
             };
             let tick = |game: &mut Game<'_>| {
-                let (mobs, entities, tracked) =
-                    (game.mobs.len(), game.next_entity, game.persist.uuids.len());
+                let (mobs, entities, tracked) = (
+                    game.mobs.len(),
+                    game.server.next_entity,
+                    game.persist.uuids.len(),
+                );
                 game.world.random.set_seed(9);
                 let mut entity = Compound::default();
                 entity.insert("id".into(), Tag::String(SULFUR_CUBE.into()));
@@ -2440,18 +2454,21 @@ mod tests {
                 };
                 game.server_tick_trial_spawner(key, &mut spawner, TrialState::Active, false)
                     .unwrap();
-                assert!(game.lent_mobs.borrow().is_empty(), "every lend ended");
+                assert!(
+                    game.server.lent_mobs.borrow().is_empty(),
+                    "every lend ended"
+                );
                 let added: Vec<Snap> = game.mobs[mobs..].iter().map(snap).collect();
                 let out = (
                     added,
-                    game.next_entity - entities,
+                    game.server.next_entity - entities,
                     game.persist.uuids.len() - tracked,
                     game.world.random.next_int(),
                 );
                 for m in game.mobs.drain(mobs..) {
                     game.persist.uuids.remove(&m.id);
                 }
-                game.next_entity = entities;
+                game.server.next_entity = entities;
                 out
             };
             let (unlistened, _) = with_checks(None, Vec::new, || tick(game));

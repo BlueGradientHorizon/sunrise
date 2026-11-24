@@ -122,8 +122,8 @@ fn the_cloud_layer_follows_the_dimensions_height() {
         assert!(game.gui.atlas.clouds_shader.is_some());
         join_overworld(game, if raised { 250.0 } else { 192.33 });
         let _event_loop = frame_scene(game);
-        game.screen = super::Screen::Playing;
-        game.screen_fx.vignette_brightness = 0.0;
+        game.client.screen = super::Screen::Playing;
+        game.client.screen_fx.vignette_brightness = 0.0;
         let expected = if raised { 255 } else { 0 };
         assert_eq!(drawn_pixel(game), [expected, expected, expected, 255]);
     });

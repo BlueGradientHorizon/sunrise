@@ -23,12 +23,12 @@ impl Game<'_> {
             ("assets", vec![&self.pack.source])
         } else {
             let mut sources = Vec::new();
-            if !self.cmds.vanilla_disabled {
+            if !self.server.cmds.vanilla_disabled {
                 sources.push(&self.pack.data_source);
             }
             sources.push(&self.pack.data_changes);
             if self.options.execution_role.is_logical_server() {
-                sources.extend(self.fns.pack_sources().rev());
+                sources.extend(self.server.fns.pack_sources().rev());
             }
             ("data", sources)
         })
@@ -108,9 +108,9 @@ mod tests {
     fn server_resource_uses_the_higher_of_two_selected_world_packs() {
         super::super::native_entity_refs::tests::with_game(|game| {
             let scratch = tempfile::tempdir().unwrap();
-            game.world_root = scratch.path().to_owned();
+            game.server.world_root = scratch.path().to_owned();
             for (name, bytes) in [("low", "low"), ("high", "high")] {
-                let pack = game.world_root.join("datapacks").join(name);
+                let pack = game.server.world_root.join("datapacks").join(name);
                 std::fs::create_dir_all(pack.join("data/demo/value")).unwrap();
                 std::fs::write(
                     pack.join("pack.mcmeta"),

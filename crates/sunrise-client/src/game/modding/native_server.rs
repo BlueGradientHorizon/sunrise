@@ -600,7 +600,7 @@ impl Game<'_> {
         name: &str,
     ) -> Option<PlayerRef> {
         if !self.level_in_place(level)
-            || !self.lan_guest_swaps.is_empty()
+            || !self.server.lan_guest_swaps.is_empty()
             || !sunrise_client::lan::conn::valid_name(name)
         {
             return None;
@@ -634,7 +634,7 @@ impl Game<'_> {
                 uuid,
             ));
         }
-        let id = self.next_entity.checked_add(1)?;
+        let id = self.server.next_entity.checked_add(1)?;
         let entity_id = i32::try_from(id).ok()?;
         let motion = PlayerMotion::new(
             self.motion,
@@ -648,7 +648,7 @@ impl Game<'_> {
         host.hub.guests.push(guest);
         host.play
             .insert(conn, super::lan_actions::GuestPlay::default());
-        self.next_entity = id;
+        self.server.next_entity = id;
         Some(mod_api::__private::game::player_ref(
             mod_api::EntityRef::new(epoch, id),
             uuid,
@@ -661,14 +661,14 @@ impl Game<'_> {
         host.forget_menus(guest.conn);
         host.poses.remove(&guest.conn);
         host.mob_players.retain(|_, conn| *conn != guest.conn);
-        self.destroying.remove(&guest.entity_id);
-        self.guest_combat.remove(&guest.conn);
+        self.client.destroying.remove(&guest.entity_id);
+        self.server.guest_combat.remove(&guest.conn);
     }
 
     /// Remove a fake without treating it as a disconnect or saving it.
     pub(super) fn player_remove_fake(&mut self, player: PlayerRef) -> bool {
         if self.native_lifecycle.epoch() != Some(player.fields().entity.epoch())
-            || !self.lan_guest_swaps.is_empty()
+            || !self.server.lan_guest_swaps.is_empty()
         {
             return false;
         }
@@ -784,7 +784,7 @@ impl Game<'_> {
             Err(_) => {
                 // ItemEntity.setDefaultPickUpDelay.
                 self.push_item_entity(stack, position, None, 10, None);
-                if self.join_item_entity(self.next_entity, position) {
+                if self.join_item_entity(self.server.next_entity, position) {
                     unrepresentable += 1;
                 }
                 None
@@ -823,9 +823,9 @@ impl Game<'_> {
                 });
             }
         };
-        if !self.lan_guest_swaps.is_empty()
+        if !self.server.lan_guest_swaps.is_empty()
             || !self.transactions.is_empty()
-            || self.fake_action.acting()
+            || self.server.fake_action.acting()
         {
             return Err(ActionRefused::Busy);
         }
@@ -849,8 +849,8 @@ impl Game<'_> {
         conn: u32,
         action: PlayerAction,
     ) -> Result<ActionOutcome, ActionRefused> {
-        let acting = Acting::start(&self.fake_action);
-        let failed = std::mem::replace(&mut self.use_failed, false);
+        let acting = Acting::start(&self.server.fake_action);
+        let failed = std::mem::replace(&mut self.server.use_failed, false);
         let consumed = (|| match action {
             PlayerAction::UseOn { hand, pos, hit } => {
                 let hit = super::Hit {
@@ -877,8 +877,8 @@ impl Game<'_> {
             PlayerAction::BreakBlock { pos } => self.guest_break_block(conn, gi, pos),
         })();
         // FAIL ends the click, but is not a consuming InteractionResult.
-        let consumed = consumed.map(|used| used && !self.use_failed);
-        self.use_failed = failed;
+        let consumed = consumed.map(|used| used && !self.server.use_failed);
+        self.server.use_failed = failed;
         let consumed = consumed?;
         Ok(match acting.blocked() {
             Some(effect) => ActionOutcome::EffectBlocked(effect),
@@ -891,10 +891,10 @@ impl Game<'_> {
     /// and, inside `perform_action`, records it for the action's answer. The one check every
     /// effect a fake can't take part in makes where it starts.
     pub(super) fn fake_blocks(&self, effect: FakeEffect) -> bool {
-        if !self.lan_acting_fake {
+        if !self.server.lan_acting_fake {
             return false;
         }
-        self.fake_action.block(effect);
+        self.server.fake_action.block(effect);
         true
     }
 
@@ -919,7 +919,7 @@ impl Game<'_> {
     /// Whether a live player handle names a connectionless actor.
     pub(super) fn player_is_fake(&self, player: PlayerRef) -> Option<bool> {
         match self.player_handle_read(player)? {
-            PlayerRead::Acting { .. } => Some(self.lan_acting_fake),
+            PlayerRead::Acting { .. } => Some(self.server.lan_acting_fake),
             PlayerRead::Guest(guest) => Some(guest.is_fake()),
         }
     }
@@ -995,7 +995,7 @@ impl Game<'_> {
     /// tickets keep them only while a mod listens (`update_chunk_tickets`).
     pub(in crate::game) fn run_chunk_ticket_level_updates(&mut self) {
         use sunrise_client::ticket_levels::UNLOADED;
-        let changes = self.tickets.take_changes();
+        let changes = self.server.tickets.take_changes();
         if changes.is_empty() {
             return;
         }
@@ -1013,15 +1013,15 @@ impl Game<'_> {
     }
 
     fn player_lookup(&self, uuid: u128) -> Option<(PlayerRead<'_>, u32)> {
-        if self.lan_acting_uuid == Some(uuid) && !self.lan_acting_fake {
+        if self.server.lan_acting_uuid == Some(uuid) && !self.server.lan_acting_fake {
             return Some((
                 PlayerRead::Acting {
                     mode: Some(self.mode_id()),
                     body: self.player.as_ref(),
-                    abilities: self.acting_abilities,
+                    abilities: self.server.acting_abilities,
                     last_death: self.level.last_death.as_ref(),
                 },
-                self.lan_acting_entity?,
+                self.server.lan_acting_entity?,
             ));
         }
         if let Some(guest) = self.cloning_guest(uuid).or_else(|| {
@@ -1029,13 +1029,13 @@ impl Game<'_> {
                 host.hub.guests.simulation_iter().find(|guest| {
                     host.hub.online(guest)
                         && guest.uuid == uuid
-                        && !self.lan_guest_swaps.contains(&guest.conn)
+                        && !self.server.lan_guest_swaps.contains(&guest.conn)
                 })
             })
         }) {
             return Some((PlayerRead::Guest(guest), guest.entity_id as u32));
         }
-        if self.lan_acting_uuid.is_none()
+        if self.server.lan_acting_uuid.is_none()
             && self.serving.is_some()
             && self
                 .level
@@ -1048,7 +1048,7 @@ impl Game<'_> {
                 PlayerRead::Acting {
                     mode: Some(self.mode_id()),
                     body: Some(body),
-                    abilities: self.acting_abilities,
+                    abilities: self.server.acting_abilities,
                     last_death: self.level.last_death.as_ref(),
                 },
                 body.entity_id as u32,
@@ -1133,14 +1133,14 @@ impl Game<'_> {
 
     pub(super) fn player_handle_read(&self, player: PlayerRef) -> Option<PlayerRead<'_>> {
         (self.native_lifecycle.epoch()? == player.fields().entity.epoch()).then_some(())?;
-        if self.lan_acting_fake
-            && self.lan_acting_uuid == Some(player.fields().uuid)
-            && self.lan_acting_entity == Some(player.fields().entity.id())
+        if self.server.lan_acting_fake
+            && self.server.lan_acting_uuid == Some(player.fields().uuid)
+            && self.server.lan_acting_entity == Some(player.fields().entity.id())
         {
             return Some(PlayerRead::Acting {
                 mode: Some(self.mode_id()),
                 body: self.player.as_ref(),
-                abilities: self.acting_abilities,
+                abilities: self.server.acting_abilities,
                 last_death: self.level.last_death.as_ref(),
             });
         }
@@ -1152,7 +1152,7 @@ impl Game<'_> {
         let guests = &self.lan.as_ref()?.hub.guests;
         let guest = guests
             .get(guests.identity_index(player.fields().uuid, player.fields().entity.id())?)?;
-        if !guest.placed || !guest.is_fake() || self.lan_guest_swaps.contains(&guest.conn) {
+        if !guest.placed || !guest.is_fake() || self.server.lan_guest_swaps.contains(&guest.conn) {
             return None;
         }
         Some(PlayerRead::Guest(guest))
@@ -1171,7 +1171,7 @@ impl Game<'_> {
             else {
                 return None;
             };
-            if self.lan_acting.is_some() {
+            if self.server.lan_acting.is_some() {
                 return None;
             }
             let flags = body.collision;
@@ -1237,7 +1237,7 @@ impl Game<'_> {
         }
         let mut stored_here = false;
         self.native_as_player_handle(player, |game| {
-            let Some(slot) = game.acting_abilities.as_mut() else {
+            let Some(slot) = game.server.acting_abilities.as_mut() else {
                 return;
             };
             *slot = stored;
@@ -1277,7 +1277,7 @@ impl Game<'_> {
         // has none.
         let conn = match self.player_handle_read(player) {
             Some(PlayerRead::Guest(guest)) => Some(guest.conn),
-            Some(PlayerRead::Acting { .. }) => self.lan_acting_uuid.and_then(|uuid| {
+            Some(PlayerRead::Acting { .. }) => self.server.lan_acting_uuid.and_then(|uuid| {
                 self.lan
                     .as_ref()?
                     .hub
@@ -1419,14 +1419,14 @@ impl Game<'_> {
             .rev()
             .find(|&&(player, _, _)| player == uuid)?;
         self.command_guest(conn)
-            .filter(|_| !self.lan_guest_swaps.contains(&conn))
+            .filter(|_| !self.server.lan_guest_swaps.contains(&conn))
     }
 
     /// The stable name of a connected or acting player. None for a stale or
     /// unavailable player; displaced online players retain their identity.
     pub(super) fn player_name(&self, player: PlayerRef) -> Option<&str> {
         if self.native_acting_player() == Some(player) {
-            return self.lan_acting_name.as_deref();
+            return self.server.lan_acting_name.as_deref();
         }
         Some(&self.online_player_record(player)?.name)
     }
@@ -1442,7 +1442,7 @@ impl Game<'_> {
             return (self.local_player()? == player).then(|| self.native_level_key());
         }
         if self.native_acting_player() == Some(player) {
-            let dim = match self.lan_acting {
+            let dim = match self.server.lan_acting {
                 Some(conn) => {
                     let g = self.command_guest(conn)?;
                     Dim::from_id(&g.dimension).key()
@@ -1552,8 +1552,8 @@ impl Game<'_> {
         self.native_send_all(uuid, vec![packet])
     }
     fn native_send_all(&mut self, uuid: u128, packets: Vec<C>) -> bool {
-        if self.lan_acting_uuid == Some(uuid) && !self.lan_acting_fake {
-            self.guest_packets.extend(packets);
+        if self.server.lan_acting_uuid == Some(uuid) && !self.server.lan_acting_fake {
+            self.server.guest_packets.extend(packets);
             return true;
         }
         let Some(host) = &self.lan else {
@@ -1684,7 +1684,7 @@ impl Game<'_> {
         Some(match self.player_handle_read(player)? {
             // The player in place: the host's own, or a guest in their turn.
             PlayerRead::Acting { .. } => {
-                !self.lan_acting_fake
+                !self.server.lan_acting_fake
                     && !self.spectator()
                     && (self.sleeping.is_some() || !ignored(self))
             }
@@ -1734,7 +1734,7 @@ impl Game<'_> {
         player: PlayerRef,
     ) -> Option<Option<PlayerRespawnConfig>> {
         let saved = match self.player_handle_read(player)? {
-            PlayerRead::Acting { .. } => self.respawn_config.map(|c| c.saved()),
+            PlayerRead::Acting { .. } => self.server.respawn_config.map(|c| c.saved()),
             PlayerRead::Guest(guest) => guest.respawn_elsewhere.clone(),
         };
         let Some((dimension, [x, y, z], yaw, _pitch, forced)) = saved else {
@@ -1956,14 +1956,20 @@ impl Game<'_> {
     /// and the log (`send_success`). The executing level is in place: the
     /// entity's name is read there, the origin block or minecart in its own.
     pub(super) fn native_feedback(&mut self, line: Text, broadcast_to_admins: bool) {
-        let source = self.command_source.unwrap_or_else(|| self.player_source());
+        let source = self
+            .server
+            .command_source
+            .unwrap_or_else(|| self.player_source());
         self.with_source(source, |game| game.send_success(line, broadcast_to_admins));
     }
     /// `CommandSourceStack.sendFailure` for a mod's executor: the red line to the originating
     /// source, using vanilla's silence and block/cart track-output rules. The command's result
     /// is whatever the executor returns.
     pub(super) fn native_failure(&mut self, line: Text) {
-        let source = self.command_source.unwrap_or_else(|| self.player_source());
+        let source = self
+            .server
+            .command_source
+            .unwrap_or_else(|| self.player_source());
         self.with_source(
             super::commands::execute::Source {
                 dimension: source.origin_dimension,
@@ -1978,11 +1984,11 @@ impl Game<'_> {
     /// hook.
     pub(in crate::game) fn native_acting_player(&self) -> Option<PlayerRef> {
         self.player.as_ref()?;
-        self.lan_acting_name.as_ref()?;
-        self.lan_acting_permission?;
+        self.server.lan_acting_name.as_ref()?;
+        self.server.lan_acting_permission?;
         Some(mod_api::__private::game::player_ref(
             mod_api::EntityRef::new(self.native_lifecycle.epoch()?, self.native_acting_entity()),
-            self.lan_acting_uuid?,
+            self.server.lan_acting_uuid?,
         ))
     }
     /// Runs `line` (no slash) as the server's console does: permission
@@ -2013,29 +2019,29 @@ impl Game<'_> {
             silent: base.silent && !capture,
             ..base
         };
-        let outer = self.command_source.replace(server);
-        let filter = std::mem::replace(&mut self.native_command_filter, true);
-        let outer_exec = std::mem::take(&mut self.exec);
-        let outer_results = self.cmds.results.take();
-        let outer_capture = capture.then(|| self.chat_capture.replace(Vec::new()));
+        let outer = self.server.command_source.replace(server);
+        let filter = std::mem::replace(&mut self.server.native_command_filter, true);
+        let outer_exec = std::mem::take(&mut self.server.exec);
+        let outer_results = self.server.cmds.results.take();
+        let outer_capture = capture.then(|| self.server.chat_capture.replace(Vec::new()));
         let ok = self.as_console(|g| g.run_command(line));
         let lines = match outer_capture {
             Some(outer_capture) => {
-                std::mem::replace(&mut self.chat_capture, outer_capture).unwrap_or_default()
+                std::mem::replace(&mut self.server.chat_capture, outer_capture).unwrap_or_default()
             }
             None => Vec::new(),
         };
-        self.exec = outer_exec;
-        self.cmds.results = outer_results;
-        self.native_command_filter = filter;
-        self.command_source = outer;
+        self.server.exec = outer_exec;
+        self.server.cmds.results = outer_results;
+        self.server.native_command_filter = filter;
+        self.server.command_source = outer;
         (ok, lines)
     }
     /// The open world's folder (`world/`, beside its `level.dat`): a server
     /// mod keeps its data in a folder of its own there, so the world's
     /// backups carry it. None when no world is open.
     pub(super) fn world_dir(&self) -> Option<PathBuf> {
-        (!self.world_root.as_os_str().is_empty()).then(|| self.world_root.clone())
+        (!self.server.world_root.as_os_str().is_empty()).then(|| self.server.world_root.clone())
     }
 }
 
@@ -2158,7 +2164,7 @@ impl Game<'_> {
     /// in the world checks [`Self::acting_in_level_in_place`]. False when it didn't run: no such
     /// player here, or dead.
     pub(super) fn native_as_player(&mut self, uuid: u128, f: impl FnOnce(&mut Self)) -> bool {
-        if self.lan_acting_uuid == Some(uuid) {
+        if self.server.lan_acting_uuid == Some(uuid) {
             return self.native_as_acting(f);
         }
         // With no guest's turn running, `native_acting_id` is the world's owner: on a server
@@ -2182,12 +2188,12 @@ impl Game<'_> {
     /// Resolve a UUID-based item place in the acting state or a parked guest's own record.
     /// Unlike a write, a read never initializes a body or the level owner's UUID.
     pub(super) fn native_item_place_player(&self, uuid: u128) -> Option<PlayerRead<'_>> {
-        if self.lan_acting_uuid != Some(uuid) {
+        if self.server.lan_acting_uuid != Some(uuid) {
             if let Some(guest) = self.native_player_holder(uuid) {
-                return (!guest.dead && !self.lan_guest_swaps.contains(&guest.conn))
+                return (!guest.dead && !self.server.lan_guest_swaps.contains(&guest.conn))
                     .then_some(PlayerRead::Guest(guest));
             }
-            if self.lan_acting_uuid.is_some()
+            if self.server.lan_acting_uuid.is_some()
                 || self
                     .level
                     .player_uuid
@@ -2200,7 +2206,7 @@ impl Game<'_> {
         Some(PlayerRead::Acting {
             mode: Some(self.mode_id()),
             body: Some(self.native_live_acting_body()?),
-            abilities: self.acting_abilities,
+            abilities: self.server.acting_abilities,
             last_death: self.level.last_death.as_ref(),
         })
     }
@@ -2227,7 +2233,7 @@ impl Game<'_> {
     /// equip sound or block break requires that level in place; `/give`'s effects replay in
     /// that level separately.
     pub(in crate::game) fn acting_in_level_in_place(&self) -> bool {
-        let Some(conn) = self.lan_acting else {
+        let Some(conn) = self.server.lan_acting else {
             return true;
         };
         self.lan
@@ -2253,7 +2259,7 @@ impl Game<'_> {
     /// happens where no world is open to players, and nothing for a server
     /// whose mods never call it. API @API:refresh_commands@.
     pub(super) fn native_refresh_commands(&mut self) {
-        self.native_commands.refresh = true;
+        self.server.native_commands.refresh = true;
     }
 
     /// Asks the mods what root commands each player's tree keeps
@@ -2281,7 +2287,7 @@ impl Game<'_> {
             if !placed {
                 // A joining player has no world yet: nothing can be told them.
                 self.native_player_commands_sent(uuid, &name, &mut kept);
-            } else if self.lan_acting == Some(conn) {
+            } else if self.server.lan_acting == Some(conn) {
                 self.native_player_commands_sent(uuid, &name, &mut kept);
             } else {
                 self.as_guest(conn, |g| {
@@ -2316,8 +2322,11 @@ impl Game<'_> {
         use super::commands::err;
         use mod_api::CommandSource;
         let permission = mod_api::PermissionLevel::from_level(i32::from(permission));
-        let source = self.command_source.unwrap_or_else(|| self.player_source());
-        let origin = if let Some(id) = self.exec.functions.last() {
+        let source = self
+            .server
+            .command_source
+            .unwrap_or_else(|| self.player_source());
+        let origin = if let Some(id) = self.server.exec.functions.last() {
             CommandSource::Function {
                 id: mod_api::Identifier::parse(id).map_err(|_| err("command.failed", &[]))?,
                 permission,
@@ -2360,7 +2369,8 @@ impl Game<'_> {
             .executor
             .filter(|&key| self.ui.dispatcher.0.owns_executor(key))
             .and_then(|key| {
-                self.native_commands
+                self.server
+                    .native_commands
                     .registered
                     .as_ref()?
                     .executors
@@ -2533,7 +2543,7 @@ impl Game<'_> {
         quiet: bool,
     ) -> Option<bool> {
         let host = self.lan.as_ref()?;
-        if self.native_commands.level(line)? > permission {
+        if self.server.native_commands.level(line)? > permission {
             return None;
         }
         host.hub.guest(conn)?;
@@ -2554,18 +2564,19 @@ impl Game<'_> {
     /// usage is always allowed; a command no mod takes answers as vanilla's
     /// unknown command.
     pub(super) fn perform_native_console_command(&mut self, line: &str) -> bool {
-        if self.lan.is_none() || self.native_commands.level(line).is_none() {
+        if self.lan.is_none() || self.server.native_commands.level(line).is_none() {
             return false;
         }
         self.as_console_in_spawn_level(|game| {
             let previous = game
+                .server
                 .command_source
                 .replace(super::commands::execute::Source {
                     silent: false,
                     ..game.server_source()
                 });
             game.run_command(line);
-            game.command_source = previous;
+            game.server.command_source = previous;
         });
         true
     }
@@ -2865,7 +2876,7 @@ mod tests {
                 };
                 assert_eq!(block.last_output.is_some(), track);
             }
-            game.chat_capture = Some(Vec::new());
+            game.server.chat_capture = Some(Vec::new());
             game.with_source(
                 Source {
                     silent: true,
@@ -2874,8 +2885,8 @@ mod tests {
                 },
                 |game| game.native_feedback(Text::literal("silent"), false),
             );
-            assert!(game.chat_capture.take().unwrap().is_empty());
-            assert!(game.command_source.is_none());
+            assert!(game.server.chat_capture.take().unwrap().is_empty());
+            assert!(game.server.command_source.is_none());
             game.as_guest(12, |game| {
                 let source = game.server_source();
                 game.with_source(source, |game| {
@@ -2886,9 +2897,9 @@ mod tests {
                 });
             })
             .unwrap();
-            game.exec.functions.push("test:outer".into());
+            game.server.exec.functions.push("test:outer".into());
             assert!(game.native_run_command("list"));
-            assert_eq!(game.exec.functions, ["test:outer"]);
+            assert_eq!(game.server.exec.functions, ["test:outer"]);
         });
     }
 
@@ -4165,7 +4176,8 @@ mod tests {
                             changed.store(true, Ordering::Relaxed);
                             game.register_native_commands();
                             assert_eq!(registrations.load(Ordering::Relaxed), 1);
-                            let registered = game.native_commands.registered.as_ref().unwrap();
+                            let registered =
+                                game.server.native_commands.registered.as_ref().unwrap();
                             assert!(registered.levels.contains_key("before"));
                             mod_api::Commands::refresh_commands(game);
                             mod_api::Commands::refresh_commands(game);
@@ -4175,7 +4187,7 @@ mod tests {
                                 "requests are deferred"
                             );
                             game.register_native_commands();
-                            assert!(!game.native_commands.refresh);
+                            assert!(!game.server.native_commands.refresh);
                             assert_eq!(
                                 registrations.load(Ordering::Relaxed),
                                 2,
@@ -4205,7 +4217,7 @@ mod tests {
                                 [Some("refresh"), Some("replacement")]
                             );
                             assert!(mod_api::__private::set_mod_enabled("replacement", true));
-                            let commands = game.native_commands.registered.as_ref().unwrap();
+                            let commands = game.server.native_commands.registered.as_ref().unwrap();
                             assert!(!commands.levels.contains_key("before"));
                             assert!(commands.levels.contains_key("after"));
                             let dispatcher = &game.ui.dispatcher.0;
@@ -4232,7 +4244,7 @@ mod tests {
                             mod_api::Commands::refresh_commands(game);
                             game.register_native_commands();
                             assert_eq!(registrations.load(Ordering::Relaxed), 3);
-                            assert!(game.native_commands.level("after").is_some());
+                            assert!(game.server.native_commands.level("after").is_some());
                             changed.store(false, Ordering::Relaxed);
                             game.reload_datapacks(false, &game.level.enabled_features.clone())
                                 .unwrap();
@@ -4381,9 +4393,9 @@ mod tests {
                                 ("typed give guest13 nope", "parsing.int.expected"),
                                 ("typed give missing 1", "argument.entity.notfound.player"),
                             ] {
-                                game.chat_capture = Some(Vec::new());
+                                game.server.chat_capture = Some(Vec::new());
                                 assert!(game.perform_native_console_command(line));
-                                let output = game.chat_capture.take().unwrap();
+                                let output = game.server.chat_capture.take().unwrap();
                                 assert_eq!(
                                     output[0].plain(),
                                     Text::translate(key, &[]).plain(),
@@ -4409,7 +4421,10 @@ mod tests {
                             // (the count of 12 heard lines below holds neither).
                             game.perform_native_console_command("typed at 1 64.25");
                             game.perform_native_console_command("typed at 1 up 3");
-                            assert!(game.command_source.is_none(), "console source restored");
+                            assert!(
+                                game.server.command_source.is_none(),
+                                "console source restored"
+                            );
                             game.as_guest(12, |game| {
                                 assert!(
                                     game.native_run_command("execute as guest13 run typed opt 13")
@@ -4582,7 +4597,7 @@ mod tests {
                             assert!(
                                 matches!(heard.lock().unwrap().last().unwrap(), CommandSource::CommandBlockMinecart { entity, .. } if entity.id() == 99)
                             );
-                            game.chat_capture = Some(Vec::new());
+                            game.server.chat_capture = Some(Vec::new());
                             let mut function = Function {
                                 id: "test:inner".into(),
                                 lines: vec![
@@ -4594,7 +4609,8 @@ mod tests {
                                 parameters: vec![],
                             };
                             game.ensure_datapacks();
-                            game.fns
+                            game.server
+                                .fns
                                 .store
                                 .functions
                                 .insert(function.id.clone(), function.clone());
@@ -4609,10 +4625,10 @@ mod tests {
                                 matches!(heard.lock().unwrap().last().unwrap(), CommandSource::Function { id, permission } if id.to_string() == "test:inner" && *permission == Permission::Gamemasters)
                             );
                             assert!(
-                                game.chat_capture.take().unwrap().is_empty(),
+                                game.server.chat_capture.take().unwrap().is_empty(),
                                 "functions suppress both success and failure"
                             );
-                            assert!(game.exec.functions.is_empty());
+                            assert!(game.server.exec.functions.is_empty());
                             game.ui.registries.permission = 4;
                             assert!(!game.run_command("unhandled"));
                             assert!(game.run_command(
@@ -5630,7 +5646,7 @@ pub(super) mod fake_action_tests {
             );
 
             let diamonds = Some(ItemStack::new("minecraft:diamond", 5));
-            game.ender_items[0] = diamonds.clone();
+            game.server.ender_items[0] = diamonds.clone();
             let ender = [2, 64, 0];
             place(game, ender, "minecraft:ender_chest");
             let key = (ender[0], ender[1], ender[2]);
@@ -5643,7 +5659,7 @@ pub(super) mod fake_action_tests {
                 game.player_perform_action(player, on_top(ender)),
                 Ok(ActionOutcome::EffectBlocked(FakeEffect::Menu))
             );
-            assert!(game.ender_open.is_none());
+            assert!(game.server.ender_open.is_none());
             match game.world.block_entities.get(&key) {
                 Some(sunrise_client::chunk::block_entity::BlockEntity::Chest(items)) => assert!(
                     items.iter().all(Option::is_none),
@@ -5652,10 +5668,13 @@ pub(super) mod fake_action_tests {
                 other => panic!("the ender chest lost its block entity: {other:?}"),
             }
             assert_eq!(
-                game.ender_items[0], diamonds,
+                game.server.ender_items[0], diamonds,
                 "the server's own ender items changed"
             );
-            assert!(!game.lid_openers.contains_key(&key), "its lid stayed open");
+            assert!(
+                !game.server.lid_openers.contains_key(&key),
+                "its lid stayed open"
+            );
         });
     }
 
@@ -5677,9 +5696,9 @@ pub(super) mod fake_action_tests {
             };
             let spawn = sunrise_core::geometry::Vec3::new(1.0, 2.0, 3.0);
             game.station = Some(Station::new_kind(Kind::Anvil, [4, 5, 6]));
-            game.craft_table = Some([7, 8, 9]);
+            game.server.craft_table = Some([7, 8, 9]);
             game.experience.level = 7;
-            game.respawn_config = Some(config);
+            game.server.respawn_config = Some(config);
             game.spawn = Some(spawn);
             // An ender inventory left open goes back while the fake player
             // acts, and its stand-in returns afterwards, as a guest's turn does.
@@ -5696,11 +5715,11 @@ pub(super) mod fake_action_tests {
                 game.station.as_ref().map(|s| (s.kind, s.pos)),
                 Some((Kind::Anvil, [4, 5, 6])),
             );
-            assert_eq!(game.craft_table, Some([7, 8, 9]));
+            assert_eq!(game.server.craft_table, Some([7, 8, 9]));
             assert_eq!(game.experience.level, 7);
-            assert_eq!(game.respawn_config, Some(config));
+            assert_eq!(game.server.respawn_config, Some(config));
             assert_eq!(game.spawn, Some(spawn));
-            assert_eq!(game.ender_open, Some(stand_in));
+            assert_eq!(game.server.ender_open, Some(stand_in));
             assert!(game.world.block_entities.get(&stand_in).is_some());
 
             let setup = PlayerActionSetup::new(
@@ -5907,7 +5926,7 @@ pub(super) mod fake_action_tests {
         }
         with_game(|game| {
             let (player, conn, _) = fake(game, None, 0);
-            game.as_guest(conn, |g| g.attack_ticks = 3).unwrap();
+            game.as_guest(conn, |g| g.server.attack_ticks = 3).unwrap();
             let charged = zombie(game, 5000, [2.0, 64.0, 0.5]);
             // Out of a sweep's reach of the first.
             let uncharged = zombie(game, 5001, [-1.5, 64.0, 0.5]);
@@ -5928,7 +5947,7 @@ pub(super) mod fake_action_tests {
                     .unwrap();
                 assert_eq!(result.outcome, ActionOutcome::Consumed);
                 assert_eq!(
-                    game.as_guest(conn, |g| g.attack_ticks).unwrap(),
+                    game.as_guest(conn, |g| g.server.attack_ticks).unwrap(),
                     3,
                     "the fake's own ticker comes back"
                 );
@@ -6195,7 +6214,7 @@ pub(super) mod fake_action_tests {
                 ),
                 Err(ActionRefused::NotFake)
             );
-            let acting = Acting::start(&game.fake_action);
+            let acting = Acting::start(&game.server.fake_action);
             assert_eq!(
                 game.player_perform_action_scoped(
                     player,
@@ -6288,7 +6307,7 @@ pub(super) mod fake_action_tests {
             || {
                 super::super::native_entity_refs::tests::with_game(|game| {
                     let (player, ..) = fake(game, Some("minecraft:diamond"), 0);
-                    game.use_failed = true;
+                    game.server.use_failed = true;
                     let result = player
                         .perform_action_scoped(
                             game,
@@ -6317,7 +6336,7 @@ pub(super) mod fake_action_tests {
                             1
                         )))
                     );
-                    assert!(game.use_failed, "outer per-action flag restored");
+                    assert!(game.server.use_failed, "outer per-action flag restored");
                     let level = game.level(game.dim.id()).unwrap();
                     assert_eq!(
                         game.level_block(level, [1, 64, 0])
@@ -6474,7 +6493,8 @@ pub(super) mod fake_action_tests {
                     .update_all(|g| g.yaw = -90.0);
                 let near = zombie(game, 5000, [2.0, 64.0, 0.5]);
                 let full = health(game, 5000);
-                game.as_guest(fake_conn, |g| g.attack_ticks = 2).unwrap();
+                game.as_guest(fake_conn, |g| g.server.attack_ticks = 2)
+                    .unwrap();
                 assert_eq!(
                     game.player_perform_action(player, PlayerAction::Attack { target: near }),
                     Ok(ActionOutcome::Consumed)
@@ -6492,7 +6512,7 @@ pub(super) mod fake_action_tests {
                     "the blow uses the pre-reset charge"
                 );
                 assert_eq!(
-                    game.as_guest(fake_conn, |g| g.attack_ticks).unwrap(),
+                    game.as_guest(fake_conn, |g| g.server.attack_ticks).unwrap(),
                     0,
                     "the swing resets the charge after the hit"
                 );
@@ -6511,7 +6531,8 @@ pub(super) mod fake_action_tests {
                 let full = health(game, 5001);
                 seen.lock().unwrap().clear();
                 cancel.store(true, Ordering::Relaxed);
-                game.as_guest(fake_conn, |g| g.attack_ticks = 2).unwrap();
+                game.as_guest(fake_conn, |g| g.server.attack_ticks = 2)
+                    .unwrap();
                 assert_eq!(
                     game.player_perform_action(player, PlayerAction::Attack { target: near }),
                     Ok(ActionOutcome::Passed)
@@ -6519,7 +6540,7 @@ pub(super) mod fake_action_tests {
                 assert_eq!(*seen.lock().unwrap(), vec![full]);
                 assert_eq!(health(game, 5001), full, "a veto stops the blow");
                 assert_eq!(
-                    game.as_guest(fake_conn, |g| g.attack_ticks).unwrap(),
+                    game.as_guest(fake_conn, |g| g.server.attack_ticks).unwrap(),
                     2,
                     "and the swing that would reset the charge never starts"
                 );
@@ -6533,7 +6554,7 @@ pub(super) mod fake_action_tests {
         use super::super::native_entity_refs::tests::with_game;
         with_game(|game| {
             let (player, conn, _) = fake(game, None, 0);
-            game.as_guest(conn, |g| g.attack_ticks = 2).unwrap();
+            game.as_guest(conn, |g| g.server.attack_ticks = 2).unwrap();
             for partial in [f32::NAN, f32::INFINITY, f32::NEG_INFINITY] {
                 assert_eq!(game.player_attack_strength_scale(player, partial), None);
                 game.as_guest(conn, |g| {
@@ -6607,13 +6628,15 @@ pub(super) mod fake_action_tests {
                 let full = health(game, 5000);
                 // A fist's cooldown is 5 ticks: a full ticker reads 1.0, and half of one
                 // ((2 + 0.5) / 5) reads 0.5.
-                game.as_guest(fake_conn, |g| g.attack_ticks = 5).unwrap();
+                game.as_guest(fake_conn, |g| g.server.attack_ticks = 5)
+                    .unwrap();
                 assert_eq!(
                     player.attack_strength_scale(game, 0.5),
                     Some(1.0),
                     "a full ticker is a fully charged blow"
                 );
-                game.as_guest(fake_conn, |g| g.attack_ticks = 2).unwrap();
+                game.as_guest(fake_conn, |g| g.server.attack_ticks = 2)
+                    .unwrap();
                 assert_eq!(
                     player.attack_strength_scale(game, 0.5),
                     Some(0.5),
@@ -6838,13 +6861,13 @@ pub(super) mod fake_action_tests {
                 Err(ActionRefused::NotFake)
             );
             // Inside another action, as a hook running during it would ask.
-            let acting = Acting::start(&game.fake_action);
+            let acting = Acting::start(&game.server.fake_action);
             assert_eq!(
                 game.player_perform_action(player, on_top([1, 63, 0])),
                 Err(ActionRefused::Busy)
             );
             drop(acting);
-            assert!(!game.fake_action.acting());
+            assert!(!game.server.fake_action.acting());
         });
     }
 
@@ -6948,17 +6971,17 @@ pub(super) mod fake_action_tests {
                 point: [7.0, 7.5, 7.5],
                 inside: true,
             };
-            game.forced_hit = Some(before);
+            game.server.forced_hit = Some(before);
             assert_eq!(
                 game.player_perform_action(player, on_top([1, 63, 0])),
                 Ok(ActionOutcome::Consumed)
             );
-            let after = game.forced_hit.expect("the forced hit is put back");
+            let after = game.server.forced_hit.expect("the forced hit is put back");
             assert_eq!(
                 (after.pos, after.face, after.point, after.inside),
                 (before.pos, before.face, before.point, before.inside)
             );
-            assert!(game.guest_use.is_none());
+            assert!(game.server.guest_use.is_none());
         });
     }
 

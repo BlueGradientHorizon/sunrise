@@ -41,8 +41,8 @@ impl Game<'_> {
             return false;
         };
         if self.start_using_item() {
-            let actor = self.lan_acting;
-            self.stabbed.retain(|(who, _), _| *who != actor);
+            let actor = self.server.lan_acting;
+            self.server.stabbed.retain(|(who, _), _| *who != actor);
             if let Some(p) = &self.player {
                 let at = [p.position.x, p.position.y, p.position.z];
                 self.audio.play(kinetic.sound, Some(at), 1.0, 1.0);
@@ -62,8 +62,8 @@ impl Game<'_> {
         {
             return self.mob_speed(i).scale(1.0 / 20.0);
         }
-        if self.lan_acting.is_some() {
-            return self.known_movement;
+        if self.server.lan_acting.is_some() {
+            return self.server.known_movement;
         }
         self.player
             .as_ref()
@@ -129,7 +129,9 @@ impl Game<'_> {
         let clip = |from, to| self.clip_collider(from, to);
         let mobs = self.mobs.len();
         let mut boxes = self.hittable_mob_boxes();
-        boxes.extend((self.stab_players.iter().enumerate()).map(|(k, p)| (mobs + k, p.bounds)));
+        boxes.extend(
+            (self.server.stab_players.iter().enumerate()).map(|(k, p)| (mobs + k, p.bounds)),
+        );
         hits_in_reach(&boxes, eye, look, movement, reach, clip)
             .into_iter()
             .map(|(i, _)| {
@@ -164,7 +166,7 @@ impl Game<'_> {
         let movement = self.known_player_movement();
         let attacker_speed = look.dot(movement.scale(20.0));
         let now = self.world.game_time;
-        let actor = self.lan_acting;
+        let actor = self.server.lan_acting;
         let mut affected = false;
         let mut last_mob = None;
         let mut on_players = Vec::new();
@@ -176,19 +178,20 @@ impl Game<'_> {
             let (entity, target_motion) = match target {
                 Target::Mob(i) => (self.mobs[i].id, self.mob_speed(i)),
                 Target::Player(k) => {
-                    let p = &self.stab_players[k];
+                    let p = &self.server.stab_players[k];
                     (p.entity_id as u32, p.movement.scale(20.0))
                 }
             };
             let key = (actor, entity);
             let recent = self
+                .server
                 .stabbed
                 .get(&key)
                 .is_some_and(|&t| now - t < i64::from(kinetic.contact_cooldown_ticks));
             if recent {
                 continue;
             }
-            self.stabbed.insert(key, now);
+            self.server.stabbed.insert(key, now);
             let target_speed = look.dot(target_motion);
             let relative = (attacker_speed - target_speed).max(0.0);
             // An entity factor of 1 for a player.
@@ -224,13 +227,18 @@ impl Game<'_> {
         let Some(feet) = self.player.as_ref().map(|p| p.position) else {
             return;
         };
-        let actor = self.lan_acting;
+        let actor = self.server.lan_acting;
         if self.audio.capture.is_some() {
-            self.lan_kinetic_hits.push(actor);
+            self.server.lan_kinetic_hits.push(actor);
         }
         let who = actor.map_or(OWN, |conn| conn as i32);
         self.kinetic_hit_feedback(who, kinetic, [feet.x, feet.y, feet.z]);
-        let stabbed = self.stabbed.keys().filter(|(who, _)| *who == actor).count();
+        let stabbed = self
+            .server
+            .stabbed
+            .keys()
+            .filter(|(who, _)| *who == actor)
+            .count();
         self.trigger_spear_mobs(stabbed);
     }
 
@@ -298,13 +306,13 @@ impl Game<'_> {
             let (xd, zd) = self.extra_knockback_direction();
             let source = Damage::spear(from);
             let plan = self.prepare_knockback_credit(id as i32, None, &attack);
-            let mut credit = plan.lend(&mut self.last_hurt_by_player);
+            let mut credit = plan.lend(&mut self.server.last_hurt_by_player);
             let level = crate::game::entity::damage_level_of!(self, &attack, &mut credit, None);
             self.mobs[index].knockback_full(level, 0.4, xd, zd, &source, total, false);
             let (strength, _) = self.extra_knockback(&kind, 0.0);
             if strength > 0.0 {
                 let plan = self.prepare_knockback_credit(id as i32, None, &attack);
-                let mut credit = plan.lend(&mut self.last_hurt_by_player);
+                let mut credit = plan.lend(&mut self.server.last_hurt_by_player);
                 let level = crate::game::entity::damage_level_of!(self, &attack, &mut credit, None);
                 self.mobs[index].knockback_full(
                     level,
@@ -341,7 +349,7 @@ impl Game<'_> {
         );
         // attackVisualEffects: no attack sound, the enchantments' magic crit.
         if magic_boost > 0.0 {
-            self.critical_hit(self.lan_acting, id as i32, feet, width, height, true);
+            self.critical_hit(self.server.lan_acting, id as i32, feet, width, height, true);
         }
         self.remember_player_target(Some(id));
         // itemAttackInteraction: hurtEnemy (statistic, wear), and the
@@ -434,7 +442,7 @@ impl Game<'_> {
         }
         let hit = last_mob.is_some();
         // Player.onAttack, then postPiercingAttack.
-        self.attack_ticks = 0;
+        self.server.attack_ticks = 0;
         self.post_piercing_attack();
         if hit {
             self.play_at_feet(kinetic.hit_sound);
@@ -464,11 +472,12 @@ impl Game<'_> {
     pub(super) fn kinetic_hit_feedback(&mut self, entity: i32, kinetic: &Kinetic, at: [f64; 3]) {
         let now = self.world.game_time;
         if self
+            .server
             .kinetic_feedback
             .get(&entity)
             .is_none_or(|&t| now - t > HIT_FEEDBACK_TICKS)
         {
-            self.kinetic_feedback.insert(entity, now);
+            self.server.kinetic_feedback.insert(entity, now);
             self.audio
                 .play_unshared(kinetic.hit_sound, Some(at), 1.0, 1.0);
         }
@@ -476,7 +485,8 @@ impl Game<'_> {
 
     /// `getTicksSinceLastKineticHitFeedback` of this window's player.
     pub(super) fn kinetic_hit_ticks(&self, partial: f32) -> f32 {
-        self.kinetic_feedback
+        self.server
+            .kinetic_feedback
             .get(&OWN)
             .map_or(0.0, |&t| (self.world.game_time - t) as f32 + partial)
     }

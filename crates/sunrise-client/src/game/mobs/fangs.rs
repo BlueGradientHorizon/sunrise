@@ -63,13 +63,13 @@ impl FangState {
 }
 impl Game<'_> {
     pub(super) fn add_fangs(&mut self, at: [f64; 3], yaw: f32, delay: i32, owner: u32) {
-        self.next_entity += 1;
-        self.insert_fangs(self.next_entity, at, yaw, delay, owner);
+        self.server.next_entity += 1;
+        self.insert_fangs(self.server.next_entity, at, yaw, delay, owner);
     }
 
     pub(super) fn insert_fangs(&mut self, id: u32, at: [f64; 3], yaw: f32, delay: i32, owner: u32) {
         if self.fangs.model.is_none() {
-            self.fangs.model = self.entity_models.evoker_fangs.clone();
+            self.fangs.model = self.client.entity_models.evoker_fangs.clone();
         }
         self.fangs.list.push(Fangs {
             attachment_lifetime: Default::default(),
@@ -166,7 +166,7 @@ impl Game<'_> {
         sunrise_threads::work::clear_work();
         // ServerLevel.tick: only entities in entity-ticking chunks that joined before the pass tick.
         let ticking = self.entity_ticking_area();
-        let through = self.ticked_entities_through;
+        let through = self.server.ticked_entities_through;
         let mut list = self.fangs.list.lift();
         #[cfg(test)]
         super::entity::taken_pass_tests::after_take(self);
@@ -320,7 +320,7 @@ impl Game<'_> {
             // The hit's causing entity, lent to its listeners beside the victim.
             let causing = self.causer_id(attacker);
             let decision = crate::game::entity::causer_decision!(self, causing);
-            let mut credit = plan.lend(&mut self.last_hurt_by_player);
+            let mut credit = plan.lend(&mut self.server.last_hurt_by_player);
             let (victim, lend) =
                 crate::game::entity::victim_and_causer!(self, index, causing, decision);
             let hurt = victim.damage(
@@ -473,7 +473,7 @@ mod tests {
             game.add_fangs([1.0, 80.0, 0.0], 0.0, 30, 0);
             let first = game.fangs.list[0].id;
             let second = game.fangs.list[1].id;
-            let next = game.next_entity;
+            let next = game.server.next_entity;
             super::super::entity::taken_pass_tests::with_spawn(
                 |game| {
                     assert!(game.fangs.list.is_empty());

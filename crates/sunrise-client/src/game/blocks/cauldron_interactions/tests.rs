@@ -313,8 +313,8 @@ fn setup(game: &mut Game<'_>, block: &str, level: Option<&str>, item: &str, coun
     if game.remote.is_none() {
         bind_local_player(game, 7, 123);
     } else {
-        game.lan_acting_entity = None;
-        game.lan_acting_uuid = None;
+        game.server.lan_acting_entity = None;
+        game.server.lan_acting_uuid = None;
     }
     game.creative = false;
     game.selected = 0;
@@ -1708,7 +1708,7 @@ fn cauldron_packet_pass_resumes_item_use_once_without_client_prediction() {
             point: [0.5, 65.0, 0.5],
             inside: false,
         };
-        game.forced_hit = Some(hit);
+        game.server.forced_hit = Some(hit);
         let client_swings = game.swings_started;
         let hold = matches!(case.as_str(), "hold-drop" | "hold-release")
             .then(|| game.hold_packets().unwrap());
@@ -1857,7 +1857,7 @@ fn cauldron_packet_pass_resumes_item_use_once_without_client_prediction() {
         let dedicated = game.options.dedicated.take();
         // The off hand must use the captured block hit even if picking has
         // changed meanwhile. A changed slot or ray must not start another use.
-        game.forced_hit = None;
+        game.server.forced_hit = None;
         (game.yaw, game.pitch) = aim;
         if case == "slot-changed" {
             game.inventory[1] = Some(ItemStack::new("minecraft:ender_pearl", 1));

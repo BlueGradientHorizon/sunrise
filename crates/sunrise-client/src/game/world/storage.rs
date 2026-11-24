@@ -72,7 +72,7 @@ impl Game<'_> {
         };
         self.world.block_entities.get_or_insert_with(key, || entity);
         self.container = Some(key);
-        self.open_container_slots = Some((key, self.open_container_size()));
+        self.server.open_container_slots = Some((key, self.open_container_size()));
         self.set_screen(super::Screen::Inventory);
         self.capture(false);
         self.set_mapping_held("key.use", false);
@@ -164,9 +164,9 @@ impl Game<'_> {
     pub(super) fn open_ender_chest(&mut self, key: (i32, i32, i32)) {
         self.world
             .block_entities
-            .insert(key, BlockEntity::Chest(self.ender_items.clone()));
+            .insert(key, BlockEntity::Chest(self.server.ender_items.clone()));
         self.container = Some(key);
-        self.ender_open = Some(key);
+        self.server.ender_open = Some(key);
     }
     /// The block above `key` is a redstone conductor.
     fn conductor_above(&self, key: (i32, i32, i32)) -> bool {
@@ -200,13 +200,13 @@ impl Game<'_> {
     /// `EnderChestBlockEntity` persists across open/close (`close_ender_chest`
     /// must not remove it, or `/data get block` loses it after a use).
     pub(super) fn close_ender_chest(&mut self) {
-        let Some(key) = self.ender_open.take() else {
+        let Some(key) = self.server.ender_open.take() else {
             return;
         };
         // The items go back to the player: an `EnderChestBlockEntity` holds none, so
         // nothing of theirs stays in the chunk or in `/data get block`.
         if let Some(BlockEntity::Chest(items)) = self.world.block_entities.get_mut(&key) {
-            self.ender_items = std::mem::replace(items, vec![None; 27]);
+            self.server.ender_items = std::mem::replace(items, vec![None; 27]);
         }
     }
 }
@@ -353,11 +353,15 @@ impl Game<'_> {
         // part, and a part that went away (`getBlockEntity(pos) != this`) ends
         // it. A double chest whose other half broke would otherwise show a
         // shorter container.
-        if self.open_container_slots.is_some_and(|(open, slots)| {
-            self.container == Some(open) && self.open_container_size() < slots
-        }) {
+        if self
+            .server
+            .open_container_slots
+            .is_some_and(|(open, slots)| {
+                self.container == Some(open) && self.open_container_size() < slots
+            })
+        {
             self.close_container();
-            self.screen = super::Screen::Playing;
+            self.client.screen = super::Screen::Playing;
             self.capture(true);
             return;
         }
@@ -379,7 +383,7 @@ impl Game<'_> {
         if self.remote.is_some() || self.craft_size != 3 {
             return;
         }
-        let (Some(pos), Some(eye)) = (self.craft_table, self.eye_position()) else {
+        let (Some(pos), Some(eye)) = (self.server.craft_table, self.eye_position()) else {
             return;
         };
         let state = self.world.block(pos[0], pos[1], pos[2]);
@@ -727,7 +731,7 @@ mod lock_tests {
         game.open_block_effect_menu([8, 64, 8]);
         assert_eq!(game.container, None, "a locked chest opened");
         assert!(
-            game.titles.overlay.is_some(),
+            game.client.titles.overlay.is_some(),
             "no `container.isLocked` action bar"
         );
 
@@ -735,7 +739,7 @@ mod lock_tests {
         // does not open it.
         game.inventory[0] = None;
         game.offhand = Some(ItemStack::new("minecraft:gold_ingot", 1));
-        game.titles.overlay = None;
+        game.client.titles.overlay = None;
         game.open_block_effect_menu([8, 64, 8]);
         assert_eq!(
             game.container, None,
@@ -746,10 +750,10 @@ mod lock_tests {
         game.inventory[0] = Some(ItemStack::new("minecraft:gold_ingot", 1));
         game.offhand = None;
         game.selected = 0;
-        game.titles.overlay = None;
+        game.client.titles.overlay = None;
         game.open_block_effect_menu([8, 64, 8]);
         assert_eq!(game.container, Some(key), "the lock's item did not open it");
-        assert!(game.titles.overlay.is_none());
+        assert!(game.client.titles.overlay.is_none());
     }
 
     /// `ChestBlock.MENU_PROVIDER_COMBINER.createMenu`: a double chest asks
@@ -793,6 +797,6 @@ mod lock_tests {
 
         game.open_block_effect_menu([8, 64, 8]);
         assert_eq!(game.container, None, "a half-locked double chest opened");
-        assert!(game.titles.overlay.is_some());
+        assert!(game.client.titles.overlay.is_some());
     }
 }

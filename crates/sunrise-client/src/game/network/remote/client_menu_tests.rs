@@ -157,10 +157,10 @@ fn client_menu_reads_follow_packets_and_lifetimes() {
         game.options.execution_role = ExecutionRole::IntegratedServer;
         assert!(!menu.click(game, &[pickup(36)]));
         game.options.execution_role = ExecutionRole::Client;
-        let screen = game.screen;
-        game.screen = Screen::Creative;
+        let screen = game.client.screen;
+        game.client.screen = Screen::Creative;
         assert!(!menu.click(game, &[pickup(36)]));
-        game.screen = screen;
+        game.client.screen = screen;
         game.remote.as_mut().unwrap().state_id = 17;
 
         // MapPostProcessing.SCALE has a stream codec but no persistent codec to hash.
@@ -505,7 +505,7 @@ fn client_menu_close_and_button_click_reach_the_server() {
             .local_player()
             .and_then(|player| game.player_container_menu(player))
             .unwrap();
-        assert_eq!(game.screen, Screen::Playing);
+        assert_eq!(game.client.screen, Screen::Playing);
         assert!(!inventory.close(game));
         assert!(!inventory.click_button(game, 0));
         let loom = game
@@ -529,7 +529,7 @@ fn client_menu_close_and_button_click_reach_the_server() {
                 .unwrap()
         };
         let menu = open(game);
-        assert_eq!(game.screen, Screen::Inventory);
+        assert_eq!(game.client.screen, Screen::Inventory);
         // The old inventory handle is stale now that the loom replaced it.
         assert!(!inventory.close(game));
         assert!(!inventory.click_button(game, 0));
@@ -537,14 +537,14 @@ fn client_menu_close_and_button_click_reach_the_server() {
         assert!(!menu.click_button(game, 3));
         assert!(!menu.close(game));
         game.options.execution_role = ExecutionRole::Client;
-        assert_eq!(game.screen, Screen::Inventory);
+        assert_eq!(game.client.screen, Screen::Inventory);
         assert!(menu.click_button(game, 3));
         let Some(play::Serverbound::ContainerButtonClick(click)) = sent(&mut reader) else {
             panic!("expected the button click, not a refused request");
         };
         assert_eq!((click.container, click.button), (5, 3));
         assert!(menu.close(game));
-        assert_eq!(game.screen, Screen::Playing);
+        assert_eq!(game.client.screen, Screen::Playing);
         let Some(play::Serverbound::ContainerClose(close)) = sent(&mut reader) else {
             panic!("expected the close");
         };

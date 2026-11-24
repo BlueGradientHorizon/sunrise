@@ -152,7 +152,7 @@ impl Game<'_> {
         self.use_vibration(&stack, "minecraft:item_interact_start");
         // A new charge hears the crossbow's loading sounds again
         // (`game/items/crossbow.rs`).
-        self.crossbow_sounds = [false; 2];
+        self.server.crossbow_sounds = [false; 2];
         true
     }
     /// `ItemStack.getUseDuration`: a consumable's time, 72000 for what is
@@ -539,7 +539,7 @@ impl Game<'_> {
         // The shared resolver's guards: no fake actor, a placed online guest,
         // the integrated player only on the serving side.
         let player = self.local_player().or_else(|| {
-            let uuid = self.lan_acting_uuid.or_else(|| {
+            let uuid = self.server.lan_acting_uuid.or_else(|| {
                 self.level
                     .player_uuid
                     .map(sunrise_client::lan::playerdata::ints_uuid)
@@ -1135,18 +1135,23 @@ mod tests {
                 game.using = Some((game.selected, 0));
                 game.tick_player_model();
                 assert_eq!(
-                    game.player_model.as_ref().unwrap().extra.use_animation,
+                    game.client
+                        .player_model
+                        .as_ref()
+                        .unwrap()
+                        .extra
+                        .use_animation,
                     UseAnimation::Drink
                 );
                 assert_eq!(calls.load(Ordering::Relaxed), 10);
-                game.visible_hands[0].1 = game.inventory[game.selected].clone();
+                game.client.visible_hands[0].1 = game.inventory[game.selected].clone();
                 game.use_duration = 72_000;
                 let (overridden, _) = game.hand_geometry(0.0);
                 assert_eq!(calls.load(Ordering::Relaxed), 11);
                 // A scoped spear override on a component-patched ordinary item
                 // must reach hand geometry without the old whitelist panic.
                 game.inventory[game.selected] = Some(kinetic_stick);
-                game.visible_hands[0].1 = game.inventory[game.selected].clone();
+                game.client.visible_hands[0].1 = game.inventory[game.selected].clone();
                 let (kinetic_geometry, _) = game.hand_geometry(0.0);
                 assert!(!kinetic_geometry.is_empty());
                 overridden_geometry = Some(overridden);
@@ -1166,7 +1171,7 @@ mod tests {
                 Some(sunrise_client::items::ItemStack::new("minecraft:bow", 1));
             game.using = Some((game.selected, 0));
             game.tick_player_model();
-            game.visible_hands[0].1 = game.inventory[game.selected].clone();
+            game.client.visible_hands[0].1 = game.inventory[game.selected].clone();
             game.use_duration = 72_000;
             let (vanilla, _) = game.hand_geometry(0.0);
             let overridden = overridden_geometry.unwrap();
@@ -1238,7 +1243,7 @@ mod tests {
                 1,
             ));
             game.tick_player_model();
-            game.visible_hands[0].1 = game.inventory[game.selected].clone();
+            game.client.visible_hands[0].1 = game.inventory[game.selected].clone();
         }
 
         let cancel = Arc::new(AtomicBool::new(false));
@@ -1390,7 +1395,7 @@ mod tests {
                     {
                         let stack = ItemStack::new(item, 1);
                         *game.stack_in_mut(slot) = Some(stack.clone());
-                        game.visible_hands[i] = (slot, Some(stack));
+                        game.client.visible_hands[i] = (slot, Some(stack));
                     }
                     let atlas = Rect {
                         u0: 0.25,
@@ -1404,7 +1409,7 @@ mod tests {
                         .atlas
                         .sprites
                         .insert("arms:fixture_skin".into(), atlas);
-                    let avatar = game.player_model.as_mut().unwrap();
+                    let avatar = game.client.player_model.as_mut().unwrap();
                     avatar.skin = Some("arms:fixture_skin".into());
                     avatar.slim = slim;
                     let (vanilla, runs) = game.hand_geometry(0.0);
@@ -1424,7 +1429,7 @@ mod tests {
                     let quads = 6 * 4;
                     let arm_vertices = quads * 2;
                     let submitted = arm_vertices * 2;
-                    let view = game.sway.to_world(0.0, &game.view);
+                    let view = game.client.sway.to_world(0.0, &game.client.view);
                     for (i, (shoulder, roll, x, base_u, sleeve_u, v)) in [
                         (
                             5.0,
@@ -1515,7 +1520,7 @@ mod tests {
                     game.gui.atlas.sprites.remove("arms:fixture_skin");
                     for missing_avatar in [false, true] {
                         if missing_avatar {
-                            game.player_model = None;
+                            game.client.player_model = None;
                         }
                         state.mode.store(0, Relaxed);
                         let (items, item_runs) = game.hand_geometry(0.0);
@@ -2033,7 +2038,7 @@ pub(super) mod interact_vibration_tests {
                 let (client, _server) = sunrise_protocol::connection::Pipe::pair();
                 game.connect_local(client, "Eater").unwrap();
                 // Replace the server fixture's identity and the body removed on join.
-                game.lan_acting_uuid = None;
+                game.server.lan_acting_uuid = None;
                 game.level.player_uuid = None;
                 let remote = game.remote.as_mut().unwrap();
                 remote.logged_in = true;
@@ -2114,15 +2119,17 @@ pub(super) mod interact_vibration_tests {
                 r#"{"enabled":["file/rods"],"disabled":[]}"#,
             )
             .unwrap();
-            game.world_root = dir.clone();
+            game.server.world_root = dir.clone();
             let stack = game.reload_datapacks(false, &[]).unwrap();
             let root = game.options.resources.clone();
-            game.world_tables = game
+            game.server.world_tables = game
                 .stage_world_tables(&stack, false, &root)
                 .unwrap()
                 .tables;
-            let items =
-                &mut std::sync::Arc::make_mut(&mut game.world_tables.as_mut().unwrap().items).items;
+            let items = &mut std::sync::Arc::make_mut(
+                &mut game.server.world_tables.as_mut().unwrap().items,
+            )
+            .items;
             let mut info = items["minecraft:fishing_rod"].clone();
             info.id = std::sync::Arc::from("ruby:rod");
             info.template = Some(std::sync::Arc::from("minecraft:fishing_rod"));
@@ -2132,8 +2139,10 @@ pub(super) mod interact_vibration_tests {
             );
             items.insert(info.id.clone(), info);
 
-            let items =
-                &mut std::sync::Arc::make_mut(&mut game.world_tables.as_mut().unwrap().items).items;
+            let items = &mut std::sync::Arc::make_mut(
+                &mut game.server.world_tables.as_mut().unwrap().items,
+            )
+            .items;
             let mut stick_info = items["minecraft:stick"].clone();
             stick_info.id = std::sync::Arc::from("ruby:stick");
             stick_info.template = Some(std::sync::Arc::from("minecraft:stick"));

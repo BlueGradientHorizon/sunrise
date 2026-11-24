@@ -123,7 +123,7 @@ impl Game<'_> {
             _ => at,
         };
         // Found by its id: the hooks the spawn runs may add entities after it.
-        let id = self.next_entity + 1;
+        let id = self.server.next_entity + 1;
         self.spawn_at_location(Vec3::new(x, y, z), f64::from(y_offset), stack);
         self.dropped
             .iter()
@@ -168,7 +168,7 @@ impl Game<'_> {
         };
         mob.removed = true;
         let position = mob.position;
-        self.last_hurt_by_player.remove(&id);
+        self.server.last_hurt_by_player.remove(&id);
         self.dismount_mob(id);
         self.dismount_removed_passengers(id, position.y);
         if self.has_seated_passengers(id)

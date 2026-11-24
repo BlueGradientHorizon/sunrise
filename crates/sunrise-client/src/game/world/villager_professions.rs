@@ -113,7 +113,7 @@ impl Game<'_> {
         self.stations().professions.resolve_loaded(mob);
         if let sunrise_client::mobs::villager::ProfessionState::Unresolved(id) =
             &mob.extra.profession
-            && self.missing_professions.insert(id.clone())
+            && self.server.missing_professions.insert(id.clone())
         {
             log::warn!(
                 "Unknown villager profession {id} at {:?}; preserving its saved identity",

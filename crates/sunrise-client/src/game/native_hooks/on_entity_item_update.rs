@@ -352,7 +352,7 @@ mod on_entity_item_update_tests {
     /// One stack of `item` at rest on the floor, a pickup delay of 20 ticks.
     fn rest(game: &mut Game<'_>, item: &str, x: f64, z: f64) -> u32 {
         game.spawn_item(ItemStack::new(item, 1), [x, 64.0, z], [0.0; 3], 20);
-        game.ticked_entities_through = game.next_entity;
+        game.server.ticked_entities_through = game.server.next_entity;
         game.dropped.last().unwrap().id
     }
 

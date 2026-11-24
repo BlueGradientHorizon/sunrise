@@ -257,7 +257,7 @@ impl Game<'_> {
             && let Some(after) = self.with_hand(hand, |g| g.held().map(|s| s.count))
             && (Some(after) != before || self.creative)
         {
-            self.heights.item_used(hand);
+            self.client.heights.item_used(hand);
         }
     }
 
@@ -572,7 +572,7 @@ impl Game<'_> {
         }
         // A successful Item.use always drops the hand (LocalPlayer.itemUsed).
         if self.remote_use_item(hand) {
-            self.heights.item_used(hand);
+            self.client.heights.item_used(hand);
             return;
         }
         if hand == Hand::Off {
@@ -600,7 +600,7 @@ impl Game<'_> {
             self.native_right_click_empty(Hand::Off);
         }
         if self.remote_use_item(Hand::Off) {
-            self.heights.item_used(Hand::Off);
+            self.client.heights.item_used(Hand::Off);
         }
     }
 
@@ -648,7 +648,8 @@ impl Game<'_> {
             return false;
         };
         let batch = HudBatch::new(size, self.settings.gui_scale_inputs());
-        let Some(internal) = self.slot_at(&batch, self.cursor.0, self.cursor.1) else {
+        let Some(internal) = self.slot_at(&batch, self.client.cursor.0, self.client.cursor.1)
+        else {
             return false;
         };
         let input = if self.has_shift_down() {
@@ -656,7 +657,7 @@ impl Game<'_> {
         } else {
             Input::Pickup
         };
-        if self.screen == Screen::Creative {
+        if self.client.screen == Screen::Creative {
             // CreativeModeInventoryScreen.slotClicked: the Survival Inventory tab clicks the
             // player's own InventoryMenu, and its CreativeInventoryListener sends each slot that
             // changed (SetCreativeModeSlot). No ContainerClick: a server holding the carried

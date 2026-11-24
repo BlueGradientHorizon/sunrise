@@ -17,11 +17,11 @@ impl Game<'_> {
         self.native_music(&mut music, &mut volume);
         let mut layers = Vec::new();
         self.native_music_layers(&mut layers);
-        self.music_layers.tick(&layers, &mut self.audio);
+        self.client.music_layers.tick(&layers, &mut self.audio);
         // Options.musicFrequency's listener: MusicManager.setMinutesBetweenSongs.
         let frequency = MusicFrequency::parse(&self.settings.file.name("musicFrequency"));
-        if frequency != self.music.frequency {
-            self.music.set_frequency(frequency, music.as_ref());
+        if frequency != self.client.music.frequency {
+            self.client.music.set_frequency(frequency, music.as_ref());
         }
         // The Music page's off tracks leave every pool they play in (the
         // extra off: nothing is filtered, vanilla's pools play as they are).
@@ -30,30 +30,31 @@ impl Game<'_> {
         } else {
             &[][..]
         };
-        self.music.set_off(off);
+        self.client.music.set_off(off);
         // LevelLoadingScreen: no new track before the player is in the world.
         // A reconfiguration's ServerReconfigScreen is a plain Screen, not a
         // LevelLoadingScreen: its menu music starts as on any other screen.
         let loading = self.title.is_none()
             && self.player.is_none()
-            && self.win.is_none()
+            && self.client.win.is_none()
             && !self
                 .remote
                 .as_ref()
                 .is_some_and(|r| r.reconfiguring.is_some());
-        self.music
+        self.client
+            .music
             .tick(music.as_ref(), volume, loading, &mut self.audio);
         // Options.musicToast's listener: ToastManager.setMusicToastDisplayState.
         let state = self.settings.file.int("musicToast").clamp(0, 2) as u8;
-        if state != self.music_toast_state {
-            self.music_toast_state = state;
+        if state != self.client.music_toast_state {
+            self.client.music_toast_state = state;
             self.set_music_toast_state(state);
         }
         // MusicManager's showNowPlayingToast and hideNowPlayingToast calls.
-        for show in std::mem::take(&mut self.music.toast_requests) {
+        for show in std::mem::take(&mut self.client.music.toast_requests) {
             if show {
                 self.show_music_toast();
-            } else if let Some(toast) = &mut self.now_playing {
+            } else if let Some(toast) = &mut self.client.now_playing {
                 toast.hide();
             }
         }
@@ -65,7 +66,7 @@ impl Game<'_> {
     }
     /// A Music page row: play this track of `event` now.
     pub(super) fn play_music_track(&mut self, event: &str, track: &str) {
-        self.music.play_track(event, track, &mut self.audio);
+        self.client.music.play_track(event, track, &mut self.audio);
     }
     /// `Options.getFinalSoundSourceVolume(SoundSource.MUSIC)`.
     fn final_music_volume(&self) -> f32 {
@@ -75,13 +76,13 @@ impl Game<'_> {
     /// the toast (the second one shows it at once while music is audible),
     /// Never drops it.
     fn set_music_toast_state(&mut self, state: u8) {
-        self.now_playing = (state != 0).then(Default::default);
+        self.client.now_playing = (state != 0).then(Default::default);
         if state == 2 && self.final_music_volume() > 0.0 {
             self.show_music_toast();
         }
     }
     fn show_music_toast(&mut self) {
-        if self.now_playing.is_none() {
+        if self.client.now_playing.is_none() {
             return;
         }
         let Some(song) = self.now_playing_song() else {
@@ -90,7 +91,7 @@ impl Game<'_> {
         let mut title = song;
         let mut description = None;
         if self.admit_toast(mod_api::ToastKind::Other, &mut title, &mut description)
-            && let Some(toast) = &mut self.now_playing
+            && let Some(toast) = &mut self.client.now_playing
         {
             toast.title = title;
             toast.description = description;
@@ -101,7 +102,7 @@ impl Game<'_> {
     /// `NowPlayingToast.getNowPlayingString` of the song the music manager
     /// plays: its file's short language key, slashes as dots.
     fn now_playing_song(&self) -> Option<sunrise_client::text::Text> {
-        let id = self.music.current_instance()?;
+        let id = self.client.music.current_instance()?;
         let location = self
             .audio
             .engine
@@ -135,29 +136,29 @@ impl Game<'_> {
         hidden: bool,
     ) {
         let song = self.now_playing_song();
-        let Some(toast) = self.now_playing.as_mut() else {
+        let Some(toast) = self.client.now_playing.as_mut() else {
             return;
         };
-        toast.update(song.is_some(), &mut self.music_notes);
+        toast.update(song.is_some(), &mut self.client.music_notes);
         let Some(song) = song else {
             return;
         };
-        if self.screen == super::Screen::Paused {
-            if self.pause_menu && self.final_music_volume() > 0.0 {
-                self.music_notes.tick();
+        if self.client.screen == super::Screen::Paused {
+            if self.client.pause_menu && self.final_music_volume() > 0.0 {
+                self.client.music_notes.tick();
                 sunrise_client::toasts::draw_now_playing(
                     &self.gui.atlas,
                     batch,
                     0.0,
                     &song,
-                    self.music_notes.color,
+                    self.client.music_notes.color,
                 );
             }
         } else if !hidden
-            && self.music_toast_state == 2
-            && let Some(toast) = &self.now_playing
+            && self.client.music_toast_state == 2
+            && let Some(toast) = &self.client.now_playing
         {
-            toast.draw(&self.gui.atlas, batch, &self.music_notes);
+            toast.draw(&self.gui.atlas, batch, &self.client.music_notes);
         }
     }
     /// `Minecraft.tick` -> `SoundManager.tick(pause)`, after the music, with
@@ -168,13 +169,13 @@ impl Game<'_> {
             self.sound_entity_state(id)
         });
 
-        if self.pause != self.sound_paused {
+        if self.pause != self.client.sound_paused {
             if self.pause {
                 self.audio.pause();
             } else {
                 self.audio.resume();
             }
-            self.sound_paused = self.pause;
+            self.client.sound_paused = self.pause;
         }
         let (vehicle, carts) = self.start_cart_sounds();
         let mobs = self.start_mob_sounds();
@@ -190,13 +191,13 @@ impl Game<'_> {
             });
         // LocalPlayer.onSyncedDataUpdated: starting to glide starts the
         // elytra's flying sound.
-        if player_fall_flying && !self.was_fall_flying {
+        if player_fall_flying && !self.client.was_fall_flying {
             let instance = SoundInstance::elytra(player_position, random_source::create());
             self.audio.play_instance(instance, false);
         }
-        self.was_fall_flying = player_fall_flying;
+        self.client.was_fall_flying = player_fall_flying;
         let ctx = TickContext {
-            player_underwater: self.ambience.was_underwater(),
+            player_underwater: self.client.ambience.was_underwater(),
             player_removed: self.player.is_none(),
             vehicle,
             carts,
@@ -219,10 +220,10 @@ impl Game<'_> {
     /// The music manager keeps its stopped track and, on its next tick, waits
     /// the level's music delay before the next one.
     pub(super) fn stop_sounds_for_new_level(&mut self) {
-        self.ambience.clear(&mut self.audio);
+        self.client.ambience.clear(&mut self.audio);
         self.audio.leave_level();
         // Mod plays still queued for the next audio update go too.
-        self.mod_sounds.clear();
+        self.client.mod_sounds.clear();
     }
     /// `getSituationalMusic` and `getMusicVolume`.
     pub(super) fn situational_music(&self) -> (Option<Music>, f32) {
@@ -232,7 +233,7 @@ impl Game<'_> {
         let in_world = self.title.is_none()
             && (self.player.is_some() || self.remote.as_ref().is_some_and(|r| r.has_level()));
         let (background, probe_volume) = if in_world {
-            let biome = self.biome_at(self.view.position);
+            let biome = self.biome_at(self.client.view.position);
             self.res
                 .music()
                 .at(self.dim.id(), biome, world_biomes!(self).pack_file(biome))
@@ -242,6 +243,7 @@ impl Game<'_> {
         let situation = Situation {
             // WinScreen.getBackgroundMusic.
             screen_music: self
+                .client
                 .win
                 .is_some()
                 .then(mod_api::client::music::Music::credits),
@@ -251,7 +253,7 @@ impl Game<'_> {
             background: &background,
             probe_volume,
             creative: self.creative,
-            underwater: self.ambience.was_underwater(),
+            underwater: self.client.ambience.was_underwater(),
         };
         (situation.music(), situation.volume())
     }
@@ -339,7 +341,7 @@ impl Game<'_> {
             light: &light,
             bubble_column,
         };
-        self.ambience.tick(&ctx, &mut self.audio);
+        self.client.ambience.tick(&ctx, &mut self.audio);
     }
 }
 

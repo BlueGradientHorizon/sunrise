@@ -443,7 +443,7 @@ impl Game<'_> {
             Slot::Armor(i) => self.armor.get(*i).cloned().flatten(),
             Slot::Offhand => self.offhand.clone(),
             Slot::Equipment(i) => self.equipment.get(*i).cloned(),
-            Slot::Ender(i) => self.ender_items.get(*i).cloned().flatten(),
+            Slot::Ender(i) => self.server.ender_items.get(*i).cloned().flatten(),
             Slot::Mob(id, key) => {
                 let m = self.mobs.iter().find(|m| m.id == *id)?;
                 m.equipment_stacks()[mob_slot(key)?].clone()
@@ -689,12 +689,12 @@ impl Game<'_> {
                 );
                 true
             }
-            Slot::Ender(i) => match self.ender_items.get_mut(*i) {
+            Slot::Ender(i) => match self.server.ender_items.get_mut(*i) {
                 Some(slot) => {
                     *slot = stack.clone();
                     // An open ender chest menu shows a copy, which closing copies back
                     // over `ender_items`: the write goes into the copy as well.
-                    if let Some(key) = self.ender_open
+                    if let Some(key) = self.server.ender_open
                         && let Some(BlockEntity::Chest(items)) =
                             self.world.block_entities.get_mut(&key)
                         && let Some(open) = items.get_mut(*i)
@@ -969,7 +969,7 @@ impl Game<'_> {
             Value::Array(list) => list.iter().fold(stack, |s, f| {
                 self.apply_item_modifier(f, s, rng, this, origin, depth + 1)
             }),
-            Value::String(id) => match self.fns.store.item_modifiers.get(id).cloned() {
+            Value::String(id) => match self.server.fns.store.item_modifiers.get(id).cloned() {
                 Some(f) => self.apply_item_modifier(&f, stack, rng, this, origin, depth + 1),
                 None => stack,
             },
@@ -1247,7 +1247,8 @@ impl Game<'_> {
         } else {
             format!("minecraft:{raw}")
         };
-        self.fns
+        self.server
+            .fns
             .store
             .item_modifiers
             .get(&id)
@@ -1266,7 +1267,10 @@ impl Game<'_> {
             return Ok(0);
         };
         let modifier = self.item_modifier_arg(ctx, "modifier")?;
-        let source = self.command_source.unwrap_or_else(|| self.player_source());
+        let source = self
+            .server
+            .command_source
+            .unwrap_or_else(|| self.player_source());
         let view = source.entity.map(|t| self.entity_view_asked(t, &modifier));
         let seed = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -1430,7 +1434,10 @@ impl Game<'_> {
             // ItemCommands.applyModifier on each source stack.
             if ctx.get("modifier").is_some() {
                 let modifier = self.item_modifier_arg(ctx, "modifier")?;
-                let source = self.command_source.unwrap_or_else(|| self.player_source());
+                let source = self
+                    .server
+                    .command_source
+                    .unwrap_or_else(|| self.player_source());
                 let view = source.entity.map(|t| self.entity_view_asked(t, &modifier));
                 let mut rng = sunrise_core::random::LegacyRandom::new(0);
                 found = found
@@ -1509,7 +1516,7 @@ impl Game<'_> {
             // (and its announcement) comes before the command's message.
             if changed > 0 && matches!(o, Owner::Entity(Target::Player)) && self.player.is_some() {
                 self.check_inventory_trigger();
-                self.cmds.broadcast_announced = self.adv.announced.len();
+                self.server.cmds.broadcast_announced = self.adv.announced.len();
             }
         }
         if selected == 0 {
@@ -1979,9 +1986,10 @@ mod mob_equipment_command_tests {
         use sunrise_core::random::LegacyRandom;
         with_game(|game| {
             let clock = game.world.game_time;
-            game.world_root = std::path::PathBuf::from(std::env::var_os("SUNRISE_HOME").unwrap())
-                .join("enchantment-catalog-world");
-            let pack = game.world_root.join("datapacks/catalog");
+            game.server.world_root =
+                std::path::PathBuf::from(std::env::var_os("SUNRISE_HOME").unwrap())
+                    .join("enchantment-catalog-world");
+            let pack = game.server.world_root.join("datapacks/catalog");
             let definitions = pack.join("data/wpenchant/enchantment");
             std::fs::create_dir_all(&definitions).unwrap();
             std::fs::write(
@@ -2003,7 +2011,7 @@ mod mob_equipment_command_tests {
             )
             .unwrap();
             std::fs::write(
-                game.world_root.join("datapacks.json"),
+                game.server.world_root.join("datapacks.json"),
                 r#"{"enabled":["file/catalog"]}"#,
             )
             .unwrap();
@@ -2012,7 +2020,13 @@ mod mob_equipment_command_tests {
             std::fs::write(functions.join("ready.mcfunction"), "return 1\n").unwrap();
             let features = game.level.enabled_features.clone();
             let stack = game.reload_datapacks(false, &features).unwrap();
-            assert!(game.fns.store.functions.contains_key("wpenchant:ready"));
+            assert!(
+                game.server
+                    .fns
+                    .store
+                    .functions
+                    .contains_key("wpenchant:ready")
+            );
             let root = game.options.resources.clone();
             let prepared = game.prepare_world_reload(&stack, &root).unwrap();
             game.install_world_tables(prepared);
@@ -2801,10 +2815,11 @@ mod registered_slot_source_read_tests {
             definition,
         )
         .unwrap();
-        game.world_root = root;
+        game.server.world_root = root;
         game.ensure_datapacks();
         assert_eq!(
-            game.fns
+            game.server
+                .fns
                 .data_resource("data/parity/slot_source/first_three.json")
                 .unwrap()
                 .read()
@@ -2898,7 +2913,7 @@ mod registered_slot_source_preservation_tests {
             std::fs::write(&path, serde_json::json!({"type":"minecraft:limit_slots","limit":limit,"slot_source":{"type":"minecraft:slot_range","slots":"container.*"}}).to_string()).unwrap();
             high = path;
         }
-        game.world_root = root;
+        game.server.world_root = root;
         game.ensure_datapacks();
         assert!(game.run_command("setblock 0 100 0 chest{Items:[{Slot:0b,id:\"stone\",count:5},{Slot:1b,id:\"dirt\",count:2},{Slot:3b,id:\"stone\",count:7}]}"));
         assert!(game.run_command("scoreboard objectives add slotprobe dummy"));
@@ -2943,6 +2958,7 @@ mod registered_slot_source_preservation_tests {
         let mut resources = None;
         let (mut game, _) = scene(&mut resources, "slot-source-unsupported-world");
         let path = game
+            .server
             .world_root
             .join("datapacks/parity/data/parity/slot_source/this.json");
         std::fs::write(
@@ -3098,7 +3114,7 @@ mod registered_slot_source_preservation_tests {
             )
             .unwrap(),
         );
-        assert!(game.command_source.is_none());
+        assert!(game.server.command_source.is_none());
         assert!(game.run_command(
             r#"item replace entity @s {type:"slot_range",source:"this",slots:"weapon.mainhand"} with minecraft:stone"#
         ));

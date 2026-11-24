@@ -567,14 +567,14 @@ impl Game<'_> {
     /// now on (`PanelStyle`; the recipe book's until it says). Kept for
     /// the session, whether or not its panel is showing.
     pub(in crate::game) fn panel_style(&mut self, mod_id: &str, style: PanelStyle) {
-        self.panel.set_style(mod_id, style);
+        self.client.panel.set_style(mod_id, style);
     }
     /// `panel_search`: the text in mod `mod_id`'s search box, heard as the
     /// player's typing is when its box next draws. Only the mod whose hook or
     /// part is running and owns the panel can set it.
     pub(in crate::game) fn panel_search(&mut self, mod_id: &str, text: &str) {
         let caller = mod_api::content::crash::current_native_mod();
-        self.panel.set_search(caller, mod_id, text);
+        self.client.panel.set_search(caller, mod_id, text);
     }
     fn browser_batch(&self) -> Option<HudBatch> {
         let r = self.renderer.as_ref()?;
@@ -586,22 +586,25 @@ impl Game<'_> {
     /// The mod showing a panel, with its items made into stacks once per
     /// change; none while no mod shows one or no container screen is up.
     fn browser_sync(&mut self) -> Option<Owner> {
-        if !matches!(self.screen, Screen::Inventory | Screen::Creative) || self.title.is_some() {
+        if !matches!(self.client.screen, Screen::Inventory | Screen::Creative)
+            || self.title.is_some()
+        {
             return None;
         }
         let Some(shown) = self
+            .client
             .panel
             .shown(|id| !self.mods.code_disabled(&self.settings.mods.disabled, id))
         else {
-            self.panel.of = None;
-            self.panel.stacks.clear();
+            self.client.panel.of = None;
+            self.client.panel.stacks.clear();
             return None;
         };
         let of = (shown.owner.clone(), shown.version);
-        if self.screen == Screen::Creative && of.0.native_id() != "recipes" {
+        if self.client.screen == Screen::Creative && of.0.native_id() != "recipes" {
             return None;
         }
-        if self.panel.of.as_ref() != Some(&of) {
+        if self.client.panel.of.as_ref() != Some(&of) {
             let items = world_items!(self);
             let stacks = shown
                 .items
@@ -609,19 +612,20 @@ impl Game<'_> {
                 .map(|s| browser_stack(items, s))
                 .collect();
             let shown = shown.recipes.clone();
-            self.panel.stacks = stacks;
+            self.client.panel.stacks = stacks;
             // The same title again (the mod updating its buttons) keeps the page.
-            let old = self.panel.recipes.take();
-            self.panel.recipes = shown
+            let old = self.client.panel.recipes.take();
+            self.client.panel.recipes = shown
                 .as_ref()
                 .map(|shown| super::native_panel_recipes::Pages::new(items, shown, old));
-            self.panel.of = Some(of.clone());
+            self.client.panel.of = Some(of.clone());
         }
         Some(of.0)
     }
     /// What the panel shows now.
     fn panel_shown(&self) -> Option<&Shown> {
-        self.panel
+        self.client
+            .panel
             .shown(|id| !self.mods.code_disabled(&self.settings.mods.disabled, id))
     }
     /// The player did `event` on `owner`'s panel.
@@ -634,20 +638,22 @@ impl Game<'_> {
     fn browser_layout(&self, batch: &HudBatch) -> Option<Layout> {
         let image = self.container_image(batch);
         let recipes = self
+            .client
             .panel
             .of
             .as_ref()
             .is_some_and(|(owner, _)| owner.native_id() == "recipes");
-        let window_right = if self.screen == Screen::Creative {
+        let window_right = if self.client.screen == Screen::Creative {
             Self::creative_origin(batch).0 + 198.0
         } else {
             (image.left + image.width) as f32
         };
         let classic = self
+            .client
             .panel
             .of
             .as_ref()
-            .and_then(|(owner, _)| self.panel.classic(owner));
+            .and_then(|(owner, _)| self.client.panel.classic(owner));
         if let Some((centred, window_width)) = classic.filter(|_| !recipes) {
             let (left, top) = (image.left as f32, image.top as f32);
             let window = [left, top, window_right - left, image.height as f32];
@@ -713,12 +719,17 @@ impl Game<'_> {
         })
     }
     fn browser_pages(&self, layout: &Layout) -> usize {
-        self.panel.stacks.len().div_ceil(layout.per_page()).max(1)
+        self.client
+            .panel
+            .stacks
+            .len()
+            .div_ceil(layout.per_page())
+            .max(1)
     }
     /// The stack under the pointer on the panel, an item's or a recipe's,
     /// as the mod sent it and as a stack.
     fn browser_pointed_stack(&self, layout: &Layout) -> Option<(BrowserStack, ItemStack)> {
-        if self.panel.recipes.is_some() {
+        if self.client.panel.recipes.is_some() {
             if let Some((_, sent, stack)) = self.recipe_tab_hovered(layout) {
                 return Some((sent, stack));
             }
@@ -731,21 +742,21 @@ impl Game<'_> {
     }
     /// The panel's item under the pointer: its index and stack.
     fn browser_hovered(&self, layout: &Layout) -> Option<(usize, ItemStack)> {
-        if self.panel.recipes.is_some() {
+        if self.client.panel.recipes.is_some() {
             return None;
         }
-        let first = self.panel.page * layout.per_page();
+        let first = self.client.panel.page * layout.per_page();
         (0..layout.per_page()).find_map(|n| {
             let (x, y) = layout.slot(n);
-            if !inside(self.cursor, [x, y, SLOT, SLOT]) {
+            if !inside(self.client.cursor, [x, y, SLOT, SLOT]) {
                 return None;
             }
-            let stack = self.panel.stacks.get(first + n)?.clone()?;
+            let stack = self.client.panel.stacks.get(first + n)?.clone()?;
             Some((first + n, stack))
         })
     }
     fn browser_search(&mut self, layout: &Layout) -> &mut EditBox {
-        let search = self.panel.search.get_or_insert_with(new_search_box);
+        let search = self.client.panel.search.get_or_insert_with(new_search_box);
         [search.x, search.y, search.width, search.height] = layout.search;
         search
     }
@@ -761,7 +772,7 @@ impl Game<'_> {
     ) {
         let atlas = &self.gui.atlas;
         for (i, (rect @ [x, y, w, h], on)) in rects.into_iter().zip(enabled).enumerate() {
-            let hovered = inside(self.cursor, rect);
+            let hovered = inside(self.client.cursor, rect);
             if square {
                 let background = match (on, hovered) {
                     (false, _) => "sunrise/jei/button_disabled_v2",
@@ -796,15 +807,16 @@ impl Game<'_> {
     fn draw_browser_items(&mut self, batch: &mut HudBatch, layout: &Layout) {
         let classic = layout.classic;
         let pages = self.browser_pages(layout);
-        self.panel.page = self.panel.page.min(pages - 1);
-        let page = self.panel.page;
-        let cursor = self.cursor;
+        self.client.panel.page = self.client.panel.page.min(pages - 1);
+        let page = self.client.panel.page;
+        let cursor = self.client.cursor;
         let square = self
+            .client
             .panel
             .of
             .as_ref()
-            .is_some_and(|(owner, _)| self.panel.viewer_style(owner));
-        if pages > 1 || (square && !self.panel.stacks.is_empty()) || classic {
+            .is_some_and(|(owner, _)| self.client.panel.viewer_style(owner));
+        if pages > 1 || (square && !self.client.panel.stacks.is_empty()) || classic {
             let labels = [
                 self.translate_with_fallback("gui.recipebook.previous_page", "Previous Page"),
                 self.translate_with_fallback("gui.recipebook.next_page", "Next Page"),
@@ -848,7 +860,7 @@ impl Game<'_> {
         }
         let first = page * layout.per_page();
         for n in 0..layout.per_page() {
-            let Some(stack) = self.panel.stacks.get(first + n) else {
+            let Some(stack) = self.client.panel.stacks.get(first + n) else {
                 break;
             };
             let Some(stack) = stack.clone() else {
@@ -886,25 +898,26 @@ impl Game<'_> {
         // A search text the owner set (`panel_search`) goes into its box only
         // now, with room for the box, and is heard through typing's own path,
         // outside the mod's call; the list it sends back is drawn this frame.
-        if self.panel.deliver_search(&owner) {
+        if self.client.panel.deliver_search(&owner) {
             self.browser_searched();
             self.browser_sync()?;
             layout = self.browser_layout(batch)?;
         }
-        let cursor = self.cursor;
-        if self.panel.recipes.is_some() {
+        let cursor = self.client.cursor;
+        if self.client.panel.recipes.is_some() {
             self.draw_browser_recipes(batch, &layout);
         } else {
             self.draw_browser_items(batch, &layout);
         }
         let hint = self.translate_with_fallback("gui.recipebook.search_hint", "Search...");
         let skin = self
+            .client
             .panel
             .of
             .as_ref()
-            .is_some_and(|(owner, _)| self.panel.viewer_style(owner))
+            .is_some_and(|(owner, _)| self.client.panel.viewer_style(owner))
             .then_some("sunrise/jei/search_background_v2");
-        let nothing_found = self.panel.stacks.is_empty();
+        let nothing_found = self.client.panel.stacks.is_empty();
         let search = self.browser_search(&layout);
         // The hint shows in an empty box without focus, as the recipe book's.
         search.suggestion = (search.value.is_empty() && !search.focused).then_some(hint);
@@ -920,7 +933,7 @@ impl Game<'_> {
         };
         let mut search = search.clone();
         search.draw_with_skin(batch, &self.gui.atlas, None, skin);
-        self.panel.search = Some(search);
+        self.client.panel.search = Some(search);
         let mut settings_label = None;
         if let Some(rect @ [x, y, width, height]) = layout.settings {
             let hovered = inside(cursor, rect);
@@ -960,8 +973,8 @@ impl Game<'_> {
         }
         // The dragged item goes over everything, the settings button's label too.
         let menu = self.screen_state.screen_instance;
-        let dragged = (self.panel.of.as_ref())
-            .and_then(|(owner, _)| self.panel.dragged(owner, menu))
+        let dragged = (self.client.panel.of.as_ref())
+            .and_then(|(owner, _)| self.client.panel.dragged(owner, menu))
             .cloned();
         browser_overlay(dragged, settings_label, || {
             if self.carried.is_some() {
@@ -982,17 +995,27 @@ impl Game<'_> {
     ) {
         match tooltip {
             BrowserTooltip::Text(text) => {
-                self.draw_tooltip_lines(batch, &[(text, u32::MAX)], self.cursor.0, self.cursor.1);
+                self.draw_tooltip_lines(
+                    batch,
+                    &[(text, u32::MAX)],
+                    self.client.cursor.0,
+                    self.client.cursor.1,
+                );
             }
             BrowserTooltip::Stack(stack) => {
-                self.draw_stack_tooltip(batch, &stack, self.cursor.0, self.cursor.1);
+                self.draw_stack_tooltip(batch, &stack, self.client.cursor.0, self.client.cursor.1);
             }
             BrowserTooltip::Fluid(fluid) => {
-                self.draw_fluid_tooltip(batch, &fluid, self.cursor.0, self.cursor.1);
+                self.draw_fluid_tooltip(batch, &fluid, self.client.cursor.0, self.client.cursor.1);
             }
             BrowserTooltip::Dragged(stack) => {
                 // Under the pointer, as the carried stack is drawn.
-                self.draw_item(batch, &stack, self.cursor.0 - 8.0, self.cursor.1 - 8.0);
+                self.draw_item(
+                    batch,
+                    &stack,
+                    self.client.cursor.0 - 8.0,
+                    self.client.cursor.1 - 8.0,
+                );
             }
         }
     }
@@ -1003,7 +1026,7 @@ impl Game<'_> {
     pub(super) fn mod_browser_press(&mut self, right: bool) -> bool {
         // A left press whose release never came (the pointer left the window)
         // ends here; a right press cancels the held one.
-        self.panel.other_press(!right);
+        self.client.panel.other_press(!right);
         let Some(owner) = self.browser_sync() else {
             return false;
         };
@@ -1013,7 +1036,7 @@ impl Game<'_> {
         let Some(layout) = self.browser_layout(&batch) else {
             return false;
         };
-        let cursor = self.cursor;
+        let cursor = self.client.cursor;
         if layout.settings.is_some_and(|rect| inside(cursor, rect)) {
             if !right {
                 self.list_native_mods();
@@ -1025,7 +1048,7 @@ impl Game<'_> {
                     .position(|entry| entry.id == owner.native_id() && entry.native.is_some())
                 {
                     self.mod_browser_closed();
-                    self.panel.recipes_settings_return = Some(self.screen);
+                    self.client.panel.recipes_settings_return = Some(self.client.screen);
                     self.open_options_at(false, sunrise_client::options_ui::Page::NativeMod(index));
                 }
             }
@@ -1033,7 +1056,7 @@ impl Game<'_> {
         }
         let shift = self.has_shift_down();
         let atlas = &self.gui.atlas;
-        let search = self.panel.search.get_or_insert_with(|| {
+        let search = self.client.panel.search.get_or_insert_with(|| {
             let mut edit = EditBox::new(0.0, 0.0, 0.0, 0.0);
             edit.max_length = 50;
             edit
@@ -1046,13 +1069,13 @@ impl Game<'_> {
             return true;
         }
         search.focused = false;
-        if self.panel.recipes.is_some() {
+        if self.client.panel.recipes.is_some() {
             return self.browser_recipes_press(&layout, &owner, right)
                 || inside(cursor, layout.area);
         }
         let pages = self.browser_pages(&layout);
-        let page = self.panel.page;
-        let [back, forward] = layout.browser_arrow_rects(self.panel.viewer_style(&owner));
+        let page = self.client.panel.page;
+        let [back, forward] = layout.browser_arrow_rects(self.client.panel.viewer_style(&owner));
         let step = if pages > 1 && page > 0 && inside(cursor, back) {
             Some(page - 1)
         } else if pages > 1 && page + 1 < pages && inside(cursor, forward) {
@@ -1066,7 +1089,7 @@ impl Game<'_> {
             None
         };
         if let Some(to) = step {
-            self.panel.page = to;
+            self.client.panel.page = to;
             self.audio
                 .play("minecraft:ui.button.click", None, 0.25, 1.0);
             return true;
@@ -1079,7 +1102,7 @@ impl Game<'_> {
                 && self.carried.is_none()
                 && let Some(sent) = sent
             {
-                self.panel.held = Some(Held {
+                self.client.panel.held = Some(Held {
                     owner,
                     index,
                     sent,
@@ -1107,7 +1130,7 @@ impl Game<'_> {
     /// menu nor its slots hear the move.
     pub(super) fn mod_browser_drag_move(&mut self) -> bool {
         let menu = self.screen_state.screen_instance;
-        self.panel.press_moved(self.cursor, menu)
+        self.client.panel.press_moved(self.client.cursor, menu)
     }
 
     /// A left release: true when it ends a press on a panel item (`Held`),
@@ -1118,14 +1141,14 @@ impl Game<'_> {
     /// the panel's either way: no screen hears it, no slot click, no throw,
     /// no quick craft.
     pub(super) fn mod_browser_release(&mut self) -> bool {
-        if self.panel.held.is_none() {
+        if self.client.panel.held.is_none() {
             return false;
         }
         let owner = self.browser_sync();
         let on_panel = (self.browser_batch())
             .and_then(|batch| self.browser_layout(&batch))
-            .map(|layout| inside(self.cursor, layout.area));
-        let Some(held) = self.panel.held.take() else {
+            .map(|layout| inside(self.client.cursor, layout.area));
+        let Some(held) = self.client.panel.held.take() else {
             return true;
         };
         let at_index = (self.panel_shown()).and_then(|shown| shown.items.get(held.index).cloned());
@@ -1135,7 +1158,7 @@ impl Game<'_> {
             on_panel,
             at_index: at_index.as_ref(),
         };
-        let event = match held.release(self.cursor, now) {
+        let event = match held.release(self.client.cursor, now) {
             Release::Click(index) => BrowserEvent::Clicked {
                 index: index as u32,
                 right: false,
@@ -1152,33 +1175,33 @@ impl Game<'_> {
     /// A mod's screen hook vetoed the left release of a held press: the
     /// dragged item goes away and nothing is sent.
     pub(super) fn mod_browser_release_vetoed(&mut self) {
-        self.panel.release_vetoed();
+        self.client.panel.release_vetoed();
     }
 
     /// A button went down (`left` or another): a held press whose release
     /// never came is forgotten, or cancelled by another button.
     pub(super) fn mod_browser_other_press(&mut self, left: bool) {
-        self.panel.other_press(left);
+        self.client.panel.other_press(left);
     }
 
     /// Escape: cancels a held press. True when that was a drag over its own
     /// menu, and the screen stays open.
     pub(super) fn mod_browser_drag_escape(&mut self) -> bool {
         let dragging = self.mod_browser_dragging();
-        self.panel.cancel_press();
+        self.client.panel.cancel_press();
         dragging
     }
 
     /// The window lost the focus: a held press is cancelled.
     pub(super) fn mod_browser_focus_lost(&mut self) {
-        self.panel.cancel_press();
+        self.client.panel.cancel_press();
     }
 
     /// Whether an item is being dragged off the panel over the menu it was
     /// pressed on: the screen's slots show no tooltip under it.
     pub(super) fn mod_browser_dragging(&self) -> bool {
         let menu = self.screen_state.screen_instance;
-        (self.panel.held.as_ref()).is_some_and(|held| held.live_on(menu) && held.dragging)
+        (self.client.panel.held.as_ref()).is_some_and(|held| held.live_on(menu) && held.dragging)
     }
 
     /// A wheel notch `d` on a container screen (positive is up): true when
@@ -1195,22 +1218,28 @@ impl Game<'_> {
         let Some(layout) = self.browser_layout(&batch) else {
             return false;
         };
-        if self.panel.recipes.is_some() {
+        if self.client.panel.recipes.is_some() {
             return self.browser_recipes_wheel(&layout, &owner, d);
         }
         let pages = self.browser_pages(&layout);
-        let Some(to) = wheel_turn(self.cursor, layout.area, self.panel.page, pages, d) else {
+        let Some(to) = wheel_turn(
+            self.client.cursor,
+            layout.area,
+            self.client.panel.page,
+            pages,
+            d,
+        ) else {
             return false;
         };
-        self.panel.page = to;
+        self.client.panel.page = to;
         true
     }
 
     /// Whether keys go to the panel's search box.
     pub(super) fn mod_browser_typing(&self) -> bool {
-        matches!(self.screen, Screen::Inventory | Screen::Creative)
-            && self.panel.of.is_some()
-            && self.panel.search.as_ref().is_some_and(|s| s.focused)
+        matches!(self.client.screen, Screen::Inventory | Screen::Creative)
+            && self.client.panel.of.is_some()
+            && self.client.panel.search.as_ref().is_some_and(|s| s.focused)
     }
     /// A key press while the search box has focus.
     pub(super) fn mod_browser_key(
@@ -1219,7 +1248,7 @@ impl Game<'_> {
         shortcut: Option<sunrise_client::clipboard::EditShortcut>,
     ) -> bool {
         let (ctrl, shift) = (self.has_control_down(), self.has_shift_down());
-        let Some(search) = self.panel.search.as_mut() else {
+        let Some(search) = self.client.panel.search.as_mut() else {
             return false;
         };
         let handled = if let Some(shortcut) = shortcut {
@@ -1234,7 +1263,7 @@ impl Game<'_> {
     }
     /// Text typed (or one backspace) into the search box (`sunrise-ctl type`).
     pub(super) fn mod_browser_text(&mut self, text: Option<&str>, backspace: bool) {
-        let Some(search) = self.panel.search.as_mut() else {
+        let Some(search) = self.client.panel.search.as_mut() else {
             return;
         };
         if backspace {
@@ -1246,29 +1275,30 @@ impl Game<'_> {
     }
     /// The mod hears the search text when it changed.
     fn browser_searched(&mut self) {
-        let (Some((owner, _)), Some(search)) = (&self.panel.of, &self.panel.search) else {
+        let (Some((owner, _)), Some(search)) = (&self.client.panel.of, &self.client.panel.search)
+        else {
             return;
         };
-        if search.value != self.panel.sent {
+        if search.value != self.client.panel.sent {
             let (owner, value) = (owner.clone(), search.value.clone());
             // The player's edit is newer than a text the owner queued.
-            if matches!(&self.panel.pending, Some((o, _)) if *o == owner) {
-                self.panel.pending = None;
+            if matches!(&self.client.panel.pending, Some((o, _)) if *o == owner) {
+                self.client.panel.pending = None;
             }
-            self.panel.sent.clone_from(&value);
-            self.panel.searching = true;
-            self.panel.page = 0;
+            self.client.panel.sent.clone_from(&value);
+            self.client.panel.searching = true;
+            self.client.panel.page = 0;
             self.panel_event(&owner, BrowserEvent::Search(value));
-            self.panel.searching = false;
+            self.client.panel.searching = false;
         }
     }
     /// The container screen closed: the search box lets go of the keys.
     pub(super) fn mod_browser_closed(&mut self) {
-        self.panel.transfer_warning = None;
+        self.client.panel.transfer_warning = None;
         // Closing the screen cancels a press on the panel; its release stays
         // the panel's.
-        self.panel.cancel_press();
-        if let Some(search) = self.panel.search.as_mut() {
+        self.client.panel.cancel_press();
+        if let Some(search) = self.client.panel.search.as_mut() {
             search.focused = false;
         }
     }
@@ -1276,7 +1306,7 @@ impl Game<'_> {
         let Some(owner) = self.browser_sync() else {
             return false;
         };
-        if owner.native_id() != "recipes" || self.panel.recipes.is_none() {
+        if owner.native_id() != "recipes" || self.client.panel.recipes.is_none() {
             return false;
         }
         self.mod_browser_closed();
@@ -1286,7 +1316,7 @@ impl Game<'_> {
     pub(super) fn close_transferred_recipe(&mut self) {
         if let Some(owner) = self.browser_sync()
             && owner.native_id() == "recipes"
-            && self.panel.recipes.is_some()
+            && self.client.panel.recipes.is_some()
         {
             self.mod_browser_closed();
             self.panel_event(&owner, BrowserEvent::Back);
@@ -1301,11 +1331,11 @@ impl Game<'_> {
             .and_then(|_| self.browser_layout(&batch))
         {
             // The panel's stacks as the mod sent them.
-            Some(layout) if inside(self.cursor, layout.area) => {
+            Some(layout) if inside(self.client.cursor, layout.area) => {
                 return Some(self.browser_pointed_stack(&layout)?.0);
             }
             _ => {
-                let slot = self.slot_at(&batch, self.cursor.0, self.cursor.1)?;
+                let slot = self.slot_at(&batch, self.client.cursor.0, self.client.cursor.1)?;
                 self.slot_view(slot)?
             }
         };
@@ -1318,7 +1348,7 @@ impl Game<'_> {
     /// A key `key` (`key.keyboard.r`) went down: over an item on a container
     /// screen, a native mod's panel hears it as a `Key` event.
     pub(super) fn native_panel_key(&mut self, key: &str) {
-        if !matches!(self.screen, Screen::Inventory | Screen::Creative)
+        if !matches!(self.client.screen, Screen::Inventory | Screen::Creative)
             || self.title.is_some()
             || self.mod_browser_typing()
         {
@@ -2030,34 +2060,34 @@ mod tests {
             mod_platform::testing::with_mods(mods, || {
                 let many = vec![stack("minecraft:stone"); 300];
                 game.panel_items("jei", many.clone());
-                game.screen = Screen::Inventory;
+                game.client.screen = Screen::Inventory;
                 assert!(game.title.is_none());
                 assert_eq!(frame(game, WINDOW), [], "nothing typed, nothing heard");
 
                 // Another mod naming the owner's id changes nothing.
                 search_as(game, "ae2", "iron");
-                assert_eq!(game.panel.pending, None);
+                assert_eq!(game.client.panel.pending, None);
                 // The owner's call is queued: the box and the page are as they were.
-                game.panel.page = 3;
+                game.client.panel.page = 3;
                 search_as(game, "jei", "iron");
                 assert_eq!(std::mem::take(&mut *HEARD.lock().unwrap()), []);
-                assert_eq!(game.panel.search.as_ref().unwrap().value, "");
+                assert_eq!(game.client.panel.search.as_ref().unwrap().value, "");
 
                 // Closed, the panel doesn't draw and the text waits; reopened,
                 // the owner hears it on the first page.
-                game.screen = Screen::Playing;
+                game.client.screen = Screen::Playing;
                 game.mod_browser_closed();
                 assert_eq!(frame(game, WINDOW), []);
-                game.screen = Screen::Inventory;
+                game.client.screen = Screen::Inventory;
                 assert_eq!(frame(game, WINDOW), heard("jei", "iron"));
-                assert_eq!(game.panel.page, 0);
-                assert_eq!(game.panel.search.as_ref().unwrap().value, "iron");
+                assert_eq!(game.client.panel.page, 0);
+                assert_eq!(game.client.panel.search.as_ref().unwrap().value, "iron");
                 assert_eq!(frame(game, WINDOW), [], "heard once");
 
                 // A window too narrow for the panel draws no box: the text waits.
                 search_as(game, "jei", "gold");
                 assert_eq!(frame(game, [200, 300]), []);
-                assert_eq!(game.panel.search.as_ref().unwrap().value, "iron");
+                assert_eq!(game.client.panel.search.as_ref().unwrap().value, "iron");
                 assert_eq!(frame(game, WINDOW), heard("jei", "gold"));
 
                 // Another mod takes the panel before a frame: neither hears the
@@ -2067,7 +2097,7 @@ mod tests {
                 assert_eq!(frame(game, WINDOW), []);
                 game.panel_items("jei", many);
                 assert_eq!(frame(game, WINDOW), []);
-                assert_eq!(game.panel.search.as_ref().unwrap().value, "gold");
+                assert_eq!(game.client.panel.search.as_ref().unwrap().value, "gold");
 
                 // Input before the frame sends only what the player typed, and
                 // that newer edit wins over the queued text.
@@ -2078,7 +2108,7 @@ mod tests {
                     heard("jei", "golds")
                 );
                 assert_eq!(frame(game, WINDOW), []);
-                assert_eq!(game.panel.search.as_ref().unwrap().value, "golds");
+                assert_eq!(game.client.panel.search.as_ref().unwrap().value, "golds");
             });
         });
     }

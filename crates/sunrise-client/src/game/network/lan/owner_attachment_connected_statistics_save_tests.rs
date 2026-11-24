@@ -135,14 +135,14 @@ mod connected_statistics_save_tests {
             "stats-missing"
         });
         fs::create_dir_all(&dir).unwrap();
-        game.world_root = dir.clone();
+        game.server.world_root = dir.clone();
         game.save = Arc::new(sunrise_client::save::SaveDir::new(
             dir.clone(),
             sunrise_client::save::LevelShape::OVERWORLD,
             Some(Default::default()),
         ));
         use sunrise_client::server::user_lists::{BanList, IpBanList, OpList, WhiteList};
-        game.server_lists = Some(Arc::new(Mutex::new(
+        game.server.server_lists = Some(Arc::new(Mutex::new(
             super::super::super::dedicated::Lists {
                 ops: OpList::new(dir.join("ops.json")),
                 white: WhiteList::new(dir.join("whitelist.json")),
@@ -182,7 +182,7 @@ mod connected_statistics_save_tests {
         assert_eq!(play.stats.get("used", "minecraft:diamond_sword"), expected);
         assert!(play.stats.take_dirty().is_empty());
         for command in ["save-all", "save-all flush"] {
-            game.chat_capture = Some(Vec::new());
+            game.server.chat_capture = Some(Vec::new());
             // Match dedicated registration without changing the process-wide
             // tree used by unrelated integrated-server tests.
             let dispatcher = sunrise_client::command::vanilla::build_for(false, true);
@@ -191,7 +191,7 @@ mod connected_statistics_save_tests {
             let (ctx, _) = parsed.executable().expect("registered dedicated command");
             let (root, ctx) = (parsed.context.clone(), ctx.clone());
             assert_eq!(game.run_chain(&root, &ctx).unwrap(), 1);
-            let messages = game.chat_capture.take().unwrap();
+            let messages = game.server.chat_capture.take().unwrap();
             assert!(
                 messages
                     .iter()
@@ -238,9 +238,10 @@ mod connected_statistics_save_exclusion_tests {
         let mut resources = None;
         let mut game = crate::game::game_tests::tests::server_game(&mut resources);
         let _rx = super::super::world_spawn_sync_tests::host_for(&mut game);
-        game.world_root = std::env::current_dir().unwrap().join("stats-excluded");
-        std::fs::create_dir_all(&game.world_root).unwrap();
-        let path = super::super::super::stats::player_json(&game.world_root, "stats", [0, 0, 0, 1]);
+        game.server.world_root = std::env::current_dir().unwrap().join("stats-excluded");
+        std::fs::create_dir_all(&game.server.world_root).unwrap();
+        let path =
+            super::super::super::stats::player_json(&game.server.world_root, "stats", [0, 0, 0, 1]);
         let mut host = game.lan.take().unwrap();
         host.play
             .entry(1)

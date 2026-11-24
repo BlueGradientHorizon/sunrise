@@ -335,7 +335,9 @@ impl Game<'_> {
         }
         self.global_level_event_sound(id, pos);
         if self.audio.capture.is_some() {
-            self.lan_global_events.push((self.dim.id(), id, pos, data));
+            self.server
+                .lan_global_events
+                .push((self.dim.id(), id, pos, data));
         }
     }
     /// Deliver one committed global level event immediately without touching unrelated
@@ -353,7 +355,9 @@ impl Game<'_> {
         if let Some(host) = self.lan.as_ref() {
             host.hub.global_level_event(self.dim.id(), id, pos, data);
         } else if self.audio.capture.is_some() {
-            self.lan_global_events.push((self.dim.id(), id, pos, data));
+            self.server
+                .lan_global_events
+                .push((self.dim.id(), id, pos, data));
         }
     }
     /// `LevelEventHandler.globalLevelEvent`: the sound two blocks from the
@@ -469,7 +473,7 @@ impl Game<'_> {
     /// commit order across effect kinds.
     pub(super) fn deliver_level_event(&mut self, id: i32, pos: [i32; 3], data: i32) {
         let saved_level_events = std::mem::take(&mut self.level_events);
-        let saved_lan_events = std::mem::take(&mut self.lan_events);
+        let saved_lan_events = std::mem::take(&mut self.server.lan_events);
         self.level_events.push(LevelEvent::LevelEvent {
             id,
             pos: BlockPos::new(pos[0], pos[1], pos[2]),
@@ -477,7 +481,7 @@ impl Game<'_> {
             source: None,
         });
         let _ = self.process_level_events();
-        let recorded = std::mem::replace(&mut self.lan_events, saved_lan_events);
+        let recorded = std::mem::replace(&mut self.server.lan_events, saved_lan_events);
         let extra_level_events = std::mem::replace(&mut self.level_events, saved_level_events);
         self.level_events.extend(extra_level_events);
         if let Some(host) = self.lan.as_mut() {
@@ -487,7 +491,7 @@ impl Game<'_> {
             }
             host.hub.level_event(id, pos, data, None);
         } else {
-            self.lan_events.extend(recorded);
+            self.server.lan_events.extend(recorded);
         }
     }
 

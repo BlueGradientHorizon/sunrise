@@ -13,9 +13,12 @@ impl Game<'_> {
         self.border
             .geometry()
             .is_within_bounds(f64::from(pos.x), f64::from(pos.z), 0.0)
-            && !self.lan_acting_spawn_protection.is_some_and(|radius| {
-                self.spawn_protects(radius, self.dim.id(), [pos.x, pos.y, pos.z])
-            })
+            && !self
+                .server
+                .lan_acting_spawn_protection
+                .is_some_and(|radius| {
+                    self.spawn_protects(radius, self.dim.id(), [pos.x, pos.y, pos.z])
+                })
     }
     /// `Entity.applyEffectsFromBlocks` along a server player's moves: the
     /// blocks that put the fire out (`PowderSnowBlock.entityInside`'s

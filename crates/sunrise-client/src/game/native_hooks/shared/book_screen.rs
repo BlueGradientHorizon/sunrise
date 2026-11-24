@@ -14,7 +14,7 @@ impl Game<'_> {
     pub(in crate::game) fn shown_native_screen(&self) -> Option<&OpenNativeScreen> {
         let screen = self.mod_screen.as_ref()?;
         if !screen.shown
-            || self.screen != Screen::Inventory
+            || self.client.screen != Screen::Inventory
             || self.container != Some(screen.menu.key)
         {
             return None;

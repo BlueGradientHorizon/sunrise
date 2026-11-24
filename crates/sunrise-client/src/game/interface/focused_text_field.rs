@@ -50,24 +50,24 @@ impl Game<'_> {
         if self.screen_over_playing() {
             return None;
         }
-        if control::title_owns_text(&self.screen, self.title.is_some()) {
+        if control::title_owns_text(&self.client.screen, self.title.is_some()) {
             let mut state = None;
             self.title
                 .as_mut()?
                 .edit_focused_text_field(|field| state = Some(visit_box(field, edited)));
             return state;
         }
-        match self.screen {
+        match self.client.screen {
             Screen::Chat | Screen::CommandBlock => {
                 let measure = Measure(&self.gui.atlas.font);
                 let commands = Commands {
                     dispatcher: super::chat::chat_tree(&self.remote),
                     registries: &self.ui.registries,
                 };
-                let screen = if self.screen == Screen::Chat {
+                let screen = if self.client.screen == Screen::Chat {
                     self.ui.chat_screen.as_mut()?
                 } else {
-                    &mut self.command_block_screen.as_mut()?.command
+                    &mut self.client.command_block_screen.as_mut()?.command
                 };
                 if let Some(edited) = edited {
                     screen.edit_input(&measure, &commands, |field| {
@@ -83,24 +83,25 @@ impl Game<'_> {
             }
             Screen::Social => {
                 if edited.is_some() {
-                    self.social.scroll = 0.0;
+                    self.client.social.scroll = 0.0;
                 }
-                Some(visit_box(&mut self.social.search, edited))
+                Some(visit_box(&mut self.client.social.search, edited))
             }
             Screen::DebugOptions => self
+                .client
                 .debug_options
                 .as_mut()
                 .filter(|screen| screen.search.focused)
                 .map(|screen| visit_box(&mut screen.search, edited)),
             Screen::Inventory | Screen::Creative if self.mod_browser_typing() => {
-                let state = visit_box(self.panel.search.as_mut()?, edited);
+                let state = visit_box(self.client.panel.search.as_mut()?, edited);
                 if edited.is_some() {
                     self.mod_browser_text(None, false);
                 }
                 Some(state)
             }
             Screen::Inventory if self.recipe_search_focused() => {
-                Some(visit_box(self.recipe_ui.search.as_mut()?, edited))
+                Some(visit_box(self.client.recipe_ui.search.as_mut()?, edited))
             }
             Screen::Inventory if self.station_typing() => {
                 let state = visit_box(&mut self.station.as_mut()?.rename, edited);
@@ -109,11 +110,14 @@ impl Game<'_> {
                 }
                 Some(state)
             }
-            Screen::Creative if self.creative_screen.tab().search && !self.creative_ignore_text => {
+            Screen::Creative
+                if self.client.creative_screen.tab().search
+                    && !self.client.creative_ignore_text =>
+            {
                 if edited.is_some() {
-                    self.creative_screen.scroll = 0.0;
+                    self.client.creative_screen.scroll = 0.0;
                 }
-                Some(visit_box(&mut self.creative_screen.search, edited))
+                Some(visit_box(&mut self.client.creative_screen.search, edited))
             }
             _ => None,
         }
@@ -213,38 +217,38 @@ mod tests {
             with_client_game(|game| {
                 let _event_loop = frame_scene(game);
                 let social = |game: &Game<'_>| {
-                    let search = &game.social.search;
+                    let search = &game.client.social.search;
                     (search.value.clone(), search.cursor, search.highlight)
                 };
 
                 // An input method's commit, over a selected emoji.
-                game.screen = Screen::Social;
-                game.social.search.set_value("a\u{1f600}b");
-                game.social.search.set_cursor(2, false);
-                game.social.search.set_cursor(1, true);
+                game.client.screen = Screen::Social;
+                game.client.social.search.set_value("a\u{1f600}b");
+                game.client.social.search.set_cursor(2, false);
+                game.client.social.search.set_cursor(1, true);
                 game.ime_commit("x?!");
                 assert_eq!(taken(), ["x:a\u{1f600}b:1:2", "?:axb:2:2", "!:axb:2:2",]);
                 assert_eq!(social(game), ("a\u{1f600}b".to_owned(), 2, 2));
-                assert_eq!(game.social.search.max_length, 16);
+                assert_eq!(game.client.social.search.max_length, 16);
 
                 // A key's characters: the box's own filter and limit cut a replacement.
                 game.screen_chars_typed(Some("#"));
-                assert_eq!(game.social.search.value, "abcdefghijklmnop");
+                assert_eq!(game.client.social.search.value, "abcdefghijklmnop");
                 taken();
 
                 // An edit that lets the character through: it lands at the edited caret.
-                game.social.search.set_value("");
+                game.client.social.search.set_value("");
                 game.screen_chars_typed(Some("^"));
                 assert_eq!(taken(), ["^::0:0"]);
-                assert_eq!(game.social.search.value, "^z");
+                assert_eq!(game.client.social.search.value, "^z");
 
                 // Clearing `field` is no edit of the box.
                 game.screen_chars_typed(Some("~"));
-                assert_eq!(game.social.search.value, "^z");
+                assert_eq!(game.client.social.search.value, "^z");
                 taken();
 
                 // The chat box: its completions follow the replaced text.
-                game.screen = Screen::Chat;
+                game.client.screen = Screen::Chat;
                 game.ui.registries.players = vec!["Steve".into(), "Steven".into()];
                 game.ui.chat_screen = Some(ChatScreen::new(
                     &Measure(&game.gui.atlas.font),
@@ -269,21 +273,21 @@ mod tests {
                 );
 
                 // No box to offer: the mod's `Some` goes nowhere.
-                game.screen = Screen::Inventory;
+                game.client.screen = Screen::Inventory;
                 game.ui.chat_screen = None;
                 game.screen_chars_typed(Some("q"));
                 assert_eq!(taken(), ["q"]);
 
                 // A prompt over the screen keeps the underlying screen's box away.
-                game.screen = Screen::Social;
-                game.link_prompt = Some("https://example.com".into());
+                game.client.screen = Screen::Social;
+                game.client.link_prompt = Some("https://example.com".into());
                 game.ime_commit("w");
                 assert_eq!(taken(), ["w"]);
                 assert_eq!(social(game), ("^z".to_owned(), 1, 1));
-                game.link_prompt = None;
+                game.client.link_prompt = None;
 
                 // The title's own field.
-                game.screen = Screen::Playing;
+                game.client.screen = Screen::Playing;
                 let mut menu = title::Title::new(
                     std::path::PathBuf::from("/nonexistent-field-fixture/saves"),
                     std::path::Path::new("/nonexistent-field-fixture"),

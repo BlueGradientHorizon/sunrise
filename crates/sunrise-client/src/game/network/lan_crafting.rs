@@ -205,6 +205,7 @@ impl Game<'_> {
         Env {
             crafting_remainder: Some(self),
             player: self
+                .server
                 .lan_acting_uuid
                 .or_else(|| self.remote.as_ref().map(|r| r.profile())),
             player_entity_id: Some(self.own_entity_id()),
@@ -2926,7 +2927,7 @@ mod empty_ingredient_placement_tests {
                         .to_string(),
                     )
                     .unwrap();
-                    game.world_root = dir.clone();
+                    game.server.world_root = dir.clone();
                     let resources = game.options.resources.clone();
                     let stack = crate::game::functions::pack_stack(
                         &dir,
@@ -2960,7 +2961,7 @@ mod empty_ingredient_placement_tests {
                         );
                         std::fs::remove_file(path).unwrap();
                     }
-                    game.world_tables = game
+                    game.server.world_tables = game
                         .stage_world_tables(&stack, false, &resources)
                         .unwrap()
                         .tables;

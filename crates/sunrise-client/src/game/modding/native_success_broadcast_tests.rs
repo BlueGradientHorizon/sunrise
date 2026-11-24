@@ -115,7 +115,7 @@ fn with_operators(test: impl FnOnce(&mut Game<'_>, &[(u32, mpsc::Receiver<Out>)]
                     hub.guests.push(guest);
                     receivers.push((conn, rx));
                 }
-                game.next_entity = game.next_entity.max(NON_OP);
+                game.server.next_entity = game.server.next_entity.max(NON_OP);
                 game.ensure_datapacks();
                 game.build_registries();
                 // A dedicated server's command tree (`save-off`), as `run_dedicated` selects it
@@ -513,12 +513,12 @@ fn console_output_is_logged_and_broadcast_once() {
                 chats(game, receivers);
                 set_rules(game, true, true);
                 let console = |game: &mut Game<'_>, rcon: bool, line: &str| {
-                    game.console_broadcast = Some(true);
-                    game.rcon_source = rcon;
+                    game.server.console_broadcast = Some(true);
+                    game.server.rcon_source = rcon;
                     let logged =
                         crate::game::dedicated::capture_log(|| game.console_dispatch(line));
-                    game.console_broadcast = None;
-                    game.rcon_source = false;
+                    game.server.console_broadcast = None;
+                    game.server.rcon_source = false;
                     logged
                 };
                 let nobody = vec![
@@ -557,7 +557,7 @@ fn console_output_is_logged_and_broadcast_once() {
                 // A vanilla reply the console broadcasts, through the dispatcher: once. `save-off`
                 // reads the dedicated server's lists.
                 let home = tempfile::tempdir().unwrap();
-                game.server_lists = Some(Arc::new(std::sync::Mutex::new(
+                game.server.server_lists = Some(Arc::new(std::sync::Mutex::new(
                     crate::game::dedicated::Lists {
                         ops: OpList::new(home.path().join("ops.json")),
                         white: WhiteList::new(home.path().join("whitelist.json")),

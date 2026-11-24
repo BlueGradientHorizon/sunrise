@@ -150,7 +150,7 @@ pub(in crate::game) fn run_chunk_loaded_families_keep_vanilla_lookup_and_save_or
         crate::game::entity_residency::assign_resident_ids!(
             game.creatures.projectiles,
             p,
-            &mut game.next_entity,
+            &mut game.server.next_entity,
             Some(&p.attachment_lifetime)
         );
         let arrow = game.creatures.projectiles.last().unwrap().id;

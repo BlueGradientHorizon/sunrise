@@ -132,8 +132,8 @@ impl Game<'_> {
             &mut self.world.random,
             LevelRandom::for_level(LegacyRandom::new(0)),
         );
-        let mut sequences = std::mem::take(&mut self.rand_sequences);
-        let loot = self.server_loot.get();
+        let mut sequences = std::mem::take(&mut self.server.rand_sequences);
+        let loot = self.server.server_loot.get();
         let players = Players {
             time: self.world.game_time,
             game: self,
@@ -183,7 +183,7 @@ impl Game<'_> {
         };
         drop(players);
         self.world.random = random;
-        self.rand_sequences = sequences;
+        self.server.rand_sequences = sequences;
         self.world
             .block_entities
             .put(lease, BlockEntity::Vault(vault));

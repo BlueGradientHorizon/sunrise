@@ -306,9 +306,9 @@ fn a_failed_presentation_discards_its_draws_without_disabling_its_factory() {
                                 let mut frame = HudBatch::scratch([320, 240]);
                                 assert!(game.remote_overlay(&mut frame));
                                 assert_eq!(game.menu_blur(), Some(5.0));
-                                assert!(game.mod_clear_particles.get());
+                                assert!(game.client.mod_clear_particles.get());
                                 assert_eq!(
-                                    game.requested_camera_type.get(),
+                                    game.client.requested_camera_type.get(),
                                     Some(sunrise_client::camera::CameraType::ThirdPersonFront)
                                 );
                             }
@@ -318,9 +318,9 @@ fn a_failed_presentation_discards_its_draws_without_disabling_its_factory() {
                             for incoming in [false, true, false] {
                                 let camera = incoming
                                     .then_some(sunrise_client::camera::CameraType::ThirdPersonBack);
-                                game.screen_blur_requested.set(incoming);
-                                game.mod_clear_particles.set(incoming);
-                                game.requested_camera_type.set(camera);
+                                game.client.screen_blur_requested.set(incoming);
+                                game.client.mod_clear_particles.set(incoming);
+                                game.client.requested_camera_type.set(camera);
                                 let mut frame = HudBatch::scratch([320, 240]);
                                 assert!(game.remote_overlay(&mut frame));
                                 assert_eq!(
@@ -329,9 +329,9 @@ fn a_failed_presentation_discards_its_draws_without_disabling_its_factory() {
                                 );
                                 assert_eq!(frame.blends, vanilla.blends);
                                 assert_eq!(game.menu_blur(), incoming.then_some(5.0));
-                                assert_eq!(game.mod_clear_particles.get(), incoming);
-                                assert_eq!(game.requested_camera_type.get(), camera);
-                                let pending = game.mod_sounds.queued.borrow();
+                                assert_eq!(game.client.mod_clear_particles.get(), incoming);
+                                assert_eq!(game.client.requested_camera_type.get(), camera);
+                                let pending = game.client.mod_sounds.queued.borrow();
                                 if trip == 1 {
                                     assert_eq!(pending.len(), 1);
                                     assert_eq!(

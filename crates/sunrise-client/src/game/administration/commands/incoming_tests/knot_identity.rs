@@ -150,8 +150,8 @@ fn host(game: &mut Game<'_>) {
     )
     .unwrap();
     // Existing mobs and knots already own runtime IDs when hosting starts.
-    game.next_entity += 1;
-    let guest_id = game.next_entity;
+    game.server.next_entity += 1;
+    let guest_id = game.server.next_entity;
     let (tx, _rx) = mpsc::channel();
     let mut guest = Guest::new(
         Joined {
@@ -198,7 +198,7 @@ fn a_server_that_starts_tracking_later_shows_the_same_knot() {
     assert!(game.lan.is_some());
     game.lan_assign_ids();
     assert_eq!(
-        game.knot_ids.get(&[8, 201, 0]),
+        game.server.knot_ids.get(&[8, 201, 0]),
         Some(&id),
         "the tracker's id"
     );

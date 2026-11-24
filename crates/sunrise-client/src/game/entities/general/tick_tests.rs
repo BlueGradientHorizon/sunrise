@@ -324,7 +324,7 @@ fn row_ids(game: &Game<'_>) -> Vec<u32> {
 /// its ordered runs, driven by hand. The spawn chunks tick with nobody
 /// watching, as vanilla's do (`tickets.update(None)`).
 fn tick(game: &mut Game<'_>) {
-    game.tickets.update(None);
+    game.server.tickets.update(None);
     game.begin_ordered_ticks();
     game.tick_general().unwrap();
 }
@@ -406,7 +406,7 @@ fn parent_ticks_before_its_depth_first_rider_subtree() {
 fn a_row_joined_during_the_tick_span_ticks_the_next_phase() {
     with_counter(|game, l| {
         let first = seeded_row(game, [1, 2, 3, 4], 40);
-        game.tickets.update(None);
+        game.server.tickets.update(None);
         game.begin_ordered_ticks();
         let late = spawn_tree(game, [5, 6, 7, 8], [0.5, 64.0, 0.5], Vec::new());
         game.tick_general().unwrap();

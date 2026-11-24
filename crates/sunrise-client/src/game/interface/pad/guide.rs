@@ -67,9 +67,9 @@ impl Game<'_> {
             && !self.screen_over_playing()
             && self.sleeping.is_none()
             && self.player.is_some()
-            && !self.debug_entries.any_enabled(
-                &self.registered_debug_entries,
-                self.debug,
+            && !self.client.debug_entries.any_enabled(
+                &self.client.registered_debug_entries,
+                self.client.debug,
                 self.reduced_debug_info(),
             )
     }
@@ -160,7 +160,7 @@ impl Game<'_> {
     }
 
     fn pad_menu_guide_facts(&mut self, batch: &HudBatch) -> MenuFacts {
-        let creative = self.screen == Screen::Creative;
+        let creative = self.client.screen == Screen::Creative;
         // The creative grid's items aren't slots: there, only what the screen's buttons do.
         let under = if creative || self.spectator() {
             Under::Nothing
@@ -171,7 +171,7 @@ impl Game<'_> {
             }
         } else if self.recipe_book_under_pointer() {
             Under::Control
-        } else if let Some(slot) = self.slot_at(batch, self.cursor.0, self.cursor.1) {
+        } else if let Some(slot) = self.slot_at(batch, self.client.cursor.0, self.client.cursor.1) {
             let stack = self.slot_view(slot);
             let same = match (&stack, &self.carried) {
                 (Some(a), Some(b)) => a.same_item_same_components(b),

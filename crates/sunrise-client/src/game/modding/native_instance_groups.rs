@@ -98,14 +98,15 @@ impl InstanceGroupStorage {
 impl InstanceGroups for Game<'_> {
     fn create_group(&self, model: ModelRef, capacity: u32) -> Result<InstanceGroupRef, GroupError> {
         let fields = model.fields();
-        if fields.generation != self.standalone_geometry.generation() {
+        if fields.generation != self.client.standalone_geometry.generation() {
             return Err(GroupError::Model(mod_api::ModelError::StaleModel));
         }
-        self.standalone_geometry
+        self.client
+            .standalone_geometry
             .instance_slot(fields.slot)
             .ok_or(GroupError::Model(mod_api::ModelError::UnknownModel))?;
         let owner = mod_api::content::crash::current_native_mod();
-        let mut storage = self.instance_groups.borrow_mut();
+        let mut storage = self.client.instance_groups.borrow_mut();
         let reserved: usize = storage
             .groups
             .iter()
@@ -116,7 +117,10 @@ impl InstanceGroups for Game<'_> {
         if capacity > 16_384 || reserved + (capacity as usize).max(1) > MOD_CAPACITY {
             return Err(GroupError::CapacityExceeded);
         }
-        self.prepared_model_draws.borrow_mut().reserve(16_384);
+        self.client
+            .prepared_model_draws
+            .borrow_mut()
+            .reserve(16_384);
         storage.next = storage
             .next
             .checked_add(1)
@@ -165,8 +169,8 @@ impl Game<'_> {
         first: u32,
         copies: &[ModelInstance],
     ) -> Result<(), GroupError> {
-        let mut storage = self.instance_groups.borrow_mut();
-        let group = storage.get(group, self.standalone_geometry.generation())?;
+        let mut storage = self.client.instance_groups.borrow_mut();
+        let group = storage.get(group, self.client.standalone_geometry.generation())?;
         let end = (first as usize)
             .checked_add(copies.len())
             .filter(|end| *end <= group.copies.len())
@@ -182,8 +186,8 @@ impl Game<'_> {
         handle: InstanceGroupRef,
         transform: [f32; 12],
     ) -> Result<(), GroupError> {
-        let mut storage = self.instance_groups.borrow_mut();
-        let group = storage.get(handle, self.standalone_geometry.generation())?;
+        let mut storage = self.client.instance_groups.borrow_mut();
+        let group = storage.get(handle, self.client.standalone_geometry.generation())?;
         if transform.iter().any(|v| !v.is_finite()) {
             return Err(GroupError::NonFinite);
         }
@@ -196,8 +200,8 @@ impl Game<'_> {
         group: InstanceGroupRef,
         len: u32,
     ) -> Result<(), GroupError> {
-        let mut storage = self.instance_groups.borrow_mut();
-        let group = storage.get(group, self.standalone_geometry.generation())?;
+        let mut storage = self.client.instance_groups.borrow_mut();
+        let group = storage.get(group, self.client.standalone_geometry.generation())?;
         if len as usize > group.copies.len() {
             return Err(GroupError::OutOfRange);
         }
@@ -211,8 +215,8 @@ impl Game<'_> {
         &self,
         handle: InstanceGroupRef,
     ) -> Result<(), GroupError> {
-        let mut storage = self.instance_groups.borrow_mut();
-        storage.get(handle, self.standalone_geometry.generation())?;
+        let mut storage = self.client.instance_groups.borrow_mut();
+        storage.get(handle, self.client.standalone_geometry.generation())?;
         storage.groups[handle.fields().slot as usize] = None;
         Ok(())
     }
@@ -221,8 +225,8 @@ impl Game<'_> {
         draw: &mut sunrise_client::world_geometry::WorldGeometry,
         handle: InstanceGroupRef,
     ) -> Result<(), GroupError> {
-        let mut storage = self.instance_groups.borrow_mut();
-        let group = storage.get(handle, self.standalone_geometry.generation())?;
+        let mut storage = self.client.instance_groups.borrow_mut();
+        let group = storage.get(handle, self.client.standalone_geometry.generation())?;
         if draw.has_group(handle) {
             return Ok(());
         }

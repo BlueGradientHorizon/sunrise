@@ -47,7 +47,7 @@ fn a_special_dropped_item_outlines_only_its_committed_world_vertices() {
                         h: 16,
                     },
                 );
-                game.glint_frame = GlintFrame {
+                game.client.glint_frame = GlintFrame {
                     millis: 0,
                     speed: 0.5,
                     alpha: 0.75,
@@ -106,7 +106,7 @@ fn a_special_dropped_item_outlines_only_its_committed_world_vertices() {
                 assert!(drawn.iter().all(|v| v.layer & 0xFFFF == 7)); // solid foil overlay
                 assert_ne!(drawn[1].glint_uv, [0.0; 2]);
 
-                let outline = game.glowing_vertices.borrow();
+                let outline = game.client.glowing_vertices.borrow();
                 assert_eq!(outline.len(), 4);
                 for (outline, vertex) in outline.iter().zip(drawn) {
                     assert_eq!(outline.pos, vertex.pos);

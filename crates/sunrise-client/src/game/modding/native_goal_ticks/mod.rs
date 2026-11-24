@@ -719,7 +719,7 @@ impl mobs::part_goals::GoalHost for Game<'_> {
     }
 
     fn mob_player_credit(&self, mob: &Mob) -> Option<Option<u32>> {
-        let credit = *self.last_hurt_by_player.get(&mob.id)?;
+        let credit = *self.server.last_hurt_by_player.get(&mob.id)?;
         Some(
             self.resolve_player_credit(credit)
                 .and_then(|conn| self.player_entity_id_by_connection(conn))

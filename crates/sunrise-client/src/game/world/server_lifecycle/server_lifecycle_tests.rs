@@ -77,7 +77,7 @@ fn integrated_stop_finishes_after_an_unencodable_record() {
     .into();
     with_mods(mods, || {
         with_game(|game| {
-            game.world_root = root.path().to_path_buf();
+            game.server.world_root = root.path().to_path_buf();
             let open = || {
                 SaveDir::new(
                     root.path().to_path_buf(),
@@ -87,7 +87,7 @@ fn integrated_stop_finishes_after_an_unencodable_record() {
             };
             game.save = Arc::new(open());
             game.session_lock = Some(SessionLock::acquire(root.path()).unwrap());
-            game.world_adopted = true;
+            game.server.world_adopted = true;
             game.native_lifecycle
                 .begin_open(mod_api::Authority::IntegratedServer);
             game.native_lifecycle.world_open_ready().unwrap();
@@ -154,14 +154,14 @@ fn integrated_stop_propagates_metadata_errors_even_after_a_record_failure() {
         with_game(|game| {
             for mixed in [false, true] {
                 let root = tempfile::tempdir().unwrap();
-                game.world_root = root.path().to_path_buf();
+                game.server.world_root = root.path().to_path_buf();
                 game.save = Arc::new(SaveDir::new(
-                    game.world_root.clone(),
+                    game.server.world_root.clone(),
                     LevelShape::OVERWORLD,
                     Some(Default::default()),
                 ));
                 game.session_lock = Some(SessionLock::acquire(root.path()).unwrap());
-                game.world_adopted = true;
+                game.server.world_adopted = true;
                 if mixed {
                     let invalid = (0..=DISK_WRITE_NESTING_GUARD)
                         .fold(Tag::Int(0), |nested, _| Tag::List(vec![nested]));
@@ -309,7 +309,7 @@ fn every_started_server_stops_and_saves_even_when_startup_or_ticks_fail() {
                             std::process::id()
                         ));
                         std::fs::create_dir_all(&root).unwrap();
-                        game.world_root = root.clone();
+                        game.server.world_root = root.clone();
                         game.save = Arc::new(sunrise_client::save::SaveDir::new(
                             root.clone(),
                             sunrise_client::save::LevelShape::OVERWORLD,
@@ -324,7 +324,7 @@ fn every_started_server_stops_and_saves_even_when_startup_or_ticks_fail() {
                         }
                         // The lock is held while tags are readable, before the prepared
                         // level replaces the placeholder. Only adoption may save.
-                        game.world_adopted = adopted;
+                        game.server.world_adopted = adopted;
                         if matches!(case, "unopened" | "locked-unadopted") {
                             // A failed open must not overwrite an existing, unreadable save.
                             std::fs::write(root.join("level.dat"), b"unadopted save").unwrap();
@@ -384,7 +384,7 @@ fn every_started_server_stops_and_saves_even_when_startup_or_ticks_fail() {
                                 "save-error" => {
                                     let file = root.join("not-a-directory");
                                     std::fs::write(&file, b"occupied").unwrap();
-                                    game.world_root = file;
+                                    game.server.world_root = file;
                                     Ok(())
                                 }
                                 _ => Ok(()),
@@ -440,7 +440,7 @@ fn every_started_server_stops_and_saves_even_when_startup_or_ticks_fail() {
                         };
                         assert_eq!(*log.lock().unwrap(), expected, "{dedicated} {case}");
                         assert!(game.session_lock.is_none(), "storage released after {case}");
-                        assert!(!game.world_adopted, "adoption cleared after {case}");
+                        assert!(!game.server.world_adopted, "adoption cleared after {case}");
                         assert!(game.serving.is_none(), "serving retired after {case}");
                         assert!(game.lan.is_none(), "LAN dropped after {case}");
                         if config_panic {

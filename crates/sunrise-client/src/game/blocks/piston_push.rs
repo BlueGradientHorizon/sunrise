@@ -785,13 +785,17 @@ impl Game<'_> {
         let Some(player) = self.player.as_ref() else {
             return Ok(None);
         };
-        let (before, id, conn, dim) =
-            (player.position, player.entity_id, self.lan_acting, self.dim);
+        let (before, id, conn, dim) = (
+            player.position,
+            player.entity_id,
+            self.server.lan_acting,
+            self.dim,
+        );
         // A guest landing can call Game in between these borrows. Rebind the
         // original body and its level, or abandon the rest of the old move.
         macro_rules! motion_phase {
             ($world:ident, $body:expr) => {{
-                if self.lan_acting != conn || self.dim != dim {
+                if self.server.lan_acting != conn || self.dim != dim {
                     return Ok(None);
                 }
                 let entities = self.entity_collisions(Mover::Player);
@@ -1063,7 +1067,7 @@ impl Game<'_> {
                         let p = self.player.as_ref().filter(|p| !p.spectator)?;
                         (p.bounds(), p.entity_id as u32, None)
                     }
-                    MoveWho::Guest(conn) if Some(conn) != self.lan_acting => {
+                    MoveWho::Guest(conn) if Some(conn) != self.server.lan_acting => {
                         let g = self
                             .lan
                             .as_ref()?
@@ -1563,7 +1567,7 @@ impl Game<'_> {
                 if let Some(hit) = paused_hurt
                     && let Some(index) = self.mob_index.find(&self.mobs, hit.victim)
                 {
-                    self.paused_mob_hurt = Some(hit);
+                    self.server.paused_mob_hurt = Some(hit);
                     self.finish_mob_damage_at(index);
                 }
             }
@@ -2561,7 +2565,7 @@ mod h255_mob_piston_ground_tests {
             game.world.random.set_seed(255);
             game.update_chunk_tickets();
             assert!(crate::game::ticking_chunk(&game.world, 0, 0));
-            assert!(game.tickets.levels().block_ticking(0, 0));
+            assert!(game.server.tickets.levels().block_ticking(0, 0));
             test(&mut game);
         });
     }

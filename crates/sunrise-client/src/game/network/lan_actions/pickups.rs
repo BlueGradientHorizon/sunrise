@@ -22,7 +22,7 @@ impl Game<'_> {
         }
         // The test below takes items whose position is less than 1.5 from
         // the player's on x and z: their boxes reach these columns.
-        if let Some(columns) = self.pickup_columns.as_mut()
+        if let Some(columns) = self.server.pickup_columns.as_mut()
             && !columns.may_reach_area(
                 &self.dropped,
                 (

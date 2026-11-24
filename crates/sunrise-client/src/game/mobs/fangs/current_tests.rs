@@ -260,7 +260,7 @@ pub(in crate::game) fn run_fangs_in_a_current_are_pushed_and_fangs_in_still_wate
         }
 
         // Fangs added during the current mob pass (id > ticked_entities_through) wait for next tick.
-        game.ticked_entities_through = game.next_entity;
+        game.server.ticked_entities_through = game.server.next_entity;
         game.add_fangs([6.5, 200.0, 3.5], 0.0, 100, 0);
         let late_id = game.fangs.list.last().unwrap().id;
         game.tick_mobs().unwrap();

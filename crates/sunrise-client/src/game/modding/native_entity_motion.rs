@@ -60,7 +60,7 @@ impl Game<'_> {
         t: Target,
     ) -> Option<&sunrise_client::lan::guest::Guest> {
         match t {
-            Target::Player => self.command_guest(self.lan_acting?),
+            Target::Player => self.command_guest(self.server.lan_acting?),
             Target::Guest(conn) => self.command_guest(conn),
             _ => None,
         }
@@ -275,12 +275,13 @@ impl Game<'_> {
                 body.position,
                 body.bounds(),
                 // PlayerInput updates the guest row before the sneak callback and the body tick.
-                self.lan_acting
+                self.server
+                    .lan_acting
                     .and_then(|conn| self.command_guest(conn))
                     .map_or(body.shift_key_down, |guest| guest.sneaking),
                 self.inventory.get(self.selected).and_then(Option::as_ref),
                 &self.armor,
-                self.lan_acting,
+                self.server.lan_acting,
             ),
             Target::Guest(conn) => {
                 let Some(guest) = self.command_guest(conn) else {
@@ -400,7 +401,8 @@ impl Game<'_> {
         }
         let (remote, id) = self.native_client_entity_context(entity)?;
         remote.tracked(id)?;
-        self.interactions
+        self.client
+            .interactions
             .get(&id)
             .map(|i| f64::from(i.eye_height()))
     }

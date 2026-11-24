@@ -145,7 +145,7 @@ pub(super) fn plan_shader_toggle(
 /// camera-keyframe shortcut stays physical K's).
 impl Game<'_> {
     pub(super) fn shader_pack_key_press(&mut self, name: &str) -> bool {
-        if self.screen != Screen::Playing
+        if self.client.screen != Screen::Playing
             || name == "key.keyboard.unknown"
             || self.settings.extras.shader_pack_key != name
         {
@@ -310,13 +310,17 @@ impl Game<'_> {
     ) -> PackInputs {
         // A `shaders/` pack lights the faces itself unless `oldLighting=true`: sections mesh
         // without the game's face shading (the pack loaded or dropped below shows next frame).
-        let pack_lighting = self.pack_ids.as_ref().is_some_and(|ids| !ids.old_lighting);
+        let pack_lighting = self
+            .client
+            .pack_ids
+            .as_ref()
+            .is_some_and(|ids| !ids.old_lighting);
         if self.streaming.shader_pack_lighting != pack_lighting {
             self.streaming.shader_pack_lighting = pack_lighting;
             self.all_sections_changed();
         }
         // Any `shaders/` pack (its `oldLighting` too) draws fluid tops split as Iris does.
-        let shader_pack = self.pack_ids.is_some();
+        let shader_pack = self.client.pack_ids.is_some();
         if self.streaming.shader_pack != shader_pack {
             self.streaming.shader_pack = shader_pack;
             self.all_sections_changed();
@@ -325,13 +329,17 @@ impl Game<'_> {
         if let Some(renderer) = &mut self.renderer {
             renderer.keep_pack_sources(shader_pack);
         }
-        let separate_ao = self.pack_ids.as_ref().is_some_and(|ids| ids.separate_ao);
+        let separate_ao = self
+            .client
+            .pack_ids
+            .as_ref()
+            .is_some_and(|ids| ids.separate_ao);
         if self.streaming.separate_ao != separate_ao {
             self.streaming.separate_ao = separate_ao;
             self.all_sections_changed();
         }
         let selected = picked_pack(&self.settings).to_owned();
-        let path = self.native_shaders.resolve_path(
+        let path = self.client.native_shaders.resolve_path(
             &Self::shader_packs_dir(),
             &selected,
             dev_pack().is_some(),
@@ -342,10 +350,10 @@ impl Game<'_> {
         } else {
             path.to_string_lossy().into_owned()
         };
-        if self.native_shaders.picked != picked {
-            self.native_shaders.select(&picked);
+        if self.client.native_shaders.picked != picked {
+            self.client.native_shaders.select(&picked);
             self.set_translucent_layers(Vec::new());
-            self.pack_ids = None;
+            self.client.pack_ids = None;
             if let Some(renderer) = &mut self.renderer {
                 renderer.drop_shader_packs();
             }
@@ -477,7 +485,7 @@ impl Game<'_> {
                         );
                         let block_items =
                             block_item_ids(self.res.facts(), self.pack.assets.registry, &ids);
-                        self.pack_ids = Some(PackIds {
+                        self.client.pack_ids = Some(PackIds {
                             block_items,
                             item_file: text.is_some(),
                             items: items.plain(),
@@ -516,7 +524,7 @@ impl Game<'_> {
                     }
                     Err(e) => {
                         remember(&path, fingerprint(&path), None);
-                        self.pack_ids = None;
+                        self.client.pack_ids = None;
                         log::warn!("shader pack {name}: {e}");
                         // Without a pack this can't fail.
                         let _ = renderer.set_shader_pack(dimension, None, &[]);
@@ -625,7 +633,7 @@ impl Game<'_> {
                 true,
                 CameraFogEffects::from_effects(&self.potions.effects, self.sculk.darkness),
                 self.night_vision_intensity(partial),
-                self.ambience.moodiness,
+                self.client.ambience.moodiness,
             ),
         };
         // LivingEntity.getEffectBlendFactor: the fade only while the instance is there.
@@ -723,7 +731,7 @@ impl Game<'_> {
             return;
         };
         write_shader_options(&options);
-        self.pack_ids = None;
+        self.client.pack_ids = None;
         if let Some(renderer) = &mut self.renderer {
             renderer.drop_shader_packs();
         }
@@ -736,7 +744,7 @@ impl Game<'_> {
         let path = Self::shader_packs_dir().join(name);
         remember(&path, fingerprint(&path), None);
         log::error!("shader pack {name}: turned off: {error}");
-        self.pack_ids = None;
+        self.client.pack_ids = None;
         if let Some(renderer) = &mut self.renderer {
             // Marks this dimension as loaded, without a pack, so it is not tried again (without
             // a pack this can't fail).
@@ -754,12 +762,12 @@ impl Game<'_> {
 
     /// Whether the game's vignette draws: the option, unless the loaded pack turns it off.
     pub(super) fn vignette_shown(&self) -> bool {
-        self.settings.vignette && self.pack_ids.as_ref().is_none_or(|ids| ids.vignette)
+        self.settings.vignette && self.client.pack_ids.as_ref().is_none_or(|ids| ids.vignette)
     }
 
     /// `currentRenderedItemId` of a held `item`, [`rendered_item_id`]'s; 0 without a pack.
     pub(super) fn rendered_item_id(&self, item: &str) -> i32 {
-        self.pack_ids.as_ref().map_or(0, |ids| {
+        self.client.pack_ids.as_ref().map_or(0, |ids| {
             rendered_item_id(
                 ids.block_items.get(item).copied(),
                 ids.items.get(item).copied(),
@@ -770,11 +778,11 @@ impl Game<'_> {
 
     /// `heldItemId(2)` and `heldBlockLightValue(2)`: main hand, then off hand (5.2, 5.3).
     fn held_for_pack(&mut self) -> ([i32; 2], [i32; 2]) {
-        if self.pack_ids.is_none() {
+        if self.client.pack_ids.is_none() {
             return ([0; 2], [0; 2]);
         }
         let lum = self.luminance();
-        let Some(ids) = &self.pack_ids else {
+        let Some(ids) = &self.client.pack_ids else {
             return ([0; 2], [0; 2]);
         };
         let hands = [self.selected, super::shield::OFFHAND_SLOT].map(|slot| {
@@ -807,7 +815,7 @@ impl Game<'_> {
     }
 
     fn mark_entity_part(&self, start: usize, name: &str, translucent: bool) {
-        let id = match &self.pack_ids {
+        let id = match &self.client.pack_ids {
             Some(ids) => ids
                 .entities
                 .get(name)
@@ -817,9 +825,9 @@ impl Game<'_> {
             None => return,
         };
         self.push_span(start, "ENTITIES", id);
-        if let Some(last) = self.entity_spans.borrow_mut().last_mut() {
+        if let Some(last) = self.client.entity_spans.borrow_mut().last_mut() {
             last.translucent = translucent;
-            if let Some(gpu) = self.skin_frame.borrow_mut().spans.last_mut() {
+            if let Some(gpu) = self.client.skin_frame.borrow_mut().spans.last_mut() {
                 gpu.translucent = translucent;
             }
         }
@@ -827,7 +835,7 @@ impl Game<'_> {
 
     /// Starts a span for the block entity of block state `state`.
     pub(super) fn mark_block_entity(&self, start: usize, state: u32) {
-        let Some(ids) = &self.pack_ids else {
+        let Some(ids) = &self.client.pack_ids else {
             if native_spans() {
                 self.push_span(start, "BLOCK_ENTITIES", state as i32);
             }
@@ -853,9 +861,9 @@ impl Game<'_> {
             .facts()
             .get(sunrise_world::registry::BlockStateId(state))
             .emission;
-        if let Some(last) = self.entity_spans.borrow_mut().last_mut() {
+        if let Some(last) = self.client.entity_spans.borrow_mut().last_mut() {
             last.emissive = emission > 0;
-            if let Some(gpu) = self.skin_frame.borrow_mut().spans.last_mut() {
+            if let Some(gpu) = self.client.skin_frame.borrow_mut().spans.last_mut() {
                 gpu.emissive = emission > 0;
             }
         }
@@ -865,7 +873,7 @@ impl Game<'_> {
     /// pack: block entities, as `BlockEntityDrawContext::model` draws the same model, with the
     /// id of a block the pack doesn't list, since no block owns them. Nothing without a pack.
     pub(super) fn mark_model_copies(&self, start: usize) {
-        if let Some(ids) = &self.pack_ids {
+        if let Some(ids) = &self.client.pack_ids {
             self.push_span(start, "BLOCK_ENTITIES", ids.missing_block);
         }
     }
@@ -874,12 +882,12 @@ impl Game<'_> {
     /// pack's shadow pass draws it.
     pub(super) fn mark_player(&self, start: usize, hidden: bool) {
         self.mark_entity(start, "minecraft:player");
-        if (self.pack_ids.is_some() || native_spans())
-            && let Some(last) = self.entity_spans.borrow_mut().last_mut()
+        if (self.client.pack_ids.is_some() || native_spans())
+            && let Some(last) = self.client.entity_spans.borrow_mut().last_mut()
         {
             last.player = true;
             last.hidden = hidden;
-            if let Some(gpu) = self.skin_frame.borrow_mut().spans.last_mut() {
+            if let Some(gpu) = self.client.skin_frame.borrow_mut().spans.last_mut() {
                 gpu.player = true;
                 gpu.hidden = hidden;
             }
@@ -889,26 +897,26 @@ impl Game<'_> {
     /// Marks vertices `start..end` (one entity) as hidden from the camera, for an entity
     /// Sunrise's culling would drop but a pack's shadow pass still draws (`EntitySpan::hide`).
     pub(super) fn hide_spans_from(&self, start: usize, end: usize) -> bool {
-        EntitySpan::hide(&mut self.entity_spans.borrow_mut(), start, end)
+        EntitySpan::hide(&mut self.client.entity_spans.borrow_mut(), start, end)
     }
 
     /// Starts a span of geometry that is not an entity (`PARTICLES`, `DESTROY`...).
     pub(super) fn mark_stage(&self, start: usize, stage: &str) {
-        if self.pack_ids.is_some() || native_spans() {
+        if self.client.pack_ids.is_some() || native_spans() {
             self.push_span(start, stage, 0);
         }
     }
 
     fn push_span(&self, start: usize, stage: &str, id: i32) {
-        let mut spans = self.entity_spans.borrow_mut();
+        let mut spans = self.client.entity_spans.borrow_mut();
         let span = EntitySpan {
             start: start as u32,
             stage: sunrise_shaders::render_stage(stage),
             id,
             ..Default::default()
         };
-        if self.pack_ids.is_some() && self.skinning() {
-            let mut skin = self.skin_frame.borrow_mut();
+        if self.client.pack_ids.is_some() && self.skinning() {
+            let mut skin = self.client.skin_frame.borrow_mut();
             let gpu = EntitySpan {
                 start: skin.vertices,
                 ..span
@@ -1397,7 +1405,7 @@ fn projectile_body_uses_its_own_shader_entity_id() {
     use sunrise_client::projectiles::{Projectile, ProjectileKind};
 
     super::native_entity_refs::tests::with_client_game(|game| {
-        game.pack_ids = Some(PackIds::with_entity_ids([
+        game.client.pack_ids = Some(PackIds::with_entity_ids([
             ("minecraft:snowball", 41),
             ("minecraft:ominous_item_spawner", 42),
             ("minecraft:arrow", 43),
@@ -1427,6 +1435,7 @@ fn projectile_body_uses_its_own_shader_entity_id() {
             &mut Vec::new(),
         );
         let ids: Vec<_> = game
+            .client
             .entity_spans
             .borrow()
             .windows(2)
@@ -1689,13 +1698,13 @@ mod player_status_tests {
                     entity: None,
                     skip_hooks: false,
                 });
-            game.spill.orbs.push((at, 1, 0));
+            game.server.spill.orbs.push((at, 1, 0));
             rain_on_the_player(game, true);
 
             assert!(game.pack_player_status().wet, "rain");
             assert_eq!(game.creatures.lan_particles.len(), 1, "particles");
             assert_eq!(game.creatures.lan_sounds.len(), 1, "sounds");
-            assert_eq!(game.spill.orbs.len(), 1, "spill");
+            assert_eq!(game.server.spill.orbs.len(), 1, "spill");
             game.lan = None;
         });
     }

@@ -127,7 +127,7 @@ impl Game<'_> {
         {
             return Some(mob_tracking_body(&self.mobs[i]));
         }
-        if let Some(entity) = self.interactions.get(&id) {
+        if let Some(entity) = self.client.interactions.get(&id) {
             let Vec3 { x, y, z } = entity.position;
             return Some(TrackingBody {
                 feet: [x, y, z],
@@ -161,11 +161,16 @@ impl Game<'_> {
                 [position.x, position.y, position.z]
             }
             "minecraft:fishing_bobber" => {
-                let hook = self.remote_hooks.iter().find(|hook| hook.id == eid)?;
+                let hook = self
+                    .client
+                    .remote_hooks
+                    .iter()
+                    .find(|hook| hook.id == eid)?;
                 let Vec3 { x, y, z } = hook.position;
                 [x, y, z]
             }
             _ => self
+                .client
                 .text_displays
                 .get(&id)
                 .map(|display| display.position().to_array())

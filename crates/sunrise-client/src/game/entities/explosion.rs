@@ -389,6 +389,7 @@ impl Game<'_> {
                 .any(|m| m.id == cause.entity.0 && !m.removed);
         }
         let acting = self
+            .server
             .lan_acting_entity
             .or_else(|| self.player.as_ref().map(|p| p.entity_id as u32));
         acting == Some(cause.entity.0)
@@ -414,40 +415,42 @@ impl Game<'_> {
             && cause.species.is_some()
             && !self.mobs.iter().any(|m| m.id == cause.entity.0)
             && !self
+                .server
                 .combat
                 .exploded
                 .iter()
                 .any(|(id, _)| *id == cause.entity.0)
         {
-            self.combat.exploded.push(cause.entity.clone());
+            self.server.combat.exploded.push(cause.entity.clone());
         }
-        let source = self.combat.explosion_source.take();
-        let owner = self.combat.explosion_owner.take();
-        let player = self.combat.blast_owner.take();
-        let guest = self.combat.blast_guest.take();
-        let direct = self.combat.explosion_cause.take();
-        self.combat.explosion_source = Some(direct_source.0);
+        let source = self.server.combat.explosion_source.take();
+        let owner = self.server.combat.explosion_owner.take();
+        let player = self.server.combat.blast_owner.take();
+        let guest = self.server.combat.blast_guest.take();
+        let direct = self.server.combat.explosion_cause.take();
+        self.server.combat.explosion_source = Some(direct_source.0);
         let outer_direct = self
+            .server
             .combat
             .explicit_explosion_direct
             .replace(direct_source.1);
         if let Some(cause) = &cause {
             if cause.player {
-                self.combat.blast_owner = Some(cause.entity.clone());
-                self.combat.blast_guest = cause.guest;
+                self.server.combat.blast_owner = Some(cause.entity.clone());
+                self.server.combat.blast_guest = cause.guest;
             } else {
-                self.combat.explosion_owner = Some(cause.entity.0);
+                self.server.combat.explosion_owner = Some(cause.entity.0);
             }
         }
-        let outer = self.combat.explicit_explosion_cause.replace(cause);
+        let outer = self.server.combat.explicit_explosion_cause.replace(cause);
         let result = run(self);
-        self.combat.explicit_explosion_cause = outer;
-        self.combat.explosion_source = source;
-        self.combat.explosion_owner = owner;
-        self.combat.blast_owner = player;
-        self.combat.blast_guest = guest;
-        self.combat.explosion_cause = direct;
-        self.combat.explicit_explosion_direct = outer_direct;
+        self.server.combat.explicit_explosion_cause = outer;
+        self.server.combat.explosion_source = source;
+        self.server.combat.explosion_owner = owner;
+        self.server.combat.blast_owner = player;
+        self.server.combat.blast_guest = guest;
+        self.server.combat.explosion_cause = direct;
+        self.server.combat.explicit_explosion_direct = outer_direct;
         result
     }
 
@@ -456,17 +459,18 @@ impl Game<'_> {
     /// broke), else a primed TNT's owning player. Asked before any player is swapped in, so
     /// a cause that names no guest is the player in place.
     fn blast_player_cause(&self) -> Option<(i32, Option<sunrise_client::scoreboard::Team>)> {
-        let (id, guest) = match &self.combat.explicit_explosion_cause {
+        let (id, guest) = match &self.server.combat.explicit_explosion_cause {
             Some(cause) => cause
                 .as_ref()
                 .filter(|c| c.player)
                 .map(|c| (c.entity.0, c.guest))?,
             None => self
+                .server
                 .combat
                 .blast_owner
                 .as_ref()
-                .filter(|_| self.combat.blast_owner_player)
-                .map(|(id, _)| (*id, self.combat.blast_guest))?,
+                .filter(|_| self.server.combat.blast_owner_player)
+                .map(|(id, _)| (*id, self.server.combat.blast_guest))?,
         };
         let team = match guest {
             Some(conn) => self
@@ -482,7 +486,7 @@ impl Game<'_> {
     /// The blast damage's cause. An explicit crystal/cart DamageSource may
     /// differ from the explosion's own indirect source.
     pub(super) fn blast_attacker(&self) -> Option<(u32, Text)> {
-        if let Some(cause) = &self.combat.explicit_explosion_cause {
+        if let Some(cause) = &self.server.combat.explicit_explosion_cause {
             return cause.as_ref().map(|c| {
                 let name = (!c.player)
                     .then(|| self.mob_display_name(c.entity.0))
@@ -494,12 +498,12 @@ impl Game<'_> {
         // `Explosion.getIndirectSourceEntity`: a primed TNT's owner names the
         // blast before any mob does, which makes the damage type
         // `minecraft:player_explosion` (`server_explode` asks this).
-        self.combat.blast_owner.clone().or_else(|| {
+        self.server.combat.blast_owner.clone().or_else(|| {
             blast_cause(
-                self.combat.explosion_owner,
-                self.combat.explosion_source,
+                self.server.combat.explosion_owner,
+                self.server.combat.explosion_source,
                 |id| self.mob_display_name(id),
-                &self.combat.exploded,
+                &self.server.combat.exploded,
             )
         })
     }
@@ -508,11 +512,11 @@ impl Game<'_> {
     /// An explicit crystal or cart cause has no indirect source (`Explosion`'s
     /// switch).
     fn blast_indirect_source(&self) -> Option<Who> {
-        if self.combat.explicit_explosion_cause.is_some() {
+        if self.server.combat.explicit_explosion_cause.is_some() {
             return None;
         }
-        if let Some((id, _)) = &self.combat.blast_owner {
-            if self.combat.blast_owner_player {
+        if let Some((id, _)) = &self.server.combat.blast_owner {
+            if self.server.combat.blast_owner_player {
                 return Some(Who::Player);
             }
             // `PrimedTnt.getOwner` is an `EntityReference`: a removed owner
@@ -523,7 +527,7 @@ impl Game<'_> {
                 .any(|m| m.id == *id && !m.removed)
                 .then_some(Who::Mob(*id));
         }
-        if let Some(id) = self.combat.explosion_owner {
+        if let Some(id) = self.server.combat.explosion_owner {
             return self
                 .mobs
                 .iter()
@@ -532,7 +536,7 @@ impl Game<'_> {
         }
         // The exploding mob itself: `Explosion.getIndirectSourceEntity` names
         // it directly, even after its own tick marked it removed.
-        self.combat.explosion_source.map(Who::Mob)
+        self.server.combat.explosion_source.map(Who::Mob)
     }
     /// `ServerExplosion.getSeenPercent` for an entity box.
     pub(in crate::game) fn seen_percent(
@@ -679,15 +683,15 @@ impl Game<'_> {
         resists: Option<([i32; 3], f32)>,
         portal_proof: bool,
     ) -> BlastRules {
-        let cap = self.combat.blast_resistance_cap;
+        let cap = self.server.combat.blast_resistance_cap;
         BlastRules {
             resists,
             cap,
-            direct: self.combat.explosion_direct,
+            direct: self.server.combat.explosion_direct,
             // WitherSkull.getBlockExplosionResistance: a dangerous skull's blast
             // caps a block the wither may destroy at 0.8.
             wither_immune: cap.and_then(|_| self.block_tag_blocks("minecraft:wither_immune")),
-            rail_proof: self.combat.rail_proof_blast,
+            rail_proof: self.server.combat.rail_proof_blast,
             portal_proof,
         }
     }
@@ -813,8 +817,8 @@ impl Game<'_> {
             return None;
         }
         // `getEntities(this.source, ...)`: a player that is the blast's source is spared.
-        let acting = self.lan_acting_entity.or(Some(p.entity_id as u32));
-        if self.combat.explosion_source_named && exploding == acting {
+        let acting = self.server.lan_acting_entity.or(Some(p.entity_id as u32));
+        if self.server.combat.explosion_source_named && exploding == acting {
             return None;
         }
         // ServerPlayer.onExplosionHit: the blast that hit the player is theirs.
@@ -913,7 +917,7 @@ impl Game<'_> {
                 && let Ok(o) = p.hurt_caused_by(
                     crate::game::entity::damage_level_of!(
                         self,
-                        self.combat.attack(),
+                        self.server.combat.attack(),
                         no_push,
                         crate::game::entity::player_victim_causer!(self, decision),
                         acting_equipment!(self)
@@ -954,7 +958,7 @@ impl Game<'_> {
                 }
             }
         }
-        self.combat.forget_noted(outcome.canceled);
+        self.server.combat.forget_noted(outcome.canceled);
         if raised {
             let source = mod_api::entity::health::HurtSource {
                 damage_type,
@@ -1037,7 +1041,7 @@ impl Game<'_> {
         };
         // `source.doTeamsAllowDamage(entity)`: the exploding mob spares its
         // team mates when its team has no friendly fire (they are still pushed).
-        let exploding = self.combat.explosion_source;
+        let exploding = self.server.combat.explosion_source;
         let teams_allow = |g: &Self, victim: Option<&sunrise_client::scoreboard::Team>| {
             exploding.is_none_or(|id| {
                 sunrise_client::scoreboard::teams_allow_damage(g.mob_team(id), victim)
@@ -1048,13 +1052,14 @@ impl Game<'_> {
         // end crystal) the player is that guest. The blast's source is the
         // same for all of them (`onExplosionHit(this.source)`).
         let attacker = self.blast_attacker();
-        let blast_source = self.combat.explosion_cause.clone();
+        let blast_source = self.server.combat.explosion_cause.clone();
         let context = ExplosionHookContext {
             center,
             blocks,
-            explicit_cause: self.combat.explicit_explosion_cause.clone(),
-            direct_name: self.combat.explicit_explosion_direct.clone(),
+            explicit_cause: self.server.combat.explicit_explosion_cause.clone(),
+            direct_name: self.server.combat.explicit_explosion_direct.clone(),
             credit: self
+                .server
                 .combat
                 .explicit_explosion_cause
                 .as_ref()
@@ -1064,6 +1069,7 @@ impl Game<'_> {
                         .is_some_and(|cause| self.explosion_cause_resolves(cause))
                 }),
             held_item: self
+                .server
                 .combat
                 .explicit_explosion_cause
                 .as_ref()
@@ -1081,8 +1087,9 @@ impl Game<'_> {
             player_cause: self.blast_player_cause(),
         };
         let own = if self
+            .server
             .lan_acting_entity
-            .is_some_and(|id| !self.combat.visits(id))
+            .is_some_and(|id| !self.server.combat.visits(id))
         {
             None
         } else {
@@ -1095,9 +1102,9 @@ impl Game<'_> {
                 blast_source.as_ref(),
             )
         };
-        let mut pushed: Vec<_> = self.lan_acting.zip(own).into_iter().collect();
+        let mut pushed: Vec<_> = self.server.lan_acting.zip(own).into_iter().collect();
         if let Some(host) = self.lan.as_ref() {
-            let combat = &self.combat;
+            let combat = &self.server.combat;
             let guests: Vec<u32> = host
                 .hub
                 .guests
@@ -1127,34 +1134,36 @@ impl Game<'_> {
             (0, sunrise_client::health::DirectEntity::Other),
             |(id, class)| (id as i32, class),
         );
-        let mut blast_attack = self.combat.attack().clone();
+        let mut blast_attack = self.server.combat.attack().clone();
         blast_attack.direct = Some(blast_direct_id);
         blast_attack.direct_kind = Some(blast_direct_kind);
         if blast_attack.attacker == 0
-            && let Some(Some(cause)) = &self.combat.explicit_explosion_cause
+            && let Some(Some(cause)) = &self.server.combat.explicit_explosion_cause
             && cause.player
         {
             blast_attack.attacker = cause.entity.0 as i32;
         }
         if blast_attack.player_uuid.is_none() {
-            if let Some(Some(cause)) = &self.combat.explicit_explosion_cause
+            if let Some(Some(cause)) = &self.server.combat.explicit_explosion_cause
                 && cause.player
             {
                 blast_attack.player_uuid = self.player_uuid_of(cause.guest);
-            } else if self.combat.blast_owner_player
-                && self.combat.explicit_explosion_cause.is_none()
+            } else if self.server.combat.blast_owner_player
+                && self.server.combat.explicit_explosion_cause.is_none()
             {
-                blast_attack.player_uuid = self.player_uuid_of(self.combat.blast_guest);
+                blast_attack.player_uuid = self.player_uuid_of(self.server.combat.blast_guest);
             }
         }
         let cause = self
+            .server
             .combat
             .explicit_explosion_cause
             .as_ref()
             .and_then(|c| c.as_ref())
             .and_then(|c| c.species)
             .or_else(|| {
-                self.combat
+                self.server
+                    .combat
                     .explosion_owner
                     .or(exploding)
                     .and_then(|id| self.mobs.iter().find(|m| m.id == id))
@@ -1174,7 +1183,7 @@ impl Game<'_> {
                     .rules
                     .bool_at(sunrise_client::gamerules::vanilla::MOB_GRIEFING),
             items_ignore: items_ignore_explosion(self.blast_griefs(), interaction),
-            spared: exploding.filter(|_| self.combat.explosion_source_named),
+            spared: exploding.filter(|_| self.server.combat.explosion_source_named),
         };
         // `VehicleEntity.hurtServer` credits its ENTITY_DAMAGE to
         // `DamageSource.getEntity`, which for a blast is its indirect source.
@@ -1190,11 +1199,16 @@ impl Game<'_> {
                 };
                 let creative = self.creative_damage_source_id(source.causing);
                 let vanilla = self.saved_refuses_damage($id as u32, damage_type, creative);
-                crate::game::entity::damage_level_of!(self, self.combat.attack(), no_push, None)
-                    .invulnerability_check(
-                        sunrise_client::health::Hurting::Entity($id, $kind, source),
-                        vanilla,
-                    )
+                crate::game::entity::damage_level_of!(
+                    self,
+                    self.server.combat.attack(),
+                    no_push,
+                    None
+                )
+                .invulnerability_check(
+                    sunrise_client::health::Hurting::Entity($id, $kind, source),
+                    vanilla,
+                )
             }};
         }
         // The walk visits the storages in storage order, unless a listening
@@ -1206,7 +1220,7 @@ impl Game<'_> {
         let mut cursor = self.entity_id_cursor();
         let mut listed_at = 0;
         loop {
-            let next = if let Some(list) = self.combat.blast_hit_list.as_ref() {
+            let next = if let Some(list) = self.server.combat.blast_hit_list.as_ref() {
                 let Some(&id) = list.get(listed_at) else {
                     break;
                 };
@@ -1233,7 +1247,7 @@ impl Game<'_> {
             }
             // An entity the blast's list does not name is neither hurt nor
             // pushed; without a listener the storages are the walk.
-            let hit = if with_entity!(self, handle, e => self.combat.visits(e.id())) {
+            let hit = if with_entity!(self, handle, e => self.server.combat.visits(e.id())) {
                 let seen = hurts || knockback != 0.0;
                 with_entity!(self, handle, e => self.blast_hit(e, center, diameter, &blast, seen))
             } else {
@@ -1260,6 +1274,7 @@ impl Game<'_> {
                             // A projectile's owner (`getIndirectSourceEntity`),
                             // else the exploding mob itself.
                             attacker: self
+                                .server
                                 .combat
                                 .explicit_explosion_cause
                                 .as_ref()
@@ -1267,8 +1282,8 @@ impl Game<'_> {
                                 .filter(|c| c.player)
                                 .map(|_| Who::Player)
                                 .or_else(|| {
-                                    let player = self.combat.blast_owner_player
-                                        && self.combat.explicit_explosion_cause.is_none();
+                                    let player = self.server.combat.blast_owner_player
+                                        && self.server.combat.explicit_explosion_cause.is_none();
                                     player.then_some(Who::Player)
                                 })
                                 .or_else(|| {
@@ -1277,7 +1292,8 @@ impl Game<'_> {
                                         .map(|&(id, _)| id)
                                         .filter(|&o| o != victim)
                                         .filter(|_| {
-                                            self.combat
+                                            self.server
+                                                .combat
                                                 .explicit_explosion_cause
                                                 .as_ref()
                                                 .is_none_or(|c| {
@@ -1300,7 +1316,7 @@ impl Game<'_> {
                         // The blast's causing entity, lent beside its victim.
                         let causing = attacker.as_ref().map_or(0, |&(id, _)| id as i32);
                         let decision = crate::game::entity::causer_decision!(self, causing);
-                        let mut credit = plan.lend(&mut self.last_hurt_by_player);
+                        let mut credit = plan.lend(&mut self.server.last_hurt_by_player);
                         let (victim_mob, lend) =
                             crate::game::entity::victim_and_causer!(self, i, causing, decision);
                         let hurt = hurt_mob(
@@ -1325,7 +1341,7 @@ impl Game<'_> {
                             && source.attacker == Some(Who::Player)
                             && let Some(host) = self.lan.as_mut()
                         {
-                            match self.combat.blast_guest {
+                            match self.server.combat.blast_guest {
                                 Some(conn) => {
                                     host.mob_players.insert(victim, conn);
                                 }
@@ -1475,7 +1491,7 @@ impl Game<'_> {
     pub(super) fn explosion_kill_credit(&self) -> Option<super::commands::Target> {
         use super::commands::Target;
         // An explicit crystal or cart source names its own cause.
-        if let Some(Some(cause)) = &self.combat.explicit_explosion_cause {
+        if let Some(Some(cause)) = &self.server.combat.explicit_explosion_cause {
             return Some(if cause.player {
                 cause.guest.map_or(Target::Player, Target::Guest)
             } else {
@@ -1484,9 +1500,10 @@ impl Game<'_> {
         }
         // A primed TNT's owner names the blast before any mob does; a mob's UUID
         // in its `owner` is that mob, not the player in place.
-        if let Some((id, _)) = self.combat.blast_owner {
-            return Some(if self.combat.blast_owner_player {
-                self.combat
+        if let Some((id, _)) = self.server.combat.blast_owner {
+            return Some(if self.server.combat.blast_owner_player {
+                self.server
+                    .combat
                     .blast_guest
                     .map_or(Target::Player, Target::Guest)
             } else {
@@ -1505,13 +1522,13 @@ impl Game<'_> {
             self.blast_griefs(),
             interaction,
             self.blast_mob_refused(),
-            self.combat.explosion_in_water,
+            self.server.combat.explosion_in_water,
         )
     }
     /// `ServerExplosion.shouldAffectBlocklikeEntities`'s griefing read:
     /// `canEntityGrief` for the exploding entity (`this.source`), the rule without one.
     fn blast_griefs(&self) -> bool {
-        self.can_entity_grief(self.combat.explosion_source)
+        self.can_entity_grief(self.server.combat.explosion_source)
     }
     /// A mob causes the blast (`source.getEntity() instanceof Mob`) and
     /// `canEntityGrief` refuses it: decorations take no harm.
@@ -1526,7 +1543,7 @@ impl Game<'_> {
             return false;
         }
         // The mob the damage names (an explicit cause only when it is a mob), found once.
-        let mob = match &self.combat.explicit_explosion_cause {
+        let mob = match &self.server.combat.explicit_explosion_cause {
             Some(cause) => cause
                 .as_ref()
                 .filter(|c| c.species.is_some())
@@ -1577,7 +1594,7 @@ impl Game<'_> {
             let p = a.position;
             if !super::armor_stands::spared_by_blast(a)
                 && !self.target_removed(&super::commands::Target::Stand(a.id))
-                && self.combat.visits(a.id)
+                && self.server.combat.visits(a.id)
                 && blast_reaches(center, diameter, [p.x, p.y, p.z])
             {
                 let id = a.id;
@@ -1589,12 +1606,16 @@ impl Game<'_> {
                 };
                 let creative = self.creative_damage_source_id(source.causing);
                 let vanilla = self.saved_refuses_damage(id, damage_type, creative);
-                if crate::game::entity::damage_level_of!(self, self.combat.attack(), no_push, None)
-                    .invulnerability_check(
-                        sunrise_client::health::Hurting::ArmorStand(id as i32, source),
-                        vanilla,
-                    )
-                {
+                if crate::game::entity::damage_level_of!(
+                    self,
+                    self.server.combat.attack(),
+                    no_push,
+                    None
+                )
+                .invulnerability_check(
+                    sunrise_client::health::Hurting::ArmorStand(id as i32, source),
+                    vanilla,
+                ) {
                     i += 1;
                     continue;
                 }
@@ -1639,7 +1660,7 @@ impl Game<'_> {
             let (lo, hi) = self.paintings[i].bounds();
             let at = [0, 1, 2].map(|k| (lo[k] + hi[k]) / 2.0);
             // A painting a mod keeps stays at `i`.
-            if !(self.combat.visits(self.paintings[i].id)
+            if !(self.server.combat.visits(self.paintings[i].id)
                 && blast_reaches(center, diameter, at)
                 && self.break_painting_by(i, false, self.explosion_kill_credit()))
             {
@@ -1649,7 +1670,7 @@ impl Game<'_> {
         let mut i = 0;
         while i < self.cushions.len() {
             let p = self.cushions[i].position;
-            if !(self.combat.visits(self.cushions[i].id)
+            if !(self.server.combat.visits(self.cushions[i].id)
                 && blast_reaches(center, diameter, [p.x, p.y, p.z])
                 && self.break_cushion_by(i, self.explosion_kill_credit()))
             {
@@ -1676,9 +1697,9 @@ impl Game<'_> {
         &mut self,
         blast: impl FnOnce(&mut Self) -> R,
     ) -> R {
-        self.combat.hive_emptying_blast = true;
+        self.server.combat.hive_emptying_blast = true;
         let result = blast(self);
-        self.combat.hive_emptying_blast = false;
+        self.server.combat.hive_emptying_blast = false;
         result
     }
     /// `Level.explode` on the server: positions, entities, blocks, fire; then
@@ -1732,7 +1753,7 @@ impl Game<'_> {
         match explicit {
             // A player causes it (a lit TNT's igniter, a mod blast's source):
             // their hits land as that player's.
-            None if self.combat.blast_owner_player => {
+            None if self.server.combat.blast_owner_player => {
                 let attack = self.blast_owner_attack();
                 self.with_attack(attack, blast)
             }
@@ -1769,7 +1790,7 @@ impl Game<'_> {
                 BlockInteraction::Trigger => mod_api::BlockInteraction::TriggerBlock,
             },
             damage_type,
-            source: self.combat.explosion_source,
+            source: self.server.combat.explosion_source,
             // `getIndirectSourceEntity`, as the blast's attacker is.
             owner: self.blast_attacker().map(|(id, _)| id),
         })
@@ -1836,8 +1857,8 @@ impl Game<'_> {
         // The walks that hurt entities follow the list a listening
         // `explosion_detonate` leaves: a blast set off inside one of them
         // (its own detonate, a nested `level_explode`) keeps its own list.
-        let outer = std::mem::take(&mut self.combat.blast_hit_list);
-        let outer_ids = std::mem::take(&mut self.combat.blast_hit_ids);
+        let outer = std::mem::take(&mut self.server.combat.blast_hit_list);
+        let outer_ids = std::mem::take(&mut self.server.combat.blast_hit_ids);
         self.explosion_detonate(center, radius, &mut targets);
         let pushed = self.explosion_hurt_entities(
             center,
@@ -1847,8 +1868,8 @@ impl Game<'_> {
             &targets,
             source,
         );
-        self.combat.blast_hit_list = outer;
-        self.combat.blast_hit_ids = outer_ids;
+        self.server.combat.blast_hit_list = outer;
+        self.server.combat.blast_hit_ids = outer_ids;
         self.explosion_block_step(&mut targets, radius, interaction, fire, &start)?;
         let effects = self.blast_effects();
         if !source.silent {
@@ -1973,11 +1994,13 @@ impl Game<'_> {
         // the heart's experience (`tryAwardExperience`).
         if &*name == "minecraft:creaking_heart" {
             // tryAwardExperience checks the TNT owner's own abilities.
-            let award = match self.combat.blast_guest {
+            let award = match self.server.combat.blast_guest {
                 Some(conn) => self
                     .command_guest(conn)
                     .is_some_and(|g| !g.creative() && !g.spectator()),
-                None => self.combat.blast_owner_player && !self.creative && !self.spectator(),
+                None => {
+                    self.server.combat.blast_owner_player && !self.creative && !self.spectator()
+                }
             };
             self.creaking_heart_broken_by(pos, award);
         }
@@ -1986,7 +2009,7 @@ impl Game<'_> {
         let is_hive = matches!(&*name, "minecraft:beehive" | "minecraft:bee_nest");
         // BeehiveBlock.getDrops: the bees of a hive blown up by TNT, a
         // creeper, a wither skull, a wither or a TNT minecart come out.
-        if is_hive && self.combat.hive_emptying_blast {
+        if is_hive && self.server.combat.hive_emptying_blast {
             let facing = self
                 .pack
                 .assets
@@ -2011,7 +2034,7 @@ impl Game<'_> {
         // Its dropExperience is whether the blast's indirect source is a
         // player (a primed TNT's owner, not a mob's): ores, sculk and spawners
         // sample their experience then, and pop it while blocks drop.
-        if drops && self.combat.blast_owner_player {
+        if drops && self.server.combat.blast_owner_player {
             let xp = sunrise_world::level::removal::break_experience(&mut self.world.random, &name)
                 .unwrap_or(0);
             if xp > 0
@@ -2037,9 +2060,10 @@ impl Game<'_> {
             let place = self.loot_place_at(pos.map(|v| f64::from(v) + 0.5), None);
             // `Explosion.getDirectSourceEntity`.
             let entity = self
+                .server
                 .combat
                 .explosion_direct
-                .or(self.combat.explosion_source);
+                .or(self.server.combat.explosion_source);
             let mut drops = sunrise_world::loot::with_native_loot_place(place, || {
                 let roll = sunrise_client::items::BlockLootRoll {
                     dynamic: &dynamic,
@@ -2081,7 +2105,7 @@ impl Game<'_> {
             // source, so a chain reaction keeps a primed TNT's owner or the
             // mob whose blast primed it.
             let (owner, guest) = match self.blast_indirect_source() {
-                Some(Who::Player) => (Some(Who::Player), self.combat.blast_guest),
+                Some(Who::Player) => (Some(Who::Player), self.server.combat.blast_guest),
                 Some(Who::Mob(id)) => (Some(Who::Mob(id)), None),
                 None => (None, None),
             };
@@ -3204,7 +3228,7 @@ mod explicit_source_tests {
             game.build_registries();
             for mode in 0..5 {
                 let nested = mode == 4;
-                game.combat = Default::default();
+                game.server.combat = Default::default();
                 game.mobs.clear();
                 game.orbs.clear();
                 game.dropped.clear();
@@ -3217,8 +3241,11 @@ mod explicit_source_tests {
                         .push(Mob::new(43, kind, Vec3::new(40.0, 64.0, 40.0), 0.0));
                 }
                 // An enclosing blast must not leak its owner into an explicit source.
-                game.combat.explosion_owner = Some(99);
-                game.combat.exploded.push((99, Text::literal("Outer")));
+                game.server.combat.explosion_owner = Some(99);
+                game.server
+                    .combat
+                    .exploded
+                    .push((99, Text::literal("Outer")));
                 let cause = (mode != 0).then(|| ExplosionCause {
                     entity: (43, Text::literal("Igniter")),
                     player: false,
@@ -3227,10 +3254,10 @@ mod explicit_source_tests {
                 });
                 if nested {
                     game.options.dedicated = Some(Vec::new());
-                    game.combat.explicit_explosion_cause = Some(cause);
-                    game.combat.explicit_explosion_direct = Some(Text::literal("Outer"));
-                    game.combat.blast_owner = Some((99, Text::literal("Outer")));
-                    game.combat.blast_guest = Some(17);
+                    game.server.combat.explicit_explosion_cause = Some(cause);
+                    game.server.combat.explicit_explosion_direct = Some(Text::literal("Outer"));
+                    game.server.combat.blast_owner = Some((99, Text::literal("Outer")));
+                    game.server.combat.blast_guest = Some(17);
                     let center = [8.5, 64.0, 8.5];
                     let level = game.level("minecraft:overworld").unwrap();
                     assert_eq!(
@@ -3246,15 +3273,15 @@ mod explicit_source_tests {
                         Ok(())
                     );
                     assert!(matches!(
-                        game.combat.explicit_explosion_cause,
+                        game.server.combat.explicit_explosion_cause,
                         Some(Some(_))
                     ));
-                    assert!(game.combat.explicit_explosion_direct.is_some());
+                    assert!(game.server.combat.explicit_explosion_direct.is_some());
                     assert_eq!(
-                        game.combat.blast_owner.as_ref().map(|owner| owner.0),
+                        game.server.combat.blast_owner.as_ref().map(|owner| owner.0),
                         Some(99)
                     );
-                    assert_eq!(game.combat.blast_guest, Some(17));
+                    assert_eq!(game.server.combat.blast_guest, Some(17));
                 } else {
                     game.server_explode_from_cause(
                         [8.5, 64.0, 8.5],
@@ -3282,7 +3309,8 @@ mod explicit_source_tests {
                 let events = std::mem::take(&mut game.player.as_mut().unwrap().events);
                 game.record_combat(&events);
                 assert_eq!(
-                    game.combat
+                    game.server
+                        .combat
                         .last_blow()
                         .map(|(kind, id)| (kind.to_owned(), id)),
                     Some((
@@ -3296,7 +3324,7 @@ mod explicit_source_tests {
                     ))
                 );
                 assert_eq!(
-                    game.combat.kill_credit(game.world.game_time),
+                    game.server.combat.kill_credit(game.world.game_time),
                     (mode == 2).then_some(43)
                 );
                 if mode == 1 || mode == 3 || nested {
@@ -3309,8 +3337,11 @@ mod explicit_source_tests {
                         assert_eq!(death["with"][1]["text"].as_str(), Some("Igniter"));
                     }
                 }
-                assert_eq!(game.combat.explosion_owner, Some(99));
-                assert_eq!(game.combat.explicit_explosion_cause.is_some(), nested);
+                assert_eq!(game.server.combat.explosion_owner, Some(99));
+                assert_eq!(
+                    game.server.combat.explicit_explosion_cause.is_some(),
+                    nested
+                );
             }
         });
     }

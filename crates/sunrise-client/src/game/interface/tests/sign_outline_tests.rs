@@ -138,7 +138,7 @@ fn check_signs(game: &mut Game<'_>) {
         for cached in [true, false] {
             for (name, camera_type, scoping, subject, visual, expected) in cases {
                 game.player = Some(player());
-                game.camera_type = camera_type;
+                game.client.camera_type = camera_type;
                 game.using = None;
                 game.inventory[0] = Some(ItemStack::new("minecraft:spyglass", 1));
                 if scoping {
@@ -158,8 +158,8 @@ fn check_signs(game: &mut Game<'_>) {
                 }
                 let visual = match name {
                     "eye_height" => {
-                        game.view.eye_height = 1.7775;
-                        game.view.eye_height_old = game.view.eye_height;
+                        game.client.view.eye_height = 1.7775;
+                        game.client.view.eye_height_old = game.client.view.eye_height;
                         let (camera, _, _) = game.camera_view(PARTIAL).unwrap();
                         assert!((camera - NEAR).length_squared() > 16.0 * 16.0);
                         camera
@@ -231,7 +231,7 @@ fn check_signs(game: &mut Game<'_>) {
                 ..Default::default()
             }),
         );
-        game.camera_type = CameraType::FirstPerson;
+        game.client.camera_type = CameraType::FirstPerson;
         game.player = Some(player());
         let cart_kind = game
             .remote

@@ -106,7 +106,8 @@ impl Game<'_> {
             .iter()
             .copied()
             .chain(
-                self.lan_events
+                self.server
+                    .lan_events
                     .iter()
                     .filter(|event| event.kind == 2001)
                     .map(|event| event.pos.map(f64::from)),
@@ -177,11 +178,11 @@ impl Game<'_> {
             return;
         };
         if !paused {
-            self.combat.stuck.tick();
+            self.server.combat.stuck.tick();
         }
         host.hub.guests.update_all(|g| {
             g.shoulders = crate::game::shoulders::shoulder_variants(g.saved.as_ref());
-            g.stuck = match self.guest_combat.get_mut(&g.conn) {
+            g.stuck = match self.server.guest_combat.get_mut(&g.conn) {
                 Some(combat) => {
                     if !paused {
                         combat.stuck.tick();

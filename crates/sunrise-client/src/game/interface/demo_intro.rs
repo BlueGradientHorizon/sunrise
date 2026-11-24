@@ -101,13 +101,15 @@ impl Game<'_> {
         // neighbors, unknown phases and NaN do not.
         if param == 0.0 {
             let intro = DemoIntro::new(&self.settings.keys);
-            if self.screen == Screen::DemoIntro {
-                self.demo_intro = Some(intro);
+            if self.client.screen == Screen::DemoIntro {
+                self.client.demo_intro = Some(intro);
                 self.commit_screen_transition();
             } else {
-                self.set_screen_with(Screen::DemoIntro, |game| game.demo_intro = Some(intro));
+                self.set_screen_with(Screen::DemoIntro, |game| {
+                    game.client.demo_intro = Some(intro)
+                });
             }
-            if self.screen == Screen::DemoIntro {
+            if self.client.screen == Screen::DemoIntro {
                 self.capture(false);
             }
             return;
@@ -129,7 +131,7 @@ impl Game<'_> {
     }
 
     pub(super) fn draw_demo_intro(&self, batch: &mut HudBatch) {
-        let Some(intro) = &self.demo_intro else {
+        let Some(intro) = &self.client.demo_intro else {
             return;
         };
         let atlas = &self.gui.atlas;
@@ -179,20 +181,26 @@ impl Game<'_> {
                 BUTTON_HEIGHT,
                 label,
                 true,
-                ui::hovered(self.cursor, x, y, BUTTON_WIDTH, BUTTON_HEIGHT),
+                ui::hovered(self.client.cursor, x, y, BUTTON_WIDTH, BUTTON_HEIGHT),
             );
         }
         self.draw_screen_phase(batch, sunrise_client::screen_draw::RenderPhase::Foreground);
     }
 
     pub(super) fn demo_intro_click(&mut self) -> bool {
-        let Some(intro) = &self.demo_intro else {
+        let Some(intro) = &self.client.demo_intro else {
             return false;
         };
         let (w, h) = self.gui_size();
         let layout = intro.layout(&self.gui.atlas, w, h);
         let Some(button) = layout.button_x.into_iter().position(|x| {
-            ui::hovered(self.cursor, x, layout.button_y, BUTTON_WIDTH, BUTTON_HEIGHT)
+            ui::hovered(
+                self.client.cursor,
+                x,
+                layout.button_y,
+                BUTTON_WIDTH,
+                BUTTON_HEIGHT,
+            )
         }) else {
             return false;
         };
@@ -211,7 +219,7 @@ impl Game<'_> {
     /// ahead, as every other close to the HUD asks for it.
     pub(super) fn close_demo_intro(&mut self) {
         self.set_screen(Screen::Playing);
-        if self.screen == Screen::Playing {
+        if self.client.screen == Screen::Playing {
             self.capture(true);
         }
     }
@@ -287,7 +295,7 @@ mod tests {
                         }))
                         .unwrap();
                         game.remote.as_mut().unwrap().level_load.finish();
-                        game.focused = true;
+                        game.client.focused = true;
                         game.ui.chat.set_abilities(
                             &game.gui.atlas.font,
                             ChatAbilities::new(ChatVisibility::Hidden),
@@ -319,8 +327,8 @@ mod tests {
                             game.set_screen(Screen::Paused);
                             let count = game.remote.as_ref().unwrap().chat_received;
                             send(game, zero);
-                            assert_eq!(game.screen, Screen::DemoIntro);
-                            let intro = game.demo_intro.as_ref().unwrap();
+                            assert_eq!(game.client.screen, Screen::DemoIntro);
+                            let intro = game.client.demo_intro.as_ref().unwrap();
                             assert_eq!(intro.title.translation_key(), Some("demo.help.title"));
                             let controls = intro.messages[0].component();
                             assert_eq!(
@@ -347,43 +355,47 @@ mod tests {
                             // it is `Gui.setScreen(null)` there, which grabs the mouse.
                             let (w, h) = game.gui_size();
                             let layout = intro.layout(&game.gui.atlas, w, h);
-                            game.cursor = (layout.button_x[0] + 1.0, layout.button_y + 1.0);
-                            game.agent_pointer = true;
+                            game.client.cursor = (layout.button_x[0] + 1.0, layout.button_y + 1.0);
+                            game.client.agent_pointer = true;
                             assert!(game.demo_intro_click());
-                            assert_eq!(game.screen, Screen::ConfirmLink);
+                            assert_eq!(game.client.screen, Screen::ConfirmLink);
                             game.close_confirm_link();
-                            assert_eq!(game.screen, Screen::Playing, "Buy returns to the HUD");
+                            assert_eq!(
+                                game.client.screen,
+                                Screen::Playing,
+                                "Buy returns to the HUD"
+                            );
                             assert!(
-                                !game.agent_pointer,
+                                !game.client.agent_pointer,
                                 "closing the link confirmation requests capture"
                             );
 
                             game.set_screen(Screen::Paused);
                             send(game, zero);
-                            assert_eq!(game.screen, Screen::DemoIntro);
+                            assert_eq!(game.client.screen, Screen::DemoIntro);
                             let (w, h) = game.gui_size();
-                            let layout =
-                                game.demo_intro
-                                    .as_ref()
-                                    .unwrap()
-                                    .layout(&game.gui.atlas, w, h);
-                            game.cursor = (layout.button_x[1] + 1.0, layout.button_y + 1.0);
-                            game.agent_pointer = true;
+                            let layout = game.client.demo_intro.as_ref().unwrap().layout(
+                                &game.gui.atlas,
+                                w,
+                                h,
+                            );
+                            game.client.cursor = (layout.button_x[1] + 1.0, layout.button_y + 1.0);
+                            game.client.agent_pointer = true;
                             veto.store(true, Ordering::Relaxed);
                             assert!(game.demo_intro_click());
-                            assert_eq!(game.screen, Screen::DemoIntro);
+                            assert_eq!(game.client.screen, Screen::DemoIntro);
                             assert!(
-                                game.agent_pointer,
+                                game.client.agent_pointer,
                                 "a veto leaves the popup and pointer alone"
                             );
                             veto.store(false, Ordering::Relaxed);
                             assert!(game.demo_intro_click());
                             assert_eq!(
-                                game.screen,
+                                game.client.screen,
                                 Screen::Playing,
                                 "Later does not return to Pause"
                             );
-                            assert!(!game.agent_pointer, "Later requests capture");
+                            assert!(!game.client.agent_pointer, "Later requests capture");
                             assert_eq!(game.remote.as_ref().unwrap().chat_received, count);
                             assert!(spoken.lock().unwrap().is_empty());
                         }
@@ -398,7 +410,7 @@ mod tests {
                             }
                             let count = game.remote.as_ref().unwrap().chat_received;
                             send(game, phase);
-                            assert_eq!(game.screen, Screen::Playing);
+                            assert_eq!(game.client.screen, Screen::Playing);
                             assert_eq!(game.remote.as_ref().unwrap().chat_received, count + 1);
                             let expected = json!({"translate": key, "with": args.iter().map(|label| json!({"text": label.to_string()})).collect::<Vec<_>>()});
                             assert_eq!(game.ui.chat.recent_components(1), [expected]);
@@ -421,7 +433,7 @@ mod tests {
                             f32::NAN,
                         ] {
                             send(game, phase);
-                            assert_eq!(game.screen, Screen::Playing);
+                            assert_eq!(game.client.screen, Screen::Playing);
                             assert_eq!(game.remote.as_ref().unwrap().chat_received, count);
                             assert!(spoken.lock().unwrap().is_empty());
                         }

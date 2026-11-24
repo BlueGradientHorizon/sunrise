@@ -259,8 +259,11 @@ impl Game<'_> {
             player,
         } = written;
         self.with_level(|b, level, ticks| b.fluid_write_ticks(level, ticks, &write));
-        debug_assert!(self.spill.is_empty(), "a spill left between level calls");
-        self.spill = drops;
+        debug_assert!(
+            self.server.spill.is_empty(),
+            "a spill left between level calls"
+        );
+        self.server.spill = drops;
         self.flush_spill();
         self.with_level(|b, level, ticks| b.fluid_write_effects(level, ticks, &write));
         let _ = self.process_level_events();

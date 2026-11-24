@@ -49,8 +49,8 @@ impl Game<'_> {
                 Some(e) if e.id == "darkness" => self.sculk.darkness = darkness_added(e),
                 Some(e) if e.id == "nausea" => {
                     let (o_nausea, nausea) = screen_effects::nausea_blend_added(e, blend);
-                    self.screen_fx.o_nausea = o_nausea;
-                    self.screen_fx.nausea = nausea;
+                    self.client.screen_fx.o_nausea = o_nausea;
+                    self.client.screen_fx.nausea = nausea;
                 }
                 _ => {}
             }

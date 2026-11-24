@@ -36,7 +36,7 @@ fn boss_darkening_interpolates_across_zero_and_holds_the_negative_endpoint() {
                     );
                 };
                 game.tick_remote_level().unwrap();
-                check(&game.boss_overlay, [0.0, 0.025, 0.05], "rising tick");
+                check(&game.client.boss_overlay, [0.0, 0.025, 0.05], "rising tick");
 
                 game.handle_packet(packet(BossAction::UpdateProperties {
                     darken: false,
@@ -51,23 +51,23 @@ fn boss_darkening_interpolates_across_zero_and_holds_the_negative_endpoint() {
                 // units of 2^-30 above zero, not at zero.
                 let remainder = f32::EPSILON / 64.0;
                 let above_zero = [remainder + 0.0125, remainder + 0.00625, remainder];
-                check(&game.boss_overlay, above_zero, "four fade ticks");
+                check(&game.client.boss_overlay, above_zero, "four fade ticks");
 
                 game.clock.set_frozen(true);
                 game.tick_remote_level().unwrap();
-                check(&game.boss_overlay, above_zero, "frozen tick");
+                check(&game.client.boss_overlay, above_zero, "frozen tick");
 
                 game.clock.set_frozen(false);
                 game.tick_remote_level().unwrap();
                 let negative = remainder - 0.0125;
                 check(
-                    &game.boss_overlay,
+                    &game.client.boss_overlay,
                     [remainder, remainder - 0.00625, negative],
                     "first fade tick below zero",
                 );
                 game.tick_remote_level().unwrap();
                 check(
-                    &game.boss_overlay,
+                    &game.client.boss_overlay,
                     [negative; 3],
                     "next tick leaves the negative endpoint untouched",
                 );

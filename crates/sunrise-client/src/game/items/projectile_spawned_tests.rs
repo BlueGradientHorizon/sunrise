@@ -55,10 +55,10 @@ fn with_enchantments(defs: &[(&str, Value)], test: impl FnOnce(&mut super::Game<
             )
             .unwrap();
         }
-        game.world_root = root.clone();
+        game.server.world_root = root.clone();
         let stack = game.reload_datapacks(false, &[]).unwrap();
         let resources = game.options.resources.clone();
-        game.world_tables = game
+        game.server.world_tables = game
             .stage_world_tables(&stack, false, &resources)
             .unwrap()
             .tables;

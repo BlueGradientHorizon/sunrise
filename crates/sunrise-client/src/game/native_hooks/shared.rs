@@ -60,7 +60,7 @@ struct ContentsChangedGuard<'a, 'game> {
 
 impl Drop for ContentsChangedGuard<'_, '_> {
     fn drop(&mut self) {
-        self.game.contents_changing.pop();
+        self.game.server.contents_changing.pop();
     }
 }
 
@@ -118,15 +118,15 @@ pub(super) fn observed_overlay_id(overlays: &[(bool, &'static str)]) -> Option<&
 
 impl Game<'_> {
     pub(super) fn observed_overlay_now(&self) -> Option<&'static str> {
-        let book = self.book.as_ref().map(super::books::BookScreen::id);
+        let book = self.client.book.as_ref().map(super::books::BookScreen::id);
         observed_overlay_id(&[
-            (self.command_prompt.is_some(), "command_prompt"),
-            (self.link_prompt.is_some(), "link_prompt"),
-            (self.code_of_conduct.is_some(), "code_of_conduct"),
+            (self.client.command_prompt.is_some(), "command_prompt"),
+            (self.client.link_prompt.is_some(), "link_prompt"),
+            (self.client.code_of_conduct.is_some(), "code_of_conduct"),
             (self.server_packs.prompt.is_some(), "server_pack_prompt"),
             (self.dialog_open(), "dialog"),
             (book.is_some(), book.unwrap_or("book_view")),
-            (self.sign_edit.is_some(), "sign_editor"),
+            (self.client.sign_edit.is_some(), "sign_editor"),
         ])
     }
 
@@ -165,7 +165,7 @@ impl Game<'_> {
     pub(super) fn close_screen_to_level(&mut self, show_death_screen: bool) -> super::Result<()> {
         let overlay = self.observed_overlay_now();
         let inventory_screen = overlay.is_none()
-            && self.screen == Screen::Inventory
+            && self.client.screen == Screen::Inventory
             && self.remote_menu_type().is_none()
             && self.shown_native_screen().is_none();
         let heard = self.screen_hooks_heard();
@@ -173,8 +173,8 @@ impl Game<'_> {
             .then(|| {
                 if let Some(id) = overlay {
                     Some(self.observe_view(self.screen_overlay_view(id)))
-                } else if self.screen != Screen::Playing {
-                    Some(self.observe_view(self.screen_change_view(self.screen)))
+                } else if self.client.screen != Screen::Playing {
+                    Some(self.observe_view(self.screen_change_view(self.client.screen)))
                 } else {
                     self.title
                         .as_ref()
@@ -239,24 +239,24 @@ impl Game<'_> {
         self.remove_sign_editor();
         self.remove_chat_screen();
         self.close_dialogs();
-        self.book = None;
-        self.link_prompt = None;
-        self.command_prompt = None;
-        self.code_of_conduct = None;
+        self.client.book = None;
+        self.client.link_prompt = None;
+        self.client.command_prompt = None;
+        self.client.code_of_conduct = None;
         self.server_packs.prompt = None;
-        self.pause_focus = None;
-        if self.screen == Screen::Options {
+        self.client.pause_focus = None;
+        if self.client.screen == Screen::Options {
             self.ui.options.discard_draw();
         }
-        if screen == Screen::Dead && self.screen != Screen::Dead {
+        if screen == Screen::Dead && self.client.screen != Screen::Dead {
             self.ui.death_time = 0;
             self.ui.death_confirm = None;
         }
         if let Some(mut title) = title {
             title.set_rule_registry(Arc::new(crate::game::api_values::game_rule_registry()));
             self.stage_title(title);
-            self.screen = Screen::Playing;
-            self.native_mod_screen = None;
+            self.client.screen = Screen::Playing;
+            self.client.native_mod_screen = None;
         }
         if let Some(target) = target {
             self.open_screen_target(target);
@@ -267,7 +267,9 @@ impl Game<'_> {
             self.apply_screen_with_mod_book(screen, owner);
         }
         self.capture(
-            self.screen == Screen::Playing && self.title.is_none() && !self.screen_over_playing(),
+            self.client.screen == Screen::Playing
+                && self.title.is_none()
+                && !self.screen_over_playing(),
         );
         Ok(())
     }
@@ -300,7 +302,7 @@ impl Game<'_> {
                 .as_ref()
                 .and_then(|o| o.menu_generation)
                 != new_menu_gen;
-        if self.screen == screen {
+        if self.client.screen == screen {
             if opening_native || menu_replaced {
                 self.apply_screen_with_mod_book(screen, None);
             }
@@ -310,9 +312,9 @@ impl Game<'_> {
         let mut owner = None;
         if self.screen_hooks_heard() {
             let decision = {
-                let current = self.screen_change_view(self.screen);
+                let current = self.screen_change_view(self.client.screen);
                 let new = self.screen_change_view(screen);
-                self.decide_screen(&current, &new, self.screen != Screen::Playing)
+                self.decide_screen(&current, &new, self.client.screen != Screen::Playing)
             };
             match decision {
                 ScreenDecision::Keep => {
@@ -338,11 +340,11 @@ impl Game<'_> {
                 ScreenDecision::Open => {}
             }
         }
-        if self.screen == screen && owner.is_none() {
+        if self.client.screen == screen && owner.is_none() {
             return;
         }
         before(self);
-        if self.screen == Screen::Options {
+        if self.client.screen == Screen::Options {
             self.ui.options.discard_draw();
         }
         self.apply_screen_with_mod_book(screen, owner);
@@ -355,7 +357,7 @@ impl Game<'_> {
         (mod_api::__private::listened(mod_api::HookId::ScreenOpening)
             || mod_api::__private::listened(mod_api::HookId::ScreenClosing))
             && self.options.execution_role.is_client()
-            && self.lan_acting.is_none()
+            && self.server.lan_acting.is_none()
             && !self.screen_state.replacing
     }
     /// The hooks' answer to a change from `current` to `new`, for every path
@@ -404,7 +406,7 @@ impl Game<'_> {
         title_available: bool,
     ) -> ScreenDecision {
         let blocked = if clears_overlays {
-            self.lan_acting.is_some()
+            self.server.lan_acting.is_some()
                 || (self.player.is_none() && !title_available)
                 || self.remote_loading()
         } else {
@@ -454,8 +456,8 @@ impl Game<'_> {
         self.screen_state.replacing = true;
         match target {
             ScreenTarget::Pause => {
-                self.pause_focus = None;
-                self.pause_menu = true;
+                self.client.pause_focus = None;
+                self.client.pause_menu = true;
                 self.set_screen(Screen::Paused);
             }
             ScreenTarget::Options => self.open_options(false),
@@ -499,7 +501,7 @@ impl Game<'_> {
         self.build_screen();
         let observed = self.observed_now();
         self.screen_state.observed = observed.clone();
-        if !self.options.execution_role.is_client() || self.lan_acting.is_some() {
+        if !self.options.execution_role.is_client() || self.server.lan_acting.is_some() {
             return;
         }
         if let Some(obs) = observed {
@@ -516,8 +518,8 @@ impl Game<'_> {
             let none = self.screen_change_view(Screen::Playing);
             return Some(self.observe_view(screen_view_with_id(&none, id)));
         }
-        if self.screen != Screen::Playing {
-            return Some(self.observe_view(self.screen_change_view(self.screen)));
+        if self.client.screen != Screen::Playing {
+            return Some(self.observe_view(self.screen_change_view(self.client.screen)));
         }
         if let Some(title) = self.title.as_ref() {
             let none = self.screen_change_view(Screen::Playing);
@@ -538,13 +540,13 @@ impl Game<'_> {
             }
         }
         if screen != Screen::DemoIntro {
-            self.demo_intro = None;
+            self.client.demo_intro = None;
         }
-        self.screen = screen;
+        self.client.screen = screen;
         if let Some(owner) = owner {
-            self.native_mod_screen = Some(owner.to_owned());
+            self.client.native_mod_screen = Some(owner.to_owned());
         } else if screen != Screen::Mod {
-            self.native_mod_screen = None;
+            self.client.native_mod_screen = None;
         }
         if screen != Screen::Playing {
             self.release_mappings_on_screen_open();
@@ -608,14 +610,14 @@ impl Game<'_> {
     }
     #[cfg(test)]
     pub(super) fn test_observed_title(&self) -> Option<std::sync::Arc<mod_api::Text>> {
-        self.observe_view(self.screen_change_view(self.screen))
+        self.observe_view(self.screen_change_view(self.client.screen))
             .title
     }
     /// A mod's own screen cannot open now: over a book, a sign editor, a
     /// dialog or a prompt, with neither the title nor a player, with a
     /// world loading, or on a guest's behalf.
     fn mod_screen_blocked(&self) -> bool {
-        self.lan_acting.is_some()
+        self.server.lan_acting.is_some()
             || (self.player.is_none() && self.title.is_none())
             || self.screen_over_playing()
             || self.remote_loading()
@@ -699,24 +701,24 @@ impl Game<'_> {
     /// or prompt stays open over the new screen.
     fn close_replaced_screen_for_mod(&mut self) {
         let replacing = std::mem::replace(&mut self.screen_state.replacing, true);
-        match self.screen {
+        match self.client.screen {
             Screen::Inventory => self.close_container(),
             Screen::Creative => self.close_creative_menu(),
             Screen::Options => self.ui.options.discard_draw(),
             _ => {}
         }
-        if self.book.is_some() {
+        if self.client.book.is_some() {
             self.close_book();
         }
-        if self.sign_edit.is_some() {
+        if self.client.sign_edit.is_some() {
             self.close_sign_editor();
         }
         if self.dialog_open() {
             self.close_dialogs();
         }
-        self.link_prompt = None;
-        self.command_prompt = None;
-        self.code_of_conduct = None;
+        self.client.link_prompt = None;
+        self.client.command_prompt = None;
+        self.client.code_of_conduct = None;
         self.server_packs.prompt = None;
         self.screen_state.replacing = replacing;
     }
@@ -729,12 +731,13 @@ impl Game<'_> {
         };
         ObservedScreen {
             id: view.id,
-            overlay: self.screen == Screen::Playing || self.observed_overlay_now().is_some(),
+            overlay: self.client.screen == Screen::Playing || self.observed_overlay_now().is_some(),
             mod_screen: view.mod_screen.map(str::to_owned),
             menu: view.menu.map(str::to_owned),
-            menu_generation: (self.screen == Screen::Inventory && !self.screen_over_playing())
-                .then(|| self.remote.as_ref().map(|r| r.menu.generation))
-                .flatten(),
+            menu_generation: (self.client.screen == Screen::Inventory
+                && !self.screen_over_playing())
+            .then(|| self.remote.as_ref().map(|r| r.menu.generation))
+            .flatten(),
             dialog_key: (view.id == "dialog").then(|| match self.dialog_screen_key() {
                 (true, _, _) => (true, false, None),
                 key => key,
@@ -755,7 +758,7 @@ impl Game<'_> {
         let heard = self.screen_hooks_heard();
         let gated = heard
             || (self.options.execution_role.is_client()
-                && self.lan_acting.is_none()
+                && self.server.lan_acting.is_none()
                 && !self.screen_state.replacing
                 && mod_api::__private::listened(mod_api::HookId::ScreenInitPost));
         let Some(title) = self.title.as_mut() else {
@@ -908,7 +911,7 @@ impl Game<'_> {
             self.screen_state.observed = current.clone();
             if let Some(new) = &current
                 && self.options.execution_role.is_client()
-                && self.lan_acting.is_none()
+                && self.server.lan_acting.is_none()
             {
                 self.init_screen_widgets(&new.view());
             }
@@ -1122,7 +1125,7 @@ impl Game<'_> {
     /// The shown native screen whose remote window is still the active logical menu.
     pub(in crate::game) fn shown_active_native_screen(&self) -> Option<&OpenNativeScreen> {
         self.active_native_screen().filter(|s| {
-            s.shown && self.screen == Screen::Inventory && self.container == Some(s.menu.key)
+            s.shown && self.client.screen == Screen::Inventory && self.container == Some(s.menu.key)
         })
     }
 
@@ -1438,6 +1441,7 @@ impl Game<'_> {
                 // the toast slot is free.
                 if self.title.is_none()
                     || self
+                        .client
                         .toast_manager
                         .system_mut(SystemToastId::Title)
                         .is_some()
@@ -1633,15 +1637,16 @@ impl Game<'_> {
     pub(super) fn track_drag_button(&mut self, button: MouseButton, pressed: bool) {
         // Any release ends the drag, as vanilla's `MouseHandler.onButton` clears `activeButton`:
         // left down, right down, left up sends no drag while right is still held.
-        self.drag_button = pressed.then_some(button);
+        self.client.drag_button = pressed.then_some(button);
     }
     pub(super) fn screen_mouse_dragged(&self, delta: [f32; 2]) -> ScreenMousePre {
         if self.pad_synthetic_input() || delta == [0.0; 2] {
             return ScreenMousePre::NotFired;
         }
         let Some(button) = self
+            .client
             .drag_button
-            .filter(|b| self.physical_buttons.contains(b))
+            .filter(|b| self.client.physical_buttons.contains(b))
         else {
             return ScreenMousePre::NotFired;
         };
@@ -1649,7 +1654,7 @@ impl Game<'_> {
             return ScreenMousePre::NotFired;
         };
         let button = super::glfw_button(button);
-        let modifiers = super::glfw_modifiers(self.modifiers);
+        let modifiers = super::glfw_modifiers(self.client.modifiers);
         let mut canceled = false;
         self.native_screen_mouse_dragged_pre(
             &receiver.view(),
@@ -1739,7 +1744,7 @@ impl Game<'_> {
         let (Some(name), Some(receiver)) = (keybinds::key_name(key), receiver) else {
             return false;
         };
-        let modifiers = super::glfw_modifiers(self.modifiers);
+        let modifiers = super::glfw_modifiers(self.client.modifiers);
         let mut canceled = false;
         let screen = receiver.view();
         if pressed {
@@ -1758,7 +1763,7 @@ impl Game<'_> {
         let Some(receiver) = receiver else {
             return;
         };
-        let modifiers = super::glfw_modifiers(self.modifiers);
+        let modifiers = super::glfw_modifiers(self.client.modifiers);
         self.native_screen_char_typed_post(&receiver.view(), c, modifiers);
     }
     /// A screen the native mods' input hooks are for is open: the window has a
@@ -1771,7 +1776,7 @@ impl Game<'_> {
         self.renderer.is_some()
             && !self.screen_over_playing()
             && !self.remote_loading()
-            && (self.screen != Screen::Playing || self.title.is_some())
+            && (self.client.screen != Screen::Playing || self.title.is_some())
     }
     /// The open screen as an input hook sees it (`ScreenView`), or None
     /// when `screen_hooks_open` says no screen is. `screen.mouse` is the
@@ -1788,8 +1793,8 @@ impl Game<'_> {
             [renderer.config.width, renderer.config.height],
             self.settings.gui_scale_inputs(),
         );
-        if self.screen != Screen::Playing {
-            return Some(self.screen_view(&batch, self.screen));
+        if self.client.screen != Screen::Playing {
+            return Some(self.screen_view(&batch, self.client.screen));
         }
         self.title_screen_view(&batch)
     }
@@ -1811,7 +1816,7 @@ impl Game<'_> {
             &receiver.view(),
             name,
             repeat,
-            super::glfw_modifiers(self.modifiers),
+            super::glfw_modifiers(self.client.modifiers),
             &mut canceled,
         );
         canceled
@@ -1828,7 +1833,7 @@ impl Game<'_> {
         self.native_screen_key_released_pre(
             &receiver.view(),
             name,
-            super::glfw_modifiers(self.modifiers),
+            super::glfw_modifiers(self.client.modifiers),
             &mut canceled,
         );
         canceled
@@ -1843,7 +1848,7 @@ impl Game<'_> {
         let Some(receiver) = receiver else {
             return false;
         };
-        let modifiers = super::glfw_modifiers(self.modifiers);
+        let modifiers = super::glfw_modifiers(self.client.modifiers);
         self.with_focused_text_edit(|game, field| {
             let screen = receiver.view();
             let mut canceled = false;
@@ -1883,7 +1888,7 @@ impl Game<'_> {
         text: &str,
         mut take: impl FnMut(&mut Self, &str) -> bool,
     ) {
-        let modifiers = super::glfw_modifiers(self.modifiers);
+        let modifiers = super::glfw_modifiers(self.client.modifiers);
         let mut encoded = [0; 4];
         for c in text.chars() {
             if c.is_control() {
@@ -2431,7 +2436,7 @@ impl Game<'_> {
             .as_ref()
             .is_some_and(|p| p.entity_id == attacker)
         {
-            self.player_uuid_of(self.lan_acting)
+            self.player_uuid_of(self.server.lan_acting)
         } else {
             self.lan
                 .as_ref()
@@ -2934,6 +2939,7 @@ impl Game<'_> {
             return (self.own_uuid(), self.own_entity_id());
         }
         let entity = self
+            .server
             .lan_acting_entity
             .map_or_else(|| self.own_entity_id(), |id| id as i32);
         (self.native_acting_id(), entity)
@@ -3490,7 +3496,7 @@ impl Game<'_> {
             }
         }
         if s.screen.has_draw() {
-            let frame = s.frame(batch, (ox, oy), self.cursor);
+            let frame = s.frame(batch, (ox, oy), self.client.cursor);
             let mut draw = crate::game::host::draw::GameDrawContext::new(self, batch);
             s.screen.draw(self, frame, &mut draw);
         }
@@ -3573,11 +3579,14 @@ impl Game<'_> {
         let Some(screen) = self.shown_native_screen() else {
             return false;
         };
-        if self.slot_at(batch, self.cursor.0, self.cursor.1).is_some() {
+        if self
+            .slot_at(batch, self.client.cursor.0, self.client.cursor.1)
+            .is_some()
+        {
             return false;
         }
         let opening = (screen.menu.window, screen.menu.generation);
-        let frame = screen.frame(batch, self.inventory_origin(batch), self.cursor);
+        let frame = screen.frame(batch, self.inventory_origin(batch), self.client.cursor);
         let Some(button) = screen.screen.click(self, frame, right) else {
             return false;
         };
@@ -3597,13 +3606,13 @@ impl Game<'_> {
         // Over no item: an empty slot still gets the mod's hint (which fuel it takes).
         // A carried stack hides only slot tooltips, as AbstractContainerScreen's;
         // the screen's other parts keep theirs, as a vanilla widget's tooltip does.
-        let slot = self.slot_at(batch, self.cursor.0, self.cursor.1);
+        let slot = self.slot_at(batch, self.client.cursor.0, self.client.cursor.1);
         if slot.is_some_and(|i| self.slot_view(i).is_some()) {
             return;
         }
         let mut lines = Vec::new();
         self.native_screen_tooltip_lines(batch, slot, &mut lines);
-        self.draw_tooltip_lines(batch, &lines, self.cursor.0, self.cursor.1);
+        self.draw_tooltip_lines(batch, &lines, self.client.cursor.0, self.client.cursor.1);
     }
     /// The screen-specific line override, shared by filled-slot and empty-space tooltips.
     /// Item images and component gathering remain on the stack's normal drawing path.
@@ -3628,7 +3637,7 @@ impl Game<'_> {
         let menu_slot = slot.and_then(|slot| {
             Self::menu_slot_index(&screen.menu.name, slot).map(|slot| slot as u32)
         });
-        let frame = screen.frame(batch, self.inventory_origin(batch), self.cursor);
+        let frame = screen.frame(batch, self.inventory_origin(batch), self.client.cursor);
         if screen.screen.tooltip(self, frame, menu_slot, &mut snapshot)
             && let Ok(replacement) = snapshot.try_into_engine(&())
         {
@@ -3768,7 +3777,7 @@ impl Game<'_> {
     }
     /// A client mod's command (the `command` hook); a server never asks.
     pub(super) fn client_mod_command(&mut self, command: &str) -> bool {
-        if self.lan_acting.is_some() {
+        if self.server.lan_acting.is_some() {
             return false;
         }
         let mut ran = false;

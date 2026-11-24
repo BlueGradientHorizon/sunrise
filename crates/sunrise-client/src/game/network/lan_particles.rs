@@ -790,7 +790,7 @@ impl Game<'_> {
         // In a guest's turn (their hit on an end crystal or a minecart) the
         // host holds the players (`as_guest`): the packet waits for the turn
         // to end so that it reaches every player, the guest too.
-        if self.lan_acting.is_some() && self.lan.is_none() {
+        if self.server.lan_acting.is_some() && self.lan.is_none() {
             self.creatures.lan_explosions.push(LanExplosion {
                 center,
                 small,

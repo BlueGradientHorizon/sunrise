@@ -245,7 +245,7 @@ pub(super) mod tests {
                 seed: 0,
                 max_players: 3,
                 integrated: true,
-                levels: game.level_shapes,
+                levels: game.server.level_shapes,
                 level_seeds: game.levels.runtime.seeds(),
             };
             let settings = LanSettings {
@@ -360,7 +360,7 @@ pub(super) mod tests {
                 seed: 0,
                 max_players: 3,
                 integrated: true,
-                levels: game.level_shapes,
+                levels: game.server.level_shapes,
                 level_seeds: game.levels.runtime.seeds(),
             };
             let settings = LanSettings {

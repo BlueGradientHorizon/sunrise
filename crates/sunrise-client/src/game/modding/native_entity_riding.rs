@@ -781,7 +781,7 @@ impl Game<'_> {
         let own = self
             .player
             .as_ref()
-            .filter(|_| self.lan_acting.is_none())
+            .filter(|_| self.server.lan_acting.is_none())
             .map(|player| player.entity_id as u32);
         // An own-player edge that has no seat entry still needs to dismount.
         if let Some(own) = own
@@ -1238,9 +1238,9 @@ mod tests {
                 rider.id(),
             );
             assert!(game.entity_start_riding(stale, vehicle, true).is_err());
-            game.held_out.push(51);
+            game.server.held_out.push(51);
             assert!(game.entity_start_riding(rider, vehicle, true).is_err());
-            game.held_out.pop();
+            game.server.held_out.pop();
             assert!(game.entity_start_riding(rider, vehicle, true).is_ok());
             assert_eq!(game.mobs[0].extra.mount, Some(51));
         });

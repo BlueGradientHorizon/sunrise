@@ -34,7 +34,7 @@ impl Game<'_> {
             live_mobs: None,
             dragon: self.dragon_target(),
             armor_stands: &self.armor_stands,
-            leash_boats: &self.leash_boats,
+            leash_boats: &self.server.leash_boats,
             others_grid: None,
             others_index: None,
             passenger_objects: &[],
@@ -78,7 +78,7 @@ impl Game<'_> {
             sea_level: self.dim.sea_level(),
             teams: std::sync::Arc::new(self.mob_teams()),
             items: Some(self.items()),
-            lid_openers: &self.lid_openers,
+            lid_openers: &self.server.lid_openers,
             mod_effects: if self.remote.is_none() {
                 Some(self)
             } else {

@@ -319,7 +319,7 @@ impl Game<'_> {
             return false;
         }
         let sneaking = self.held_mapping(Action::Sneak)
-            || self.keys.raw(&winit::keyboard::KeyCode::ShiftRight);
+            || self.client.keys.raw(&winit::keyboard::KeyCode::ShiftRight);
         // Horse / ZombieHorse.mobInteract: food is fed, and anything else in
         // hand makes an untamed one mad instead of seating the player.
         let dandelion = [self.held(), self.offhand.as_ref()]
@@ -511,9 +511,9 @@ impl Game<'_> {
         self.post_game_event("minecraft:eat", at, ctx);
         // Animal.setInLove: entity event 18.
         if loved {
-            self.love_cause.insert(id, self.lan_acting);
+            self.server.love_cause.insert(id, self.server.lan_acting);
             let kind = self.mobs[index].kind.id.clone();
-            self.native_entity_enter_love_mode(id, &kind, self.lan_acting_uuid);
+            self.native_entity_enter_love_mode(id, &kind, self.server.lan_acting_uuid);
             self.mob_event_particles(id, 18);
         }
         self.consume_held();
@@ -627,7 +627,7 @@ impl Game<'_> {
             sneak: keys.shift,
             // A server's player (a LAN guest, single player's window) drives
             // a horse from its own client (`handleMoveVehicle`).
-            client: self.lan_acting.is_some(),
+            client: self.server.lan_acting.is_some(),
         });
         true
     }
@@ -1013,7 +1013,7 @@ impl Game<'_> {
             block_registries: Some(&self.pack.block_registries),
         }
         .cause_mount_fall(distance, modifier);
-        if self.lan_acting.is_some() {
+        if self.server.lan_acting.is_some() {
             self.finish_guest_damage();
         }
     }

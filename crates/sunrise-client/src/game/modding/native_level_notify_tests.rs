@@ -99,7 +99,10 @@ fn break_progress_waits_for_commit_but_explicit_block_updates_survive_abort() {
             Err(())
         });
         assert!(aborted.is_err());
-        assert!(!game.destroying.contains_key(&-7), "no crack after abort");
+        assert!(
+            !game.client.destroying.contains_key(&-7),
+            "no crack after abort"
+        );
         assert!(game.world.block_log.as_ref().unwrap().contains(&(2, 64, 2)));
 
         let host: &mut dyn mod_api::ServerHost = game;
@@ -110,14 +113,14 @@ fn break_progress_waits_for_commit_but_explicit_block_updates_survive_abort() {
         })
         .unwrap();
         assert_eq!(
-            game.destroying.get(&-7).map(|c| (c.pos, c.stage)),
+            game.client.destroying.get(&-7).map(|c| (c.pos, c.stage)),
             Some(([1, 64, 1], 3))
         );
         assert_eq!(game.world.block_log.as_ref().unwrap(), &vec![(2, 64, 2)]);
 
         // Outside a transaction the crack is cleared at once (any stage outside 0..10).
         assert!(game.level_set_break_progress(level, -7, [1, 64, 1], -1));
-        assert!(!game.destroying.contains_key(&-7));
+        assert!(!game.client.destroying.contains_key(&-7));
     });
 }
 

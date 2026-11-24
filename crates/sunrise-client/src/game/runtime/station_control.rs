@@ -45,24 +45,24 @@ fn stack_json(s: &ItemStack) -> Value {
 impl Game<'_> {
     fn click_at(&mut self, x: f32, y: f32, right: bool, shift: bool) {
         use winit::keyboard::KeyCode;
-        let saved = self.cursor;
-        self.cursor = (x, y);
+        let saved = self.client.cursor;
+        self.client.cursor = (x, y);
         let held = shift.then(|| {
             sunrise_client_input::modifiers::hold(
-                &mut self.modifiers,
-                &mut self.physical_keys,
+                &mut self.client.modifiers,
+                &mut self.client.physical_keys,
                 KeyCode::ShiftLeft,
             )
         });
         self.click_inventory(right);
         if let Some(held) = held {
             sunrise_client_input::modifiers::restore(
-                &mut self.modifiers,
-                &mut self.physical_keys,
+                &mut self.client.modifiers,
+                &mut self.client.physical_keys,
                 held,
             );
         }
-        self.cursor = saved;
+        self.client.cursor = saved;
     }
     pub(super) fn gui_origin(&self) -> Result<(f32, f32)> {
         let size = self
@@ -167,7 +167,7 @@ impl Game<'_> {
                     })
                     .collect();
                 Ok(Some(json!({
-                    "screen": if self.screen == Screen::Inventory { "inventory" } else { "other" },
+                    "screen": if self.client.screen == Screen::Inventory { "inventory" } else { "other" },
                     "station": self.station.as_ref().map(|s| format!("{:?}", s.kind)),
                     "name": self.station.as_ref().map(|s| s.name.clone()),
                     "info": self.station_info(),

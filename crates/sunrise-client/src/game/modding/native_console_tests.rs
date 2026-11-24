@@ -103,7 +103,10 @@ fn a_captured_command_returns_its_feedback() {
         let result = game.native_run_command_with_output("gamerule nosuchrule");
         assert!(!result.success);
         assert!(!result.feedback.is_empty());
-        assert!(game.chat_capture.is_none(), "the outer capture is put back");
+        assert!(
+            game.server.chat_capture.is_none(),
+            "the outer capture is put back"
+        );
         // The same line through `run_command`'s path answers as the captured one does.
         assert!(game.native_run_command("time query gametime"));
         assert!(!game.native_run_command("gamerule nosuchrule"));
@@ -136,7 +139,7 @@ fn a_blank_line_or_no_server_runs_nothing() {
                 "{blank:?}"
             );
         }
-        assert!(game.chat_capture.is_none(), "nothing was captured");
+        assert!(game.server.chat_capture.is_none(), "nothing was captured");
         let host = game.lan.take();
         assert_eq!(
             game.native_run_command_with_output("time query gametime"),
@@ -183,11 +186,13 @@ fn the_feedback_kept_is_capped() {
 fn a_nested_capture_leaves_the_outer_one_as_it_was() {
     with_guests(|game| {
         let outer = game
+            .server
             .chat_capture
             .replace(vec![sunrise_client::text::Text::literal("outer line")]);
         let result = game.native_run_command_with_output("time query gametime");
         assert!(result.success && result.feedback.len() == 1, "{result:?}");
         let kept: Vec<String> = game
+            .server
             .chat_capture
             .take()
             .unwrap()
@@ -195,6 +200,6 @@ fn a_nested_capture_leaves_the_outer_one_as_it_was() {
             .map(|t| t.plain())
             .collect();
         assert_eq!(kept, ["outer line"]);
-        game.chat_capture = outer;
+        game.server.chat_capture = outer;
     });
 }

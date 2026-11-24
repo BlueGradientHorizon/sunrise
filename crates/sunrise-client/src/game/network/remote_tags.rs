@@ -24,7 +24,7 @@ impl Game<'_> {
         self.refresh_infiniburn();
         self.refresh_creative_search_tags();
         self.install_remote_tags();
-        if self.recipe_ui.server_stations.is_some()
+        if self.client.recipe_ui.server_stations.is_some()
             && tags
                 .registries
                 .iter()
@@ -50,7 +50,7 @@ impl Game<'_> {
                     .collect(),
             )
         });
-        self.creative_screen.set_item_tags(tags.as_ref());
+        self.client.creative_screen.set_item_tags(tags.as_ref());
     }
 
     /// Make the server's tags what native mods read, then tell them. Snapshot client
@@ -736,7 +736,7 @@ mod tests {
                     game.adv.progress.revoke("tag_reload:damage_probe", "probe"),
                     !expect_empty
                 );
-                let loot = game.server_loot.get().unwrap();
+                let loot = game.server.server_loot.get().unwrap();
                 for (registry, values) in members {
                     let expected: Vec<_> = values[..keep].iter().map(|id| id.to_string()).collect();
                     assert_eq!(loot.members(registry, "tag_reload:probe"), Some(expected));

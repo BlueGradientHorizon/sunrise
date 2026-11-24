@@ -146,9 +146,9 @@ impl Game<'_> {
     /// wither has no spawn finalization and draws nothing from the level.
     pub(super) fn create_triggered(&mut self, kind: &str, at: [f64; 3], yaw: f32) -> Option<u32> {
         let t = self.res.mob_types().get(kind).cloned()?;
-        self.next_entity += 1;
+        self.server.next_entity += 1;
         let mut mob = sunrise_client::mobs::Mob::new(
-            self.next_entity,
+            self.server.next_entity,
             t,
             sunrise_core::geometry::Vec3::new(at[0], at[1], at[2]),
             yaw,

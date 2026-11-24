@@ -20,7 +20,7 @@ mod tests {
                 }),
             );
             assert_eq!(forward_mapping.physical_down(game), Ok(false));
-            game.physical_keys.insert(KeyCode::KeyW);
+            game.client.physical_keys.insert(KeyCode::KeyW);
             assert_eq!(forward_mapping.physical_down(game), Ok(true));
             // A write to the logical mapping does not move the physical read.
             game.insert_device_key(KeyCode::KeyW);
@@ -31,27 +31,27 @@ mod tests {
             // Rebound, it reads the new key, and the old one no longer counts.
             game.settings.keys.set("key.forward", "key.keyboard.up");
             assert_eq!(forward_mapping.physical_down(game), Ok(false));
-            game.physical_keys.insert(KeyCode::ArrowUp);
+            game.client.physical_keys.insert(KeyCode::ArrowUp);
             assert_eq!(forward_mapping.physical_down(game), Ok(true));
             // A mapping on a mouse button reads the button, by name too.
             assert_eq!(attack_mapping.physical_down(game), Ok(false));
-            game.physical_buttons.insert(MouseButton::Left);
+            game.client.physical_buttons.insert(MouseButton::Left);
             assert_eq!(attack_mapping.physical_down(game), Ok(true));
             assert!(game.is_key_down("key.mouse.left"));
             assert!(!game.is_key_down("key.mouse.right"));
-            game.physical_buttons.clear();
+            game.client.physical_buttons.clear();
             assert!(!game.is_key_down("key.mouse.left"));
             // A mapping bound to no key is never down.
             game.settings.keys.set("key.attack", "key.keyboard.unknown");
-            game.physical_buttons.insert(MouseButton::Left);
+            game.client.physical_buttons.insert(MouseButton::Left);
             assert_eq!(attack_mapping.physical_down(game), Ok(false));
 
             // Logical state is tracked uniformly for every resolved vanilla mapping,
             // independent of its physical key state.
-            game.screen = Screen::Playing;
+            game.client.screen = Screen::Playing;
             game.title = None;
             let chat = game.vanilla_key_mapping("key.chat").unwrap();
-            game.physical_keys.insert(KeyCode::KeyT);
+            game.client.physical_keys.insert(KeyCode::KeyT);
             assert_eq!(chat.physical_down(game), Ok(true));
             assert_eq!(chat.is_down(game), Ok(false));
             assert_eq!(chat.set_down(game, true), Ok(()));
@@ -74,13 +74,13 @@ mod tests {
     fn stale_vanilla_mapping_ref_refuses_foreign_client() {
         with_client_game(|game| {
             game.player = Some(PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
-            game.screen = Screen::Playing;
+            game.client.screen = Screen::Playing;
             game.title = None;
             let old = game.vanilla_key_mapping("key.attack").unwrap();
             assert_eq!(old.binding(game), Ok("key.mouse.left"));
 
             // A new client input store resolves the same fixed vanilla slot with a new identity.
-            game.mod_keys = sunrise_client::keymapping::ModKeys::default();
+            game.client.mod_keys = sunrise_client::keymapping::ModKeys::default();
             game.settings.keys.set("key.attack", "key.keyboard.r");
             assert_eq!(old.binding(game), Err(MappingError::Stale));
             assert_eq!(old.is_down(game), Err(MappingError::Stale));

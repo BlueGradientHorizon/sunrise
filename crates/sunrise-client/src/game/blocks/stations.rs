@@ -1112,7 +1112,10 @@ impl Game<'_> {
             return;
         }
         if mod_api::__private::listened(mod_api::HookId::PlayerXpLevelChange)
-            && let (Some(player), Some(name)) = (self.lan_acting_uuid, self.lan_acting_name.clone())
+            && let (Some(player), Some(name)) = (
+                self.server.lan_acting_uuid,
+                self.server.lan_acting_name.clone(),
+            )
         {
             let mut cancel = false;
             self.native_player_xp_level_change(player, &name, &mut levels, &mut cancel);
@@ -1133,7 +1136,7 @@ impl Game<'_> {
     }
     /// `Player.giveExperienceLevels`: all players near its feet hear the sound.
     pub(super) fn play_level_up(&mut self, amount: i32, level: i32) {
-        if let Some(volume) = self.level_up_sound.give_levels(amount, level) {
+        if let Some(volume) = self.server.level_up_sound.give_levels(amount, level) {
             let at = self
                 .player
                 .as_ref()
@@ -1250,7 +1253,7 @@ impl Game<'_> {
         };
         let batch = HudBatch::new(size, self.settings.gui_scale_inputs());
         let (ox, oy) = self.inventory_origin(&batch);
-        let local = (self.cursor.0 - ox, self.cursor.1 - oy);
+        let local = (self.client.cursor.0 - ox, self.client.cursor.1 - oy);
         let shift = self.has_shift_down();
         if let Some(kind) = self.station.as_ref().map(|s| s.kind) {
             if kind == Kind::Merchant && !right && self.merchant_click(local) {
@@ -1282,7 +1285,7 @@ impl Game<'_> {
                 return true;
             }
         }
-        let Some(slot) = self.slot_at(&batch, self.cursor.0, self.cursor.1) else {
+        let Some(slot) = self.slot_at(&batch, self.client.cursor.0, self.client.cursor.1) else {
             return true;
         };
         // Every station's clicks (and the brewing stand's) run on the
@@ -1372,7 +1375,7 @@ impl Game<'_> {
             return false;
         };
         let (ox, oy) = self.inventory_origin(&batch);
-        let local = (self.cursor.0 - ox, self.cursor.1 - oy);
+        let local = (self.client.cursor.0 - ox, self.client.cursor.1 - oy);
         if !off_visible_rows(&self.station_targets(), local, up) {
             return false;
         }
@@ -1413,7 +1416,7 @@ impl Game<'_> {
             return handled;
         };
         let (_, oy) = self.inventory_origin(&HudBatch::new(size, self.settings.gui_scale_inputs()));
-        let y = self.cursor.1 - oy;
+        let y = self.client.cursor.1 - oy;
         // `StonecutterScreen.mouseDragged`.
         if let Some(s) = self.station.as_mut()
             && s.kind == Kind::Stonecutter
@@ -1438,7 +1441,7 @@ impl Game<'_> {
     }
     /// Whether keyboard text goes to the anvil rename box.
     pub(super) fn station_typing(&self) -> bool {
-        self.screen == Screen::Inventory
+        self.client.screen == Screen::Inventory
             && self
                 .station
                 .as_ref()
@@ -1535,7 +1538,7 @@ impl Game<'_> {
             return false;
         }
         let (x, y, w, h) = (ox + 62.0, oy + 24.0, 103.0, 12.0);
-        let (mx, my) = self.cursor;
+        let (mx, my) = self.client.cursor;
         if mx < x || my < y || mx >= x + w || my >= y + h {
             return false;
         }
@@ -2505,12 +2508,12 @@ impl Game<'_> {
         if self.mod_browser_dragging() {
             return;
         }
-        let Some(slot) = self.slot_at(batch, self.cursor.0, self.cursor.1) else {
+        let Some(slot) = self.slot_at(batch, self.client.cursor.0, self.client.cursor.1) else {
             return;
         };
         // The recipe book's tooltip is drawn after the slot's own, so a ghost wins.
         if let Some(ghost) = self.ghost_stack(slot) {
-            self.draw_stack_tooltip(batch, &ghost, self.cursor.0, self.cursor.1);
+            self.draw_stack_tooltip(batch, &ghost, self.client.cursor.0, self.client.cursor.1);
             return;
         }
         let stack = self.slot_view(slot);
@@ -2525,13 +2528,19 @@ impl Game<'_> {
             {
                 return;
             }
-            self.draw_stack_tooltip_lines(batch, &stack, lines, self.cursor.0, self.cursor.1);
+            self.draw_stack_tooltip_lines(
+                batch,
+                &stack,
+                lines,
+                self.client.cursor.0,
+                self.client.cursor.1,
+            );
         } else if let Some(text) = self.crafter_tooltip(slot) {
             self.draw_tooltip_lines(
                 batch,
                 &[(sunrise_client::text::Text::literal(text), u32::MAX)],
-                self.cursor.0,
-                self.cursor.1,
+                self.client.cursor.0,
+                self.client.cursor.1,
             );
         }
     }

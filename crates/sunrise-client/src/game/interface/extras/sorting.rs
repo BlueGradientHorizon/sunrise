@@ -24,7 +24,7 @@ impl Game<'_> {
     /// the "Inventory" label's line.
     fn sort_buttons(&self) -> Vec<((f32, f32), Vec<usize>)> {
         if !self.settings.extras.sort
-            || self.screen != Screen::Inventory
+            || self.client.screen != Screen::Inventory
             || self.station.is_some()
             || self.mount_active()
         {
@@ -62,7 +62,7 @@ impl Game<'_> {
         let atlas = &self.gui.atlas;
         for ((x, y), _) in self.sort_buttons() {
             let (x, y) = (ox + x, oy + y);
-            let (cx, cy) = self.cursor;
+            let (cx, cy) = self.client.cursor;
             let hovered = cx >= x && cx < x + SORT_BUTTON && cy >= y && cy < y + SORT_BUTTON;
             let face = if hovered {
                 rgba(220, 220, 220, 255)
@@ -94,7 +94,7 @@ impl Game<'_> {
             self.settings.gui_scale_inputs(),
         );
         let (ox, oy) = self.inventory_origin(&batch);
-        let (cx, cy) = self.cursor;
+        let (cx, cy) = self.client.cursor;
         let hit = self.sort_buttons().into_iter().find(|((x, y), _)| {
             let (x, y) = (ox + x, oy + y);
             cx >= x && cx < x + SORT_BUTTON && cy >= y && cy < y + SORT_BUTTON

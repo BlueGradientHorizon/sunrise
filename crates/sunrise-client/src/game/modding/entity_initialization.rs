@@ -38,12 +38,12 @@ impl Game<'_> {
         if !matches!(holder, Holder::Entity(_) | Holder::Player(_)) {
             return;
         }
-        if !self.entity_initialization.initialized.insert(holder) {
+        if !self.server.entity_initialization.initialized.insert(holder) {
             return;
         }
-        let previous = self.entity_initialization.active.replace(holder);
+        let previous = self.server.entity_initialization.active.replace(holder);
         self.native_entity_constructing(holder, kind);
-        self.entity_initialization.active = previous;
+        self.server.entity_initialization.active = previous;
         // Listener stores skip binding while their holder is being constructed.
         // A resident part has no separate join callback, so finish its binding
         // here even when construction was triggered by an inspection.
@@ -87,14 +87,18 @@ impl Game<'_> {
         {
             mob.accepted_hit = None;
         }
-        self.entity_initialization.initialized.remove(&holder);
+        self.server
+            .entity_initialization
+            .initialized
+            .remove(&holder);
     }
 
     /// Forget destroyed objects in this level before its UUID metadata is pruned.
     /// The supplied set includes reachable off-level objects. Other levels and
     /// player lifetimes are owned by their own cleanup boundaries.
     pub(super) fn prune_entity_initializations(&mut self, retained: &HashSet<u32>) {
-        self.entity_initialization
+        self.server
+            .entity_initialization
             .initialized
             .retain(|holder| match holder {
                 Holder::Entity(id) => !self.persist.uuids.contains_key(id) || retained.contains(id),
@@ -106,7 +110,7 @@ impl Game<'_> {
     /// connection (`PlayerList.placeNewPlayer` constructs the `ServerPlayer`, then
     /// `loadPlayerData` reads its file).
     pub(super) fn initialize_server_player(&mut self, uuid: u128, conn: u32) {
-        if self.entity_initialization.players.insert(uuid, conn) != Some(conn) {
+        if self.server.entity_initialization.players.insert(uuid, conn) != Some(conn) {
             self.forget_entity_initialization(Holder::Player(uuid));
         }
         self.initialize_guest_player_under_data(uuid, conn);
@@ -195,7 +199,7 @@ impl Game<'_> {
         let accepted_hit = self
             .mob_object_mut(id)
             .and_then(|mob| mob.accepted_hit.take());
-        let died = self.died.remove(&id);
+        let died = self.server.died.remove(&id);
         TransferredEntityState {
             attachments,
             accepted_hit,
@@ -205,6 +209,7 @@ impl Game<'_> {
             rollback,
             source: id,
             initialized: self
+                .server
                 .entity_initialization
                 .initialized
                 .remove(&Holder::Entity(id)),
@@ -227,7 +232,7 @@ impl Game<'_> {
         let now = self.world.game_time;
         self.levels.note_travel(state.source, id, now);
         if state.died {
-            self.died.insert(id);
+            self.server.died.insert(id);
         }
         if state.transient {
             self.persist.transient.insert(id);
@@ -245,7 +250,8 @@ impl Game<'_> {
         }
         self.entity_attachments.insert(id, map);
         if state.initialized {
-            self.entity_initialization
+            self.server
+                .entity_initialization
                 .initialized
                 .insert(Holder::Entity(id));
         }

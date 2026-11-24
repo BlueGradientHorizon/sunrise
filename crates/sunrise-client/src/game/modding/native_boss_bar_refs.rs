@@ -15,7 +15,8 @@ impl Game<'_> {
         if self.remote.is_some() || self.native_lifecycle.epoch() != Some(bar.fields().epoch) {
             return None;
         }
-        self.bosses
+        self.server
+            .bosses
             .bars
             .bars
             .iter()
@@ -27,6 +28,7 @@ impl Game<'_> {
             return false;
         }
         if let Some(state) = self
+            .server
             .bosses
             .bars
             .bars
@@ -60,7 +62,7 @@ impl Game<'_> {
         if self.remote.is_some() {
             return None;
         }
-        self.bosses.bars.get(id)
+        self.server.bosses.bars.get(id)
     }
 
     /// Every custom boss bar, in the order `/bossbar list` shows them.
@@ -68,7 +70,8 @@ impl Game<'_> {
         if self.remote.is_some() {
             return Vec::new();
         }
-        self.bosses
+        self.server
+            .bosses
             .listed_bars()
             .into_iter()
             .filter_map(|bar| self.boss_bar_handle(bar))
@@ -242,7 +245,7 @@ impl Game<'_> {
         let Some(id) = self.boss_bar_id(bar) else {
             return false;
         };
-        self.bosses.remove_bar(&id);
+        self.server.bosses.remove_bar(&id);
         self.bossbars_changed();
         true
     }
@@ -298,7 +301,7 @@ mod tests {
                 seed: 0,
                 max_players: 10,
                 integrated: true,
-                levels: game.level_shapes,
+                levels: game.server.level_shapes,
                 level_seeds: game.levels.runtime.seeds(),
             };
             let mut net = NetConfig::lan(0, "test".into(), 10);
@@ -353,8 +356,9 @@ mod tests {
             assert_eq!(bar.players(game), Some(vec![]));
 
             // Nobody sees it until a player is added.
-            let seen =
-                |game: &Game<'_>, uuid: u128| game.bosses.sent_state(uuid, bar_uuid(game, bar));
+            let seen = |game: &Game<'_>, uuid: u128| {
+                game.server.bosses.sent_state(uuid, bar_uuid(game, bar))
+            };
             assert_eq!(seen(game, 123), None);
             assert!(bar.add_player(game, a));
             assert!(bar.add_player(game, a));
@@ -441,7 +445,7 @@ mod tests {
             // fields and the players' UUIDs.
             assert!(bar.add_player(game, a));
             let dir = std::env::temp_dir().join(format!("boss-save-{}", std::process::id()));
-            game.world_root = dir.clone();
+            game.server.world_root = dir.clone();
             game.save_bossbars();
             let root = sunrise_client::save::read_dat(&game.bossbar_path()).unwrap();
             let loaded = sunrise_client::bossbar::BossBars::unpack(root.get("data").unwrap());
@@ -558,7 +562,7 @@ mod tests {
     fn saved_bars_are_found_before_any_tick() {
         with_game(|game| {
             let dir = std::env::temp_dir().join(format!("boss-early-{}", std::process::id()));
-            game.world_root = dir.clone();
+            game.server.world_root = dir.clone();
             let bar = mod_api::prelude::BossBarsServerHost::create_boss_bar(
                 game,
                 "mod:saved",
@@ -569,7 +573,7 @@ mod tests {
             assert!(bar.set_value(game, 7));
             game.save_bossbars();
             // The world opens again and loads the bars, as `finish_open_world` does.
-            game.bosses = Default::default();
+            game.server.bosses = Default::default();
             game.load_bossbars();
             let found = game.boss_bar("mod:saved").unwrap();
             assert_eq!(found.value(game), Some(7));

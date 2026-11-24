@@ -92,7 +92,7 @@ impl Game<'_> {
             body.death_canceled = body.health <= 0.0;
             if !body.death_canceled {
                 body.death_time = 0;
-                self.died.remove(&mob.id);
+                self.server.died.remove(&mob.id);
             }
         }
         cancel

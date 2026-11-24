@@ -106,7 +106,7 @@ impl Journal {
             restore(game);
         }
         if let Some(sequences) = self.sequences {
-            game.rand_sequences = sequences;
+            game.server.rand_sequences = sequences;
         }
     }
 }
@@ -598,7 +598,7 @@ impl Game<'_> {
             level
                 .trades
                 .sequences
-                .get_or_insert_with(|| self.rand_sequences.clone());
+                .get_or_insert_with(|| self.server.rand_sequences.clone());
         }
     }
 

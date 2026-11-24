@@ -154,13 +154,18 @@ mod tests {
             game.player = Some(PlayerMotion::new(game.motion, Vec3::new(0.5, 64.0, 0.5)).unwrap());
             // RaidCommand needs the owner's permission level (3).
             game.ui.registries.permission = 4;
-            game.chat_capture = Some(Vec::new());
+            game.server.chat_capture = Some(Vec::new());
             game.audio.capture = Some(Vec::new());
-            let (id, _) = game.raiding.raids.create_or_extend([0, 64, 0], 2, None, 3);
-            assert!(!game.raiding.raids.get(id).unwrap().started);
+            let (id, _) = game
+                .server
+                .raiding
+                .raids
+                .create_or_extend([0, 64, 0], 2, None, 3);
+            assert!(!game.server.raiding.raids.get(id).unwrap().started);
 
             assert_eq!(run_dev(game, "raid check"), 1);
             let lines: Vec<String> = game
+                .server
                 .chat_capture
                 .take()
                 .unwrap()

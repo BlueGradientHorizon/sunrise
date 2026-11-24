@@ -474,7 +474,7 @@ impl Game<'_> {
     /// the guest has no body to swap in.
     fn player_hook(&mut self, conn: u32, f: impl FnOnce(&mut Self)) {
         let mut f = Some(f);
-        if self.lan_acting != Some(conn) {
+        if self.server.lan_acting != Some(conn) {
             self.as_guest(conn, |g| {
                 if let Some(f) = f.take() {
                     f(g);
@@ -1232,7 +1232,7 @@ mod tests {
     fn shutdown_saves_current_and_parked_inventory_cursors() {
         with_game(|game| {
             let world = tempfile::tempdir().unwrap();
-            game.world_root = world.path().to_owned();
+            game.server.world_root = world.path().to_owned();
             let _rx = watched_guest(game);
             let current = ItemStack::new("minecraft:lapis_lazuli", 3);
             let parked = ItemStack::new("minecraft:iron_ingot", 4);

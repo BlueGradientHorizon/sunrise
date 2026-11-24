@@ -455,7 +455,7 @@ impl Game<'_> {
                     remote.session.reset_far_terrain();
                 }
                 self.remove_local_player_body();
-                self.post_effects.clear();
+                self.client.post_effects.clear();
                 if let Some(r) = self.remote.as_mut() {
                     r.camera = None;
                 }
@@ -592,7 +592,7 @@ impl Game<'_> {
             )
             .into());
         }
-        self.post_effects = p.effects;
+        self.client.post_effects = p.effects;
         Ok(())
     }
 

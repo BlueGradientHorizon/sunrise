@@ -297,11 +297,11 @@ impl Game<'_> {
         // Hud.setNowPlaying: the overlay, said at once.
         let message = Text::translate("record.nowPlaying", &[description]);
         self.say_system_now(&message);
-        self.titles.set_overlay(message, true);
+        self.client.titles.set_overlay(message, true);
         self.update_song_volumes();
         self.notify_record_playing(pos, true);
         if self.audio.capture.is_some() {
-            self.lan_songs.push((pos, Some(song.to_owned())));
+            self.server.lan_songs.push((pos, Some(song.to_owned())));
         }
     }
     /// `LevelEventHandler` 1010 on a client of a server: `playJukeboxSong`
@@ -328,7 +328,7 @@ impl Game<'_> {
         self.stop_sound(pos);
         self.notify_record_playing(pos, false);
         if self.audio.capture.is_some() {
-            self.lan_songs.push((pos, None));
+            self.server.lan_songs.push((pos, None));
         }
     }
     /// `JukeboxSongPlayer.stop` of a jukebox whose record left it, taken out by

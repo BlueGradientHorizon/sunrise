@@ -37,12 +37,12 @@ impl Game<'_> {
     /// The player riding through `riding` and its place: the acting guest (its kept place, if
     /// any, comes from the hub's list) or, outside a guest turn, this game's own player.
     pub(in crate::game) fn riding_player(&self) -> Option<(u32, i64)> {
-        match (self.lan_acting_entity, self.lan_acting) {
-            (Some(id), _) if self.lan_acting_uuid.is_some() => Some((id, i64::MIN)),
+        match (self.server.lan_acting_entity, self.server.lan_acting) {
+            (Some(id), _) if self.server.lan_acting_uuid.is_some() => Some((id, i64::MIN)),
             (_, None) => self
                 .player
                 .as_ref()
-                .map(|p| (p.entity_id as u32, self.riding_order)),
+                .map(|p| (p.entity_id as u32, self.server.riding_order)),
             _ => None,
         }
     }
@@ -104,7 +104,7 @@ impl Game<'_> {
         lent_mobs: &[Mob],
         mut matches: impl FnMut((i64, u32, bool)) -> bool,
     ) -> bool {
-        let acting = self.lan_acting.filter(|_| self.player.is_some());
+        let acting = self.server.lan_acting.filter(|_| self.player.is_some());
         let mut acting_listed = false;
         for g in self
             .lan
@@ -179,7 +179,7 @@ impl Game<'_> {
     /// `addPassenger` for the player riding through `riding`, now in `vehicle`: the acting
     /// guest's place goes to the hub, this game's own player's to `riding_order`.
     pub(in crate::game) fn seat_player(&mut self, vehicle: u32) {
-        match (self.lan_acting, self.lan_acting_entity) {
+        match (self.server.lan_acting, self.server.lan_acting_entity) {
             (Some(conn), Some(me)) => {
                 let order = self.boarding_order(vehicle, me, true);
                 if let Some(host) = self.lan.as_mut() {
@@ -188,7 +188,7 @@ impl Game<'_> {
             }
             (None, _) => {
                 if let Some((me, _)) = self.riding_player() {
-                    self.riding_order = self.boarding_order(vehicle, me, true);
+                    self.server.riding_order = self.boarding_order(vehicle, me, true);
                 }
             }
             _ => {}
@@ -200,15 +200,15 @@ impl Game<'_> {
     /// a guest's turn (the hub held by its action) leaves it for
     /// [`Self::flush_started_riding`] once every player is back in place.
     pub(super) fn note_started_riding(&mut self, vehicle: u32) {
-        self.started_riding.push(vehicle);
-        if self.lan.is_some() && self.lan_acting.is_none() {
+        self.server.started_riding.push(vehicle);
+        if self.lan.is_some() && self.server.lan_acting.is_none() {
             self.flush_started_riding();
         }
     }
 
     /// Fires the queued `started_riding` triggers with every player in place.
     pub(super) fn flush_started_riding(&mut self) {
-        for vehicle in std::mem::take(&mut self.started_riding) {
+        for vehicle in std::mem::take(&mut self.server.started_riding) {
             self.trigger_started_riding(vehicle);
         }
     }

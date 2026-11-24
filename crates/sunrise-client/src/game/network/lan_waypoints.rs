@@ -40,7 +40,7 @@ impl Game<'_> {
     }
 
     fn waypoint_player(&self, g: &sunrise_client::lan::guest::Guest) -> waypoints::Player {
-        let body = if self.lan_acting == Some(g.conn) {
+        let body = if self.server.lan_acting == Some(g.conn) {
             self.player.as_ref()
         } else {
             g.motion.as_deref()
@@ -56,6 +56,7 @@ impl Game<'_> {
                     .unwrap_or_default()
             }),
             transmitting: self
+                .server
                 .cmds
                 .waypoints
                 .as_ref()
@@ -70,6 +71,7 @@ impl Game<'_> {
                 )
             }),
             icon: self
+                .server
                 .cmds
                 .waypoint_icons
                 .get(&Target::Guest(g.conn))

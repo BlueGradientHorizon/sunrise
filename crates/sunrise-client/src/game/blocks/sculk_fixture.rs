@@ -349,7 +349,7 @@ impl Game<'_> {
             }
         }
         self.block_ticks = Ticks::new(0);
-        self.tick_chunks.clear();
+        self.server.tick_chunks.clear();
         self.sync_tick_chunks();
         self.mobs.clear();
         if s.trace_events {
@@ -494,7 +494,7 @@ impl Game<'_> {
             sources.push(id);
             self.mobs.push(m);
         }
-        self.next_entity = self.next_entity.max(200_000);
+        self.server.next_entity = self.server.next_entity.max(200_000);
         self.world.day_time = 6000;
         self.world.random.set_seed(s.level_seed);
         self.audio.capture = Some(Vec::new());
@@ -506,7 +506,7 @@ impl Game<'_> {
         let mut region_last: HashMap<[i32; 3], String> = HashMap::new();
         let (mut last_player, mut last_rng) = (String::new(), String::new());
         let mut out = String::new();
-        self.lan_entity_events.clear();
+        self.server.lan_entity_events.clear();
         for t in 0..=s.ticks {
             dispense_fixture::start_recording();
             if t > 0 {
@@ -615,7 +615,7 @@ impl Game<'_> {
                         "pos": [p.position.x, p.position.y, p.position.z]})
                     ));
                 }
-                for (_, event) in self.lan_entity_events.drain(..) {
+                for (_, event) in self.server.lan_entity_events.drain(..) {
                     lines.push(format!("entity_event {event}"));
                 }
             }
@@ -629,7 +629,7 @@ impl Game<'_> {
                 }
             }
             // The sounds bound to an entity are the server's too.
-            let bound = std::mem::take(&mut self.bound_sounds)
+            let bound = std::mem::take(&mut self.server.bound_sounds)
                 .into_iter()
                 .map(|s| (s.name, s.at, s.volume, s.pitch));
             for (sound, at, volume, pitch) in self
@@ -760,7 +760,7 @@ impl Game<'_> {
                         Some(sunrise_client::mobs::Who::Player),
                         &attack,
                     );
-                    let mut credit = plan.lend(&mut self.last_hurt_by_player);
+                    let mut credit = plan.lend(&mut self.server.last_hurt_by_player);
                     if let Some(index) = self.mob_index.find(&self.mobs, id) {
                         self.mobs[index].damage(
                             crate::game::entity::damage_level_of!(self, &attack, &mut credit, None),

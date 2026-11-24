@@ -9,12 +9,15 @@ use sunrise_world::registry::BlockStateId;
 impl Game<'_> {
     /// `ClientPacketListener.handleAddTransientBlockPacket`.
     pub(super) fn add_transient_block(&mut self, pos: [i32; 3], state: i32) {
-        self.transient_blocks.queue(pos, BlockStateId(state as u32));
+        self.client
+            .transient_blocks
+            .queue(pos, BlockStateId(state as u32));
     }
 
     /// `LevelExtractor.drainTransientBlockQueue`, once a frame.
     pub(super) fn drain_transient_block_queue(&mut self) {
-        self.transient_blocks
+        self.client
+            .transient_blocks
             .drain(Instant::now(), self.streaming.sequence());
     }
 
@@ -23,11 +26,11 @@ impl Game<'_> {
     /// One whose section mesh has been rebuilt since it came is dropped
     /// (`performTransientBlockRemovals`).
     pub(super) fn transient_block_geometry(&mut self, camera: glam::DVec3, out: &mut Vec<Vertex>) {
-        if self.transient_blocks.shown.is_empty() {
+        if self.client.transient_blocks.shown.is_empty() {
             return;
         }
         let now = Instant::now();
-        let mut shown = std::mem::take(&mut self.transient_blocks.shown);
+        let mut shown = std::mem::take(&mut self.client.transient_blocks.shown);
         shown.retain(|pos, block| {
             if now >= block.live_until {
                 return false;
@@ -51,6 +54,6 @@ impl Game<'_> {
                 out,
             );
         }
-        self.transient_blocks.shown = shown;
+        self.client.transient_blocks.shown = shown;
     }
 }

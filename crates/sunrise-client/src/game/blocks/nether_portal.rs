@@ -683,7 +683,7 @@ impl Game<'_> {
     /// Only a server holds levels with tickets of their own.
     pub(super) fn place_portal_ticket(&mut self, chunk: (i32, i32)) {
         if !self.options.execution_role.is_client() {
-            self.tickets.add_portal(chunk);
+            self.server.tickets.add_portal(chunk);
         }
     }
 
@@ -783,15 +783,15 @@ impl Game<'_> {
             return false;
         }
         // No screen at all (`screen() == null`) is nothing to close.
-        if self.screen != Screen::Playing && !self.screen.allowed_in_portal() {
-            if matches!(self.screen, Screen::Creative | Screen::Inventory) {
+        if self.client.screen != Screen::Playing && !self.client.screen.allowed_in_portal() {
+            if matches!(self.client.screen, Screen::Creative | Screen::Inventory) {
                 self.close_container();
                 self.carried = None;
             }
             self.set_screen(Screen::Playing);
             self.capture(true);
         }
-        if self.screen_fx.portal == 0.0 {
+        if self.client.screen_fx.portal == 0.0 {
             let pitch = self.world.random.next_float() * 0.4 + 0.8;
             self.audio
                 .play("minecraft:block.portal.trigger", None, 0.25, pitch);
@@ -979,7 +979,7 @@ impl Game<'_> {
     pub(super) fn dimension_changing_delay(&self, id: u32) -> i32 {
         if self.boats.iter().any(|b| b.id == id)
             || self.carts.iter().any(|c| c.id == id)
-            || self.lan_acting_entity == Some(id)
+            || self.server.lan_acting_entity == Some(id)
             || self
                 .lan
                 .iter()
@@ -1191,7 +1191,7 @@ impl Game<'_> {
                         self.tridents,
                         index,
                         t,
-                        &mut self.next_entity,
+                        &mut self.server.next_entity,
                         None
                     );
                 }
@@ -1203,7 +1203,7 @@ impl Game<'_> {
                         self.rockets,
                         index,
                         r,
-                        &mut self.next_entity,
+                        &mut self.server.next_entity,
                         None
                     );
                 }
@@ -1974,7 +1974,8 @@ impl Game<'_> {
     // ---- persistence ----
 
     fn arrivals_path(&self) -> std::path::PathBuf {
-        self.world_root
+        self.server
+            .world_root
             .join("data")
             .join("sunrise_portal_arrivals.dat")
     }
@@ -2058,7 +2059,7 @@ pub(in crate::game) mod tests {
             let child = game.mob_passenger_ids(root)[0];
             let leaf = game.mob_passenger_ids(child)[0];
             assert!(!game.mobs.iter().any(|m| m.id == child));
-            game.tickets.add_portal((0, 0));
+            game.server.tickets.add_portal((0, 0));
             game.update_chunk_tickets();
             assert!(game.entity_ticking_area()(0, 0));
             game.set_portal_cooldown(leaf);
@@ -2548,7 +2549,7 @@ pub(in crate::game) mod tests {
                 game.send_through_portal(transient.id(), at);
                 game.send_through_portal(persistent.id(), at);
                 let world = tempfile::tempdir().unwrap();
-                game.world_root = world.path().to_path_buf();
+                game.server.world_root = world.path().to_path_buf();
                 let path = game.arrivals_path();
                 std::fs::create_dir_all(path.parent().unwrap()).unwrap();
                 game.save_portal_arrivals();

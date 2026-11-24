@@ -27,7 +27,10 @@ impl Game<'_> {
     /// the creative inventory screen and empty batches without changing items.
     /// True means submitted, not accepted by the server: its corrections win.
     pub(super) fn menu_click(&mut self, menu: MenuRef, clicks: &[MenuClick]) -> bool {
-        if self.is_logical_server() || self.screen == super::Screen::Creative || self.spectator() {
+        if self.is_logical_server()
+            || self.client.screen == super::Screen::Creative
+            || self.spectator()
+        {
             return false;
         }
         let Some(name) = self.native_client_menu_name(menu) else {
@@ -46,7 +49,7 @@ impl Game<'_> {
     /// the inventory menu while playing.
     pub(super) fn menu_close(&mut self, menu: MenuRef) -> bool {
         if self.is_logical_server()
-            || self.screen != super::Screen::Inventory
+            || self.client.screen != super::Screen::Inventory
             || self.native_client_menu_name(menu).is_none()
         {
             return false;
@@ -129,7 +132,7 @@ impl Game<'_> {
 
     pub(super) fn menu_slot_boxes(&self, menu: MenuRef) -> Option<Vec<Option<[f32; 4]>>> {
         if !matches!(
-            self.screen,
+            self.client.screen,
             super::Screen::Inventory | super::Screen::Creative
         ) || !self.screen_hooks_open()
         {
@@ -223,7 +226,7 @@ impl Game<'_> {
         match self.player_handle_read(player)? {
             super::native_server::PlayerRead::Guest(guest) => Some(guest),
             super::native_server::PlayerRead::Acting { .. } => {
-                self.lan.as_ref()?.hub.guest(self.lan_acting?)
+                self.lan.as_ref()?.hub.guest(self.server.lan_acting?)
             }
         }
     }
@@ -402,7 +405,7 @@ impl Game<'_> {
         }
         let backing = self.menu_slot_backing(menu, slot)?;
         let guest = self.native_menu_guest(menu)?;
-        let acting = self.lan_acting == Some(guest.conn);
+        let acting = self.server.lan_acting == Some(guest.conn);
         Some(match backing {
             MenuSlotBacking::BlockEntity { .. } | MenuSlotBacking::Entity { .. } => {
                 let world = self.native_level_world(self.level(&guest.dimension)?)?;
@@ -433,7 +436,7 @@ impl Game<'_> {
             MenuSlotBacking::CraftResult => guest.craft_result.clone(),
             MenuSlotBacking::Ender(n) => {
                 if acting {
-                    self.ender_items.get(n)?.clone()
+                    self.server.ender_items.get(n)?.clone()
                 } else {
                     guest.ender_items.get(n)?.clone()
                 }
@@ -550,7 +553,7 @@ impl Game<'_> {
             }
         }
         (slot < rules.slot_count()).then_some(())?;
-        if self.lan_acting == Some(guest.conn) {
+        if self.server.lan_acting == Some(guest.conn) {
             for (n, stack) in self.inventory.iter().enumerate().take(36) {
                 rules.set_player_item(n, stack.clone());
             }
@@ -580,9 +583,9 @@ impl Game<'_> {
     ) -> Option<&mut Option<ItemStack>> {
         let backing = self.menu_slot_backing(menu, slot)?;
         if let MenuSlotBacking::Ender(n) = backing
-            && self.lan_acting_uuid == Some(menu.fields().player.uuid())
+            && self.server.lan_acting_uuid == Some(menu.fields().player.uuid())
         {
-            return self.ender_items.get_mut(n);
+            return self.server.ender_items.get_mut(n);
         }
         let guests = &mut self.lan.as_mut()?.hub.guests;
         let index = guests.iter().position(|g| {
@@ -680,7 +683,7 @@ impl Game<'_> {
             return Some(self.carried.clone());
         }
         let guest = self.native_menu_guest(menu)?;
-        Some(if self.lan_acting == Some(guest.conn) {
+        Some(if self.server.lan_acting == Some(guest.conn) {
             self.carried.clone()
         } else {
             guest.carried.clone()
@@ -865,7 +868,7 @@ mod tests {
     #[ignore = "daily"]
     fn inventory_boxes_follow_menu_indices_and_the_input_layout() {
         with_panel(0, |game, opening| {
-            game.screen = super::super::Screen::Inventory;
+            game.client.screen = super::super::Screen::Inventory;
             let batch = super::super::HudBatch::new([800, 600], game.settings.gui_scale_inputs());
             let boxes = game
                 .inventory_menu_slot_boxes(0, "inventory", &batch)
@@ -879,7 +882,7 @@ mod tests {
                 );
             }
             assert!(game.inventory_menu_slot_boxes(1, PANEL, &batch).is_none());
-            game.screen = super::super::Screen::Playing;
+            game.client.screen = super::super::Screen::Playing;
             open_panel(game);
             let menu = game
                 .player_container_menu(game.local_player().unwrap())
@@ -901,8 +904,14 @@ mod tests {
     }
 
     fn creative_tab(game: &mut Game<'_>, pick: impl Fn(&sunrise_client::creative::Tab) -> bool) {
-        let tab = game.creative_screen.tabs.iter().position(pick).unwrap();
-        game.creative_screen.select(tab);
+        let tab = game
+            .client
+            .creative_screen
+            .tabs
+            .iter()
+            .position(pick)
+            .unwrap();
+        game.client.creative_screen.select(tab);
     }
 
     /// A hidden window's offscreen renderer over a joined level with the player's body in it,
@@ -944,7 +953,7 @@ mod tests {
                 with_panel(0, |game, _| {
                     let _window = offscreen_window(game);
                     game.creative = true;
-                    game.screen = super::super::Screen::Creative;
+                    game.client.screen = super::super::Screen::Creative;
                     game.refresh_creative_tabs();
                     let batch = window_batch(game);
                     let (ox, oy) = Game::creative_origin(&batch);
@@ -1054,7 +1063,7 @@ mod tests {
                     let hover = |game: &mut Game<'_>, slot: usize| {
                         let (ox, oy) = game.inventory_origin(&batch);
                         let (x, y) = game.slot_position(slot);
-                        game.cursor = (ox + x + 8.0, oy + y + 8.0);
+                        game.client.cursor = (ox + x + 8.0, oy + y + 8.0);
                         ScreensClientHost::screen_hovered_stack(&*game)
                     };
                     let sword = game
@@ -1069,15 +1078,15 @@ mod tests {
                     game.inventory[11] = None;
                     game.armor[0] = Some(sword.clone());
 
-                    game.screen = super::super::Screen::Inventory;
+                    game.client.screen = super::super::Screen::Inventory;
                     is_potion(hover(game, 9));
                     is_stone(hover(game, 10));
                     assert_eq!(hover(game, 11), None);
-                    game.screen = super::super::Screen::Playing;
+                    game.client.screen = super::super::Screen::Playing;
                     assert_eq!(hover(game, 9), None);
 
                     game.creative = true;
-                    game.screen = super::super::Screen::Creative;
+                    game.client.screen = super::super::Screen::Creative;
                     game.refresh_creative_tabs();
                     creative_tab(game, |t| t.inventory);
                     is_potion(hover(game, 9));
@@ -1085,26 +1094,26 @@ mod tests {
                     assert_eq!(hover(game, 11), None);
                     let (ox, oy) = game.inventory_origin(&batch);
                     let (tx, ty) = Creative::TRASH_POSITION;
-                    game.cursor = (ox + tx + 8.0, oy + ty + 8.0);
+                    game.client.cursor = (ox + tx + 8.0, oy + ty + 8.0);
                     assert_eq!(ScreensClientHost::screen_hovered_stack(&*game), None);
 
                     // Seven rows: scrolled to the bottom, the first shown row is the third.
                     creative_tab(game, |t| !t.inventory && !t.search && !t.items.is_empty());
-                    let tab = game.creative_screen.selected_index();
+                    let tab = game.client.creative_screen.selected_index();
                     let mut items = vec![ItemStack::new("minecraft:stone", 17); 63];
                     items[0] = sword.clone();
                     items[1].count = 0;
                     items[18] = potion;
-                    game.creative_screen.tabs[tab].items = items;
-                    game.creative_screen.forget_items();
+                    game.client.creative_screen.tabs[tab].items = items;
+                    game.client.creative_screen.forget_items();
                     is_sword(hover(game, Creative::DISPLAY));
                     assert_eq!(hover(game, Creative::DISPLAY + 1), None);
                     is_stone(hover(game, Creative::DISPLAY + 2));
                     is_sword(hover(game, 0));
-                    game.creative_screen.scroll = 1.0;
+                    game.client.creative_screen.scroll = 1.0;
                     is_potion(hover(game, Creative::DISPLAY));
 
-                    game.creative_screen = Creative::from_json(&serde_json::json!({
+                    game.client.creative_screen = Creative::from_json(&serde_json::json!({
                         "schema": 4, "item_features": {}, "potion_features": {}, "tabs": [{
                             "id": "minecraft:search", "type": "SEARCH", "title": "Search Items",
                             "build": [], "search_metadata": [{
@@ -1291,7 +1300,7 @@ mod tests {
                 seed: 0,
                 max_players: 10,
                 integrated: true,
-                levels: game.level_shapes,
+                levels: game.server.level_shapes,
                 level_seeds: game.levels.runtime.seeds(),
             };
             let mut net = NetConfig::lan(0, "test".into(), 10);
@@ -1412,7 +1421,7 @@ mod tests {
                 seed: 0,
                 max_players: 10,
                 integrated: true,
-                levels: game.level_shapes,
+                levels: game.server.level_shapes,
                 level_seeds: game.levels.runtime.seeds(),
             };
             let mut net = NetConfig::lan(0, "test".into(), 10);

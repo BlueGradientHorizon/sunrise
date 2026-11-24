@@ -58,14 +58,15 @@ fn integrated_enchant_updates_the_clients_selected_slot() {
         client.set_screen(Screen::Creative);
         // Supply the category's displayed stack, not a predicted or server slot.
         let category = client
+            .client
             .creative_screen
             .tabs
             .iter()
             .position(|tab| !tab.search && !tab.inventory && !tab.hotbar)
             .unwrap();
-        client.creative_screen.select(category);
-        client.creative_screen.tabs[category].items = vec![ItemStack::new(TRIDENT, 1)];
-        client.creative_screen.forget_items();
+        client.client.creative_screen.select(category);
+        client.client.creative_screen.tabs[category].items = vec![ItemStack::new(TRIDENT, 1)];
+        client.client.creative_screen.forget_items();
         let display = Creative::DISPLAY;
         sent(&mut wire);
         match target {
@@ -245,10 +246,10 @@ fn enchant_outcome(
     first_arg: Option<&str>,
 ) {
     let command = format!("enchant {target} {RIPTIDE} {level}");
-    game.chat_capture = Some(Vec::new());
+    game.server.chat_capture = Some(Vec::new());
     let (ok, outcome) =
         game.recording_command_outcome(|g| g.as_console(|g| g.run_command(&command)));
-    let feedback = game.chat_capture.take().unwrap();
+    let feedback = game.server.chat_capture.take().unwrap();
     assert_eq!(
         (ok, outcome),
         (success, Some((success, count))),

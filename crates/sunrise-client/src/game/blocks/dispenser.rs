@@ -93,7 +93,7 @@ struct DispenseScope<'a, 'g> {
 
 impl Drop for DispenseScope<'_, '_> {
     fn drop(&mut self) {
-        self.game.dispense_source = self.outer.take();
+        self.game.server.dispense_source = self.outer.take();
     }
 }
 
@@ -438,7 +438,7 @@ impl Game<'_> {
         // Like BlockSource, a running behaviour retains its original dispenser even if
         // the transfer or its commit listeners replace the block. A stand-alone helper
         // call has no BlockSource and uses the currently resident container.
-        let holder = match self.dispense_source {
+        let holder = match self.server.dispense_source {
             Some(source) if source.dim == self.dim && source.pos == pos => source.holder,
             _ => resident,
         };
@@ -534,7 +534,7 @@ impl Game<'_> {
         facing: Direction,
         stack: ItemStack,
     ) -> Result<ControlFlow<(), Option<ItemStack>>> {
-        let outer = self.dispense_source.replace(DispenseSource {
+        let outer = self.server.dispense_source.replace(DispenseSource {
             dim: self.dim,
             pos,
             holder: self.world.block_entities.identity(pos),
@@ -1249,17 +1249,17 @@ impl Game<'_> {
         );
         // EntityType.create rolls a yaw from the level random before the stack config turns it.
         let _ = self.world.random.next_float();
-        self.next_entity += 1;
+        self.server.next_entity += 1;
         let (_, uuid) = sunrise_client::mobs::living_random();
-        self.persist.uuids.insert(self.next_entity, uuid);
+        self.persist.uuids.insert(self.server.next_entity, uuid);
         let stand =
-            sunrise_client::entities::ArmorStand::new(self.next_entity, foot, y_rot(facing));
+            sunrise_client::entities::ArmorStand::new(self.server.next_entity, foot, y_rot(facing));
         self.world.modified.insert((front.0 >> 4, front.2 >> 4));
         self.armor_stands.push(stand);
         // EntityType.appendDefaultStackConfig: the dispenser's yaw first, then
         // the item's createDefaultStackConfig with no user.
         self.apply_item_stack_config(
-            super::commands::Target::Stand(self.next_entity),
+            super::commands::Target::Stand(self.server.next_entity),
             "minecraft:armor_stand",
             &stack,
             false,
@@ -1313,9 +1313,9 @@ impl Game<'_> {
         } else {
             return (self.dispense_default_in_level(pos, facing, stack), CLICK);
         };
-        self.next_entity += 1;
+        self.server.next_entity += 1;
         let mut boat = super::boats::Boat::new(
-            self.next_entity,
+            self.server.next_entity,
             wood.into(),
             Vec3::new(x, y + y_offset, z),
             y_rot(facing),
@@ -1368,16 +1368,16 @@ impl Game<'_> {
                 -0.9
             }
         };
-        self.next_entity += 1;
+        self.server.next_entity += 1;
         let cart = super::minecarts::Minecart::new(
-            self.next_entity,
+            self.server.next_entity,
             kind,
             Vec3::new(x, base_y + y_offset, z),
         );
         self.world.modified.insert((front.0 >> 4, front.2 >> 4));
         self.carts.push(cart);
         // AbstractMinecart.createMinecart: createDefaultStackConfig with no user.
-        let id = self.next_entity;
+        let id = self.server.next_entity;
         self.apply_item_stack_config(super::commands::Target::Cart(id), kind.id(), &stack, false);
         if self.serving.is_some() || self.options.dedicated.is_some() {
             let cart = self.carts.last().unwrap();
@@ -1881,7 +1881,7 @@ impl Game<'_> {
     ) -> Vec<ItemStack> {
         match world_items!(self).loot_sequence(parent) {
             Some(sequence) => {
-                let random = self.rand_sequences.get(&sequence, self.level.seed);
+                let random = self.server.rand_sequences.get(&sequence, self.level.seed);
                 world_items!(self).loot_table_from(table, false, held, random)
             }
             None => world_items!(self).loot_table(table, false, held, &mut self.world.random),

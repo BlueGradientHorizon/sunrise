@@ -83,7 +83,7 @@ impl Game<'_> {
             .lan
             .as_ref()
             .and_then(|host| host.mob_players.get(&caller).copied())
-            .or(self.lan_acting);
+            .or(self.server.lan_acting);
         self.set_event_ai_target(id, Some(target), player);
         if let Some(reinforcement) = self.mobs.iter_mut().find(|m| m.id == id) {
             // ZOMBIE_REINFORCEMENT_CALLEE_CHARGE.

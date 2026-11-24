@@ -13,7 +13,7 @@ impl Game<'_> {
         .then(|| {
             [
                 self.gui.atlas.revision,
-                self.dynamic_textures.geometry_revision(),
+                self.client.dynamic_textures.geometry_revision(),
                 mod_api::__private::mods_switched(),
             ]
         })

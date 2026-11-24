@@ -304,7 +304,7 @@ fn prepare_work(game: &mut Game<'_>, save: &std::path::Path) {
     use sunrise_client::mobs::villager_brain;
     use sunrise_core::{geometry::Vec3, random::LegacyRandom};
 
-    game.world_root = save.to_path_buf();
+    game.server.world_root = save.to_path_buf();
     game.enter_level(super::Dim::Overworld).unwrap();
     game.options.dedicated = Some(Vec::new());
     game.streaming

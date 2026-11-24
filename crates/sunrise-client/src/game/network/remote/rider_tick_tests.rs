@@ -17,11 +17,11 @@ fn a_boat_clamps_the_riders_yaw_without_changing_the_previous_yaw() {
             .push(Boat::new(71, "oak".into(), Vec3::new(2.5, 64.0, 2.5), 0.0));
         game.riding = Some(71);
         game.yaw = 200.0;
-        game.rope_rot_old.0 = 180.0;
+        game.client.rope_rot_old.0 = 180.0;
 
         assert!(game.remote_ride(Keys::default()));
         assert_eq!(game.yaw, 255.0);
-        assert_eq!(game.rope_rot_old.0, 180.0);
+        assert_eq!(game.client.rope_rot_old.0, 180.0);
         server.shutdown();
     });
 }
@@ -40,7 +40,7 @@ fn a_riders_move_takes_the_look_of_the_tick_and_leaves_it_off_the_ground() {
             remote.first_passenger = true;
             remote.entity_id = 42;
             remote.level_load.finish();
-            game.screen = Screen::Playing;
+            game.client.screen = Screen::Playing;
             game.streaming
                 .insert_remote(&mut game.world, sunrise_client::chunk::Chunk::empty(0, 0));
             let stone = game
@@ -114,7 +114,7 @@ fn mounted_local_spectator_forces_flight_and_sends_abilities() {
                 remote.profile_name = "SpectatorRider".into();
                 remote.level_load.finish();
             }
-            game.screen = Screen::Playing;
+            game.client.screen = Screen::Playing;
             game.boats
                 .push(Boat::new(71, "oak".into(), Vec3::new(2.5, 64.0, 2.5), 0.0));
             game.riding = Some(71);

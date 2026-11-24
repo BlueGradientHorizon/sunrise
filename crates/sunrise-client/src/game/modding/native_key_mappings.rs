@@ -24,23 +24,26 @@ impl Game<'_> {
             mod_api::__private::key_mappings(),
         );
         let settings = &self.settings;
-        self.mod_keys.bind(mappings.iter().map(|(owner, mapping)| {
-            let (input, modifiers) =
-                settings
-                    .mods
-                    .binding(owner, &mapping.id, (&mapping.key, mapping.modifiers.bits));
-            ModBinding {
-                owner,
-                id: &mapping.id,
-                input,
-                modifiers,
-                context: match mapping.context {
-                    KeyConflictContext::InGame => MappingContext::InGame,
-                    KeyConflictContext::Gui => MappingContext::Gui,
-                    _ => MappingContext::Universal,
-                },
-            }
-        }));
+        self.client
+            .mod_keys
+            .bind(mappings.iter().map(|(owner, mapping)| {
+                let (input, modifiers) = settings.mods.binding(
+                    owner,
+                    &mapping.id,
+                    (&mapping.key, mapping.modifiers.bits),
+                );
+                ModBinding {
+                    owner,
+                    id: &mapping.id,
+                    input,
+                    modifiers,
+                    context: match mapping.context {
+                        KeyConflictContext::InGame => MappingContext::InGame,
+                        KeyConflictContext::Gui => MappingContext::Gui,
+                        _ => MappingContext::Universal,
+                    },
+                }
+            }));
     }
     pub(in crate::game) fn mod_key_mapping(
         &self,
@@ -51,6 +54,7 @@ impl Game<'_> {
             return Err(ModKeyRefusal::Unavailable);
         }
         let slot = self
+            .client
             .mod_keys
             .resolve(owner, id)
             .ok_or(ModKeyRefusal::NotRegistered)?;
@@ -63,6 +67,7 @@ impl Game<'_> {
         mapping: ModKeyMappingRef,
     ) -> Result<(&str, ClientModifiers), ModKeyRefusal> {
         let row = self
+            .client
             .mod_keys
             .get(mod_key_slot(mapping))
             .ok_or(ModKeyRefusal::Stale)?;
@@ -75,6 +80,7 @@ impl Game<'_> {
         mapping: ModKeyMappingRef,
     ) -> Result<Text, MappingError> {
         let row = self
+            .client
             .mod_keys
             .get(mod_key_slot(mapping))
             .ok_or(MappingError::Stale)?;
@@ -91,6 +97,7 @@ impl Game<'_> {
         modifiers: ClientModifiers,
     ) -> Result<(), ModKeyRefusal> {
         let (owner, id) = self
+            .client
             .mod_keys
             .get(mod_key_slot(mapping))
             .ok_or(ModKeyRefusal::Stale)?
@@ -123,6 +130,7 @@ impl Game<'_> {
         mapping: ModKeyMappingRef,
     ) -> Result<(), ModKeyRefusal> {
         let (owner, id) = self
+            .client
             .mod_keys
             .get(mod_key_slot(mapping))
             .ok_or(ModKeyRefusal::Stale)?
@@ -187,7 +195,7 @@ impl Game<'_> {
             _ => &[mod_api::KeyAction::Press, mod_api::KeyAction::Release],
         };
         for action in actions {
-            let modifiers = glfw_modifiers(self.modifiers);
+            let modifiers = glfw_modifiers(self.client.modifiers);
             self.key_input(name, layout_key, raw_code, *action, modifiers);
         }
     }
@@ -199,18 +207,22 @@ impl Game<'_> {
             KeyAction::Release
         };
         let screen_open = self.mod_mappings_screen_open();
-        let held = glfw_modifiers(self.modifiers);
-        self.mod_keys.button(button, action, screen_open, held);
+        let held = glfw_modifiers(self.client.modifiers);
+        self.client
+            .mod_keys
+            .button(button, action, screen_open, held);
     }
     fn mod_mappings_input(&mut self, input: &str, action: KeyAction, mouse: bool) {
         let screen_open = self.mod_mappings_screen_open();
-        let held = glfw_modifiers(self.modifiers);
-        self.mod_keys.input(input, action, mouse, screen_open, held);
+        let held = glfw_modifiers(self.client.modifiers);
+        self.client
+            .mod_keys
+            .input(input, action, mouse, screen_open, held);
     }
     /// A screen or overlay is open: the mappings hear no presses and are released.
     pub(in crate::game) fn mod_mappings_screen_open(&self) -> bool {
         !gameplay_has_keyboard(
-            self.screen,
+            self.client.screen,
             self.title.is_some(),
             self.screen_over_playing(),
         )
@@ -221,10 +233,11 @@ impl Game<'_> {
         mapping: ModKeyMappingRef,
     ) -> Result<bool, ModKeyRefusal> {
         let screen_open = self.mod_mappings_screen_open();
-        self.mod_keys
+        self.client
+            .mod_keys
             .is_down(
                 mod_key_slot(mapping),
-                glfw_modifiers(self.modifiers),
+                glfw_modifiers(self.client.modifiers),
                 screen_open,
             )
             .ok_or(ModKeyRefusal::Stale)
@@ -234,7 +247,8 @@ impl Game<'_> {
         &mut self,
         mapping: ModKeyMappingRef,
     ) -> Result<bool, ModKeyRefusal> {
-        self.mod_keys
+        self.client
+            .mod_keys
             .consume_click(mod_key_slot(mapping))
             .ok_or(ModKeyRefusal::Stale)
     }
@@ -254,15 +268,17 @@ mod tests {
                 )
                 .unwrap(),
             );
-            game.mod_keys.bind([sunrise_client::keymapping::ModBinding {
-                owner: "test",
-                id: "pending",
-                input: "key.keyboard.k".into(),
-                modifiers: 0,
-                context: sunrise_client::keymapping::MappingContext::InGame,
-            }]);
+            game.client
+                .mod_keys
+                .bind([sunrise_client::keymapping::ModBinding {
+                    owner: "test",
+                    id: "pending",
+                    input: "key.keyboard.k".into(),
+                    modifiers: 0,
+                    context: sunrise_client::keymapping::MappingContext::InGame,
+                }]);
             let pending = game.mod_key_mapping("test", "pending").unwrap();
-            game.mod_keys.input(
+            game.client.mod_keys.input(
                 "key.keyboard.k",
                 sunrise_client::keymapping::KeyAction::Press,
                 false,
@@ -270,7 +286,7 @@ mod tests {
                 0,
             );
             game.open_hud_editor(false);
-            assert!(matches!(game.screen, crate::game::Screen::HudEditor));
+            assert!(matches!(game.client.screen, crate::game::Screen::HudEditor));
             game.close_hud_editor();
             assert!(!pending.consume_click(game).unwrap());
         });

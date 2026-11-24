@@ -88,8 +88,8 @@ impl Game<'_> {
         let group: Arc<str> = group.into();
         self.native_as_player_handle(player, |game| {
             game.cooldowns.remove(&group);
-            if game.lan_acting.is_some() {
-                game.guest_cooldowns.push((group, 0));
+            if game.server.lan_acting.is_some() {
+                game.server.guest_cooldowns.push((group, 0));
             }
         })
     }
@@ -97,7 +97,7 @@ impl Game<'_> {
     /// experience orb.
     pub(super) fn player_exp_cooldown(&self, player: PlayerRef) -> Option<u32> {
         match self.player_handle_read(player)? {
-            super::native_server::PlayerRead::Acting { .. } => Some(self.xp_delay),
+            super::native_server::PlayerRead::Acting { .. } => Some(self.server.xp_delay),
             super::native_server::PlayerRead::Guest(g) => Some(
                 self.lan
                     .as_ref()?
@@ -110,7 +110,7 @@ impl Game<'_> {
     /// Sets `Player.takeXpDelay`: no orb is taken for `ticks` ticks. The
     /// change is not reported to `player_exp_cooldown_change`.
     pub(super) fn player_set_exp_cooldown(&mut self, player: PlayerRef, ticks: u32) -> bool {
-        self.native_as_player_handle(player, |game| game.xp_delay = ticks)
+        self.native_as_player_handle(player, |game| game.server.xp_delay = ticks)
     }
     /// Sets the player's `WardenSpawnTracker.cooldownTicks`: sculk shriekers
     /// they set off don't warn for `ticks` ticks. The level's players share
@@ -131,6 +131,7 @@ impl Game<'_> {
             .map(|owner| owner.uuid);
         if owner != Some(player.uuid())
             || self
+                .server
                 .lan_acting_uuid
                 .is_some_and(|acting| Some(acting) != owner)
         {

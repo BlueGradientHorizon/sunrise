@@ -66,7 +66,7 @@ impl Game<'_> {
     /// The open screen is one the tweaks run in, with the extra on.
     pub(in crate::game) fn tweaks_on(&self) -> bool {
         if !self.settings.extras.mouse_tweaks
-            || self.screen != Screen::Inventory
+            || self.client.screen != Screen::Inventory
             || self.station.is_some()
             || self.mount_active()
         {
@@ -86,7 +86,7 @@ impl Game<'_> {
         right: bool,
         shift: bool,
     ) -> bool {
-        self.tweaks.drag = None;
+        self.client.tweaks.drag = None;
         let Some(slot) = slot.filter(|&s| s != 200 && s < Creative::DISPLAY) else {
             return false;
         };
@@ -105,21 +105,21 @@ impl Game<'_> {
                 held,
                 active: true,
                 visited: vec![slot],
-                press: self.physical_presses,
+                press: self.client.physical_presses,
             };
             self.tweak_place(&mut drag, slot);
-            self.inv_drag = None;
-            self.inv_clicks.skip_release();
-            self.tweaks.drag = Some(drag);
+            self.client.inv_drag = None;
+            self.client.inv_clicks.skip_release();
+            self.client.tweaks.drag = Some(drag);
             return true;
         }
         if held.is_some() || shift {
-            self.tweaks.drag = Some(Drag {
+            self.client.tweaks.drag = Some(Drag {
                 right,
                 held,
                 active: false,
                 visited: vec![slot],
-                press: self.physical_presses,
+                press: self.client.physical_presses,
             });
         }
         false
@@ -139,7 +139,7 @@ impl Game<'_> {
     /// The cursor moved while a button is held: true when the tweaks own
     /// the drag (vanilla's quick craft drag doesn't grow).
     pub(in crate::game) fn tweak_drag_move(&mut self, slot: Option<usize>) -> bool {
-        let Some(mut drag) = self.tweaks.drag.take() else {
+        let Some(mut drag) = self.client.tweaks.drag.take() else {
             return false;
         };
         // A drag whose button went up unseen (another handler took its release, or the next press) is over.
@@ -148,7 +148,9 @@ impl Game<'_> {
         } else {
             winit::event::MouseButton::Left
         };
-        if !self.physical_buttons.contains(&button) || drag.press != self.physical_presses {
+        if !self.client.physical_buttons.contains(&button)
+            || drag.press != self.client.physical_presses
+        {
             return false;
         }
         let active = drag.active;
@@ -163,14 +165,18 @@ impl Game<'_> {
             } else if let Some(held) = drag.held.clone() {
                 // Holding a stack: only slots of the same item, and only
                 // while vanilla's drag hasn't spread.
-                let spread = self.inv_drag.as_ref().is_some_and(|(_, s)| s.len() > 1);
+                let spread = self
+                    .client
+                    .inv_drag
+                    .as_ref()
+                    .is_some_and(|(_, s)| s.len() > 1);
                 if let Some(s) = stack.filter(|s| s.same_item_same_components(&held))
                     && (drag.active || !spread)
                 {
                     if !drag.active {
                         drag.active = true;
-                        self.inv_drag = None;
-                        self.inv_clicks.skip_release();
+                        self.client.inv_drag = None;
+                        self.client.inv_clicks.skip_release();
                     }
                     if shift {
                         self.slot_click(slot, 0, Input::QuickMove);
@@ -191,12 +197,12 @@ impl Game<'_> {
             }
         }
         let owned = drag.active || active;
-        self.tweaks.drag = Some(drag);
+        self.client.tweaks.drag = Some(drag);
         owned
     }
     /// The button went up: the drag ends.
     pub(in crate::game) fn tweak_release(&mut self) -> bool {
-        self.tweaks.drag.take().is_some()
+        self.client.tweaks.drag.take().is_some()
     }
     /// The wheel over an inventory screen: true when the tweaks used it.
     pub(in crate::game) fn tweak_scroll(&mut self, delta: f32, slot: Option<usize>) -> bool {
@@ -204,12 +210,12 @@ impl Game<'_> {
             return false;
         }
         let Some(slot) = slot else {
-            self.tweaks.wheel = 0.0;
+            self.client.tweaks.wheel = 0.0;
             return false;
         };
-        self.tweaks.wheel += delta;
-        let steps = self.tweaks.wheel.trunc();
-        self.tweaks.wheel -= steps;
+        self.client.tweaks.wheel += delta;
+        let steps = self.client.tweaks.wheel.trunc();
+        self.client.tweaks.wheel -= steps;
         for _ in 0..steps.abs() as u32 {
             if steps < 0.0 {
                 self.tweak_push(slot);
@@ -321,32 +327,33 @@ mod tests {
     fn a_drag_whose_button_went_up_or_was_pressed_again_unseen_moves_nothing_and_ends() {
         let mut resources = None;
         let mut game = server_game(&mut resources);
-        game.screen = Screen::Inventory;
+        game.client.screen = Screen::Inventory;
         let stone = ItemStack::new("minecraft:stone", 5);
         game.carried = Some(stone.clone());
-        game.tweaks.drag = Some(Drag {
+        game.client.tweaks.drag = Some(Drag {
             right: true,
             held: Some(stone.clone()),
             active: true,
             visited: vec![9],
-            press: game.physical_presses,
+            press: game.client.physical_presses,
         });
         // No button is held: another handler took the release this drag never heard.
         assert!(!game.tweak_drag_move(Some(10)));
-        assert!(game.tweaks.drag.is_none());
+        assert!(game.client.tweaks.drag.is_none());
         // Held again, but by a newer press that another handler took: still over.
-        game.tweaks.drag = Some(Drag {
+        game.client.tweaks.drag = Some(Drag {
             right: true,
             held: Some(stone.clone()),
             active: true,
             visited: vec![9],
-            press: game.physical_presses,
+            press: game.client.physical_presses,
         });
-        game.physical_buttons
+        game.client
+            .physical_buttons
             .insert(winit::event::MouseButton::Right);
-        game.physical_presses += 1;
+        game.client.physical_presses += 1;
         assert!(!game.tweak_drag_move(Some(10)));
-        assert!(game.tweaks.drag.is_none());
+        assert!(game.client.tweaks.drag.is_none());
         assert!(game.inventory[10].is_none());
         assert_eq!(game.carried, Some(stone));
     }

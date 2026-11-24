@@ -3,7 +3,7 @@ use super::*;
 impl Game<'_> {
     /// The last window focus state reported by the window system.
     pub(in crate::game) fn window_focused(&self) -> bool {
-        self.focused
+        self.client.focused
     }
 
     /// The same screen identifier provided to screen hooks.

@@ -33,14 +33,18 @@ fn snapshot(
 #[ignore = "daily"]
 fn saved_placement_respawn_removal_and_reconnect_publish_player_rows() {
     with_guests(|game| {
-        game.world_root = game.save.root.clone();
+        game.server.world_root = game.save.root.clone();
         game.options.dedicated = Some(Vec::new());
         game.native_level_opened(Dim::Overworld);
         let guests = &mut game.lan.as_mut().unwrap().hub.guests;
         VALUE
             .set(guests.attachments_mut(12).unwrap(), Holder::Level, 31)
             .unwrap();
-        sunrise_client::lan::playerdata::save(&guests[0], &game.world_root, &Default::default());
+        sunrise_client::lan::playerdata::save(
+            &guests[0],
+            &game.server.world_root,
+            &Default::default(),
+        );
         guests.update_all(|g| g.placed = false);
         game.lan_guest_joined(12, &[], [0.5, 64.0, 0.5], None);
         game.lan_guest_joined(13, &[], [0.5, 64.0, 0.5], None);
@@ -184,7 +188,8 @@ fn queued_level_teleport_moves_the_player_row_and_later_writes_stay_in_the_desti
         let host: &mut dyn ServerHost = game;
         VALUE.set(host, Holder::Player(12), 21).unwrap();
         let before = snapshot(game, Dim::Overworld);
-        game.level_teleports
+        game.server
+            .level_teleports
             .push(crate::game::server_travel::LevelTeleport {
                 conn: 12,
                 dim: Dim::Nether,

@@ -37,8 +37,10 @@ impl Game<'_> {
     /// What is stuck in the player or the mob a handle names.
     fn native_living_stuck(&mut self, living: LivingRef) -> Option<&mut Stuck> {
         match self.native_living_target(living)? {
-            Target::Player => Some(&mut self.combat.stuck),
-            Target::Guest(conn) => Some(&mut self.guest_combat.entry(conn).or_default().stuck),
+            Target::Player => Some(&mut self.server.combat.stuck),
+            Target::Guest(conn) => {
+                Some(&mut self.server.guest_combat.entry(conn).or_default().stuck)
+            }
             Target::Mob(id) => self
                 .mobs
                 .iter_mut()
@@ -77,14 +79,19 @@ impl Game<'_> {
                     game.swing_hand(hand, SwingAnimation::DEFAULT);
                     started = game.swings_started != before;
                     let current = game.swing.current;
-                    if let (true, true, Some(c), Some(id)) =
-                        (started, send_to_self, current, game.lan_acting_entity)
-                    {
-                        game.guest_packets.push(super::lan_actions::swing_packet(
-                            id as i32,
-                            c.hand,
-                            c.animation,
-                        ));
+                    if let (true, true, Some(c), Some(id)) = (
+                        started,
+                        send_to_self,
+                        current,
+                        game.server.lan_acting_entity,
+                    ) {
+                        game.server
+                            .guest_packets
+                            .push(super::lan_actions::swing_packet(
+                                id as i32,
+                                c.hand,
+                                c.animation,
+                            ));
                     }
                 });
                 started
@@ -470,7 +477,7 @@ mod tests {
                     sunrise_client::motion::PlayerMotion::new(game.motion, Vec3::ZERO).unwrap(),
                 );
                 crate::game::native_entity_refs::tests::bind_local_player(game, 20, 123);
-                game.screen = super::super::Screen::Playing;
+                game.client.screen = super::super::Screen::Playing;
                 game.set_mapping_held("key.use", true);
                 let player = game.living(game.entity(20).unwrap()).unwrap();
                 test(game, &uses, player);
@@ -1126,7 +1133,7 @@ mod tests {
                 seed: 0,
                 max_players: 2,
                 integrated: true,
-                levels: game.level_shapes,
+                levels: game.server.level_shapes,
                 level_seeds: game.levels.runtime.seeds(),
             };
             game.lan_host(settings, net, config).unwrap();
@@ -1160,7 +1167,7 @@ mod tests {
             assert!(game.living_set_stinger_count(player, 2));
             assert!(game.living_set_arrow_removal_ticks(player, 7));
             assert!(game.living_set_stinger_removal_ticks(player, 9));
-            let stuck = &game.guest_combat[&12].stuck;
+            let stuck = &game.server.guest_combat[&12].stuck;
             assert_eq!((stuck.arrows, stuck.stingers), (4, 2));
             assert_eq!((stuck.remove_arrow_time, stuck.remove_stinger_time), (7, 9));
             assert_eq!(game.living_arrow_count(player), Some(4));
@@ -1196,12 +1203,12 @@ mod tests {
                 game.using = None;
                 // Its swing is queued for it when asked: not in the first half.
                 game.swing.ticks = 0;
-                game.guest_packets.clear();
+                game.server.guest_packets.clear();
                 assert!(game.living_swing(player, Hand::Main, true));
-                assert_eq!(game.guest_packets.len(), 1);
+                assert_eq!(game.server.guest_packets.len(), 1);
                 game.swing.ticks = 1;
                 assert!(!game.living_swing(player, Hand::Main, true));
-                assert_eq!(game.guest_packets.len(), 1);
+                assert_eq!(game.server.guest_packets.len(), 1);
             })
             .unwrap();
         });
@@ -1243,7 +1250,7 @@ mod tests {
                 seed: 0,
                 max_players: 2,
                 integrated: true,
-                levels: game.level_shapes,
+                levels: game.server.level_shapes,
                 level_seeds: game.levels.runtime.seeds(),
             };
             game.lan_host(settings, net, config).unwrap();

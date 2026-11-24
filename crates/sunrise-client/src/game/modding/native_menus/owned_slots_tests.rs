@@ -657,7 +657,7 @@ fn closing_discards_owned_slots_unless_the_listener_returns_their_contents() {
                 game.load_ticking_neighbourhood(0, 0);
                 game.update_chunk_tickets();
                 assert!(game.entity_ticking_area()(0, 0));
-                game.ticked_entities_through = game.next_entity;
+                game.server.ticked_entities_through = game.server.next_entity;
                 game.tick_items();
             }
             assert!(game.dropped.is_empty());
@@ -1769,7 +1769,7 @@ fn hopper_above(game: &mut Game<'_>, pos: (i32, i32, i32), stack: ItemStack) {
         sunrise_client::containers::BlockEntity::Chest(vec![Some(stack), None, None, None, None]),
     );
     // A fresh hopper: no transfer cooldown from an earlier move.
-    game.hoppers.remove(&hopper_pos);
+    game.server.hoppers.remove(&hopper_pos);
     game.hopper_try_move_items(hopper_pos);
 }
 

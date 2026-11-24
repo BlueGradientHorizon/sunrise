@@ -13,7 +13,8 @@ impl Game<'_> {
     }
 
     pub(in crate::game) fn frame_world_partial_tick(&self) -> f64 {
-        self.extras
+        self.client
+            .extras
             .frame_partial_ticks
             .map_or_else(|| self.clock.fraction(), |(world, _)| f64::from(world))
     }

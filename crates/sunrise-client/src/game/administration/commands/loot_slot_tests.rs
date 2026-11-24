@@ -29,7 +29,7 @@ fn loot_kill_matches_the_world_pack_entity_type_tag() {
             r#"{"enabled":["file/loot"],"disabled":[]}"#,
         )
         .unwrap();
-        game.world_root = world.path().to_path_buf();
+        game.server.world_root = world.path().to_path_buf();
         game.reload_datapacks(true, &[]).unwrap();
         assert!(game.run_command("setblock 4 200 4 chest"));
         assert!(game.run_command("summon minecraft:sheep 8 200 8 {NoAI:1b}"));
@@ -59,7 +59,7 @@ fn server_loot_without_world_tables_owns_its_resource_root() {
             ).unwrap();
             game.options.resources = root.path().to_path_buf();
             game.load_server_loot();
-            let loot = game.server_loot.get().unwrap();
+            let loot = game.server.server_loot.get().unwrap();
             let drops = loot.roll_split(
                 "snapshot:reward",
                 &mut sunrise_core::random::LegacyRandom::new(0),

@@ -539,13 +539,13 @@ fn finish_hit_uses_registered_guest_context_and_restores_the_host() {
         game.lan.as_mut().unwrap().hub.guests.push(guest);
         let host_uuid = game.acting_player_uuid();
         game.as_guest(2,|g| {
-            assert_eq!(g.lan_acting,Some(2));
+            assert_eq!(g.server.lan_acting,Some(2));
             assert_eq!(g.acting_player_uuid(),[0,0,0,114]);
             assert!(g.run_command("item replace entity @s weapon.mainhand with crossbow[charged_projectiles=[{id:\"minecraft:arrow\",count:1}]]"));
             let bow=g.held().unwrap().clone();assert!(g.use_crossbow(&bow));
         }).unwrap();
         assert_eq!(game.acting_player_uuid(), host_uuid);
-        assert_eq!(game.lan_acting, None);
+        assert_eq!(game.server.lan_acting, None);
         let arrow = game.creatures.projectiles.pop().unwrap();
         assert_eq!(arrow.guest, Some(2));
         assert_eq!(arrow.owner, Some(Who::Player));
@@ -557,7 +557,7 @@ fn finish_hit_uses_registered_guest_context_and_restores_the_host() {
         game.finish_arrow_hit(arrow, super::EntityHit::Deflected);
         let first = take_shots();
         assert_eq!(game.acting_player_uuid(), host_uuid);
-        assert_eq!(game.lan_acting, None);
+        assert_eq!(game.server.lan_acting, None);
         assert_eq!(game.lan.as_ref().unwrap().hub.guests[0].uuid, 114);
         assert!(
             game.creatures

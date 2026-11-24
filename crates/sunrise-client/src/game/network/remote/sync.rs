@@ -295,9 +295,9 @@ impl Game<'_> {
                 self.player = Some(player);
                 self.bind_local_player_residency();
                 self.input_player_replaced();
-                self.sway = Default::default();
+                self.client.sway = Default::default();
                 self.eye = 1.62;
-                self.previous_eye = 1.62;
+                self.client.previous_eye = 1.62;
                 self.clock.reset();
                 self.apply_remote_health();
                 self.apply_remote_abilities();
@@ -312,7 +312,7 @@ impl Game<'_> {
         // setValuesFromPositionPacket: setOldPosAndRot gives xRotO the same
         // change, so a relative pitch keeps the model's ease and an absolute
         // one snaps it.
-        if let Some(m) = self.player_model.as_mut() {
+        if let Some(m) = self.client.player_model.as_mut() {
             m.previous_head_pitch =
                 position_packet_pitch(m.previous_head_pitch, p.pitch, relative_pitch);
             m.head_pitch = pitch;
@@ -340,7 +340,7 @@ impl Game<'_> {
     /// `LocalPlayer.tickDeath`: the level stops ticking the player at death tick 20,
     /// but the client keeps the player for death-screen rendering until respawn.
     pub(super) fn local_player_removed_by_death(&self) -> bool {
-        self.screen == Screen::Dead && self.ui.death_time >= 20
+        self.client.screen == Screen::Dead && self.ui.death_time >= 20
     }
 
     /// The end of the player's tick: `AbstractBoat.tick`'s paddles (the vehicle ticks before its
@@ -543,12 +543,14 @@ impl Game<'_> {
         let air;
         let enabled = match &stack {
             Some(stack) => self
+                .client
                 .creative_screen
                 .catalog()
                 .item_enabled(stack, self.enabled_feature_ids()),
             None => {
                 air = ItemStack::new("minecraft:air", 0);
-                self.creative_screen
+                self.client
+                    .creative_screen
                     .catalog()
                     .item_enabled(&air, self.enabled_feature_ids())
             }
@@ -591,7 +593,7 @@ impl Game<'_> {
             p.position.y.floor() as i32,
             p.position.z.floor() as i32,
         ];
-        if self.screen == Screen::Dead
+        if self.client.screen == Screen::Dead
             || p.spectator
             || self.named_block_in_tag("minecraft:climbable", &self.block_name(feet))
         {
@@ -691,7 +693,8 @@ impl Game<'_> {
     /// `Entity.push`'s share of the other entities' ticks: added to the local
     /// player's deltaMovement, unless it lies dead, sleeps or rides.
     pub(super) fn apply_remote_push(&mut self, pushed: Vec3) {
-        let still = self.screen == Screen::Dead || self.sleeping.is_some() || self.riding.is_some();
+        let still =
+            self.client.screen == Screen::Dead || self.sleeping.is_some() || self.riding.is_some();
         if let Some(player) = self.player.as_mut()
             && !still
         {

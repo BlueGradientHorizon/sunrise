@@ -47,11 +47,14 @@ fn social_toast_is_dismissed_only_by_the_multiplayer_key() {
                     let toast = game
                         .tutorial_toast(Hint::SocialInteractions, Some(0.0))
                         .unwrap();
-                    game.toast_manager.queued.push_back(Toast::Tutorial(toast));
-                    game.toast_manager.update(1.0);
+                    game.client
+                        .toast_manager
+                        .queued
+                        .push_back(Toast::Tutorial(toast));
+                    game.client.toast_manager.update(1.0);
                 };
                 let wanted = |game: &crate::game::Game<'_>| {
-                    let Toast::Tutorial(toast) = &game.toast_manager.visible[0].toast else {
+                    let Toast::Tutorial(toast) = &game.client.toast_manager.visible[0].toast else {
                         panic!("expected social toast");
                     };
                     toast.wanted
@@ -60,10 +63,15 @@ fn social_toast_is_dismissed_only_by_the_multiplayer_key() {
                 enqueue(game);
                 game.queue_mapping_click("key.socialInteractions");
                 game.handle_play_keybinds();
-                assert!(game.screen == Screen::Playing);
+                assert!(game.client.screen == Screen::Playing);
                 assert!(wanted(game), "the unavailable key did not open the screen");
                 assert_eq!(
-                    game.titles.overlay.as_ref().unwrap().translation_key(),
+                    game.client
+                        .titles
+                        .overlay
+                        .as_ref()
+                        .unwrap()
+                        .translation_key(),
                     Some("multiplayer.socialInteractions.not_available")
                 );
 
@@ -71,15 +79,15 @@ fn social_toast_is_dismissed_only_by_the_multiplayer_key() {
                 game.set_screen(Screen::Paused);
                 enqueue(game);
                 game.execute_pause_action(15).unwrap();
-                assert!(game.screen == Screen::Social);
+                assert!(game.client.screen == Screen::Social);
                 assert!(wanted(game), "the pause menu must leave the toast alone");
                 game.close_social();
-                assert!(game.screen == Screen::Paused);
+                assert!(game.client.screen == Screen::Paused);
 
                 game.set_screen(Screen::Playing);
                 game.queue_mapping_click("key.socialInteractions");
                 game.handle_play_keybinds();
-                assert!(game.screen == Screen::Social);
+                assert!(game.client.screen == Screen::Social);
                 assert!(!wanted(game), "the multiplayer key must hide the toast");
             });
         },

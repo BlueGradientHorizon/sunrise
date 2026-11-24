@@ -24,13 +24,13 @@ impl Game<'_> {
         // registered selector type decides for itself (`native_selector_kept`).
         let alive_only = matches!(s.kind, 'e' | 'n') && s.token.is_none();
         let mut source_candidates: Vec<Target> = Vec::new();
-        match (s.kind, self.command_source) {
+        match (s.kind, self.server.command_source) {
             // @s: the executing entity (none for a server source).
             ('s', Some(source)) => source_candidates.extend(source.entity),
             ('s', None) => source_candidates.extend(self.source_entity()),
             // A guest in place is among the players, in join order.
             _ if self.player.is_some()
-                && self.lan_acting.is_none()
+                && self.server.lan_acting.is_none()
                 && (!alive_only
                     || self
                         .player

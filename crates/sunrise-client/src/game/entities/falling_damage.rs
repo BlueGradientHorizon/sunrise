@@ -52,9 +52,9 @@ impl Game<'_> {
                     let plan = self.prepare_knockback_credit(
                         self.mobs[index].id as i32,
                         None,
-                        self.combat.attack(),
+                        self.server.combat.attack(),
                     );
-                    let mut credit = plan.lend(&mut self.last_hurt_by_player);
+                    let mut credit = plan.lend(&mut self.server.last_hurt_by_player);
                     self.mobs[index].damage(
                         crate::game::entity::damage_level_of!(self, &attack, &mut credit, None),
                         impact.amount,
@@ -386,10 +386,10 @@ mod tests {
         mod_platform::testing::with_mods(mods.clone(), || {
             crate::game::api_values::install_parts(&mods).unwrap();
             with_game(|game| {
-                game.lan_acting_uuid = Some(123);
-                game.lan_acting_entity = Some(20);
-                game.lan_acting_name = Some("Steve".into());
-                game.lan_acting_permission = Some(0);
+                game.server.lan_acting_uuid = Some(123);
+                game.server.lan_acting_entity = Some(20);
+                game.server.lan_acting_name = Some("Steve".into());
+                game.server.lan_acting_permission = Some(0);
                 test(game, &log);
             })
         });

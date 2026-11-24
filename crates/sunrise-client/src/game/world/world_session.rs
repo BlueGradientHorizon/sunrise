@@ -62,7 +62,7 @@ impl Game<'_> {
             Action::DataPacks { dir, selected } => {
                 self.clear_device_keys();
                 self.set_screen(Screen::Options);
-                self.options_from_title = true;
+                self.client.options_from_title = true;
                 let resources = self.vanilla_root();
                 let additional = self
                     .discover_mod_packs(mod_api::PackType::ServerData)
@@ -224,7 +224,7 @@ impl Game<'_> {
         self.repro_on_exit();
         self.finish_perf();
         self.connection_left(sunrise_hooks::connection::Left::Quit);
-        if self.title.is_some() || self.saved_for_exit {
+        if self.title.is_some() || self.client.saved_for_exit {
             return Ok(());
         }
         // exitWorldAndClose disconnects the client from its world.
@@ -235,13 +235,13 @@ impl Game<'_> {
         if let Some(server) = self.integrated.take() {
             // The server thread saves the world.
             server.stop()?;
-            self.saved_for_exit = true;
+            self.client.saved_for_exit = true;
             return Ok(());
         }
         if let Some(mut remote) = self.remote.take() {
             // Minecraft.disconnect closes the connection, so the host sees a clean leave.
             remote.session.disconnect();
-            self.saved_for_exit = true;
+            self.client.saved_for_exit = true;
             return Ok(());
         }
         self.close_container();
@@ -251,12 +251,12 @@ impl Game<'_> {
         self.lan_close(false);
         self.free_player_beds()?;
         self.save_game()?;
-        self.saved_for_exit = true;
+        self.client.saved_for_exit = true;
         Ok(())
     }
 
     pub(super) fn close_world(&mut self) -> Result<()> {
-        self.destroying.clear();
+        self.client.destroying.clear();
         self.mining = None;
         // Pause-menu and death-screen exits use the normal world-close action.
         // A standalone replay owns a synthetic remote session, so it must go
@@ -269,10 +269,10 @@ impl Game<'_> {
         // title screen is nonsense.
         self.repro_world_closed();
         self.clear_waypoints();
-        self.post_effects.clear();
+        self.client.post_effects.clear();
         self.clear_spectated_entity_post_effect();
         // Mod screens' living scenes go with the world their entities were copied from.
-        self.live_scenes.get_mut().clear();
+        self.client.live_scenes.get_mut().clear();
         if self.external_server() {
             return self.leave_server(None);
         }

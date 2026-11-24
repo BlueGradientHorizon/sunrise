@@ -595,7 +595,7 @@ impl Game<'_> {
             .filter(|(host, g)| {
                 // The acting guest's mode is live in `Game` during its turn; the hub
                 // hears of a change only in the put-back at the end of `guest_turn`.
-                let spectator = if self.lan_acting_uuid == Some(g.uuid) {
+                let spectator = if self.server.lan_acting_uuid == Some(g.uuid) {
                     self.spectator()
                 } else {
                     g.spectator()
@@ -614,7 +614,7 @@ impl Game<'_> {
             })
             .collect();
         if self.level_in_place(level)
-            && !self.lan_acting_fake
+            && !self.server.lan_acting_fake
             && !self.spectator()
             && self
                 .container

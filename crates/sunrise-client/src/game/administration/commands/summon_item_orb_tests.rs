@@ -59,13 +59,13 @@ fn summon_item_succeeds_with_and_without_nbt_without_leaving_an_entity() {
             "summon minecraft:item 4.5 200 4.5",
             "summon minecraft:item 4.5 200 4.5 {}",
         ] {
-            let before = game.next_entity;
+            let before = game.server.next_entity;
             assert!(
                 game.run_command(command),
                 "{command}: {:?}",
                 game.ui.chat.recent_lines(3)
             );
-            assert_eq!(game.next_entity, before + 1, "{command}");
+            assert_eq!(game.server.next_entity, before + 1, "{command}");
             assert!(game.dropped.is_empty(), "{command}");
             assert_eq!(
                 game.ui.chat.recent_components(1),
@@ -237,10 +237,10 @@ pub(in crate::game) fn run_summon_replies_with_the_custom_name_of_every_kind() {
             let cmd = record["cmd"].as_str().unwrap();
             assert_eq!(cmd, expected_cmd.as_str(), "case #{index} identity/order");
             let line = cmd.strip_prefix('/').unwrap_or(cmd);
-            game.chat_capture = Some(Vec::new());
-            game.cmds.results = Some(Vec::new());
+            game.server.chat_capture = Some(Vec::new());
+            game.server.cmds.results = Some(Vec::new());
             game.run_command(line);
-            let captured = game.chat_capture.take().unwrap_or_default();
+            let captured = game.server.chat_capture.take().unwrap_or_default();
             let expected_messages = record["messages"].as_array().unwrap();
             assert_eq!(
                 captured.len(),
@@ -281,6 +281,7 @@ pub(in crate::game) fn run_summon_replies_with_the_custom_name_of_every_kind() {
                 );
             }
             let results: Vec<serde_json::Value> = game
+                .server
                 .cmds
                 .results
                 .take()

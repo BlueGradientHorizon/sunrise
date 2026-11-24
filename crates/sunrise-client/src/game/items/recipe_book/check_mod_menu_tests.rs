@@ -27,13 +27,13 @@ fn a_remote_non_grid_menu_can_request_a_recipe_check_only_in_an_eligible_screen(
                 .set(Some((7, name.into())));
             game.remote.as_mut().unwrap().recipe_viewer.check = true;
             let recipe = "minecraft:stick";
-            game.screen = Screen::Playing;
+            game.client.screen = Screen::Playing;
             assert!(game.transfer_recipe_check(recipe).is_none());
-            assert!(game.recipe_ui.checks.asked.is_none());
-            game.screen = Screen::Inventory;
+            assert!(game.client.recipe_ui.checks.asked.is_none());
+            game.client.screen = Screen::Inventory;
             game.mode = sunrise_client::command::args::GameMode::Spectator;
             assert!(game.transfer_recipe_check(recipe).is_none());
-            assert!(game.recipe_ui.checks.asked.is_none());
+            assert!(game.client.recipe_ui.checks.asked.is_none());
             game.mode = sunrise_client::command::args::GameMode::Survival;
             assert!(
                 !game.mod_recipe_screen(),
@@ -41,14 +41,14 @@ fn a_remote_non_grid_menu_can_request_a_recipe_check_only_in_an_eligible_screen(
             );
             game.remote.as_mut().unwrap().recipe_viewer.check = false;
             assert!(game.transfer_recipe_check(recipe).is_none());
-            assert!(game.recipe_ui.checks.asked.is_none());
+            assert!(game.client.recipe_ui.checks.asked.is_none());
             game.remote.as_mut().unwrap().recipe_viewer.check = true;
             assert!(
                 game.transfer_recipe_check(recipe).is_none(),
                 "reply is asynchronous"
             );
             assert_eq!(
-                (game.recipe_ui.checks.asked.as_ref()).map(|(_, asked, _)| asked.as_str()),
+                (game.client.recipe_ui.checks.asked.as_ref()).map(|(_, asked, _)| asked.as_str()),
                 Some(recipe)
             );
         });
@@ -61,7 +61,7 @@ fn a_remote_crafting_table_has_the_crafting_book() {
     crate::game::native_entity_refs::tests::with_client_game(|game| {
         let (pipe, _server) = sunrise_protocol::connection::Pipe::pair();
         game.connect_local(pipe, "RecipeCheck").unwrap();
-        game.screen = Screen::Inventory;
+        game.client.screen = Screen::Inventory;
         game.remote
             .as_mut()
             .unwrap()

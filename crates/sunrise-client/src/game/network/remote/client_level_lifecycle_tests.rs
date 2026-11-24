@@ -80,7 +80,7 @@ fn a_reconfiguring_client_plays_menu_music_and_never_indexes_past_the_biomes() {
     // A new manager waits its first 100 ticks, then starts the menu track.
     let menu = (0..=100).any(|_| {
         game.tick_music();
-        game.music.current(&game.audio.engine) == Some("minecraft:music.menu")
+        game.client.music.current(&game.audio.engine) == Some("minecraft:music.menu")
     });
     assert!(menu, "the menu music starts under ServerReconfigScreen");
 

@@ -639,7 +639,7 @@ impl Game<'_> {
         // HopperBlockEntity.saveAdditional: its inventory is modelled, but its
         // transfer phase lives in Game. The snapshot's source overlay preserves
         // the remaining NBT without changing the live source compound.
-        for (p, state) in &self.hoppers {
+        for (p, state) in &self.server.hoppers {
             if (p.0 >> 4, p.2 >> 4) != (chunk.x, chunk.z)
                 || self
                     .res
@@ -745,7 +745,8 @@ impl Game<'_> {
                 if text(tag.get("id")).as_deref() == Some("minecraft:hopper")
                     && self.data_block_name([p.0, p.1, p.2]) == "minecraft:hopper"
                 {
-                    self.hoppers
+                    self.server
+                        .hoppers
                         .insert(*p, super::machines::HopperState::load(tag));
                 }
             }
@@ -771,7 +772,7 @@ impl Game<'_> {
             .is_ok()
             && loaded
         {
-            self.tick_chunks.wait(key);
+            self.server.tick_chunks.wait(key);
         }
         // The saved list is consumed: later saves take the scheduler's ticks.
         if loaded && let Some(c) = self.world.chunks.get_mut(&key) {
@@ -879,8 +880,8 @@ impl Game<'_> {
             }
             "minecraft:evoker_fangs" => {
                 if let Some(at) = entity_nbt::position(&tag) {
-                    self.next_entity += 1;
-                    let id = self.next_entity;
+                    self.server.next_entity += 1;
+                    let id = self.server.next_entity;
                     let delay = sunrise_client::save::number(tag.get("Warmup")).unwrap_or(0) as i32;
                     let owner = self.loaded_fangs_owner(&tag);
                     if let Some(state) = transferred.take() {
@@ -1059,8 +1060,8 @@ impl Game<'_> {
         uuid: Option<[i32; 4]>,
         transferred: Option<super::entity_initialization::TransferredEntityState>,
     ) {
-        self.next_entity += 1;
-        if let Some(mut a) = entity_nbt::armor_stand_from_nbt(&tag, self.next_entity) {
+        self.server.next_entity += 1;
+        if let Some(mut a) = entity_nbt::armor_stand_from_nbt(&tag, self.server.next_entity) {
             let mut tag = tag;
             let riders = self.take_passengers(&mut tag);
             a.live
@@ -1098,8 +1099,8 @@ impl Game<'_> {
             // parts' from the entity counter.
             d.live
                 .retain_supplier(&self.motion.attributes, "minecraft:ender_dragon");
-            d.id = self.next_entity + 1;
-            self.next_entity += 9;
+            d.id = self.server.next_entity + 1;
+            self.server.next_entity += 9;
             if let Some(state) = transferred {
                 self.adopt_transferred_entity_state(d.id, state);
             }
@@ -1127,8 +1128,8 @@ impl Game<'_> {
             c.time = super::dragon::Crystal::start_time(c.position, drawn, self.clock.still());
             // EndCrystal's constructor takes an id from the
             // entity counter.
-            self.next_entity += 1;
-            c.id = self.next_entity;
+            self.server.next_entity += 1;
+            c.id = self.server.next_entity;
             if let Some(state) = transferred {
                 self.adopt_transferred_entity_state(c.id, state);
             }
@@ -1147,8 +1148,8 @@ impl Game<'_> {
         uuid: Option<[i32; 4]>,
         transferred: Option<super::entity_initialization::TransferredEntityState>,
     ) {
-        self.next_entity += 1;
-        if let Some(mut f) = entity_nbt::item_frame_from_nbt(&tag, self.next_entity) {
+        self.server.next_entity += 1;
+        if let Some(mut f) = entity_nbt::item_frame_from_nbt(&tag, self.server.next_entity) {
             let item = f.item.take();
             f.set_item(item);
             if let Some(state) = transferred {
@@ -1170,8 +1171,8 @@ impl Game<'_> {
         uuid: Option<[i32; 4]>,
         transferred: Option<super::entity_initialization::TransferredEntityState>,
     ) {
-        self.next_entity += 1;
-        if let Some(c) = entity_nbt::cushion_from_nbt(&tag, self.next_entity) {
+        self.server.next_entity += 1;
+        if let Some(c) = entity_nbt::cushion_from_nbt(&tag, self.server.next_entity) {
             if let Some(state) = transferred {
                 self.adopt_transferred_entity_state(c.id, state);
             }
@@ -1196,8 +1197,8 @@ impl Game<'_> {
         if let Some((pos, facing, variant)) = entity_nbt::painting_from_nbt(&tag)
             && let Some(v) = self.painting_variants.saved_or_default(variant.as_deref())
         {
-            self.next_entity += 1;
-            let id = self.next_entity;
+            self.server.next_entity += 1;
+            let id = self.server.next_entity;
             if let Some(state) = transferred {
                 self.adopt_transferred_entity_state(id, state);
             }
@@ -1463,14 +1464,14 @@ impl Game<'_> {
         // A missing mod's record is opaque, not a vanilla fallback entity to normalize.
         let quarantined = super::general::quarantined_kind(kind).then(|| tag.clone());
         strip_finalize(&mut tag);
-        let id = self.next_entity + 1;
+        let id = self.server.next_entity + 1;
         let other = Self::other_from_nbt(&mut tag, id, kind)?;
         let riders = if quarantined.is_none() && Self::other_takes_passengers(kind) {
             self.take_passengers(&mut tag)
         } else {
             Vec::new()
         };
-        self.next_entity = id;
+        self.server.next_entity = id;
         let uuid = with_constructor_uuid(entity_nbt::uuid(&tag));
         if let Some(state) = transferred {
             self.adopt_transferred_entity_state(id, state);
@@ -1797,7 +1798,7 @@ impl Game<'_> {
         {
             return;
         }
-        let Some(uuid) = self.pending_vehicle else {
+        let Some(uuid) = self.server.pending_vehicle else {
             return;
         };
         let raw = self.level.player_extra.clone();
@@ -1807,7 +1808,7 @@ impl Game<'_> {
         if let Some(Tag::Compound(p)) = &mut self.level.player_extra {
             p.remove(&"RootVehicle".into());
         }
-        self.pending_vehicle = None;
+        self.server.pending_vehicle = None;
         self.riding = Some(id);
         // `PlayerList.placeNewPlayer` boards the saved vehicle through `startRiding`, so `addPassenger` places it.
         self.seat_player(id);
@@ -1831,7 +1832,7 @@ impl Game<'_> {
     pub(super) fn forget_entity(&mut self, id: u32) {
         self.persist.transient.remove(&id);
         self.persist.uuids.remove(&id);
-        self.last_hurt_by_player.remove(&id);
+        self.server.last_hurt_by_player.remove(&id);
         self.persist.score_destroyed.remove(&id);
         self.forget_entity_initialization(mod_api::Holder::Entity(id));
         self.entity_attachments.remove(&id);
@@ -5186,13 +5187,13 @@ mod summoned_knot_tests {
             assert!(game.use_knot([14, 200, 2], false));
             assert_eq!(game.mobs[pig].extra.leash, Some(Holder::Knot([14, 200, 2])));
             game.lan_assign_ids();
-            let natural = game.knot_ids[&[14, 200, 2]];
+            let natural = game.server.knot_ids[&[14, 200, 2]];
             let ids = summon_knots(game);
             for _ in 0..101 {
                 game.tick().unwrap();
             }
             game.lan_assign_ids();
-            assert_eq!(game.knot_ids[&[14, 200, 2]], natural);
+            assert_eq!(game.server.knot_ids[&[14, 200, 2]], natural);
             let pig = game
                 .mobs
                 .iter()
@@ -5569,9 +5570,9 @@ mod restored_vehicle_transfer_tests {
                     game.load_mob(destination_tag.clone(), None),
                     Some(destination)
                 );
-                let before = game.next_entity;
+                let before = game.server.next_entity;
                 game.spawn_loaded_entity((0, 0), destination_tag, None);
-                assert_eq!(game.next_entity, before);
+                assert_eq!(game.server.next_entity, before);
 
                 let arrived = if generic {
                     game.spawn_loaded_entity((0, 0), incoming, state);

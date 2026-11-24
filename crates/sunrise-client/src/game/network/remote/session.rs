@@ -66,7 +66,7 @@ impl Game<'_> {
                 info.clone(),
                 lang.clone(),
                 item_data,
-                Arc::clone(&self.client_reports),
+                Arc::clone(&self.client.client_reports),
             ),
             (None, Some(cookies)) => Session::connect_transferred(
                 address,
@@ -76,7 +76,7 @@ impl Game<'_> {
                 lang.clone(),
                 cookies,
                 item_data,
-                Arc::clone(&self.client_reports),
+                Arc::clone(&self.client.client_reports),
             ),
             (None, None) => {
                 let connect = if lan {
@@ -91,7 +91,7 @@ impl Game<'_> {
                     info.clone(),
                     lang.clone(),
                     item_data,
-                    Arc::clone(&self.client_reports),
+                    Arc::clone(&self.client.client_reports),
                 )
             }
         };
@@ -227,13 +227,13 @@ impl Game<'_> {
         self.hide_title();
         self.dim = Dim::Overworld;
         self.clear_lod();
-        self.pending_uploads.clear();
+        self.client.pending_uploads.clear();
         if let Some(r) = self.renderer.as_mut() {
             r.clear_sections(self.world.layout());
         }
         self.apply_settings();
         self.clear_waypoints();
-        self.boss_overlay.reset();
+        self.client.boss_overlay.reset();
         // The chat's tree until the server sends its own, or forever when it
         // sends none: the game's own, plus the commands native mods own.
         let chat_tree = self.chat_tree_for(None);
@@ -493,7 +493,7 @@ impl Game<'_> {
         self.creatures.projectiles.clear();
         self.dropped.clear();
         self.particles.clear();
-        self.pickups.clear();
+        self.client.pickups.clear();
         self.orbs.clear();
         self.falling.clear();
         self.mining = None;
@@ -514,13 +514,13 @@ impl Game<'_> {
         self.title = None;
         self.dim = Dim::Overworld;
         self.clear_lod();
-        self.pending_uploads.clear();
+        self.client.pending_uploads.clear();
         if let Some(r) = self.renderer.as_mut() {
             r.clear_sections(self.world.layout());
         }
         self.apply_settings();
         self.clear_waypoints();
-        self.boss_overlay.reset();
+        self.client.boss_overlay.reset();
 
         let chat_tree = self.chat_tree_for(None);
 
@@ -747,15 +747,15 @@ impl Game<'_> {
         self.hud_disconnected();
         // Vanilla's Hud also ticks on the title and connect screens, so the
         // action bar has run out by the next world; Sunrise's ticks in one.
-        self.titles.overlay_time = 0;
+        self.client.titles.overlay_time = 0;
         // GameRenderer.resetData and narrator.clear (Minecraft.disconnect).
-        self.item_activation.reset();
+        self.client.item_activation.reset();
         // Kept mod block entity geometry belongs to the world leaving.
-        self.kept_block_entities.get_mut().clear();
-        self.mod_view_distances.take();
+        self.client.kept_block_entities.get_mut().clear();
+        self.client.mod_view_distances.take();
         self.clear_narrator();
         // A world is leaving either way: its icon attempt goes with it.
-        self.world_icon = None;
+        self.client.world_icon = None;
         // Minecraft.disconnect: the client level goes.
         if self.remote.is_some() {
             self.forget_all_remote_columns();
@@ -775,15 +775,15 @@ impl Game<'_> {
         }
         // Minecraft.disconnect -> updateLevelInEngines(null), after logout and level
         // unload: stop even the sounds a listener started during teardown.
-        self.ambience.clear(&mut self.audio);
-        self.music.stop_playing(None, &mut self.audio);
+        self.client.ambience.clear(&mut self.audio);
+        self.client.music.stop_playing(None, &mut self.audio);
         self.audio.leave_level();
-        self.mod_sounds.clear();
+        self.client.mod_sounds.clear();
         self.update_window_title();
         self.gui.atlas.clear_object_skins();
         before_pack_cleanup(&mut self.server_packs);
         self.server_packs_disconnect();
-        self.code_of_conduct = None;
+        self.client.code_of_conduct = None;
         self.reset_tutorial();
         self.close_dialogs();
         // Gui.setScreen -> KeyMapping.releaseAll: the title or disconnect
@@ -812,7 +812,7 @@ impl Game<'_> {
         self.streaming.paused = true;
         self.reset_client_world(0);
         self.remove_local_player_body();
-        self.post_effects.clear();
+        self.client.post_effects.clear();
         self.clear_spectated_entity_post_effect();
         // The vehicle went with the level: an id kept here would seat the
         // next login on an entity that is not there.
@@ -822,12 +822,12 @@ impl Game<'_> {
         self.sleep_timer = 0;
         self.clear_entities();
         self.score.board = Default::default();
-        self.tab_list = Default::default();
+        self.client.tab_list = Default::default();
         self.border = Default::default();
         self.set_screen(Screen::Playing);
         self.container = None;
         self.clear_lod();
-        self.pending_uploads.clear();
+        self.client.pending_uploads.clear();
         if let Some(r) = self.renderer.as_mut() {
             r.clear_sections(self.world.layout());
         }
@@ -929,7 +929,7 @@ impl Game<'_> {
         r.level = spawn.dimension.clone();
         r.level_key = mod_api::__private::dimension_key(&spawn.dimension);
         if new_logical_player {
-            self.drop_spam_throttler = Default::default();
+            self.client.drop_spam_throttler = Default::default();
             r.abilities = sunrise_client::lan::abilities::PlayerAbilities::default();
             r.own_player_info = std::cell::OnceCell::new();
             // The new LocalPlayer, admitted now, counts its ticks from 0.
@@ -945,7 +945,7 @@ impl Game<'_> {
         // A replacement LevelLoadingScreen starts its bar from nothing (the
         // first one carries on from the server's start).
         if self.player.is_some() {
-            self.loading_progress = 0.0;
+            self.client.loading_progress = 0.0;
         }
         // startWaitingForNewLevel: `LevelLoadTracker.startClientLoad` and the
         // `LevelLoadingScreen`.
@@ -954,7 +954,7 @@ impl Game<'_> {
         });
         r.level_load.start_client_load(client_millis(), reason);
         // A replacement LocalPlayer has a fresh ambient mood and sendPosition baseline.
-        self.ambience.moodiness = 0.0;
+        self.client.ambience.moodiness = 0.0;
         r.position_sender = Default::default();
         r.predictions.clear();
         self.set_local_mode_with_previous(mode, previous);
@@ -1025,7 +1025,7 @@ impl Game<'_> {
                 r.awaiting_viewed_chunk_center = false;
             }
             self.clear_lod();
-            self.pending_uploads.clear();
+            self.client.pending_uploads.clear();
             if let Some(renderer) = self.renderer.as_mut() {
                 renderer.clear_sections(self.world.layout());
             }

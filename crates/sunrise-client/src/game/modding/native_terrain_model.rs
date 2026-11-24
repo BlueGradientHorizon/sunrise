@@ -24,10 +24,11 @@ impl Game<'_> {
     ) -> Result<(), TerrainModelError> {
         use mod_api::__private::game::Fields;
         let fields = model.fields();
-        if fields.generation != self.standalone_geometry.generation() {
+        if fields.generation != self.client.standalone_geometry.generation() {
             return Err(TerrainModelError::Model(ModelError::StaleModel));
         }
         let faces = self
+            .client
             .standalone_geometry
             .instance_slot(fields.slot)
             .and_then(|_| self.model_faces(fields.slot))

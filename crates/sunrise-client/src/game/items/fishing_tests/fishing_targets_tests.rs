@@ -92,8 +92,8 @@ fn vec_bits(v: Vec3) -> [String; 3] {
 }
 
 fn align_next_entity_mod4(game: &mut Game<'_>, want_mod4: u32) {
-    while ((game.next_entity + 1) & 3) != (want_mod4 & 3) {
-        game.next_entity += 1;
+    while ((game.server.next_entity + 1) & 3) != (want_mod4 & 3) {
+        game.server.next_entity += 1;
     }
 }
 
@@ -118,7 +118,7 @@ fn setup_game<'a>(resources: &'a mut Option<std::sync::Arc<crate::game::Resource
         sunrise_client::motion::PlayerMotion::new(game.motion, Vec3::new(0.5, 64.0, 4.5)).unwrap(),
     );
     crate::game::native_entity_refs::tests::bind_local_player(&mut game, 7, 7);
-    game.next_entity = game.next_entity.max(100);
+    game.server.next_entity = game.server.next_entity.max(100);
     game
 }
 
@@ -141,8 +141,8 @@ fn clear_entities(game: &mut Game<'_>) {
     game.crystals.clear();
     game.discard_resident_dragon();
     game.others.clear();
-    game.knot_ids.clear();
-    game.broken_knots.clear();
+    game.server.knot_ids.clear();
+    game.server.broken_knots.clear();
     game.resident_entities.knots.clear();
     game.reset_entity_residency();
     game.bind_local_player_residency();
@@ -284,6 +284,7 @@ fn summon_target(game: &mut Game<'_>, target: &str) -> TrackedTarget {
             ));
             game.tick_server(false).unwrap();
             let id = *game
+                .server
                 .knot_ids
                 .get(&[3, 64, 4])
                 .expect("natural leash knot created on fence");
@@ -410,8 +411,8 @@ fn check_hook_tick(
 }
 
 fn spawn_test_hook(game: &mut Game<'_>, pos: Vec3, vel: Vec3, hook_seed: i64) {
-    game.next_entity += 1;
-    let id = game.next_entity;
+    game.server.next_entity += 1;
+    let id = game.server.next_entity;
     let mut hook = Hook::remote(id, pos, [0, 0, 0, id as i32]);
     hook.yaw = -90.0;
     hook.velocity = vel;

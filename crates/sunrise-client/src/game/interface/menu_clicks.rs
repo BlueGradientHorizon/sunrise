@@ -25,9 +25,9 @@ impl Game<'_> {
             self.creative_display_click(slot, button, input);
             return true;
         }
-        if self.screen == Screen::Creative
+        if self.client.screen == Screen::Creative
             && input == sunrise_client::menu::Input::Throw
-            && !self.drop_spam_throttler.is_under_threshold()
+            && !self.client.drop_spam_throttler.is_under_threshold()
         {
             return true;
         }
@@ -88,15 +88,15 @@ impl Game<'_> {
         input: sunrise_client::menu::Input,
     ) {
         use sunrise_client::creative::{DisplayClick, click_display};
-        if self.creative_screen.tab().search {
+        if self.client.creative_screen.tab().search {
             // CreativeModeInventoryScreen.slotClicked: moveCursorToEnd, then
             // setHighlightPos(0), so typing replaces the whole query.
-            let search = &mut self.creative_screen.search;
+            let search = &mut self.client.creative_screen.search;
             search.move_cursor_to_end(false);
             search.highlight = 0;
         }
         if input == sunrise_client::menu::Input::Throw
-            && !self.drop_spam_throttler.is_under_threshold()
+            && !self.client.drop_spam_throttler.is_under_threshold()
         {
             return;
         }
@@ -133,7 +133,7 @@ impl Game<'_> {
                 self.unselect_bundle(slot);
             }
         }
-        if self.remote.is_some() && self.screen == Screen::Inventory {
+        if self.remote.is_some() && self.client.screen == Screen::Inventory {
             // On a server the clicks are the server's: predicted and sent.
             return self.remote_menu_ops(ops);
         }
@@ -142,13 +142,13 @@ impl Game<'_> {
         }
         if let Some(done) = self.stacked_menu_ops(ops) {
             // CreativeModeInventoryScreen.slotClicked: the changed slots go out with the click.
-            if done && self.remote.is_some() && self.screen == Screen::Creative {
+            if done && self.remote.is_some() && self.client.screen == Screen::Creative {
                 self.send_creative_slots();
             }
             return done;
         }
         let ops = ops.to_vec();
-        let creative_remote = self.remote.is_some() && self.screen == Screen::Creative;
+        let creative_remote = self.remote.is_some() && self.client.screen == Screen::Creative;
         let done = self.menu_session_with_game(move |game, menu, env, to_menu| {
             let mut clicks = Vec::new();
             for &(slot, button, input) in &ops {
@@ -182,7 +182,7 @@ impl Game<'_> {
             Some(true)
         });
         // CreativeModeInventoryScreen.slotClicked: the changed slots go out with the click.
-        if done && self.remote.is_some() && self.screen == Screen::Creative {
+        if done && self.remote.is_some() && self.client.screen == Screen::Creative {
             self.send_creative_slots();
         }
         done
@@ -460,7 +460,7 @@ impl Game<'_> {
         };
         let mut menu = Menu::new(kind);
         if self.remote.is_some() {
-            menu.set_drop_spam_throttler(self.drop_spam_throttler);
+            menu.set_drop_spam_throttler(self.client.drop_spam_throttler);
         }
         let menu_id = if matches!(kind, Kind::Mount(_)) {
             Some("sunrise:mount_inventory")
@@ -484,7 +484,8 @@ impl Game<'_> {
         let creative = self.creative;
         // CreativeModeInventoryScreen clicks the menu itself and sends every
         // changed slot, which the server sets by player.
-        let equipment_before = (self.screen == Screen::Creative).then(|| self.player_equipment());
+        let equipment_before =
+            (self.client.screen == Screen::Creative).then(|| self.player_equipment());
         let station_menu = self.station.as_ref().map(|s| {
             (
                 s.loom.selected.map_or(-1, |i| i as i32),
@@ -652,10 +653,10 @@ impl Game<'_> {
         // Any creative-screen drop sent live inside `run` already updated `menu`'s
         // throttler; keep `self.drop_spam_throttler` in step even if a later click failed.
         if self.remote.is_some()
-            && self.screen == Screen::Creative
+            && self.client.screen == Screen::Creative
             && let Some(throttle) = menu.drop_spam_throttler()
         {
-            self.drop_spam_throttler = throttle;
+            self.client.drop_spam_throttler = throttle;
         }
         match outcome {
             None => return false,
@@ -736,7 +737,7 @@ impl Game<'_> {
                 let at = [p.position.x, p.position.y, p.position.z];
                 self.award_furnace_recipes(pos, at);
             }
-        } else if self.screen == Screen::Creative {
+        } else if self.client.screen == Screen::Creative {
             // `Player.drop` swings even when the creative packet is suppressed. Creative-screen
             // THROW packets already went out live inside `click_with_creative_drop`, before the
             // changed-slot sync.
@@ -917,7 +918,7 @@ impl Game<'_> {
         let to_menu = |g: usize| game_of.iter().position(|x| *x == Some(g));
         let mut menu = Menu::new(Kind::Anvil);
         if self.remote.is_some() {
-            menu.set_drop_spam_throttler(self.drop_spam_throttler);
+            menu.set_drop_spam_throttler(self.client.drop_spam_throttler);
         }
         // Prediction must dispatch the result update between the two input writes in onTake.
         menu.anvil_hook = true;
@@ -1033,7 +1034,7 @@ impl Game<'_> {
             return false;
         };
         let batch = HudBatch::new(size, self.settings.gui_scale_inputs());
-        let Some(slot) = self.slot_at(&batch, self.cursor.0, self.cursor.1) else {
+        let Some(slot) = self.slot_at(&batch, self.client.cursor.0, self.client.cursor.1) else {
             return false;
         };
         let held_shift = self.has_shift_down();
@@ -1205,9 +1206,9 @@ impl Game<'_> {
 
     /// A screen closed or lost its pointer: discard the unfinished click gesture.
     pub(super) fn reset_inventory_clicks(&mut self) {
-        self.inv_clicks.cancel_drag();
-        self.inv_drag = None;
-        self.last_inv_click = None;
+        self.client.inv_clicks.cancel_drag();
+        self.client.inv_drag = None;
+        self.client.last_inv_click = None;
     }
 
     /// A sound a menu click made the player play (a bundle's insert or

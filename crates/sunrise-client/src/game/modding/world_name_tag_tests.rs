@@ -25,8 +25,8 @@ fn view_proj() -> Mat4 {
 fn face_south(game: &mut super::Game<'_>) {
     game.yaw = 0.0;
     game.pitch = 0.0;
-    game.posed_rotation = None;
-    game.camera_type = sunrise_client::camera::CameraType::FirstPerson;
+    game.client.posed_rotation = None;
+    game.client.camera_type = sunrise_client::camera::CameraType::FirstPerson;
 }
 
 /// One view's labels at `at`, the game's camera facing south: what it draws with the name
@@ -365,11 +365,12 @@ fn glyphs_of_a_label_refused_for_capacity_still_upload() {
         let quad = mod_api::WorldQuad::new([[0.5, 70.5, 0.0]; 4], !0, mod_api::WorldDepth::Tested);
         let capacity = draw.usage().quad_capacity as usize;
         draw.quads(&vec![quad; capacity - 1]).unwrap();
-        game.text_patches.borrow_mut().clear();
+        game.client.text_patches.borrow_mut().clear();
         let refused = GameWorldDrawContext::new(game, &mut draw).name_tag(at, &text, options);
         assert_eq!(refused, Err(DrawError::CapacityExceeded));
         assert!(draw.labels().iter().all(|label| label.is_empty()));
         let queued: Vec<[u32; 4]> = game
+            .client
             .text_patches
             .borrow()
             .iter()
@@ -384,7 +385,7 @@ fn glyphs_of_a_label_refused_for_capacity_still_upload() {
         let accepted = GameWorldDrawContext::new(game, &mut draw).name_tag(at, &text, options);
         assert_eq!(accepted, Ok(()));
         assert_eq!(
-            game.text_patches.borrow().len(),
+            game.client.text_patches.borrow().len(),
             queued.len(),
             "the glyphs were cached by the refused label"
         );
@@ -524,11 +525,11 @@ impl Hooks for Native {
 fn scene_frame(game: &mut super::Game<'_>) -> ([Vec<Vertex>; 2], Vec<u32>) {
     face_south(game);
     game.world.game_time = scene::SCENE_TIME;
-    game.see_through_vertices.clear();
+    game.client.see_through_vertices.clear();
     let mut draw = WorldGeometry::default();
     let mut entities = Vec::new();
     game.fill_world_geometry(false, CAMERA, Mat4::IDENTITY, 0.0, &mut draw, &mut entities);
-    let see_through = std::mem::take(&mut game.see_through_vertices);
+    let see_through = std::mem::take(&mut game.client.see_through_vertices);
     // Each call's result, from the scene's marker lines: `code` across, the call's index up.
     let mut results: Vec<(f32, u32)> = draw
         .batch()

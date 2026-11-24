@@ -34,7 +34,7 @@ impl Game<'_> {
             .block_entities
             .contents_watches
             .observers((pos.x, pos.y, pos.z));
-        self.contents_changing.push((level, pos));
+        self.server.contents_changing.push((level, pos));
         let notice = ContentsChangedGuard { game: self };
         notice
             .game
@@ -52,6 +52,6 @@ impl Game<'_> {
     }
 
     pub(in crate::game) fn contents_notice_active(&self, level: LevelRef, pos: BlockPos) -> bool {
-        self.contents_changing.contains(&(level, pos))
+        self.server.contents_changing.contains(&(level, pos))
     }
 }

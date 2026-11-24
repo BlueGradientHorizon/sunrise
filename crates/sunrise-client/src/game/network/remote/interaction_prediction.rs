@@ -4,13 +4,18 @@ impl Game<'_> {
     /// Bounding box `[lo, hi]` and world origin `[x, y, z]` of a crosshair entity for
     /// `Minecraft.startUseItem` (including remote/resident leash knots, which have no API body).
     fn use_entity_geometry(&self, entity: mod_api::EntityRef) -> Option<([[f64; 3]; 2], [f64; 3])> {
-        let knot_block = self.remote_knots.get(&entity.id()).copied().or_else(|| {
-            self.resident_entities
-                .knots
-                .iter()
-                .find(|k| k.id == entity.id())
-                .map(|k| k.fence)
-        });
+        let knot_block = self
+            .client
+            .remote_knots
+            .get(&entity.id())
+            .copied()
+            .or_else(|| {
+                self.resident_entities
+                    .knots
+                    .iter()
+                    .find(|k| k.id == entity.id())
+                    .map(|k| k.fence)
+            });
         if let Some(block) = knot_block {
             let bounds = crate::game::pick_entity::knot_bounds(block);
             let p = sunrise_client::mobs::leash::knot_state(block).position;
@@ -84,7 +89,7 @@ impl Game<'_> {
             // Interaction.interact answers SUCCESS when it responds and
             // CONSUME otherwise: both end the click (nothing behind the box
             // is used), but only SUCCESS swings; the packet carries the hand.
-            let response = self.interactions.get(&hit.id).map(|i| i.response);
+            let response = self.client.interactions.get(&hit.id).map(|i| i.response);
             // Objects whose interact passes (paintings, empty or fixed item frames,
             // boats sneaked at or out of control, carts that pass) leave each hand's
             // turn to its item: a crossbow aimed at it shoots.

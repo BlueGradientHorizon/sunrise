@@ -139,10 +139,10 @@ mod tests {
                         "anvil_cost":1, "slots":["mainhand"],
                         "effects":{"minecraft:damage":[{"effect":{"type":"absent:damage"}}]}
                     })).unwrap()).unwrap();
-                    game.world_root = root.clone();
+                    game.server.world_root = root.clone();
                     let stack = game.reload_datapacks(false, &[]).unwrap();
                     let resources = game.options.resources.clone();
-                    game.world_tables = game
+                    game.server.world_tables = game
                         .stage_world_tables(&stack, false, &resources)
                         .unwrap()
                         .tables;
@@ -164,9 +164,9 @@ mod tests {
                     player.ground.on_ground = true;
                     game.player = Some(player);
                     crate::game::native_entity_refs::tests::bind_local_player(game, 7, 1);
-                    game.lan_acting_uuid = Some(1);
-                    game.lan_acting_entity = Some(7);
-                    game.lan_acting_name = Some("attacker".into());
+                    game.server.lan_acting_uuid = Some(1);
+                    game.server.lan_acting_entity = Some(7);
+                    game.server.lan_acting_name = Some("attacker".into());
                     let golem = game
                         .res
                         .mob_types()
@@ -184,7 +184,7 @@ mod tests {
                             .map(|&(id, level)| (id.into(), level))
                             .collect();
                         game.inventory[game.selected] = Some(weapon);
-                        game.attack_ticks = 100;
+                        game.server.attack_ticks = 100;
                         let before = game.mobs[0].health;
                         game.attack_mob(0);
                         before - game.mobs[0].health

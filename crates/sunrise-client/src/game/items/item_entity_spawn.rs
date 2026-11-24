@@ -16,9 +16,11 @@ impl Game<'_> {
         random: Option<spill::ItemRandom>,
     ) -> [f64; 3] {
         let random = random.unwrap_or_else(|| spill::prepare_item_random(velocity));
-        self.next_entity += 1;
+        self.server.next_entity += 1;
         let p = Vec3::new(position[0], position[1], position[2]);
-        self.persist.uuids.insert(self.next_entity, random.uuid);
+        self.persist
+            .uuids
+            .insert(self.server.next_entity, random.uuid);
         let (bob, yaw) = (random.bob, random.yaw);
         let velocity = velocity.unwrap_or(random.velocity);
         self.dropped.push(random.state.apply(ItemEntity {
@@ -28,14 +30,14 @@ impl Game<'_> {
             pickup_delay: i64::from(pickup_delay),
             random: random.own.into(),
             ..ItemEntity::new(
-                self.next_entity,
+                self.server.next_entity,
                 stack,
                 p,
                 Vec3::new(velocity[0], velocity[1], velocity[2]),
                 bob,
             )
         }));
-        self.wake_hoppers_near_dropped_item(self.next_entity);
+        self.wake_hoppers_near_dropped_item(self.server.next_entity);
         velocity
     }
 

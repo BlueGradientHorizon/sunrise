@@ -7,10 +7,10 @@ use mod_api::{MappingError, VanillaKeyMappingRef};
 impl Game<'_> {
     /// Playing, with nothing over the world: keys and zoom apply.
     pub(in crate::game) fn playing(&self) -> bool {
-        self.screen == Screen::Playing
+        self.client.screen == Screen::Playing
             && self.title.is_none()
-            && self.sign_edit.is_none()
-            && self.book.is_none()
+            && self.client.sign_edit.is_none()
+            && self.client.book.is_none()
     }
     /// Milliseconds on the game's own clock (`Util.getMillis`), counting from the game's start:
     /// the clock the HUD's scrolling labels and the screens' text fields read too.
@@ -20,7 +20,7 @@ impl Game<'_> {
     /// The current window modifier keys in the same GLFW encoding as input hooks.
     /// Cleared when the window loses focus; available even outside a world.
     pub(in crate::game) fn modifiers(&self) -> ClientModifiers {
-        ClientModifiers::new(crate::game::glfw_modifiers(self.modifiers))
+        ClientModifiers::new(crate::game::glfw_modifiers(self.client.modifiers))
     }
     pub(in crate::game) fn vanilla_key_mapping(
         &self,
@@ -30,6 +30,7 @@ impl Game<'_> {
             return Err(MappingError::Unavailable);
         }
         let generation = self
+            .client
             .mod_keys
             .client_generation()
             .ok_or(MappingError::Unavailable)?;
@@ -50,7 +51,7 @@ impl Game<'_> {
             return Err(MappingError::Unavailable);
         }
         let (generation, index) = mod_api::__private::vanilla_key_mapping_parts(mapping);
-        if self.mod_keys.client_generation() != Some(generation) {
+        if self.client.mod_keys.client_generation() != Some(generation) {
             return Err(MappingError::Stale);
         }
         VanillaMappingSlot::from_index(index).ok_or(MappingError::Stale)
@@ -73,7 +74,7 @@ impl Game<'_> {
             if let ("movement", Some(Ok(key))) = (slot.definition().2, slot.default_input()) {
                 self.movement_key_held(key)
             } else {
-                self.vanilla_mappings.is_down(slot)
+                self.client.vanilla_mappings.is_down(slot)
             },
         )
     }
@@ -84,8 +85,8 @@ impl Game<'_> {
     ) -> Result<bool, MappingError> {
         let slot = self.vanilla_mapping_slot(mapping)?;
         Ok(match self.settings.keys.physical_at(slot) {
-            Some(Ok(key)) => self.physical_keys.contains(&key),
-            Some(Err(button)) => self.physical_buttons.contains(&button),
+            Some(Ok(key)) => self.client.physical_keys.contains(&key),
+            Some(Err(button)) => self.client.physical_buttons.contains(&button),
             None => false,
         })
     }

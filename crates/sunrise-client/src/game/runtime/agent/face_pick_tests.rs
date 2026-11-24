@@ -142,7 +142,7 @@ fn calls(listener: &Mutex<Listener>) -> usize {
 /// A drawn frame: its pick, then the control poll's agent step.
 fn frame(game: &mut Game<'_>) {
     game.refresh_client_pick(1.0);
-    game.frames += 1;
+    game.client.frames += 1;
     game.advance_agent();
 }
 
@@ -239,7 +239,7 @@ fn look_at_entity_replies_after_a_tick_pick_with_no_frame() {
     with_pig_behind(|game, listener| {
         let (_, replies) = command(game, "look-at entity 31");
         tick(game);
-        assert_eq!(game.frames, 0, "no frame was drawn");
+        assert_eq!(game.client.frames, 0, "no frame was drawn");
         assert_eq!(calls(listener), 1, "the tick's own pick");
         let reply = reply(&replies);
         assert_eq!(reply["target"]["entity"]["id"], json!(31), "{reply}");
@@ -552,10 +552,10 @@ fn an_ordinary_click_attacks_what_the_pick_holds() {
 fn attack_by_id_ends_without_a_click_on_death_or_without_ticks() {
     with_pig_and_server(|game, _, server| {
         let (_, replies) = command(game, "attack 31");
-        game.screen = Screen::Dead;
+        game.client.screen = Screen::Dead;
         game.advance_agent();
         assert_eq!(reply(&replies)["error"], json!("the player died"));
-        game.screen = Screen::Playing;
+        game.client.screen = Screen::Playing;
         let (_, replies) = command(game, "attack 31");
         game.agent.task.as_mut().unwrap().deadline = Instant::now();
         game.advance_agent();
@@ -565,11 +565,11 @@ fn attack_by_id_ends_without_a_click_on_death_or_without_ticks() {
         );
         // A screen opened over the world before the tick: the click would land on it.
         let (_, replies) = command(game, "attack 31");
-        game.screen = Screen::GameModeSwitcher;
+        game.client.screen = Screen::GameModeSwitcher;
         tick(game);
         let error = reply(&replies)["error"].as_str().unwrap().to_owned();
         assert!(error.ends_with("screen is open; close it first (close, or click-button)"));
-        game.screen = Screen::Playing;
+        game.client.screen = Screen::Playing;
         tick(game);
         assert_eq!(clicks_sent(game, server), Vec::<String>::new());
     });

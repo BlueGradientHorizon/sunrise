@@ -13,11 +13,14 @@ impl Game<'_> {
     }
     /// The window's camera type (`Options.getCameraType`).
     pub(in crate::game) fn camera_type(&self) -> CameraType {
-        self.requested_camera_type.get().unwrap_or(self.camera_type)
+        self.client
+            .requested_camera_type
+            .get()
+            .unwrap_or(self.client.camera_type)
     }
     /// Queue the window's camera type without cycling, including from shared hooks.
     pub(in crate::game) fn set_camera_type(&self, camera_type: CameraType) {
-        self.requested_camera_type.set(Some(camera_type));
+        self.client.requested_camera_type.set(Some(camera_type));
     }
 }
 
@@ -76,10 +79,16 @@ mod camera_type_tests {
                 assert_eq!(game.camera_type(), FirstPerson, "the front view is skipped");
                 game.set_camera_type(ThirdPersonFront);
                 assert_eq!(game.camera_type(), ThirdPersonFront);
-                assert_eq!(game.camera_type, FirstPerson, "the request is pending");
+                assert_eq!(
+                    game.client.camera_type, FirstPerson,
+                    "the request is pending"
+                );
                 assert_eq!(heard.lock().unwrap().len(), 2, "setting is not a cycle");
                 game.cycle_camera();
-                assert_eq!(game.camera_type, FirstPerson, "F5's final choice wins");
+                assert_eq!(
+                    game.client.camera_type, FirstPerson,
+                    "F5's final choice wins"
+                );
             });
         });
         use CameraType::*;
@@ -136,13 +145,13 @@ mod camera_type_tests {
             crate::game::native_entity_refs::tests::with_client_game(|game| {
                 game.player = Some(PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
                 game.title = None;
-                game.spectated_post_effect = Some("minecraft:creeper");
+                game.client.spectated_post_effect = Some("minecraft:creeper");
                 let vanilla = game.camera_view(1.0).unwrap();
                 assert_eq!(vanilla.0.z, 0.0);
                 let posed = game.native_camera_pose_now(1.0, vanilla);
-                assert_eq!(game.camera_type, CameraType::ThirdPersonBack);
+                assert_eq!(game.client.camera_type, CameraType::ThirdPersonBack);
                 assert_eq!(game.camera_type(), CameraType::ThirdPersonBack);
-                assert_eq!(game.spectated_post_effect, None);
+                assert_eq!(game.client.spectated_post_effect, None);
                 assert!((posed.0.z + 4.0).abs() < 1e-6, "refresh unchanged position");
                 assert_eq!(posed.1, 15.0, "preserve the explicit yaw override");
                 assert_eq!(posed.2, vanilla.2);

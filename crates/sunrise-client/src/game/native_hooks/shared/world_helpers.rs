@@ -88,22 +88,22 @@ impl Game<'_> {
     /// apart: ordinary particles, firework starters and elder guardians in the engine,
     /// and ITEM_PICKUP in `pickups`.
     pub(in crate::game) fn client_particle_count(&self) -> usize {
-        self.particles.group_count() + self.pickups.live.len()
+        self.particles.group_count() + self.client.pickups.live.len()
     }
     /// `ParticleEngine.clearParticles` over every group Sunrise keeps apart: the engine's
     /// particles, starters, queue and emitters, the item pickups and the elder guardian
     /// apparition. Leaving a level and switching levels clear through it too.
     pub(in crate::game) fn clear_client_particles(&mut self) {
-        self.mod_clear_particles.set(false);
+        self.client.mod_clear_particles.set(false);
         self.particles.clear();
-        self.pickups.clear();
+        self.client.pickups.clear();
     }
     /// Applies a client mod's `clear_particles` if one is waiting. Called at the start of
     /// each particle tick, after `RenderFrameEvent.Pre`, and at particle extraction, after
     /// HUD, screen and entity callbacks. Extraction also discards its geometry if a model
     /// callback asks to clear while it is being built, even while paused or tick-frozen.
     pub(in crate::game) fn apply_mod_particle_clear(&mut self) {
-        if self.mod_clear_particles.take() {
+        if self.client.mod_clear_particles.take() {
             self.clear_client_particles();
         }
     }
@@ -111,24 +111,27 @@ impl Game<'_> {
     /// corners (its left and right columns), and a bottom corner while one
     /// of its charts is drawn there.
     pub(in crate::game) fn native_corner_shown(&self, corner: Corner) -> bool {
-        let charts = self.debug_charts.corners(!self.has_singleplayer_server());
-        !debug_takes(corner, self.debug, charts)
+        let charts = self
+            .client
+            .debug_charts
+            .corners(!self.has_singleplayer_server());
+        !debug_takes(corner, self.client.debug, charts)
     }
     /// A mod's own screen closes (Escape, or `mod_screen_close`).
     pub(in crate::game) fn close_mod_screen(&mut self) {
-        if self.screen == Screen::Mod {
+        if self.client.screen == Screen::Mod {
             if self.title.is_some() {
                 self.close_mod_screen_to_title();
             } else {
                 self.set_screen(Screen::Playing);
                 self.capture(true);
             }
-            if self.screen == Screen::Mod {
+            if self.client.screen == Screen::Mod {
                 // `screen_opening` kept it open, or opened a mod's own.
                 return;
             }
         }
-        self.native_mod_screen = None;
+        self.client.native_mod_screen = None;
     }
     /// `Screen.onClose`'s `setScreen(null)` with no world: the title screen
     /// opens, asked for once as `mod` to `title`, and a mod's answer applies
@@ -222,7 +225,7 @@ impl<'g> Game<'g> {
         until: Option<VanillaGuiLayer>,
         batch: &mut HudBatch,
     ) {
-        let Some(next) = self.hud_layer_next else {
+        let Some(next) = self.client.hud_layer_next else {
             return;
         };
         let Some(order) = gui_layers::order() else {
@@ -237,7 +240,7 @@ impl<'g> Game<'g> {
             }
         }
         // Past `until` itself: its paint site draws it, not the cursor.
-        self.hud_layer_next = Some(next.max(end + usize::from(until.is_some())));
+        self.client.hud_layer_next = Some(next.max(end + usize::from(until.is_some())));
     }
 
     fn run_gui_layer(

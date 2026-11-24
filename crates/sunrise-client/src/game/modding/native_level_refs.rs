@@ -3127,7 +3127,7 @@ mod tests {
                 };
                 let world =
                     std::env::temp_dir().join(format!("sunrise-validate-{}", std::process::id()));
-                game.world_root = world.clone();
+                game.server.world_root = world.clone();
                 let root = sunrise_client::save::dimension_dir(&world, other.id());
                 let save = sunrise_client::save::SaveDir::new(
                     root,

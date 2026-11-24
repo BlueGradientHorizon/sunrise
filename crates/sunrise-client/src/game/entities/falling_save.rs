@@ -134,8 +134,8 @@ mod tests {
                                 block.velocity.y = -0.5;
                             });
                             game.add_primed_tnt(BlockPos::new(8, 70, 0), 0.0, 1, None, None);
-                            game.ordered.announced = JoinSeq::MAX;
-                            game.tickets.update(None);
+                            game.server.ordered.announced = JoinSeq::MAX;
+                            game.server.tickets.update(None);
                             game.begin_ordered_ticks();
                             game.run_ordered_ticks(JoinSeq::MAX, false).unwrap();
                             assert!(game.tnts.is_empty());

@@ -1186,11 +1186,12 @@ fn wrap64(d: f64) -> f64 {
 }
 impl Game<'_> {
     fn fight_path(&self) -> std::path::PathBuf {
-        sunrise_client::save::dimension_dir(&self.world_root, "minecraft:the_end").join(FIGHT_FILE)
+        sunrise_client::save::dimension_dir(&self.server.world_root, "minecraft:the_end")
+            .join(FIGHT_FILE)
     }
     /// The saved fight, or `createDefault` with the gateways shuffled by the seed.
     fn load_fight(&mut self) {
-        if self.fight.loaded {
+        if self.server.fight.loaded {
             return;
         }
         let tag = sunrise_client::save::read_dat(&self.fight_path());
@@ -1274,7 +1275,7 @@ impl Game<'_> {
             fight.crystals_placed = true;
             fight.needs_scan = false;
         }
-        self.fight = fight;
+        self.server.fight = fight;
     }
     fn end_portal_active(&self) -> bool {
         (0..256).any(|y| {
@@ -1285,11 +1286,11 @@ impl Game<'_> {
         })
     }
     pub(super) fn save_fight(&mut self) {
-        if !self.fight.loaded || !self.fight.dirty {
+        if !self.server.fight.loaded || !self.server.fight.dirty {
             return;
         }
 
-        let f = &self.fight;
+        let f = &self.server.fight;
         let b = |v: bool| Tag::Byte(i8::from(v));
         let mut data = vec![
             ("needs_state_scanning", b(f.needs_scan)),
@@ -1322,7 +1323,7 @@ impl Game<'_> {
             ("DataVersion", Tag::Int(sunrise_world::DATA_VERSION)),
         ]);
         if sunrise_client::save::write_dat(&self.fight_path(), tag).is_ok() {
-            self.fight.dirty = false;
+            self.server.fight.dirty = false;
         }
     }
     /// The island's centre chunks are lit (the arena is "loaded").
@@ -1345,11 +1346,13 @@ impl Game<'_> {
     }
     /// The player acting now: the guest whose turn it is, else the host.
     pub(super) fn acting_player(&self) -> FightWho {
-        self.lan_acting.map_or(FightWho::Host, FightWho::Guest)
+        self.server
+            .lan_acting
+            .map_or(FightWho::Host, FightWho::Guest)
     }
     /// The causing player shared by the crystal/deflected-fireball blast.
     pub(super) fn crystal_blast_player(&self) -> Option<super::commands::Target> {
-        self.fight.blast_by.map(|who| match who {
+        self.server.fight.blast_by.map(|who| match who {
             FightWho::Host => super::commands::Target::Player,
             FightWho::Guest(conn) => super::commands::Target::Guest(conn),
         })
@@ -1357,7 +1360,7 @@ impl Game<'_> {
     /// Names the acting player behind the blast about to go off (a large
     /// fireball they shot), or no one, for the dragon's kill credit.
     pub(super) fn set_blast_by_player(&mut self, by_player: bool) {
-        self.fight.blast_by = by_player.then(|| self.acting_player());
+        self.server.fight.blast_by = by_player.then(|| self.acting_player());
     }
     /// The players in the level the dragon sees (`level.players()`): the
     /// window's own, then every guest in the level.
@@ -1417,45 +1420,45 @@ impl Game<'_> {
     pub(super) fn tick_fight(&mut self) {
         self.load_fight();
         // updatePlayers, every 20 ticks.
-        self.fight.player_scan += 1;
-        if self.fight.player_scan >= 20 {
-            self.fight.player_scan = 0;
-            self.fight.players = self.fight_has_players();
+        self.server.fight.player_scan += 1;
+        if self.server.fight.player_scan >= 20 {
+            self.server.fight.player_scan = 0;
+            self.server.fight.players = self.fight_has_players();
         }
         if !self.arena_loaded() {
             return;
         }
-        if !self.fight.crystals_placed {
+        if !self.server.fight.crystals_placed {
             self.place_spike_crystals();
-            self.fight.crystals_placed = true;
-            self.fight.dirty = true;
+            self.server.fight.crystals_placed = true;
+            self.server.fight.dirty = true;
         }
-        if self.fight.players {
-            if self.fight.needs_scan {
+        if self.server.fight.players {
+            if self.server.fight.needs_scan {
                 self.scan_state();
-                self.fight.needs_scan = false;
-                self.fight.dirty = true;
+                self.server.fight.needs_scan = false;
+                self.server.fight.dirty = true;
             }
-            if self.fight.respawn.is_some() {
+            if self.server.fight.respawn.is_some() {
                 self.tick_respawn();
             }
-            if !self.fight.killed {
+            if !self.server.fight.killed {
                 // Without a dragon of its own, or 1200 ticks after it last
                 // ticked, the fight takes the End's dragon or makes one
                 // (`findOrCreateDragon`).
-                let look = match self.fight.dragon_uuid {
+                let look = match self.server.fight.dragon_uuid {
                     None => true,
                     Some(_) => {
-                        self.fight.dragon_unseen += 1;
-                        self.fight.dragon_unseen >= 1200
+                        self.server.fight.dragon_unseen += 1;
+                        self.server.fight.dragon_unseen >= 1200
                     }
                 };
                 if look {
                     self.find_or_create_dragon();
-                    self.fight.dragon_unseen = 0;
+                    self.server.fight.dragon_unseen = 0;
                 }
-                self.fight.crystal_scan += 1;
-                if self.fight.crystal_scan >= 100 {
+                self.server.fight.crystal_scan += 1;
+                if self.server.fight.crystal_scan >= 100 {
                     self.count_crystals();
                 }
             }
@@ -1469,8 +1472,8 @@ impl Game<'_> {
         if let Some(d) = self.dragon.as_mut()
             && d.id == 0
         {
-            super::entity::assign_stored_id(&mut self.next_entity, &mut d.id, None);
-            self.next_entity += 8;
+            super::entity::assign_stored_id(&mut self.server.next_entity, &mut d.id, None);
+            self.server.next_entity += 8;
             self.dragon.id_assigned();
         }
         // The spikes' crystals too (EndCrystal's constructor): an id whether
@@ -1495,10 +1498,10 @@ impl Game<'_> {
             let (drawn, uuid) = Crystal::own_draws();
             let time = Crystal::start_time(at, drawn, self.clock.still());
             // EndCrystal's constructor takes an id from the entity counter.
-            self.next_entity += 1;
-            self.persist.uuids.insert(self.next_entity, uuid);
+            self.server.next_entity += 1;
+            self.persist.uuids.insert(self.server.next_entity, uuid);
             self.crystals
-                .push(Crystal::new(self.next_entity, at, true, time));
+                .push(Crystal::new(self.server.next_entity, at, true, time));
             self.world
                 .modified
                 .insert((at.x.floor() as i32 >> 4, at.z.floor() as i32 >> 4));
@@ -1506,9 +1509,9 @@ impl Game<'_> {
     }
     /// `updateCrystalCount`: crystals on the spike tops.
     fn count_crystals(&mut self) {
-        self.fight.crystal_scan = 0;
+        self.server.fight.crystal_scan = 0;
         let spikes = sunrise_world::worldgen::end_spike::spikes_for_seed(self.level.seed);
-        self.fight.alive_crystals = self
+        self.server.fight.alive_crystals = self
             .crystals
             .iter()
             .filter(|c| {
@@ -1547,8 +1550,9 @@ impl Game<'_> {
         }
         let c = self.crystals.remove(index);
         // Read before the blast, which can take other respawn crystals.
-        let respawn_crystal = self.fight.respawn.is_some()
+        let respawn_crystal = self.server.fight.respawn.is_some()
             && self
+                .server
                 .fight
                 .respawn_crystals
                 .iter()
@@ -1557,17 +1561,17 @@ impl Game<'_> {
             let at = [c.position.x, c.position.y, c.position.z];
             // The blast's damage source carries the player, so the dragon
             // remembers them before the blast can kill it.
-            self.fight.blast_by = by;
+            self.server.fight.blast_by = by;
             // EndCrystal.hurtServer: ExplosionInteraction.BLOCK.
             let interaction =
                 self.destroy_type(sunrise_client::gamerules::vanilla::BLOCK_EXPLOSION_DROP_DECAY);
             // EndCrystal is 2 by 2 blocks: its box decides `isInWater`.
             let (x, y, z) = (c.position.x, c.position.y, c.position.z);
-            self.combat.explosion_in_water = self.bounds_in_water(Aabb::new(
+            self.server.combat.explosion_in_water = self.bounds_in_water(Aabb::new(
                 Vec3::new(x - 1.0, y, z - 1.0),
                 Vec3::new(x + 1.0, y + 2.0, z + 1.0),
             ));
-            self.combat.explosion_direct = Some(c.id);
+            self.server.combat.explosion_direct = Some(c.id);
             let _ = self.server_explode_from(
                 at,
                 6.0,
@@ -1576,9 +1580,9 @@ impl Game<'_> {
                 super::explosion::ExplosionSource::default()
                     .with_damage_direct(c.id, sunrise_client::health::DirectEntity::Other),
             );
-            self.combat.explosion_direct = None;
-            self.combat.explosion_in_water = false;
-            self.fight.blast_by = None;
+            self.server.combat.explosion_direct = None;
+            self.server.combat.explosion_in_water = false;
+            self.server.fight.blast_by = None;
         }
         self.crystal_destroyed(index, &c, by, respawn_crystal);
     }
@@ -1683,7 +1687,7 @@ impl Game<'_> {
         direct: Option<&Projectile>,
     ) -> Hurt {
         let owner = by_player.then_some(Who::Player);
-        let guest = self.lan_acting.filter(|_| by_player);
+        let guest = self.server.lan_acting.filter(|_| by_player);
         self.hit_special_full(
             id,
             amount,
@@ -1713,7 +1717,7 @@ impl Game<'_> {
             let by_player = owner == Some(Who::Player);
             let creative = match owner {
                 Some(Who::Player) => match guest {
-                    Some(conn) if self.lan_acting == Some(conn) => self.creative,
+                    Some(conn) if self.server.lan_acting == Some(conn) => self.creative,
                     Some(conn) => self.command_guest(conn).is_some_and(|g| g.creative()),
                     None => self.creative,
                 },
@@ -1836,7 +1840,8 @@ impl Game<'_> {
         // The world's tags, so a datapack type is classed as vanilla's are.
         let explosion = self.damage_in_tag(ty, "minecraft:is_explosion");
         let no_knockback = self.damage_in_tag(ty, "minecraft:no_knockback");
-        let level = super::entity::damage_level_of!(self, self.combat.attack(), no_push, None);
+        let level =
+            super::entity::damage_level_of!(self, self.server.combat.attack(), no_push, None);
         let reaches_base = self.dragon.as_ref().is_some_and(|d| {
             d.reaches_base_check(
                 BODY,
@@ -1857,8 +1862,12 @@ impl Game<'_> {
                 let Some(d) = self.dragon.as_mut().filter(|d| d.id == id) else {
                     return false;
                 };
-                let level =
-                    super::entity::damage_level_of!(self, self.combat.attack(), no_push, None);
+                let level = super::entity::damage_level_of!(
+                    self,
+                    self.server.combat.attack(),
+                    no_push,
+                    None
+                );
                 return matches!(
                     d.hurt_from(
                         level,
@@ -2043,7 +2052,8 @@ impl Game<'_> {
             let creative = self.creative_source_of(attacker);
             let vanilla =
                 self.saved_refuses_damage(id, hit_source.damage_type, creative) || is_fire(kind);
-            let level = super::entity::damage_level_of!(self, self.combat.attack(), no_push, None);
+            let level =
+                super::entity::damage_level_of!(self, self.server.combat.attack(), no_push, None);
             if level.invulnerability_check(
                 sunrise_client::health::Hurting::Dragon(id as i32, hit_source),
                 vanilla,
@@ -2054,20 +2064,21 @@ impl Game<'_> {
         let plan = self.prepare_knockback_credit(
             self.dragon.as_ref().map_or(0, |d| d.id) as i32,
             None,
-            self.combat.attack(),
+            self.server.combat.attack(),
         );
         // `getAttributeValue(KNOCKBACK_RESISTANCE)` as the push reads it, before the hit.
         let push = origin.from.map(|from| Push {
             from,
             resistance: self.dragon_knockback_resistance(),
         });
-        let mut credit = plan.lend(&mut self.last_hurt_by_player);
+        let mut credit = plan.lend(&mut self.server.last_hurt_by_player);
         let Some(d) = self.dragon.as_mut() else {
             return Hurt::Refused;
         };
         let was_down = d.down();
         let (cooldown, last_hurt) = (d.invulnerable, d.last_hurt);
-        let level = super::entity::damage_level_of!(self, self.combat.attack(), &mut credit, None);
+        let level =
+            super::entity::damage_level_of!(self, self.server.combat.attack(), &mut credit, None);
         let hurt = d.hurt_part_from(level, part, damage, source, kind, origin.direct, push, true);
         // LivingEntity.hurtServer: damage that is applied sets lastHurtByPlayer
         // (100 ticks); a hit the damage cooldown absorbs returns before that.
@@ -2079,7 +2090,7 @@ impl Game<'_> {
             d.hurt_by_player = Some((who, d.ticks));
         }
         if !was_down && d.down() {
-            self.fight.last_blow = Some((kind, by.is_some()));
+            self.server.fight.last_blow = Some((kind, by.is_some()));
             self.credit_dragon_kill();
         }
         let Some(d) = self.dragon.as_mut() else {
@@ -2124,10 +2135,10 @@ impl Game<'_> {
             ..Default::default()
         };
         let id = d.id;
-        let blow = self.fight.last_blow.take();
+        let blow = self.server.fight.last_blow.take();
         let guest = match who {
             // Another guest than the one acting: their state, as for a mob's kill.
-            FightWho::Guest(conn) if self.lan_acting != Some(conn) => Some(conn),
+            FightWho::Guest(conn) if self.server.lan_acting != Some(conn) => Some(conn),
             _ => None,
         };
         let credited = guest.is_some_and(|conn| {
@@ -2242,7 +2253,7 @@ impl Game<'_> {
     }
     fn closest_node(&mut self, x: f64, y: f64, z: f64) -> usize {
         let nodes = self.dragon_nodes();
-        let start = if self.fight.alive_crystals == 0 {
+        let start = if self.server.fight.alive_crystals == 0 {
             12
         } else {
             0
@@ -2260,7 +2271,7 @@ impl Game<'_> {
     /// `findPath` (A* over the adjacency masks), optionally ending at `last`.
     fn dragon_path(&mut self, from: usize, to: usize, last: Option<[i32; 3]>) -> Option<Path> {
         let nodes = self.dragon_nodes();
-        let min = if self.fight.alive_crystals == 0 {
+        let min = if self.server.fight.alive_crystals == 0 {
             12
         } else {
             0
@@ -2297,7 +2308,7 @@ impl Game<'_> {
             target += 6;
         }
         target += if *clockwise { 1 } else { -1 };
-        if self.fight.alive_crystals > 0 {
+        if self.server.fight.alive_crystals > 0 {
             target = target.rem_euclid(12);
         } else {
             target = ((target - 12) & 7) + 12;
@@ -2385,7 +2396,7 @@ impl Game<'_> {
                     let done = path.as_ref().is_some_and(|p| p.0.done());
                     let mut chosen = false;
                     if done {
-                        let crystals = self.fight.alive_crystals;
+                        let crystals = self.server.fight.alive_crystals;
                         let r = &mut self.dragon.as_mut().expect("dragon").random;
                         if r.next_int_bound(crystals + 3).unwrap_or(1) == 0 {
                             next = Some(Phase::LandingApproach {
@@ -2561,7 +2572,7 @@ impl Game<'_> {
                     let current = self.closest_node(pos.x, pos.y, pos.z);
                     let look = self.dragon_look();
                     let mut t = self.closest_node(-look[0] * 40.0, 105.0, -look[2] * 40.0) as i32;
-                    if self.fight.alive_crystals > 0 {
+                    if self.server.fight.alive_crystals > 0 {
                         t = t.rem_euclid(12);
                     } else {
                         t = ((t - 12) & 7) + 12;
@@ -2749,7 +2760,7 @@ impl Game<'_> {
         // updateDragon runs when the fight dragon ticks or dies, but not with NoAI.
         let ticks = self.dragon.as_ref().is_some_and(|d| !d.alive() || !d.no_ai);
         if ticks && self.is_fight_dragon() {
-            self.fight.dragon_unseen = 0;
+            self.server.fight.dragon_unseen = 0;
         }
         // Entity.baseTick: the saved invulnerability window counts down
         // (#916), before the dragon's own borrow of the game.
@@ -3088,9 +3099,9 @@ impl Game<'_> {
                     let plan = self.prepare_knockback_credit(
                         id as i32,
                         Some(Who::Mob(frame.dragon_id)),
-                        self.combat.attack(),
+                        self.server.combat.attack(),
                     );
-                    let mut credit = plan.lend(&mut self.last_hurt_by_player);
+                    let mut credit = plan.lend(&mut self.server.last_hurt_by_player);
                     if sunrise_gameplay::dragon_contacts::contact_part(
                         crate::game::entity::damage_level_of!(
                             self,
@@ -3130,7 +3141,7 @@ impl Game<'_> {
     /// `EnderDragonFight.setDragonKilled`.
     fn dragon_killed(&mut self) {
         let _ = self.activate_exit_portal();
-        if let Some(g) = self.fight.gateways.pop() {
+        if let Some(g) = self.server.fight.gateways.pop() {
             let a = 2.0 * (-std::f64::consts::PI + std::f64::consts::PI / 20.0 * f64::from(g));
             let pos = [
                 (96.0 * a.cos()).floor() as i32,
@@ -3140,7 +3151,7 @@ impl Game<'_> {
             self.level_event_at(3000, pos, 0);
             let _ = self.place_gateway_at(pos);
         }
-        if !self.fight.previously_killed
+        if !self.server.fight.previously_killed
             && let Some(egg) = self
                 .pack
                 .assets
@@ -3166,9 +3177,9 @@ impl Game<'_> {
                 let _ = self.level_set([0, y, 0], egg);
             }
         }
-        self.fight.previously_killed = true;
-        self.fight.killed = true;
-        self.fight.dirty = true;
+        self.server.fight.previously_killed = true;
+        self.server.fight.killed = true;
+        self.server.fight.dirty = true;
         self.save_fight();
     }
     /// `DragonStrafePlayerPhase`'s shot: `new DragonFireball(level, dragon,
@@ -3294,7 +3305,7 @@ impl Game<'_> {
         self.end_dragon_flame();
         let mut harmed_mobs: Vec<(u32, i32, [f64; 3])> = Vec::new();
         let ticking = self.entity_ticking_area();
-        let through = self.ticked_entities_through;
+        let through = self.server.ticked_entities_through;
         let mut clouds = self.breath_clouds.lift();
         #[cfg(test)]
         super::entity::taken_pass_tests::after_take(self);
@@ -3392,7 +3403,7 @@ impl Game<'_> {
                 && let Ok(outcome) = self
                     .hurt_player_equipment(id, 5.0, blocking, false, causing, false, &attack, None)
             {
-                self.combat.forget_noted(outcome.canceled);
+                self.server.combat.forget_noted(outcome.canceled);
                 self.after_block(
                     outcome,
                     (self.dragon.as_ref().map(|d| d.id), false),
@@ -3479,13 +3490,13 @@ impl Game<'_> {
     /// The boss bars' draws on a `w` x `h` GUI.
     pub(super) fn boss_bar_draws(&self, w: i32, h: i32) -> Vec<hud_layout::GuiDraw> {
         let now = sunrise_client::boss_overlay::now_millis();
-        let bars = self.boss_overlay.bars(now);
+        let bars = self.client.boss_overlay.bars(now);
         // NeoForge's `CustomizeGuiOverlayEvent.BossEventProgress`, asked per
         // bar only while a mod listens.
         let customized = mod_api::__private::listened(mod_api::HookId::CustomizeBossEventProgress);
         hud_overlays::boss_overlay(w, h, &bars, &self.gui.atlas.font, |index, at| {
             let Some(bar) = customized
-                .then(|| self.boss_overlay.mod_bar(index, now))
+                .then(|| self.client.boss_overlay.mod_bar(index, now))
                 .flatten()
             else {
                 return true;
@@ -3510,8 +3521,8 @@ impl Game<'_> {
     pub(super) fn dragon_boss_progress(&self, at: [f64; 3], alive: bool) -> Option<f32> {
         if !self.dimension_type().has_ender_dragon_fight
             || !alive
-            || !self.fight.loaded
-            || self.fight.killed
+            || !self.server.fight.loaded
+            || self.server.fight.killed
         {
             return None;
         }
@@ -3527,7 +3538,7 @@ impl Game<'_> {
     }
     /// `BossHealthOverlay.shouldPlayMusic`.
     pub(super) fn boss_music(&self) -> bool {
-        self.boss_overlay.should_play_music()
+        self.client.boss_overlay.should_play_music()
     }
 }
 /// `DragonLandingPhase.doClientTick` and `DragonSittingFlamingPhase.doClientTick`:
@@ -3643,7 +3654,7 @@ impl Game<'_> {
         out: &mut Vec<Vertex>,
         additive: &mut Vec<Vertex>,
     ) {
-        let Some(model) = self.dragon_model.as_ref() else {
+        let Some(model) = self.client.dragon_model.as_ref() else {
             return;
         };
         let a = alpha as f32;
@@ -3969,15 +3980,15 @@ impl Game<'_> {
         self.load_fight();
         // spawnExitPortal runs from scanState and the dragon's death, both
         // only with players in the fight.
-        self.fight.loaded && self.fight.players
+        self.server.fight.loaded && self.server.fight.players
     }
     pub(super) fn exit_portal(&self) -> Option<[i32; 3]> {
-        self.fight.exit_portal
+        self.server.fight.exit_portal
     }
     pub(super) fn set_exit_portal(&mut self, origin: [i32; 3]) {
-        if self.fight.exit_portal.is_none() {
-            self.fight.exit_portal = Some(origin);
-            self.fight.dirty = true;
+        if self.server.fight.exit_portal.is_none() {
+            self.server.fight.exit_portal = Some(origin);
+            self.server.fight.dirty = true;
         }
     }
 }
@@ -4154,11 +4165,11 @@ impl Game<'_> {
         let crystals: Vec<Vec3> = self
             .crystals
             .iter()
-            .filter(|c| in_reach(c.position) && self.combat.visits(c.id))
+            .filter(|c| in_reach(c.position) && self.server.combat.visits(c.id))
             .map(|c| c.position)
             .collect();
         // The blast's source carries the player who set it off, if any.
-        let by = self.fight.blast_by;
+        let by = self.server.fight.blast_by;
         for at in crystals {
             // Look up the current index after each removal.
             if let Some(i) = self.crystals.iter().position(|c| c.position == at) {
@@ -4170,9 +4181,10 @@ impl Game<'_> {
                     damage_type,
                     causing,
                     direct: self
+                        .server
                         .combat
                         .explosion_direct
-                        .or(self.combat.explosion_source)
+                        .or(self.server.combat.explosion_source)
                         .map_or(0, |id| id as i32),
                     position: Some(center),
                 };
@@ -4184,7 +4196,11 @@ impl Game<'_> {
                 self.destroy_crystal(i, by, CrystalDamage::Explosion);
             }
         }
-        let Some(d) = self.dragon.as_ref().filter(|d| self.combat.visits(d.id)) else {
+        let Some(d) = self
+            .dragon
+            .as_ref()
+            .filter(|d| self.server.combat.visits(d.id))
+        else {
             return;
         };
         let hits = d.explosion_hits(center, radius, |b| {
@@ -4298,17 +4314,17 @@ impl Game<'_> {
                     _ => serde_json::Value::Null,
                 },
             })),
-            "players": self.fight.players,
+            "players": self.server.fight.players,
             "crystals": self.crystals.len(),
             // The tracked id (0 until tracked) and position of each crystal.
             "crystal_list": self.crystals.iter().map(|c| serde_json::json!({
                 "id": c.id,
                 "position": [c.position.x, c.position.y, c.position.z],
             })).collect::<Vec<_>>(),
-            "alive_crystals": self.fight.alive_crystals,
-            "killed": self.fight.killed,
-            "exit_portal": self.fight.exit_portal,
-            "respawn": self.fight.respawn.map(|(s, t)| format!("{} {t}", s.name())),
+            "alive_crystals": self.server.fight.alive_crystals,
+            "killed": self.server.fight.killed,
+            "exit_portal": self.server.fight.exit_portal,
+            "respawn": self.server.fight.respawn.map(|(s, t)| format!("{} {t}", s.name())),
         })
     }
 }
@@ -4366,9 +4382,9 @@ impl Game<'_> {
         let time = Crystal::start_time(at, drawn, self.clock.still());
         // EndCrystal's constructor takes an id from the entity counter, so
         // the crystal is an entity a command can name (`@e[type=end_crystal]`).
-        self.next_entity += 1;
+        self.server.next_entity += 1;
         self.crystals
-            .push(Crystal::new(self.next_entity, at, false, time));
+            .push(Crystal::new(self.server.next_entity, at, false, time));
         // EndCrystalItem.useOn: ENTITY_PLACE at the block above, by the player.
         self.post_block_game_event("minecraft:entity_place", above, self.sculk_actor(), None);
         self.world.modified.insert((above[0] >> 4, above[2] >> 4));
@@ -4388,8 +4404,9 @@ impl Game<'_> {
     pub(super) fn kill_crystal(&mut self, id: u32) {
         if let Some(i) = self.crystals.iter().position(|c| c.id == id) {
             let c = self.crystals[i].clone();
-            let respawn = self.fight.respawn.is_some()
+            let respawn = self.server.fight.respawn.is_some()
                 && self
+                    .server
                     .fight
                     .respawn_crystals
                     .iter()
@@ -4429,14 +4446,14 @@ impl Game<'_> {
     /// `EnderDragonFight.tryRespawn`: a crystal on each side of the portal.
     fn try_respawn(&mut self) {
         self.load_fight();
-        if !self.fight.killed || self.fight.respawn.is_some() {
+        if !self.server.fight.killed || self.server.fight.respawn.is_some() {
             return;
         }
-        let origin = match self.fight.exit_portal {
+        let origin = match self.server.fight.exit_portal {
             Some(o) => o,
             None => {
                 let _ = self.activate_exit_portal();
-                match self.fight.exit_portal {
+                match self.server.fight.exit_portal {
                     Some(o) => o,
                     None => return,
                 }
@@ -4478,9 +4495,9 @@ impl Game<'_> {
             }
         }
         let _ = self.place_podium(origin, false);
-        self.fight.respawn = Some((Respawn::Start, 0));
-        self.fight.respawn_crystals = found;
-        self.fight.dirty = true;
+        self.server.fight.respawn = Some((Respawn::Start, 0));
+        self.server.fight.respawn_crystals = found;
+        self.server.fight.dirty = true;
     }
     fn block_name_at(&self, p: [i32; 3]) -> std::sync::Arc<str> {
         self.res
@@ -4490,7 +4507,7 @@ impl Game<'_> {
             .clone()
     }
     fn respawn_beams(&mut self, target: Option<[i32; 3]>) {
-        let list = self.fight.respawn_crystals.clone();
+        let list = self.server.fight.respawn_crystals.clone();
         for c in &mut self.crystals {
             if list.iter().any(|p| p.distance_squared(c.position) < 0.01) {
                 c.beam = target;
@@ -4508,15 +4525,15 @@ impl Game<'_> {
         );
     }
     fn set_respawn(&mut self, stage: Option<Respawn>) {
-        self.fight.respawn = stage.map(|s| (s, 0));
-        self.fight.dirty = true;
+        self.server.fight.respawn = stage.map(|s| (s, 0));
+        self.server.fight.dirty = true;
     }
     /// `EnderDragonFight.tick` with a respawn in progress.
     fn tick_respawn(&mut self) {
-        let Some((stage, time)) = self.fight.respawn else {
+        let Some((stage, time)) = self.server.fight.respawn else {
             return;
         };
-        let alive = self.fight.respawn_crystals.iter().any(|p| {
+        let alive = self.server.fight.respawn_crystals.iter().any(|p| {
             self.crystals
                 .iter()
                 .any(|c| p.distance_squared(c.position) < 0.01)
@@ -4525,7 +4542,7 @@ impl Game<'_> {
             self.abort_respawn();
             return;
         }
-        if let Some(r) = self.fight.respawn.as_mut() {
+        if let Some(r) = self.server.fight.respawn.as_mut() {
             r.1 += 1;
         }
         const CENTER: [i32; 3] = [0, 128, 0];
@@ -4645,8 +4662,8 @@ impl Game<'_> {
             .retain(|c| c.position.distance_squared(at) > 0.01);
         let (drawn, _) = Crystal::own_draws();
         let time = Crystal::start_time(at, drawn, self.clock.still());
-        self.next_entity += 1;
-        let crystal_id = self.next_entity;
+        self.server.next_entity += 1;
+        let crystal_id = self.server.next_entity;
         self.crystals.push(Crystal {
             beam: Some([0, 128, 0]),
             invulnerable: true,
@@ -4696,17 +4713,17 @@ impl Game<'_> {
         let seed = random_source::unique_seed();
         let mut dragon = Dragon::new(Vec3::new(0.0, 128.0, 0.0), yaw, seed);
         dragon.join = sunrise_client::join_seq::JoinSeq::next();
-        dragon.id = self.next_entity + 1;
+        dragon.id = self.server.next_entity + 1;
         dragon.phase = Phase::Holding {
             path: None,
             target: None,
             clockwise: false,
         };
-        self.next_entity += 9;
+        self.server.next_entity += 9;
         let id = dragon.id;
         assert!(self.dragon.install(dragon).is_ok());
-        self.fight.dragon_uuid = Some(self.uuid_for(id));
-        self.fight.dirty = true;
+        self.server.fight.dragon_uuid = Some(self.uuid_for(id));
+        self.server.fight.dirty = true;
     }
     /// `EnderDragonFight.findOrCreateDragon`: the End's dragon becomes the
     /// fight's, or a new one is made.
@@ -4714,8 +4731,8 @@ impl Game<'_> {
         match self.dragon.as_ref().map(|d| (d.id, d.alive())) {
             None => self.create_new_dragon(),
             Some((id, true)) => {
-                self.fight.dragon_uuid = Some(self.uuid_for(id));
-                self.fight.dirty = true;
+                self.server.fight.dragon_uuid = Some(self.uuid_for(id));
+                self.server.fight.dirty = true;
             }
             // `ServerLevel.getDragons` takes only living dragons, so vanilla
             // makes a new one beside a dying one; with one dragon to a level,
@@ -4729,20 +4746,20 @@ impl Game<'_> {
     /// then it is removed for a new one.
     fn scan_state(&mut self) {
         let active = self.end_portal_active();
-        self.fight.previously_killed = active;
+        self.server.fight.previously_killed = active;
         match self.dragon.as_ref().filter(|d| d.alive()).map(|d| d.id) {
-            None => self.fight.killed = true,
+            None => self.server.fight.killed = true,
             Some(id) => {
-                self.fight.dragon_uuid = Some(self.uuid_for(id));
-                self.fight.killed = false;
+                self.server.fight.dragon_uuid = Some(self.uuid_for(id));
+                self.server.fight.killed = false;
                 if !active {
                     self.discard_resident_dragon();
-                    self.fight.dragon_uuid = None;
+                    self.server.fight.dragon_uuid = None;
                 }
             }
         }
-        if !self.fight.previously_killed && self.fight.killed {
-            self.fight.killed = false;
+        if !self.server.fight.previously_killed && self.server.fight.killed {
+            self.server.fight.killed = false;
         }
     }
     /// The dragon is the End fight's own (`EnderDragon.dragonFight`, set
@@ -4751,7 +4768,10 @@ impl Game<'_> {
         if !self.dimension_type().has_ender_dragon_fight {
             return false;
         }
-        match (self.dragon.as_ref().map(|d| d.id), self.fight.dragon_uuid) {
+        match (
+            self.dragon.as_ref().map(|d| d.id),
+            self.server.fight.dragon_uuid,
+        ) {
             (Some(id), Some(uuid)) if id != 0 => self.uuid_for(id) == uuid,
             _ => false,
         }
@@ -4763,8 +4783,8 @@ impl Game<'_> {
         // the spike reset and before they are removed (vanilla resetEndCrystals).
         self.respawn_beams(None);
         self.reset_spike_crystals();
-        self.fight.respawn = None;
-        let list = std::mem::take(&mut self.fight.respawn_crystals);
+        self.server.fight.respawn = None;
+        let list = std::mem::take(&mut self.server.fight.respawn_crystals);
         for p in list {
             if let Some(i) = self
                 .crystals
@@ -4791,7 +4811,7 @@ impl Game<'_> {
                 );
             }
         }
-        self.fight.killed = false;
+        self.server.fight.killed = false;
         // setRespawnStage(END): the new dragon is summoned for every player
         // of the fight (the boss bar's players: alive within 192 blocks).
         self.create_new_dragon();
@@ -4817,17 +4837,17 @@ impl Game<'_> {
                 }
             });
         }
-        self.fight.dirty = true;
+        self.server.fight.dirty = true;
         self.count_crystals();
     }
     /// `abortRespawnSequence`.
     fn abort_respawn(&mut self) {
-        self.fight.respawn = None;
+        self.server.fight.respawn = None;
         self.respawn_beams(None);
-        self.fight.respawn_crystals.clear();
+        self.server.fight.respawn_crystals.clear();
         self.reset_spike_crystals();
         let _ = self.activate_exit_portal();
-        self.fight.dirty = true;
+        self.server.fight.dirty = true;
     }
     /// `EnderDragon.checkCrystals`' search: the nearest crystal whose box
     /// meets the dragon's box grown by 32.
@@ -4934,8 +4954,8 @@ impl Game<'_> {
         let seed = random_source::unique_seed();
         let mut dragon = Dragon::new(position, yaw, seed);
         dragon.join = sunrise_client::join_seq::JoinSeq::next();
-        dragon.id = self.next_entity + 1;
-        self.next_entity += 9;
+        dragon.id = self.server.next_entity + 1;
+        self.server.next_entity += 9;
         let id = dragon.id;
         // Finalization listeners can install another dragon after the initial
         // refusal check. Keep the constructor's existing replacement order.

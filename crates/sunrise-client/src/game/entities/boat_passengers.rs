@@ -105,9 +105,9 @@ impl Game<'_> {
     pub(super) fn vehicles_ticking(&self, on: bool) {
         let reach = (on && mod_api::__private::mods().is_empty())
             .then(|| (usize::MAX, BoxReach::default()));
-        self.vehicle_mobs.reach.set(reach);
+        self.server.vehicle_mobs.reach.set(reach);
         // The boats' grid serves the carts ticking right after them; an older one goes.
-        let mut grid = self.vehicle_mobs.grid.borrow_mut();
+        let mut grid = self.server.vehicle_mobs.grid.borrow_mut();
         let stamp = self.mobs.stamp();
         let built = grid.built.take().filter(|(s, _)| *s == stamp);
         *grid = MobGrid {
@@ -118,18 +118,24 @@ impl Game<'_> {
     /// A vehicle picked a mob up: a shulker turns its lid up (`Shulker.startRiding`), which
     /// changes its box, so the next query works the [`BoxReach`] out again.
     pub(super) fn vehicle_picked_up(&self) {
-        if let Some((_, reach)) = self.vehicle_mobs.reach.get() {
-            self.vehicle_mobs.reach.set(Some((usize::MAX, reach)));
+        if let Some((_, reach)) = self.server.vehicle_mobs.reach.get() {
+            self.server
+                .vehicle_mobs
+                .reach
+                .set(Some((usize::MAX, reach)));
         }
     }
     /// The mobs' [`BoxReach`] while vehicles tick, none otherwise.
     pub(super) fn vehicle_mob_reach(&self) -> Option<BoxReach> {
-        let (count, reach) = self.vehicle_mobs.reach.get()?;
+        let (count, reach) = self.server.vehicle_mobs.reach.get()?;
         if count == self.mobs.len() {
             return Some(reach);
         }
         let reach = BoxReach::of(&self.mobs);
-        self.vehicle_mobs.reach.set(Some((self.mobs.len(), reach)));
+        self.server
+            .vehicle_mobs
+            .reach
+            .set(Some((self.mobs.len(), reach)));
         Some(reach)
     }
     /// Resident mob riders in slot order, including those whose removal is pending.
@@ -138,7 +144,7 @@ impl Game<'_> {
     pub(super) fn resident_mob_riders(&self, id: u32) -> impl Iterator<Item = (usize, &Mob)> {
         let slots = if self.vehicle_mobs_indexed() {
             let stamp = self.mobs.stamp();
-            let cache = &self.vehicle_mobs.riders;
+            let cache = &self.server.vehicle_mobs.riders;
             if cache.borrow().as_ref().is_none_or(|(s, _)| *s != stamp) {
                 let mut by_vehicle = FxHashMap::<u32, Vec<usize>>::default();
                 for (slot, mob) in self.mobs.iter().enumerate() {
@@ -173,7 +179,7 @@ impl Game<'_> {
     /// over it: a stretch runs, and no native mod is loaded (a hook can move a mob unseen, as
     /// for the carts' `CartIndex`).
     fn vehicle_mobs_indexed(&self) -> bool {
-        self.vehicle_mobs.reach.get().is_some() && mod_api::__private::mods().is_empty()
+        self.server.vehicle_mobs.reach.get().is_some() && mod_api::__private::mods().is_empty()
     }
     /// The slots, ascending, of the mobs whose box may meet `area` into `out` (a superset: the
     /// caller still tests each box), from a grid of the mobs' boxes that the first query of a
@@ -185,7 +191,7 @@ impl Game<'_> {
             return false;
         }
         let stamp = self.mobs.stamp();
-        let mut grid = self.vehicle_mobs.grid.borrow_mut();
+        let mut grid = self.server.vehicle_mobs.grid.borrow_mut();
         if grid.built.as_ref().is_none_or(|(s, _)| *s != stamp) {
             if grid.walked < grid.patience {
                 grid.walked += 1;
@@ -208,7 +214,7 @@ impl Game<'_> {
         area: Aabb,
         mut each: impl FnMut(usize, &Mob, Aabb),
     ) {
-        let mut near = self.vehicle_mobs.near.take();
+        let mut near = self.server.vehicle_mobs.near.take();
         if self.vehicle_mobs_near(area, &mut near) {
             for &j in &near {
                 let m = &self.mobs[j as usize];
@@ -229,7 +235,7 @@ impl Game<'_> {
                 }
             }
         }
-        self.vehicle_mobs.near.set(near);
+        self.server.vehicle_mobs.near.set(near);
     }
     /// Whether mob `m`, whose box `reach` bounds, may touch a cart: the carts' grid (`cells`)
     /// names the carts near it, or every cart when the grid cannot (a superset either way).
@@ -254,7 +260,7 @@ impl Game<'_> {
             h.hub
                 .guests
                 .iter()
-                .filter(|g| Some(g.conn) != self.lan_acting && g.vehicle == Some(id))
+                .filter(|g| Some(g.conn) != self.server.lan_acting && g.vehicle == Some(id))
                 .count()
         });
         usize::from(self.riding == Some(id)) + guests
@@ -310,7 +316,7 @@ impl Game<'_> {
         }
         if let Some(host) = self.lan.as_ref() {
             for g in host.hub.guests.iter().filter(|g| {
-                Some(g.conn) != self.lan_acting
+                Some(g.conn) != self.server.lan_acting
                     && host.hub.here(g)
                     && g.loaded
                     && !g.dead
@@ -919,7 +925,8 @@ mod tests {
                 // The last comparisons ran against the grid: it stands, for the list as it is.
                 let fresh = |(stamp, _): &(ListStamp, SeenGrid)| *stamp == game.mobs.stamp();
                 assert!(
-                    game.vehicle_mobs
+                    game.server
+                        .vehicle_mobs
                         .grid
                         .borrow()
                         .built

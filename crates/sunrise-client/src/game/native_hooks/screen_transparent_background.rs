@@ -25,10 +25,10 @@ impl Game<'_> {
     /// requested this frame, or false if it was already applied/requested this frame.
     /// API @API:screen_transparent_background@.
     pub(in crate::game) fn apply_screen_blur(&self) -> bool {
-        if self.screen_blur_requested.get() {
+        if self.client.screen_blur_requested.get() {
             return false;
         }
-        self.screen_blur_requested.set(true);
+        self.client.screen_blur_requested.set(true);
         true
     }
     /// The user's configured menu background blur radius (`menuBackgroundBlurriness` in options.txt,

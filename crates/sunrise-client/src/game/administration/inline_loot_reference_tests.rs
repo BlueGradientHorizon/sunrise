@@ -83,10 +83,10 @@ fn game<'a>(resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>) -
         r#"{"enabled":["file/il"],"disabled":[]}"#,
     )
     .unwrap();
-    game.world_root = dir;
+    game.server.world_root = dir;
     let root = game.options.resources.clone();
     let stack = crate::game::functions::pack_stack(
-        &game.world_root,
+        &game.server.world_root,
         &root,
         &sunrise_assets::resource_source::ResourceSource::directory(root.clone()),
         &Default::default(),
@@ -94,7 +94,7 @@ fn game<'a>(resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>) -
         &[],
         &[],
     );
-    game.world_tables = game
+    game.server.world_tables = game
         .stage_world_tables(&stack, false, &root)
         .unwrap()
         .tables;
@@ -121,9 +121,9 @@ fn score(game: &Game<'_>, name: &str) -> i32 {
 /// under `execute store` from 31, the stored result and success; then the
 /// diamonds the player holds (cleared).
 fn give(game: &mut Game<'_>, table: &str) -> (bool, Option<String>, i32, i32, i32) {
-    game.chat_capture = Some(Vec::new());
+    game.server.chat_capture = Some(Vec::new());
     let ok = game.run_command(&format!("loot give @s loot {table}"));
-    let said = game.chat_capture.take().unwrap_or_default();
+    let said = game.server.chat_capture.take().unwrap_or_default();
     assert!(game.run_command("scoreboard players set r il 31"));
     assert!(game.run_command("scoreboard players set s il 31"));
     let _ = game.run_command(&format!(
@@ -205,7 +205,7 @@ fn inline_references_follow_the_codec_and_the_reloaded_registry() {
     let (ok, _, r, s, d) = give(&mut game, &late);
     assert_eq!((ok, r, s, d), (false, 31, 31, 0), "before /reload");
     // The pack gains the table and two functions; /reload refreshes both.
-    let pack = game.world_root.join("datapacks/il/data/parity");
+    let pack = game.server.world_root.join("datapacks/il/data/parity");
     std::fs::write(
         pack.join("loot_table/il_late.json"),
         r#"{"pools":[{"rolls":1,"entries":[{"type":"minecraft:item","name":"minecraft:diamond"}]}]}"#,
@@ -233,9 +233,9 @@ fn inline_references_follow_the_codec_and_the_reloaded_registry() {
     assert!(game.run_command("execute store result score d il run clear @s minecraft:diamond"));
     assert_eq!(score(&game, "d"), 1);
     // [fail-before] The function with the missing reference is not loaded.
-    game.chat_capture = Some(Vec::new());
+    game.server.chat_capture = Some(Vec::new());
     assert!(!game.run_command("function parity:il_bad"));
-    let said = game.chat_capture.take().unwrap_or_default();
+    let said = game.server.chat_capture.take().unwrap_or_default();
     assert_eq!(
         said.first()
             .map(sunrise_client::text::Text::plain)
@@ -250,14 +250,17 @@ fn pack_functions_admit_inline_references_on_first_open() {
     let _publication = sunrise_client::datapack_net::isolate_server_publication();
     let mut resources = None;
     let mut game = game(&mut resources);
-    let functions = game.world_root.join("datapacks/il/data/parity/function");
+    let functions = game
+        .server
+        .world_root
+        .join("datapacks/il/data/parity/function");
     std::fs::create_dir_all(&functions).unwrap();
     std::fs::write(
         functions.join("il_good.mcfunction"),
         format!("loot give @s loot {}\n", reference("\"parity:il_one\"")),
     )
     .unwrap();
-    game.world_tables = None;
+    game.server.world_tables = None;
     game.open_world_datapacks(&[]).unwrap();
     assert!(game.run_command("function parity:il_good"));
     assert!(game.run_command("execute store result score d il run clear @s minecraft:diamond"));

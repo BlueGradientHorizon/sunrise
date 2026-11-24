@@ -23,7 +23,7 @@ mod tests {
             game.options.frames = None;
             game.options.world_frames = None;
             game.options.timeout = Some(Duration::from_secs(1));
-            game.started = std::time::Instant::now() - Duration::from_secs(2);
+            game.client.started = std::time::Instant::now() - Duration::from_secs(2);
             let event_loop = TestLoop(Cell::new(false));
             game.idle(&event_loop);
             assert!(event_loop.0.get(), "the live idle path must request exit");

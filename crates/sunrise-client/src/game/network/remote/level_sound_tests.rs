@@ -390,7 +390,7 @@ fn packets_ask_client_level_before_playback_not_ui() {
                 "minecraft:ui.button.click"
             );
             assert!(
-                game.bound_sounds.is_empty(),
+                game.server.bound_sounds.is_empty(),
                 "client playback is never broadcast"
             );
         });

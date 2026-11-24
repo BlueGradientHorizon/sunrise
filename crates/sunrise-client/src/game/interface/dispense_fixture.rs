@@ -158,7 +158,7 @@ impl Game<'_> {
             }
         }
         self.block_ticks = Ticks::new(0);
-        self.tick_chunks.clear();
+        self.server.tick_chunks.clear();
         self.sync_tick_chunks();
         self.mobs.clear();
         self.dragon.discard();
@@ -177,15 +177,15 @@ impl Game<'_> {
         self.orbs.clear();
         self.falling.clear();
         // Hopper cooldowns of an earlier case.
-        self.hoppers.clear();
+        self.server.hoppers.clear();
         self.ui.rules = Default::default();
         self.dim = super::Dim::Overworld;
-        self.respawn_config = None;
+        self.server.respawn_config = None;
         // The oracle level plays on normal difficulty.
         self.ui.difficulty = 2;
         // The oracle level has world seed 0 and fresh random sequences.
         self.level.seed = 0;
-        self.rand_sequences = Default::default();
+        self.server.rand_sequences = Default::default();
     }
 
     fn dispense_case(&mut self, case: &Value) -> Result<Vec<String>> {
@@ -504,7 +504,7 @@ impl Game<'_> {
             out.push(format!("S {} {}", floor_pos(sound.position), sound.event));
         }
         // The sounds bound to an entity (a sheared mob's) are the server's too.
-        for s in std::mem::take(&mut self.bound_sounds) {
+        for s in std::mem::take(&mut self.server.bound_sounds) {
             out.push(format!("S {} {}", floor_pos(s.at), s.name));
         }
         out.extend(used);
@@ -535,7 +535,7 @@ impl Game<'_> {
         self.armor = Default::default();
         self.offhand = Some(stack);
         self.using = Some((super::shield::OFFHAND_SLOT, 100));
-        self.combat = Default::default();
+        self.server.combat = Default::default();
         let before = self.stats.get("used", &item);
         let from = sunrise_core::geometry::Vec3::new(
             0.0,
@@ -661,7 +661,7 @@ impl Game<'_> {
         )?;
         if let Some(r) = op["respawn"].as_array() {
             let p = |i: usize| r.get(i).and_then(Value::as_i64).unwrap_or(0) as i32;
-            self.respawn_config = Some(super::respawn_anchor::RespawnConfig {
+            self.server.respawn_config = Some(super::respawn_anchor::RespawnConfig {
                 dim: self.dim,
                 pos: [p(0), p(1), p(2)],
                 yaw: 0.0,
@@ -699,7 +699,7 @@ impl Game<'_> {
             _ => [0, 1, 0],
         };
         let centre = |c: i32, f: i32| f64::from(c) + 0.5 + f64::from(f) * 0.5;
-        self.forced_hit = Some(super::Hit {
+        self.server.forced_hit = Some(super::Hit {
             pos: [pos.x, pos.y, pos.z],
             face,
             point: [
@@ -709,10 +709,10 @@ impl Game<'_> {
             ],
             inside: false,
         });
-        self.chat_capture = Some(Vec::new());
+        self.server.chat_capture = Some(Vec::new());
         let used = self.use_item_as_player();
-        self.forced_hit = None;
-        let messages = self.chat_capture.take().unwrap_or_default();
+        self.server.forced_hit = None;
+        let messages = self.server.chat_capture.take().unwrap_or_default();
         used?;
         self.process_level_events()?;
         let mut out = Vec::new();
@@ -740,7 +740,7 @@ impl Game<'_> {
             canon_stack(self.inventory[self.selected].as_ref(), self.res.items()),
             canon_stack(self.offhand.as_ref(), self.res.items())
         ));
-        out.push(match self.respawn_config {
+        out.push(match self.server.respawn_config {
             Some(c) => format!(
                 "respawn {} {},{},{}",
                 c.dim.id(),
@@ -770,9 +770,9 @@ impl Game<'_> {
         } else {
             GameMode::Survival
         };
-        self.combat = Default::default();
+        self.server.combat = Default::default();
         self.using = None;
-        self.shield_cooldown = 0;
+        self.server.shield_cooldown = 0;
         self.yaw = 0.0;
         self.player = Some(PlayerMotion::new(
             self.motion,
@@ -823,7 +823,7 @@ impl Game<'_> {
             )
         };
         // A new player: no combat of an earlier case's.
-        self.combat = Default::default();
+        self.server.combat = Default::default();
         let mut player = PlayerMotion::new(self.motion, v3(&op["player"]))?;
         player.velocity = v3(&op["motion"]);
         player.fall_distance = op["fall"].as_f64().unwrap_or(0.0);
@@ -1211,8 +1211,8 @@ impl Game<'_> {
             p[2].as_f64().unwrap_or(0.0),
         );
         let yaw = e["yaw"].as_f64().unwrap_or(0.0) as f32;
-        self.next_entity += 1;
-        let id = self.next_entity;
+        self.server.next_entity += 1;
+        let id = self.server.next_entity;
         if let Some(cart) = super::minecarts::CartKind::from_id(kind) {
             let mut c = super::minecarts::Minecart::new(id, cart, at);
             c.yaw = yaw;

@@ -106,10 +106,12 @@ impl Game<'_> {
                         }
                         self.world.shulkers.remove(&p);
                         self.world.chest_openers.remove(&at);
-                        self.lid_openers.remove(&at);
-                        self.test_highlights.remove(&at);
+                        self.server.lid_openers.remove(&at);
+                        self.client.test_highlights.remove(&at);
                     }
-                    self.mod_container_viewers.retain(|(_, at), _| *at != from);
+                    self.server
+                        .mod_container_viewers
+                        .retain(|(_, at), _| *at != from);
                     if self.jukebox_sounds.contains_key(&from)
                         || self
                             .world
@@ -163,7 +165,7 @@ impl Game<'_> {
                         self.world
                             .set_block_entity_extras(at, BlockEntityExtras::default());
                         self.world.block_names.remove(&at);
-                        self.hoppers.remove(&at);
+                        self.server.hoppers.remove(&at);
                     }
                     self.mark_block_entity_updated(at);
                 }

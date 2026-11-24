@@ -53,7 +53,7 @@ impl Game<'_> {
     /// fight of a dragon in the level in place when that is the End.
     fn native_dragon_fight(&self, dragon: DragonRef) -> Option<&Fight> {
         self.native_dragon(dragon.entity())?;
-        (self.dim == Dim::End && self.fight.loaded).then_some(&self.fight)
+        (self.dim == Dim::End && self.server.fight.loaded).then_some(&self.server.fight)
     }
 
     /// `EnderDragonFight.aliveCrystals`: the crystals the last scan found
@@ -319,9 +319,9 @@ mod tests {
             // The fight: unloaded until the End loads it, and only the End's.
             assert_eq!(dragon.alive_crystals(game), None);
             assert_eq!(dragon.previously_killed(game), None);
-            game.fight.loaded = true;
-            game.fight.alive_crystals = 3;
-            game.fight.previously_killed = true;
+            game.server.fight.loaded = true;
+            game.server.fight.alive_crystals = 3;
+            game.server.fight.previously_killed = true;
             assert_eq!(dragon.alive_crystals(game), None, "not in the End");
             assert_eq!(dragon.previously_killed(game), None);
             game.dim = Dim::End;

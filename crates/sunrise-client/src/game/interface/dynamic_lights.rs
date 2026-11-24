@@ -27,7 +27,8 @@ fn brighter<'a>(
 impl Game<'_> {
     /// How brightly each item glows, built on first use.
     pub(super) fn luminance(&self) -> &Luminance {
-        self.luminance
+        self.client
+            .luminance
             .get_or_init(|| Luminance::new(self.res.facts(), self.pack.assets.registry))
     }
     /// The player's, mobs' and dropped items' sources in their original order, with borrowed
@@ -108,12 +109,12 @@ impl Game<'_> {
     /// The nearest MAX sources, without building an intermediate list or owning item names.
     pub(super) fn gather_dynamic_lights(&mut self, camera: DVec3, alpha: f64) {
         let _span = sunrise_client::spans::guard("pr_light_gather");
-        let mut out = std::mem::take(&mut self.dynamic_lights);
+        let mut out = std::mem::take(&mut self.client.dynamic_lights);
         dynamic_light::select_iter(
             self.dynamic_light_sources(alpha).map(|(s, _)| s),
             camera,
             &mut out,
         );
-        self.dynamic_lights = out;
+        self.client.dynamic_lights = out;
     }
 }

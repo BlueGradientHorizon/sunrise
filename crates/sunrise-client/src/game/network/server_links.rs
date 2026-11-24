@@ -156,18 +156,19 @@ impl Game<'_> {
         ui::menu_background(batch, atlas, 0.0, 0.0, w, h, true);
         self.draw_screen_phase(batch, sunrise_client::screen_draw::RenderPhase::Background);
         let links = self.server_links().to_vec();
-        self.links_ui.scroll = self
+        self.client.links_ui.scroll = self
+            .client
             .links_ui
             .scroll
             .clamp(0.0, scroll_limit(h, links.len()));
-        let top = list_top(h, links.len()) - self.links_ui.scroll.trunc();
+        let top = list_top(h, links.len()) - self.client.links_ui.scroll.trunc();
         // The title row: the title, then 10 pixels on the warning button.
         let title = Text::translate("menu.server_links.title", &[]);
         let tw = atlas.font.width_text(&title);
         let tx = ((w - tw - 30.0) / 2.0).floor();
         batch.text_styled(atlas, &title, tx, 12.0, u32::MAX, true);
         let (wx, wy) = warning_button(w, h, tw);
-        let wh = ui::hovered(self.cursor, wx, wy, WARNING_BUTTON, WARNING_BUTTON);
+        let wh = ui::hovered(self.client.cursor, wx, wy, WARNING_BUTTON, WARNING_BUTTON);
         // DialogScreen.createWarningButton: an ImageButton with its own
         // message and its tooltip.
         sunrise_client::widgets::narratable(|| {
@@ -201,9 +202,9 @@ impl Game<'_> {
             u32::MAX,
         );
         let first = batch.vertices.len();
-        let inside = self.cursor.1 >= HEADER && self.cursor.1 < h - FOOTER;
+        let inside = self.client.cursor.1 >= HEADER && self.client.cursor.1 < h - FOOTER;
         for (link, (x, y)) in links.iter().zip(link_buttons(w, top, links.len())) {
-            let hover = inside && ui::hovered(self.cursor, x, y, LINK_WIDTH, 20.0);
+            let hover = inside && ui::hovered(self.client.cursor, x, y, LINK_WIDTH, 20.0);
             ui::button(
                 batch,
                 atlas,
@@ -224,10 +225,10 @@ impl Game<'_> {
             HEADER,
             h - FOOTER,
             list_height(links.len()),
-            self.links_ui.scroll.trunc(),
+            self.client.links_ui.scroll.trunc(),
         );
         let (bx, by) = back_button(w, h);
-        let hover = ui::hovered(self.cursor, bx, by, 200.0, 20.0);
+        let hover = ui::hovered(self.client.cursor, bx, by, 200.0, 20.0);
         ui::action_button(
             batch,
             atlas,
@@ -246,7 +247,7 @@ impl Game<'_> {
                 batch,
                 atlas,
                 &[Text::translate("menu.custom_screen_info.tooltip", &[])],
-                self.cursor,
+                self.client.cursor,
             );
         }
     }
@@ -254,12 +255,12 @@ impl Game<'_> {
     pub(super) fn server_links_click(&mut self) -> Result<bool> {
         let (w, h) = self.gui_size();
         let links = self.server_links().to_vec();
-        let top = list_top(h, links.len()) - self.links_ui.scroll.trunc();
-        let inside = self.cursor.1 >= HEADER && self.cursor.1 < h - FOOTER;
+        let top = list_top(h, links.len()) - self.client.links_ui.scroll.trunc();
+        let inside = self.client.cursor.1 >= HEADER && self.client.cursor.1 < h - FOOTER;
         if inside
             && let Some(i) = link_buttons(w, top, links.len())
                 .iter()
-                .position(|(x, y)| ui::hovered(self.cursor, *x, *y, LINK_WIDTH, 20.0))
+                .position(|(x, y)| ui::hovered(self.client.cursor, *x, *y, LINK_WIDTH, 20.0))
         {
             self.audio.play_button_click();
             self.click_link(&links[i].link);
@@ -268,13 +269,13 @@ impl Game<'_> {
         let title = Text::translate("menu.server_links.title", &[]);
         let tw = self.gui.atlas.font.width_text(&title);
         let (wx, wy) = warning_button(w, h, tw);
-        if ui::hovered(self.cursor, wx, wy, WARNING_BUTTON, WARNING_BUTTON) {
+        if ui::hovered(self.client.cursor, wx, wy, WARNING_BUTTON, WARNING_BUTTON) {
             self.audio.play_button_click();
             self.set_screen(Screen::DialogWarning);
             return Ok(true);
         }
         let (bx, by) = back_button(w, h);
-        if ui::hovered(self.cursor, bx, by, 200.0, 20.0) {
+        if ui::hovered(self.client.cursor, bx, by, 200.0, 20.0) {
             self.audio.play_button_click();
             self.set_screen(Screen::Paused);
             return Ok(true);
@@ -288,9 +289,9 @@ impl Game<'_> {
             return;
         }
         if self.settings.chat_links_prompt {
-            self.links_ui.confirm = Some(url.to_owned());
-            self.links_ui.trusted = false;
-            self.links_ui.back = None;
+            self.client.links_ui.confirm = Some(url.to_owned());
+            self.client.links_ui.trusted = false;
+            self.client.links_ui.back = None;
             self.set_screen(Screen::ConfirmLink);
         } else {
             open_uri(url);
@@ -299,22 +300,22 @@ impl Game<'_> {
     /// `ConfirmLinkScreen.confirmLinkNow(parent, uri, true)`: ask about a link
     /// Mojang's own button names, whatever the "Web Links" options say.
     pub(super) fn confirm_trusted_link(&mut self, url: &str, parent: Screen) {
-        self.links_ui.confirm = Some(url.to_owned());
-        self.links_ui.trusted = true;
-        self.links_ui.back = Some(parent);
+        self.client.links_ui.confirm = Some(url.to_owned());
+        self.client.links_ui.trusted = true;
+        self.client.links_ui.back = Some(parent);
         self.set_screen(Screen::ConfirmLink);
     }
     /// `ConfirmLinkScreen.confirmLinkNow(parent, uri, false)`: ask about a link that is not
     /// Mojang's, with the warning, whatever the "Web Links" options say.
     pub(super) fn confirm_untrusted_link(&mut self, url: &str, parent: Screen) {
-        self.links_ui.confirm = Some(url.to_owned());
-        self.links_ui.trusted = false;
-        self.links_ui.back = Some(parent);
+        self.client.links_ui.confirm = Some(url.to_owned());
+        self.client.links_ui.trusted = false;
+        self.client.links_ui.back = Some(parent);
         self.set_screen(Screen::ConfirmLink);
     }
     /// The screen `ConfirmLinkScreen`'s callback returns to (`setScreen(parent)`).
     pub(super) fn confirm_link_back(&self) -> Screen {
-        self.links_ui.back.unwrap_or(Screen::ServerLinks)
+        self.client.links_ui.back.unwrap_or(Screen::ServerLinks)
     }
     /// `ConfirmScreen.onClose`, which every button and Escape call: back to the
     /// parent. For the demo intro's Buy that parent is the HUD, and `Gui.setScreen(null)`
@@ -322,17 +323,17 @@ impl Game<'_> {
     /// lands there.
     pub(super) fn close_confirm_link(&mut self) {
         self.set_screen(self.confirm_link_back());
-        if self.screen == Screen::Playing {
+        if self.client.screen == Screen::Playing {
             self.capture(true);
         }
     }
     /// `ScrollableLayout`'s mouse wheel over the links.
     pub(super) fn server_links_scroll(&mut self, delta: f32) -> bool {
         let (_, h) = self.gui_size();
-        if !(HEADER..h - FOOTER).contains(&self.cursor.1) {
+        if !(HEADER..h - FOOTER).contains(&self.client.cursor.1) {
             return false;
         }
-        self.links_ui.scroll = (self.links_ui.scroll - delta * 10.0)
+        self.client.links_ui.scroll = (self.client.links_ui.scroll - delta * 10.0)
             .clamp(0.0, scroll_limit(h, self.server_links().len()));
         true
     }
@@ -344,8 +345,8 @@ impl Game<'_> {
         let (w, h) = (batch.width, batch.height);
         ui::menu_background(batch, atlas, 0.0, 0.0, w, h, true);
         self.draw_screen_phase(batch, sunrise_client::screen_draw::RenderPhase::Background);
-        let url = self.links_ui.confirm.clone().unwrap_or_default();
-        let trusted = self.links_ui.trusted;
+        let url = self.client.links_ui.confirm.clone().unwrap_or_default();
+        let trusted = self.client.links_ui.trusted;
         sunrise_client::widgets::begin_screen(|| {
             let title = if trusted {
                 "chat.link.confirmTrusted"
@@ -362,7 +363,7 @@ impl Game<'_> {
         for (line, x, y) in &layout.lines {
             batch.text_styled(atlas, line, *x, *y, u32::MAX, true);
         }
-        let labels = confirm_link_labels(self.links_ui.trusted);
+        let labels = confirm_link_labels(self.client.links_ui.trusted);
         // Its third button answers no, as Escape does.
         if let Some(&(x, y)) = layout.buttons.get(2) {
             sunrise_client::widgets::declare_action(
@@ -372,7 +373,7 @@ impl Game<'_> {
             );
         }
         for ((x, y), key) in layout.buttons.iter().zip(labels) {
-            let hover = ui::hovered(self.cursor, *x, *y, 100.0, 20.0);
+            let hover = ui::hovered(self.client.cursor, *x, *y, 100.0, 20.0);
             ui::button(
                 batch,
                 atlas,
@@ -391,10 +392,11 @@ impl Game<'_> {
     /// copies the link, no closes; all return to Server Links.
     pub(super) fn confirm_link_click(&mut self) -> bool {
         let (w, h) = self.gui_size();
-        let url = self.links_ui.confirm.clone().unwrap_or_default();
-        let layout = confirm_link_layout(&self.gui.atlas, (w, h), &url, self.links_ui.trusted);
+        let url = self.client.links_ui.confirm.clone().unwrap_or_default();
+        let layout =
+            confirm_link_layout(&self.gui.atlas, (w, h), &url, self.client.links_ui.trusted);
         for (i, (x, y)) in layout.buttons.iter().enumerate() {
-            if !ui::hovered(self.cursor, *x, *y, 100.0, 20.0) {
+            if !ui::hovered(self.client.cursor, *x, *y, 100.0, 20.0) {
                 continue;
             }
             self.audio.play_button_click();
@@ -434,7 +436,7 @@ impl Game<'_> {
             "menu.returnToMenu"
         };
         for ((x, y), key) in layout.buttons.into_iter().zip([quit, "gui.back"]) {
-            let hover = ui::hovered(self.cursor, x, y, 150.0, 20.0);
+            let hover = ui::hovered(self.client.cursor, x, y, 150.0, 20.0);
             if key == "gui.back" {
                 sunrise_client::widgets::declare_action(
                     sunrise_client::widgets::Action::Back,
@@ -461,7 +463,7 @@ impl Game<'_> {
         let (w, h) = self.gui_size();
         let layout = dialog_warning_layout(&self.gui.atlas, (w, h));
         for (i, (x, y)) in layout.buttons.iter().enumerate() {
-            if !ui::hovered(self.cursor, *x, *y, 150.0, 20.0) {
+            if !ui::hovered(self.client.cursor, *x, *y, 150.0, 20.0) {
                 continue;
             }
             self.audio.play_button_click();

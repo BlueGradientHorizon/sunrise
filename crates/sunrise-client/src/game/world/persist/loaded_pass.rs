@@ -44,7 +44,7 @@ impl Game<'_> {
         // A world older builds named by the offline profile names the player that
         // way in its entities too: migrate them as they load, so the next save of
         // the chunk keeps the account's UUID (`playerdata::migrate_owner`).
-        if let Some((old, new)) = self.owner_migration {
+        if let Some((old, new)) = self.server.owner_migration {
             entity_nbt::migrate_player_uuid(
                 &mut tag,
                 sunrise_client::lan::playerdata::uuid_ints(old),

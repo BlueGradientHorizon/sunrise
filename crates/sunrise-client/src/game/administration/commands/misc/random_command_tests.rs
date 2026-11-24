@@ -173,11 +173,11 @@ fn a_blocks_roll_names_the_block_and_the_console_says_server() {
         r#"setblock 0 200 0 minecraft:command_block{Command:"random roll 1..2",CustomName:{text:"Dice"}}"#
     ));
     let roll = |game: &mut Game<'_>, source: crate::game::commands::execute::Source| {
-        let outer = game.command_source.replace(source);
-        game.chat_capture = Some(Vec::new());
+        let outer = game.server.command_source.replace(source);
+        game.server.chat_capture = Some(Vec::new());
         assert!(game.run_command("random roll 1..2"));
-        game.command_source = outer;
-        let lines = game.chat_capture.take().unwrap();
+        game.server.command_source = outer;
+        let lines = game.server.chat_capture.take().unwrap();
         assert_eq!(lines.len(), 1, "{:?}", lines[0].plain());
         lines[0].plain()
     };

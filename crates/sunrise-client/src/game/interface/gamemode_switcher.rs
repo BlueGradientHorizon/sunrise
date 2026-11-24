@@ -9,7 +9,7 @@ use sunrise_client::{
 
 impl Game<'_> {
     pub(super) fn open_gamemode_switcher(&mut self) {
-        self.gamemode_switcher = Some(GameModeSwitcher::new(self.mode, self.previous_mode));
+        self.client.gamemode_switcher = Some(GameModeSwitcher::new(self.mode, self.previous_mode));
         self.set_screen(Screen::GameModeSwitcher);
         self.clear_device_keys();
         self.set_mapping_held("key.attack", false);
@@ -19,7 +19,7 @@ impl Game<'_> {
     }
 
     pub(super) fn close_gamemode_switcher(&mut self, apply: bool) {
-        let selected = self.gamemode_switcher.take().map(|s| s.selected);
+        let selected = self.client.gamemode_switcher.take().map(|s| s.selected);
         self.set_screen(Screen::Playing);
         self.capture(true);
         if apply
@@ -49,7 +49,7 @@ impl Game<'_> {
 
     pub(super) fn draw_gamemode_switcher(&mut self, batch: &mut HudBatch) {
         let (w, h) = (batch.width as i32, batch.height as i32);
-        let Some(switcher) = &mut self.gamemode_switcher else {
+        let Some(switcher) = &mut self.client.gamemode_switcher else {
             self.draw_screen_phase(batch, sunrise_client::screen_draw::RenderPhase::Background);
             self.draw_screen_phase(batch, sunrise_client::screen_draw::RenderPhase::Foreground);
             return;
@@ -59,7 +59,11 @@ impl Game<'_> {
         sunrise_client::widgets::begin_screen(|| {
             sunrise_client::widgets::ScreenInfo::new("gamemode_switcher", "")
         });
-        switcher.hover(w, h, (self.cursor.0 as i32, self.cursor.1 as i32));
+        switcher.hover(
+            w,
+            h,
+            (self.client.cursor.0 as i32, self.client.cursor.1 as i32),
+        );
         let selected = switcher.selected;
         let atlas = &self.gui.atlas;
         batch.sprite_region(

@@ -35,7 +35,7 @@ impl Game<'_> {
             &self.options.player_name(),
             &self.gui.atlas.font,
         );
-        self.win = Some(Win {
+        self.client.win = Some(Win {
             screen,
             finish,
             frame: Instant::now(),
@@ -46,16 +46,16 @@ impl Game<'_> {
     }
     /// Stop the scroll `scroll` pixels in (`sunrise-ctl credits ... SCROLL`).
     pub(super) fn hold_win_screen(&mut self, scroll: f32) {
-        if let Some(win) = self.win.as_mut() {
+        if let Some(win) = self.client.win.as_mut() {
             win.screen.hold(scroll);
         }
     }
     /// `WinScreen.isPauseScreen`: only the credits without the poem pause.
     pub(super) fn win_screen_pauses(&self) -> bool {
-        self.win.as_ref().is_some_and(|w| !w.screen.poem)
+        self.client.win.as_ref().is_some_and(|w| !w.screen.poem)
     }
     pub(super) fn draw_win_screen(&mut self, batch: &mut HudBatch) {
-        let Some(win) = self.win.as_mut() else {
+        let Some(win) = self.client.win.as_mut() else {
             self.draw_screen_phase(batch, sunrise_client::screen_draw::RenderPhase::Background);
             self.draw_screen_phase(batch, sunrise_client::screen_draw::RenderPhase::Foreground);
             return;
@@ -82,7 +82,8 @@ impl Game<'_> {
         };
         win.screen.draw_background(batch, &self.gui.atlas, fill);
         self.draw_screen_phase(batch, sunrise_client::screen_draw::RenderPhase::Background);
-        self.win
+        self.client
+            .win
             .as_mut()
             .unwrap()
             .screen
@@ -98,7 +99,7 @@ impl Game<'_> {
         let Some(key) = Key::from_code(code) else {
             return Ok(false);
         };
-        if let Some(win) = self.win.as_mut() {
+        if let Some(win) = self.client.win.as_mut() {
             win.screen.key(key, pressed);
             return Ok(true);
         }
@@ -107,18 +108,24 @@ impl Game<'_> {
     /// `WinScreen.tick`: done once everything has rolled past the top.
     pub(super) fn tick_win_screen(&mut self) -> Result<()> {
         let height = self.gui_size().1;
-        if self.win.as_ref().is_some_and(|w| w.screen.finished(height)) {
+        if self
+            .client
+            .win
+            .as_ref()
+            .is_some_and(|w| w.screen.finished(height))
+        {
             self.close_win_screen()?;
         }
         Ok(())
     }
     /// `WinScreen.respawn` (`onFinished`) and `removed`: the credits music stops.
     pub(super) fn close_win_screen(&mut self) -> Result<()> {
-        let Some(win) = self.win.take() else {
+        let Some(win) = self.client.win.take() else {
             return Ok(());
         };
         let credits = mod_api::client::music::Music::credits();
-        self.music
+        self.client
+            .music
             .stop_playing_music(&credits, None, &mut self.audio);
         match win.finish {
             Finish::Options => self.set_screen(Screen::Options),

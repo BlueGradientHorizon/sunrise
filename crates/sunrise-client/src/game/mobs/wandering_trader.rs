@@ -15,7 +15,8 @@ impl Creatures {
 }
 impl Game<'_> {
     fn trader_path(&self) -> std::path::PathBuf {
-        self.world_root
+        self.server
+            .world_root
             .join("data")
             .join("minecraft")
             .join("wandering_trader.dat")

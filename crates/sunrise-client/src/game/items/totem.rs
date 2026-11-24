@@ -79,7 +79,10 @@ impl Game<'_> {
     /// A server guest's entity event is broadcast before the hit's Post.
     fn apply_totem(&mut self, entity: i32) -> Option<Body> {
         // The mods hear a server player's totem before it is used up.
-        if let (Some(uuid), Some(name)) = (self.lan_acting_uuid, self.lan_acting_name.clone()) {
+        if let (Some(uuid), Some(name)) = (
+            self.server.lan_acting_uuid,
+            self.server.lan_acting_name.clone(),
+        ) {
             self.native_player_totem(uuid, &name);
         }
         let p = self.player.as_mut().filter(|p| p.entity_id == entity)?;
@@ -121,7 +124,7 @@ impl Game<'_> {
             self.apply_consume_effect(&protector, &effect, None, user);
         }
         self.update_totem_ready();
-        if self.lan_acting.is_some()
+        if self.server.lan_acting.is_some()
             && let Some(host) = &self.lan
         {
             host.hub.entity_event(entity, TOTEM_EVENT);
@@ -141,7 +144,7 @@ impl Game<'_> {
     pub(in crate::game) fn finish_guest_damage_before_resume(
         &mut self,
     ) -> Result<(), Vec<MotionEvent>> {
-        let (Some(conn), Some(player)) = (self.lan_acting, self.player.as_mut()) else {
+        let (Some(conn), Some(player)) = (self.server.lan_acting, self.player.as_mut()) else {
             return Err(Vec::new());
         };
         let Some(hit) = player.health.damage_completion.take() else {
@@ -190,7 +193,7 @@ impl Game<'_> {
         if let Some(post) = hit.post {
             self.finish_damage_post(entity, "minecraft:player", post);
         }
-        if self.lan_acting == Some(conn)
+        if self.server.lan_acting == Some(conn)
             && let Some(player) = self.player.as_mut().filter(|p| p.entity_id == entity)
         {
             events.append(&mut player.events);
@@ -234,7 +237,8 @@ impl Game<'_> {
             // half hands over the stack it used up; only an event from a
             // remote server, whose item is still in the hand, looks one up.
             let totem = body.protector.unwrap_or_else(|| self.find_totem());
-            self.item_activation
+            self.client
+                .item_activation
                 .activate(totem, self.particles.random());
         }
     }
@@ -252,7 +256,7 @@ impl Game<'_> {
     /// `GameRenderer.tick`: the activated item counts down.
     pub(super) fn tick_item_activation(&mut self) {
         if self.player.is_some() {
-            self.item_activation.tick();
+            self.client.item_activation.tick();
         }
     }
     /// `ScreenEffectRenderer.renderItemActivationAnimation`, for the hand
@@ -271,8 +275,8 @@ impl Game<'_> {
             return;
         }
         let (Some(stack), Some(pose)) = (
-            self.item_activation.active(),
-            self.item_activation.pose(partial, aspect),
+            self.client.item_activation.active(),
+            self.client.item_activation.pose(partial, aspect),
         ) else {
             return;
         };

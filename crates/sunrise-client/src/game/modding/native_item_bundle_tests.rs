@@ -757,9 +757,9 @@ mod custom_bundle_integration_tests {
                 .unwrap();
                 body.entity_id = 99;
                 game.player = Some(body);
-                game.next_entity = game.next_entity.max(100);
+                game.server.next_entity = game.server.next_entity.max(100);
                 game.creative = false;
-                game.screen = crate::game::Screen::Inventory;
+                game.client.screen = crate::game::Screen::Inventory;
                 game.inventory = vec![None; game.inventory.len()];
                 game.carried = Some(empty_pouch(1));
                 game.inventory[9] = Some(ItemStack::new("minecraft:arrow", 12));

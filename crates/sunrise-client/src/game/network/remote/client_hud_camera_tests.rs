@@ -230,7 +230,7 @@ fn set_up(game: &mut Game<'_>, case: &serde_json::Value) {
     for (i, pop) in case["slots"].as_array().unwrap().iter().enumerate() {
         if let Some(pop) = pop.as_u64() {
             game.inventory[i] = Some(ItemStack::new("minecraft:stone", 1));
-            game.hotbar_pop[i] = pop as u8;
+            game.client.hotbar_pop[i] = pop as u8;
         }
     }
     game.handle_packet(C::SetHealth(play::SetHealth {
@@ -345,7 +345,7 @@ fn a_watched_rider_gets_hearts_for_the_dragon_and_local_player_but_not_a_boat() 
                 let (_reader, _writer) = super::connect_menu_test(game);
                 super::spawn_menu_test(game);
                 game.remote.as_mut().unwrap().level_load.finish();
-                game.screen = Screen::Playing;
+                game.client.screen = Screen::Playing;
                 game.player = Some(PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
                 // LivingEntity.getMaxHealth converts to f32 before Hud adds the half point.
                 attributes(game, LOCAL, &[("minecraft:max_health", 31.499_999_9)]);

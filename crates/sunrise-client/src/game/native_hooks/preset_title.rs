@@ -78,7 +78,12 @@ impl Game<'_> {
         else {
             return false;
         };
-        session.mouse_clicked(self.cursor.0, self.cursor.1, button, double_click)
+        session.mouse_clicked(
+            self.client.cursor.0,
+            self.client.cursor.1,
+            button,
+            double_click,
+        )
     }
 
     /// Give the bound editor its key before normal title-screen navigation.
@@ -90,7 +95,7 @@ impl Game<'_> {
                 session.key_pressed(
                     preset_editor_key_code(physical),
                     keybinds::raw_key_code(physical),
-                    crate::game::glfw_modifiers(self.modifiers),
+                    crate::game::glfw_modifiers(self.client.modifiers),
                 )
             })
     }
@@ -104,7 +109,7 @@ impl Game<'_> {
         else {
             return false;
         };
-        let modifiers = crate::game::glfw_modifiers(self.modifiers);
+        let modifiers = crate::game::glfw_modifiers(self.client.modifiers);
         let mut handled = false;
         for ch in text.chars().filter(|c| !c.is_control()) {
             handled |= session.char_typed(ch, modifiers);

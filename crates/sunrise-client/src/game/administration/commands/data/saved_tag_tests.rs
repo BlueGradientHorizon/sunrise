@@ -45,7 +45,7 @@ fn with_command_game(name: &str, test: impl FnOnce(&mut Game<'_>)) {
             .as_nanos()
     ));
     std::fs::create_dir_all(&scratch).unwrap();
-    game.world_root = scratch.clone();
+    game.server.world_root = scratch.clone();
     game.player = Some(PlayerMotion::new(game.motion, Vec3::new(10.5, 200.0, 0.5)).unwrap());
     game.reset_entity_residency();
     game.native_lifecycle
@@ -140,9 +140,9 @@ fn a_live_area_effect_cloud_reads_with_the_common_entity_fields() {
 
 /// What `command` told the player.
 fn say(game: &mut Game<'_>, command: &str) -> Vec<Text> {
-    game.chat_capture = Some(Vec::new());
+    game.server.chat_capture = Some(Vec::new());
     assert!(game.run_command(command), "{command}");
-    game.chat_capture.take().unwrap_or_default()
+    game.server.chat_capture.take().unwrap_or_default()
 }
 
 /// The `Tags` key of the compound the entity saves (`Entity.saveWithoutId`).
@@ -200,15 +200,15 @@ fn tag_list_is_not_repeated_to_the_operators() {
             "summon pig 4.5 200 4.5 {UUID:[I;329,0,0,4],NoAI:1b,Silent:1b,NoGravity:1b}"
         ));
         // The summon's own line (a player informs the operators), sent on a tick.
-        game.admin_feedback.clear();
+        game.server.admin_feedback.clear();
         // A source that informs the operators (`shouldInformAdmins`).
-        game.console_broadcast = Some(true);
+        game.server.console_broadcast = Some(true);
         assert!(game.run_command("tag 00000149-0000-0000-0000-000000000004 add audit"));
-        assert_eq!(game.admin_feedback.len(), 1);
-        game.admin_feedback.clear();
+        assert_eq!(game.server.admin_feedback.len(), 1);
+        game.server.admin_feedback.clear();
         let said = say(game, "tag @e[type=minecraft:pig] list");
         assert_eq!(said.len(), 1);
-        assert_eq!(game.admin_feedback.len(), 0);
+        assert_eq!(game.server.admin_feedback.len(), 0);
     });
 }
 

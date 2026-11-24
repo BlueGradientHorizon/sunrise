@@ -28,8 +28,8 @@ impl Game<'_> {
             EntityRef::new(epoch, guest.entity_id as u32),
             uuid,
         ));
-        let acting = self.lan_acting_uuid == Some(uuid);
-        if !acting && self.lan_guest_swaps.contains(&conn) {
+        let acting = self.server.lan_acting_uuid == Some(uuid);
+        if !acting && self.server.lan_guest_swaps.contains(&conn) {
             return;
         }
         let map = if acting {

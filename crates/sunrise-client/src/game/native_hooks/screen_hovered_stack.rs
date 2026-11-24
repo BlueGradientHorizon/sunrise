@@ -16,7 +16,7 @@ impl Game<'_> {
             .as_ref()
             .map(|r| [r.config.width, r.config.height])?;
         let batch = HudBatch::new(size, self.settings.gui_scale_inputs());
-        self.hovered_stack_at(&batch, self.cursor.0, self.cursor.1)
+        self.hovered_stack_at(&batch, self.client.cursor.0, self.client.cursor.1)
     }
 
     /// `screen_hovered_stack` at `(x, y)` in `batch`'s GUI pixels. A creative item tab's display
@@ -27,7 +27,7 @@ impl Game<'_> {
         x: f32,
         y: f32,
     ) -> Option<ItemStack> {
-        if !matches!(self.screen, Screen::Inventory | Screen::Creative) {
+        if !matches!(self.client.screen, Screen::Inventory | Screen::Creative) {
             return None;
         }
         let slot = self.slot_at(batch, x, y)?;

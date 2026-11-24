@@ -97,7 +97,7 @@ fn a_packs_text_draws_its_expression_uniforms() {
             0,
             sunrise_protocol::entity_data::Value::Text(sunrise_core::nbt::Tag::String("W".into())),
         )]);
-        game.text_displays.insert(1, display);
+        game.client.text_displays.insert(1, display);
         game.tick_text_displays(game.clock.runs_normally());
         // Fullbright, in its own process, is on from the first frame: it changes nothing.
         game.renderer.as_mut().unwrap().fullbright = fullbright;
@@ -110,7 +110,7 @@ fn a_packs_text_draws_its_expression_uniforms() {
             "fullbright {fullbright}"
         );
         game.ui.hide_gui = false;
-        game.debug = true;
+        game.client.debug = true;
         assert_eq!(corner(game, frame), [51, 192, 0], "fullbright {fullbright}");
         // The title screen: no world runs, the GUI text's value and `PolyGlobals` are 0.
         game.title = Some(game.new_title(std::path::PathBuf::from("saves")));
@@ -124,7 +124,7 @@ fn a_packs_text_draws_its_expression_uniforms() {
 /// after a world frame evaluated the GUI text's value and gave its `PolyGlobals`: its text draws
 /// 0 for both.
 fn the_loading_screen_draws_zeros(game: &mut super::Game<'_>) {
-    game.debug = true;
+    game.client.debug = true;
     assert_eq!(corner(game, frame), [51, 192, 0]);
     let renderer = game.renderer.as_ref().unwrap();
     let size = [renderer.config.width, renderer.config.height];

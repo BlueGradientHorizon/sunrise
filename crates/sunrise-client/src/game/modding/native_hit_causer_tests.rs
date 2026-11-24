@@ -163,14 +163,14 @@ fn with_guest_probe(test: impl FnOnce(&mut super::Game<'_>, &Mutex<Vec<Seen>>)) 
 
 /// A blast centred on `at`, whose causing entity is `owner` (a player when `player`).
 fn blast(game: &mut super::Game<'_>, at: [f64; 3], owner: u32, player: bool, guest: Option<u32>) {
-    game.combat.blast_owner = Some((owner, sunrise_client::text::Text::literal("owner")));
-    game.combat.blast_owner_player = player;
-    game.combat.blast_guest = guest;
+    game.server.combat.blast_owner = Some((owner, sunrise_client::text::Text::literal("owner")));
+    game.server.combat.blast_owner_player = player;
+    game.server.combat.blast_guest = guest;
     game.server_explode(at, 3.0, super::explosion::BlockInteraction::Keep, false)
         .unwrap();
-    game.combat.blast_owner = None;
-    game.combat.blast_owner_player = false;
-    game.combat.blast_guest = None;
+    game.server.combat.blast_owner = None;
+    game.server.combat.blast_owner_player = false;
+    game.server.combat.blast_guest = None;
 }
 
 /// A projectile of `kind` owned by `owner`, at the origin.
@@ -344,7 +344,7 @@ fn trident(game: &mut super::Game<'_>, seen: &Mutex<Vec<Seen>>) {
 /// `LivingRef` reads answer for it then, with its own attachment map.
 fn guest(game: &mut super::Game<'_>, seen: &Mutex<Vec<Seen>>) {
     let pig = summon_mob(game, "minecraft:pig", "{NoAI:1b}");
-    assert!(game.lan_acting != Some(12));
+    assert!(game.server.lan_acting != Some(12));
     MARK.set(game, Holder::Player(12), 5).unwrap();
     let living = game.living(game.entity(12).unwrap()).unwrap();
     assert_eq!(living.health(game), Some(20.0));

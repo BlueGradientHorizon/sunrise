@@ -92,7 +92,7 @@ impl Game<'_> {
         tag: Option<ChatTag>,
     ) {
         let text = content.plain();
-        let focused = self.screen == Screen::Chat;
+        let focused = self.client.screen == Screen::Chat;
         if source == ChatSource::Player {
             self.ui.chat.add_signed(
                 &self.gui.atlas,

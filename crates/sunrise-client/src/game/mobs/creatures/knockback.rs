@@ -61,7 +61,7 @@ impl Game<'_> {
             None,
             attack,
         );
-        let mut credit = plan.lend(&mut self.last_hurt_by_player);
+        let mut credit = plan.lend(&mut self.server.last_hurt_by_player);
         if let Some(p) = self.player.as_mut() {
             let level = crate::game::entity::damage_level_of!(self, attack, &mut credit, None);
             let mut push = |level: &mut sunrise_client::health::DamageLevel<'_>| {

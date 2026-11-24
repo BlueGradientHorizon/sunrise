@@ -17,7 +17,7 @@ impl Game<'_> {
     /// Minecraft.startUseItem: use one crosshair target, then the item itself.
     fn remote_use_inner(&mut self, attempt: mod_api::InteractionAttempt) {
         // Another queued press in the same input drain cannot restart a capture.
-        if self.client_item_use.is_some() {
+        if self.client.client_item_use.is_some() {
             return;
         }
         // Minecraft.startUseItem returns before resetting rightClickDelay
@@ -71,7 +71,7 @@ impl Game<'_> {
         let spear = self
             .held()
             .and_then(|s| sunrise_client::spear::Kinetic::of(&s.item));
-        if spear.is_some() && self.cannot_attack_with_item(self.hand_strength.ticker, 0) {
+        if spear.is_some() && self.cannot_attack_with_item(self.client.hand_strength.ticker, 0) {
             return false;
         }
         // InputEvent.InteractionKeyMappingTriggered, after the checks that stop
@@ -108,7 +108,7 @@ impl Game<'_> {
                 direction: 0,
                 sequence: 0,
             }));
-            self.hand_strength.reset_attack();
+            self.client.hand_strength.reset_attack();
             self.swing_hand(Hand::Main, kinetic.attack_animation());
             self.play_at_feet(kinetic.attack_sound);
             return true;
@@ -168,7 +168,7 @@ impl Game<'_> {
         // A piercing weapon neither breaks blocks nor swings on its own.
         if self.clicks.miss_time > 0
             || self.using.is_some()
-            || self.client_item_use.is_some()
+            || self.client.client_item_use.is_some()
             || self
                 .held()
                 .is_some_and(|s| sunrise_client::spear::Kinetic::of(&s.item).is_some())
@@ -231,12 +231,12 @@ impl Game<'_> {
     /// (a proxy's reconfiguration too), but the chat: joining clears it and a
     /// reconfiguration keeps it (`ChatComponent.storeState`).
     pub(super) fn hud_disconnected(&mut self) {
-        self.tab_list.reset();
-        self.boss_overlay.reset();
-        self.toast_manager = Default::default();
-        self.debug_charts.reset();
-        self.titles.clear();
-        self.titles.reset_times();
+        self.client.tab_list.reset();
+        self.client.boss_overlay.reset();
+        self.client.toast_manager = Default::default();
+        self.client.debug_charts.reset();
+        self.client.titles.clear();
+        self.client.titles.reset_times();
     }
     /// `handleAnimate`: a player wakes up, or an entity gets the critical
     /// hit (`CRIT`) or magic critical hit (`ENCHANTED_HIT`) emitter.
@@ -524,7 +524,7 @@ impl Game<'_> {
         let Some(r) = &self.remote else { return };
         let atlas = &self.gui.atlas;
         let w = batch.width;
-        if self.screen == Screen::Dead
+        if self.client.screen == Screen::Dead
             && let Some(message) = &r.death_message
         {
             // DeathScreen draws the styled cause component.

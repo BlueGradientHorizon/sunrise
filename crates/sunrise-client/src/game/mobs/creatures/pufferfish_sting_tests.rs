@@ -17,10 +17,10 @@ fn with_fish(silent: bool, test: impl FnOnce(&mut Game<'_>)) {
         let mut body = PlayerMotion::new(game.motion, Vec3::new(8.5, 66.0, 8.5)).unwrap();
         body.entity_id = 1;
         game.player = Some(body);
-        game.lan_acting_entity = Some(1);
-        game.lan_acting_uuid = Some(1);
-        game.lan_acting = Some(7);
-        game.lan_acting_name = Some("PufferfishTest".into());
+        game.server.lan_acting_entity = Some(1);
+        game.server.lan_acting_uuid = Some(1);
+        game.server.lan_acting = Some(7);
+        game.server.lan_acting_name = Some("PufferfishTest".into());
         crate::game::native_entity_refs::tests::bind_acting_guest(game);
         let kind = game
             .res
@@ -38,7 +38,8 @@ fn with_fish(silent: bool, test: impl FnOnce(&mut Game<'_>)) {
 
 /// The game events the stung player's client was sent, as `(event, parameter)`.
 fn stings(game: &Game<'_>) -> Vec<(u8, f32)> {
-    game.guest_packets
+    game.server
+        .guest_packets
         .iter()
         .filter_map(|packet| match packet {
             Clientbound::GameEvent(e) => Some((e.event, e.param)),

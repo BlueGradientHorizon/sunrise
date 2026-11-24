@@ -59,7 +59,7 @@ impl Game<'_> {
     fn can_capture_item_use(&self) -> bool {
         self.using.is_none()
             && !self.spectator()
-            && self.screen != Screen::Dead
+            && self.client.screen != Screen::Dead
             && self
                 .player
                 .as_ref()
@@ -107,7 +107,7 @@ impl Game<'_> {
             return false;
         };
         let item_id = Arc::clone(&stack.item);
-        self.client_item_use = Some(ActiveClientItemUse {
+        self.client.client_item_use = Some(ActiveClientItemUse {
             mod_id,
             mod_index,
             behavior: Arc::clone(&behavior),
@@ -125,7 +125,7 @@ impl Game<'_> {
     /// Reset an invalid capture or rebind the live stack and count a held tick. Only input
     /// handling releases it.
     pub(in crate::game) fn tick_client_item_use(&mut self) {
-        let Some(active) = self.client_item_use.as_ref() else {
+        let Some(active) = self.client.client_item_use.as_ref() else {
             return;
         };
         let valid = mod_index_on(active.mod_index) && self.client_item_use_valid(active);
@@ -137,7 +137,7 @@ impl Game<'_> {
         let held = self.mapped_key_down("key.use");
         if !valid {
             self.reset_client_item_use();
-        } else if let Some(active) = self.client_item_use.as_mut() {
+        } else if let Some(active) = self.client.client_item_use.as_mut() {
             if let Some(live) = live {
                 active.stack = live;
             }
@@ -154,7 +154,7 @@ impl Game<'_> {
     /// Retire the capture before entering mod code. Only a valid input release calls
     /// `release_using`; every other end is a reset. Return whether a capture owned the input.
     pub(in crate::game) fn end_client_item_use(&mut self, release_requested: bool) -> bool {
-        let Some(mut active) = self.client_item_use.take() else {
+        let Some(mut active) = self.client.client_item_use.take() else {
             return false;
         };
         if let Some(live) = self.live_client_item_use_stack(&active) {

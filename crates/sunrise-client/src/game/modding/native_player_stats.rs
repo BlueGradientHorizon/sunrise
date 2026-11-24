@@ -37,7 +37,7 @@ impl Game<'_> {
             Some(PlayerRead::Acting { .. }) => Some(Some(&self.stats)),
             None => {
                 let entity = player.entity();
-                if self.lan_displaced_players.is_empty()
+                if self.server.lan_displaced_players.is_empty()
                     || self.native_lifecycle.epoch()? != entity.epoch()
                 {
                     return None;
@@ -45,7 +45,7 @@ impl Game<'_> {
                 let CombatPlayer::Displaced(depth, _) = self.combat_player(entity.id())? else {
                     return None;
                 };
-                let frame = &self.lan_displaced_players[depth];
+                let frame = &self.server.lan_displaced_players[depth];
                 (frame.uuid == Some(player.uuid())).then_some(Some(&frame.stats))
             }
         }
@@ -104,7 +104,7 @@ impl Game<'_> {
     ) -> bool {
         self.native_as_player_handle(player, |game| {
             // A local counter loads lazily; guest turns already own their counter.
-            if game.lan_acting.is_none() {
+            if game.server.lan_acting.is_none() {
                 game.load_stats();
             }
             game.stats.replace_values(values);
@@ -280,7 +280,7 @@ mod tests {
         mod_platform::testing::with_mods(mods, || {
             with_guests(|game| {
                 let world = tempfile::tempdir().unwrap();
-                game.world_root = world.path().to_path_buf();
+                game.server.world_root = world.path().to_path_buf();
                 game.load_scoreboard();
                 assert!(mod_api::__private::listened(
                     mod_api::HookId::PlayerStatAward
@@ -515,11 +515,11 @@ mod tests {
                 Some(vec!["minecraft:stick".to_string()])
             );
             // In the guest's turn their state is in the game.
-            game.lan_acting_uuid = Some(123);
-            game.lan_acting_entity = Some(20);
+            game.server.lan_acting_uuid = Some(123);
+            game.server.lan_acting_entity = Some(20);
             assert_eq!(jump(game), Some(3));
-            game.lan_acting_uuid = None;
-            game.lan_acting_entity = None;
+            game.server.lan_acting_uuid = None;
+            game.server.lan_acting_entity = None;
             // A guest without play state yet has counted nothing.
             game.lan.as_mut().unwrap().play.remove(&1);
             assert_eq!(jump(game), Some(0));

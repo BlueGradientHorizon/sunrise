@@ -31,7 +31,7 @@ impl Game<'_> {
         backing_slots: usize,
         extra: Option<sunrise_protocol::menu_extra::Message>,
     ) -> bool {
-        if self.is_logical_server() || self.lan_acting.is_some() {
+        if self.is_logical_server() || self.server.lan_acting.is_some() {
             return false;
         }
         let Some(remote) = self.remote.as_ref() else {

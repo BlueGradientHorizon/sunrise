@@ -221,14 +221,14 @@ fn default_drop_rng_continues_identically_with_table_sequence_or_level_fallback(
             source(game, 4, 4, "gravel");
             game.level.seed = 116;
             game.world.random.set_seed(116);
-            game.rand_sequences = Default::default();
+            game.server.rand_sequences = Default::default();
             game.with_level(|b, level, ticks| {
                 level.items = items;
                 assert!(b.destroy_block(level, ticks, BlockPos::new(4, 200, 4), true));
             });
             game.process_level_events().unwrap();
             assert_eq!(game.dropped.len(), 1);
-            let pool = game.rand_sequences.to_nbt();
+            let pool = game.server.rand_sequences.to_nbt();
             let sequence_words = match pool
                 .get("sequences")
                 .and_then(|v| v.get("minecraft:blocks/gravel"))

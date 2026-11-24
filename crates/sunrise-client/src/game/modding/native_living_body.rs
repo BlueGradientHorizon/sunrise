@@ -222,7 +222,7 @@ impl Game<'_> {
         let living =
             mod_api::LivingRef::new(mod_api::EntityRef::new(epoch, u32::try_from(id).ok()?));
         match self.native_living_target(living)? {
-            Target::Guest(conn) if self.lan_acting != Some(conn) => Some(conn),
+            Target::Guest(conn) if self.server.lan_acting != Some(conn) => Some(conn),
             _ => None,
         }
     }

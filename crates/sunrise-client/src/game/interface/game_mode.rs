@@ -26,7 +26,7 @@ impl Game<'_> {
     /// Whether `Screen::Inventory` currently shows the player's own `InventoryScreen`
     /// rather than a container, crafting table, workstation, mount, or server/mod menu.
     pub(in crate::game) fn is_player_inventory_screen(&self) -> bool {
-        self.screen == Screen::Inventory
+        self.client.screen == Screen::Inventory
             && self.container.is_none()
             && self.station.is_none()
             && self.craft_size == 2
@@ -43,19 +43,19 @@ impl Game<'_> {
             return;
         }
         let next = inventory_after_infinite_materials(
-            self.screen,
+            self.client.screen,
             self.is_player_inventory_screen(),
             self.instabuild(),
         );
-        if next == self.screen {
+        if next == self.client.screen {
             return;
         }
         match next {
             Screen::Creative => {
                 self.set_screen(Screen::Creative);
-                if self.screen == Screen::Creative {
+                if self.client.screen == Screen::Creative {
                     self.refresh_creative_tabs();
-                    self.creative_screen.reopen();
+                    self.client.creative_screen.reopen();
                     self.refresh_saved_hotbars();
                 }
             }
@@ -98,7 +98,7 @@ impl Game<'_> {
         if let Some(a) = self.remote_abilities() {
             return a.may_build;
         }
-        self.acting_abilities.map_or(
+        self.server.acting_abilities.map_or(
             matches!(self.mode, GameMode::Survival | GameMode::Creative),
             |a| a.may_build,
         )
@@ -108,7 +108,8 @@ impl Game<'_> {
         if let Some(a) = self.remote_abilities() {
             return a.instabuild;
         }
-        self.acting_abilities
+        self.server
+            .acting_abilities
             .map_or(self.creative, |a| a.instabuild)
     }
     pub(super) fn mode_id(&self) -> i32 {
@@ -164,7 +165,7 @@ impl Game<'_> {
         self.mode = mode;
         self.creative = mode == GameMode::Creative;
         // GameType.updatePlayerAbilities applies at once.
-        if let Some(a) = self.acting_abilities.as_mut() {
+        if let Some(a) = self.server.acting_abilities.as_mut() {
             a.update_for_mode(mode.id());
         }
         if let Some(p) = self.player.as_mut() {
@@ -208,7 +209,7 @@ impl Game<'_> {
                 && let Some(p) = self.player.as_mut()
             {
                 p.flying = false;
-                if let Some(a) = self.acting_abilities.as_mut() {
+                if let Some(a) = self.server.acting_abilities.as_mut() {
                     a.flying = false;
                 }
             }

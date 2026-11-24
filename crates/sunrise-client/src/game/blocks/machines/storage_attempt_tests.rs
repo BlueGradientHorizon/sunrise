@@ -836,7 +836,7 @@ fn aborting_a_pot_insert_restores_its_named_loot_sequence() {
             )
             .unwrap();
             assert_eq!(loot.random_sequence(TABLE), Some(SEQUENCE));
-            game.server_loot.set(Some(Arc::new(loot)));
+            game.server.server_loot.set(Some(Arc::new(loot)));
 
             let pos = [4, 64, 0];
             place(game, (4, 64, 0), "minecraft:decorated_pot");
@@ -850,8 +850,8 @@ fn aborting_a_pot_insert_restores_its_named_loot_sequence() {
             spill::put_saved_entity(&mut game.world, pos, tag.clone());
             // The named sequence already exists: this tests restoration of its actual
             // position, not merely removal of a newly created sequence.
-            game.rand_sequences.get(SEQUENCE, game.level.seed);
-            let before = game.rand_sequences.to_nbt();
+            game.server.rand_sequences.get(SEQUENCE, game.level.seed);
+            let before = game.server.rand_sequences.to_nbt();
             let level_before = game.world.random.state();
             let level = game.level(game.dim.id()).unwrap();
             let items = level.capability(game, &ITEMS, pos, None).unwrap();
@@ -868,7 +868,7 @@ fn aborting_a_pot_insert_restores_its_named_loot_sequence() {
                 let materialized = spill::saved_entity(&game.world, pos).unwrap();
                 assert!(materialized.get("LootTable").is_none());
                 assert_eq!(game.world.random.state(), level_before);
-                let after = game.rand_sequences.to_nbt();
+                let after = game.server.rand_sequences.to_nbt();
                 assert_ne!(after, before);
                 (materialized, after)
             };
@@ -881,7 +881,7 @@ fn aborting_a_pot_insert_restores_its_named_loot_sequence() {
                 })
                 .unwrap_err();
             assert_eq!(spill::saved_entity(&game.world, pos), Some(tag));
-            assert_eq!(game.rand_sequences.to_nbt(), before);
+            assert_eq!(game.server.rand_sequences.to_nbt(), before);
             assert_eq!(game.world.random.state(), level_before);
 
             assert_eq!(
@@ -965,7 +965,7 @@ fn hopper_respects_a_mod_container_only_when_empty_rule() {
                 .get_mut(&BELOW)
                 .unwrap()
                 .slots_mut()[0] = None;
-            game.hoppers.get_mut(&HOPPER).unwrap().cooldown = 0;
+            game.server.hoppers.get_mut(&HOPPER).unwrap().cooldown = 0;
             game.world.game_time = 2;
             game.tick_hopper(HOPPER);
             assert_eq!(count(game, BELOW, 0), 1);
@@ -1268,7 +1268,7 @@ fn pull_chooses_the_first_slot_after_extract_and_not_an_existing_stack() {
                 vec![Some(ItemStack::new("minecraft:diamond", 1)), None],
             );
             probe.rules.lock().unwrap().release_first = false;
-            game.hoppers.get_mut(&HOPPER).unwrap().cooldown = 0;
+            game.server.hoppers.get_mut(&HOPPER).unwrap().cooldown = 0;
             game.tick_hopper(HOPPER);
             assert_eq!((count(game, HOPPER, 0), count(game, HOPPER, 1)), (1, 1));
         },
@@ -1387,7 +1387,7 @@ fn vanilla_container_provider_and_entity_never_ask_their_storage() {
             use crate::game::minecarts::{CartKind, Minecart};
             for target in ["minecraft:chest", "minecraft:composter", "minecraft:air"] {
                 hopper(game, vec![None; 5]);
-                game.hoppers.clear();
+                game.server.hoppers.clear();
                 place(game, ABOVE, target);
                 game.world.block_entities.remove(&ABOVE);
                 game.carts.clear();
@@ -1510,7 +1510,8 @@ fn extract_notifications_cross_signal_each_tick_and_comparator_ticks_every_secon
                     }
                 }
             }
-            game.tickets
+            game.server
+                .tickets
                 .update(Some(sunrise_client::ticket_levels::Sources {
                     forced: vec![(0, 0)],
                     ..Default::default()
@@ -1679,7 +1680,7 @@ fn pushes_use_only_the_opposite_face_for_each_hopper_facing() {
                         None,
                     ],
                 );
-                game.hoppers.clear();
+                game.server.hoppers.clear();
                 storage(game, target, vec![None; 2]);
                 probe.rules.lock().unwrap().accept = Some("minecraft:stone");
                 game.tick_hopper(HOPPER);

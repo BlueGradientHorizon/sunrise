@@ -87,7 +87,7 @@ impl Game<'_> {
     /// of the dead entities' memory (`prune_entity_memory`).
     pub(super) fn forget_untied_knots(&mut self) {
         let fences = self.lead_fences();
-        self.knot_ids.retain(|p, _| fences.contains(p));
+        self.server.knot_ids.retain(|p, _| fences.contains(p));
         self.resident_entities
             .knots
             .retain(|knot| fences.contains(&knot.fence));
@@ -110,7 +110,7 @@ impl Game<'_> {
         {
             return;
         }
-        self.knot_ids.remove(&fence);
+        self.server.knot_ids.remove(&fence);
         self.resident_entities
             .knots
             .retain(|knot| knot.fence != fence);
@@ -121,12 +121,12 @@ impl Game<'_> {
     /// it. A fence that already has one keeps it. Call
     /// [`Self::forget_untied_knots`] before the tie.
     pub(super) fn tie_knot(&mut self, fence: [i32; 3]) -> u32 {
-        if let Some(&id) = self.knot_ids.get(&fence) {
+        if let Some(&id) = self.server.knot_ids.get(&fence) {
             return id;
         }
-        self.next_entity += 1;
-        let id = self.next_entity;
-        self.knot_ids.insert(fence, id);
+        self.server.next_entity += 1;
+        let id = self.server.next_entity;
+        self.server.knot_ids.insert(fence, id);
         self.resident_entities.knots.push(Knot {
             attachment_lifetime: Default::default(),
             id,
@@ -227,7 +227,7 @@ impl Game<'_> {
         skip: Option<usize>,
     ) -> bool {
         let knot_id = match to {
-            Holder::Knot(fence) => self.knot_ids.get(&fence).copied(),
+            Holder::Knot(fence) => self.server.knot_ids.get(&fence).copied(),
             _ => None,
         };
         let mut any = false;
@@ -327,7 +327,7 @@ impl Game<'_> {
         player: Option<[i32; 4]>,
     ) -> bool {
         let knot_id = match holder {
-            Holder::Knot(fence) => self.knot_ids.get(&fence).copied(),
+            Holder::Knot(fence) => self.server.knot_ids.get(&fence).copied(),
             _ => None,
         };
         match target {
@@ -394,7 +394,11 @@ impl Game<'_> {
         self.drop_leash(id, drop, false, true);
     }
     fn drop_leash(&mut self, id: u32, drop: bool, sound: bool, used: bool) {
-        let killer = self.lead_killers.remove(&id).map(|(killer, _)| killer);
+        let killer = self
+            .server
+            .lead_killers
+            .remove(&id)
+            .map(|(killer, _)| killer);
         let Some((at, kind, holder)) = self.mobs.iter_mut().find(|m| m.id == id).and_then(|m| {
             let holder = m.extra.leash;
             sunrise_client::mobs::leash::remove(m)?;
@@ -409,7 +413,10 @@ impl Game<'_> {
         self.notify_knot_leashee_removed(holder, id);
         self.native_entity_unleash(id, &kind);
         if used
-            && let (Some(player), Some(name)) = (self.lan_acting_uuid, self.lan_acting_name.clone())
+            && let (Some(player), Some(name)) = (
+                self.server.lan_acting_uuid,
+                self.server.lan_acting_name.clone(),
+            )
         {
             self.native_player_unleash_entity(player, &name, id);
         }
@@ -455,10 +462,10 @@ impl Game<'_> {
     pub(super) fn break_leash_knot(&mut self, id: u32, source: Option<Target>) -> bool {
         if let Some(fence) = self.natural_knot(id) {
             let at = leash::knot_state(fence).position.components();
-            self.knot_ids.remove(&fence);
+            self.server.knot_ids.remove(&fence);
             self.resident_entities.knots.retain(|k| k.id != id);
-            if !self.broken_knots.contains(&fence) {
-                self.broken_knots.push(fence);
+            if !self.server.broken_knots.contains(&fence) {
+                self.server.broken_knots.push(fence);
             }
             self.entity_killed_event_by(at, source);
             self.lead_sound("untied", at);
@@ -480,14 +487,14 @@ impl Game<'_> {
     /// Holders read from a save become real once the entity is found; a
     /// holder that never shows up drops the lead after 100 ticks.
     pub(super) fn tick_leads(&mut self) {
-        if !self.broken_knots.is_empty() {
-            let fences = std::mem::take(&mut self.broken_knots);
+        if !self.server.broken_knots.is_empty() {
+            let fences = std::mem::take(&mut self.server.broken_knots);
             let drop = self
                 .ui
                 .rules
                 .bool_at(sunrise_client::gamerules::vanilla::ENTITY_DROPS);
             for fence in fences {
-                let live_id = self.knot_ids.get(&fence).copied();
+                let live_id = self.server.knot_ids.get(&fence).copied();
                 let mobs: Vec<u32> = self
                     .mobs
                     .iter()
@@ -513,9 +520,10 @@ impl Game<'_> {
         }
         // A corpse gone without dropping its lead takes its killer along.
         // Only this level's: the others' mobs aren't in place.
-        if !self.lead_killers.is_empty() {
+        if !self.server.lead_killers.is_empty() {
             let (mobs, dim) = (&self.mobs, self.dim);
-            self.lead_killers
+            self.server
+                .lead_killers
                 .retain(|id, (_, at)| *at != dim || mobs.iter().any(|m| m.id == *id && !m.removed));
         }
         let player_uuid = self.level.player_uuid.unwrap_or([0, 0, 0, 1]);
@@ -1001,7 +1009,7 @@ impl Game<'_> {
             }
         }
         // The knots: a 6 by 8 by 6 pixel block on the fence post.
-        let Some(model) = self.entity_models.leash_knot.as_ref() else {
+        let Some(model) = self.client.entity_models.leash_knot.as_ref() else {
             return;
         };
         let Some(r) = atlas.sprites.get("entity/lead_knot/lead_knot").copied() else {
@@ -1009,6 +1017,7 @@ impl Game<'_> {
         };
         for p in knots {
             if self
+                .client
                 .remote_knots
                 .iter()
                 .any(|(&id, &pos)| pos == p && self.hides_as_camera(id))
@@ -1046,9 +1055,12 @@ impl Game<'_> {
         } else {
             -1.0
         };
-        if self.camera_type.is_first_person() {
-            let (yaw, pitch) =
-                rope_hold_angles((self.yaw, self.pitch), self.rope_rot_old, alpha as f32);
+        if self.client.camera_type.is_first_person() {
+            let (yaw, pitch) = rope_hold_angles(
+                (self.yaw, self.pitch),
+                self.client.rope_rot_old,
+                alpha as f32,
+            );
             let v = glam::DVec3::new(0.39 * hand_dir, -0.6, 0.3);
             // Vec3.xRot(-pitch) then yRot(-yaw).
             let (s, c) = ((-pitch).sin(), (-pitch).cos());
@@ -1061,9 +1073,13 @@ impl Game<'_> {
         // Player.getRopeHoldPosition: the view's pitch eased toward `xRotO`,
         // the body's yaw between `yBodyRotO` and `yBodyRot`, from
         // `getPosition(partialTick)`.
-        let (_, x_rot) = rope_hold_angles((self.yaw, self.pitch), self.rope_rot_old, alpha as f32);
+        let (_, x_rot) = rope_hold_angles(
+            (self.yaw, self.pitch),
+            self.client.rope_rot_old,
+            alpha as f32,
+        );
         let t = alpha as f32;
-        let y_rot = self.player_model.as_ref().map_or(
+        let y_rot = self.client.player_model.as_ref().map_or(
             f64::from(self.yaw * (std::f32::consts::PI / 180.0)),
             |m| {
                 f64::from(
@@ -1082,8 +1098,8 @@ impl Game<'_> {
         if p.fall_flying || p.auto_spin_attack_ticks > 0 {
             // getViewVector(partialTick) against getDeltaMovement, flat.
             let look = sunrise_world::view_direction::view_vector(
-                self.rope_rot_old.1 + t * (self.pitch - self.rope_rot_old.1),
-                self.rope_rot_old.0 + t * (self.yaw - self.rope_rot_old.0),
+                self.client.rope_rot_old.1 + t * (self.pitch - self.client.rope_rot_old.1),
+                self.client.rope_rot_old.0 + t * (self.yaw - self.client.rope_rot_old.0),
             );
             let movement = p.velocity;
             let speed_len = movement.x * movement.x + movement.z * movement.z;

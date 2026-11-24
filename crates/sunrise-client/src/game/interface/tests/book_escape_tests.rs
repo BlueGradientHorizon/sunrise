@@ -42,7 +42,7 @@ fn escape_in_the_editor_saves_nothing() {
     let mut resources = None;
     let mut game = editing(&mut resources, "hello");
     game.book_input(Some(KeyCode::Escape), None);
-    assert!(game.book.is_none(), "Escape left the editor open");
+    assert!(game.client.book.is_none(), "Escape left the editor open");
     assert!(saved_pages(&game).is_empty(), "Escape saved the page");
 }
 
@@ -55,12 +55,12 @@ fn escape_on_the_sign_screen_closes_the_book() {
     let mut game = editing(&mut resources, "hi");
     game.book_control(Some("sign")).expect("the Sign button");
     assert!(matches!(
-        game.book,
+        game.client.book,
         Some(BookScreen::Edit { signing: true, .. })
     ));
     game.book_input(Some(KeyCode::Escape), None);
     assert!(
-        game.book.is_none(),
+        game.client.book.is_none(),
         "Escape went back to the editor instead of closing the book"
     );
     assert!(saved_pages(&game).is_empty(), "Escape saved the page");
@@ -77,7 +77,7 @@ fn enter_signs_a_title_of_spaces_but_not_an_empty_one() {
     game.book_control(Some("sign")).expect("the Sign button");
     game.book_input(Some(KeyCode::Enter), None);
     assert!(
-        game.book.is_some(),
+        game.client.book.is_some(),
         "Enter signed a book with an empty title"
     );
     game.book_input(None, Some("   "));

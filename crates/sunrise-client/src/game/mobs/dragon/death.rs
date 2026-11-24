@@ -31,7 +31,7 @@ impl Game<'_> {
         // (`/summon`), or summoned in the End after the fight is won, a
         // dragon is worth 500 and its death ends nothing.
         let fight = self.is_fight_dragon();
-        let first_kill = fight && !self.fight.previously_killed;
+        let first_kill = fight && !self.server.fight.previously_killed;
         let xp = if first_kill { 12000 } else { 500 };
         let drops = self
             .ui

@@ -78,7 +78,7 @@ impl Game<'_> {
                 .filter_map(|g| Some((g.vehicle?, g.conn, g.uuid)))
                 .collect()
         });
-        if riders.is_empty() && self.watched_vehicles.is_empty() {
+        if riders.is_empty() && self.server.watched_vehicles.is_empty() {
             return;
         }
         let dim = self.dim;
@@ -86,9 +86,9 @@ impl Game<'_> {
             let Some(at) = self.watched_vehicle_position(id) else {
                 continue;
             };
-            match self.watched_vehicles.iter_mut().find(|w| w.id == id) {
+            match self.server.watched_vehicles.iter_mut().find(|w| w.id == id) {
                 Some(w) => (w.dim, w.rider) = (dim, Some(uuid)),
-                None => self.watched_vehicles.push(WatchedVehicle {
+                None => self.server.watched_vehicles.push(WatchedVehicle {
                     id,
                     dim,
                     rider: Some(uuid),
@@ -100,7 +100,7 @@ impl Game<'_> {
         let mut kept = Vec::new();
         // (rider's connection and UUID, vehicle type, from, to)
         let mut moved = Vec::new();
-        for mut w in std::mem::take(&mut self.watched_vehicles) {
+        for mut w in std::mem::take(&mut self.server.watched_vehicles) {
             // Another level's vehicle is told of on that level's tick.
             if w.dim != dim {
                 kept.push(w);
@@ -128,7 +128,7 @@ impl Game<'_> {
             }
             kept.push(w);
         }
-        self.watched_vehicles = kept;
+        self.server.watched_vehicles = kept;
         // The rider's state is swapped in for the call, so the helpers reach
         // them; a vehicle nobody rides is told of with nobody swapped in.
         for (rider, kind, from, to) in moved {
@@ -137,7 +137,7 @@ impl Game<'_> {
                 continue;
             };
             let hook = |game: &mut Self| game.native_vehicle_moved(Some(uuid), &kind, from, to);
-            if self.lan_acting == Some(conn) {
+            if self.server.lan_acting == Some(conn) {
                 hook(self);
             } else {
                 self.as_guest(conn, hook);
@@ -151,7 +151,7 @@ impl Game<'_> {
     pub(super) fn object_target(&self, id: i32) -> Option<([f64; 3], [f64; 3], [f64; 3])> {
         let at = |v: Vec3| [v.x, v.y, v.z];
         let centre = |p: [i32; 3]| p.map(|v| f64::from(v) + 0.5);
-        if let Some(i) = self.interactions.get(&id) {
+        if let Some(i) = self.client.interactions.get(&id) {
             let (lo, hi) = corners(i.bounds());
             return Some((lo, hi, at(i.position)));
         }
@@ -211,7 +211,7 @@ impl Game<'_> {
             h.hub
                 .guests
                 .iter()
-                .any(|g| Some(g.conn) != self.lan_acting && g.vehicle == Some(vehicle))
+                .any(|g| Some(g.conn) != self.server.lan_acting && g.vehicle == Some(vehicle))
         })
     }
     /// Whether a server player rides `vehicle` (`Entity.isPassenger`: a
@@ -658,7 +658,7 @@ impl Game<'_> {
                 lent.give_back(&mut self.world);
                 let pause = outcome.unwrap_or_else(|panic| std::panic::resume_unwind(panic));
                 self.mobs[i] = m;
-                self.paused_mob_hurt = paused_hurt;
+                self.server.paused_mob_hurt = paused_hurt;
                 // LivingEntity.checkFallDamage sends dust before Block.fallOn.
                 // Send it to every nearby player, including the driver.
                 for event in events.extract_if(.., |e| {

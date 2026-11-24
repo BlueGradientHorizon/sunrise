@@ -107,7 +107,7 @@ impl Game<'_> {
         {
             return Some(row.position);
         }
-        if let Some(&block) = self.remote_knots.get(&id) {
+        if let Some(&block) = self.client.remote_knots.get(&id) {
             let p = sunrise_client::mobs::leash::knot_state(block).position;
             return Some([p.x, p.y, p.z]);
         }
@@ -298,7 +298,7 @@ impl Game<'_> {
                 m.extra.passenger = true;
             }
         }
-        for (id, display) in &mut self.text_displays {
+        for (id, display) in &mut self.client.text_displays {
             if passengers.contains(id) {
                 display.vehicle = Some(vehicle_id);
             } else if display.vehicle == Some(vehicle_id) {
@@ -312,7 +312,7 @@ impl Game<'_> {
                 a.vehicle = None;
             }
         }
-        for (&id, i) in &mut self.interactions {
+        for (&id, i) in &mut self.client.interactions {
             if passengers.contains(&id) {
                 i.vehicle = Some(vehicle_id);
             } else if i.vehicle == Some(vehicle_id) {
@@ -340,7 +340,7 @@ impl Game<'_> {
                     &[keybinds::display_name(self.settings.keys.get("key.sneak"))],
                 );
                 self.say_system_now(&message);
-                self.titles.set_overlay(message, false);
+                self.client.titles.set_overlay(message, false);
                 if let Some(i) = self.carts.iter().position(|c| c.id == vehicle_id) {
                     self.carts.update(i, |c| c.passenger_yaw_delta = 0.0);
                 }
@@ -444,6 +444,7 @@ impl Game<'_> {
             let index = std::collections::HashMap::new();
             if let Some(at) = self.passenger_riding_position(id, None, None, &index) {
                 let before = self
+                    .client
                     .text_displays
                     .get(&(id as i32))
                     .map(|d| d.seat().1)

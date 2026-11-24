@@ -90,10 +90,10 @@ impl Game<'_> {
         let image = self.container_image_parts(batch);
         let origin = self.inventory_origin_unbuilt(batch);
         // A title over the inventory draws no book or effects of its own.
-        let covered = self.screen == Screen::Inventory && self.title.is_some();
+        let covered = self.client.screen == Screen::Inventory && self.title.is_some();
         let book = (!covered).then(|| self.recipe_book_rect(batch)).flatten();
         let shows_effects = !covered
-            && match self.screen {
+            && match self.client.screen {
                 Screen::Creative => true,
                 Screen::Inventory => {
                     self.container.is_none() && self.craft_size == 2 && !self.mount_active()
@@ -106,7 +106,7 @@ impl Game<'_> {
         } else {
             EffectsLayout::vanilla(space.available())
         };
-        let tabs = (self.screen == Screen::Creative).then(|| {
+        let tabs = (self.client.screen == Screen::Creative).then(|| {
             [
                 [
                     image[0],

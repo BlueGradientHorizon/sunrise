@@ -24,7 +24,7 @@ impl Game<'_> {
     fn native_level_raids_mut(&mut self, level: LevelRef) -> Option<&mut Raids> {
         self.native_level_world(level)?;
         if level.dimension() == self.dim.key() {
-            self.raiding.raids_mut(level.dimension_id())
+            self.server.raiding.raids_mut(level.dimension_id())
         } else {
             self.levels
                 .parked_mut_of(level.dimension_id())?
@@ -258,6 +258,7 @@ mod tests {
                 game.read_raids();
                 let current = game.level(game.dim.id()).unwrap();
                 let (id, _) = game
+                    .server
                     .raiding
                     .raids_mut(current.dimension_id())
                     .unwrap()
@@ -271,6 +272,7 @@ mod tests {
                 assert!(other.is_active(game));
                 game.raid_command_stop(id);
                 let tick_id = game
+                    .server
                     .raiding
                     .raids_mut(current.dimension_id())
                     .unwrap()
@@ -321,11 +323,11 @@ mod tests {
     fn saved_raids_are_found_before_the_first_raid_tick() {
         with_game(|game| {
             let root = std::env::temp_dir().join(format!("raid-early-{}", std::process::id()));
-            game.world_root = root.clone();
+            game.server.world_root = root.clone();
             assert!(game.raid_command_create([10, 70, 10], 2));
             game.save_raids();
             // The world opens again and reads the raids, as `finish_open_world` does.
-            game.raiding = Default::default();
+            game.server.raiding = Default::default();
             game.read_raids();
             use sunrise_core::random::RandomSource;
             let before = game.world.random.clone().next_long();
@@ -424,6 +426,7 @@ mod tests {
             game.read_raids();
             let current = game.level(game.dim.id()).unwrap();
             let (other_id, _) = game
+                .server
                 .raiding
                 .raids_mut(current.dimension_id())
                 .unwrap()

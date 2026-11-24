@@ -36,7 +36,7 @@ impl Game<'_> {
     pub(in crate::game) fn guest_fatal_source(&self, gi: usize, conn: u32) -> FatalSource {
         let (damage_type, causing) = self.guest_damage_source(conn);
         let guest = self.lan.as_ref().and_then(|host| host.hub.guests.get(gi));
-        let body = if self.lan_acting == Some(conn) {
+        let body = if self.server.lan_acting == Some(conn) {
             self.player.as_ref()
         } else {
             guest.and_then(|guest| guest.motion.as_deref())
@@ -78,7 +78,7 @@ impl Game<'_> {
             return false;
         };
         let entity = guest.entity_id as u32;
-        let acting = self.lan_acting == Some(conn);
+        let acting = self.server.lan_acting == Some(conn);
         let source = fatal.source();
         let weapon = fatal.weapon().and_then(|stack| stack.try_into_api().ok());
         let mut cancel = false;

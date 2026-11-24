@@ -49,7 +49,7 @@ struct Open {
 impl Game<'_> {
     /// Whether the mount menu is the open screen.
     pub(super) fn mount_active(&self) -> bool {
-        self.screen == Screen::Inventory && self.mount_menu.open.is_some()
+        self.client.screen == Screen::Inventory && self.client.mount_menu.open.is_some()
     }
     fn mount_mob_index(&self, id: u32) -> Option<usize> {
         self.mobs.iter().position(|m| m.id == id)
@@ -64,7 +64,7 @@ impl Game<'_> {
         let mut items = m.extra.items.clone();
         items.resize(CHEST_SIZE, None);
         let show_armor = shows_body(species);
-        self.mount_menu.open = Some(Open {
+        self.client.mount_menu.open = Some(Open {
             mob: m.id,
             species,
             columns: mount_columns(m),
@@ -87,7 +87,7 @@ impl Game<'_> {
         items: Vec<Option<ItemStack>>,
     ) {
         let columns = items.len() / 3;
-        self.mount_menu.open = Some(Open {
+        self.client.mount_menu.open = Some(Open {
             mob: entity,
             species,
             columns,
@@ -100,7 +100,7 @@ impl Game<'_> {
         self.show_mount_menu();
     }
     fn show_mount_menu(&mut self) {
-        if self.remote.is_none() && self.lan_acting.is_none() {
+        if self.remote.is_none() && self.server.lan_acting.is_none() {
             self.carried = None;
         }
         self.station = None;
@@ -132,17 +132,17 @@ impl Game<'_> {
     }
     /// A server closed its window: the screen's copy goes.
     pub(super) fn mount_menu_reset(&mut self) {
-        self.mount_menu.open = None;
+        self.client.mount_menu.open = None;
     }
     /// The entity type of the open mount menu's mount (`minecraft:horse`).
     pub(super) fn mount_menu_entity(&self) -> Option<String> {
-        let open = self.mount_menu.open.as_ref()?;
+        let open = self.client.mount_menu.open.as_ref()?;
         let m = self.mobs.iter().find(|m| m.id == open.mob)?;
         Some(m.kind.id.to_string())
     }
     /// The chest columns of the open mount menu (the server's window's).
     pub(super) fn mount_menu_columns(&self) -> Option<usize> {
-        self.mount_menu.open.as_ref().map(|o| o.columns)
+        self.client.mount_menu.open.as_ref().map(|o| o.columns)
     }
     /// The menu ends when the mount dies or its box leaves the entity
     /// interaction range plus 4 of the player's eyes
@@ -154,7 +154,7 @@ impl Game<'_> {
         if self.remote.is_some() {
             return;
         }
-        let Some(open) = self.mount_menu.open.as_ref() else {
+        let Some(open) = self.client.mount_menu.open.as_ref() else {
             return;
         };
         let mob = open.mob;
@@ -174,7 +174,7 @@ impl Game<'_> {
     /// Closing the screen keeps what is in the slots on the mount.
     pub(super) fn mount_closed(&mut self) {
         self.mount_sync();
-        self.mount_menu.open = None;
+        self.client.mount_menu.open = None;
     }
     /// Writes the menu slots to the mount, with the equip sounds. A
     /// server's menu is the server's to write.
@@ -182,7 +182,7 @@ impl Game<'_> {
         if self.remote.is_some() {
             return;
         }
-        let Some(open) = self.mount_menu.open.as_ref() else {
+        let Some(open) = self.client.mount_menu.open.as_ref() else {
             return;
         };
         let Some(index) = self.mount_mob_index(open.mob) else {
@@ -281,6 +281,7 @@ impl Game<'_> {
     }
     pub(super) fn mount_slots(&self) -> Option<Vec<usize>> {
         let open = self
+            .client
             .mount_menu
             .open
             .as_ref()
@@ -299,6 +300,7 @@ impl Game<'_> {
     /// (`Game::slot_count` asks every frame).
     pub(super) fn mount_slot_count(&self) -> Option<usize> {
         let open = self
+            .client
             .mount_menu
             .open
             .as_ref()
@@ -306,7 +308,8 @@ impl Game<'_> {
         Some(36 + usize::from(open.show_saddle) + usize::from(open.show_armor) + open.columns * 3)
     }
     pub(super) fn mount_layout_inputs(&self) -> Option<(usize, bool, bool)> {
-        self.mount_menu
+        self.client
+            .mount_menu
             .open
             .as_ref()
             .filter(|_| self.mount_active())
@@ -314,6 +317,7 @@ impl Game<'_> {
     }
     pub(super) fn mount_slot_position(&self, i: usize) -> Option<(f32, f32)> {
         let open = self
+            .client
             .mount_menu
             .open
             .as_ref()
@@ -334,13 +338,14 @@ impl Game<'_> {
         }
     }
     pub(super) fn is_mount_chest_slot(&self, i: usize) -> bool {
-        self.mount_menu
+        self.client
+            .mount_menu
             .open
             .as_ref()
             .is_some_and(|open| i >= CHEST && i - CHEST < open.columns * 3)
     }
     pub(super) fn mount_slot(&self, i: usize) -> &Option<ItemStack> {
-        match self.mount_menu.open.as_ref() {
+        match self.client.mount_menu.open.as_ref() {
             Some(open) if i == SADDLE => &open.saddle,
             Some(open) if i == ARMOR => &open.armor,
             Some(open) if i >= CHEST && i - CHEST < open.items.len() => &open.items[i - CHEST],
@@ -348,7 +353,7 @@ impl Game<'_> {
         }
     }
     pub(super) fn mount_slot_mut(&mut self, i: usize) -> &mut Option<ItemStack> {
-        match self.mount_menu.open.as_mut() {
+        match self.client.mount_menu.open.as_mut() {
             Some(open) if i == SADDLE => &mut open.saddle,
             Some(open) if i == ARMOR => &mut open.armor,
             Some(open) if i >= CHEST && i - CHEST < open.items.len() => &mut open.items[i - CHEST],
@@ -357,7 +362,7 @@ impl Game<'_> {
     }
     /// `ArmorSlot.mayPlace` and the stack limits of the mount's slots.
     pub(super) fn mount_slot_rules(&self, slot: usize, stack: &ItemStack) -> (bool, u32) {
-        let Some(open) = self.mount_menu.open.as_ref() else {
+        let Some(open) = self.client.mount_menu.open.as_ref() else {
             return (false, 64);
         };
         match slot {
@@ -379,7 +384,7 @@ impl Game<'_> {
             [r.config.width, r.config.height],
             self.settings.gui_scale_inputs(),
         );
-        let Some(slot) = self.slot_at(&batch, self.cursor.0, self.cursor.1) else {
+        let Some(slot) = self.slot_at(&batch, self.client.cursor.0, self.client.cursor.1) else {
             return true;
         };
         let shift = self.has_shift_down();
@@ -399,7 +404,7 @@ impl Game<'_> {
     }
     /// `AbstractMountInventoryMenu.quickMoveStack`.
     fn mount_quick_move(&mut self, slot: usize) {
-        let Some(open) = self.mount_menu.open.as_ref() else {
+        let Some(open) = self.client.mount_menu.open.as_ref() else {
             return;
         };
         let (columns, show_saddle, show_armor) = (open.columns, open.show_saddle, open.show_armor);
@@ -438,7 +443,7 @@ impl Game<'_> {
     }
     /// `HorseInventoryScreen`'s background, slot frames and the mount.
     pub(super) fn draw_mount_background(&self, batch: &mut HudBatch, ox: f32, oy: f32) {
-        let Some(open) = self.mount_menu.open.as_ref() else {
+        let Some(open) = self.client.mount_menu.open.as_ref() else {
             return;
         };
         let atlas = &self.gui.atlas;
@@ -521,8 +526,8 @@ impl Game<'_> {
         offset_y: f32,
     ) {
         let (cx, cy) = ((x0 + x1) / 2.0, (y0 + y1) / 2.0);
-        let x_angle = ((cx - self.cursor.0) / 40.0).atan();
-        let y_angle = ((cy - self.cursor.1) / 40.0).atan();
+        let x_angle = ((cx - self.client.cursor.0) / 40.0).atan();
+        let y_angle = ((cy - self.client.cursor.1) / 40.0).atan();
         let mut m = mob.clone();
         m.previous = m.position;
         m.body_yaw = 180.0 + x_angle * 20.0;

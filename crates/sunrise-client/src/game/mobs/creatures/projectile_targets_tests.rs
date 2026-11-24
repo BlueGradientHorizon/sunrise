@@ -133,8 +133,8 @@ fn clear_entities(game: &mut Game<'_>) {
     game.paintings.clear();
     game.cushions.clear();
     game.others.clear();
-    game.knot_ids.clear();
-    game.broken_knots.clear();
+    game.server.knot_ids.clear();
+    game.server.broken_knots.clear();
     game.resident_entities.knots.clear();
     game.reset_entity_residency();
     game.bind_local_player_residency();
@@ -254,6 +254,7 @@ fn summon_target(game: &mut Game<'_>, target: &str) -> TrackedTarget {
             let pig_id = game.mobs.last().unwrap().id;
             game.tick_server(false).unwrap();
             let id = *game
+                .server
                 .knot_ids
                 .get(&[3, 64, 4])
                 .expect("natural leash knot created on fence");

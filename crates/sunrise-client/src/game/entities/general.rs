@@ -1235,8 +1235,8 @@ impl Game<'_> {
         mount: Option<u32>,
         transferred: Option<TransferredEntityState>,
     ) -> u32 {
-        self.next_entity += 1;
-        let id = self.next_entity;
+        self.server.next_entity += 1;
+        let id = self.server.next_entity;
         // Install before `remember_uuid` (the same ordering a transferred
         // mob's state takes): the destination is the same logical entity.
         if let Some(state) = transferred {

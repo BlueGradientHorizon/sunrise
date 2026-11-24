@@ -80,7 +80,9 @@ impl Game<'_> {
     pub(super) fn native_living_player_effects(&self, t: Target) -> Option<&PlayerEffects> {
         match t {
             Target::Player => Some(&self.potions.effects),
-            Target::Guest(conn) if self.lan_acting == Some(conn) => Some(&self.potions.effects),
+            Target::Guest(conn) if self.server.lan_acting == Some(conn) => {
+                Some(&self.potions.effects)
+            }
             Target::Guest(conn) => Some(&self.lan.as_ref()?.hub.guest(conn)?.effects),
             _ => None,
         }
@@ -581,7 +583,7 @@ mod tests {
                 .effects
                 .list
                 .push(EffectInstance::new("nausea", 600, 0));
-            game.screen_fx.tick_spinning(Some(true));
+            game.client.screen_fx.tick_spinning(Some(true));
             assert!(close(
                 me.effect_blend_factor(
                     game,

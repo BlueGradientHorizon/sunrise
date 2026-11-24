@@ -257,7 +257,7 @@ impl Game<'_> {
 
     /// The vanilla book the open screen has, if any.
     pub(super) fn active_book(&self) -> Option<BookType> {
-        if self.screen != Screen::Inventory || self.station.is_some() {
+        if self.client.screen != Screen::Inventory || self.station.is_some() {
             return None;
         }
         // Explicitly assigned mod panels use their own identity and flags.
@@ -309,12 +309,17 @@ impl Game<'_> {
     /// Whether typed keys go to the search box.
     pub(super) fn recipe_search_focused(&self) -> bool {
         (self.mod_book_open() || self.active_book().is_some_and(|b| self.book_open(b)))
-            && self.recipe_ui.search.as_ref().is_some_and(|s| s.focused)
+            && self
+                .client
+                .recipe_ui
+                .search
+                .as_ref()
+                .is_some_and(|s| s.focused)
     }
     /// `keyChat` focuses the search box.
     pub(super) fn recipe_focus_search(&mut self) -> bool {
         if (self.mod_book_open() || self.active_book().is_some_and(|b| self.book_open(b)))
-            && let Some(s) = self.recipe_ui.search.as_mut()
+            && let Some(s) = self.client.recipe_ui.search.as_mut()
         {
             s.focused = true;
             s.reset_blink();
@@ -324,7 +329,7 @@ impl Game<'_> {
     }
     /// Text typed (or one backspace) into the search box.
     pub(super) fn recipe_text(&mut self, text: Option<&str>, backspace: bool) {
-        let Some(search) = self.recipe_ui.search.as_mut() else {
+        let Some(search) = self.client.recipe_ui.search.as_mut() else {
             return;
         };
         if backspace {
@@ -335,7 +340,7 @@ impl Game<'_> {
     }
     /// Ctrl+A/C/V/X in the search box.
     pub(super) fn recipe_shortcut(&mut self, shortcut: sunrise_client::clipboard::EditShortcut) {
-        if let Some(search) = self.recipe_ui.search.as_mut() {
+        if let Some(search) = self.client.recipe_ui.search.as_mut() {
             search.shortcut(shortcut, &mut self.clipboard);
         }
     }
@@ -350,7 +355,7 @@ impl Game<'_> {
             return true;
         }
         let (ctrl, shift) = (self.has_control_down(), self.has_shift_down());
-        let Some(search) = self.recipe_ui.search.as_mut() else {
+        let Some(search) = self.client.recipe_ui.search.as_mut() else {
             return false;
         };
         let handled = search.key(key, ctrl, shift);
@@ -367,7 +372,7 @@ impl Game<'_> {
         }
         self.ensure_book();
         let index = self.display_index();
-        let book = self.recipe_ui.book.as_ref();
+        let book = self.client.recipe_ui.book.as_ref();
         // SmithingTrimDemoSlotDisplay draws from a random of its own.
         let mut random = random_source::entity();
         let mut items = Vec::new();
@@ -405,7 +410,7 @@ impl Game<'_> {
         if items.is_empty() {
             return;
         }
-        match self.toast_manager.find_mut(|entry| match entry {
+        match self.client.toast_manager.find_mut(|entry| match entry {
             super::toast_manager::Toast::Advancement(t) if t.is_recipe() => Some(t),
             _ => None,
         }) {
@@ -481,7 +486,7 @@ impl Game<'_> {
         }
         let known = &self.level.recipe_book.recipes;
         let index = &world_stations!(self).recipe_index;
-        let ui = &mut self.recipe_ui;
+        let ui = &mut self.client.recipe_ui;
         match ui.client_known.as_ref() {
             Some(previous) if previous == known => return,
             Some(previous) => {
@@ -511,7 +516,8 @@ impl Game<'_> {
     /// Every entry of the book, in its order (`native_recipes`).
     pub(super) fn recipe_book_entries(&mut self) -> Vec<Entry> {
         self.ensure_book();
-        self.recipe_ui
+        self.client
+            .recipe_ui
             .book
             .as_ref()
             .map_or_else(Vec::new, |b| b.entries.clone())
@@ -521,15 +527,15 @@ impl Game<'_> {
     pub(super) fn recipe_book_displays(&mut self) -> (u64, Vec<i32>) {
         self.sync_client_book();
         (
-            self.recipe_ui.client_version,
-            self.recipe_ui.client.displays(),
+            self.client.recipe_ui.client_version,
+            self.client.recipe_ui.client.displays(),
         )
     }
     /// The book's model is made again from `Game::recipes` when next needed:
     /// the server's recipes arrived, or a new session began.
     pub(super) fn forget_book(&mut self) {
-        self.recipe_ui.book = None;
-        self.recipe_ui.custom = mod_screen::ModRecipeUi::default();
+        self.client.recipe_ui.book = None;
+        self.client.recipe_ui.custom = mod_screen::ModRecipeUi::default();
         self.recipe_tables.books = None;
         self.invalidate_mod_book_placement_catalogues();
     }
@@ -569,23 +575,23 @@ impl Game<'_> {
         );
     }
     fn ensure_book(&mut self) {
-        if self.recipe_ui.book.is_none() {
+        if self.client.recipe_ui.book.is_none() {
             let mut book = Book::build(self.recipes(), self.items());
             book.set_display_ids(self.display_index());
             // A server numbers and describes its recipes itself.
-            self.server_entries_over(&mut book, self.recipe_ui.server_entries.values());
-            self.recipe_ui.book = Some(book);
+            self.server_entries_over(&mut book, self.client.recipe_ui.server_entries.values());
+            self.client.recipe_ui.book = Some(book);
         }
         self.ensure_recipe_search();
     }
     pub(super) fn ensure_recipe_search(&mut self) {
-        if self.recipe_ui.search.is_none() {
+        if self.client.recipe_ui.search.is_none() {
             let mut search = EditBox::new(0.0, 0.0, 81.0, 14.0);
             search.message = super::screen_info::tr("itemGroup.search", &[]);
             search.max_length = 50;
             search.focused = false;
             search.text_color = u32::MAX;
-            self.recipe_ui.search = Some(search);
+            self.client.recipe_ui.search = Some(search);
         }
     }
     /// Rebuilds the tab and button lists when anything they depend on changed.
@@ -608,27 +614,32 @@ impl Game<'_> {
             stack.map(|s| (s.item, s.count)).hash(&mut h);
         }
         self.craft_size.hash(&mut h);
-        self.recipe_ui.client_version.hash(&mut h);
+        self.client.recipe_ui.client_version.hash(&mut h);
         self.book_filtering(book_type).hash(&mut h);
-        self.recipe_ui.tab.map(|t| format!("{t:?}")).hash(&mut h);
-        self.recipe_ui
+        self.client
+            .recipe_ui
+            .tab
+            .map(|t| format!("{t:?}"))
+            .hash(&mut h);
+        self.client
+            .recipe_ui
             .search
             .as_ref()
             .map(|s| s.value.clone())
             .hash(&mut h);
         book_type.index().hash(&mut h);
         let key = h.finish();
-        if key == self.recipe_ui.view_key && !self.recipe_ui.view.tabs.is_empty() {
+        if key == self.client.recipe_ui.view_key && !self.client.recipe_ui.view.tabs.is_empty() {
             return;
         }
-        let ui = std::mem::take(&mut self.recipe_ui);
+        let ui = std::mem::take(&mut self.client.recipe_ui);
         let view = self.build_view(&ui, book_type);
-        self.recipe_ui = ui;
-        self.recipe_ui.view = view;
-        self.recipe_ui.view_key = key;
-        let pages = self.recipe_ui.view.buttons.len().div_ceil(20);
-        if self.recipe_ui.page >= pages.max(1) {
-            self.recipe_ui.page = 0;
+        self.client.recipe_ui = ui;
+        self.client.recipe_ui.view = view;
+        self.client.recipe_ui.view_key = key;
+        let pages = self.client.recipe_ui.view.buttons.len().div_ceil(20);
+        if self.client.recipe_ui.page >= pages.max(1) {
+            self.client.recipe_ui.page = 0;
         }
         self.start_new_recipe_animations(book_type);
     }
@@ -639,7 +650,7 @@ impl Game<'_> {
         if self.level.recipe_book.to_be_displayed.is_empty() {
             return;
         }
-        let Some(book) = self.recipe_ui.book.take() else {
+        let Some(book) = self.client.recipe_ui.book.take() else {
             return;
         };
         let filtering = self.book_filtering(book_type);
@@ -651,11 +662,12 @@ impl Game<'_> {
         };
         let new = |level: &Self, e: &Entry| level.level.recipe_book.to_be_displayed.contains(&e.id);
         let mut tabs = Vec::new();
-        for tab in self.recipe_ui.view.tabs.clone() {
+        for tab in self.client.recipe_ui.view.tabs.clone() {
             if tab == Tab::Search {
                 continue;
             }
             let hit = self
+                .client
                 .recipe_ui
                 .client
                 .collections(&book, book_type, tab)
@@ -666,11 +678,12 @@ impl Game<'_> {
                 tabs.push((tab, 15.0));
             }
         }
-        self.recipe_ui.tab_anim = tabs;
-        let first = self.recipe_ui.page * 20;
+        self.client.recipe_ui.tab_anim = tabs;
+        let first = self.client.recipe_ui.page * 20;
         let mut buttons = Vec::new();
         let mut cleared = Vec::new();
         for (n, button) in self
+            .client
             .recipe_ui
             .view
             .buttons
@@ -694,8 +707,8 @@ impl Game<'_> {
             .recipe_book
             .to_be_displayed
             .retain(|id| !cleared.contains(id));
-        self.recipe_ui.button_anim = buttons;
-        self.recipe_ui.book = Some(book);
+        self.client.recipe_ui.button_anim = buttons;
+        self.client.recipe_ui.book = Some(book);
     }
     fn build_view(&mut self, ui: &RecipeUi, book_type: BookType) -> View {
         let Some(book) = ui.book.as_ref() else {
@@ -834,11 +847,11 @@ impl Game<'_> {
     }
     /// `RecipeBookComponent.slotSelectTime`.
     fn swap_index(&self) -> usize {
-        (self.recipe_ui.time / SWAP_TICKS).floor() as usize
+        (self.client.recipe_ui.time / SWAP_TICKS).floor() as usize
     }
     fn batch_for_size(&self) -> Option<HudBatch> {
         #[cfg(test)]
-        if let Some(size) = self.recipe_ui.test_viewport {
+        if let Some(size) = self.client.recipe_ui.test_viewport {
             return Some(HudBatch::new(size, self.settings.gui_scale_inputs()));
         }
         let r = self.renderer.as_ref()?;
@@ -863,14 +876,14 @@ impl Game<'_> {
             return false;
         };
         self.ensure_book();
-        let cursor = self.cursor;
+        let cursor = self.client.cursor;
         let (ox, _) = self.inventory_origin(&batch);
         // Clicking a crafting slot drops the ghost recipe (`slotClicked`).
         if let Some(slot) = self.slot_at(&batch, cursor.0, cursor.1)
             && self.is_book_slot(book_type, slot)
         {
-            self.recipe_ui.last_placed = None;
-            self.recipe_ui.ghost.clear();
+            self.client.recipe_ui.last_placed = None;
+            self.client.recipe_ui.ghost.clear();
         }
         let (bx, by) = self.book_button_pos(book_type, ox, &batch);
         if inside(cursor, bx, by, 20.0, 18.0) {
@@ -881,7 +894,7 @@ impl Game<'_> {
             self.build_screen();
             self.send_book_settings(book_type);
             if !open {
-                self.recipe_ui.overlay = None;
+                self.client.recipe_ui.overlay = None;
             }
             self.audio
                 .play("minecraft:ui.button.click", None, 0.25, 1.0);
@@ -899,7 +912,7 @@ impl Game<'_> {
         self.refresh_book_view(book_type);
         let (xo, yo) = self.book_origin(&batch);
         // The alternatives overlay captures the click first.
-        if let Some(overlay) = self.recipe_ui.overlay.take() {
+        if let Some(overlay) = self.client.recipe_ui.overlay.take() {
             let maxrow = if overlay.entries.len() <= 16 { 4 } else { 5 };
             for (n, (entry, _)) in overlay.entries.iter().enumerate() {
                 let x = overlay.x + 4.0 + 25.0 * (n % maxrow) as f32;
@@ -915,27 +928,28 @@ impl Game<'_> {
             }
             return true;
         }
-        let pages = self.recipe_ui.view.buttons.len().div_ceil(20);
+        let pages = self.client.recipe_ui.view.buttons.len().div_ceil(20);
         // Page arrows.
         if pages > 1 {
-            if self.recipe_ui.page + 1 < pages && inside(cursor, xo + 93.0, yo + 137.0, 12.0, 17.0)
+            if self.client.recipe_ui.page + 1 < pages
+                && inside(cursor, xo + 93.0, yo + 137.0, 12.0, 17.0)
             {
-                self.recipe_ui.page += 1;
+                self.client.recipe_ui.page += 1;
                 self.audio
                     .play("minecraft:ui.button.click", None, 0.25, 1.0);
                 return true;
             }
-            if self.recipe_ui.page > 0 && inside(cursor, xo + 38.0, yo + 137.0, 12.0, 17.0) {
-                self.recipe_ui.page -= 1;
+            if self.client.recipe_ui.page > 0 && inside(cursor, xo + 38.0, yo + 137.0, 12.0, 17.0) {
+                self.client.recipe_ui.page -= 1;
                 self.audio
                     .play("minecraft:ui.button.click", None, 0.25, 1.0);
                 return true;
             }
         }
         // Recipe buttons.
-        let first = self.recipe_ui.page * 20;
+        let first = self.client.recipe_ui.page * 20;
         for n in 0..20 {
-            let Some(button) = self.recipe_ui.view.buttons.get(first + n).cloned() else {
+            let Some(button) = self.client.recipe_ui.view.buttons.get(first + n).cloned() else {
                 break;
             };
             let (x, y) = Self::button_pos(xo, yo, n);
@@ -958,14 +972,14 @@ impl Game<'_> {
             return true;
         }
         // Search box.
-        if let Some(search) = self.recipe_ui.search.as_mut() {
+        if let Some(search) = self.client.recipe_ui.search.as_mut() {
             search.x = xo + 25.0;
             search.y = yo + 13.0;
             // RecipeBookComponent's magnifierIconPlacement: from the book's
             // left edge plus eight to the search box's own left edge.
             let magnifier = inside(cursor, xo + 8.0, yo + 13.0, search.x - xo, 14.0);
             if magnifier || inside(cursor, search.x, search.y, search.width, search.height) {
-                self.recipe_ui.search_drag = true;
+                self.client.recipe_ui.search_drag = true;
                 search.focused = true;
                 search.reset_blink();
                 if !magnifier {
@@ -981,18 +995,26 @@ impl Game<'_> {
             let filtering = !self.book_filtering(book_type);
             self.level.recipe_book.filtering[book_type.index()] = filtering;
             self.send_book_settings(book_type);
-            self.recipe_ui.page = 0;
+            self.client.recipe_ui.page = 0;
             self.audio
                 .play("minecraft:ui.button.click", None, 0.25, 1.0);
             return true;
         }
         // Tabs.
-        for (n, tab) in self.recipe_ui.view.tabs.clone().into_iter().enumerate() {
+        for (n, tab) in self
+            .client
+            .recipe_ui
+            .view
+            .tabs
+            .clone()
+            .into_iter()
+            .enumerate()
+        {
             let (x, y) = self.tab_pos(xo, yo, n);
             if inside(cursor, x, y, 35.0, 27.0) {
-                if self.recipe_ui.tab.unwrap_or(Tab::Search) != tab {
-                    self.recipe_ui.tab = Some(tab);
-                    self.recipe_ui.page = 0;
+                if self.client.recipe_ui.tab.unwrap_or(Tab::Search) != tab {
+                    self.client.recipe_ui.tab = Some(tab);
+                    self.client.recipe_ui.page = 0;
                 }
                 self.audio
                     .play("minecraft:ui.button.click", None, 0.25, 1.0);
@@ -1004,7 +1026,8 @@ impl Game<'_> {
     /// `RecipeBookComponent.mouseClicked` after a placed recipe: it becomes
     /// `lastRecipe`.
     fn remember_click(&mut self, entry: usize) {
-        self.recipe_ui.last_clicked = self
+        self.client.recipe_ui.last_clicked = self
+            .client
             .recipe_ui
             .book
             .as_ref()
@@ -1025,12 +1048,13 @@ impl Game<'_> {
         if !self.book_open(book_type) || self.spectator() || self.recipe_search_focused() {
             return false;
         }
-        let Some(display) = self.recipe_ui.last_clicked else {
+        let Some(display) = self.client.recipe_ui.last_clicked else {
             return false;
         };
         // The craft just taken changed what is craftable.
         self.refresh_book_view(book_type);
         let Some(entry) = self
+            .client
             .recipe_ui
             .book
             .as_ref()
@@ -1046,13 +1070,13 @@ impl Game<'_> {
     /// `RecipeBookComponent.mouseDragged`: while the search box is focused a
     /// drag moves its selection end to the pointer (`EditBox.onDrag`).
     pub(super) fn recipe_book_drag(&mut self) -> bool {
-        if !self.recipe_ui.search_drag
+        if !self.client.recipe_ui.search_drag
             || !(self.mod_book_open() || self.active_book().is_some_and(|b| self.book_open(b)))
         {
             return false;
         }
-        let x = self.cursor.0;
-        if let Some(search) = self.recipe_ui.search.as_mut()
+        let x = self.client.cursor.0;
+        if let Some(search) = self.client.recipe_ui.search.as_mut()
             && search.focused
         {
             search.drag_to(&self.gui.atlas, x);
@@ -1062,7 +1086,7 @@ impl Game<'_> {
     }
     /// A mouse button let go: a drag no longer selects in the search box.
     pub(super) fn recipe_book_release(&mut self) -> bool {
-        std::mem::take(&mut self.recipe_ui.search_drag)
+        std::mem::take(&mut self.client.recipe_ui.search_drag)
     }
     /// `RecipeBookComponent.sendUpdateSettings`: the server owns the saved book.
     fn send_book_settings(&self, book_type: BookType) {
@@ -1085,7 +1109,7 @@ impl Game<'_> {
     }
     /// How many displays the client's book holds.
     pub(super) fn recipe_book_known(&self) -> usize {
-        self.recipe_ui.client.displays().len()
+        self.client.recipe_ui.client.displays().len()
     }
     /// The next or previous page, as the arrows turn it: nothing past either end, or with a
     /// pointer button held.
@@ -1095,12 +1119,12 @@ impl Game<'_> {
         }
         if self.native_screen_shown() {
             if self.mod_book_open() && !self.spectator() {
-                self.recipe_ui.custom.turn_page(next);
+                self.client.recipe_ui.custom.turn_page(next);
             }
             return;
         }
-        let pages = self.recipe_ui.view.buttons.len().div_ceil(20);
-        let page = self.recipe_ui.page;
+        let pages = self.client.recipe_ui.view.buttons.len().div_ceil(20);
+        let page = self.client.recipe_ui.page;
         let Some(to) = (if next {
             (page + 1 < pages).then_some(page + 1)
         } else {
@@ -1108,7 +1132,7 @@ impl Game<'_> {
         }) else {
             return;
         };
-        self.recipe_ui.page = to;
+        self.client.recipe_ui.page = to;
         self.audio
             .play("minecraft:ui.button.click", None, 0.25, 1.0);
     }
@@ -1119,8 +1143,8 @@ impl Game<'_> {
         if !self.book_open(book_type) || self.spectator() {
             return None;
         }
-        let cursor = self.cursor;
-        if let Some(overlay) = &self.recipe_ui.overlay {
+        let cursor = self.client.cursor;
+        if let Some(overlay) = &self.client.recipe_ui.overlay {
             let maxrow = if overlay.entries.len() <= 16 { 4 } else { 5 };
             return overlay.entries.iter().enumerate().find_map(|(n, e)| {
                 let x = overlay.x + 4.0 + 25.0 * (n % maxrow) as f32;
@@ -1129,9 +1153,9 @@ impl Game<'_> {
             });
         }
         let (xo, yo) = self.book_origin(&batch);
-        let first = self.recipe_ui.page * 20;
+        let first = self.client.recipe_ui.page * 20;
         (0..20).find_map(|n| {
-            let button = self.recipe_ui.view.buttons.get(first + n)?;
+            let button = self.client.recipe_ui.view.buttons.get(first + n)?;
             let (x, y) = Self::button_pos(xo, yo, n);
             inside(cursor, x, y, 25.0, 25.0)
                 .then(|| button.entries[self.swap_index() % button.entries.len()].0)
@@ -1142,15 +1166,16 @@ impl Game<'_> {
         let Some(batch) = self.batch_for_size() else {
             return false;
         };
-        if self.recipe_ui.overlay.is_some() {
+        if self.client.recipe_ui.overlay.is_some() {
             return false;
         }
         let (xo, yo) = self.book_origin(&batch);
-        let first = self.recipe_ui.page * 20;
+        let first = self.client.recipe_ui.page * 20;
         (0..20).any(|n| {
             let (x, y) = Self::button_pos(xo, yo, n);
-            inside(self.cursor, x, y, 25.0, 25.0)
+            inside(self.client.cursor, x, y, 25.0, 25.0)
                 && self
+                    .client
                     .recipe_ui
                     .view
                     .buttons
@@ -1162,13 +1187,13 @@ impl Game<'_> {
     pub(super) fn recipe_book_under_pointer(&self) -> bool {
         self.recipe_book_targets().iter().any(|t| {
             let [x, y, w, h] = t.rect;
-            inside(self.cursor, x, y, w, h)
+            inside(self.client.cursor, x, y, w, h)
         })
     }
     /// Whether the crafting book's entry can be crafted from what the menu holds now.
     pub(super) fn recipe_craftable(&mut self, entry_index: usize) -> bool {
         let available = self.book_available(BookType::Crafting);
-        self.recipe_ui.book.as_ref().is_some_and(|book| {
+        self.client.recipe_ui.book.as_ref().is_some_and(|book| {
             book.entries
                 .get(entry_index)
                 .is_some_and(|entry| book.can_craft(entry, &available))
@@ -1179,7 +1204,13 @@ impl Game<'_> {
         &self,
         entry_index: usize,
     ) -> Option<super::pad_craft::RecipeKey> {
-        let entry = self.recipe_ui.book.as_ref()?.entries.get(entry_index)?;
+        let entry = self
+            .client
+            .recipe_ui
+            .book
+            .as_ref()?
+            .entries
+            .get(entry_index)?;
         Some(super::pad_craft::RecipeKey {
             id: entry.id.clone(),
             display: entry.display_id,
@@ -1187,7 +1218,8 @@ impl Game<'_> {
     }
     /// Where the crafting book holds the recipe now: none once the book has it no more.
     pub(super) fn recipe_entry_index(&self, key: &super::pad_craft::RecipeKey) -> Option<usize> {
-        self.recipe_ui
+        self.client
+            .recipe_ui
             .book
             .as_ref()?
             .entries
@@ -1196,7 +1228,8 @@ impl Game<'_> {
     }
     /// What the crafting book's entry makes: none when the book has no such entry.
     pub(super) fn recipe_results(&self, entry_index: usize) -> &[ItemStack] {
-        self.recipe_ui
+        self.client
+            .recipe_ui
             .book
             .as_ref()
             .and_then(|book| book.entries.get(entry_index))
@@ -1204,14 +1237,15 @@ impl Game<'_> {
     }
     /// Places one set of the crafting book's entry, as a click on its button places it.
     pub(super) fn recipe_place_once(&mut self, entry_index: usize) {
-        self.recipe_ui.last_placed = self
+        self.client.recipe_ui.last_placed = self
+            .client
             .recipe_ui
             .book
             .as_ref()
             .and_then(|b| b.entries.get(entry_index))
             .map(|e| e.id.clone());
-        self.recipe_ui.ghost.clear();
-        self.recipe_ui.overlay = None;
+        self.client.recipe_ui.ghost.clear();
+        self.client.recipe_ui.overlay = None;
         self.place_book_recipe(BookType::Crafting, entry_index, false);
     }
     /// The recipe book's buttons a controller can focus: the book button,
@@ -1236,14 +1270,14 @@ impl Game<'_> {
             return out;
         }
         let (xo, yo) = self.book_origin(&batch);
-        if self.recipe_ui.overlay.is_none() {
+        if self.client.recipe_ui.overlay.is_none() {
             // The search box is painted by hand: a field, for the pad's keyboard.
             out.push(Target {
                 rect: [xo + 25.0, yo + 13.0, 81.0, 14.0],
                 kind: Kind::Field,
             });
         }
-        if let Some(overlay) = &self.recipe_ui.overlay {
+        if let Some(overlay) = &self.client.recipe_ui.overlay {
             // The alternatives overlay takes every click while open.
             let maxrow = if overlay.entries.len() <= 16 { 4 } else { 5 };
             return (0..overlay.entries.len())
@@ -1254,8 +1288,9 @@ impl Game<'_> {
                 })
                 .collect();
         }
-        let first = self.recipe_ui.page * 20;
+        let first = self.client.recipe_ui.page * 20;
         let shown = self
+            .client
             .recipe_ui
             .view
             .buttons
@@ -1266,16 +1301,16 @@ impl Game<'_> {
             let (x, y) = Self::button_pos(xo, yo, n);
             button([x, y, 25.0, 25.0])
         }));
-        let pages = self.recipe_ui.view.buttons.len().div_ceil(20);
-        if pages > 1 && self.recipe_ui.page + 1 < pages {
+        let pages = self.client.recipe_ui.view.buttons.len().div_ceil(20);
+        if pages > 1 && self.client.recipe_ui.page + 1 < pages {
             out.push(button([xo + 93.0, yo + 137.0, 12.0, 17.0]));
         }
-        if pages > 1 && self.recipe_ui.page > 0 {
+        if pages > 1 && self.client.recipe_ui.page > 0 {
             out.push(button([xo + 38.0, yo + 137.0, 12.0, 17.0]));
         }
         out.push(button([xo + 110.0, yo + 12.0, 26.0, 16.0]));
-        let selected = self.recipe_ui.tab.unwrap_or(Tab::Search);
-        for (n, tab) in self.recipe_ui.view.tabs.iter().enumerate() {
+        let selected = self.client.recipe_ui.tab.unwrap_or(Tab::Search);
+        for (n, tab) in self.client.recipe_ui.view.tabs.iter().enumerate() {
             let (x, y) = self.tab_pos(xo, yo, n);
             out.push(Target {
                 rect: [x, y, 35.0, 27.0],
@@ -1298,11 +1333,11 @@ impl Game<'_> {
             return Some((false, false));
         }
         let (xo, yo) = self.book_origin(batch);
-        let tabs = &self.recipe_ui.view.tabs;
-        let selected = self.recipe_ui.tab.unwrap_or(Tab::Search);
+        let tabs = &self.client.recipe_ui.view.tabs;
+        let selected = self.client.recipe_ui.tab.unwrap_or(Tab::Search);
         let hovered = tabs.iter().position(|t| *t == selected).is_some_and(|n| {
             let (x, y) = self.tab_pos(xo, yo, n);
-            inside(self.cursor, x, y, 35.0, 27.0)
+            inside(self.client.cursor, x, y, 35.0, 27.0)
         });
         Some((true, hovered))
     }
@@ -1321,7 +1356,7 @@ impl Game<'_> {
         let (x, y) =
             screen::overlay_origin(bx as i32, by as i32, entries.len(), xo as i32, yo as i32);
         let (x, y) = (x as f32, y as f32);
-        self.recipe_ui.overlay = Some(Overlay { x, y, entries });
+        self.client.recipe_ui.overlay = Some(Overlay { x, y, entries });
     }
 
     // ---- placing a recipe ----
@@ -1336,7 +1371,7 @@ impl Game<'_> {
         self.level.recipe_book.open[book_type.index()] = false;
         self.build_screen();
         self.send_book_settings(book_type);
-        self.recipe_ui.overlay = None;
+        self.client.recipe_ui.overlay = None;
     }
     /// `RecipeBookComponent.keyPressed`: Escape closes the book, not the
     /// screen, while it covers a narrow menu; a wide window's Escape reaches
@@ -1360,6 +1395,7 @@ impl Game<'_> {
             return false;
         };
         let Some(id) = self
+            .client
             .recipe_ui
             .book
             .as_ref()
@@ -1368,8 +1404,8 @@ impl Game<'_> {
         else {
             return false;
         };
-        self.recipe_ui.last_placed = Some(id);
-        self.recipe_ui.ghost.clear();
+        self.client.recipe_ui.last_placed = Some(id);
+        self.client.recipe_ui.ghost.clear();
         self.place_book_recipe(book_type, entry_index, use_max);
         true
     }
@@ -1377,7 +1413,7 @@ impl Game<'_> {
     /// book (the inventory's or a crafting table's), or a mod menu type's
     /// crafting grid.
     pub(super) fn mod_recipe_screen(&self) -> bool {
-        self.screen == Screen::Inventory
+        self.client.screen == Screen::Inventory
             && (self.active_book() == Some(BookType::Crafting) || self.mod_crafting_open())
             && !self.spectator()
     }
@@ -1393,11 +1429,19 @@ impl Game<'_> {
     /// id, refused as `handlePlaceRecipe` refuses it (no crafting screen,
     /// not in the player's book; an impossible one in `place_recipe`).
     pub(super) fn mod_place_recipe(&mut self, display_id: i32, all: bool) {
-        if !self.mod_recipe_screen() || !self.recipe_ui.client.displays().contains(&display_id) {
+        if !self.mod_recipe_screen()
+            || !self
+                .client
+                .recipe_ui
+                .client
+                .displays()
+                .contains(&display_id)
+        {
             return;
         }
         self.ensure_book();
         let Some(index) = self
+            .client
             .recipe_ui
             .book
             .as_ref()
@@ -1405,7 +1449,7 @@ impl Game<'_> {
         else {
             return;
         };
-        self.recipe_ui.ghost.clear();
+        self.client.recipe_ui.ghost.clear();
         self.place_book_recipe(BookType::Crafting, index, all);
     }
     /// Whether the open menu is a content mod's menu type (a machine's, with or without a grid):
@@ -1496,8 +1540,8 @@ impl Game<'_> {
     /// `menu_transfer` parts on a mod menu answer first, then its grid transfer. Only a server
     /// that takes viewer transfers is asked: elsewhere it shows as not into this menu.
     pub(super) fn transfer_viewer_recipe_id(&mut self, recipe: &str, max: bool) {
-        self.panel.transfer_warning = None;
-        let open = self.screen == Screen::Inventory
+        self.client.panel.transfer_warning = None;
+        let open = self.client.screen == Screen::Inventory
             && !self.spectator()
             && (self.mod_menu_open() || self.mod_recipe_screen());
         if !open {
@@ -1539,14 +1583,15 @@ impl Game<'_> {
     /// itself, so the display index's ids are not evidence of its own.
     pub(in crate::game) fn viewer_book_ids(&mut self, recipe_id: &str) -> std::sync::Arc<[i32]> {
         self.ensure_book();
-        self.recipe_ui
+        self.client
+            .recipe_ui
             .book
             .as_ref()
             .map_or_else(Default::default, |book| book.confirmed_ids(recipe_id))
     }
     /// A viewer's transfer of one set of ingredients.
     pub(super) fn transfer_viewer_recipe(&mut self, display_id: i32) {
-        self.panel.transfer_warning = None;
+        self.client.panel.transfer_warning = None;
         if !self.mod_recipe_screen()
             || (self.creative && self.craft_size != 3 && !self.mod_crafting_open())
         {
@@ -1560,7 +1605,7 @@ impl Game<'_> {
         {
             // Older Sunrise and vanilla servers still accept book clicks.
             if self.recipe_place(display_id, false).is_err() {
-                self.panel.transfer_warning = Some((
+                self.client.panel.transfer_warning = Some((
                     "sunrise.recipe_transfer.unsupported",
                     "Server requires a known recipe",
                 ));
@@ -1569,6 +1614,7 @@ impl Game<'_> {
         }
         self.ensure_book();
         let Some(id) = self
+            .client
             .recipe_ui
             .book
             .as_ref()
@@ -1642,11 +1688,11 @@ impl Game<'_> {
             sunrise_client::lan::recipes::decode_transfer_reply(data)
             && container == self.remote_menu_id()
             && (self.mod_recipe_screen() || self.mod_menu_open())
-            && self.panel.recipes.is_some()
+            && self.client.panel.recipes.is_some()
         {
             match sunrise_client::lan::recipes::byte_result(result) {
                 Some(result) => self.show_transfer_result(result),
-                None => self.panel.transfer_warning = None,
+                None => self.client.panel.transfer_warning = None,
             }
         }
     }
@@ -1655,7 +1701,7 @@ impl Game<'_> {
         if result == RecipeTransferResult::Moves {
             self.close_transferred_recipe();
         }
-        self.panel.transfer_warning = match result {
+        self.client.panel.transfer_warning = match result {
             RecipeTransferResult::Moves => None,
             RecipeTransferResult::Missing => {
                 Some(("sunrise.recipe_transfer.missing", "Missing Items"))
@@ -1689,7 +1735,9 @@ impl Game<'_> {
             return self.local_menu_transfer(recipe, false, true);
         }
         let eligible_menu = self.mod_recipe_screen()
-            || (self.screen == Screen::Inventory && !self.spectator() && self.mod_menu_open());
+            || (self.client.screen == Screen::Inventory
+                && !self.spectator()
+                && self.mod_menu_open());
         if !eligible_menu || !self.remote.as_ref().is_some_and(|r| r.recipe_viewer.check) {
             return None;
         }
@@ -1702,7 +1750,7 @@ impl Game<'_> {
                 .cloned()
                 .collect::<Vec<_>>(),
         );
-        let checks = &mut self.recipe_ui.checks;
+        let checks = &mut self.client.recipe_ui.checks;
         if checks.seen.as_ref() != Some(&seen) {
             *checks = TransferChecks {
                 seen: Some(seen),
@@ -1714,7 +1762,7 @@ impl Game<'_> {
         if request_due {
             let mut request = ::sunrise_core::vanilla_bytes::Writer::new();
             request.varint(self.remote_menu_id());
-            let Some(tag) = self.recipe_ui.checks.ask(recipe, now) else {
+            let Some(tag) = self.client.recipe_ui.checks.ask(recipe, now) else {
                 return answer;
             };
             request.varint(tag);
@@ -1736,7 +1784,7 @@ impl Game<'_> {
         else {
             return;
         };
-        let checks = &mut self.recipe_ui.checks;
+        let checks = &mut self.client.recipe_ui.checks;
         if checks.asked.as_ref().map(|(id, _, _)| *id) != Some(tag)
             || checks.seen.as_ref().map(|s| s.0) != Some(container)
         {
@@ -1756,6 +1804,7 @@ impl Game<'_> {
     /// recipe when the items are missing.
     fn place_book_recipe(&mut self, book_type: BookType, entry_index: usize, use_max: bool) {
         let Some(entry) = self
+            .client
             .recipe_ui
             .book
             .as_ref()
@@ -1813,7 +1862,7 @@ impl Game<'_> {
         &mut self,
         p: sunrise_protocol::packets::recipes::RecipeBookAdd,
     ) {
-        let ui = &mut self.recipe_ui;
+        let ui = &mut self.client.recipe_ui;
         // `display_index`, borrowed by field beside the book.
         let index = match &self.recipe_tables.synced_index {
             Some(index) => index,
@@ -1846,7 +1895,7 @@ impl Game<'_> {
             ui.book = None;
         } else if let Some(mut book) = ui.book.take() {
             self.server_entries_over(&mut book, p.entries.iter());
-            self.recipe_ui.book = Some(book);
+            self.client.recipe_ui.book = Some(book);
         }
         self.recipe_toast(&toast);
     }
@@ -1856,13 +1905,13 @@ impl Game<'_> {
         p: sunrise_protocol::packets::recipes::RecipeBookRemove,
     ) {
         for id in p.ids {
-            self.recipe_ui.client.remove(id);
-            self.recipe_ui.server_entries.remove(&id);
-            if let Some(book) = self.recipe_ui.book.as_mut() {
+            self.client.recipe_ui.client.remove(id);
+            self.client.recipe_ui.server_entries.remove(&id);
+            if let Some(book) = self.client.recipe_ui.book.as_mut() {
                 book.unconfirm(id);
             }
         }
-        self.recipe_ui.client_version += 1;
+        self.client.recipe_ui.client_version += 1;
     }
     /// ClientboundRecipeBookSettingsPacket: each book's open and filter flags.
     pub(super) fn remote_recipe_book_settings(
@@ -1888,12 +1937,12 @@ impl Game<'_> {
         if p.container != open {
             return;
         }
-        let entry = self.recipe_ui.last_placed.as_ref().and_then(|id| {
-            let book = self.recipe_ui.book.as_ref()?;
+        let entry = self.client.recipe_ui.last_placed.as_ref().and_then(|id| {
+            let book = self.client.recipe_ui.book.as_ref()?;
             book.entry(id).cloned()
         });
         if let Some(entry) = entry {
-            self.recipe_ui.ghost.clear();
+            self.client.recipe_ui.ghost.clear();
             self.fill_ghost(book_type, &entry);
         }
         // The server is missing an item the client counted: nothing was placed.
@@ -1906,7 +1955,7 @@ impl Game<'_> {
     fn fill_ghost(&mut self, book_type: BookType, entry: &Entry) {
         let grid = self.craft_size;
         let fuel_empty = self.slot_mut(301).is_none();
-        let Some(book) = self.recipe_ui.book.as_ref() else {
+        let Some(book) = self.client.recipe_ui.book.as_ref() else {
             return;
         };
         let ghost = book
@@ -1924,7 +1973,7 @@ impl Game<'_> {
                 items: g.items,
             })
             .collect();
-        self.recipe_ui.ghost = ghost;
+        self.client.recipe_ui.ghost = ghost;
     }
 
     // ---- drawing ----
@@ -1939,10 +1988,10 @@ impl Game<'_> {
         let book_type = self.active_book()?;
         self.ensure_book();
         if !self.shift_down_or_ctrl() {
-            self.recipe_ui.time += self.frame_ticks;
+            self.client.recipe_ui.time += self.client.frame_ticks;
         }
         let (ox, _) = self.inventory_origin(batch);
-        let cursor = self.cursor;
+        let cursor = self.client.cursor;
         let (bx, by) = self.book_button_pos(book_type, ox, batch);
         let hover = inside(cursor, bx, by, 20.0, 18.0);
         batch.sprite(
@@ -1985,7 +2034,7 @@ impl Game<'_> {
             return;
         }
         let in_book = |n: Narratable, i: usize| n.key(key_of(&(group, i))).in_group(group);
-        let ui = &self.recipe_ui;
+        let ui = &self.client.recipe_ui;
         let first = ui.page * 20;
         let shown = ui.view.buttons.iter().skip(first).take(20);
         if let Some(book) = ui.book.as_ref() {
@@ -2064,12 +2113,13 @@ impl Game<'_> {
     }
     /// `GhostSlots.extractRenderState`, among the container's slots.
     fn draw_ghost(&mut self, batch: &mut HudBatch, book_type: BookType) {
-        if self.recipe_ui.ghost.is_empty() {
+        if self.client.recipe_ui.ghost.is_empty() {
             return;
         }
         let (ox, oy) = self.inventory_origin(batch);
         let big_result = book_type != BookType::Crafting || self.craft_size == 3;
         let ghosts: Vec<GhostView> = self
+            .client
             .recipe_ui
             .ghost
             .iter()
@@ -2099,6 +2149,7 @@ impl Game<'_> {
             return None;
         }
         let ghost = self
+            .client
             .recipe_ui
             .ghost
             .iter()
@@ -2113,9 +2164,9 @@ impl Game<'_> {
         book_type: BookType,
     ) -> Option<Vec<(Text, u32)>> {
         let (xo, yo) = self.book_origin(batch);
-        let cursor = self.cursor;
+        let cursor = self.client.cursor;
         let atlas = &self.gui.atlas;
-        let search = match self.recipe_ui.search.as_mut() {
+        let search = match self.client.recipe_ui.search.as_mut() {
             Some(edit) => {
                 // The box's place, for clicks and typing.
                 edit.x = xo + 25.0;
@@ -2132,7 +2183,7 @@ impl Game<'_> {
             }
             None => Search::default(),
         };
-        let ui = &self.recipe_ui;
+        let ui = &self.client.recipe_ui;
         let current = ui
             .tab
             .filter(|t| ui.view.tabs.contains(t))
@@ -2225,15 +2276,15 @@ impl Game<'_> {
         }
         let tooltip = self.paint_book(batch, &calls);
         // The squeeze animations run down with the frames.
-        let frame = self.frame_ticks;
-        for e in &mut self.recipe_ui.tab_anim {
+        let frame = self.client.frame_ticks;
+        for e in &mut self.client.recipe_ui.tab_anim {
             e.1 -= frame;
         }
-        for e in &mut self.recipe_ui.button_anim {
+        for e in &mut self.client.recipe_ui.button_anim {
             e.1 -= frame;
         }
-        self.recipe_ui.tab_anim.retain(|e| e.1 > 0.0);
-        self.recipe_ui.button_anim.retain(|e| e.1 > 0.0);
+        self.client.recipe_ui.tab_anim.retain(|e| e.1 > 0.0);
+        self.client.recipe_ui.button_anim.retain(|e| e.1 > 0.0);
         tooltip
     }
     /// Paints recipe book calls; returns the first tooltip set (vanilla keeps
@@ -2456,7 +2507,7 @@ mod screen_room_tests {
             vec![ModEntry::new("panel", Box::new(Panel(room.clone())))].into();
         mod_platform::testing::with_mods(mods, || {
             crate::game::native_entity_refs::tests::with_client_game(|game| {
-                game.screen = Screen::Inventory;
+                game.client.screen = Screen::Inventory;
                 game.container = None;
                 game.craft_size = 2;
                 game.settings.gui_scale = 1;
@@ -2497,12 +2548,12 @@ mod screen_room_tests {
                 // A panel-only fit at 510 must be refused because the selected tab would clip.
                 let batch = HudBatch::new([510, 240], game.settings.gui_scale_inputs());
                 room.store(180, Ordering::Relaxed);
-                game.frames += 1;
+                game.client.frames += 1;
                 assert_eq!(game.open_book_left(&batch), Some(63.0));
                 assert_eq!(game.book_origin(&batch), (95.0, 37.0));
                 assert_eq!(game.inventory_origin(&batch), (244.0, 37.0));
                 room.store(100, Ordering::Relaxed);
-                game.frames += 1;
+                game.client.frames += 1;
                 assert_eq!(game.book_origin(&batch), (45.0, 37.0));
                 assert_eq!(game.inventory_origin(&batch), (194.0, 37.0));
             });

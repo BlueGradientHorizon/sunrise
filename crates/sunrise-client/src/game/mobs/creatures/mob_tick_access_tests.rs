@@ -77,7 +77,7 @@ fn with_two_pigs(test: impl FnOnce(&mut Game<'_>)) {
     ));
     let _ = std::fs::remove_dir_all(&root);
     with_game(|game| {
-        game.world_root = root.clone();
+        game.server.world_root = root.clone();
         game.enter_level(Dim::Overworld).unwrap();
         game.options.dedicated = Some(Vec::new());
         game.world
@@ -388,7 +388,7 @@ fn item_lifetime_edit_in_the_item_tick_still_lands() {
         ));
         let _ = std::fs::remove_dir_all(&root);
         with_game(|game| {
-            game.world_root = root.clone();
+            game.server.world_root = root.clone();
             game.enter_level(Dim::Overworld).unwrap();
             game.options.dedicated = Some(Vec::new());
             game.world
@@ -403,7 +403,7 @@ fn item_lifetime_edit_in_the_item_tick_still_lands() {
             );
             let id = game.dropped.last().unwrap().id;
             named.store(id, Ordering::Relaxed);
-            game.ticked_entities_through = id;
+            game.server.ticked_entities_through = id;
             game.dropped.last_mut().unwrap().age = 6000;
             let mut round = game.native_tick_round();
             game.tick_dropped_items(&mut round);
@@ -501,7 +501,8 @@ fn a_mob_outside_the_entity_tick_list_checks_no_despawn() {
                 .insert((1, 0), Arc::new(Chunk::empty(1, 0)));
             game.mobs[1].position = Vec3::new(24.5, 80.0, 0.5);
             // Only chunk (0, 0) is forced: (1, 0) is loaded at the next level out.
-            game.tickets
+            game.server
+                .tickets
                 .update(Some(sunrise_client::ticket_levels::Sources {
                     forced: vec![(0, 0)],
                     ..Default::default()
@@ -666,7 +667,7 @@ fn named_projectiles_hear_each_their_own_pre_and_post() {
                 )));
             }
             ids = game.creatures.projectiles.iter().map(|p| p.id).collect();
-            game.ticked_entities_through = u32::MAX;
+            game.server.ticked_entities_through = u32::MAX;
             game.tick_projectiles().unwrap();
         });
     });
@@ -743,7 +744,7 @@ fn a_mob_moved_in_one_arrows_post_is_hit_by_the_next_arrow() {
             }
             first.store(game.creatures.projectiles[0].id, Ordering::Relaxed);
             let health = game.mobs.iter().find(|m| m.id == 72).unwrap().health;
-            game.ticked_entities_through = u32::MAX;
+            game.server.ticked_entities_through = u32::MAX;
             game.tick_projectiles().unwrap();
             let pig = game.mobs.iter().find(|m| m.id == 72).unwrap();
             assert_eq!(pig.position.z, 5.5, "the first arrow's Post moved the pig");

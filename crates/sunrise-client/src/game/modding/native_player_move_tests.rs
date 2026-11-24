@@ -143,7 +143,7 @@ fn two_turns_waiting(game: &mut super::Game<'_>) {
 /// One server tick of the real game: the poll, the guests' packets, and the events the hub tells
 /// the game, with the mods' ruling in them.
 fn game_tick(game: &mut super::Game<'_>) {
-    game.level_pass.packets_drained = false;
+    game.server.level_pass.packets_drained = false;
     game.tick_lan_packets();
 }
 

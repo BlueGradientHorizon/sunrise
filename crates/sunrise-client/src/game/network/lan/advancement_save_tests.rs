@@ -3,7 +3,7 @@ mod connected_advancement_save_tests {
     use super::super::Game;
     use std::fs;
     fn command(game: &mut Game<'_>, text: &str) -> Vec<sunrise_client::text::Text> {
-        game.chat_capture = Some(Vec::new());
+        game.server.chat_capture = Some(Vec::new());
         let dispatcher = sunrise_client::command::vanilla::build_for(false, true);
         game.ui.registries.permission = 4;
         let parsed = dispatcher.parse(text, &game.ui.registries);
@@ -16,7 +16,7 @@ mod connected_advancement_save_tests {
             if text == "reload" { 0 } else { 1 },
             "{text}"
         );
-        game.chat_capture.take().unwrap()
+        game.server.chat_capture.take().unwrap()
     }
     #[test]
     #[ignore = "daily"]
@@ -42,14 +42,14 @@ mod connected_advancement_save_tests {
         ));
         let _ = fs::remove_dir_all(&dir);
         fs::create_dir_all(&dir).unwrap();
-        game.world_root = dir.clone();
+        game.server.world_root = dir.clone();
         game.save = Arc::new(sunrise_client::save::SaveDir::new(
             dir.clone(),
             sunrise_client::save::LevelShape::OVERWORLD,
             Some(Default::default()),
         ));
         use sunrise_client::server::user_lists::{BanList, IpBanList, OpList, WhiteList};
-        game.server_lists = Some(Arc::new(Mutex::new(super::super::dedicated::Lists {
+        game.server.server_lists = Some(Arc::new(Mutex::new(super::super::dedicated::Lists {
             ops: OpList::new(dir.join("ops.json")),
             white: WhiteList::new(dir.join("whitelist.json")),
             bans: BanList::new(dir.join("banned-players.json")),
@@ -177,7 +177,7 @@ mod connected_advancement_preservation_tests {
     use super::super::Game;
     use std::fs;
     fn command(game: &mut Game<'_>, text: &str) -> Vec<sunrise_client::text::Text> {
-        game.chat_capture = Some(Vec::new());
+        game.server.chat_capture = Some(Vec::new());
         let dispatcher = sunrise_client::command::vanilla::build_for(false, true);
         game.ui.registries.permission = 4;
         let parsed = dispatcher.parse(text, &game.ui.registries);
@@ -190,7 +190,7 @@ mod connected_advancement_preservation_tests {
             if text == "reload" { 0 } else { 1 },
             "{text}"
         );
-        game.chat_capture.take().unwrap()
+        game.server.chat_capture.take().unwrap()
     }
     // Added after baseline: actual command/model preservation, not new Java breadth.
     #[test]
@@ -209,14 +209,14 @@ mod connected_advancement_preservation_tests {
         ));
         let _ = fs::remove_dir_all(&dir);
         fs::create_dir_all(&dir).unwrap();
-        game.world_root = dir.clone();
+        game.server.world_root = dir.clone();
         game.save = Arc::new(sunrise_client::save::SaveDir::new(
             dir.clone(),
             sunrise_client::save::LevelShape::OVERWORLD,
             Some(Default::default()),
         ));
         use sunrise_client::server::user_lists::{BanList, IpBanList, OpList, WhiteList};
-        game.server_lists = Some(Arc::new(Mutex::new(super::super::dedicated::Lists {
+        game.server.server_lists = Some(Arc::new(Mutex::new(super::super::dedicated::Lists {
             ops: OpList::new(dir.join("ops.json")),
             white: WhiteList::new(dir.join("whitelist.json")),
             bans: BanList::new(dir.join("banned-players.json")),

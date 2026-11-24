@@ -17,7 +17,7 @@ fn rail_world(game: &mut Game<'_>) -> std::path::PathBuf {
         std::thread::current().id()
     ));
     std::fs::create_dir_all(&scratch).unwrap();
-    game.world_root = scratch.clone();
+    game.server.world_root = scratch.clone();
     game.player = Some(PlayerMotion::new(game.motion, Vec3::new(8.5, 64.0, 12.5)).unwrap());
     game.build_registries();
     game.set_allow_commands(true);

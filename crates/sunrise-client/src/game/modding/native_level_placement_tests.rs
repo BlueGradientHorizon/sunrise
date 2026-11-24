@@ -530,10 +530,11 @@ fn a_break_effect_is_played_for_a_state() {
         game.audio.capture = Some(Vec::new());
         let level = game.level(game.dim.id()).unwrap();
         let stone = state(game, "minecraft:stone");
-        game.lan_events.clear();
+        game.server.lan_events.clear();
         assert!(game.level_block_break_effect(level, [1, 70, 1], stone));
         assert!(
-            game.lan_events
+            game.server
+                .lan_events
                 .iter()
                 .any(|e| e.kind == 2001 && e.pos == [1, 70, 1] && e.data == stone.0 as i32)
         );
@@ -541,8 +542,8 @@ fn a_break_effect_is_played_for_a_state() {
             mod_api::WorldEpoch::new(level.epoch().get() + 1),
             level.dimension(),
         );
-        game.lan_events.clear();
+        game.server.lan_events.clear();
         assert!(!game.level_block_break_effect(stale, [1, 70, 1], stone));
-        assert!(game.lan_events.is_empty());
+        assert!(game.server.lan_events.is_empty());
     });
 }

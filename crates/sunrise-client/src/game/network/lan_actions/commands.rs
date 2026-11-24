@@ -62,7 +62,7 @@ impl Game<'_> {
             return;
         };
         let integrated = host.hub.config.integrated;
-        if let Some(level) = self.native_commands.level(command)
+        if let Some(level) = self.server.native_commands.level(command)
             && let Some(permission) = host.hub.guest(conn).map(|g| g.permission)
             && permission >= level
         {
@@ -131,7 +131,7 @@ impl Game<'_> {
         c: GuestCommand,
     ) -> Option<(bool, Vec<sunrise_client::text::Text>)> {
         let (ok, mut lines) = self.with_guest_swap(c.conn, self.dim, |game| {
-            game.chat_capture = Some(Vec::new());
+            game.server.chat_capture = Some(Vec::new());
             let level = std::mem::replace(&mut game.ui.registries.permission, c.permission);
             let ok = match game.perform_native_command(c.conn, c.permission, &c.command, c.quiet) {
                 Some(ok) => ok,
@@ -139,9 +139,9 @@ impl Game<'_> {
                 None => game.run_command(&c.command),
             };
             game.ui.registries.permission = level;
-            (ok, game.chat_capture.take().unwrap_or_default())
+            (ok, game.server.chat_capture.take().unwrap_or_default())
         })?;
-        if std::mem::take(&mut self.save_after_guest_turn) {
+        if std::mem::take(&mut self.server.save_after_guest_turn) {
             lines.push(self.save_all_reply());
         }
         if let Some(host) = self.lan.as_mut() {
@@ -177,7 +177,7 @@ impl Game<'_> {
     /// them (`broadcast_to_admins`). Without a server open to players they are
     /// dropped: no one else can hear them.
     pub(in crate::game) fn send_admin_feedback(&mut self) {
-        let lines = std::mem::take(&mut self.admin_feedback);
+        let lines = std::mem::take(&mut self.server.admin_feedback);
         let Some(host) = self.lan.as_ref() else {
             return;
         };
@@ -249,7 +249,7 @@ impl Game<'_> {
             self.ui.registries.players.clone()
         };
         players.extend(host.hub.online_players().map(|g| g.name.clone()));
-        let (ops, banned_players, banned_ips, whitelisted) = match &self.server_lists {
+        let (ops, banned_players, banned_ips, whitelisted) = match &self.server.server_lists {
             Some(lists) => {
                 let l = lists.lock().unwrap();
                 (

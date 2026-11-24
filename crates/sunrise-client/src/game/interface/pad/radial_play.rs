@@ -517,13 +517,13 @@ impl Game<'_> {
     fn pad_radial_toggles(&self) -> Toggles {
         use sunrise_client::camera::CameraType;
         Toggles {
-            view: match self.camera_type {
+            view: match self.client.camera_type {
                 CameraType::FirstPerson => View::FirstPerson,
                 CameraType::ThirdPersonBack => View::ThirdPersonBack,
                 CameraType::ThirdPersonFront => View::ThirdPersonFront,
             },
             hud_hidden: self.ui.hide_gui,
-            cinematic: self.smooth_camera,
+            cinematic: self.client.smooth_camera,
         }
     }
 

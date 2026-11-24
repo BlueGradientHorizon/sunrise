@@ -11,7 +11,7 @@ impl Game<'_> {
         if self.remote.is_some() {
             return Err(RespawnRefusal::Client);
         }
-        if self.lan_acting.is_some() || !self.player_state.cloning_players.is_empty() {
+        if self.server.lan_acting.is_some() || !self.player_state.cloning_players.is_empty() {
             return Err(RespawnRefusal::InPlayerHook);
         }
         let (conn, has_health, won_game) = match self.player_handle_read(player) {
@@ -51,7 +51,7 @@ impl Game<'_> {
             .player_handle_read(player)
             .ok_or(RespawnTargetUnavailable::Stale)?
         {
-            PlayerRead::Acting { .. } => self.respawn_config.map(|c| c.saved()),
+            PlayerRead::Acting { .. } => self.server.respawn_config.map(|c| c.saved()),
             PlayerRead::Guest(guest) => guest.respawn_elsewhere.clone(),
         };
         let config = saved.as_ref().and_then(RespawnConfig::from_saved);
@@ -84,7 +84,7 @@ impl Game<'_> {
     ) -> Option<Result<T, RespawnTargetUnavailable>> {
         let dim = dim?;
         if dim != self.dim
-            && (self.lan_acting.is_some() || !self.player_state.cloning_players.is_empty())
+            && (self.server.lan_acting.is_some() || !self.player_state.cloning_players.is_empty())
         {
             return Some(Err(RespawnTargetUnavailable::InPlayerHook));
         }
@@ -133,7 +133,7 @@ impl Game<'_> {
             match self.search_spawn([x, y, z].map(|v| v.floor() as i32), &mut None) {
                 Ok(at) => at,
                 Err(chunk) => {
-                    self.tickets.add_spawn(
+                    self.server.tickets.add_spawn(
                         chunk,
                         sunrise_client::ticket_levels::SpawnTicketKind::Search,
                     );

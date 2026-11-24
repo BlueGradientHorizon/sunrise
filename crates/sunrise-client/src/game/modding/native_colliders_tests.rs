@@ -127,8 +127,8 @@ fn a_collider_is_set_read_refused_saved_and_loaded() {
 
 /// A stone dropped at `at`, two blocks above it, in the level in place: its id.
 fn drop_item(game: &mut Game<'_>, at: [f64; 3]) -> u32 {
-    game.next_entity += 1;
-    let id = game.next_entity;
+    game.server.next_entity += 1;
+    let id = game.server.next_entity;
     game.dropped.push(ItemEntity::new(
         id,
         ItemStack::new("minecraft:stone", 1),
@@ -594,8 +594,8 @@ fn item_at(game: &Game<'_>, id: u32) -> Vec3 {
 
 /// A different stack from `drop_item`'s, so two items never merge.
 fn drop_dirt(game: &mut Game<'_>, at: [f64; 3]) -> u32 {
-    game.next_entity += 1;
-    let id = game.next_entity;
+    game.server.next_entity += 1;
+    let id = game.server.next_entity;
     game.dropped.push(ItemEntity::new(
         id,
         ItemStack::new("minecraft:dirt", 1),

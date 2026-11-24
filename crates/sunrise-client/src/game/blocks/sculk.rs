@@ -725,7 +725,7 @@ impl Game<'_> {
                 order.push((
                     event,
                     ctx.source.and_then(|source| source.actor()),
-                    self.lan_entity_events.len(),
+                    self.server.lan_entity_events.len(),
                     self.audio.capture.as_ref().map_or(0, Vec::len),
                 ));
             }
@@ -761,7 +761,7 @@ impl Game<'_> {
         }
         let ctx = if mod_api::__private::listened(mod_api::HookId::VanillaGameEvent) {
             let ctx = make_ctx(self);
-            let cause = event_cause(ctx.source, self.lan_acting_entity);
+            let cause = event_cause(ctx.source, self.server.lan_acting_entity);
             let mut cancel = false;
             self.native_vanilla_game_event(
                 self.dim.id(),
@@ -800,7 +800,7 @@ impl Game<'_> {
                     near.push(i);
                 }
             }
-            (s.next_entity == self.next_entity).then_some(near)
+            (s.next_entity == self.server.next_entity).then_some(near)
         });
         if near.is_empty() && mobs.as_ref().is_some_and(Vec::is_empty) {
             return;
@@ -1130,7 +1130,7 @@ impl Game<'_> {
         // every player's tickets (`update_chunk_tickets`), once the chunk is
         // lit: asked once per chunk, as the sensors share few chunks. Nothing
         // a sculk tick does loads, unloads or lights a chunk or moves a ticket.
-        let levels = self.tickets.levels();
+        let levels = self.server.tickets.levels();
         let chunks = &self.world.chunks;
         let pending = &self.world.entities_pending;
         let mut ticking = FxHashMap::<(i32, i32), bool>::default();
@@ -1520,9 +1520,9 @@ impl Game<'_> {
                 f64::from(at.2) + 0.5,
             ];
             let yaw = mod_api::client::camera::wrap_degrees(self.world.random.next_float() * 360.0);
-            self.next_entity += 1;
+            self.server.next_entity += 1;
             let mut mob = Mob::new(
-                self.next_entity,
+                self.server.next_entity,
                 kind.clone(),
                 sunrise_core::geometry::Vec3::new(spot[0], spot[1], spot[2]),
                 yaw,
@@ -1647,7 +1647,7 @@ impl Game<'_> {
             && let Some(eye) = self.eye_position()
         {
             let in_water = self.camera_fog_type(eye) == FogType::Water;
-            return self.fog.water_vision(in_water);
+            return self.client.fog.water_vision(in_water);
         }
         0.0
     }
@@ -2037,7 +2037,9 @@ impl Game<'_> {
         at: [f64; 3],
         state: Option<BlockStateId>,
     ) {
-        if let Some(conn) = guest.filter(|conn| owner.is_some() && self.lan_acting != Some(*conn)) {
+        if let Some(conn) =
+            guest.filter(|conn| owner.is_some() && self.server.lan_acting != Some(*conn))
+        {
             let posted = self
                 .as_guest(conn, |g| {
                     g.projectile_own_event(event, owner, None, at, state);
@@ -2196,7 +2198,7 @@ impl Game<'_> {
     /// the client level random, x then y then z. It is `level.addParticle`, so
     /// only the local player's own click or step draws it, not a guest's turn.
     pub(super) fn redstone_ore_particles(&mut self, pos: [i32; 3]) {
-        if self.lan_acting.is_some()
+        if self.server.lan_acting.is_some()
             || !matches!(
                 &*self.block_name(pos),
                 "minecraft:redstone_ore" | "minecraft:deepslate_redstone_ore"
@@ -2335,7 +2337,7 @@ impl Game<'_> {
         self.sculk.mob_slots = Some(MobSlots {
             by_id,
             listeners,
-            next_entity: self.next_entity,
+            next_entity: self.server.next_entity,
         });
         // Steps, landings, splashes, flaps and stepping on redstone ore come
         // from the mob's own tick (Entity.move, LivingEntity.aiStep's
@@ -2664,7 +2666,7 @@ impl Game<'_> {
     ) {
         use super::commands::Target;
         if let Some(Target::Guest(conn)) = source {
-            if self.lan_acting == Some(conn) {
+            if self.server.lan_acting == Some(conn) {
                 let ctx = self.player_context(None);
                 self.post_game_event(event, at, ctx);
                 return;

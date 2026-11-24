@@ -49,8 +49,8 @@ impl Game<'_> {
         Some(tab_list(
             &remote.listed_tab_players(),
             &self.score.board,
-            self.tab_list.header.as_ref(),
-            self.tab_list.footer.as_ref(),
+            self.client.tab_list.header.as_ref(),
+            self.client.tab_list.footer.as_ref(),
         ))
     }
 
@@ -88,11 +88,11 @@ impl Game<'_> {
         }
         let pitch = (pitch % 360.0).clamp(-90.0, 90.0);
         let (turned_yaw, turned_pitch) = (yaw - self.yaw, pitch - self.pitch);
-        self.rope_rot_old.0 += turned_yaw;
-        self.rope_rot_old.1 += turned_pitch;
+        self.client.rope_rot_old.0 += turned_yaw;
+        self.client.rope_rot_old.1 += turned_pitch;
         self.yaw = yaw;
         self.pitch = pitch;
-        if let Some(model) = self.player_model.as_mut() {
+        if let Some(model) = self.client.player_model.as_mut() {
             model.previous_head_pitch += turned_pitch;
             model.head_pitch = pitch;
         }
@@ -104,9 +104,10 @@ impl Game<'_> {
     pub(super) fn native_client_frame_stats(&self) -> Option<ClientFrameStats> {
         self.native_session()?;
         Some(ClientFrameStats {
-            fps: self.fps,
-            rendered_frames: self.frames,
+            fps: self.client.fps,
+            rendered_frames: self.client.frames,
             frame_time_ns: self
+                .client
                 .debug_charts
                 .frame_times
                 .latest()
@@ -140,7 +141,7 @@ impl Game<'_> {
     /// None for stale, nonlocal or fake handles and outside a client world.
     pub(super) fn player_ambient_mood(&self, player: PlayerRef) -> Option<f32> {
         self.native_local_status(player)?;
-        Some(self.ambience.moodiness)
+        Some(self.client.ambience.moodiness)
     }
 }
 
@@ -375,7 +376,7 @@ pub(super) mod tests {
                 "es_es",
                 "publication does not mutate earlier snapshots"
             );
-            game.debug_charts.frame_times.reset();
+            game.client.debug_charts.frame_times.reset();
             assert_eq!(
                 game.client_session()
                     .client_frame_stats()
@@ -383,9 +384,9 @@ pub(super) mod tests {
                     .frame_time_ns,
                 None
             );
-            game.fps = 63.5;
-            game.frames = 99;
-            game.debug_charts.frame_times.log(15_432_123);
+            game.client.fps = 63.5;
+            game.client.frames = 99;
+            game.client.debug_charts.frame_times.log(15_432_123);
             assert_eq!(
                 game.client_session().client_frame_stats(),
                 Some(ClientFrameStats {
@@ -394,9 +395,9 @@ pub(super) mod tests {
                     frame_time_ns: Some(15_432_123),
                 })
             );
-            game.fps = 59.0;
-            game.frames = 100;
-            game.debug_charts.frame_times.log(17_123_456);
+            game.client.fps = 59.0;
+            game.client.frames = 100;
+            game.client.debug_charts.frame_times.log(17_123_456);
             assert_eq!(
                 game.client_session().client_frame_stats(),
                 Some(ClientFrameStats {
@@ -467,7 +468,7 @@ pub(super) mod tests {
             let _server = logged_client(game);
             let player = game.local_player().unwrap();
             assert_eq!(player.block_breaking(game), Some(BlockBreakingState::Idle));
-            game.ambience.moodiness = 0.375;
+            game.client.ambience.moodiness = 0.375;
             assert_eq!(player.ambient_mood(game), Some(0.375));
             for (progress, stage) in [(0.0, None), (0.45, Some(4)), (1.0, Some(9))] {
                 game.mining = Some(super::super::Mining {
@@ -487,7 +488,7 @@ pub(super) mod tests {
                 );
             }
             game.mining = None;
-            game.ambience.moodiness = 0.0;
+            game.client.ambience.moodiness = 0.0;
             assert_eq!(player.block_breaking(game), Some(BlockBreakingState::Idle));
             assert_eq!(player.ambient_mood(game), Some(0.0));
             let fields = mod_api::__private::game::player_ref;

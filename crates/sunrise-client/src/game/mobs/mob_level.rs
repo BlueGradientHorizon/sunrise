@@ -11,7 +11,7 @@ impl MobLevel for Game<'_> {
         MobParts {
             mobs: &mut self.mobs,
             dropped: &mut self.dropped,
-            next_entity: self.next_entity,
+            next_entity: self.server.next_entity,
             ticked: &self.creatures.ticked,
             items: world_items!(self),
             facts: self.res.facts(),

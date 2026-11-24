@@ -98,9 +98,9 @@ fn a_rejected_wildcard_set_keeps_the_storage_s_cleared_array() {
 
 /// Runs `command`, which must fail because nothing changed.
 fn fails_unchanged(game: &mut Game<'_>, command: &str) {
-    game.chat_capture = Some(Vec::new());
+    game.server.chat_capture = Some(Vec::new());
     assert!(!game.run_command(command), "{command}");
-    let said = game.chat_capture.take().unwrap_or_default();
+    let said = game.server.chat_capture.take().unwrap_or_default();
     assert_eq!(
         said.first()
             .map(sunrise_client::text::Text::plain)

@@ -47,7 +47,7 @@ fn campfire_game<'a>(pos: [i32; 3], resources: &'a mut Option<Arc<Resources>>) -
     game.player = Some(player);
     game.creative = false;
     *game.held_mut() = Some(ItemStack::new("minecraft:beef", 4));
-    game.forced_hit = Some(Hit {
+    game.server.forced_hit = Some(Hit {
         pos,
         inside: false,
         face: [0, 1, 0],
@@ -103,7 +103,7 @@ fn a_sneak_keeps_the_food_and_placing_it_fires_item_used_on_block() {
     tree.by_trigger
         .insert("minecraft:item_used_on_block".into(), vec![(0, 0)]);
     game.adv.tree = Arc::new(tree);
-    let hit = game.forced_hit.unwrap();
+    let hit = game.server.forced_hit.unwrap();
     game.press_device_key(KeyCode::ShiftLeft, Source::Keyboard);
     assert!(game.use_hand(Some(&hit)).unwrap());
     assert_eq!(slots(&game, POS), 0, "the sneak put no beef on the fire");

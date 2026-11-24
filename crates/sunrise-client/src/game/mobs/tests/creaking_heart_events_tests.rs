@@ -89,6 +89,7 @@ fn a_heart_spawn_posts_entity_place_and_the_poof() {
         "the creaking's ENTITY_PLACE: {events:?}"
     );
     let poofs: Vec<_> = game
+        .server
         .lan_entity_events
         .iter()
         .filter(|(mob, event)| *mob == id as i32 && *event == 60)
@@ -107,7 +108,7 @@ fn a_heart_spawn_posts_entity_place_and_the_poof() {
         poofs,
         vec![(id as i32, 60, at)],
         "{:?}",
-        game.lan_entity_events
+        game.server.lan_entity_events
     );
 }
 

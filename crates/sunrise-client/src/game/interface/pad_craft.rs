@@ -321,7 +321,7 @@ impl Game<'_> {
     pub(super) fn direct_craft_takes_press(&self, button: gamepad::Button) -> bool {
         button == gamepad::Button::South
             && self.pad.edges.is_held(gamepad::Button::LeftTrigger)
-            && self.screen == super::Screen::Inventory
+            && self.client.screen == super::Screen::Inventory
             && self.title.is_none()
             && !self.prompt_open()
             && self.pad.menu.craft.as_ref().is_some_and(|craft| {

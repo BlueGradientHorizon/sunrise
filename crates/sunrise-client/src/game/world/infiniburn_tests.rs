@@ -16,7 +16,7 @@ impl Drop for RestoreFacts {
 fn infiniburn_refresh_updates_active_and_parked_worlds() {
     with_game(|game| {
         let scratch = tempfile::tempdir().unwrap();
-        game.world_root = scratch.path().to_owned();
+        game.server.world_root = scratch.path().to_owned();
         let _restore = RestoreFacts(
             Dim::all()
                 .into_iter()

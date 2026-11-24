@@ -311,7 +311,7 @@ impl Game<'_> {
         self.replay.virtual_tick_ms = 0.0;
         if let Some(player) = &self.player {
             self.previous_position = player.position;
-            if let Some(m) = self.player_model.as_mut() {
+            if let Some(m) = self.client.player_model.as_mut() {
                 m.previous = player.position;
                 m.position = player.position;
                 m.limb_speed = 0.0;
@@ -423,7 +423,7 @@ impl Game<'_> {
             .driver
             .as_ref()
             .is_some_and(|replay| replay.is_paused());
-        if self.player_model.is_none() {
+        if self.client.player_model.is_none() {
             self.tick_player_model();
         }
         if !paused {
@@ -443,7 +443,7 @@ impl Game<'_> {
                         current_pos.z - self.previous_position.z,
                     );
                     let walked = (dx * dx + dz * dz).sqrt() as f32;
-                    if let Some(m) = self.player_model.as_mut() {
+                    if let Some(m) = self.client.player_model.as_mut() {
                         m.previous = self.previous_position;
                         m.position = current_pos;
                         m.previous_limb_speed = m.limb_speed;
@@ -482,7 +482,7 @@ impl Game<'_> {
                     self.previous_position = current_pos;
                 }
             }
-        } else if let Some(m) = self.player_model.as_mut() {
+        } else if let Some(m) = self.client.player_model.as_mut() {
             m.previous_limb_speed = m.limb_speed;
         }
         self.studio_replay_advanced();
@@ -689,13 +689,13 @@ impl Game<'_> {
         let packets = driver.packet_count();
         self.studio_replay_opened(&driver);
         if self.replay.driver.is_none() {
-            self.replay.previous_camera_type = Some(self.camera_type);
+            self.replay.previous_camera_type = Some(self.client.camera_type);
             self.replay.standalone = standalone;
         }
         self.replay.driver = Some(Box::new(driver));
-        self.camera_type = sunrise_client::camera::CameraType::FirstPerson;
+        self.client.camera_type = sunrise_client::camera::CameraType::FirstPerson;
         self.title = None;
-        self.screen = Screen::Playing;
+        self.client.screen = Screen::Playing;
         self.commit_screen_transition();
         self.capture(false);
         // Apply timestamp-zero login, player pose, and chunk packets before the first rendered
@@ -726,7 +726,7 @@ impl Game<'_> {
                 .is_some_and(|remote| remote.brand == "sunrise-studio");
         self.replay.standalone = false;
         if let Some(camera_type) = self.replay.previous_camera_type.take() {
-            self.camera_type = camera_type;
+            self.client.camera_type = camera_type;
         }
         self.replay.last_tick = None;
         self.studio_replay_closed();
@@ -744,7 +744,7 @@ impl Game<'_> {
             self.reset_studio_hand_state();
             // A title-screen replay has no previous world perspective to
             // restore. Start the next world in first person with visible hands.
-            self.camera_type = sunrise_client::camera::CameraType::FirstPerson;
+            self.client.camera_type = sunrise_client::camera::CameraType::FirstPerson;
             if let Some(title) = self.title.as_mut() {
                 title.activate_mode(sunrise_client::title::Mode::Main);
             }

@@ -535,7 +535,7 @@ fn an_inventory_reward_for_a_player_in_another_level_waits_for_their_own_tick() 
             r#"{"enabled":["file/rewards"],"disabled":[]}"#,
         )
         .unwrap();
-        game.world_root = world.path().to_path_buf();
+        game.server.world_root = world.path().to_path_buf();
         game.reload_datapacks(true, &[]).unwrap();
         let diamond = in_the_nether(game);
         let before = dropped(game);

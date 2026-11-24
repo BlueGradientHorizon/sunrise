@@ -104,11 +104,11 @@ impl Game<'_> {
                     ..
                 }
         ) {
-            self.combat.melee_mob = Some(mob);
+            self.server.combat.melee_mob = Some(mob);
         }
         let _ = self.handle_mob_events(vec![e]);
         // Used up by the hit; a blow that hurt nobody leaves it to no other.
-        self.combat.melee_mob = None;
+        self.server.combat.melee_mob = None;
     }
 
     /// The guests' boxes for the blocks entities trigger (pressure plates,
@@ -254,7 +254,7 @@ impl Game<'_> {
             .map(|g| {
                 let [x, y, z] = g.position;
                 // The acting guest's effects are on the game while their turn runs.
-                let effects = if self.lan_acting == Some(g.conn) {
+                let effects = if self.server.lan_acting == Some(g.conn) {
                     &self.potions.effects
                 } else {
                     &g.effects
@@ -274,7 +274,8 @@ impl Game<'_> {
     }
     /// The UUID of the player acting: the guest `as_guest` runs, else the host.
     pub fn acting_uuid(&self) -> [i32; 4] {
-        self.lan_acting_uuid
+        self.server
+            .lan_acting_uuid
             .map(sunrise_client::lan::playerdata::uuid_ints)
             .or(self.level.player_uuid)
             .unwrap_or_default()

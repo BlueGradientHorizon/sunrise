@@ -41,7 +41,7 @@ impl Game<'_> {
                 g.settings(),
                 self.pack.assets.registry,
                 world_biomes!(self),
-                self.level_shapes.overworld,
+                self.server.level_shapes.overworld,
             )
         }) {
             return Ok(((0, 0), flat.spawn_height()));
@@ -59,25 +59,25 @@ impl Game<'_> {
     /// valid respawn column gives the world spawn, else the origin chunk's
     /// centre at the spawn height. None while a chunk to test is loading.
     pub(super) fn find_world_spawn(&mut self) -> Result<Option<[i32; 3]>> {
-        if !self.spawn_hook_fired {
-            self.spawn_hook_fired = true;
+        if !self.server.spawn_hook_fired {
+            self.server.spawn_hook_fired = true;
             let mut position = self.level.world_spawn.unwrap_or([0, 0, 0]);
             let mut rotation = self.level.world_spawn_angle;
             let mut cancel = false;
             self.native_create_spawn_position(&mut position, &mut rotation, &mut cancel);
             if cancel {
-                self.spawn_hook_cancelled = true;
+                self.server.spawn_hook_cancelled = true;
                 self.level.world_spawn = Some(position);
                 self.level.world_spawn_angle = rotation;
                 return Ok(Some(position));
             }
         }
-        let ((ox, oz), height) = match self.spawn_origin {
+        let ((ox, oz), height) = match self.server.spawn_origin {
             Some(origin) => origin,
-            None => *self.spawn_origin.insert(self.spawn_origin()?),
+            None => *self.server.spawn_origin.insert(self.spawn_origin()?),
         };
-        while let Some((dx, dz)) = self.spawn_spiral.current() {
-            if self.spawn_spiral.tested() {
+        while let Some((dx, dz)) = self.server.spawn_spiral.current() {
+            if self.server.spawn_spiral.tested() {
                 let (cx, cz) = (ox + dx, oz + dz);
                 if self.is_dedicated_server() {
                     // getChunk(FULL) of the tested chunk alone: its 3x3 is decorated.
@@ -97,7 +97,7 @@ impl Game<'_> {
                     return Ok(Some(pos));
                 }
             }
-            self.spawn_spiral.advance();
+            self.server.spawn_spiral.advance();
         }
         Ok(Some([ox * 16 + 8, height, oz * 16 + 8]))
     }
@@ -234,12 +234,12 @@ impl Game<'_> {
     /// PlayerSpawnFinder.findSpawn around the world spawn: the feet of a
     /// player who has no position yet. None while a candidate's chunk loads.
     pub(super) fn find_player_spawn(&mut self, suggestion: [i32; 3]) -> Result<Option<Vec3>> {
-        let mut state = self.player_spawn.take();
+        let mut state = self.server.player_spawn.take();
         match self.search_spawn(suggestion, &mut state) {
             Ok(feet) => Ok(Some(feet)),
             Err(chunk) => {
                 self.streaming.center = chunk;
-                self.player_spawn = state;
+                self.server.player_spawn = state;
                 Ok(None)
             }
         }

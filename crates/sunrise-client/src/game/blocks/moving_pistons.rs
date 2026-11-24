@@ -82,7 +82,8 @@ impl Game<'_> {
     }
     /// Whether a mesh of the section waits for its upload.
     pub(super) fn section_upload_pending(&self, section: (i32, i32, i32)) -> bool {
-        self.pending_uploads
+        self.client
+            .pending_uploads
             .iter()
             .any(|upload| upload.key == section)
     }

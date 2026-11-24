@@ -563,7 +563,7 @@ impl Game<'_> {
     /// `Gui.setScreen`: `KeyMapping.releaseAll` on a successful screen or overlay
     /// opening/replacement transition (never on per-frame observation or resize).
     pub(in crate::game) fn release_mappings_on_screen_open(&mut self) {
-        self.mod_keys.release_all();
+        self.client.mod_keys.release_all();
         self.release_screen_mappings();
     }
 
@@ -591,8 +591,9 @@ impl Game<'_> {
     }
 
     fn build_screen_at(&mut self, framebuffer: [u32; 2]) {
-        let shown =
-            self.screen != Screen::Playing || self.title.is_some() || self.screen_over_playing();
+        let shown = self.client.screen != Screen::Playing
+            || self.title.is_some()
+            || self.screen_over_playing();
         let inputs = self.settings.gui_scale_inputs();
         let gui = GuiSize::new(framebuffer, inputs.requested, inputs.unicode);
         let identity = self
@@ -612,14 +613,13 @@ impl Game<'_> {
         // The container screens' layout is a build input: the frame's own
         // state, and the mods' effects answer, compared here so the panels and
         // the exclusion never disagree by a frame.
-        let container = (shown && matches!(self.screen, Screen::Inventory | Screen::Creative))
-            .then(|| {
-                let batch = sunrise_client::hud::HudBatch::new(
-                    framebuffer,
-                    self.settings.gui_scale_inputs(),
-                );
-                self.container_layout_inputs(&batch)
-            });
+        let container = (shown
+            && matches!(self.client.screen, Screen::Inventory | Screen::Creative))
+        .then(|| {
+            let batch =
+                sunrise_client::hud::HudBatch::new(framebuffer, self.settings.gui_scale_inputs());
+            self.container_layout_inputs(&batch)
+        });
         let container = container.and_then(|inputs| {
             let unchanged = self
                 .screen_state
@@ -627,7 +627,7 @@ impl Game<'_> {
                 .current
                 .as_ref()
                 .is_some_and(|build| {
-                    build.screen == self.screen
+                    build.screen == self.client.screen
                         && build.identity == identity
                         && build.scale == gui.scale as f32
                         && build
@@ -656,14 +656,14 @@ impl Game<'_> {
         // The pause menu's inputs can change while it is open: a server's
         // links or a custom-additions dialog arriving. Compare them here and
         // make the layout only when they moved.
-        let pause = (shown && self.screen == Screen::Paused).then(|| {
+        let pause = (shown && self.client.screen == Screen::Paused).then(|| {
             let unchanged = self
                 .screen_state
                 .build
                 .current
                 .as_ref()
                 .is_some_and(|build| {
-                    build.screen == self.screen
+                    build.screen == self.client.screen
                         && build.identity == identity
                         && build.scale == gui.scale as f32
                         && build
@@ -684,7 +684,7 @@ impl Game<'_> {
             .or(text);
         self.screen_state
             .build
-            .sync(self.screen, shown, identity, gui, layout);
+            .sync(self.client.screen, shown, identity, gui, layout);
     }
 
     /// What the open container screen draws outside its panel, from the
@@ -708,7 +708,7 @@ impl Game<'_> {
         if screen == Screen::Creative {
             // `CreativeModeInventoryScreen.extractTabButton`: 26 x 32 each.
             let (ox, oy) = (layout.image[0], layout.image[1]);
-            let creative = &self.creative_screen;
+            let creative = &self.client.creative_screen;
             for tab in creative.tabs.iter().filter(|t| creative.on_page(t)) {
                 let (x, y) = sunrise_client::creative::Creative::tab_position(tab);
                 out.push(ScreenRegion::new(
@@ -817,14 +817,14 @@ impl Game<'_> {
             dispatcher: super::chat::chat_tree(&self.remote),
             registries: &self.ui.registries,
         };
-        match self.screen {
+        match self.client.screen {
             Screen::Chat => {
                 if let Some(screen) = self.ui.chat_screen.as_mut() {
                     screen.resize(&m, &c, w as i32, h as i32);
                 }
             }
             Screen::CommandBlock => {
-                if let Some(screen) = self.command_block_screen.as_mut() {
+                if let Some(screen) = self.client.command_block_screen.as_mut() {
                     screen.resize(&m, &c, w, h);
                 }
             }
@@ -844,14 +844,14 @@ impl Game<'_> {
         gui: GuiSize,
     ) -> Option<ScreenLayout> {
         let (w, h) = (gui.size[0] as f32, gui.size[1] as f32);
-        let cart = match self.screen {
+        let cart = match self.client.screen {
             Screen::Chat => None,
-            Screen::CommandBlock => Some(self.command_block_screen.as_ref()?.cart()),
+            Screen::CommandBlock => Some(self.client.command_block_screen.as_ref()?.cart()),
             _ => return None,
         };
         self.resize_text_screens(w, h);
         let built = self.screen_state.build.current.as_ref().filter(|build| {
-            build.screen == self.screen
+            build.screen == self.client.screen
                 && build.identity == identity
                 && build.scale == gui.scale as f32
         });
@@ -905,7 +905,7 @@ mod tests {
             let abilities = ChatAbilities::new(ChatVisibility::Full);
             let screen = ChatScreen::new(&m, &c, "/say hi", false, 0, 427, 240, abilities);
             game.ui.chat_screen = Some(screen);
-            game.screen = Screen::Chat;
+            game.client.screen = Screen::Chat;
             game.build_screen();
             let input = |game: &crate::game::Game<'_>| {
                 let i = &game.ui.chat_screen.as_ref().unwrap().input;
@@ -934,7 +934,7 @@ mod tests {
     #[ignore = "daily"]
     fn production_screen_build_geometry() {
         crate::game::native_entity_refs::tests::with_game(|game| {
-            game.screen = Screen::Inventory;
+            game.client.screen = Screen::Inventory;
             game.container = None;
             game.craft_size = 2;
             game.title = None;
@@ -951,7 +951,7 @@ mod tests {
             let layout = game.container_layout(&batch);
             assert_eq!(layout.origin, (72.0, 37.0));
             assert_eq!(layout.effects, Some([250.0, 37.0, 32.0, 32.0]));
-            game.screen = Screen::Creative;
+            game.client.screen = Screen::Creative;
             let layout = game.container_layout(&batch);
             assert_eq!(
                 layout.tabs,
@@ -999,7 +999,7 @@ mod tests {
             };
             game.settings.gui_scale = 1;
             check(game);
-            game.screen = Screen::Inventory;
+            game.client.screen = Screen::Inventory;
             check(game);
             game.level.recipe_book.open[0] = true;
             check(game);
@@ -1013,15 +1013,16 @@ mod tests {
             ));
             check(game);
             game.station = None;
-            game.screen = Screen::Creative;
+            game.client.screen = Screen::Creative;
             check(game);
             let inventory = game
+                .client
                 .creative_screen
                 .tab_headers()
                 .iter()
                 .position(|tab| tab.inventory)
                 .unwrap();
-            game.creative_screen.select(inventory);
+            game.client.creative_screen.select(inventory);
             check(game);
         });
     }
@@ -1405,13 +1406,13 @@ mod tests {
         mod_platform::testing::with_mods(mods, || {
             crate::game::native_entity_refs::tests::with_game(|game| {
                 game.options.execution_role = crate::game::execution_role::ExecutionRole::Client;
-                game.screen = Screen::Inventory;
+                game.client.screen = Screen::Inventory;
                 game.container = None;
                 game.craft_size = 2;
                 game.potions.effects.list = vec![sunrise_client::effects::EffectInstance::new(
                     "speed", 200, 0,
                 )];
-                game.frames = 11;
+                game.client.frames = 11;
                 game.build_screen();
                 assert_eq!(
                     calls.load(Ordering::Relaxed),
@@ -1424,7 +1425,7 @@ mod tests {
                     1,
                     "a second build in the same frame reuses the answer"
                 );
-                game.frames = 12;
+                game.client.frames = 12;
                 game.build_screen();
                 assert_eq!(
                     calls.load(Ordering::Relaxed),
@@ -1479,12 +1480,12 @@ mod tests {
         .into();
         mod_platform::testing::with_mods(mods, || {
             crate::game::native_entity_refs::tests::with_client_game(|game| {
-                game.screen = Screen::Inventory;
+                game.client.screen = Screen::Inventory;
                 game.container = None;
                 game.craft_size = 2;
                 game.level.recipe_book.open.fill(false);
                 game.settings.gui_scale = 3;
-                game.frames = 11;
+                game.client.frames = 11;
                 game.build_screen();
                 let batch = HudBatch::new([1280, 720], game.settings.gui_scale_inputs());
                 assert_eq!(game.inventory_origin(&batch), (51.0, 37.0));
@@ -1508,12 +1509,12 @@ mod tests {
                 game.build_screen();
                 assert_eq!(calls.load(Ordering::Relaxed), 2);
                 assert_eq!(game.screen_state.build.builds, builds);
-                game.frames += 1;
+                game.client.frames += 1;
                 game.build_screen();
                 assert_eq!(calls.load(Ordering::Relaxed), 4);
                 assert_eq!(game.screen_state.build.builds, builds);
                 width.store(100, Ordering::Relaxed);
-                game.frames += 1;
+                game.client.frames += 1;
                 game.build_screen();
                 assert_eq!(game.inventory_origin(&batch), (75.0, 37.0));
                 assert_eq!(game.screen_state.build.builds, builds + 1);
@@ -1547,7 +1548,7 @@ mod tests {
             };
             mod_platform::testing::with_mods(mods, || {
                 crate::game::native_entity_refs::tests::with_client_game(|game| {
-                    game.screen = Screen::Inventory;
+                    game.client.screen = Screen::Inventory;
                     game.container = None;
                     game.craft_size = 2;
                     game.settings.gui_scale = 1;
@@ -1557,7 +1558,7 @@ mod tests {
                         (380, 102.0, 179.0, 30.0),
                     ] {
                         for open in [false, true] {
-                            game.frames += 1;
+                            game.client.frames += 1;
                             game.level.recipe_book.open[BookType::Crafting.index()] = open;
                             let batch =
                                 HudBatch::new([width, 240], game.settings.gui_scale_inputs());
@@ -1675,7 +1676,7 @@ mod tests {
                 game.title = None;
                 game.container = None;
                 game.craft_size = 2;
-                game.screen = Screen::Inventory;
+                game.client.screen = Screen::Inventory;
                 game.settings.gui_scale = 1;
                 game.settings.force_unicode = false;
                 let crafting = sunrise_client::recipe_book::BookType::Crafting.index();
@@ -1741,7 +1742,7 @@ mod tests {
                 game.set_local_mode(sunrise_client::command::args::GameMode::Creative);
                 game.ui.registries.permission = 2;
                 game.settings.operator_items_tab = true;
-                game.screen = Screen::Creative;
+                game.client.screen = Screen::Creative;
                 game.refresh_creative_tabs();
                 game.build_screen_at(small);
                 let mut tabs = render(game, small);

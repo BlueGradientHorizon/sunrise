@@ -390,8 +390,8 @@ impl Loading {
         };
         drop(game_step);
         let game_ms = game_at.elapsed().as_millis();
-        game.fullscreen = self.fullscreen;
-        game.panorama_rotation = self.panorama_rotation;
+        game.client.fullscreen = self.fullscreen;
+        game.client.panorama_rotation = self.panorama_rotation;
         self.menu.handoff(&mut game);
         game.apply_settings();
         if let Err(error) = clouds {

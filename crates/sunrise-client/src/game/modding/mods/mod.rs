@@ -2289,7 +2289,7 @@ impl Game<'_> {
         self.mods.selected = reload.selected;
         self.mods.refused = reload.refused;
         self.mods.data_switched = true;
-        if self.world_root.as_os_str().is_empty() {
+        if self.server.world_root.as_os_str().is_empty() {
             return;
         }
         if let Err(error) = self.reload_datapacks(true, &self.level.enabled_features.clone()) {
@@ -2309,7 +2309,8 @@ impl Game<'_> {
         let (effective, _) = self
             .mods
             .reconcile_code_switches(&self.settings.mods.disabled);
-        self.instance_groups
+        self.client
+            .instance_groups
             .borrow_mut()
             .retire_disabled(&effective);
         self.mods.apply_code_switches(&effective);

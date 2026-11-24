@@ -50,7 +50,7 @@ impl Hooks for PaintPhases {
 
 fn chest(game: &mut Game<'_>) -> (u32, u32) {
     game.title = None;
-    game.screen = Screen::Inventory;
+    game.client.screen = Screen::Inventory;
     game.ui.hide_gui = true;
     game.container = Some(POS);
     game.craft_size = 2;
@@ -74,7 +74,7 @@ fn chest(game: &mut Game<'_>) -> (u32, u32) {
     let (x, y) = game.inventory_origin(&batch);
     let (sx, sy) = game.slot_position(300);
     assert_eq!((sx, sy), (8.0, 18.0));
-    game.cursor = (x + sx + 8.0, y + sy + 8.0);
+    game.client.cursor = (x + sx + 8.0, y + sy + 8.0);
     ((x + sx) as u32, (y + sy) as u32)
 }
 

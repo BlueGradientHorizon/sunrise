@@ -210,7 +210,7 @@ impl Game<'_> {
         friends_screen::draw(
             batch,
             &self.gui.atlas,
-            self.cursor,
+            self.client.cursor,
             &view,
             true,
             &mut |phase, batch| self.draw_screen_phase(batch, phase),
@@ -219,7 +219,7 @@ impl Game<'_> {
     pub(super) fn friends_screen_click(&mut self) -> bool {
         let view = self.friends_view();
         let Some(action) =
-            friends_screen::click(&self.gui.atlas, self.gui_size(), self.cursor, &view)
+            friends_screen::click(&self.gui.atlas, self.gui_size(), self.client.cursor, &view)
         else {
             return false;
         };

@@ -78,10 +78,10 @@ fn with_stick_table(game: &mut Game<'_>, name: &str) {
         r#"{"enabled":["file/stand"],"disabled":[]}"#,
     )
     .unwrap();
-    game.world_root = dir;
+    game.server.world_root = dir;
     let root = game.options.resources.clone();
     let stack = crate::game::functions::pack_stack(
-        &game.world_root,
+        &game.server.world_root,
         &root,
         &sunrise_assets::resource_source::ResourceSource::directory(root.clone()),
         &Default::default(),
@@ -89,7 +89,7 @@ fn with_stick_table(game: &mut Game<'_>, name: &str) {
         &[],
         &[],
     );
-    game.world_tables = game
+    game.server.world_tables = game
         .stage_world_tables(&stack, false, &root)
         .unwrap()
         .tables;
@@ -158,9 +158,9 @@ fn a_small_burnt_out_stand_drops_no_loot() {
 // break rolls the table once.
 
 fn sticks(game: &mut Game<'_>) -> String {
-    game.chat_capture = Some(Vec::new());
+    game.server.chat_capture = Some(Vec::new());
     game.run_command(STICK);
-    let said = game.chat_capture.take().unwrap_or_default();
+    let said = game.server.chat_capture.take().unwrap_or_default();
     said.iter().map(sunrise_client::text::Text::plain).collect()
 }
 

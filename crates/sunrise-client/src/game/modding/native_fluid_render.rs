@@ -29,7 +29,7 @@ impl Game<'_> {
         options: FluidBoxOptions,
     ) -> Result<(), FluidBoxError> {
         let key = stack.key().ok_or(FluidBoxError::UnsupportedFluid)?;
-        let look = self.standalone_geometry.fluid_look(
+        let look = self.client.standalone_geometry.fluid_look(
             mod_api::__private::parts_installation::fluid_key_slot(key),
             || self.resolve_fluid_look(key),
         )?;

@@ -8,7 +8,8 @@ use sunrise_core::{geometry::Vec3, position::ChunkPos};
 
 /// The red, ten-notched bars on this client's overlay: the raid's.
 fn raid_bars(game: &Game<'_>) -> usize {
-    game.boss_overlay
+    game.client
+        .boss_overlay
         .bars(sunrise_client::boss_overlay::now_millis())
         .into_iter()
         .filter(|b| b.color == 2 && b.overlay == 2)
@@ -20,7 +21,7 @@ fn raid_bars(game: &Game<'_>) -> usize {
 fn the_raid_bar_keeps_a_viewer_until_the_next_twenty_tick_beat() {
     let mut resources = None;
     let mut game = crate::game::game_tests::tests::server_game(&mut resources);
-    game.world_root =
+    game.server.world_root =
         std::path::PathBuf::from(std::env::var_os("SUNRISE_HOME").unwrap()).join("raid-bar-world");
     for x in -5..5 {
         for z in -5..5 {

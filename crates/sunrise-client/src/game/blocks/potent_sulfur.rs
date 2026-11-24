@@ -157,7 +157,7 @@ impl Game<'_> {
         }
         // Applicability listeners can move or remove mobs: never acknowledge their
         // writes against the pre-hook grid.
-        if let Some(pass) = self.pass_mobs.as_mut() {
+        if let Some(pass) = self.server.pass_mobs.as_mut() {
             pass.clear();
         }
     }
@@ -165,7 +165,7 @@ impl Game<'_> {
     /// The slots of the mobs whose box may meet `area`, from a grid kept for
     /// the block entity pass; false outside the pass: scan them all.
     fn mobs_in_pass(&mut self, area: Aabb, out: &mut Vec<u32>) -> bool {
-        let Some(pass) = self.pass_mobs.as_mut() else {
+        let Some(pass) = self.server.pass_mobs.as_mut() else {
             return false;
         };
         pass.grid_for(&self.mobs).candidates(area, out)
@@ -318,7 +318,7 @@ impl Game<'_> {
         }
         // A push changes velocities, not boxes: the grid still holds.
         if !near.is_empty()
-            && let Some(pass) = self.pass_mobs.as_mut()
+            && let Some(pass) = self.server.pass_mobs.as_mut()
         {
             pass.wrote(&self.mobs);
         }
@@ -578,7 +578,7 @@ mod pass_tests {
             let mods: mod_api::Mods =
                 vec![ModEntry::new("move-on-nausea", Box::new(MoveMob(moved)))].into();
             mod_platform::testing::with_mods(mods, || {
-                game.pass_mobs = Some(PassMobs::default());
+                game.server.pass_mobs = Some(PassMobs::default());
                 game.server_nausea_effect_ticker((1, 63, 1));
                 assert_eq!(game.mobs[1].position, Vec3::new(33.5, 64.0, 1.5));
                 assert!(game.mobs[1].extra.effects.is_empty());
@@ -625,7 +625,7 @@ mod pass_tests {
                     Aabb::new(c, Vec3::new(c.x + w, c.y + h, c.z + w))
                 })
                 .collect();
-            game.pass_mobs = Some(PassMobs::default());
+            game.server.pass_mobs = Some(PassMobs::default());
             let check = |game: &mut Game<'_>, what: &str| {
                 for &area in &areas {
                     assert_eq!(from_grid(game, area), scan(game, area), "{what}");
@@ -642,7 +642,7 @@ mod pass_tests {
             check(game, "some removed");
             // A geyser's own write leaves the boxes as they were.
             game.mobs[3].velocity.y += 0.2;
-            game.pass_mobs.as_mut().unwrap().wrote(&game.mobs);
+            game.server.pass_mobs.as_mut().unwrap().wrote(&game.mobs);
             check(game, "a push");
         });
     }

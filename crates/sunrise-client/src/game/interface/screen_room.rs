@@ -26,7 +26,7 @@ impl Game<'_> {
     /// beacon's screen, and while the recipe book covers the window of a narrow screen.
     pub(super) fn mod_room(&self, batch: &HudBatch) -> f32 {
         let kind = self.station.as_ref().map(|s| s.kind);
-        if self.screen != Screen::Inventory
+        if self.client.screen != Screen::Inventory
             || matches!(
                 kind,
                 Some(stations::Kind::Merchant | stations::Kind::Beacon)
@@ -39,7 +39,7 @@ impl Game<'_> {
         if let Some(room) = self
             .screen_state
             .build
-            .room_answer(self.frames, self.screen)
+            .room_answer(self.client.frames, self.client.screen)
         {
             return room;
         }
@@ -48,12 +48,13 @@ impl Game<'_> {
         let (x, y) = batch.centered_origin(image, height);
         let rect = [x + self.recipe_book_shift(batch.width), y, image, height];
         // Asked while the screen is laid out: nothing is drawn beside it yet.
-        let view =
-            super::screen_backgrounds::without_regions(&self.screen_view_at(self.screen, rect));
+        let view = super::screen_backgrounds::without_regions(
+            &self.screen_view_at(self.client.screen, rect),
+        );
         // No room while the mods are asked, so a host call of theirs that lays the screen out
         // doesn't ask them again.
         let build = &self.screen_state.build;
-        build.keep_room_answer(self.frames, self.screen, 0.0);
+        build.keep_room_answer(self.client.frames, self.client.screen, 0.0);
         let mut right = 0.0;
         self.native_screen_room(&view, &mut right);
         let room = if right.is_finite() {
@@ -61,7 +62,7 @@ impl Game<'_> {
         } else {
             0.0
         };
-        build.keep_room_answer(self.frames, self.screen, room);
+        build.keep_room_answer(self.client.frames, self.client.screen, room);
         room
     }
 

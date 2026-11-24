@@ -17,7 +17,7 @@ impl Game<'_> {
         let Ok(snapshot) = tool.try_into_api() else {
             return;
         };
-        let items = match &self.world_tables {
+        let items = match &self.server.world_tables {
             Some(tables) => &tables.items,
             None => self.res.items(),
         };

@@ -82,7 +82,7 @@ impl Game<'_> {
                     ))?;
                 }
                 self.yaw = attack.yaw;
-                self.attack_ticks = attack.ticks;
+                self.server.attack_ticks = attack.ticks;
                 self.creative = attack.creative;
                 self.strike_boat(0);
                 let player = self.player.as_ref().unwrap();

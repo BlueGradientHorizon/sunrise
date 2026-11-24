@@ -73,13 +73,13 @@ impl Game<'_> {
             damage.max = 40;
         }
         let at = Vec3::new(pos[0], pos[1], pos[2]);
-        self.next_entity += 1;
+        self.server.next_entity += 1;
         self.falling.push(FallingBlock {
             size_answer: None,
             attachment_lifetime: Default::default(),
             rotation: [0.0, 0.0],
             join: Default::default(),
-            id: self.next_entity,
+            id: self.server.next_entity,
             state,
             blocks_building: true,
             start_pos: cell,

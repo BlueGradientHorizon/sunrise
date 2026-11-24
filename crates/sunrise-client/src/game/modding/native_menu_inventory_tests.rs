@@ -133,7 +133,7 @@ fn exercise(reopen: bool) {
             let give = ItemPlace::MenuSlot { menu, slot: 10 };
             let partial = ItemPlace::MenuSlot { menu, slot: 11 };
             // The hook runs without a guest swapped in; use that same Host state.
-            assert!(game.lan_acting.is_none());
+            assert!(game.server.lan_acting.is_none());
             let hand = ItemPlace::PlayerHand {
                 player: 12,
                 hand: mod_api::Hand::Main,

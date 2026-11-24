@@ -141,7 +141,7 @@ fn advancement_icons_reach_local_and_remote_ui_surfaces() {
             }
             game.remote_advancements(packet);
             assert!(
-                game.toast_manager.queued.is_empty(),
+                game.client.toast_manager.queued.is_empty(),
                 "initial reset is quiet"
             );
             let changed: BTreeSet<_> = (0..tree.list.len()).collect();
@@ -162,7 +162,7 @@ fn advancement_icons_reach_local_and_remote_ui_surfaces() {
             2,
             "refused icons keep both advancements"
         );
-        assert_eq!(game.toast_manager.queued.len(), 2);
+        assert_eq!(game.client.toast_manager.queued.len(), 2);
         for (id, foil) in [
             ("sunrise_test:glint", !refused),
             ("sunrise_test:plain", false),
@@ -189,7 +189,7 @@ fn advancement_icons_reach_local_and_remote_ui_surfaces() {
             }
         }
         let crate::game::toast_manager::Toast::Advancement(toast) =
-            &mut game.toast_manager.queued[0]
+            &mut game.client.toast_manager.queued[0]
         else {
             panic!("expected advancement toast")
         };
@@ -199,14 +199,15 @@ fn advancement_icons_reach_local_and_remote_ui_surfaces() {
         );
         assert_eq!(toast.icon.has_foil(None), !refused);
         toast.slide.portion = 1.0;
-        game.glint_frame = sunrise_client::item_render::GlintFrame {
+        game.client.glint_frame = sunrise_client::item_render::GlintFrame {
             millis: 1_000,
             speed: 0.5,
             alpha: 0.75,
             sprite: true,
         };
         let mut toast_batch = batch();
-        let crate::game::toast_manager::Toast::Advancement(toast) = &game.toast_manager.queued[0]
+        let crate::game::toast_manager::Toast::Advancement(toast) =
+            &game.client.toast_manager.queued[0]
         else {
             unreachable!()
         };
@@ -214,14 +215,14 @@ fn advancement_icons_reach_local_and_remote_ui_surfaces() {
         assert_icon(&toast_batch, 488.0, 8.0, !refused, !refused);
 
         game.open_advancements(false);
-        game.cursor = (0.0, 0.0);
+        game.client.cursor = (0.0, 0.0);
         let mut screen = batch();
         game.draw_advancements(&mut screen);
         assert_icon(&screen, 314.0, 236.0, !refused, !refused); // widget
         assert_icon(&screen, 200.0, 151.0, !refused, !refused); // glint tab
         assert_icon(&screen, 232.0, 151.0, false, !refused); // plain control tab
         let widget_glint = glint_vertices(&screen, 314.0, 236.0);
-        game.cursor = (320.0, 240.0);
+        game.client.cursor = (320.0, 240.0);
         let mut hover = batch();
         game.draw_advancements(&mut hover);
         assert_icon(&hover, 314.0, 236.0, !refused, !refused);

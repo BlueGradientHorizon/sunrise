@@ -179,7 +179,7 @@ impl Game<'_> {
                     return false;
                 };
                 let plan = self.prepare_knockback_credit(id as i32, None, &NO_ATTACK);
-                let mut credit = plan.lend(&mut self.last_hurt_by_player);
+                let mut credit = plan.lend(&mut self.server.last_hurt_by_player);
                 let level =
                     crate::game::entity::damage_level_of!(self, &NO_ATTACK, &mut credit, None);
                 self.mobs[i].knockback(
@@ -195,7 +195,7 @@ impl Game<'_> {
             Target::Dragon(_) => {
                 let resistance = self.dragon_knockback_resistance();
                 let plan = self.prepare_knockback_credit(id as i32, None, &NO_ATTACK);
-                let mut credit = plan.lend(&mut self.last_hurt_by_player);
+                let mut credit = plan.lend(&mut self.server.last_hurt_by_player);
                 let level =
                     crate::game::entity::damage_level_of!(self, &NO_ATTACK, &mut credit, None);
                 level.through_short_knockback(|level| {
@@ -226,7 +226,7 @@ impl Game<'_> {
         let hub = &self.lan.as_ref()?.hub;
         let player = match target {
             Target::Player => {
-                hub.guest(self.lan_acting?)?;
+                hub.guest(self.server.lan_acting?)?;
                 self.player.as_ref()?
             }
             Target::Guest(conn) => hub.guest(conn)?.motion.as_deref()?,
@@ -235,7 +235,7 @@ impl Game<'_> {
         let mut random = player.random.clone();
         let plan = self.prepare_knockback_credit(id as i32, None, attack);
         let dimension = self.resident_target_dimension(target).unwrap_or(self.dim);
-        let mut credit = plan.lend(&mut self.last_hurt_by_player);
+        let mut credit = plan.lend(&mut self.server.last_hurt_by_player);
         let world = if dimension == self.dim {
             &mut self.world
         } else {
@@ -306,7 +306,7 @@ impl Game<'_> {
             )
             .unwrap_or(0.0);
         let plan = self.prepare_knockback_credit(id as i32, None, attack);
-        let mut credit = plan.lend(&mut self.last_hurt_by_player);
+        let mut credit = plan.lend(&mut self.server.last_hurt_by_player);
         let level = crate::game::entity::damage_level_of!(self, attack, &mut credit, None);
         let pushed = Hurting::ArmorStand(id as i32, source);
         if level.through_short_knockback(|level| level.knockback_canceled(pushed, &mut knock)) {
@@ -758,7 +758,7 @@ impl Game<'_> {
                     g.journal_player_health();
                     g.player.as_mut()?.set_health(health, false).ok()?;
                     if revived
-                        && let Some(conn) = g.lan_acting
+                        && let Some(conn) = g.server.lan_acting
                         && let Some(host) = g.lan.as_mut()
                         && let Some(gi) =
                             host.hub.guests.iter().position(|guest| guest.conn == conn)
@@ -786,7 +786,7 @@ impl Game<'_> {
                 if revived {
                     m.death_canceled = false;
                     m.death_time = 0;
-                    self.died.remove(&id);
+                    self.server.died.remove(&id);
                 }
                 true
             }
@@ -828,12 +828,13 @@ impl Game<'_> {
     /// in whichever loaded level it is now (`credited_entity`).
     pub(super) fn living_kill_credit(&self, living: LivingRef) -> Option<EntityRef> {
         let credit = match self.native_living_target(living)? {
-            Target::Player => self.combat.player_credit(self.world.game_time),
+            Target::Player => self.server.combat.player_credit(self.world.game_time),
             Target::Guest(conn) => self
+                .server
                 .guest_combat
                 .get(&conn)
                 .and_then(|combat| combat.player_credit(self.world.game_time)),
-            Target::Mob(id) => self.last_hurt_by_player.get(&id).copied(),
+            Target::Mob(id) => self.server.last_hurt_by_player.get(&id).copied(),
             _ => None,
         };
         if let Some(credit) = credit {
@@ -853,10 +854,12 @@ impl Game<'_> {
     pub(super) fn living_last_attacker(&self, living: LivingRef) -> Option<EntityRef> {
         match self.native_living_target(living)? {
             Target::Player => self
+                .server
                 .combat
                 .kill_credit(self.world.game_time)
                 .and_then(|id| self.credited_entity(id)),
             Target::Guest(conn) => self
+                .server
                 .guest_combat
                 .get(&conn)?
                 .kill_credit(self.world.game_time)
@@ -878,12 +881,12 @@ impl Game<'_> {
                     // handles read while the hub is out).
                     Who::Player => {
                         let conn =
-                            self.resolve_player_credit(*self.last_hurt_by_player.get(&id)?)?;
+                            self.resolve_player_credit(*self.server.last_hurt_by_player.get(&id)?)?;
                         match conn {
-                            None if self.lan_acting.is_some() => None,
+                            None if self.server.lan_acting.is_some() => None,
                             None => Some(self.player.as_ref()?.entity_id as u32),
-                            Some(conn) if self.lan_acting == Some(conn) => {
-                                Some(self.lan_acting_entity?)
+                            Some(conn) if self.server.lan_acting == Some(conn) => {
+                                Some(self.server.lan_acting_entity?)
                             }
                             Some(conn) => Some(
                                 self.lan
@@ -1591,12 +1594,12 @@ pub(in crate::game) mod tests {
             armor[2] = Some(leggings);
             for guest in [false, true] {
                 game.armor = armor.clone();
-                game.lan_acting = guest.then_some(1);
+                game.server.lan_acting = guest.then_some(1);
                 game.audio.capture = Some(Vec::new());
                 game.audio.record_heard = true;
                 game.audio.engine.notifications.clear();
                 game.audio.heard.clear();
-                game.guest_equipment_breaks.clear();
+                game.server.guest_equipment_breaks.clear();
                 let random = game.world.random.clone();
                 // Player.hurtArmor supplies FEET, LEGS, CHEST, HEAD;
                 // LivingEntity.doHurtEquipment finishes hurtAndBreak (including
@@ -1621,7 +1624,7 @@ pub(in crate::game) mod tests {
                     }
                 }
                 let expected_armor = game.armor.clone();
-                let expected_events = game.guest_equipment_breaks.clone();
+                let expected_events = game.server.guest_equipment_breaks.clone();
                 let expected_sounds = game.audio.heard.clone();
                 let expected_sound_order: Vec<_> = game
                     .audio
@@ -1643,14 +1646,14 @@ pub(in crate::game) mod tests {
                     );
                 }
                 game.armor = armor.clone();
-                game.guest_equipment_breaks.clear();
+                game.server.guest_equipment_breaks.clear();
                 game.audio.capture = Some(Vec::new());
                 game.audio.heard.clear();
                 game.audio.engine.notifications.clear();
                 game.world.random = random;
                 game.hurt_armor(&source, 4.0);
                 assert_eq!(game.armor, expected_armor);
-                assert_eq!(game.guest_equipment_breaks, expected_events);
+                assert_eq!(game.server.guest_equipment_breaks, expected_events);
                 assert_eq!(game.audio.heard, expected_sounds);
                 assert_eq!(
                     game.audio
@@ -1889,8 +1892,8 @@ pub(in crate::game) mod tests {
             assert_eq!(dragon_handle.alive(game), Some(false));
             // The entities gone: every read answers None.
             game.player = None;
-            game.lan_acting_uuid = None;
-            game.lan_acting_entity = None;
+            game.server.lan_acting_uuid = None;
+            game.server.lan_acting_entity = None;
             game.mobs[0].removed = true;
             game.armor_stands.clear();
             game.dragon.discard();
@@ -1952,7 +1955,7 @@ pub(in crate::game) mod tests {
             assert_eq!(living.kill_credit(game), None);
 
             // Once the player reference expires, the mob can be credited.
-            game.last_hurt_by_player.remove(&100);
+            game.server.last_hurt_by_player.remove(&100);
             assert_eq!(living.kill_credit(game).map(|e| e.id()), Some(101));
             // A mob that has left this level is no longer resolvable by its old ID.
             game.mobs[1].removed = true;
@@ -1983,7 +1986,7 @@ pub(in crate::game) mod tests {
     pub(in crate::game) fn hurt_pig(game: &mut super::Game<'_>) -> (u32, u32) {
         use crate::game::Dim;
         use std::sync::Arc;
-        game.world_root = game.save.root.clone();
+        game.server.world_root = game.save.root.clone();
         game.enter_level(Dim::Nether).unwrap();
         game.world
             .chunks
@@ -2142,8 +2145,8 @@ pub(in crate::game) mod tests {
             send_to_the_nether(game, zombie);
             let living = game.living(game.entity(pig).unwrap()).unwrap();
             credited = living.kill_credit(game).unwrap().id() as i32;
-            let plan = game.prepare_knockback_credit(pig as i32, None, game.combat.attack());
-            let mut credit = plan.lend(&mut game.last_hurt_by_player);
+            let plan = game.prepare_knockback_credit(pig as i32, None, game.server.combat.attack());
+            let mut credit = plan.lend(&mut game.server.last_hurt_by_player);
             let i = game.mobs.iter().position(|m| m.id == pig).unwrap();
             let mob = &mut game.mobs[i];
             mob.knockback(
@@ -2188,13 +2191,14 @@ pub(in crate::game) mod tests {
             assert_eq!(pig_living.last_attacker(game).map(|a| a.id()), Some(15));
             // The host's hit, read in the host's own turn: the host's handle.
             game.mobs[0].ai.last_hurt_by = Some(Who::Player);
-            game.last_hurt_by_player
+            game.server
+                .last_hurt_by_player
                 .insert(12, super::super::combat::PlayerCredit(123));
             assert_eq!(pig_living.last_attacker(game).map(|a| a.id()), Some(20));
             // The same record inside a guest's turn: the host's displaced
             // body is out of reach, so the attacker reads None.
-            game.lan_acting = Some(7);
-            game.lan_acting_uuid = Some(456);
+            game.server.lan_acting = Some(7);
+            game.server.lan_acting_uuid = Some(456);
             assert_eq!(pig_living.last_attacker(game), None);
         });
     }
@@ -2361,7 +2365,7 @@ pub(in crate::game) mod tests {
             let mut attackers = Vec::new();
             let mut health = Vec::new();
             for absorption in [0.0, 8.0] {
-                game.combat = Default::default();
+                game.server.combat = Default::default();
                 let mut player = PlayerMotion::new(game.motion, Vec3::ZERO).unwrap();
                 player.entity_id = 20;
                 player

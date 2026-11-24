@@ -32,7 +32,7 @@ impl Game<'_> {
     /// The areas the game itself draws beside the open screen's window: the
     /// container build's, or the frame's own arithmetic with no build yet.
     pub(super) fn screen_own_exclusion(&self, batch: &HudBatch) -> Vec<[f32; 4]> {
-        if !matches!(self.screen, Screen::Inventory | Screen::Creative) {
+        if !matches!(self.client.screen, Screen::Inventory | Screen::Creative) {
             return Vec::new();
         }
         match self.built_container(batch) {
@@ -63,7 +63,7 @@ impl Game<'_> {
     }
     /// A line in chat from the client.
     pub(in crate::game) fn native_chat(&mut self, text: &str) {
-        let focused = self.screen == Screen::Chat;
+        let focused = self.client.screen == Screen::Chat;
         let line = Text::literal(text);
         let ticks = self.visual_ticks();
         let atlas = &self.gui.atlas;
@@ -102,7 +102,7 @@ impl Game<'_> {
         views: Vec<NativeRecipeView>,
     ) {
         let page = RecipePage::new(title, tabs, tab, views);
-        self.panel.show_recipes(mod_id, page);
+        self.client.panel.show_recipes(mod_id, page);
     }
     /// No world is open: a client without a player (the title screen). A
     /// server's `Game` (the server thread, a dedicated server, a LAN host)

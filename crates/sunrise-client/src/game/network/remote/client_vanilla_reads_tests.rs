@@ -53,7 +53,7 @@ fn stand(game: &mut Game<'_>, teleport: i32) {
     let remote = game.remote.as_mut().unwrap();
     remote.loaded_sent = true;
     remote.level_load.finish();
-    game.screen = Screen::Playing;
+    game.client.screen = Screen::Playing;
 }
 
 /// Joins as entity [`PLAYER`] in the overworld.

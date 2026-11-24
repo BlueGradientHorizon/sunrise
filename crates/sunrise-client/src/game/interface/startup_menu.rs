@@ -149,21 +149,21 @@ impl StartupMenu {
             }
             None => game.title = None,
         }
-        game.pending_entry = self.pending.take();
+        game.client.pending_entry = self.pending.take();
         game.perf = std::mem::take(&mut self.perf);
         game.mod_jobs = std::mem::take(&mut self.mod_jobs);
-        game.cursor = self.cursor;
+        game.client.cursor = self.cursor;
         if self.key_focus.is_none() {
-            game.window_cursor = Some(self.pointer);
+            game.client.window_cursor = Some(self.pointer);
         }
-        game.modifiers = self.modifiers;
-        game.physical_keys = std::mem::take(&mut self.physical_keys);
+        game.client.modifiers = self.modifiers;
+        game.client.physical_keys = std::mem::take(&mut self.physical_keys);
         game.clipboard = std::mem::take(&mut self.clipboard);
-        game.text_selection = std::mem::take(&mut self.selection);
+        game.client.text_selection = std::mem::take(&mut self.selection);
         if let Some(toast) = self.pending_narrator_toast.take() {
             game.add_system_toast(Some(super::toast_manager::SystemToastId::Narrator), toast);
         }
-        game.narration = std::mem::take(&mut self.narration);
+        game.client.narration = std::mem::take(&mut self.narration);
         // Preserve an existing resource-error screen opened by start_game.
         if self.options_open {
             let resource_error = game.ui.options.resource_error.take();
@@ -171,9 +171,9 @@ impl StartupMenu {
             game.ui.options.resource_error =
                 game.ui.options.resource_error.take().or(resource_error);
             game.set_screen(Screen::Options);
-            game.options_from_title = true;
+            game.client.options_from_title = true;
             if self.dragging {
-                game.physical_buttons.insert(MouseButton::Left);
+                game.client.physical_buttons.insert(MouseButton::Left);
                 game.track_drag_button(MouseButton::Left, true);
             }
         }
@@ -1662,7 +1662,7 @@ mod tests {
                 let Some(PendingWorldEntry::Local {
                     create: Some(options),
                     ..
-                }) = &game.pending_entry
+                }) = &game.client.pending_entry
                 else {
                     panic!("pending")
                 };

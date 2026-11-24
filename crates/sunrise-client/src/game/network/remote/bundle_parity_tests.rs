@@ -237,7 +237,7 @@ fn dependent_entity_bundle_body() {
         while Instant::now() < hold_until {
             game.poll_remote().unwrap();
             assert_eq!(
-                game.interactions.contains_key(&expected_cam_after),
+                game.client.interactions.contains_key(&expected_cam_after),
                 expected_exists_before,
                 "unclosed bundle spawned entity before closing delimiter"
             );
@@ -275,11 +275,11 @@ fn dependent_entity_bundle_body() {
         let mut applied = false;
         while Instant::now() < deadline {
             game.poll_remote().unwrap();
-            let exists = game.interactions.contains_key(&expected_cam_after);
+            let exists = game.client.interactions.contains_key(&expected_cam_after);
             let cam = game.remote_camera_id().map(|id| id as i32);
             if exists || cam.is_some() {
                 assert!(exists && expected_exists_after);
-                let interaction = game.interactions.get(&expected_cam_after).unwrap();
+                let interaction = game.client.interactions.get(&expected_cam_after).unwrap();
                 assert_eq!(interaction.width.to_bits(), expected_width_bits);
                 assert_eq!(interaction.height.to_bits(), expected_height_bits);
                 assert_eq!(cam, Some(expected_cam_after));
@@ -330,8 +330,8 @@ fn dependent_entity_bundle_body() {
             std::thread::yield_now();
         }
         assert_eq!(game.remote_camera_id(), Some(creeper_id as u32));
-        assert_eq!(game.spectated_post_effect, Some("minecraft:creeper"));
-        assert!(game.spectated_post_effect_active);
+        assert_eq!(game.client.spectated_post_effect, Some("minecraft:creeper"));
+        assert!(game.client.spectated_post_effect_active);
 
         peer.send(
             &C::SetCamera(play::SetCamera {
@@ -349,8 +349,8 @@ fn dependent_entity_bundle_body() {
             std::thread::yield_now();
         }
         assert_eq!(game.remote_camera_id(), Some(expected_cam_after as u32));
-        assert_eq!(game.spectated_post_effect, None);
-        assert!(!game.spectated_post_effect_active);
+        assert_eq!(game.client.spectated_post_effect, None);
+        assert!(!game.client.spectated_post_effect_active);
     });
 }
 
@@ -790,7 +790,7 @@ fn entity_data_validation_inline_painting_and_pre_login_bundle_case(case_name: &
             // 4. Pre-Login bundle [Disconnect("server kick"), PostEffects, Ping(88)] preserves first reason and stops.
             with_client_game(|game| {
                 game.title = None;
-                game.post_effects.clear();
+                game.client.post_effects.clear();
                 let (client, _server) = Pipe::pair();
                 game.connect_local(client, "PreLoginDisconnectBundle")
                     .unwrap();
@@ -828,7 +828,7 @@ fn entity_data_validation_inline_painting_and_pre_login_bundle_case(case_name: &
                 }
                 assert!(game.remote.is_none());
                 assert!(!saw_pong, "bundle must stop before Ping(88)");
-                assert!(game.post_effects.is_empty());
+                assert!(game.client.post_effects.is_empty());
                 let Some(Mode::Multiplayer(multiplayer::Screen::Disconnected { reason, .. })) =
                     game.title.as_ref().map(|t| &t.mode)
                 else {
@@ -845,7 +845,7 @@ fn entity_data_validation_inline_painting_and_pre_login_bundle_case(case_name: &
             // 5. Pre-Login bundle [PostEffects, Ping(89)] stops before Ping(89) with disconnect.packetError.
             with_client_game(|game| {
                 game.title = None;
-                game.post_effects.clear();
+                game.client.post_effects.clear();
                 let (client, _server) = Pipe::pair();
                 game.connect_local(client, "PreLoginPostEffectsBundle")
                     .unwrap();
@@ -880,7 +880,7 @@ fn entity_data_validation_inline_painting_and_pre_login_bundle_case(case_name: &
                 }
                 assert!(game.remote.is_none());
                 assert!(!saw_pong, "bundle must stop before Ping(89)");
-                assert!(game.post_effects.is_empty());
+                assert!(game.client.post_effects.is_empty());
                 let Some(Mode::Multiplayer(multiplayer::Screen::Disconnected { reason, .. })) =
                     game.title.as_ref().map(|t| &t.mode)
                 else {

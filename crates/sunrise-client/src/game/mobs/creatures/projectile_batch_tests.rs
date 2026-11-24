@@ -133,8 +133,8 @@ fn with_batch(remove: bool, test: impl FnOnce(&mut Game<'_>, [u32; 3], [JoinSeq;
                 .default_state("minecraft:stone")
                 .unwrap();
             game.world.set(2, 64, 0, stone).unwrap();
-            let ids = std::array::from_fn(|i| game.next_entity + i as u32 + 1);
-            game.next_entity += 3;
+            let ids = std::array::from_fn(|i| game.server.next_entity + i as u32 + 1);
+            game.server.next_entity += 3;
             // Snowballs leave on impact; arrows stay in their slot, stuck in the wall.
             // The third projectile misses, so its survivor order must be preserved.
             for (i, kind) in [
@@ -370,7 +370,7 @@ fn terminal_egg(action: Action, abort: bool) {
         }
         assert_eq!(observed.lands.load(Ordering::Relaxed), 0);
         assert_eq!(observed.deaths.load(Ordering::Relaxed), 0);
-        assert!(game.lan_entity_events.is_empty());
+        assert!(game.server.lan_entity_events.is_empty());
         assert_eq!(game.particles.len(), particles);
         assert_eq!(game.world.random.state(), random);
         assert!(game.mobs.is_empty());
@@ -543,7 +543,7 @@ fn a_first_shot_listener_can_clear_the_eggs_captured_block_before_landing() {
             assert_eq!(hits[0].block, [2, 64, 0]);
             assert_ne!(game.world.block(2, 64, 0), stone);
             assert_eq!(observed.lands.load(Ordering::Relaxed), 0);
-            assert!(game.lan_entity_events.is_empty());
+            assert!(game.server.lan_entity_events.is_empty());
             assert_eq!(game.entity(71), Some(handle));
             assert_eq!(game.creatures.projectiles[0].join, join);
             assert_eq!(
@@ -937,7 +937,7 @@ pub(in crate::game) fn run_continuing_wind_charge_keeps_tick_order_and_skips_rel
             game.build_registries();
             game.set_allow_commands(true);
             assert!(game.run_command("forceload add 0 0 15 47"));
-            game.next_entity = 100;
+            game.server.next_entity = 100;
             let (z, breakers, boat_tag, w6_tag, a2_tag) = match case.as_str() {
                 "ctrl4" => (24.5, 4_u32, "boat_ctrl4", "w6_ctrl4", None),
                 "reversed" => (40.5, 5_u32, "boat_rev", "w6_rev", Some("a2_rev")),
@@ -999,7 +999,7 @@ pub(in crate::game) fn run_continuing_wind_charge_keeps_tick_order_and_skips_rel
             };
             game.native_joins_skip();
             assert_boat_matches_witness(&witness, game, 0, boat_tag);
-            game.ticked_entities_through = u32::MAX;
+            game.server.ticked_entities_through = u32::MAX;
             game.tick_projectiles().unwrap();
             if case != "reversed" {
                 assert!(
@@ -1012,7 +1012,7 @@ pub(in crate::game) fn run_continuing_wind_charge_keeps_tick_order_and_skips_rel
                 assert!(game.creatures.projectiles.is_empty());
                 assert_boat_matches_witness(&witness, game, 1, boat_tag);
                 for tick in 2..=4 {
-                    game.ticked_entities_through = u32::MAX;
+                    game.server.ticked_entities_through = u32::MAX;
                     game.tick_projectiles().unwrap();
                     assert!(wind_continuation_witness_26_3(&witness, tick, w6_tag).is_none());
                     assert!(game.creatures.projectiles.is_empty());
@@ -1079,7 +1079,7 @@ pub(in crate::game) fn run_continuing_wind_charge_keeps_tick_order_and_skips_rel
             };
             check_tick(game, 1);
             for tick in 2..=4 {
-                game.ticked_entities_through = u32::MAX;
+                game.server.ticked_entities_through = u32::MAX;
                 game.tick_projectiles().unwrap();
                 check_tick(game, tick);
             }

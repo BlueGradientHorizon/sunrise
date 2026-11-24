@@ -707,7 +707,10 @@ impl Game<'_> {
         let below = format!("{id}/");
         self.levels.runtime.any_below(id)
             || Dim::all().iter().any(|dim| dim.id().starts_with(&below))
-            || folder_holds_levels(&sunrise_client::save::dimension_dir(&self.world_root, id))
+            || folder_holds_levels(&sunrise_client::save::dimension_dir(
+                &self.server.world_root,
+                id,
+            ))
     }
 
     /// Whether the structure references file of `id` is also the file of a level that exists. A
@@ -717,7 +720,7 @@ impl Game<'_> {
             self.levels.runtime.knows(other)
                 || Dim::exists(other)
                 || !std::fs::symlink_metadata(sunrise_client::save::dimension_dir(
-                    &self.world_root,
+                    &self.server.world_root,
                     other,
                 ))
                 .is_err_and(|error| error.kind() == std::io::ErrorKind::NotFound)
@@ -807,15 +810,15 @@ impl Game<'_> {
         // The tables the game reads a level's shape, type and place from learn it first; a failure
         // below takes it out of them again (`unpublish_runtime_level`).
         let (id_name, dimension_type, facts) = leaked_level(id, &level.dimension_type, facts);
-        let mut extras = self.level_shapes.extra.to_vec();
+        let mut extras = self.server.level_shapes.extra.to_vec();
         extras.push(ExtraLevel {
             id: id_name,
             dimension_type,
             shape,
         });
-        self.level_shapes.extra = leaked_table(extras);
+        self.server.level_shapes.extra = leaked_table(extras);
         if let Some(host) = self.lan.as_mut() {
-            host.hub.config.levels = self.level_shapes;
+            host.hub.config.levels = self.server.level_shapes;
             host.hub.config.level_seeds = self.levels.runtime.seeds();
         }
         if let Ok(key) = LevelKey::parse(id) {
@@ -903,7 +906,11 @@ impl Game<'_> {
         if self.levels.runtime.fail_erase {
             return Err(std::io::Error::other("injected removal failure"));
         }
-        erase_level_files(&self.world_root, id, !self.references_file_shared(id))
+        erase_level_files(
+            &self.server.world_root,
+            id,
+            !self.references_file_shared(id),
+        )
     }
 
     /// The runtime level `id` was unloaded, or failed to open: it leaves every table it was added
@@ -916,15 +923,16 @@ impl Game<'_> {
         self.levels.runtime.remove(id);
         Dim::remove_extra(id);
         let extras: Vec<_> = self
+            .server
             .level_shapes
             .extra
             .iter()
             .copied()
             .filter(|level| level.id != id)
             .collect();
-        self.level_shapes.extra = leaked_table(extras);
+        self.server.level_shapes.extra = leaked_table(extras);
         if let Some(host) = self.lan.as_mut() {
-            host.hub.config.levels = self.level_shapes;
+            host.hub.config.levels = self.server.level_shapes;
             host.hub.config.level_seeds = self.levels.runtime.seeds();
             host.hub.close_views_of(id);
         }

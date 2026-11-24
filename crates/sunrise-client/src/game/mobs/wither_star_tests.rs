@@ -89,7 +89,7 @@ fn a_withers_nether_star_lives_12000_ticks() {
         };
         assert!(ordinary(game), "the ordinary drop is in the world");
         // Both drops joined after the last tick's entity pass: they tick from now.
-        game.ticked_entities_through = game.next_entity;
+        game.server.ticked_entities_through = game.server.next_entity;
         let tick = |game: &mut Game<'_>, n: u32| {
             for _ in 0..n {
                 game.tick_items();

@@ -30,7 +30,7 @@ impl Game<'_> {
             return room;
         }
         let (wi, hi) = (w as i32, h as i32);
-        let bars = self.boss_overlay.bars(boss_overlay::now_millis());
+        let bars = self.client.boss_overlay.bars(boss_overlay::now_millis());
         let drawn = hud_overlays::boss_bars_drawn(hi, bars.len());
         if drawn > 0 {
             let font = &self.gui.atlas.font;

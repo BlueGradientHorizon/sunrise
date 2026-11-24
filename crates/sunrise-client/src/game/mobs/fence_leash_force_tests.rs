@@ -103,7 +103,7 @@ fn game<'a>(resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>) -
     )
     .unwrap();
     // Reserve the manually installed guest in the shared runtime ID allocator.
-    game.next_entity = game.next_entity.max(2);
+    game.server.next_entity = game.server.next_entity.max(2);
     let (tx, _rx) = mpsc::channel();
     let mut guest = Guest::new(
         Joined {
@@ -188,7 +188,7 @@ fn a_fence_leash_pulls_a_pig_as_vanilla_does() {
         let i = pig(&mut game, uuid);
         let leash = game.mobs[i].extra.leash;
         let pending = game.mobs[i].extra.leash_pending;
-        let knot = game.knot_ids.get(&fence).copied();
+        let knot = game.server.knot_ids.get(&fence).copied();
         let state = knot_state(fence);
         eprintln!(
             "tick-1 binding {uuid}: leash={leash:?} pending={pending:?} knot entity={knot:?} at {:?}",

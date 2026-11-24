@@ -23,7 +23,7 @@ impl Game<'_> {
         }
         let pos = if let Some(m) = self.mob_index.get_ref(&self.mobs, id as u32) {
             [m.position.x, m.position.z]
-        } else if let Some(i) = self.interactions.get(&id) {
+        } else if let Some(i) = self.client.interactions.get(&id) {
             [i.position.x, i.position.z]
         } else if let Some(a) = self.armor_stands.iter().find(|a| a.id == id as u32) {
             [a.position.x, a.position.z]

@@ -181,7 +181,7 @@ impl SignalAccess for ReadLevel<'_, '_> {
             &self.game.world,
             self.game.pack.assets.registry,
             self.game.items(),
-            &self.game.lid_openers,
+            &self.game.server.lid_openers,
             pos,
             state,
         )

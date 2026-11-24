@@ -130,7 +130,7 @@ fn abort_restores_player_inventory_and_data_after_the_acting_player_dies() {
             assert_player_storage(
                 game.level.player_extra.as_ref(),
                 &game.inventory,
-                &game.ender_items,
+                &game.server.ender_items,
                 13,
             );
         })
@@ -150,12 +150,12 @@ fn abort_restores_the_suspended_guest_without_touching_the_inner_guest() {
             game.open_storage_transaction();
             write_player_storage(game, outer, 29);
             game.as_guest(13, |game| {
-                assert_eq!(game.lan_guest_swaps, [12, 13]);
+                assert_eq!(game.server.lan_guest_swaps, [12, 13]);
                 game.close_storage_transaction(false);
                 assert_player_storage(
                     game.level.player_extra.as_ref(),
                     &game.inventory,
-                    &game.ender_items,
+                    &game.server.ender_items,
                     23,
                 );
             })
@@ -163,7 +163,7 @@ fn abort_restores_the_suspended_guest_without_touching_the_inner_guest() {
             assert_player_storage(
                 game.level.player_extra.as_ref(),
                 &game.inventory,
-                &game.ender_items,
+                &game.server.ender_items,
                 19,
             );
         })

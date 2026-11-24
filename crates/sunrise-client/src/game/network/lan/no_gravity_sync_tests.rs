@@ -44,7 +44,7 @@ fn an_items_and_a_mobs_no_gravity_reaches_the_tracker() {
         let mut drop = ItemEntity::new(102, stack, Vec3::new(2.5, 70.0, 1.5), Vec3::ZERO, 0.0);
         drop.no_gravity = true;
         game.dropped.push(drop);
-        game.next_entity = 102;
+        game.server.next_entity = 102;
         let (pig, item) = (101, 102);
         assert!(game.mobs.last().unwrap().no_gravity && game.dropped.last().unwrap().no_gravity);
         for id in [pig, item] {

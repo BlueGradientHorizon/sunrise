@@ -100,33 +100,34 @@ fn num(n: impl std::fmt::Display) -> Text {
 
 impl Game<'_> {
     pub(super) fn bossbar_path(&self) -> std::path::PathBuf {
-        self.world_root
+        self.server
+            .world_root
             .join("data/minecraft/custom_boss_events.dat")
     }
     pub(super) fn load_bossbars(&mut self) {
-        if self.bosses.loaded || self.remote.is_some() {
+        if self.server.bosses.loaded || self.remote.is_some() {
             return;
         }
-        self.bosses.loaded = true;
+        self.server.bosses.loaded = true;
         if let Some(root) = save::read_dat(&self.bossbar_path())
             && let Some(data) = root.get("data")
         {
-            self.bosses.bars = BossBars::unpack(data);
+            self.server.bosses.bars = BossBars::unpack(data);
         }
-        self.bosses.rebuild_listing();
-        self.ui.registries.bossbars = self.bosses.bars.ids();
+        self.server.bosses.rebuild_listing();
+        self.ui.registries.bossbars = self.server.bosses.bars.ids();
     }
     pub(super) fn save_bossbars(&self) {
-        if !self.bosses.loaded || self.remote.is_some() {
+        if !self.server.bosses.loaded || self.remote.is_some() {
             return;
         }
-        if self.bosses.bars.bars.is_empty() && !self.bossbar_path().exists() {
+        if self.server.bosses.bars.bars.is_empty() && !self.bossbar_path().exists() {
             return;
         }
         if let Err(e) = save::write_dat(
             &self.bossbar_path(),
             Tag::compound([
-                ("data", self.bosses.bars.pack()),
+                ("data", self.server.bosses.bars.pack()),
                 ("DataVersion", Tag::Int(sunrise_world::DATA_VERSION)),
             ]),
         ) {
@@ -134,13 +135,13 @@ impl Game<'_> {
         }
     }
     pub(in crate::game) fn bossbar_exists(&self, id: &str) -> bool {
-        self.bosses.bars.get(id).is_some()
+        self.server.bosses.bars.get(id).is_some()
     }
     /// `CustomBossEvent.setValue` / `setMax`, as `execute store ... bossbar
     /// <id> value|max` calls them: the integer is stored as given and only
     /// the progress is clamped.
     pub(in crate::game) fn set_bossbar_value(&mut self, id: &str, value: bool, v: i32) {
-        if let Some(b) = self.bosses.bars.get_mut(id) {
+        if let Some(b) = self.server.bosses.bars.get_mut(id) {
             // CustomBossEvent.setValue/setMax store the number verbatim and
             // clamp only the progress derived from it.
             if value {
@@ -159,7 +160,7 @@ impl Game<'_> {
     }
     fn bar_checked(&self, ctx: &Context) -> R<String> {
         let id = Self::bar_id(ctx);
-        if self.bosses.bars.get(&id).is_none() {
+        if self.server.bosses.bars.get(&id).is_none() {
             return Err(err("commands.bossbar.unknown", &[&id]));
         }
         Ok(id)
@@ -172,41 +173,43 @@ impl Game<'_> {
     }
     /// The bars changed: refresh the command suggestions and tell the viewers.
     pub(super) fn bossbars_changed(&mut self) {
-        self.ui.registries.bossbars = self.bosses.bars.ids();
+        self.ui.registries.bossbars = self.server.bosses.bars.ids();
         self.publish_boss_bars();
     }
     /// `CustomBossEvents.create`: a new bar with a UUID drawn from the level's
     /// random. None if the id is taken.
     pub(super) fn add_custom_bossbar(&mut self, id: &str, name: Comp) -> Option<u128> {
-        if !self.bosses.add_bar(id, name) {
+        if !self.server.bosses.add_bar(id, name) {
             return None;
         }
         let uuid = sunrise_client::lan::playerdata::ints_uuid(sunrise_client::save::insecure_uuid(
             &mut self.world.random,
         ));
-        self.bosses.bars.get_mut(id)?.uuid = uuid;
+        self.server.bosses.bars.get_mut(id)?.uuid = uuid;
         Some(uuid)
     }
     fn bossbar_command(&mut self, id: &str, ctx: &Context) -> R<i32> {
         match id {
             "bossbar.add" => {
                 let bar = Self::bar_id(ctx);
-                if self.bosses.bars.get(&bar).is_some() {
+                if self.server.bosses.bars.get(&bar).is_some() {
                     return Err(err("commands.bossbar.create.failed", &[&bar]));
                 }
                 let name = self.component_json(ctx, "name")?;
                 self.add_custom_bossbar(&bar, name);
                 let shown = self
+                    .server
                     .bosses
                     .bars
                     .get(&bar)
                     .map(|b| b.display_name())
                     .unwrap_or_default();
                 self.feedback(Text::translate("commands.bossbar.create.success", &[shown]));
-                return Ok(self.bosses.bars.bars.len() as i32);
+                return Ok(self.server.bosses.bars.bars.len() as i32);
             }
             "bossbar.list" => {
                 let names: Vec<Text> = self
+                    .server
                     .bosses
                     .listed_bars()
                     .into_iter()
@@ -227,7 +230,8 @@ impl Game<'_> {
         }
         let bar = self.bar_checked(ctx)?;
         let shown = |g: &Self| {
-            g.bosses
+            g.server
+                .bosses
                 .bars
                 .get(&bar)
                 .map(|b| b.display_name())
@@ -237,14 +241,20 @@ impl Game<'_> {
         match id {
             "bossbar.remove" => {
                 let s = shown(self);
-                self.bosses.remove_bar(&bar);
+                self.server.bosses.remove_bar(&bar);
                 self.feedback(Text::translate("commands.bossbar.remove.success", &[s]));
-                Ok(self.bosses.bars.bars.len() as i32)
+                Ok(self.server.bosses.bars.bars.len() as i32)
             }
             "bossbar.get" => {
-                let b = self.bosses.bars.get(&bar).cloned().unwrap_or_else(|| {
-                    sunrise_client::bossbar::BossBar::new(&bar, sb::literal(&bar))
-                });
+                let b = self
+                    .server
+                    .bosses
+                    .bars
+                    .get(&bar)
+                    .cloned()
+                    .unwrap_or_else(|| {
+                        sunrise_client::bossbar::BossBar::new(&bar, sb::literal(&bar))
+                    });
                 let s = b.display_name();
                 Ok(match last.as_str() {
                     "value" => {
@@ -293,7 +303,8 @@ impl Game<'_> {
     }
     fn bossbar_set(&mut self, id: &str, ctx: &Context, bar: &str, last: &str) -> R<i32> {
         let shown = |g: &Self| {
-            g.bosses
+            g.server
+                .bosses
                 .bars
                 .get(bar)
                 .map(|b| b.display_name())
@@ -306,7 +317,7 @@ impl Game<'_> {
         match id {
             "bossbar.set.name" => {
                 let name = self.component_json(ctx, "name")?;
-                let b = self.bosses.bars.get_mut(bar).expect("checked");
+                let b = self.server.bosses.bars.get_mut(bar).expect("checked");
                 // BossBarCommands.setName: Component.equals, not its JSON spelling.
                 if canonical_component(&b.name) == canonical_component(&name) {
                     return Err(err("commands.bossbar.set.name.unchanged", &[]));
@@ -318,7 +329,7 @@ impl Game<'_> {
             }
             "bossbar.set.color" | "bossbar.set.style" => {
                 let color = id.ends_with("color");
-                let b = self.bosses.bars.get_mut(bar).expect("checked");
+                let b = self.server.bosses.bars.get_mut(bar).expect("checked");
                 let slot = if color { &mut b.color } else { &mut b.style };
                 if slot == last {
                     return Err(err(
@@ -345,7 +356,7 @@ impl Game<'_> {
             "bossbar.set.value" | "bossbar.set.max" => {
                 let is_value = id.ends_with("value");
                 let v = int(if is_value { "value" } else { "max" });
-                let b = self.bosses.bars.get_mut(bar).expect("checked");
+                let b = self.server.bosses.bars.get_mut(bar).expect("checked");
                 let slot = if is_value { &mut b.value } else { &mut b.max };
                 if *slot == v {
                     return Err(err(
@@ -371,7 +382,7 @@ impl Game<'_> {
             }
             "bossbar.set.visible" => {
                 let visible = matches!(ctx.get("visible"), Some(Arg::Bool(true)));
-                let b = self.bosses.bars.get_mut(bar).expect("checked");
+                let b = self.server.bosses.bars.get_mut(bar).expect("checked");
                 if b.visible == visible {
                     return Err(err(
                         if visible {
@@ -412,7 +423,7 @@ impl Game<'_> {
                         names.push(self.target_name(*t));
                     }
                 }
-                let b = self.bosses.bars.get_mut(bar).expect("checked");
+                let b = self.server.bosses.bars.get_mut(bar).expect("checked");
                 let mut had = b.players.clone();
                 had.sort();
                 let mut next = uuids.clone();
@@ -459,7 +470,7 @@ impl Game<'_> {
     /// The players who can be told about a bar: the one in place, then guests.
     fn known_boss_players(&self) -> Vec<([i32; 4], Text)> {
         let mut out = Vec::new();
-        if self.player.is_some() && !self.lan_acting_fake {
+        if self.player.is_some() && !self.server.lan_acting_fake {
             out.push((self.acting_uuid(), self.target_name(Target::Player)));
         }
         if let Some(host) = &self.lan {
@@ -508,13 +519,13 @@ impl Game<'_> {
         let now = boss_overlay::now_millis();
         let viewers = self.boss_viewers();
         let live: HashSet<u128> = viewers.iter().map(|v| v.uuid).collect();
-        self.bosses.sent.retain(|id, _| live.contains(id));
+        self.server.bosses.sent.retain(|id, _| live.contains(id));
         let mut packets = Vec::new();
         for viewer in &viewers {
             let desired = self.boss_events_for(viewer);
             for event in self.diff_boss_events(viewer, desired) {
                 if viewer.local {
-                    self.boss_overlay.apply(&event, now);
+                    self.client.boss_overlay.apply(&event, now);
                 } else if let Some(conn) = viewer.conn {
                     packets.push((conn, C::BossEvent(event)));
                 }
@@ -547,7 +558,7 @@ impl Game<'_> {
             .and_then(|raw| raw.get("CustomName"))
             .cloned();
         if let Some(custom) = custom {
-            self.bosses.dragon_name = Some(json_to_tag(
+            self.server.bosses.dragon_name = Some(json_to_tag(
                 &sunrise_client::entity_nbt::name_text(&custom).component(),
             ));
         }
@@ -556,8 +567,9 @@ impl Game<'_> {
         let mut out = Vec::new();
         // While `as_guest` has swapped a guest in, the host's own position
         // is not in place. Their overlay updates once the tick puts it back.
-        let local =
-            self.serving.is_none() && self.options.dedicated.is_none() && self.lan_acting.is_none();
+        let local = self.serving.is_none()
+            && self.options.dedicated.is_none()
+            && self.server.lan_acting.is_none();
         if local && let Some(p) = &self.player {
             let ints = self.level.player_uuid.unwrap_or_else(|| self.acting_uuid());
             out.push(Viewer {
@@ -599,7 +611,7 @@ impl Game<'_> {
     /// joins), then the dragon, withers and the raid.
     fn boss_events_for(&self, viewer: &Viewer) -> Vec<Offer> {
         let mut out = Vec::new();
-        for b in &self.bosses.bars.bars {
+        for b in &self.server.bosses.bars.bars {
             if !b.visible || !b.players.contains(&viewer.ints) {
                 continue;
             }
@@ -621,6 +633,7 @@ impl Game<'_> {
             out.push(Offer {
                 id: bossbar::stable_uuid("minecraft:ender_dragon"),
                 name: self
+                    .server
                     .bosses
                     .dragon_name
                     .clone()
@@ -692,7 +705,7 @@ impl Game<'_> {
     fn diff_boss_events(&mut self, viewer: &Viewer, desired: Vec<Offer>) -> Vec<play::BossEvent> {
         let full = viewer.local;
         let dim = self.dim;
-        let sent = self.bosses.sent.entry(viewer.uuid).or_default();
+        let sent = self.server.bosses.sent.entry(viewer.uuid).or_default();
         let mut out = Vec::new();
         let event = |id, action| play::BossEvent { id, action };
         sent.retain(|id, prev| {
@@ -746,7 +759,9 @@ impl Game<'_> {
     }
     /// `ClientPacketListener.handleBossUpdate`.
     pub(super) fn apply_boss_event(&mut self, packet: &play::BossEvent) {
-        self.boss_overlay.apply(packet, boss_overlay::now_millis());
+        self.client
+            .boss_overlay
+            .apply(packet, boss_overlay::now_millis());
     }
 }
 
@@ -854,7 +869,7 @@ pub(super) mod audience_tests {
         real.placed = true;
         host.hub.guests.push(real);
         // The real guest took entity id 1: the fake made next takes the one after it.
-        game.next_entity = game.next_entity.max(1);
+        game.server.next_entity = game.server.next_entity.max(1);
         let level = game.level(game.dim.id()).unwrap();
         game.fake_player(level, 2, "fake").unwrap();
         let guests = &mut game.lan.as_mut().unwrap().hub.guests;

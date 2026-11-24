@@ -18,7 +18,7 @@ impl Game<'_> {
         if !mod_api::__private::listened(HookId::ResolvePlayerSkin)
             || panorama
             || self.player.is_none()
-            || self.player_model.is_none()
+            || self.client.player_model.is_none()
         {
             return None;
         }
@@ -28,11 +28,11 @@ impl Game<'_> {
         // The same packed atlas is sampled by the body, the hand, and the preview.
         // The pool is absent if the current atlas has no slots for live images.
         if self.gui.atlas.dynamic_texture_pool.is_none()
-            || self.dynamic_textures.size(&texture) != Some([64, 64])
+            || self.client.dynamic_textures.size(&texture) != Some([64, 64])
         {
             return None;
         }
-        let avatar = self.player_model.as_mut()?;
+        let avatar = self.client.player_model.as_mut()?;
         Some((
             avatar.skin.replace(texture.to_string()),
             std::mem::replace(&mut avatar.slim, model == PlayerModel::Slim),

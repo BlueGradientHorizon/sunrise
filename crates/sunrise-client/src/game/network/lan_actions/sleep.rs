@@ -180,7 +180,7 @@ impl Game<'_> {
                 }
             }
         };
-        if self.player.is_some() && !self.lan_acting_fake && !self.spectator() {
+        if self.player.is_some() && !self.server.lan_acting_fake && !self.spectator() {
             count(self.sleeping.is_some(), self.sleep_timer);
         }
         if let Some(host) = self.lan.as_ref() {
@@ -240,8 +240,8 @@ impl Game<'_> {
     /// night" once enough are in bed, on the action bar.
     pub(in crate::game) fn announce_sleep_status(&mut self) {
         let (active, sleeping, _) = self.sleep_counts();
-        let (old_active, old_sleeping) = self.sleep_seen;
-        self.sleep_seen = (active, sleeping);
+        let (old_active, old_sleeping) = self.server.sleep_seen;
+        self.server.sleep_seen = (active, sleeping);
         let changed = (old_sleeping > 0 || sleeping > 0)
             && (old_active != active || old_sleeping != sleeping);
         let published = self.lan.is_some() || self.options.dedicated.is_some();
@@ -274,7 +274,7 @@ impl Game<'_> {
                 .overlay_message(sunrise_client::lan::data::component_nbt(&text.component()));
         }
         if self.options.dedicated.is_none() {
-            self.titles.set_overlay(text, false);
+            self.client.titles.set_overlay(text, false);
         }
     }
 

@@ -250,7 +250,7 @@ fn matrix(mods: mod_api::Mods) {
                     )
                     .unwrap();
                 game.world.set(0, 63, 0, stone).unwrap();
-                game.forced_hit = Some(hit());
+                game.server.forced_hit = Some(hit());
                 for hand in [Hand::Main, Hand::Off] {
                     for case in cases(hand) {
                         let state = if case.lever { lever } else { stone };
@@ -274,14 +274,15 @@ fn matrix(mods: mod_api::Mods) {
                             };
                         }
                         game.swing = Default::default();
-                        game.use_failed = false;
+                        game.server.use_failed = false;
                         advancement_tree(game);
                         fixture::begin(case.controls);
                         let swings = game.swings_started;
                         let used = if client {
                             game.remote_use_item_on(hand, mod_api::InteractionAttempt::Press, None)
                         } else {
-                            game.guest_use = Some(super::super::super::GuestUse::on_block(hand));
+                            game.server.guest_use =
+                                Some(super::super::super::GuestUse::on_block(hand));
                             game.with_hand(hand, |g| g.use_hand(Some(&hit()))).unwrap()
                         };
                         assert_eq!(used, case.used, "{client:?} {hand:?} {case:?}");

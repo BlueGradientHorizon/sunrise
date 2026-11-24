@@ -21,22 +21,22 @@ const PLAYER_EYES: f64 = 1.62;
 impl Game<'_> {
     /// `ClientPacketListener.handleWaypoint`.
     pub(super) fn handle_waypoint(&mut self, packet: &TrackedWaypoint) {
-        self.waypoints.apply(packet);
+        self.client.waypoints.apply(packet);
     }
     /// A new connection or world starts with no waypoints.
     pub(super) fn clear_waypoints(&mut self) {
-        self.waypoints = ClientWaypoints::default();
+        self.client.waypoints = ClientWaypoints::default();
     }
     /// `LocalPlayer.setExperienceValues`: a change of progress shows the
     /// experience bar for 100 ticks, except the first one
     /// (`experienceDisplayStartTick` starts at `Integer.MIN_VALUE`).
     pub(super) fn track_experience_display(&mut self) {
         let progress = self.experience.progress;
-        let (last, seen, _) = &mut self.experience_display;
+        let (last, seen, _) = &mut self.client.experience_display;
         if progress != *last {
             *last = progress;
             if *seen {
-                self.experience_display.2 = self.visual_ticks().max(1);
+                self.client.experience_display.2 = self.visual_ticks().max(1);
             } else {
                 *seen = true;
             }
@@ -48,13 +48,13 @@ impl Game<'_> {
                 super::stations::Kind::Enchanting | super::stations::Kind::Anvil
             )
         }) {
-            self.experience_display.2 = self.visual_ticks().max(1);
+            self.client.experience_display.2 = self.visual_ticks().max(1);
         }
     }
     /// `Hud.willPrioritizeExperienceInfo`. A start of 0 is none: the stamps above are at least 1
     /// (a new world under `SUNRISE_STILL` is still at tick 0).
     pub(super) fn experience_recent(&self) -> bool {
-        let (_, _, start) = self.experience_display;
+        let (_, _, start) = self.client.experience_display;
         start != 0 && start + 100 > self.visual_ticks()
     }
     /// `Hud.nextContextualInfoState`: jump bar reads `LocalPlayer.jumpableVehicle`, not `getCameraPlayer`.
@@ -73,7 +73,7 @@ impl Game<'_> {
     }
     /// `ClientWaypointManager.hasWaypoints`: what `contextual_bar` reads for the locator bar.
     pub(in crate::game) fn has_waypoints(&self) -> bool {
-        self.waypoints.has_waypoints()
+        self.client.waypoints.has_waypoints()
     }
     /// The local player's UUID, as servers know it.
     pub(super) fn own_uuid(&self) -> u128 {
@@ -131,7 +131,7 @@ impl Game<'_> {
     /// `LocatorBar.extractRenderState`: distance and self-exclusion from the camera entity,
     /// angles and projection from the last frame's render camera.
     pub(super) fn locator_bar_draws(&self, gui_width: i32, gui_height: i32) -> Vec<GuiDraw> {
-        let Some((camera_pos, yaw, pitch, fov)) = self.locator_camera else {
+        let Some((camera_pos, yaw, pitch, fov)) = self.client.locator_camera else {
             return Vec::new();
         };
         let Some((camera_uuid, camera_entity_pos)) = self.camera_identity_and_position() else {
@@ -169,9 +169,9 @@ impl Game<'_> {
             fov,
             project: &project,
             entity: &entity,
-            styles: &self.waypoint_styles,
+            styles: &self.client.waypoint_styles,
             tick: self.visual_ticks(),
         };
-        self.waypoints.draw(&view)
+        self.client.waypoints.draw(&view)
     }
 }

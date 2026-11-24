@@ -1616,7 +1616,7 @@ impl<'g> Game<'g> {
         if let Some(level) = self.transactions.last_mut() {
             level
                 .loot_sequences
-                .get_or_insert_with(|| self.rand_sequences.clone());
+                .get_or_insert_with(|| self.server.rand_sequences.clone());
         }
     }
 
@@ -1630,7 +1630,7 @@ impl<'g> Game<'g> {
         level
             .block_entities
             .entry(pos)
-            .or_insert_with(|| Kept::capture(&self.world, &self.hoppers, pos));
+            .or_insert_with(|| Kept::capture(&self.world, &self.server.hoppers, pos));
     }
     /// Puts back a removed block entity and its generation where none stands there now.
     fn restore_removed_block_entity(&mut self, pos: Pos, entity: BlockEntity, generation: u64) {
@@ -1777,11 +1777,12 @@ impl<'g> Game<'g> {
             return;
         };
         let owner = self
+            .server
             .lan_acting
             .map_or(JournaledPlayer::Local(uuid), JournaledPlayer::Guest);
         level.keep_player(
             owner,
-            &self.ender_items,
+            &self.server.ender_items,
             self.level.player_extra.as_ref(),
             || KeptPlayer {
                 inventory: self.inventory.clone(),
@@ -1864,13 +1865,16 @@ impl<'g> Game<'g> {
                 if local != Some(uuid) {
                     return None;
                 }
-                self.lan_guest_swaps.first().copied()
+                self.server.lan_guest_swaps.first().copied()
             }
             JournaledPlayer::Guest(conn) => self
+                .server
                 .lan_guest_swaps
                 .iter()
                 .position(|&swapped| swapped == conn)
-                .map_or(Some(conn), |i| self.lan_guest_swaps.get(i + 1).copied()),
+                .map_or(Some(conn), |i| {
+                    self.server.lan_guest_swaps.get(i + 1).copied()
+                }),
         };
         match parked_in {
             Some(conn) => self.guest_index(conn).map(PlayerStorageHome::Guest),
@@ -1884,6 +1888,7 @@ impl<'g> Game<'g> {
             return;
         };
         let owner = self
+            .server
             .lan_acting
             .map_or(JournaledPlayer::Local(uuid), JournaledPlayer::Guest);
         level
@@ -1915,7 +1920,7 @@ impl<'g> Game<'g> {
         else {
             return;
         };
-        let guest = self.lan_acting.and_then(|conn| {
+        let guest = self.server.lan_acting.and_then(|conn| {
             let guest = self.lan.as_ref()?.hub.guest(conn)?;
             Some((conn, guest.death_canceled, guest.death_time))
         });
@@ -1938,7 +1943,7 @@ impl<'g> Game<'g> {
                 needs_sync: mob.needs_sync,
                 death_time: mob.death_time,
                 death_canceled: mob.death_canceled,
-                processed: self.died.contains(&id),
+                processed: self.server.died.contains(&id),
             });
         }
     }
@@ -2017,8 +2022,8 @@ impl<'g> Game<'g> {
         }
         let owner = JournaledPlayer::Guest(conn);
         let ender = (!level.ender_items.contains_key(&owner)).then(|| {
-            if self.lan_acting == Some(conn) {
-                self.ender_items.clone()
+            if self.server.lan_acting == Some(conn) {
+                self.server.ender_items.clone()
             } else {
                 g.ender_items.clone()
             }
@@ -2358,7 +2363,7 @@ impl<'g> Game<'g> {
     }
 
     fn container_change_effect(&self, pos: Pos, holder: Option<BlockEntityIdentity>) -> After {
-        let silent = !self.contents_changing.is_empty()
+        let silent = !self.server.contents_changing.is_empty()
             && self.native_level_here().is_some_and(|level| {
                 self.contents_notice_active(level, BlockPos::new(pos.0, pos.1, pos.2))
             });
@@ -3078,8 +3083,8 @@ impl<'g> Game<'g> {
                     .restore(observer, kept.contents_watches);
             }
             match kept.hopper {
-                Some(hopper) => self.hoppers.insert(pos, hopper),
-                None => self.hoppers.remove(&pos),
+                Some(hopper) => self.server.hoppers.insert(pos, hopper),
+                None => self.server.hoppers.remove(&pos),
             };
         }
         // After the whole entities: a slot kept here was kept before any whole capture of its
@@ -3128,7 +3133,7 @@ impl<'g> Game<'g> {
             *self.world.random = random;
         }
         if let Some(sequences) = level.loot_sequences {
-            self.rand_sequences = sequences;
+            self.server.rand_sequences = sequences;
         }
         for (owner, before) in level.parked_level_randoms {
             if let Some(random) = self.level_random_mut(owner) {
@@ -3298,9 +3303,9 @@ impl<'g> Game<'g> {
                     mob.death_time = kept.death_time;
                     mob.death_canceled = kept.death_canceled;
                     if kept.processed {
-                        game.died.insert(id);
+                        game.server.died.insert(id);
                     } else {
-                        game.died.remove(&id);
+                        game.server.died.remove(&id);
                     }
                 }
             });
@@ -3342,7 +3347,7 @@ impl<'g> Game<'g> {
         }
         for (owner, kept) in level.ender_items {
             match self.player_storage_home(owner) {
-                Some(PlayerStorageHome::Game) => self.ender_items = kept,
+                Some(PlayerStorageHome::Game) => self.server.ender_items = kept,
                 Some(PlayerStorageHome::Guest(index)) => {
                     let host = self.lan.as_mut().expect("resolved guest");
                     host.hub.guests.update(index, |g| g.ender_items = kept);
@@ -3386,10 +3391,10 @@ impl<'g> Game<'g> {
 
     /// Identity of the player body currently swapped into `Game`.
     fn acting_player_body(&self) -> PlayerBodyKey {
-        if let Some(conn) = self.lan_acting {
+        if let Some(conn) = self.server.lan_acting {
             return PlayerBodyKey::Guest(conn);
         }
-        if let Some(uuid) = self.lan_acting_uuid
+        if let Some(uuid) = self.server.lan_acting_uuid
             && let Some(conn) = self
                 .lan
                 .as_ref()
@@ -3405,21 +3410,21 @@ impl<'g> Game<'g> {
     /// the acting body when its UUID matches, else the exact guest `conn` resolved in `self.dim`
     /// (online real player across dimensions, or the per-level fake player in `self.dim`).
     fn attachment_player_body(&self, uuid: u128) -> Option<PlayerBodyKey> {
-        if self.lan_acting_uuid == Some(uuid) {
+        if self.server.lan_acting_uuid == Some(uuid) {
             return Some(self.acting_player_body());
         }
         let conn = self
             .cloning_guest(uuid)
             .or_else(|| {
                 let host = self.lan.as_ref()?;
-                if self.entity_initialization.active == Some(Holder::Player(uuid)) {
+                if self.server.entity_initialization.active == Some(Holder::Player(uuid)) {
                     host.hub.guests.iter().find(|guest| guest.uuid == uuid)
                 } else {
                     host.hub.holder_guest(uuid, self.dim.id())
                 }
             })
             .map(|guest| guest.conn)?;
-        (!self.lan_guest_swaps.contains(&conn)).then_some(PlayerBodyKey::Guest(conn))
+        (!self.server.lan_guest_swaps.contains(&conn)).then_some(PlayerBodyKey::Guest(conn))
     }
 
     /// Restore a player body's attachment map directly wherever that exact body's state lives
@@ -3429,7 +3434,7 @@ impl<'g> Game<'g> {
         let map = if self.acting_player_body() == body {
             Some(&mut self.player_state.attachments)
         } else if let PlayerBodyKey::Guest(conn) = body
-            && !self.lan_guest_swaps.contains(&conn)
+            && !self.server.lan_guest_swaps.contains(&conn)
         {
             self.lan
                 .as_mut()
@@ -4077,14 +4082,14 @@ mod tests {
                 Ok::<_, ()>(())
             })
             .unwrap();
-            game.hoppers.remove(&(0, 64, 4));
+            game.server.hoppers.remove(&(0, 64, 4));
             game.hopper_try_move_items((0, 64, 4));
             assert_eq!(slots(game, (1, 64, 4)), 270);
             let _ = game.storage_transaction(|host, tx| {
                 assert_eq!(target.set_max_stack_size(host, tx, 64), Ok(true));
                 Err::<(), ()>(())
             });
-            game.hoppers.remove(&(0, 64, 4));
+            game.server.hoppers.remove(&(0, 64, 4));
             game.hopper_try_move_items((0, 64, 4));
             assert_eq!(slots(game, (1, 64, 4)), 270);
             assert_eq!(slots(game, (0, 64, 4)), 1);
@@ -4632,7 +4637,7 @@ mod tests {
             {
                 items.fill(None);
             }
-            game.hoppers.remove(&(0, 64, 4));
+            game.server.hoppers.remove(&(0, 64, 4));
             game.hopper_try_move_items((0, 64, 4));
             assert_eq!(slots(&game, (0, 64, 4)), 2 - moved, "{id}");
             assert_eq!(slots(&game, (2, 64, 4)), moved, "{id}");
@@ -4835,7 +4840,7 @@ mod mod_capability_tests {
             // Written while the guest's state is swapped in for their turn, aborted after it
             // is swapped back out: the guest's own map is put back.
             game.open_storage_transaction();
-            game.lan_acting_uuid = Some(guest);
+            game.server.lan_acting_uuid = Some(guest);
             std::mem::swap(
                 &mut game.player_state.attachments,
                 game.lan
@@ -4858,7 +4863,7 @@ mod mod_capability_tests {
                     .attachments_mut(conn)
                     .unwrap(),
             );
-            game.lan_acting_uuid = None;
+            game.server.lan_acting_uuid = None;
             game.close_storage_transaction(false);
             let host: &mut dyn ServerHost = game;
             assert_eq!(energy(host, player), Some(40));

@@ -21,7 +21,7 @@ fn tnt_cart(game: &mut Game<'_>, id: u32, silent: bool) {
     game.carts
         .push(Minecart::new(id, CartKind::Tnt, Vec3::new(0.5, 64.0, 0.5)));
     game.persist.raw.remove(&id);
-    game.lan_entity_events.clear();
+    game.server.lan_entity_events.clear();
     if silent {
         let (tag, _) = sunrise_core::nbt::parse_snbt("{Silent:1b}").unwrap();
         game.persist.raw.insert(id, tag);
@@ -60,11 +60,12 @@ fn a_silent_tnt_cart_primes_without_its_sound() {
     game.activate_cart(&mut silent, true);
     assert_eq!(silent.fuse, 80, "a silent cart still primes");
     assert!(
-        game.lan_entity_events
+        game.server
+            .lan_entity_events
             .iter()
             .any(|(id, event)| *id == 42 && *event == 70),
         "a silent cart still broadcasts EntityEvent.TNT_PRIME: {:?}",
-        game.lan_entity_events
+        game.server.lan_entity_events
     );
     let sounds = game.audio.capture.take().unwrap();
     assert!(sounds.is_empty(), "a silent cart hissed: {sounds:?}");

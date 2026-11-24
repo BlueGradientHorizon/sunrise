@@ -175,7 +175,7 @@ impl Game<'_> {
         self.mob_map_snapshot().as_ref()
     }
     pub(in crate::game) fn mob_map_snapshot(&self) -> &Arc<NeoForgeMobMaps> {
-        if let Some(tables) = &self.world_tables {
+        if let Some(tables) = &self.server.world_tables {
             &tables.data_maps.mob_maps
         } else {
             NeoForgeMobMaps::vanilla()

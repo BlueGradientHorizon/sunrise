@@ -36,6 +36,7 @@ impl Game<'_> {
         };
         let now = std::time::Instant::now();
         let seconds = self
+            .client
             .custom_sky
             .last
             .replace(now)
@@ -43,7 +44,7 @@ impl Game<'_> {
         if let Some(world) =
             world.filter(|&w| !title && self.settings.sunrise.sky && self.pack.custom_sky.has(w))
         {
-            let mut state = std::mem::take(&mut self.custom_sky.state);
+            let mut state = std::mem::take(&mut self.client.custom_sky.state);
             // Level.isThundering / isRaining.
             let weather = if thunder > 0.9 && rain > 0.2 {
                 Weather::Thunder
@@ -66,7 +67,7 @@ impl Game<'_> {
                 &mut state,
                 &mut draws,
             );
-            self.custom_sky.state = state;
+            self.client.custom_sky.state = state;
         }
         if let Some(renderer) = self.renderer.as_mut() {
             *renderer.custom_sky_draws() = draws;

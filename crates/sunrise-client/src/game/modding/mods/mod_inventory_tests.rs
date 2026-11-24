@@ -149,8 +149,8 @@ fn code_only_reload_publishes_one_new_inventory_after_prepare_and_preserves_old_
                 game.pack.data_source = initial.data().clone();
                 game.pack.data_changes = initial.data_changes().clone();
                 game.mods = sources.clone();
-                game.world_root = fixture.0.join("world");
-                let pack = game.world_root.join("datapacks/inventory");
+                game.server.world_root = fixture.0.join("world");
+                let pack = game.server.world_root.join("datapacks/inventory");
                 let recipes = pack.join("data/inventorytest/recipe");
                 std::fs::create_dir_all(&recipes).unwrap();
                 std::fs::write(pack.join("pack.mcmeta"), serde_json::to_vec(&serde_json::json!({
@@ -209,8 +209,8 @@ fn code_only_reload_publishes_one_new_inventory_after_prepare_and_preserves_old_
                         items.songs.contains_key(id),
                         items.instruments.contains_key(id),
                         items.enchantments.list.iter().any(|e| &*e.id == id),
-                        game.fns.store.predicates.contains_key(id),
-                        game.fns.store.item_modifiers.contains_key(id),
+                        game.server.fns.store.predicates.contains_key(id),
+                        game.server.fns.store.item_modifiers.contains_key(id),
                     )
                 };
                 assert_eq!(

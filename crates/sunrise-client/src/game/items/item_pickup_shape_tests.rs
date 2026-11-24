@@ -84,7 +84,7 @@ fn indexed_pickup_keeps_bound_survivors_and_processes_shifted_tail() {
             )
             .join(format!("pickup-shape-{}-{dimension:?}", std::process::id()));
             crate::game::native_entity_refs::tests::with_game(|game| {
-                game.world_root = scratch.clone();
+                game.server.world_root = scratch.clone();
                 game.enter_level(dimension).unwrap();
                 loaded += 1;
                 game.player =
@@ -95,9 +95,9 @@ fn indexed_pickup_keeps_bound_survivors_and_processes_shifted_tail() {
                 game.inventory[0] = Some(ItemStack::new("minecraft:apple", 62));
                 let uuid = sunrise_client::lan::playerdata::uuid_ints(7);
                 game.level.player_uuid = Some(uuid);
-                game.lan_acting_uuid = Some(7);
-                game.lan_acting_name = Some("pickup_test".into());
-                game.lan_acting_entity = Some(42);
+                game.server.lan_acting_uuid = Some(7);
+                game.server.lan_acting_name = Some("pickup_test".into());
+                game.server.lan_acting_entity = Some(42);
                 let data = scratch.join("data/pickup_test/advancement");
                 std::fs::create_dir_all(&data).unwrap();
                 std::fs::write(data.join("pickup.json"), br#"{"criteria":{"take":{"trigger":"minecraft:thrown_item_picked_up_by_player"}}}"#).unwrap();
@@ -215,7 +215,7 @@ fn indexed_pickup_keeps_bound_survivors_and_processes_shifted_tail() {
                     }
                 }
                 assert_eq!(
-                    game.pickups.made().get("item").copied().unwrap_or(0),
+                    game.client.pickups.made().get("item").copied().unwrap_or(0),
                     2,
                     "full and partial pickup animations"
                 );

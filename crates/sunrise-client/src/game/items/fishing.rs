@@ -378,10 +378,10 @@ impl Game<'_> {
         let mut rows = Vec::new();
         for seed in [0_i64, 1, 42, 123456789, -1] {
             let position = self.player.as_ref().expect("harness player").position;
-            let Some(id) = self.next_entity.checked_add(1) else {
+            let Some(id) = self.server.next_entity.checked_add(1) else {
                 break;
             };
-            self.next_entity = id;
+            self.server.next_entity = id;
             let mut hook = Hook::remote(id, position, [0, 0, 0, 1]);
             hook.nibble = 10;
             hook.random = LegacyRandom::new(seed);
@@ -442,10 +442,10 @@ impl Game<'_> {
         self.world.weather.raining = false;
         let mut rows = Vec::new();
         for seed in [0_i64, 1, 42, 123456789, -1] {
-            let Some(id) = self.next_entity.checked_add(1) else {
+            let Some(id) = self.server.next_entity.checked_add(1) else {
                 break;
             };
-            self.next_entity = id;
+            self.server.next_entity = id;
             let mut hook = Hook::remote(id, Vec3::new(x, 300.5, z), [0, 0, 0, 1]);
             hook.state = State::Bobbing;
             hook.velocity = Vec3::new(0.1, 0.03, -0.2);
@@ -521,7 +521,10 @@ impl Game<'_> {
         }
         // The mods hear a server player's cast or reel-in first.
         if self.player.is_some()
-            && let (Some(uuid), Some(name)) = (self.lan_acting_uuid, self.lan_acting_name.clone())
+            && let (Some(uuid), Some(name)) = (
+                self.server.lan_acting_uuid,
+                self.server.lan_acting_name.clone(),
+            )
         {
             let state = match self.hook.as_ref() {
                 None => 0,
@@ -582,14 +585,14 @@ impl Game<'_> {
             let _synchronized = random_source::create();
             let v = cast_velocity(y_sin, y_cos, dir_y, &mut random);
             let [hook_yaw, hook_pitch] = hook_rotation(v);
-            self.next_entity += 1;
+            self.server.next_entity += 1;
             self.install_fishing_hook(Hook {
                 uuid,
                 attachment_lifetime: Default::default(),
                 join: sunrise_client::join_seq::JoinSeq::UNJOINED,
                 caster: None,
                 caster_generation: sunrise_client::join_seq::JoinSeq::UNJOINED,
-                id: self.next_entity,
+                id: self.server.next_entity,
                 position: start,
                 previous: start,
                 velocity: v,
@@ -708,7 +711,7 @@ impl Game<'_> {
             damage = if hooked_item { 3 } else { 5 };
         } else if hook.nibble > 0 {
             let biome = self.biome_name_at(hook.position);
-            let Some(loot) = self.server_loot.get() else {
+            let Some(loot) = self.server.server_loot.get() else {
                 return damage;
             };
             // `withLuck(this.luck + owner.getLuck())`: the rod's Luck of the Sea
@@ -739,7 +742,7 @@ impl Game<'_> {
                 fishing_loot(
                     &loot,
                     table,
-                    &mut self.rand_sequences,
+                    &mut self.server.rand_sequences,
                     &mut self.world.random,
                     self.level.seed,
                     biome.as_deref(),
@@ -775,7 +778,7 @@ impl Game<'_> {
                 .collect();
             // ItemFishedEvent may change the catch, rod damage, or cancel rewards.
             let mut rod_damage = if hook.ground.on_ground { 2 } else { 1 };
-            if let Some(player) = self.lan_acting_uuid
+            if let Some(player) = self.server.lan_acting_uuid
                 && mod_api::__private::listened(mod_api::HookId::ItemFished)
             {
                 let fished = mod_api::ItemFished::from(mod_api::__private::built::ItemFished {
@@ -958,9 +961,10 @@ impl Game<'_> {
             } else {
                 // The mods hear a server player's fish bite, and may call it
                 // off: the wait starts over.
-                if let (Some(uuid), Some(name)) =
-                    (self.lan_acting_uuid, self.lan_acting_name.clone())
-                {
+                if let (Some(uuid), Some(name)) = (
+                    self.server.lan_acting_uuid,
+                    self.server.lan_acting_name.clone(),
+                ) {
                     let mut cancel = false;
                     self.native_player_fish(uuid, &name, 1, &mut cancel);
                     if cancel {
@@ -1091,7 +1095,7 @@ impl Game<'_> {
         }
         // The players it can catch, as they stand now (the host's own hook;
         // guests' hooks use the ones taken as their turns start).
-        if self.lan_acting.is_none() && matches!(h.state, State::Flying | State::Hooked(_)) {
+        if self.server.lan_acting.is_none() && matches!(h.state, State::Flying | State::Hooked(_)) {
             self.refresh_hook_targets();
         }
         h.previous = h.position;
@@ -1226,7 +1230,7 @@ impl Game<'_> {
                                 id,
                                 Some(sunrise_client::mobs::Who::Player),
                                 self.level.player_uuid,
-                                self.lan_acting,
+                                self.server.lan_acting,
                                 None,
                             );
                         }
@@ -1254,7 +1258,7 @@ impl Game<'_> {
                 } else if let Some(hit) = block_hit.filter(|_| !canceled && hit.is_none()) {
                     let projectile = ProjectileHitter {
                         owner: Some(sunrise_client::mobs::Who::Player),
-                        guest: self.lan_acting,
+                        guest: self.server.lan_acting,
                         arrow: false,
                         kind: "minecraft:fishing_bobber",
                         position: h.position,
@@ -1684,11 +1688,11 @@ impl Game<'_> {
         ));
         let feet = self.previous_position.lerp(p.position, alpha);
         let eye = glam::DVec3::new(feet.x, feet.y + f64::from(p.dimensions.eye_height), feet.z);
-        if self.camera_type.is_first_person() {
+        if self.client.camera_type.is_first_person() {
             let fov = self.settings.fov as i32 as f32;
             Some(eye + near_plane_hand(self.near_plane(), fov, invert, swing))
         } else {
-            let model = self.player_model.as_ref()?;
+            let model = self.client.player_model.as_ref()?;
             let body = mod_api::client::camera::lerp(
                 alpha as f32,
                 model.previous_body_yaw,
@@ -1748,6 +1752,7 @@ impl Game<'_> {
         let at = |p: Vec3| [p.x, p.y, p.z];
         let own = self.hook.iter().map(|h| (h.id, 0, h.position));
         let others = self
+            .client
             .remote_hooks
             .iter()
             .map(|h| (h.id, h.owner, h.position));
@@ -1771,8 +1776,8 @@ impl Game<'_> {
                 .iter()
                 .filter(|g| {
                     host.hub.here(g)
-                        && self.lan_acting != Some(g.conn)
-                        && !self.lan_guest_swaps.contains(&g.conn)
+                        && self.server.lan_acting != Some(g.conn)
+                        && !self.server.lan_guest_swaps.contains(&g.conn)
                 })
                 .filter_map(|g| Some((host.play.get(&g.conn)?.hook.as_ref()?, g.conn)))
                 .map(|(hook, conn)| (hook, Target::Guest(conn)))
@@ -1843,7 +1848,7 @@ impl Game<'_> {
             sunrise_client::motion::BodyMotion::entity_context(id, at),
         );
         let hook = match caster {
-            super::commands::Target::Guest(conn) if Some(conn) != self.lan_acting => self
+            super::commands::Target::Guest(conn) if Some(conn) != self.server.lan_acting => self
                 .lan
                 .as_mut()
                 .and_then(|host| host.play.get_mut(&conn))
@@ -1878,7 +1883,7 @@ impl Game<'_> {
         let Source::Hook { caster } = location.source else {
             return;
         };
-        if caster == self.lan_acting {
+        if caster == self.server.lan_acting {
             self.hook.discard();
         } else if let Some(play) = caster.and_then(|conn| self.lan.as_mut()?.play.get_mut(&conn)) {
             play.hook.discard();
@@ -2131,7 +2136,14 @@ impl Game<'_> {
             hook.velocity = velocity;
             self.install_fishing_hook(hook);
         } else {
-            push_remote_hook(&mut self.remote_hooks, id, owner as u32, at, velocity, uuid);
+            push_remote_hook(
+                &mut self.client.remote_hooks,
+                id,
+                owner as u32,
+                at,
+                velocity,
+                uuid,
+            );
         }
     }
 
@@ -2162,7 +2174,7 @@ impl Game<'_> {
                     _ => {}
                 }
             }
-        } else if let Some(h) = self.remote_hooks.iter_mut().find(|h| h.id == id) {
+        } else if let Some(h) = self.client.remote_hooks.iter_mut().find(|h| h.id == id) {
             for (index, _, value) in values {
                 match (index, value) {
                     (9, Value::Bool(biting)) => {
@@ -2185,7 +2197,7 @@ impl Game<'_> {
         }
         if let Some(h) = self.hook.as_mut().filter(|h| h.id == id) {
             h.velocity = v;
-        } else if let Some(h) = self.remote_hooks.iter_mut().find(|h| h.id == id) {
+        } else if let Some(h) = self.client.remote_hooks.iter_mut().find(|h| h.id == id) {
             h.velocity = v;
         } else {
             return false;
@@ -2216,7 +2228,7 @@ impl Game<'_> {
             h.lerp.moved(h.position.subtract(before));
             self.hook.put_back(h);
         }
-        let mut hooks = std::mem::take(&mut self.remote_hooks);
+        let mut hooks = std::mem::take(&mut self.client.remote_hooks);
         for h in &mut hooks {
             h.previous = h.position;
             h.position = h.lerp.step(h.position);
@@ -2235,7 +2247,7 @@ impl Game<'_> {
             );
             h.lerp.moved(h.position.subtract(before));
         }
-        self.remote_hooks = hooks;
+        self.client.remote_hooks = hooks;
     }
 
     /// The fishing medium a mod says the hook `id` at `position` floats in
@@ -2263,6 +2275,7 @@ impl Game<'_> {
         let caster = match (own, server) {
             (false, _) => None,
             (true, true) => self
+                .server
                 .lan_acting_uuid
                 .or_else(|| {
                     self.level
@@ -2295,7 +2308,7 @@ impl Game<'_> {
         let table = sunrise_core::identifier::Identifier::parse(id)
             .ok()
             .map(|table| table.to_string());
-        let Some(loot) = self.server_loot.get() else {
+        let Some(loot) = self.server.server_loot.get() else {
             // No tables loaded: nothing rolls, so there is nothing to check against.
             return table;
         };
@@ -2487,14 +2500,14 @@ impl Game<'_> {
         if self.remote.is_some() && self.hook.as_ref().is_some_and(|h| h.id == id) {
             self.hook.discard();
         }
-        remove_remote_hook_from(&mut self.remote_hooks, id);
+        remove_remote_hook_from(&mut self.client.remote_hooks, id);
     }
 
     pub(super) fn clear_remote_hooks(&mut self) {
         if self.remote.is_some() {
             self.hook.discard();
         }
-        self.remote_hooks.clear();
+        self.client.remote_hooks.clear();
     }
 
     /// Other players' hooks: the bobber and its line to the owner's hand
@@ -2508,7 +2521,8 @@ impl Game<'_> {
                 a.z + (b.z - a.z) * alpha,
             )
         };
-        self.remote_hooks
+        self.client
+            .remote_hooks
             .iter()
             .filter_map(|h| {
                 if self.hides_as_camera(h.id) {

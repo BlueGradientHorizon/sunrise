@@ -173,10 +173,10 @@ fn slotless_screen_draw_sees_full_width_updates_only_for_its_window() {
                 open(game, 1, 0); // Anvil
                 assert!(game.station.is_some());
                 assert!(!game.slots().is_empty());
-                game.cursor = (25.0, 40.0);
+                game.client.cursor = (25.0, 40.0);
                 open(game, 2, 1); // No intervening close packet.
-                assert_eq!(game.screen, Screen::Inventory);
-                assert_eq!(game.cursor, (25.0, 40.0));
+                assert_eq!(game.client.screen, Screen::Inventory);
+                assert_eq!(game.client.cursor, (25.0, 40.0));
                 assert!(game.station.is_none());
                 assert!(game.slots().is_empty());
                 assert_eq!(game.slot_count(), 0);
@@ -187,7 +187,7 @@ fn slotless_screen_draw_sees_full_width_updates_only_for_its_window() {
                 );
                 seen.lock().unwrap().cancel_opening = true;
                 game.set_screen(Screen::Paused);
-                assert_eq!(game.screen, Screen::Inventory);
+                assert_eq!(game.client.screen, Screen::Inventory);
                 assert!(
                     game.native_screen_shown(),
                     "an unrelated veto keeps the menu"
@@ -222,7 +222,7 @@ fn slotless_screen_draw_sees_full_width_updates_only_for_its_window() {
                 assert!(game.shown_native_screen().is_none());
                 seen.lock().unwrap().cancel_opening = true;
                 open(game, 2, 1);
-                assert_eq!(game.screen, Screen::Playing);
+                assert_eq!(game.client.screen, Screen::Playing);
                 assert!(game.mod_screen.is_none(), "a veto drops the staged screen");
                 assert!(game.remote.as_ref().unwrap().menu.as_ref().is_none());
                 assert_eq!(
@@ -435,8 +435,8 @@ fn a_mod_blocks_custom_menu_gets_its_registered_screen() {
                         game.hud([641, 481]);
 
                         // A cursor supplied in GUI pixels directly still truncates toward zero.
-                        game.window_cursor = None;
-                        game.cursor = (-3.75, 129.75);
+                        game.client.window_cursor = None;
+                        game.client.cursor = (-3.75, 129.75);
                         game.hud([641, 481]);
                         {
                             let seen = seen.lock().unwrap();
@@ -719,7 +719,7 @@ fn custom_menu_screens_route_by_menu_type_and_allow_cross_mod_slot_controls() {
                             assert_eq!(game.native_screen_slots(), Some(ids));
                             let mut batch = HudBatch::scratch([512, 512]);
                             let (ox, oy) = game.inventory_origin(&batch);
-                            game.cursor = (ox + 90.0, oy + 105.0);
+                            game.client.cursor = (ox + 90.0, oy + 105.0);
                             assert!(game.draw_native_screen(&mut batch, ox, oy));
                             assert!(game.native_screen_press_at(&batch, false));
                             let click = (0..32).find_map(|_| {
@@ -930,7 +930,7 @@ fn a_hopper_layout_mod_menu_opens_its_screen_from_block_packets() {
                         for packet in packets {
                             game.handle_packet(packet).unwrap();
                         }
-                        assert_eq!(game.screen, Screen::Inventory);
+                        assert_eq!(game.client.screen, Screen::Inventory);
                         let open = game
                             .mod_screen
                             .as_ref()

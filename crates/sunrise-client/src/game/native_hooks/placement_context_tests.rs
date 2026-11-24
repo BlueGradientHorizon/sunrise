@@ -481,8 +481,8 @@ fn substituted_placement_uses_the_held_item_preclear_and_selected_placed_by() {
             game.player =
                 Some(PlayerMotion::new(game.motion, Vec3::new(12.5, 64.0, 12.5)).unwrap());
             bind_local_player(game, 20, 123);
-            game.lan_acting_name = Some("Placer".into());
-            game.lan_acting_permission = Some(0);
+            game.server.lan_acting_name = Some("Placer".into());
+            game.server.lan_acting_permission = Some(0);
             game.set_mode_id(0);
 
             let registry = game.pack.assets.registry;
@@ -507,7 +507,7 @@ fn substituted_placement_uses_the_held_item_preclear_and_selected_placed_by() {
                     inside: false,
                 };
                 *game.held_mut() = Some(ItemStack::new(item, 2));
-                game.guest_use = Some(GuestUse::on_block(mod_api::Hand::Main));
+                game.server.guest_use = Some(GuestUse::on_block(mod_api::Hand::Main));
                 assert!(game.use_hand(Some(&hit)).unwrap());
                 assert_eq!(game.held().unwrap().count, remaining);
                 assert_eq!(game.world.block(4, 64, z), primary);
@@ -667,15 +667,15 @@ fn player_and_dispenser_apply_only_the_context_seen_by_the_veto() {
                     game.player =
                         Some(PlayerMotion::new(game.motion, Vec3::new(12.5, 64.0, 12.5)).unwrap());
                     bind_local_player(game, 20, 123);
-                    game.lan_acting_name = Some("Placer".into());
-                    game.lan_acting_permission = Some(0);
+                    game.server.lan_acting_name = Some("Placer".into());
+                    game.server.lan_acting_permission = Some(0);
                     game.set_mode_id(0);
 
                     for (occupy_target, z) in [(false, 2), (true, 7)] {
                         trace.lock().unwrap().occupy_target = occupy_target;
                         game.world.set(4, 64, z, stone).unwrap();
                         *game.held_mut() = Some(ItemStack::new("minecraft:stone", 2));
-                        game.guest_use = Some(GuestUse::on_block(mod_api::Hand::Main));
+                        game.server.guest_use = Some(GuestUse::on_block(mod_api::Hand::Main));
                         let hit = Hit {
                             pos: [4, 63, z],
                             face: [0, 1, 0],
@@ -683,9 +683,9 @@ fn player_and_dispenser_apply_only_the_context_seen_by_the_veto() {
                             inside: false,
                         };
                         // Mark the swapped-in body as a server guest's active turn for the click.
-                        game.lan_acting = Some(1);
+                        game.server.lan_acting = Some(1);
                         assert!(game.use_hand(Some(&hit)).unwrap());
-                        game.lan_acting = None;
+                        game.server.lan_acting = None;
                         let left = game
                             .dispense_item(
                                 (9, 64, z),
@@ -826,8 +826,8 @@ fn state_for_placement_distinguishes_player_and_dispenser_sources() {
                     game.player =
                         Some(PlayerMotion::new(game.motion, Vec3::new(12.5, 64.0, 12.5)).unwrap());
                     bind_local_player(game, 20, 123);
-                    game.lan_acting_name = Some("Placer".into());
-                    game.lan_acting_permission = Some(0);
+                    game.server.lan_acting_name = Some("Placer".into());
+                    game.server.lan_acting_permission = Some(0);
                     game.set_mode_id(0);
 
                     // Server player placement looking south (yaw 0, pitch 15) must report `Player`,
@@ -835,16 +835,16 @@ fn state_for_placement_distinguishes_player_and_dispenser_sources() {
                     game.yaw = 0.0;
                     game.pitch = 15.0;
                     *game.held_mut() = Some(ItemStack::new("minecraft:stone", 2));
-                    game.guest_use = Some(GuestUse::on_block(mod_api::Hand::Main));
+                    game.server.guest_use = Some(GuestUse::on_block(mod_api::Hand::Main));
                     let hit = Hit {
                         pos: [4, 63, 4],
                         face: [0, 1, 0],
                         point: [4.5, 64.0, 4.5],
                         inside: false,
                     };
-                    game.lan_acting = Some(1);
+                    game.server.lan_acting = Some(1);
                     assert!(game.use_hand(Some(&hit)).unwrap());
-                    game.lan_acting = None;
+                    game.server.lan_acting = None;
 
                     // Dispenser shulker-box placement facing south and up must report `Directional`.
                     let left = game

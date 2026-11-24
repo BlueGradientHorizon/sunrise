@@ -39,9 +39,9 @@ impl Game<'_> {
     /// A break inside another (a mod breaking more blocks from its
     /// `native_destroy_block`) keeps the outer break's own events.
     pub(super) fn player_break_block(&mut self, pos: [i32; 3]) -> Result<bool> {
-        let outer = self.lan_break_pos.replace(pos);
+        let outer = self.server.lan_break_pos.replace(pos);
         let broken = self.with_player_actor(|game| game.break_block_as_player(pos));
-        self.lan_break_pos = outer;
+        self.server.lan_break_pos = outer;
         broken
     }
 
@@ -99,7 +99,7 @@ impl Game<'_> {
         self.expire_client_cracks();
         if (0..10).contains(&progress) {
             let stage = progress as u8;
-            if let Some(crack) = self.destroying.get_mut(&breaker)
+            if let Some(crack) = self.client.destroying.get_mut(&breaker)
                 && crack.pos == pos
                 && crack.stage == stage
             {
@@ -108,7 +108,7 @@ impl Game<'_> {
             }
             // Publish the stage before dispatch: a same-stage client setter
             // from this block's part must refresh it, not enter the hook again.
-            self.destroying.insert(
+            self.client.destroying.insert(
                 breaker,
                 crate::game::client_cracks::ClientCrack {
                     pos,
@@ -118,7 +118,7 @@ impl Game<'_> {
                 },
             );
             self.with_break_progress_positions(pos, stage, |game, positions| {
-                if let Some(crack) = game.destroying.get_mut(&breaker)
+                if let Some(crack) = game.client.destroying.get_mut(&breaker)
                     && crack.pos == pos
                     && crack.stage == stage
                 {
@@ -126,7 +126,7 @@ impl Game<'_> {
                 }
             });
         } else {
-            self.destroying.remove(&breaker);
+            self.client.destroying.remove(&breaker);
         }
     }
 }

@@ -48,18 +48,22 @@ impl Game<'_> {
             Some(ToastIcon::Sprite(sprite)) => Some(Icon::Sprite(sprite.to_string())),
             None | Some(_) => None,
         };
-        self.toast_manager.pending_mod.borrow_mut().push(Pending {
-            toast,
-            kind: request.kind,
-            icon,
-        });
+        self.client
+            .toast_manager
+            .pending_mod
+            .borrow_mut()
+            .push(Pending {
+                toast,
+                kind: request.kind,
+                icon,
+            });
         Ok(())
     }
 
     pub(super) fn admit_mod_toasts(&mut self) {
         // Take one snapshot before invoking listeners. A request from toast_add is
         // for the next update, not a recursive add or part of this snapshot.
-        for mut request in std::mem::take(self.toast_manager.pending_mod.get_mut()) {
+        for mut request in std::mem::take(self.client.toast_manager.pending_mod.get_mut()) {
             if !self.admit_toast(
                 ToastKind::Mod,
                 &mut request.toast.title,
@@ -71,7 +75,7 @@ impl Game<'_> {
                 .toast
                 .layout(&self.gui.atlas, request.icon.is_some());
             if let Some(kind) = &request.kind
-                && let Some(entry) = self.toast_manager.find_mut(|entry| match entry {
+                && let Some(entry) = self.client.toast_manager.find_mut(|entry| match entry {
                     Toast::Mod(entry) if entry.request.kind.as_ref() == Some(kind) => Some(entry),
                     _ => None,
                 })
@@ -80,7 +84,8 @@ impl Game<'_> {
                 entry.request.icon = request.icon;
                 entry.layout = layout;
             } else {
-                self.toast_manager
+                self.client
+                    .toast_manager
                     .queued
                     .push_back(Toast::Mod(Entry { request, layout }));
             }

@@ -149,7 +149,7 @@ impl Game<'_> {
         if self.world.light(x, y, z) >> 4 != 15 {
             return;
         }
-        if !self.lightning_strike_allowed(self.lan_acting_uuid, [x, y, z], "trident") {
+        if !self.lightning_strike_allowed(self.server.lan_acting_uuid, [x, y, z], "trident") {
             return;
         }
         self.spawn_bolt(at, false);
@@ -279,8 +279,11 @@ impl Game<'_> {
                     true,
                 );
                 if matches!(lift, Ok(Some(_)))
-                    && let (Some(conn), Some(body), Some(host)) =
-                        (self.lan_acting, self.player.as_ref(), self.lan.as_mut())
+                    && let (Some(conn), Some(body), Some(host)) = (
+                        self.server.lan_acting,
+                        self.player.as_ref(),
+                        self.lan.as_mut(),
+                    )
                 {
                     // ServerPlayer inherits Entity.move: commit the lift to its server record,
                     // not as a teleport in leave_guest. The client runs the same move and still
@@ -300,7 +303,7 @@ impl Game<'_> {
             if !server_client {
                 let sound = format!("minecraft:item.trident.riptide_{}", riptide.min(3));
                 // level.playSound(null, player, sound, PLAYERS, 1, 1).
-                match (self.lan_acting_entity, at) {
+                match (self.server.lan_acting_entity, at) {
                     (Some(player), Some(at)) => {
                         let sound =
                             LevelSound::new(&sound, at, 1.0, 1.0).in_source(SoundSource::Players);
@@ -308,9 +311,10 @@ impl Game<'_> {
                     }
                     _ => self.audio.play(&sound, at, 1.0, 1.0),
                 }
-                if let (Some(player), Some(name)) =
-                    (self.lan_acting_uuid, self.lan_acting_name.clone())
-                {
+                if let (Some(player), Some(name)) = (
+                    self.server.lan_acting_uuid,
+                    self.server.lan_acting_name.clone(),
+                ) {
                     self.native_player_riptide(player, &name);
                 }
             }
@@ -377,7 +381,7 @@ impl Game<'_> {
             was_touching_water: false,
             age: 0,
             owner: 0,
-            guest: self.lan_acting,
+            guest: self.server.lan_acting,
             random: sunrise_client::projectiles::unique_random(start),
             deflected_by: None,
             last_state: None,
@@ -396,7 +400,7 @@ impl Game<'_> {
     /// `settle_dealt_absorbed` for the player who threw a trident: a LAN guest's own
     /// statistics are only reachable inside `as_guest`, so the host is not credited.
     fn thrower_dealt_absorbed(&mut self, guest: Option<u32>) {
-        let Some(conn) = guest.filter(|c| self.lan_acting != Some(*c)) else {
+        let Some(conn) = guest.filter(|c| self.server.lan_acting != Some(*c)) else {
             self.settle_dealt_absorbed(true);
             return;
         };
@@ -414,7 +418,7 @@ impl Game<'_> {
         direct: sunrise_client::advancements::EntityView,
         damage: f32,
     ) {
-        let Some(conn) = guest.filter(|c| self.lan_acting != Some(*c)) else {
+        let Some(conn) = guest.filter(|c| self.server.lan_acting != Some(*c)) else {
             self.player_hit(victim, "minecraft:trident", Some(direct), damage);
             return;
         };
@@ -450,11 +454,11 @@ impl Game<'_> {
         let from = [t.previous.x, t.previous.y, t.previous.z];
         self.guest_hit_by(conn, |g| {
             g.with_attack(attack, |g| {
-                g.combat.refuse_player_hit = refused;
-                g.combat.projectile_attacker = shooter;
+                g.server.combat.refuse_player_hit = refused;
+                g.server.combat.projectile_attacker = shooter;
                 let hurt = g.mob_hits_player(damage, from, "minecraft:trident");
-                g.combat.refuse_player_hit = false;
-                g.combat.projectile_attacker = None;
+                g.server.combat.refuse_player_hit = false;
+                g.server.combat.projectile_attacker = None;
                 hurt
             })
         })
@@ -935,7 +939,8 @@ impl Game<'_> {
                                     let causing = self.causer_id(owner_who);
                                     let decision =
                                         crate::game::entity::causer_decision!(self, causing);
-                                    let mut credit = plan.lend(&mut self.last_hurt_by_player);
+                                    let mut credit =
+                                        plan.lend(&mut self.server.last_hurt_by_player);
                                     let from_pos = Some([t.position.x, t.position.y, t.position.z]);
                                     let join = self.mobs[mob_idx].join;
                                     let (victim, lend) = crate::game::entity::victim_and_causer!(
@@ -1252,10 +1257,17 @@ impl Game<'_> {
     ) {
         // ItemPickupParticle: a picked-up trident flying to its collector,
         // drawn with the render state extracted at partial tick 1.
-        let taken = self.pickups.live.iter().filter_map(|p| match &p.taken {
-            super::pickups::Taken::Trident(t) => Some((&**t, super::pickups::position(p, alpha))),
-            _ => None,
-        });
+        let taken = self
+            .client
+            .pickups
+            .live
+            .iter()
+            .filter_map(|p| match &p.taken {
+                super::pickups::Taken::Trident(t) => {
+                    Some((&**t, super::pickups::position(p, alpha)))
+                }
+                _ => None,
+            });
         self.draw_tridents(camera, taken, out);
     }
 
@@ -1265,7 +1277,7 @@ impl Game<'_> {
         tridents: impl Iterator<Item = (&'a ThrownTrident, [f64; 3])>,
         out: &mut Vec<Vertex>,
     ) {
-        let Some(model) = &self.trident_model else {
+        let Some(model) = &self.client.trident_model else {
             return;
         };
         let Some(uv) = self
@@ -1299,12 +1311,13 @@ impl Game<'_> {
             );
             if t.fire_ticks > 0 {
                 // The flames face the camera, turned round in the front view.
-                let fire_yaw =
-                    if self.camera_type == sunrise_client::camera::CameraType::ThirdPersonFront {
-                        self.yaw + 180.0
-                    } else {
-                        self.yaw
-                    };
+                let fire_yaw = if self.client.camera_type
+                    == sunrise_client::camera::CameraType::ThirdPersonFront
+                {
+                    self.yaw + 180.0
+                } else {
+                    self.yaw
+                };
                 sunrise_client::fire_render::flames(
                     at,
                     0.5,

@@ -88,7 +88,7 @@ fn a_panicking_hidden_status_replacement_leaves_other_rows() {
         );
         mods::register_gui_layers(ExecutionRole::Client);
         game.title = None;
-        game.screen = crate::game::Screen::Playing;
+        game.client.screen = crate::game::Screen::Playing;
         game.ui.hide_gui = true;
         for (frame, expected) in [
             &["mount replacement", "air replacement"][..],
@@ -109,7 +109,7 @@ fn a_panicking_hidden_status_replacement_leaves_other_rows() {
                         toast: crate::game::toast_manager::Toast::Diagnostic { toast, .. },
                         ..
                     },
-                ] = game.toast_manager.visible.as_slice()
+                ] = game.client.toast_manager.visible.as_slice()
                 else {
                     panic!("expected one mandatory mod error toast");
                 };

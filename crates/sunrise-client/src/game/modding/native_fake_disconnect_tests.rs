@@ -131,7 +131,7 @@ fn fake_kicks_leave_once_with_the_first_reason() {
                     assert!(leave_lines(observer).is_empty());
                 }
 
-                game.level_pass = Default::default();
+                game.server.level_pass = Default::default();
                 game.tick_lan_packets();
                 // Packet draining holds sends until the full tick's flush boundary.
                 sunrise_client::lan::flush_all(
@@ -161,7 +161,7 @@ fn fake_kicks_leave_once_with_the_first_reason() {
                         .disconnect(game, Text::literal("After removal"))
                         .unwrap()
                 );
-                game.level_pass = Default::default();
+                game.server.level_pass = Default::default();
                 game.tick_lan_packets();
                 // Packet draining holds sends until the full tick's flush boundary.
                 sunrise_client::lan::flush_all(

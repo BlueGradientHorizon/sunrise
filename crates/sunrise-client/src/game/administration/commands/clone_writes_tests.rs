@@ -66,9 +66,9 @@ fn load_chunk_in(game: &mut Game<'_>, dim: Dim, back: Dim) {
 
 /// Runs `command`: whether it succeeded and what it said first.
 fn run(game: &mut Game<'_>, command: &str) -> (bool, Option<String>) {
-    game.chat_capture = Some(Vec::new());
+    game.server.chat_capture = Some(Vec::new());
     let ok = game.run_command(command);
-    let said = game.chat_capture.take().unwrap_or_default();
+    let said = game.server.chat_capture.take().unwrap_or_default();
     (ok, said.first().map(sunrise_client::text::Text::plain))
 }
 

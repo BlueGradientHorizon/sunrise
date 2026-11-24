@@ -38,7 +38,7 @@ impl Game<'_> {
             }
         }
         let (ox, oy) = self.inventory_origin(batch);
-        let local = (self.cursor.0 - ox, self.cursor.1 - oy);
+        let local = (self.client.cursor.0 - ox, self.client.cursor.1 - oy);
         let mut tooltip: Option<Vec<(sunrise_client::text::Text, u32)>> = None;
         let mut anvil_name = false;
         let mut recipe_tooltip: Option<ItemStack> = None;
@@ -578,7 +578,7 @@ impl Game<'_> {
         }
         self.draw_hovered_slot_highlight(batch, true, ox, oy);
         let slot_tooltip = if tooltip.is_none() {
-            self.slot_at(batch, self.cursor.0, self.cursor.1)
+            self.slot_at(batch, self.client.cursor.0, self.client.cursor.1)
                 .and_then(|slot| self.slot_mut(slot).clone())
         } else {
             None
@@ -594,11 +594,11 @@ impl Game<'_> {
             .filter(|s| self.tooltip_with_carried(s))
             .or(recipe_tooltip)
         {
-            self.draw_stack_tooltip(batch, &stack, self.cursor.0, self.cursor.1);
+            self.draw_stack_tooltip(batch, &stack, self.client.cursor.0, self.client.cursor.1);
         } else if self.carried.is_none()
             && let Some(lines) = tooltip
         {
-            self.draw_tooltip_lines(batch, &lines, self.cursor.0, self.cursor.1);
+            self.draw_tooltip_lines(batch, &lines, self.client.cursor.0, self.client.cursor.1);
         }
         if let Some(tooltip) = browser_tip {
             self.draw_mod_browser_tooltip(batch, tooltip);

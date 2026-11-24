@@ -605,7 +605,7 @@ impl Game<'_> {
         );
         let mut rocket = self.new_rocket(at, stack, false, &mut random_source::entity());
         rocket.owner = Some(Who::Player);
-        rocket.guest = self.lan_acting;
+        rocket.guest = self.server.lan_acting;
         self.rockets.push(rocket);
         if !self.creative {
             self.consume_held();
@@ -633,7 +633,10 @@ impl Game<'_> {
         rocket.turn_to_shot();
         rocket.angled = true;
         rocket.owner = owner;
-        rocket.guest = self.lan_acting.filter(|_| owner == Some(Who::Player));
+        rocket.guest = self
+            .server
+            .lan_acting
+            .filter(|_| owner == Some(Who::Player));
         self.rockets.push(rocket);
     }
     /// `Entity.getHandHoldingItemAngle(Items.FIREWORK_ROCKET)` for the local
@@ -707,14 +710,17 @@ impl Game<'_> {
         let at = self.player.as_ref().map_or(Vec3::ZERO, |p| p.position);
         let mut rocket = self.new_rocket(at, stack, true, &mut random_source::entity());
         rocket.owner = Some(Who::Player);
-        rocket.guest = self.lan_acting;
+        rocket.guest = self.server.lan_acting;
         self.rockets.push(rocket);
         if !self.creative {
             self.consume_held();
         }
         self.award_stat("used", "minecraft:firework_rocket", 1);
         self.swing_arm();
-        if let (Some(player), Some(name)) = (self.lan_acting_uuid, self.lan_acting_name.clone()) {
+        if let (Some(player), Some(name)) = (
+            self.server.lan_acting_uuid,
+            self.server.lan_acting_name.clone(),
+        ) {
             self.native_player_elytra_boost(player, &name);
         }
         true
@@ -1158,7 +1164,7 @@ impl Game<'_> {
     /// `FireworkRocketEntity.explode`'s game event: EXPLODE at the rocket, from
     /// its owner (`Projectile.getOwner`), a guest's rocket as theirs.
     fn rocket_explode_event(&mut self, mut owner: Option<Who>, guest: Option<u32>, at: [f64; 3]) {
-        if let Some(conn) = guest.filter(|conn| self.lan_acting != Some(*conn)) {
+        if let Some(conn) = guest.filter(|conn| self.server.lan_acting != Some(*conn)) {
             let posted = self
                 .as_guest(conn, |g| {
                     let ctx = g.who_context(owner, None);
@@ -1190,7 +1196,7 @@ impl Game<'_> {
             // The hit's causing entity, lent to its listeners beside the victim.
             let causing = self.causer_id(attacker);
             let decision = crate::game::entity::causer_decision!(self, causing);
-            let mut credit = plan.lend(&mut self.last_hurt_by_player);
+            let mut credit = plan.lend(&mut self.server.last_hurt_by_player);
             if let Some(index) = self.mob_index.find(&self.mobs, id) {
                 let before = self.mobs[index].health;
                 let join = self.mobs[index].join;
@@ -1327,9 +1333,9 @@ impl Game<'_> {
         // Ability, spectator and death refusals belong to hurtServer, after
         // its invulnerability observation (also for an attached target).
         // No mob ever owns a rocket.
-        self.combat.projectile_owner = None;
-        self.combat.rocket_hit = true;
-        self.combat.projectile_direct =
+        self.server.combat.projectile_owner = None;
+        self.server.combat.rocket_hit = true;
+        self.server.combat.projectile_direct =
             Some(Text::translate("entity.minecraft.firework_rocket", &[]));
         let at = [from.x, from.y, from.z];
         self.hurt_player_from(amount, Some(at), "minecraft:fireworks", Some(None), false);
@@ -1490,10 +1496,10 @@ mod tests {
         let id = super::Game::MOTION_OBJECT | 77;
         // One frame's motion runs: the rocket's vertices open a run under its own id, and
         // a camera-only run (id 0) closes it so nothing drawn after takes its motion.
-        game.entity_motion.borrow_mut().clear();
+        game.client.entity_motion.borrow_mut().clear();
         let mut out = Vec::new();
         game.rocket_geometry(camera, 1.0, &mut out, 0..game.rockets.len());
-        let marks = game.entity_motion.borrow().clone();
+        let marks = game.client.entity_motion.borrow().clone();
         let at = marks
             .iter()
             .position(|m| m.1 == id)
@@ -1569,8 +1575,8 @@ mod tests {
             .expect("cow")
             .clone();
         // A server action keeps the guest identity while its hub is swapped out.
-        game.lan_acting = Some(11);
-        game.lan_acting_entity = Some(37);
+        game.server.lan_acting = Some(11);
+        game.server.lan_acting_entity = Some(37);
         let me = game.acting_uuid();
         let someone_else = [me[0].wrapping_add(1), me[1], me[2], me[3]];
         let mut leashed = |id, at: Vec3, owner: [i32; 4]| {

@@ -125,7 +125,11 @@ fn successful_reload_removes_secondary_tag_entries() {
 fn failed_reload_preparation_keeps_secondary_tag_entries() {
     fixture(|game, enabled, mob| {
         enabled.store(false, Ordering::SeqCst);
-        let old = game.world_tables.as_ref().map(|tables| tables as *const _);
+        let old = game
+            .server
+            .world_tables
+            .as_ref()
+            .map(|tables| tables as *const _);
         crate::game::api_values::install_parts(&[ModEntry::new(
             "secondary_test",
             Box::new(Missing),
@@ -134,7 +138,10 @@ fn failed_reload_preparation_keeps_secondary_tag_entries() {
         assert!(!game.run_command("reload"));
         assert_eq!(
             old,
-            game.world_tables.as_ref().map(|tables| tables as *const _)
+            game.server
+                .world_tables
+                .as_ref()
+                .map(|tables| tables as *const _)
         );
         assert!(game.items().block_tags[TAG].contains("minecraft:soul_sand"));
         assert_eq!(memory(game, mob), Some(vec![[0, 63, 1], [1, 63, 0]]));

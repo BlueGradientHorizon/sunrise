@@ -283,8 +283,8 @@ fn clear_arena(game: &mut Game<'_>, backstop_x: i32) {
     game.cushions.clear();
     game.crystals.clear();
     game.others.clear();
-    game.knot_ids.clear();
-    game.broken_knots.clear();
+    game.server.knot_ids.clear();
+    game.server.broken_knots.clear();
     game.resident_entities.knots.clear();
     game.reset_entity_residency();
     game.bind_local_player_residency();

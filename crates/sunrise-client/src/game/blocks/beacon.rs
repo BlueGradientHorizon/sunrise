@@ -531,7 +531,7 @@ impl Game<'_> {
     pub(super) fn draw_beacon(&mut self, batch: &mut HudBatch) {
         let (ox, oy) = self.inventory_origin(batch);
         let (bx, by) = (ox + SHIFT, oy);
-        let local = (self.cursor.0 - bx, self.cursor.1 - by);
+        let local = (self.client.cursor.0 - bx, self.client.cursor.1 - by);
         let levels = self.beacon_levels();
         let sel = self.station.as_ref().map_or([None; 2], |s| s.beacon);
         let paid = self.station.as_ref().is_some_and(|s| s.inputs[0].is_some());
@@ -662,7 +662,7 @@ impl Game<'_> {
         }
         self.draw_hovered_slot_highlight(batch, true, ox, oy);
         let mut stack_tip = None;
-        if let Some(slot) = self.slot_at(batch, self.cursor.0, self.cursor.1) {
+        if let Some(slot) = self.slot_at(batch, self.client.cursor.0, self.client.cursor.1) {
             stack_tip = self.slot_mut(slot).clone();
         }
         let browser_tip = self.draw_mod_browser(batch);
@@ -670,10 +670,10 @@ impl Game<'_> {
         if self.carried.is_some() {
             self.draw_carried(batch);
             if let Some(stack) = stack_tip.filter(|s| self.tooltip_with_carried(s)) {
-                self.draw_stack_tooltip(batch, &stack, self.cursor.0, self.cursor.1);
+                self.draw_stack_tooltip(batch, &stack, self.client.cursor.0, self.client.cursor.1);
             }
         } else if let Some(stack) = stack_tip {
-            self.draw_stack_tooltip(batch, &stack, self.cursor.0, self.cursor.1);
+            self.draw_stack_tooltip(batch, &stack, self.client.cursor.0, self.client.cursor.1);
         } else if let Some((text, positioner)) = tooltip {
             self.draw_tooltip_lines_positioned(batch, &[(text, u32::MAX)], anchor, &positioner);
         }

@@ -400,7 +400,7 @@ impl Game<'_> {
         else {
             return;
         };
-        let ticking = self.title.is_none() && self.screen == Screen::Playing;
+        let ticking = self.title.is_none() && self.client.screen == Screen::Playing;
         let elapsed = self.ticks.saturating_sub(start_tick);
         if ticking && elapsed.is_multiple_of(KEYFRAME_TICKS) {
             let state = self.state_value();
@@ -554,7 +554,9 @@ impl Game<'_> {
                 Some(server) => {
                     server.ask(|reply| OwnerRequest::Control(ControlRequest::WorldRoot(reply)))
                 }
-                None if !self.world_root.as_os_str().is_empty() => Some(self.world_root.clone()),
+                None if !self.server.world_root.as_os_str().is_empty() => {
+                    Some(self.server.world_root.clone())
+                }
                 None => None,
             }
         } else {
@@ -1085,7 +1087,7 @@ impl Game<'_> {
                     pending.opened = true;
                 }
             }
-            if !self.loaded() || self.pending_entry.is_some() {
+            if !self.loaded() || self.client.pending_entry.is_some() {
                 return;
             }
         }
@@ -1317,8 +1319,8 @@ impl Game<'_> {
                 true
             }
             TraceKind::Motion { x, y } => {
-                self.mouse.on_move(0.0, 0.0, x, y, true, true);
-                self.last_input = Instant::now();
+                self.client.mouse.on_move(0.0, 0.0, x, y, true, true);
+                self.client.last_input = Instant::now();
                 true
             }
             TraceKind::Pad { button, action } => {
@@ -1334,12 +1336,12 @@ impl Game<'_> {
     /// Let go of everything a replay (or a person) held.
     fn release_replay_inputs(&mut self) {
         self.clear_device_keys();
-        self.physical_keys.clear();
-        self.physical_buttons.clear();
+        self.client.physical_keys.clear();
+        self.client.physical_buttons.clear();
         self.set_mapping_held("key.attack", false);
         self.set_mapping_held("key.use", false);
-        self.modifiers = winit::keyboard::ModifiersState::empty();
-        self.debug_keys.modifier_down = false;
+        self.client.modifiers = winit::keyboard::ModifiersState::empty();
+        self.client.debug_keys.modifier_down = false;
         self.pad.clear_injected();
     }
 

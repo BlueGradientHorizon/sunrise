@@ -183,7 +183,7 @@ impl BlockEntityAccess for ResidentBlockEntityAccess<'_, '_> {
             journal: &mut self.game.transactions,
             chunks: &self.game.world.chunks,
             names: &self.game.world.block_names,
-            hoppers: &self.game.hoppers,
+            hoppers: &self.game.server.hoppers,
             menu: matches!(self.loan, Loan::Menu(_))
                 .then_some((&mut self.game.world.modified, &mut self.items_changed)),
             dirty: false,

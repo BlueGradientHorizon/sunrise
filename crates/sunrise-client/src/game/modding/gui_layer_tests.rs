@@ -288,7 +288,7 @@ fn health_extraction_runs_only_in_the_vanilla_layer_body() {
         );
         mods::register_gui_layers(ExecutionRole::Client);
         game.title = None;
-        game.screen = super::Screen::Playing;
+        game.client.screen = super::Screen::Playing;
         game.ui.hide_gui = false;
         game.set_mode_id(0);
         let mut player = PlayerMotion::new(game.motion, Vec3::new(2.0, 64.0, 2.0)).unwrap();
@@ -353,8 +353,8 @@ fn health_extraction_runs_only_in_the_vanilla_layer_body() {
                 &[(true, false), (true, true), (false, false), (false, true)]
             };
             for &(cancel_health, cancel_air) in vetoes {
-                game.health_hud.last_health = 17;
-                game.health_hud.last_bubble_pop_sound = 3;
+                game.client.health_hud.last_health = 17;
+                game.client.health_hud.last_bubble_pop_sound = 3;
                 game.audio.heard.remove(BUBBLE_POP);
                 *trace.lock().unwrap() = HealthTrace {
                     cancel_health,
@@ -402,7 +402,7 @@ fn health_extraction_runs_only_in_the_vanilla_layer_body() {
                     assert!(game.ui.room.bottom() > 100.0);
                 }
                 assert_eq!(
-                    game.health_hud.last_health,
+                    game.client.health_hud.last_health,
                     if cancel_health || replace || !vanilla_eligible {
                         17
                     } else {
@@ -412,7 +412,7 @@ fn health_extraction_runs_only_in_the_vanilla_layer_body() {
                 let draws_air = !cancel_air && vanilla_eligible;
                 let pops = draws_air && under_water;
                 assert_eq!(
-                    game.health_hud.last_bubble_pop_sound,
+                    game.client.health_hud.last_bubble_pop_sound,
                     if !draws_air {
                         3
                     } else if pops {
@@ -461,7 +461,7 @@ fn mod_layers_draw_in_their_place_and_hide_like_vanilla_layers() {
 
         // Simulate the HUD paint sites with the crosshair skipped (third person).
         // Its wrapper doesn't draw, but both neighboring layers still do.
-        game.hud_layer_next = Some(0);
+        game.client.hud_layer_next = Some(0);
         for (layer, paint) in [
             (VanillaGuiLayer::Hotbar, "hotbar paint"),
             (VanillaGuiLayer::Effects, "effects paint"),
@@ -472,7 +472,7 @@ fn mod_layers_draw_in_their_place_and_hide_like_vanilla_layers() {
             game.gui_layer(layer, &mut batch, &mut |_, _| log(paint));
         }
         game.draw_mod_gui_layers(None, &mut batch);
-        game.hud_layer_next = None;
+        game.client.hud_layer_next = None;
         assert_eq!(current_native_mod(), None);
         assert_eq!(
             take(),
@@ -975,7 +975,7 @@ fn hotbar_attack_indicator_progress_edits_only_stock_hotbar_paint() {
                 Variant::Crosshair => 1,
                 _ => 2,
             };
-            game.hand_strength.ticker = frame.ticker;
+            game.client.hand_strength.ticker = frame.ticker;
             let cancel = frame.variant == Variant::Veto;
             *trace.lock().unwrap() = Trace {
                 cancel,
@@ -1015,7 +1015,7 @@ fn hotbar_attack_indicator_progress_edits_only_stock_hotbar_paint() {
                 frame.name
             );
             assert_eq!(
-                game.hand_strength.ticker, frame.ticker,
+                game.client.hand_strength.ticker, frame.ticker,
                 "paint must not change attack charge"
             );
 
@@ -1345,7 +1345,7 @@ fn f1_subtitles_paint_in_the_container_background_without_redispatch() {
                 game.audio.engine.notifications.push(Notification {
                     identifier: "minecraft:entity.player.levelup".into(),
                     subtitle: Some("subtitles.entity.player.levelup".into()),
-                    position: game.view.position,
+                    position: game.client.view.position,
                     relative: false,
                     looping: false,
                     range: 16.0,
@@ -1426,7 +1426,8 @@ fn options_controller_notice_paints_after_screen_post_despite_hud_cancel() {
                 game.toggle_hide_gui();
                 game.set_screen(Screen::Paused);
                 game.open_options(false);
-                game.controller_notice
+                game.client
+                    .controller_notice
                     .raise(Notice::new("Controller disconnected", "Use the keyboard"));
                 let frame = game.hud([640, 480]);
                 let post = frame
@@ -1529,7 +1530,7 @@ fn panicking_hud_listeners_under_f1_disable_only_themselves_and_report_their_own
                         "same mod hud post"
                     ]
                 );
-                let [whole, layer] = game.toast_manager.visible.as_mut_slice() else {
+                let [whole, layer] = game.client.toast_manager.visible.as_mut_slice() else {
                     panic!("one shared error toast per panicking listener");
                 };
                 let rect = *game
@@ -1580,7 +1581,7 @@ fn panicking_hud_listeners_under_f1_disable_only_themselves_and_report_their_own
                         "same mod hud post"
                     ]
                 );
-                assert_eq!(game.toast_manager.visible.len(), 2);
+                assert_eq!(game.client.toast_manager.visible.len(), 2);
             });
         },
     );
@@ -1633,7 +1634,7 @@ fn a_panicking_hud_painter_shows_its_error_toast_under_f1() {
             // Backdate the slide to test fully visible toasts without waiting for animation.
             let slide_started = Instant::now() - Duration::from_millis(700);
             let _ = game.hud(size); // Start both slides after promotion.
-            let [ordinary, error] = game.toast_manager.visible.as_mut_slice() else {
+            let [ordinary, error] = game.client.toast_manager.visible.as_mut_slice() else {
                 panic!("expected an ordinary toast and one panic diagnostic");
             };
             let Toast::Diagnostic { toast, .. } = &mut error.toast else {

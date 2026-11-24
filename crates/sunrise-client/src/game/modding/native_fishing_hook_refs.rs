@@ -18,7 +18,7 @@ impl Game<'_> {
         let (_, owner) = self.fishing_hook_by_id(hook.entity().id())?;
         let id = match owner {
             // The one whose turn it is: their handle is the acting entity.
-            Target::Player => self.lan_acting_entity?,
+            Target::Player => self.server.lan_acting_entity?,
             guest => u32::try_from(self.network_entity_id(guest)?).ok()?,
         };
         self.entity(id)

@@ -112,12 +112,12 @@ impl Game<'_> {
         block_entity_work: [u64; 2],
         spans: &[sunrise_client::spans::Span],
     ) {
-        if let Some(flight) = self.flight.as_mut().filter(|flight| flight.raw) {
+        if let Some(flight) = self.client.flight.as_mut().filter(|flight| flight.raw) {
             let visited = self.world.block_entities.take_column_unload_entries();
             let [sorted, merged] = std::mem::take(&mut flight.upload_queue_work);
             let mesh_uploads = std::mem::take(&mut flight.mesh_uploads);
             if rendered {
-                self.frame_stats.record_streaming_work(
+                self.client.frame_stats.record_streaming_work(
                     visited,
                     sorted,
                     merged,
@@ -134,8 +134,10 @@ impl Game<'_> {
         let tick_ms = self
             .integrated
             .as_ref()
-            .map_or(self.debug_charts.smoothed_tick_ms, |s| s.smoothed_tick_ms());
-        let Some(flight) = self.flight.as_mut() else {
+            .map_or(self.client.debug_charts.smoothed_tick_ms, |s| {
+                s.smoothed_tick_ms()
+            });
+        let Some(flight) = self.client.flight.as_mut() else {
             return;
         };
         flight.tick_ms.push(tick_ms);
@@ -156,16 +158,16 @@ impl Game<'_> {
             self.previous_position = at;
         }
         if t >= 1.0
-            && let Some(flight) = self.flight.take()
+            && let Some(flight) = self.client.flight.take()
         {
-            let mut summary = self.frame_stats.summary();
+            let mut summary = self.client.frame_stats.summary();
             self.add_async_occlusion_stats(&mut summary);
             let n = flight.tick_ms.len().max(1) as f32;
             summary["tick_ms"] = (flight.tick_ms.iter().sum::<f32>() / n).into();
             summary["tick_ms_max"] = flight.tick_ms.iter().copied().fold(0.0, f32::max).into();
             if flight.raw {
                 self.add_raw_series(&mut summary);
-                self.frame_stats.add_flight_series(&mut summary);
+                self.client.frame_stats.add_flight_series(&mut summary);
             }
             let _ = flight.reply.send(summary.to_string());
         }
@@ -191,7 +193,7 @@ impl Game<'_> {
     }
     /// The frame summary, with Sunrise's own passes' median GPU times while they are timed.
     fn summary_with_passes(&self) -> Value {
-        let mut summary = self.frame_stats.summary();
+        let mut summary = self.client.frame_stats.summary();
         let passes = self
             .renderer
             .as_ref()
@@ -218,7 +220,7 @@ impl Game<'_> {
     }
 
     fn add_async_occlusion_stats(&self, summary: &mut Value) {
-        if let Some(culler) = &self.occlusion.async_culler {
+        if let Some(culler) = &self.client.occlusion.async_culler {
             summary["async_occlusion_culling"] = culler.stats_value();
         }
     }
@@ -227,22 +229,25 @@ impl Game<'_> {
     pub(super) fn record_frame_allocs(&mut self) {
         use sunrise_threads::alloc_count::{here, process};
         let now = (here(), process());
-        if let Some((window, all)) = self.alloc_mark.replace(now) {
-            self.frame_stats
-                .record_allocs(now.0.since(window), now.1.since(all), Instant::now());
+        if let Some((window, all)) = self.client.alloc_mark.replace(now) {
+            self.client.frame_stats.record_allocs(
+                now.0.since(window),
+                now.1.since(all),
+                Instant::now(),
+            );
         }
     }
     /// Every frame's times, and its allocations in builds that count (`raw`).
     fn add_raw_series(&self, summary: &mut Value) {
-        self.frame_stats.add_series(summary);
+        self.client.frame_stats.add_series(summary);
         if sunrise_threads::alloc_count::ON {
-            summary["alloc_count"] = self.frame_stats.alloc_counts().into();
-            summary["alloc_bytes"] = self.frame_stats.alloc_bytes().into();
+            summary["alloc_count"] = self.client.frame_stats.alloc_counts().into();
+            summary["alloc_bytes"] = self.client.frame_stats.alloc_bytes().into();
         }
     }
     fn reset_frame_stats(&mut self) {
-        self.frame_stats.reset();
-        if let Some(culler) = &self.occlusion.async_culler {
+        self.client.frame_stats.reset();
+        if let Some(culler) = &self.client.occlusion.async_culler {
             culler.reset_stats();
         }
     }
@@ -258,12 +263,12 @@ impl Game<'_> {
                 self.pending_bench = Some((deadline, reply, raw));
             }
         }
-        sunrise_client::widgets::end_frame(self.frames);
+        sunrise_client::widgets::end_frame(self.client.frames);
         self.narrate_screen();
         self.poll_repro(event_loop);
         self.poll_profile();
         self.advance_agent();
-        for request in self.ui_wait.ready() {
+        for request in self.client.ui_wait.ready() {
             self.answer(request, event_loop);
         }
         while let Some(request) = self.control.as_ref().and_then(|c| c.try_recv()) {
@@ -281,7 +286,7 @@ impl Game<'_> {
         if self.control.is_some() || self.repro.recording_active() {
             self.watch_events();
         }
-        if self.screen == Screen::Options
+        if self.client.screen == Screen::Options
             && self.ui.options.page() == sunrise_client::options_ui::Page::Agent
         {
             self.ui
@@ -310,7 +315,7 @@ impl Game<'_> {
             if self.mounted_widget_key_pressed(
                 KeyCode::Backspace,
                 false,
-                super::glfw_modifiers(self.modifiers),
+                super::glfw_modifiers(self.client.modifiers),
             ) {
                 return Ok(());
             }
@@ -325,7 +330,7 @@ impl Game<'_> {
             if self.prompt_open() {
                 return Err("no focused editor accepted Backspace".into());
             }
-            match self.screen {
+            match self.client.screen {
                 Screen::WorldOptions => {
                     self.world_options_text(None);
                     return Ok(());
@@ -358,14 +363,17 @@ impl Game<'_> {
         if self.prompt_open() {
             return Err("no focused editor accepted character input".into());
         }
-        if self.book.is_some() {
-            if matches!(self.book, Some(super::books::BookScreen::Edit { .. })) {
+        if self.client.book.is_some() {
+            if matches!(
+                self.client.book,
+                Some(super::books::BookScreen::Edit { .. })
+            ) {
                 self.book_type(text);
                 return Ok(());
             }
             return Err("the open book is not editable".into());
         }
-        if self.sign_edit.is_some() {
+        if self.client.sign_edit.is_some() {
             self.sign_input(None, Some(text));
             return Ok(());
         }
@@ -378,14 +386,14 @@ impl Game<'_> {
                 Err("preset editor did not consume character".into())
             };
         }
-        if title_owns_text(&self.screen, self.title.is_some()) {
+        if title_owns_text(&self.client.screen, self.title.is_some()) {
             if self.vanilla_text_field_focused() {
                 self.title_edit(Some(text), false);
                 return Ok(());
             }
             return Err("the title screen has no focused editor".into());
         }
-        let screen = self.screen;
+        let screen = self.client.screen;
         match screen {
             Screen::Chat => self.chat_type(text),
             Screen::CommandBlock => self.command_block_type(text),
@@ -411,10 +419,10 @@ impl Game<'_> {
             }
             // The anvil's rename box, while it has an input to name.
             Screen::Inventory if self.station_typing() => self.station_text(Some(text), false),
-            Screen::Creative if self.creative_screen.tab().search => {
+            Screen::Creative if self.client.creative_screen.tab().search => {
                 // CreativeModeInventoryScreen.charTyped: the chat key that
                 // opened the tab does not type its letter.
-                if std::mem::take(&mut self.creative_ignore_text) {
+                if std::mem::take(&mut self.client.creative_ignore_text) {
                     return Ok(());
                 }
                 // As typed: replaces a selected query, keeps the length limit.
@@ -584,14 +592,14 @@ impl Game<'_> {
                 Ok(Some(json!({ "ok": true, "cull": r.section_cull() })))
             }
             "gpu-passes" => {
-                (self.gpu_passes, self.gpu_pass_detail) = gpu_pass_switches(
+                (self.client.gpu_passes, self.client.gpu_pass_detail) = gpu_pass_switches(
                     words.get(1).copied(),
-                    (self.gpu_passes, self.gpu_pass_detail),
+                    (self.client.gpu_passes, self.client.gpu_pass_detail),
                 )?;
                 let support = self.renderer.as_ref().and_then(|r| r.pass_detail_support());
                 Ok(Some(gpu_passes_reply(
-                    self.gpu_passes,
-                    self.gpu_pass_detail,
+                    self.client.gpu_passes,
+                    self.client.gpu_pass_detail,
                     support,
                 )))
             }
@@ -682,7 +690,7 @@ impl Game<'_> {
                             return Err(why.into());
                         }
                         // Auto starts from off and decides from the frames that follow.
-                        self.gpu_culling_auto.reset();
+                        self.client.gpu_culling_auto.reset();
                         r.set_gpu_culling(mode == "on")?;
                         // The setting, as its switch sets it; not saved here (as
                         // `lod-distance`): settings changes and new renderers keep it.
@@ -698,7 +706,7 @@ impl Game<'_> {
                     "ok": true,
                     "gpu_culling": r.gpu_culling(),
                     "mode": self.settings.sunrise.gpu_culling.name(),
-                    "auto": self.gpu_culling_auto.state(),
+                    "auto": self.client.gpu_culling_auto.state(),
                 })))
             }
             "sculk" => Ok(Some(self.sculk_command(&words)?)),
@@ -809,22 +817,22 @@ impl Game<'_> {
                 {
                     self.require_world()?;
                 }
-                super::narrator::narrate_key(&mut self.narration, key, action != "up");
+                super::narrator::narrate_key(&mut self.client.narration, key, action != "up");
                 // KeyboardHandler.keyPress: the debug keys see the physical key first.
                 let physical = key;
                 {
                     use sunrise_client::debug_keys::KeyAction;
                     if action == "up" {
                         self.press_modifier_key(key, false);
-                        self.physical_keys.remove(&key);
+                        self.client.physical_keys.remove(&key);
                         self.debug_key(key, KeyAction::Release);
                     } else {
                         self.press_modifier_key(key, true);
-                        self.physical_keys.insert(key);
+                        self.client.physical_keys.insert(key);
                         if self.debug_key(key, KeyAction::Press) {
                             if action == "tap" {
                                 self.press_modifier_key(key, false);
-                                self.physical_keys.remove(&key);
+                                self.client.physical_keys.remove(&key);
                                 self.debug_key(key, KeyAction::Release);
                             }
                             return ok();
@@ -836,7 +844,7 @@ impl Game<'_> {
                     if self.screenshot_shortcut(physical, repeat) {
                         if action == "tap" {
                             self.press_modifier_key(physical, false);
-                            self.physical_keys.remove(&physical);
+                            self.client.physical_keys.remove(&physical);
                             self.debug_key(
                                 physical,
                                 sunrise_client::debug_keys::KeyAction::Release,
@@ -864,7 +872,7 @@ impl Game<'_> {
                     if action == "tap" {
                         self.settle_title_mode();
                         self.press_modifier_key(physical, false);
-                        self.physical_keys.remove(&physical);
+                        self.client.physical_keys.remove(&physical);
                         self.debug_key(physical, sunrise_client::debug_keys::KeyAction::Release);
                     }
                     if !self.dispatch_screen_key(
@@ -885,11 +893,13 @@ impl Game<'_> {
             }
             "release" => {
                 self.clear_device_keys();
-                self.physical_keys.clear();
-                self.mod_keys.set_all_up();
-                self.modifiers = winit::keyboard::ModifiersState::empty();
+                self.client.physical_keys.clear();
+                self.client.mod_keys.set_all_up();
+                self.client.modifiers = winit::keyboard::ModifiersState::empty();
                 let options = self.toggle_options();
-                self.vanilla_mappings.set_keys_up_on_focus_loss(options);
+                self.client
+                    .vanilla_mappings
+                    .set_keys_up_on_focus_loss(options);
                 self.set_mapping_held("key.attack", false);
                 self.set_mapping_held("key.use", false);
                 ok()
@@ -902,7 +912,7 @@ impl Game<'_> {
                     other => return Err(format!("unknown mouse button {other}").into()),
                 };
                 self.require_world()?;
-                if self.screen != Screen::Playing {
+                if self.client.screen != Screen::Playing {
                     return Err(format!(
                         "mouse needs the playing screen, not {}",
                         self.screen_name()
@@ -1110,7 +1120,7 @@ impl Game<'_> {
                 Ok(Some(self.control_hurt_log()))
             }
             "resume" => {
-                if self.screen == Screen::Paused {
+                if self.client.screen == Screen::Paused {
                     self.set_screen(Screen::Playing);
                 }
                 ok()
@@ -1161,7 +1171,7 @@ impl Game<'_> {
                 {
                     self.require_world()?;
                 }
-                self.narration.keyboard_action();
+                self.client.narration.keyboard_action();
                 if text == "\\b" {
                     if self.preset_editor_title().is_some() {
                         self.dispatch_screen_key(
@@ -1236,7 +1246,7 @@ impl Game<'_> {
                     "agent" => Page::Agent,
                     other => return Err(format!("unknown options page {other}").into()),
                 };
-                if self.screen == Screen::Playing && self.title.is_none() {
+                if self.client.screen == Screen::Playing && self.title.is_none() {
                     self.capture(false);
                 }
                 self.open_options(self.title.is_some());
@@ -1293,7 +1303,7 @@ impl Game<'_> {
             }
             "fly" => {
                 self.require_world()?;
-                if self.flight.is_some() || self.pending_bench.is_some() {
+                if self.client.flight.is_some() || self.pending_bench.is_some() {
                     return Err("a benchmark is already running".into());
                 }
                 let n = |i: usize| -> Result<f64> { Ok(arg(i)?.parse()?) };
@@ -1303,7 +1313,7 @@ impl Game<'_> {
                     self.world.block_entities.take_column_unload_entries();
                 }
                 self.reset_frame_stats();
-                self.flight = Some(Flight {
+                self.client.flight = Some(Flight {
                     from: Vec3::new(n(1)?, n(2)?, n(3)?),
                     to: Vec3::new(n(4)?, n(5)?, n(6)?),
                     pitch,
@@ -1343,8 +1353,8 @@ impl Game<'_> {
                     .get(1 + usize::from(poem))
                     .map(|s| s.parse::<f32>())
                     .transpose()?;
-                if self.screen != Screen::Win {
-                    let finish = if self.screen == Screen::Options {
+                if self.client.screen != Screen::Win {
+                    let finish = if self.client.screen == Screen::Options {
                         super::win::Finish::Options
                     } else {
                         super::win::Finish::Closed
@@ -1357,7 +1367,7 @@ impl Game<'_> {
                 ok()
             }
             "respawn" => {
-                if self.remote.is_none() || self.screen != Screen::Dead {
+                if self.remote.is_none() || self.client.screen != Screen::Dead {
                     return Err("respawn needs the death screen on a server".into());
                 }
                 self.remote_respawn();
@@ -1437,9 +1447,9 @@ impl Game<'_> {
             .into_iter()
             .flatten()
         {
-            self.physical_keys.remove(&key);
+            self.client.physical_keys.remove(&key);
             if !matches!(key, KeyCode::ShiftLeft | KeyCode::ControlLeft)
-                && self.keys.held_by(&key, Source::Keyboard)
+                && self.client.keys.held_by(&key, Source::Keyboard)
             {
                 self.release_device_key(&key, Source::Keyboard);
             }
@@ -1447,13 +1457,13 @@ impl Game<'_> {
     }
 
     fn screen_name(&self) -> &'static str {
-        if self.screen == Screen::Win {
+        if self.client.screen == Screen::Win {
             return "win";
         }
         if self.title.is_some() {
             return "title";
         }
-        match self.screen {
+        match self.client.screen {
             Screen::Playing => "playing",
             Screen::GameModeSwitcher => "gamemode-switcher",
             Screen::Paused => "paused",
@@ -1572,11 +1582,11 @@ impl Game<'_> {
                 "culled_sections": r.culled_sections(),
                 "gpu_culling": r.gpu_culling(),
                 "gpu_culling_mode": self.settings.sunrise.gpu_culling.name(),
-                "gpu_culling_auto": self.gpu_culling_auto.state(),
+                "gpu_culling_auto": self.client.gpu_culling_auto.state(),
                 // The world's resolution scale in percent, Dynamic Resolution's where it is on.
                 "resolution_scale": super::frame_autotune::world_scale(
                     &self.settings.sunrise,
-                    &self.dynamic_resolution
+                    &self.client.dynamic_resolution
                 ),
                 "dynamic_resolution": self.settings.sunrise.dynamic_resolution,
                 "gpu_frame": r.gpu_frame(),
@@ -1596,6 +1606,7 @@ impl Game<'_> {
         });
         // The keyboard as the OS reports it (screens read Shift and Ctrl here).
         let mut physical_keys: Vec<_> = self
+            .client
             .physical_keys
             .iter()
             .map(|k| format!("{k:?}"))
@@ -1606,17 +1617,18 @@ impl Game<'_> {
             "effective_distance": self.lod_distance(),
             "terrain_distance": self.terrain_distance(),
             "source": if self.lod.is_none() { "none" } else if self.integrated.is_some() { "integrated" } else if self.server_far_terrain().is_some() { "server" } else if self.remote.is_some() { "server-terrain" } else { "local" },
-            "source_attempted": self.lod_source_attempted,
+            "source_attempted": self.client.lod_source_attempted,
             "active_tiles": self.lod.as_ref().map_or(0, |lod| lod.stats().0),
             "cached_tiles": self.lod.as_ref().map_or(0, |lod| lod.stats().1),
             "far_detail": self.settings.sunrise.far_detail.name(),
             "resident_quads": self.renderer.as_ref().map_or(0, |r| r.lod_quads()),
             "levels": self.renderer.as_ref().map_or_else(Vec::new, |r| r.lod_levels()),
-            "pending_observations": self.lod_observe.len(),
+            "pending_observations": self.client.lod_observe.len(),
             "refined_samples": self.lod.as_ref().map_or(0, |lod| lod.refined_samples()),
         });
         // The other players' cracks this client draws (LevelRenderer.destroyingBlocks).
         let destroying: Vec<_> = self
+            .client
             .destroying
             .iter()
             .map(|(id, crack)| json!({ "id": id, "pos": crack.pos, "stage": crack.stage }))
@@ -1624,10 +1636,10 @@ impl Game<'_> {
         let mut status = json!({
             "screen": self.screen_name(),
             "debug": {
-                "overlay": self.debug,
+                "overlay": self.client.debug,
                 "hitboxes": self.debug_entry("entity_hitboxes"),
                 "chunk_borders": self.debug_entry("chunk_borders"),
-                "pause_menu": self.pause_menu,
+                "pause_menu": self.client.pause_menu,
                 "advanced_tooltips": self.settings.file.bool("advancedItemTooltips"),
                 "pause_on_lost_focus": self.settings.file.bool("pauseOnLostFocus"),
                 "clipboard": self.clipboard.copied(),
@@ -1641,13 +1653,13 @@ impl Game<'_> {
             "selected": self.selected + 1,
             "held": self.held().map(|s| json!({ "item": &*s.item, "count": s.count })),
             "offhand": self.offhand.as_ref().map(|s| json!({ "item": &*s.item, "count": s.count, "damage": s.damage })),
-            "keys": self.keys.iter().map(|k| format!("{k:?}")).collect::<Vec<_>>(),
+            "keys": self.client.keys.iter().map(|k| format!("{k:?}")).collect::<Vec<_>>(),
             // The keyboard as the OS reports it (Shift and Ctrl in screens).
-            "fps": self.fps,
-            "frames": self.frames,
+            "fps": self.client.fps,
+            "frames": self.client.frames,
             "ticks": self.ticks,
             "day_time": self.world.day_time,
-            "music": self.music.current(&self.audio.engine),
+            "music": self.client.music.current(&self.audio.engine),
             "sounds": self.audio.census(),
             "fishing": self.hook_status(),
             "tridents": self.tridents.len(),
@@ -1662,7 +1674,7 @@ impl Game<'_> {
             "chunks": self.world.chunks.len(),
             "mobs": self.mobs.len(),
             "block_entities": self.world.block_entities.len(),
-            "pending_chunks": self.streaming.pending() + self.pending_uploads.len() + self.remote_backlog(),
+            "pending_chunks": self.streaming.pending() + self.client.pending_uploads.len() + self.remote_backlog(),
             "generated_chunks": self.streaming.generated_total,
             "meshed_sections": self.streaming.meshed_total,
             "streaming": self.streaming.stages().into_iter().map(|(k, v)| (k.to_string(), v.into())).collect::<serde_json::Map<_, _>>(),
@@ -1674,7 +1686,7 @@ impl Game<'_> {
                 "scale": m.scale_factor(),
                 "refresh_hz": m.refresh_rate_millihertz().map(|r| r.div_ceil(1000)),
             })),
-            "uptime_seconds": self.started.elapsed().as_secs_f64(),
+            "uptime_seconds": self.client.started.elapsed().as_secs_f64(),
             "server": self.remote_status(),
             // The names the name tags show now, seen from the eyes.
             "name_tags": self
@@ -1697,15 +1709,15 @@ impl Game<'_> {
             .map_or((0, 0), |lod| lod.detail_progress());
         status["lod"]["detail_target_columns"] = wanted.into();
         status["lod"]["refined_target_columns"] = refined.into();
-        status["pending_uploads"] = self.pending_uploads.len().into();
+        status["pending_uploads"] = self.client.pending_uploads.len().into();
         status["destroying"] = json!(destroying);
         status["physical_keys"] = json!(physical_keys);
         status["heard"] = json!(self.audio.heard);
         status["stopped_sounds"] = json!(self.audio.stopped);
         // Boats, minecarts, armor stands, item frames and paintings.
         status["objects"] = json!(self.objects_status());
-        status["lightning"] = json!({"bolts": self.bolts.len(), "struck": self.lightning_seen[0],
-            "flashes": self.lightning_seen[1], "flash": self.flash});
+        status["lightning"] = json!({"bolts": self.bolts.len(), "struck": self.client.lightning_seen[0],
+            "flashes": self.client.lightning_seen[1], "flash": self.flash});
         // Primed TNT, falling blocks, projectiles, tridents and end crystals.
         status["projectiles"] = json!(self.projectiles_status());
         let mut fangs_vertices = Vec::new();
@@ -1715,7 +1727,7 @@ impl Game<'_> {
         // The particles made so far, by type.
         status["particles"] = json!(self.particles.made());
         // The pickup particles made so far, by what was taken.
-        status["pickups"] = json!(self.pickups.made());
+        status["pickups"] = json!(self.client.pickups.made());
         // The world border this side knows of.
         status["border"] = json!({ "center": self.border.center(), "size": self.border.size() });
         // The scoreboard sidebar the HUD shows.

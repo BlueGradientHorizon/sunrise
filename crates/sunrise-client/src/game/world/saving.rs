@@ -42,11 +42,13 @@ impl Game<'_> {
     /// Save the level's chunk tickets: `/forceload`'s in vanilla's `chunk_tickets.dat`, the
     /// mods' in Sunrise's own `mod_chunk_tickets.dat`.
     pub(super) fn save_chunk_tickets(&self) -> Result<()> {
-        if self.startup_ticket_restore_pending {
+        if self.server.startup_ticket_restore_pending {
             return Ok(());
         }
-        self.save
-            .save_chunk_tickets(self.streaming.commanded(), self.tickets.portal_tickets())?;
+        self.save.save_chunk_tickets(
+            self.streaming.commanded(),
+            self.server.tickets.portal_tickets(),
+        )?;
         self.save
             .save_mod_tickets(self.streaming.mod_tickets(), |slot| {
                 mod_api::TicketController::from_slot(slot).map(|c| c.id())
@@ -56,18 +58,18 @@ impl Game<'_> {
     /// `Minecraft.stop`: record the request without reentering the client from a hook.
     pub(super) fn request_client_quit(&self) -> bool {
         if !self.native_window()
-            || self.client_quit.get() != ClientQuit::Running
+            || self.client.client_quit.get() != ClientQuit::Running
             || sunrise_threads::stop_requests() > 0
         {
             return false;
         }
-        self.client_quit.set(ClientQuit::Requested);
+        self.client.client_quit.set(ClientQuit::Requested);
         true
     }
 
     pub(super) fn begin_closing_save(&mut self, quit: bool) -> Result<()> {
         if quit {
-            self.client_quit.set(ClientQuit::Stopping);
+            self.client.client_quit.set(ClientQuit::Stopping);
             self.close_client_tasks();
         }
         if let Some(save) = &mut self.pending_save {
@@ -88,7 +90,7 @@ impl Game<'_> {
             });
             return Ok(());
         }
-        if self.title.is_some() || self.saved_for_exit {
+        if self.title.is_some() || self.client.saved_for_exit {
             // A quit from the title still needs the event loop to finish.
             self.pending_save = Some(ClosingSave {
                 quit,
@@ -125,7 +127,7 @@ impl Game<'_> {
             if let Some(mut remote) = self.remote.take() {
                 remote.session.disconnect();
             }
-            self.saved_for_exit = true;
+            self.client.saved_for_exit = true;
             self.pending_save = Some(ClosingSave {
                 quit,
                 close: true,
@@ -166,7 +168,7 @@ impl Game<'_> {
                 .extend(self.world.chunks.keys().copied());
         }
         self.clear_device_keys();
-        self.physical_keys.clear();
+        self.client.physical_keys.clear();
         self.set_mapping_held("key.attack", false);
         self.set_mapping_held("key.use", false);
         self.pending_save = Some(ClosingSave {
@@ -306,7 +308,7 @@ impl Game<'_> {
                     *flush = None;
                     result?;
                     if !save.close {
-                        self.message = Some((
+                        self.client.message = Some((
                             sunrise_client::lang::get("commands.save.success"),
                             Instant::now(),
                         ));
@@ -327,7 +329,7 @@ impl Game<'_> {
                     return Ok(false);
                 }
                 if save.quit {
-                    self.saved_for_exit = true;
+                    self.client.saved_for_exit = true;
                     Ok(true)
                 } else {
                     if save.close && self.title.is_none() {
@@ -419,7 +421,7 @@ impl Game<'_> {
         if self.screenshot_sequence.is_some() {
             return;
         }
-        let Some(icon) = self.world_icon.as_ref() else {
+        let Some(icon) = self.client.world_icon.as_ref() else {
             return;
         };
         if icon
@@ -430,13 +432,13 @@ impl Game<'_> {
         }
         if icon.path.is_file() {
             // tryTakeScreenshotIfNeeded's hasWorldScreenshot: it has one, stop asking.
-            self.world_icon = None;
+            self.client.world_icon = None;
             return;
         }
         // takeAutoScreenshot only saves with every loaded section rendered, or
         // the icon would picture the holes the streamer has not filled yet.
         if self.streaming.pending() != 0
-            || !self.pending_uploads.is_empty()
+            || !self.client.pending_uploads.is_empty()
             || self.remote_backlog() != 0
         {
             return;
@@ -456,7 +458,7 @@ impl Game<'_> {
             return;
         }
         let path = icon.path.clone();
-        if let Some(icon) = self.world_icon.as_mut() {
+        if let Some(icon) = self.client.world_icon.as_mut() {
             icon.last_attempt = Some(Instant::now());
         }
         renderer.screenshot = Some(sunrise_client::gfx::ScreenshotRequest {
@@ -549,9 +551,9 @@ mod tests {
         mod_platform::testing::with_mods(Vec::new().into(), || {
             with_game(|game| {
                 let dir = tempfile::tempdir().unwrap();
-                game.world_root = dir.path().to_path_buf();
+                game.server.world_root = dir.path().to_path_buf();
                 game.save = Arc::new(SaveDir::new(
-                    game.world_root.clone(),
+                    game.server.world_root.clone(),
                     LevelShape::OVERWORLD,
                     Some(Default::default()),
                 ));
@@ -562,7 +564,7 @@ mod tests {
                 );
                 scoped(language, || {
                     game.save_game().unwrap();
-                    let explicit = game.message.take().unwrap().0;
+                    let explicit = game.client.message.take().unwrap().0;
                     game.pending_save = Some(ClosingSave {
                         quit: false,
                         close: false,
@@ -572,7 +574,7 @@ mod tests {
                     });
                     assert!(!finish_staged_save(game));
                     assert!(game.pending_save.is_none());
-                    let incremental = game.message.take().unwrap().0;
+                    let incremental = game.client.message.take().unwrap().0;
                     assert_eq!(
                         (explicit.as_str(), incremental.as_str()),
                         (translated, translated)
@@ -608,8 +610,8 @@ mod tests {
                         started: Instant::now(),
                         stage: Stage::Writes(Some(game.save.flush_later().unwrap())),
                     });
-                    game.saved_for_exit = false;
-                    game.message = None;
+                    game.client.saved_for_exit = false;
+                    game.client.message = None;
                     assert_eq!(finish_staged_save(game), quit);
                     assert!(game.pending_save.is_none());
                     if !quit {
@@ -617,8 +619,8 @@ mod tests {
                             serde_json::from_str(&receive.try_recv().unwrap()).unwrap();
                         assert_eq!(reply, serde_json::json!({"ok": true}));
                     }
-                    assert_eq!(game.saved_for_exit, quit);
-                    assert_eq!(game.message.is_some(), !quit);
+                    assert_eq!(game.client.saved_for_exit, quit);
+                    assert_eq!(game.client.message.is_some(), !quit);
                 }
             });
         });

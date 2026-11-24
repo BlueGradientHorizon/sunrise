@@ -257,7 +257,7 @@ impl Game<'_> {
             hit: if self.remote.is_some() {
                 self.events.remote_hit.clone()
             } else {
-                self.combat.last_hit()
+                self.server.combat.last_hit()
             },
             world,
         }
@@ -266,7 +266,7 @@ impl Game<'_> {
     pub(super) fn loaded(&self) -> bool {
         self.title.is_none()
             && self.player.is_some()
-            && self.streaming.pending() + self.pending_uploads.len() == 0
+            && self.streaming.pending() + self.client.pending_uploads.len() == 0
     }
 
     /// Once per event loop turn: record what changed, answer the waits that hold.

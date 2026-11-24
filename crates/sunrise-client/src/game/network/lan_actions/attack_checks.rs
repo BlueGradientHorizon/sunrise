@@ -232,11 +232,11 @@ mod tests {
         )
         .unwrap();
         let summoned = |game: &mut Game<'_>, command: &str| {
-            let before = game.next_entity;
+            let before = game.server.next_entity;
             assert!(game.run_command(command), "{command}");
             game.lan_assign_ids();
-            assert!(game.next_entity > before, "{command}");
-            game.next_entity as i32
+            assert!(game.server.next_entity > before, "{command}");
+            game.server.next_entity as i32
         };
         let pig = summoned(
             &mut game,
@@ -281,13 +281,13 @@ mod tests {
             guest.load_timeout = 0;
             guest
         };
-        game.next_entity += 1;
+        game.server.next_entity += 1;
         game.lan
             .as_mut()
             .unwrap()
             .hub
             .guests
-            .push(fresh_guest(2, game.next_entity as i32));
+            .push(fresh_guest(2, game.server.next_entity as i32));
         let attack = |game: &mut Game<'_>, conn, id: i32| {
             game.lan_guest_packet(conn, S::Attack(play::Attack { id }));
         };
@@ -325,8 +325,8 @@ mod tests {
         {
             // Each kick ends a connection. A later invalid target needs a new
             // guest, not another packet from the already disconnected player.
-            game.next_entity += 1;
-            let me = game.next_entity as i32;
+            game.server.next_entity += 1;
+            let me = game.server.next_entity as i32;
             let conn = 3 + case as u32;
             game.lan
                 .as_mut()

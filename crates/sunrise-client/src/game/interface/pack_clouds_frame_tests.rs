@@ -126,13 +126,13 @@ fn a_packs_clouds_draw_with_and_without_improved_transparency() {
             eprintln!("skipped: no Improved Transparency on this adapter");
             return;
         }
-        game.screen = super::Screen::Playing;
-        game.screen_fx.vignette_brightness = 0.0;
+        game.client.screen = super::Screen::Playing;
+        game.client.screen_fx.vignette_brightness = 0.0;
         // Straight up at the layer, with the field of view a tick would have settled
         // (`Camera.tick` eases the modifier from 0; this scene runs no tick).
         game.pitch = -90.0;
-        game.view.fov_modifier = 1.0;
-        game.view.old_fov_modifier = 1.0;
+        game.client.view.fov_modifier = 1.0;
+        game.client.view.old_fov_modifier = 1.0;
         game.settings.clouds = "true".into();
         let before = drawn_frame(game);
         game.settings.clouds = "false".into();

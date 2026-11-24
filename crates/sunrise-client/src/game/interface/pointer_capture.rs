@@ -11,7 +11,7 @@ impl Game<'_> {
     pub(super) fn look_options(&self) -> LookOptions {
         LookOptions {
             sensitivity: self.settings.sensitivity,
-            smooth_camera: self.smooth_camera,
+            smooth_camera: self.client.smooth_camera,
             scoping: self.scoping(),
             invert_x: self.settings.invert_x,
             invert_y: self.settings.invert_y,
@@ -22,12 +22,12 @@ impl Game<'_> {
     /// an active window, as it cannot grab the real one.
     pub(super) fn apply_mouse_look(&mut self) {
         let mut look = self.look_options();
-        let time = self.started.elapsed().as_secs_f64();
-        let pointer = self.captured || self.agent_pointer;
+        let time = self.client.started.elapsed().as_secs_f64();
+        let pointer = self.client.captured || self.client.agent_pointer;
         let grabbed = pointer
-            && self.screen == Screen::Playing
-            && (self.player.is_some() || self.studio.flying());
-        let active = self.focused || self.agent_pointer;
+            && self.client.screen == Screen::Playing
+            && (self.player.is_some() || self.client.studio.flying());
+        let active = self.client.focused || self.client.agent_pointer;
         if active
             && grabbed
             && mod_api::__private::listened(mod_api::HookId::CalculatePlayerTurn)
@@ -41,6 +41,7 @@ impl Game<'_> {
             );
         }
         if let Some((xo, yo)) = self
+            .client
             .mouse
             .handle_accumulated_movement(time, active, grabbed, look)
         {
@@ -51,7 +52,7 @@ impl Game<'_> {
     /// around" step hears it and Sunrise's zoom slows it, for the mouse and a
     /// controller alike.
     pub(super) fn look_turn(&mut self, x: f64, y: f64) {
-        self.tutorial.mouse(x, y);
+        self.client.tutorial.mouse(x, y);
         let zoom = self.zoom_turn_scale();
         self.turn_player(x * zoom, y * zoom);
     }
@@ -63,9 +64,10 @@ impl Game<'_> {
             && top_screen_pauses(
                 // A dialog (and its warning or waiting screen) is the
                 // screen Minecraft set, over whatever was open.
-                self.dialog_open().then(|| self.dialogs.pauses_world()),
-                self.book.as_ref().map(|book| book.pauses_world()),
-                self.screen.is_pause_screen(),
+                self.dialog_open()
+                    .then(|| self.client.dialogs.pauses_world()),
+                self.client.book.as_ref().map(|book| book.pauses_world()),
+                self.client.screen.is_pause_screen(),
                 self.win_screen_pauses(),
             )
     }
@@ -73,15 +75,15 @@ impl Game<'_> {
     /// lectern, a sign, a server dialog, the code of conduct, a link or
     /// server pack prompt (vanilla's `Minecraft.screen` is set for each).
     pub(super) fn screen_over_playing(&self) -> bool {
-        self.book.is_some() || self.sign_edit.is_some() || self.prompt_open()
+        self.client.book.is_some() || self.client.sign_edit.is_some() || self.prompt_open()
     }
     /// A prompt is up: over the world or over another open screen, it takes the input and is
     /// answered first, in the order of `handle_window_event`'s arms and of what draws on top.
     pub(super) fn prompt_open(&self) -> bool {
         self.dialog_open()
-            || self.code_of_conduct.is_some()
-            || self.link_prompt.is_some()
-            || self.command_prompt.is_some()
+            || self.client.code_of_conduct.is_some()
+            || self.client.link_prompt.is_some()
+            || self.client.command_prompt.is_some()
             || self.server_packs.prompt.is_some()
     }
     /// `Minecraft.pauseIfInactive`: a window without focus for more than 500 ms
@@ -89,21 +91,22 @@ impl Game<'_> {
     /// dialog) stays instead of pausing (`Gui.setPauseScreen`).
     pub(super) fn pause_if_inactive(&mut self) {
         if self
+            .client
             .focus_lost
             .is_some_and(|t| t.elapsed() > Duration::from_millis(500))
             && self.control.is_none()
-            && self.screen == Screen::Playing
-            && !studio_suppresses_focus_pause(self.replay.playing(), self.studio.flying())
+            && self.client.screen == Screen::Playing
+            && !studio_suppresses_focus_pause(self.replay.playing(), self.client.studio.flying())
             && self.player.is_some()
             && !self.options.no_pause
             && self.settings.file.bool("pauseOnLostFocus")
             && !self.pad_keeps_playing_unfocused()
-            && self.book.is_none()
-            && self.sign_edit.is_none()
+            && self.client.book.is_none()
+            && self.client.sign_edit.is_none()
             && self.server_packs.prompt.is_none()
             && !self.dialog_open()
         {
-            self.pause_focus = None;
+            self.client.pause_focus = None;
             self.set_screen(Screen::Paused);
         }
     }
@@ -112,7 +115,7 @@ impl Game<'_> {
     /// counts once the game has the keyboard back. A sneak or sprint that
     /// toggles keeps its toggle state (`shouldSetOnIngameFocus`).
     pub(super) fn restore_held_keys(&mut self) {
-        let held: Vec<KeyCode> = self.physical_keys.iter().copied().collect();
+        let held: Vec<KeyCode> = self.client.physical_keys.iter().copied().collect();
         let options = self.toggle_options();
         for key in held {
             if let Some(name) = sunrise_client::keybinds::key_name(key) {
@@ -120,11 +123,12 @@ impl Game<'_> {
                     let option =
                         sunrise_client::keymapping::toggle_index(slot).is_some_and(|i| options[i]);
                     if self
+                        .client
                         .vanilla_mappings
                         .state(slot)
                         .should_set_on_ingame_focus(option)
                     {
-                        self.vanilla_mappings.set_down(slot, true, option);
+                        self.client.vanilla_mappings.set_down(slot, true, option);
                     }
                 }
             }
@@ -149,7 +153,7 @@ impl Game<'_> {
     pub(super) fn capture(&mut self, capture: bool) {
         // A guest's action (`as_guest`) opens and closes screens on the
         // guest's own client: the window's pointer stays the host's (#687).
-        if self.lan_acting.is_some() {
+        if self.server.lan_acting.is_some() {
             return;
         }
         // MouseHandler.grabMouse never captures an inactive window, and vanilla
@@ -157,11 +161,11 @@ impl Game<'_> {
         // are screens over the world that keep the pointer, as does a screen a
         // mod's `screen_opening` answer kept or opened in place of none.
         if capture
-            && ((self.screen_state.answered.get() && self.screen != Screen::Playing)
-                || (!self.focused && !self.unclaimed_window && !self.scripted_run())
+            && ((self.screen_state.answered.get() && self.client.screen != Screen::Playing)
+                || (!self.client.focused && !self.client.unclaimed_window && !self.scripted_run())
                 || self.server_packs.prompt.is_some()
                 || self.dialog_open()
-                || self.command_prompt.is_some())
+                || self.client.command_prompt.is_some())
         {
             return;
         }
@@ -173,11 +177,11 @@ impl Game<'_> {
         self.reset_inventory_clicks();
         if !capture {
             self.stop_mining();
-            self.studio.rmb_down = false;
+            self.client.studio.rmb_down = false;
         }
         // The real pointer takes over from an agent's.
-        self.agent_pointer = false;
-        if capture && !self.captured && !cfg!(target_os = "macos") {
+        self.client.agent_pointer = false;
+        if capture && !self.client.captured && !cfg!(target_os = "macos") {
             // MouseHandler.grabMouse: KeyMapping.setAll unless
             // InputQuirks.RESTORE_KEY_STATE_AFTER_MOUSE_GRAB is off (macOS).
             self.restore_held_keys();
@@ -192,17 +196,17 @@ impl Game<'_> {
         let warp = |window: &Window| {
             let _ = window.set_cursor_position(centre);
         };
-        let was_grabbed = self.captured;
+        let was_grabbed = self.client.captured;
         if self.internal_grab() {
             // Its grab is internal (an agent turns the view with `mouse-move`). A grab the
             // window already held when a scripted run began stays the system's until the
             // run ends (`settle_after_run`).
             if capture {
-                self.mouse.set_ignore_first_move();
+                self.client.mouse.set_ignore_first_move();
             }
-            self.captured = capture;
+            self.client.captured = capture;
         } else if capture {
-            self.mouse.set_ignore_first_move();
+            self.client.mouse.set_ignore_first_move();
             // macOS warps by re-associating the mouse with the pointer,
             // which undoes a Locked grab and leaves the pointer free: warp
             // first there. Wayland moves a pointer only while it is locked,
@@ -213,48 +217,48 @@ impl Game<'_> {
             // stays inside that clip: warp first, or the pointer stays frozen wherever it was
             // (over another window, on another monitor) instead of the window's centre (#6076).
             #[cfg(windows)]
-            if self.focused {
+            if self.client.focused {
                 warp(window);
             }
-            self.capture_mode = if window.set_cursor_grab(CursorGrabMode::Locked).is_ok() {
+            self.client.capture_mode = if window.set_cursor_grab(CursorGrabMode::Locked).is_ok() {
                 Some(CursorGrabMode::Locked)
             } else if window.set_cursor_grab(CursorGrabMode::Confined).is_ok() {
                 Some(CursorGrabMode::Confined)
             } else {
                 None
             };
-            self.captured = self.capture_mode.is_some();
+            self.client.captured = self.client.capture_mode.is_some();
             // Windows already warped above, inside the clip's own position.
             #[cfg(not(any(target_os = "macos", target_os = "windows")))]
-            if self.captured && self.focused {
+            if self.client.captured && self.client.focused {
                 warp(window);
             }
         } else {
-            if self.captured {
+            if self.client.captured {
                 // Wayland moves a pointer only as the locked pointer's
                 // position hint, which the compositor applies as the lock
                 // goes (sway and Hyprland do): set it before ungrabbing.
                 // X11, Windows and macOS warp, so warp again once free
                 // (Wayland refuses that one).
-                if self.focused {
+                if self.client.focused {
                     warp(window);
                 }
                 let _ = window.set_cursor_grab(CursorGrabMode::None);
-                if self.focused {
+                if self.client.focused {
                     warp(window);
                 }
             } else {
                 let _ = window.set_cursor_grab(CursorGrabMode::None);
             }
-            self.captured = false;
-            self.capture_mode = None;
+            self.client.captured = false;
+            self.client.capture_mode = None;
         }
         // MouseHandler.grabMouse and releaseMouse: the mouse position is
         // the window's centre whenever the pointer's grab state changes, so
         // a screen opened from gameplay starts with the cursor in the middle
         // and the game starts with it away from the screen's last spot.
         if !self.internal_grab() {
-            window.set_cursor_visible(!self.captured);
+            window.set_cursor_visible(!self.client.captured);
         }
         if let Some(pos) = projection
             .window
@@ -267,7 +271,7 @@ impl Game<'_> {
     /// it: a genuinely hidden `--offscreen` run, an agent's window no one has clicked yet, or a
     /// scripted run, which plays the game while the person may be using the computer.
     pub(super) fn internal_grab(&self) -> bool {
-        self.options.offscreen || self.unclaimed_window || self.scripted_run()
+        self.options.offscreen || self.client.unclaimed_window || self.scripted_run()
     }
     /// A person pressed a mouse button inside the agent's window (`at_unclaimed`): from now on
     /// it is a window like any other, and that press takes the pointer
@@ -276,14 +280,14 @@ impl Game<'_> {
     /// from the window's: it catches up first, as a `Focused` would have told it. So do the
     /// modifiers the person holds (`held_modifiers`).
     pub(super) fn claim_window(&mut self, event_loop: &dyn EventLoopCtl) {
-        self.unclaimed_window = false;
-        self.captured = false;
+        self.client.unclaimed_window = false;
+        self.client.captured = false;
         // A regrab owed since an agent's `pad focus false` would take the pointer as the focus
         // catches up, and the press would then attack.
-        self.regrab_on_refocus = false;
+        self.client.regrab_on_refocus = false;
         let Some(window) = &self.window else { return };
         let (id, focused) = (window.id(), window.has_focus());
-        if focused != self.focused {
+        if focused != self.client.focused {
             self.handle_window_event(
                 event_loop,
                 id,
@@ -291,7 +295,7 @@ impl Game<'_> {
                 input_trace::InputOrigin::User,
             );
         }
-        if let Some(modifiers) = self.unclaimed_modifiers.take() {
+        if let Some(modifiers) = self.client.unclaimed_modifiers.take() {
             self.handle_window_event(
                 event_loop,
                 id,
@@ -307,7 +311,7 @@ impl Game<'_> {
         if self.scripted_run() {
             return;
         }
-        if let Some(focused) = self.focus_after_run.take() {
+        if let Some(focused) = self.client.focus_after_run.take() {
             let id = self
                 .window
                 .as_ref()
@@ -321,9 +325,9 @@ impl Game<'_> {
         }
         // Outside a run, a window whose grab is the system's holds it exactly while the game
         // has it grabbed; only a run leaves the two apart.
-        if !self.internal_grab() && self.captured != self.capture_mode.is_some() {
-            let grab = self.captured;
-            self.captured = self.capture_mode.is_some();
+        if !self.internal_grab() && self.client.captured != self.client.capture_mode.is_some() {
+            let grab = self.client.captured;
+            self.client.captured = self.client.capture_mode.is_some();
             self.capture(grab);
         }
     }
@@ -332,27 +336,27 @@ impl Game<'_> {
     /// click or wheel event, without warping the pointer or consuming input.
     pub(super) fn reassert_pointer_capture(&mut self) {
         #[cfg(target_os = "linux")]
-        if self.screen == Screen::Playing
-            && self.focused
-            && self.captured
+        if self.client.screen == Screen::Playing
+            && self.client.focused
+            && self.client.captured
             && !self.options.offscreen
             && !self.internal_grab()
-            && let (Some(window), Some(mode)) = (&self.window, self.capture_mode)
+            && let (Some(window), Some(mode)) = (&self.window, self.client.capture_mode)
         {
             let other = match mode {
                 CursorGrabMode::Locked => CursorGrabMode::Confined,
                 CursorGrabMode::Confined => CursorGrabMode::Locked,
                 CursorGrabMode::None => return,
             };
-            self.capture_mode = if window.set_cursor_grab(mode).is_ok() {
+            self.client.capture_mode = if window.set_cursor_grab(mode).is_ok() {
                 Some(mode)
             } else if window.set_cursor_grab(other).is_ok() {
                 Some(other)
             } else {
                 None
             };
-            self.captured = self.capture_mode.is_some();
-            window.set_cursor_visible(!self.captured);
+            self.client.captured = self.client.capture_mode.is_some();
+            window.set_cursor_visible(!self.client.captured);
         }
     }
     /// `GuiGraphicsExtractor.applyCursor` -> `Window.selectCursor` at the end
@@ -368,7 +372,7 @@ impl Game<'_> {
         } else {
             Cursor::Arrow
         };
-        if effective == self.cursor_icon {
+        if effective == self.client.cursor_icon {
             return;
         }
         if let Some(window) = &self.window {
@@ -381,12 +385,12 @@ impl Game<'_> {
                 Cursor::ResizeEw => winit::window::CursorIcon::EwResize,
             });
         }
-        self.cursor_icon = effective;
+        self.client.cursor_icon = effective;
     }
     /// LevelLoadingScreen.onClose -> Gui.setScreen(null) -> grabMouse.
     pub(super) fn capture_loaded_world(&mut self) {
         // Loading may finish after focus was lost or another screen opened.
-        if self.title.is_none() && self.screen == Screen::Playing {
+        if self.title.is_none() && self.client.screen == Screen::Playing {
             self.capture(true);
         }
     }
@@ -398,12 +402,14 @@ impl Game<'_> {
     /// for that screen did: it is the screen, not the focus, that shows it.
     pub(super) fn regrab_on_refocus(&mut self) {
         if self.studio_up() {
-            self.regrab_on_refocus = false;
-            self.studio.rmb_down = false;
+            self.client.regrab_on_refocus = false;
+            self.client.studio.rmb_down = false;
             self.capture(false);
             return;
         }
-        if std::mem::take(&mut self.regrab_on_refocus) && self.screen == Screen::Playing {
+        if std::mem::take(&mut self.client.regrab_on_refocus)
+            && self.client.screen == Screen::Playing
+        {
             self.capture(true);
         }
     }
@@ -456,12 +462,12 @@ mod tests {
         )
         .unwrap();
 
-        game.focused = true;
-        game.screen = Screen::Paused;
-        game.physical_keys.insert(KeyCode::KeyW);
+        game.client.focused = true;
+        game.client.screen = Screen::Paused;
+        game.client.physical_keys.insert(KeyCode::KeyW);
         assert!(!game.movement_key_held(KeyCode::KeyW));
 
-        game.screen = Screen::Playing;
+        game.client.screen = Screen::Playing;
         game.capture(true);
         assert_eq!(
             game.movement_key_held(KeyCode::KeyW),

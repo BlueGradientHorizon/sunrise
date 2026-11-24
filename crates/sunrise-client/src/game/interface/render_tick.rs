@@ -212,7 +212,7 @@ impl Game<'_> {
             .renderer
             .as_ref()
             .map_or([1, 1], |r| [r.config.width, r.config.height]);
-        self.view.near_plane(
+        self.client.view.near_plane(
             self.settings.fov as i32 as f32,
             width as f32,
             height.max(1) as f32,
@@ -228,10 +228,10 @@ impl Game<'_> {
     ) -> FogData {
         let cam = self.camera_subject();
         let is_local = cam.as_ref().is_none_or(|c| c.is_local_player);
-        let forward = if self.view.forwards == [0.0; 3] {
+        let forward = if self.client.view.forwards == [0.0; 3] {
             self.forward().map(|c| c as f32)
         } else {
-            self.view.forwards
+            self.client.view.forwards
         };
         let at = [camera.x, camera.y, camera.z];
         let fog_type = self.camera_fog_type(at);
@@ -285,8 +285,8 @@ impl Game<'_> {
             thunder,
             blindness,
             darkness,
-            darken_world: self.boss_overlay.darken_amount(partial),
-            boss_world_fog: self.boss_overlay.should_create_world_fog(),
+            darken_world: self.client.boss_overlay.darken_amount(partial),
+            boss_world_fog: self.client.boss_overlay.should_create_world_fog(),
             spectator: cam
                 .as_ref()
                 .map_or_else(|| self.own_player_is_spectator(), |c| c.is_spectator),
@@ -296,7 +296,7 @@ impl Game<'_> {
             environment: self.pack.polytone_colors.env,
             fluid_fog: self.pack.polytone_colors.fluid_fog,
         };
-        let mut fog = sunrise_client::fog::setup_fog(tables, &self.fog, &input);
+        let mut fog = sunrise_client::fog::setup_fog(tables, &self.client.fog, &input);
         if !self.settings.sunrise.fog {
             sunrise_client::fog::clear_distance_fog(&mut fog, &input);
         }
@@ -422,7 +422,7 @@ impl Game<'_> {
             .then(|| (self.eye_brightness(eye), self.yaw, self.pitch));
         // Hud.extractCameraOverlays; the spyglass scope (and its easing) is
         // drawn on the HUD by draw_spyglass.
-        let fx = &self.screen_fx;
+        let fx = &self.client.screen_fx;
         let border_pos =
             self.camera_entity_position()
                 .unwrap_or([p.position.x, p.position.y, p.position.z]);
@@ -431,7 +431,7 @@ impl Game<'_> {
                 fx.vignette_brightness,
                 self.border.warning_strength(border_pos[0], border_pos[2]),
             )),
-            first_person: self.camera_type.is_first_person(),
+            first_person: self.client.camera_type.is_first_person(),
             scoping: self.scoping(),
             game_time_delta: 0.0,
             // `EquipmentSlot.values()` order across all 8 player equipment slots (including body and saddle).
@@ -458,13 +458,13 @@ impl Game<'_> {
             nausea: self.nausea_blend(partial),
             screen_effect_scale: self.screen_effect_scale(),
         };
-        let mut scope = self.scope_scale;
+        let mut scope = self.client.scope_scale;
         let gui_overlays = if self.ui.hide_gui {
             Vec::new()
         } else {
             hud_overlays::camera_overlays(size[0] as i32, size[1] as i32, &overlays, &mut scope)
         };
-        self.screen_fx.build(&ScreenInputs {
+        self.client.screen_fx.build(&ScreenInputs {
             sprites: &self.gui.atlas.sprites,
             flags: &self.gui.atlas.flags,
             aspect: size[0] as f32 / size[1].max(1) as f32,
@@ -540,7 +540,8 @@ impl Game<'_> {
             let cull_fov = self
                 .fov_degrees(partial, eye)
                 .max((self.settings.fov as i32) as f32);
-            let (near_yaw, near_pitch) = self.posed_rotation.unwrap_or((self.yaw, self.pitch));
+            let (near_yaw, near_pitch) =
+                self.client.posed_rotation.unwrap_or((self.yaw, self.pitch));
             let (near_min, near_max) = sunrise_client::camera::near_plane_bounds(
                 cull_fov,
                 size[0] as f32,
@@ -604,7 +605,8 @@ impl Game<'_> {
                 }
             }
         }
-        let first_person = self.camera_type.is_first_person() && !self.own_player_is_spectator();
+        let first_person =
+            self.client.camera_type.is_first_person() && !self.own_player_is_spectator();
         let water = first_person && {
             // LevelExtractor uses the player's tick-sampled eye state, not camera fog geometry.
             // Keep the existing mod override explicit, applied to that answer at the eye.
@@ -701,10 +703,10 @@ impl Game<'_> {
     pub(super) fn tick_frame_visuals(&mut self, running: bool) {
         self.hold_fullbright();
         if running || !self.clock.still() {
-            self.fog.tick_flicker();
+            self.client.fog.tick_flicker();
         }
         if running {
-            self.texture_ticks += 1;
+            self.client.texture_ticks += 1;
         }
     }
     /// What `AtmosphericFogEnvironment.updateRainFogState` reads at the eye: the rain, the sky
@@ -729,7 +731,7 @@ impl Game<'_> {
     pub(super) fn settle_rain_fog(&mut self) {
         if let Some(e) = self.camera_eye_position() {
             let (rain, sky_light, rains) = self.rain_fog_inputs(e);
-            settle_rain_fog(&mut self.fog, rain, sky_light, rains);
+            settle_rain_fog(&mut self.client.fog, rain, sky_light, rains);
         }
     }
     pub(super) fn remote_tracking_body(&self, id: i32) -> Option<(TrackingTarget, TrackingBody)> {
@@ -747,7 +749,7 @@ impl Game<'_> {
     pub(in crate::game) fn tick_vignette(&mut self) {
         if let Some(e) = self.camera_eye_position() {
             let brightness = self.eye_brightness(e);
-            self.screen_fx.tick_vignette(brightness);
+            self.client.screen_fx.tick_vignette(brightness);
         }
     }
 
@@ -766,23 +768,23 @@ impl Game<'_> {
         let mut laps = sunrise_client::spans::laps();
         let eye = self.eye_position();
         // Vanilla particle culling, weather splashes, and rain fog read `mainCamera().position()` directly.
-        let cam_pos = self.view.position;
+        let cam_pos = self.client.view.position;
         if let Some(e) = eye {
             // A client of a server eases the vignette in `tick_hud`, frozen level or not.
             if self.remote.is_none() {
                 let ve = self.camera_eye_position().unwrap_or(e);
                 let brightness = self.eye_brightness(ve);
-                self.screen_fx.tick_vignette(brightness);
+                self.client.screen_fx.tick_vignette(brightness);
             }
             let inside_portal = self.client_portal_effect();
-            self.screen_fx.tick_portal(inside_portal);
+            self.client.screen_fx.tick_portal(inside_portal);
             // LocalPlayer.aiStep: processPortalCooldown after the transition
             // effect (a local world's player counts down in handlePortal).
             if self.remote.is_some() && self.portals.player.cooldown > 0 {
                 self.portals.player.cooldown -= 1;
             }
             let nausea = self.potions.effects.get("nausea").map(nausea_has_effect);
-            self.screen_fx.tick_spinning(nausea);
+            self.client.screen_fx.tick_spinning(nausea);
             // A client of a server advances `LocalPlayer.waterVisionTime` in `tick_local_player`
             // (after `Entity.baseTick`'s fluid sample, matching `LocalPlayer.aiStep`).
             if self.remote.is_none() {
@@ -790,10 +792,12 @@ impl Game<'_> {
                     .player
                     .as_ref()
                     .is_some_and(|p| p.is_eye_in_fluid(WATER));
-                self.fog.tick(in_water, self.own_player_is_spectator());
+                self.client
+                    .fog
+                    .tick(in_water, self.own_player_is_spectator());
             }
             let (rain, sky_light, rains) = self.rain_fog_inputs(cam_pos);
-            update_rain_fog(&mut self.fog, rain, sky_light, rains, 1.0);
+            update_rain_fog(&mut self.client.fog, rain, sky_light, rains, 1.0);
         }
         laps.lap("tp_fx");
         self.particles.particle_level = self.settings.particles;
@@ -897,7 +901,7 @@ impl Game<'_> {
                     .len()
             };
             let ctx = AnimateContext {
-                enchant_power: &self.ambience.enchant_power,
+                enchant_power: &self.client.ambience.enchant_power,
                 world,
                 facts,
                 collision: self.collision,
@@ -1008,10 +1012,10 @@ impl Game<'_> {
                     // The last rain column of the tick makes the sound, more often the
                     // longer it has been quiet; indoors it is the quieter one.
                     if let Some(at) = rain_position {
-                        let waited = self.rain_sound_time;
-                        self.rain_sound_time += 1;
+                        let waited = self.client.rain_sound_time;
+                        self.client.rain_sound_time += 1;
                         if random.next_int_bound(3).unwrap_or(0) < waited {
-                            self.rain_sound_time = 0;
+                            self.client.rain_sound_time = 0;
                             let roof = motion_blocking_height(
                                 world,
                                 properties,
@@ -1096,7 +1100,7 @@ impl Game<'_> {
         let scope_eye = self
             .player
             .as_ref()
-            .filter(|_| self.camera_type.is_first_person() && self.scoping())
+            .filter(|_| self.client.camera_type.is_first_person() && self.scoping())
             .map(|p| {
                 [
                     p.position.x,
@@ -1180,7 +1184,7 @@ impl Game<'_> {
         if self.clock.still() {
             self.visual_ticks()
         } else {
-            self.texture_ticks
+            self.client.texture_ticks
         }
     }
 
@@ -1190,7 +1194,7 @@ impl Game<'_> {
         if self.clock.still() {
             self.visual_ticks() as i64 * 50
         } else {
-            self.started.elapsed().as_millis() as i64
+            self.client.started.elapsed().as_millis() as i64
         }
     }
 }
@@ -1214,10 +1218,10 @@ impl Game<'_> {
                 ..Default::default()
             });
         // `screen_time` counts while the same screen stays open.
-        let screen = (self.screen != super::Screen::Playing).then(|| {
+        let screen = (self.client.screen != super::Screen::Playing).then(|| {
             use std::hash::{Hash, Hasher};
             let mut hasher = std::collections::hash_map::DefaultHasher::new();
-            std::mem::discriminant(&self.screen).hash(&mut hasher);
+            std::mem::discriminant(&self.client.screen).hash(&mut hasher);
             hasher.finish()
         });
         if let Some(renderer) = &mut self.renderer {
@@ -1329,7 +1333,7 @@ mod tests {
                     game.player = Some(
                         super::PlayerMotion::new(game.motion, Vec3::new(0.5, 64.0, 0.5)).unwrap(),
                     );
-                    game.camera_type = CameraType::FirstPerson;
+                    game.client.camera_type = CameraType::FirstPerson;
                     game.ui.hide_gui = false;
                     game.gui.atlas.sprites.clear();
                     let expected = [0.0, 0.125, 0.25, 0.375, 0.5, 0.625, 0.75, 0.875];
@@ -1391,12 +1395,12 @@ mod tests {
                         assert_eq!(q.vertices[2].pos[..2], [1.0, -1.0]);
                     }
 
-                    game.camera_type = CameraType::ThirdPersonBack;
+                    game.client.camera_type = CameraType::ThirdPersonBack;
                     assert!(
                         quads(game).is_empty(),
                         "third-person suppresses equipment overlays"
                     );
-                    game.camera_type = CameraType::FirstPerson;
+                    game.client.camera_type = CameraType::FirstPerson;
                     game.inventory[4] = Some(ItemStack::new("minecraft:spyglass", 1));
                     assert_eq!(
                         quads(game).len(),

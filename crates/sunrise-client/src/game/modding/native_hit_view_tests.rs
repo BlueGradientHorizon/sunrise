@@ -141,8 +141,8 @@ fn handle_read(game: &mut super::Game<'_>, id: u32) -> Read {
     let living = game.living(game.entity(id).unwrap()).unwrap();
     let stick = mod_api::__private::item_key("minecraft:stick");
     let mob = game.mob(living.entity());
-    let holder = if Some(id) == game.lan_acting_entity {
-        game.lan_acting_uuid.map(Holder::Player)
+    let holder = if Some(id) == game.server.lan_acting_entity {
+        game.server.lan_acting_uuid.map(Holder::Player)
     } else {
         Some(Holder::Entity(id))
     };

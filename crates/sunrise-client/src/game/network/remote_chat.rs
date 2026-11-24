@@ -324,7 +324,7 @@ impl Game<'_> {
             CommandCheck::ParseErrors
         };
         // screenAfterCommand: what stays once it has run, a dialog included.
-        let over_screen = self.screen != Screen::Playing || self.dialog_open();
+        let over_screen = self.client.screen != Screen::Playing || self.dialog_open();
         let (message, accept) = match check {
             CommandCheck::NoIssues => {
                 // Verification above excludes message arguments. Use the ordinary sender so
@@ -350,7 +350,7 @@ impl Game<'_> {
             ),
         };
         self.open_screen_overlay("command_prompt", |game| {
-            game.command_prompt = Some(CommandPrompt {
+            game.client.command_prompt = Some(CommandPrompt {
                 command: command.to_owned(),
                 message,
                 accept,
@@ -365,7 +365,7 @@ impl Game<'_> {
 
     /// The command just clicked left this screen: if it asks, no returns there.
     pub(super) fn command_prompt_returns_to(&mut self, behind: Behind) {
-        if let Some(prompt) = self.command_prompt.as_mut() {
+        if let Some(prompt) = self.client.command_prompt.as_mut() {
             prompt.behind = Some(behind);
             prompt.over_screen = true;
         }
@@ -373,7 +373,7 @@ impl Game<'_> {
 
     /// The translation key of the open confirmation's message.
     pub(super) fn command_prompt_message(&self) -> Option<&'static str> {
-        self.command_prompt.as_ref().map(|p| p.message)
+        self.client.command_prompt.as_ref().map(|p| p.message)
     }
 
     /// The confirmation's title, the command in yellow in its message, and
@@ -393,7 +393,7 @@ impl Game<'_> {
     }
 
     pub(super) fn draw_command_prompt(&self, batch: &mut HudBatch) {
-        let Some(prompt) = &self.command_prompt else {
+        let Some(prompt) = &self.client.command_prompt else {
             return;
         };
         sunrise_client::widgets::cover_frame();
@@ -427,13 +427,13 @@ impl Game<'_> {
         ];
         let mut layout = self.command_prompt_layout(prompt, (w, h));
         layout.declare_no(1);
-        layout.draw(batch, atlas, self.cursor, &labels);
+        layout.draw(batch, atlas, self.client.cursor, &labels);
         self.draw_overlay_mounted_widgets(batch, "command_prompt");
     }
 
     /// The confirmation's answer; on no, what was behind it is back.
     pub(super) fn answer_command_prompt(&mut self, yes: bool) {
-        let Some(prompt) = self.command_prompt.take() else {
+        let Some(prompt) = self.client.command_prompt.take() else {
             return;
         };
         match (yes, prompt.accept, prompt.behind) {
@@ -457,7 +457,7 @@ impl Game<'_> {
             (false, _, None) => {}
         }
         self.refresh_screen_widgets();
-        if self.screen == Screen::Playing && !self.screen_over_playing() {
+        if self.client.screen == Screen::Playing && !self.screen_over_playing() {
             self.capture(true);
         }
     }
@@ -466,7 +466,7 @@ impl Game<'_> {
     /// (Screen's focus navigation, AbstractButton's Enter and Space).
     pub(super) fn command_prompt_key(&mut self, key: KeyCode) -> bool {
         let (size, shift) = (self.gui_size(), self.has_shift_down());
-        let Some(prompt) = &self.command_prompt else {
+        let Some(prompt) = &self.client.command_prompt else {
             return false;
         };
         let mut choice = self.command_prompt_layout(prompt, size);
@@ -488,19 +488,19 @@ impl Game<'_> {
             _ => return false,
         }
         let focus = choice.focus;
-        if let Some(prompt) = self.command_prompt.as_mut() {
+        if let Some(prompt) = self.client.command_prompt.as_mut() {
             prompt.focus = focus;
         }
         false
     }
 
     pub(super) fn command_prompt_click(&mut self) -> bool {
-        let Some(prompt) = &self.command_prompt else {
+        let Some(prompt) = &self.client.command_prompt else {
             return false;
         };
         let pressed = self
             .command_prompt_layout(prompt, self.gui_size())
-            .pressed_at(self.cursor);
+            .pressed_at(self.client.cursor);
         if let Some(button) = pressed {
             self.audio.play_button_click();
             self.answer_command_prompt(button == 0);

@@ -42,7 +42,7 @@ impl<'g, 'a, 'h> ListenedRolls<'g, 'a, 'h> {
 
 impl DeathRolls for ListenedRolls<'_, '_, '_> {
     fn sequences(&mut self) -> &mut RandomSequences {
-        &mut self.game.rand_sequences
+        &mut self.game.server.rand_sequences
     }
     fn level_random(&mut self) -> &mut LegacyRandom {
         &mut self.game.world.random
@@ -116,7 +116,9 @@ impl Game<'_> {
                 .then(|| self.target_loot_entity(target)),
             _ => None,
         };
-        let loot = live_target.as_ref().and_then(|_| self.server_loot.get());
+        let loot = live_target
+            .as_ref()
+            .and_then(|_| self.server.server_loot.get());
         let matcher = |predicate: &serde_json::Value, entity: &sunrise_world::loot::LootEntity| {
             loot.as_ref()
                 .is_some_and(|data| data.entity_matches(predicate, Some(entity)))
@@ -132,7 +134,7 @@ impl Game<'_> {
             let items = world_items!(self);
             return match sequence {
                 Some(id) => {
-                    let random = self.rand_sequences.get(&id, self.level.seed);
+                    let random = self.server.rand_sequences.get(&id, self.level.seed);
                     if let Some(target) = live_target {
                         items.entity_drops_with_target(
                             kind, by_player, held, target, &matcher, random, keep_empty,
@@ -260,6 +262,7 @@ impl Game<'_> {
         };
         if entity.nbt.is_none()
             && self
+                .server
                 .server_loot
                 .get()
                 .is_some_and(|data| data.copies_entity_nbt())
@@ -281,7 +284,7 @@ impl Game<'_> {
         held: Option<&ItemStack>,
         this: Option<&sunrise_world::loot::LootEntity>,
     ) -> Option<Vec<ItemStack>> {
-        let loot = self.server_loot.get();
+        let loot = self.server.server_loot.get();
         let matcher = |predicate: &serde_json::Value, entity: &sunrise_world::loot::LootEntity| {
             loot.as_ref()
                 .is_some_and(|data| data.entity_matches(predicate, Some(entity)))
@@ -296,7 +299,7 @@ impl Game<'_> {
             let items = world_items!(self);
             match items.loot_sequence(table) {
                 Some(sequence) => {
-                    let random = self.rand_sequences.get(&sequence, self.level.seed);
+                    let random = self.server.rand_sequences.get(&sequence, self.level.seed);
                     items.roll_loot_table(table, held, this, random)
                 }
                 None => items.roll_loot_table(table, held, this, &mut self.world.random),

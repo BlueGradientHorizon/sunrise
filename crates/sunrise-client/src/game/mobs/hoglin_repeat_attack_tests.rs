@@ -497,8 +497,8 @@ fn place_player(game: &mut Game<'_>, x: f64, z: f64) {
     if let Some(player) = game.player.as_mut() {
         player.position = Vec3::new(x, 100.0, z);
     } else {
-        game.next_entity += 1;
-        let id = game.next_entity;
+        game.server.next_entity += 1;
+        let id = game.server.next_entity;
         game.player = Some(PlayerMotion::new(game.motion, Vec3::new(x, 100.0, z)).unwrap());
         super::native_entity_refs::tests::bind_local_player(game, id, 1);
     }
@@ -590,10 +590,10 @@ fn host_with_guest(game: &mut Game<'_>, guest_at: [f64; 3]) {
         address: "127.0.0.1:25565".parse().unwrap(),
         expected: false,
     };
-    game.next_entity += 1;
+    game.server.next_entity += 1;
     let mut guest = Guest::new(
         joined,
-        i32::try_from(game.next_entity).expect("fixture entity ID fits the protocol"),
+        i32::try_from(game.server.next_entity).expect("fixture entity ID fits the protocol"),
         guest_at,
         0,
     );

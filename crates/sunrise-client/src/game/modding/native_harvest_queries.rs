@@ -239,7 +239,7 @@ mod tests {
                 let stone = (game as &dyn mod_api::Host)
                     .block_state_id("minecraft:stone")
                     .unwrap();
-                game.next_entity = 100;
+                game.server.next_entity = 100;
                 let fakes = [
                     (1234, "pickaxe", "minecraft:iron_pickaxe", true),
                     (5678, "shovel", "minecraft:iron_shovel", false),

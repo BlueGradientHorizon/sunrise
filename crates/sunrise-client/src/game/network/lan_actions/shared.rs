@@ -957,7 +957,7 @@ mod tests {
                 );
             };
             let take_signals = |game: &mut Game<'_>| {
-                let lids = std::mem::take(&mut game.lan_block_events)
+                let lids = std::mem::take(&mut game.server.lan_block_events)
                     .into_iter()
                     .filter_map(|(p, id, count, _)| (p == at && id == 1).then_some(count))
                     .collect::<Vec<_>>();
@@ -991,7 +991,7 @@ mod tests {
                     if block == "shulker_box" {
                         game.be_anims.shulkers.get(&at).map_or(0, |s| s.open_count)
                     } else {
-                        game.lid_openers.get(&pos).copied().unwrap_or(0)
+                        game.server.lid_openers.get(&pos).copied().unwrap_or(0)
                     }
                 };
                 // A shulker's veto can change the acting player to spectator, but
@@ -1144,9 +1144,9 @@ mod tests {
             game.world.set_block_lock(pos, &lock);
             assert_eq!(game.lan_open_container(12, pos), MenuOpen::Refused);
             assert!(game.lan.as_ref().unwrap().hub.guests[0].menu.is_none());
-            assert_eq!(game.lid_openers.get(&pos), Some(&1));
+            assert_eq!(game.server.lid_openers.get(&pos), Some(&1));
             game.guest_close_all(13);
-            assert!(!game.lid_openers.contains_key(&pos));
+            assert!(!game.server.lid_openers.contains_key(&pos));
             game.world
                 .set_block_lock(pos, &Tag::Compound(Default::default()));
             assert_eq!(game.lan_open_container(12, pos), MenuOpen::Opened);
@@ -1359,7 +1359,7 @@ mod tests {
                     seed: 0,
                     max_players: 2,
                     integrated: true,
-                    levels: game.level_shapes,
+                    levels: game.server.level_shapes,
                     level_seeds: game.levels.runtime.seeds(),
                 };
                 game.lan_host(settings, net, config).unwrap();
@@ -2039,12 +2039,12 @@ mod tests {
                 )
                 .unwrap(),
             );
-            game.lan_acting_fake = false;
+            game.server.lan_acting_fake = false;
             let real = game.sleep_counts();
             assert_eq!(real.0, 1);
-            game.lan_acting_fake = true;
+            game.server.lan_acting_fake = true;
             assert_eq!(game.sleep_counts(), (0, 0, 0));
-            game.lan_acting_fake = false;
+            game.server.lan_acting_fake = false;
             assert_eq!(game.sleep_counts(), real);
         });
     }
@@ -2513,7 +2513,7 @@ mod respawn_world_point_tests {
                 .as_nanos()
         ));
         std::fs::create_dir_all(&scratch).unwrap();
-        game.world_root = scratch.clone();
+        game.server.world_root = scratch.clone();
         let world = [0, 100, 0];
         let personal = [5.5, 101.0, 5.5];
         game.level.world_spawn = Some(world);
@@ -2981,7 +2981,7 @@ mod guest_close_listener_tests {
         let clock = game.world.game_time;
         let mut missing = Vec::new();
         let window = open(&mut game, 1, 1);
-        assert_eq!(game.lid_openers.get(&(6, 100, 4)), Some(&1));
+        assert_eq!(game.server.lid_openers.get(&(6, 100, 4)), Some(&1));
         assert_eq!(selected(&game).unwrap().event, "minecraft:container_open");
         reset_listener(&mut game);
         close(&mut game, 1, window + 20);
@@ -2998,7 +2998,7 @@ mod guest_close_listener_tests {
                 .window,
             window
         );
-        assert_eq!(game.lid_openers.get(&(6, 100, 4)), Some(&1));
+        assert_eq!(game.server.lid_openers.get(&(6, 100, 4)), Some(&1));
         assert!(selected(&game).is_none());
         close(&mut game, 1, window);
         assert!(
@@ -3011,7 +3011,7 @@ mod guest_close_listener_tests {
                 .menu
                 .is_none()
         );
-        assert!(!game.lid_openers.contains_key(&(6, 100, 4)));
+        assert!(!game.server.lid_openers.contains_key(&(6, 100, 4)));
         match selected(&game) {
             Some(info) => {
                 assert_eq!(info.event, "minecraft:container_close");
@@ -3024,7 +3024,7 @@ mod guest_close_listener_tests {
         assert_eq!(selected(&game).unwrap().event, "minecraft:container_open");
         reset_listener(&mut game);
         let last = open(&mut game, 2, 1);
-        assert_eq!(game.lid_openers.get(&(6, 100, 4)), Some(&2));
+        assert_eq!(game.server.lid_openers.get(&(6, 100, 4)), Some(&2));
         assert!(selected(&game).is_none());
         close(&mut game, 1, first);
         assert!(
@@ -3037,10 +3037,10 @@ mod guest_close_listener_tests {
                 .menu
                 .is_some()
         );
-        assert_eq!(game.lid_openers.get(&(6, 100, 4)), Some(&1));
+        assert_eq!(game.server.lid_openers.get(&(6, 100, 4)), Some(&1));
         assert!(selected(&game).is_none());
         close(&mut game, 2, last);
-        assert!(!game.lid_openers.contains_key(&(6, 100, 4)));
+        assert!(!game.server.lid_openers.contains_key(&(6, 100, 4)));
         match selected(&game) {
             Some(info) => {
                 assert_eq!(info.event, "minecraft:container_close");
@@ -3050,7 +3050,7 @@ mod guest_close_listener_tests {
         }
         reset_listener(&mut game);
         let spectator = open(&mut game, 3, 1);
-        assert!(!game.lid_openers.contains_key(&(6, 100, 4)));
+        assert!(!game.server.lid_openers.contains_key(&(6, 100, 4)));
         assert!(selected(&game).is_none());
         close(&mut game, 3, spectator);
         assert!(

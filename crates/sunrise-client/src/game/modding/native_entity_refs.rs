@@ -123,7 +123,7 @@ impl Game<'_> {
         if !remote.has_level() {
             return None;
         }
-        self.text_displays.get(&id)
+        self.client.text_displays.get(&id)
     }
 
     /// What a handle names now, or None for a stale or foreign one.
@@ -147,7 +147,7 @@ impl Game<'_> {
         entity: EntityRef,
         dimension: DimensionKey,
     ) -> Option<(Target, Option<Location>)> {
-        if self.held_out.contains(&entity.id())
+        if self.server.held_out.contains(&entity.id())
             || !self.is_logical_server()
             || self.native_lifecycle.epoch() != Some(entity.epoch())
         {
@@ -162,9 +162,9 @@ impl Game<'_> {
                 .iter()
                 .rev()
                 .find(|&&(_, _, id)| id == entity.id())?;
-            return if self.lan_acting == Some(conn) {
+            return if self.server.lan_acting == Some(conn) {
                 Some((Target::Player, None))
-            } else if self.lan_guest_swaps.contains(&conn) {
+            } else if self.server.lan_guest_swaps.contains(&conn) {
                 None
             } else {
                 Some((Target::Guest(conn), None))
@@ -1696,13 +1696,13 @@ pub(super) mod tests {
 
     /// Bind the fixture body's canonical identity before configuring its acting context.
     pub(in crate::game) fn bind_local_player(game: &mut super::Game<'_>, id: u32, uuid: u128) {
-        game.next_entity = game.next_entity.max(id);
+        game.server.next_entity = game.server.next_entity.max(id);
         game.player.as_mut().expect("fixture player body").entity_id =
             i32::try_from(id).expect("fixture entity ID fits the protocol");
         game.level.player_uuid = Some(sunrise_client::lan::playerdata::uuid_ints(uuid));
         game.bind_local_player_residency();
-        game.lan_acting_entity = Some(id);
-        game.lan_acting_uuid = Some(uuid);
+        game.server.lan_acting_entity = Some(id);
+        game.server.lan_acting_uuid = Some(uuid);
     }
 
     /// Install the server record backing a fixture's already configured acting body.
@@ -1713,12 +1713,12 @@ pub(super) mod tests {
         };
         use sunrise_client::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubConfig};
         use sunrise_protocol::packets::configuration::ClientInformation;
-        let conn = game.lan_acting.unwrap();
-        let id = game.lan_acting_entity.unwrap();
-        let uuid = game.lan_acting_uuid.unwrap();
-        let name = game.lan_acting_name.clone().unwrap();
+        let conn = game.server.lan_acting.unwrap();
+        let id = game.server.lan_acting_entity.unwrap();
+        let uuid = game.server.lan_acting_uuid.unwrap();
+        let name = game.server.lan_acting_name.clone().unwrap();
         let at = game.player.as_ref().unwrap().position;
-        game.next_entity = game.next_entity.max(id);
+        game.server.next_entity = game.server.next_entity.max(id);
         game.lan_host(
             super::super::lan::LanSettings {
                 port: 0,
@@ -1743,7 +1743,7 @@ pub(super) mod tests {
                 seed: 0,
                 max_players: 2,
                 integrated: true,
-                levels: game.level_shapes,
+                levels: game.server.level_shapes,
                 level_seeds: game.levels.runtime.seeds(),
             },
         )
@@ -2145,7 +2145,7 @@ pub(super) mod tests {
                 std::thread::current().id()
             ));
             std::fs::create_dir_all(&scratch).unwrap();
-            game.world_root = scratch.clone();
+            game.server.world_root = scratch.clone();
             game.player = Some(PlayerMotion::new(game.motion, Vec3::new(4.5, 62.0, 4.5)).unwrap());
             game.player.as_mut().unwrap().ground.on_ground = true;
             game.creative = false;
@@ -3254,7 +3254,7 @@ pub(super) mod tests {
                 seed: 0,
                 max_players: 2,
                 integrated: true,
-                levels: game.level_shapes,
+                levels: game.server.level_shapes,
                 level_seeds: game.levels.runtime.seeds(),
             };
             game.lan_host(settings, net, config).unwrap();
@@ -3503,7 +3503,7 @@ pub(super) mod tests {
                 assert_eq!(player.game_mode(game), Some(GameMode::Survival));
                 assert!(game.player_set_game_mode(player, GameMode::Creative));
                 assert_eq!(player.game_mode(game), Some(GameMode::Creative));
-                assert_eq!(game.lan_acting, Some(12));
+                assert_eq!(game.server.lan_acting, Some(12));
                 let acting = game.player(12).unwrap();
                 assert!(game.player_set_game_mode(acting, GameMode::Adventure));
                 assert_eq!(game.player_game_mode(acting), Some(GameMode::Adventure));
@@ -3512,7 +3512,7 @@ pub(super) mod tests {
                         game.with_guest_swap(12, game.dim, |_| panic!("active guest re-entered"))
                             .is_none()
                     );
-                    assert_eq!(game.lan_acting, Some(13));
+                    assert_eq!(game.server.lan_acting, Some(13));
                     assert!(game.entity(12).is_none());
                     assert!(game.player(12).is_none());
                     assert!(
@@ -3522,15 +3522,15 @@ pub(super) mod tests {
                     assert!(game.entity(13).is_some());
                 })
                 .unwrap();
-                assert_eq!(game.lan_acting, Some(12));
+                assert_eq!(game.server.lan_acting, Some(12));
             })
             .unwrap();
-            assert!(game.lan_guest_swaps.is_empty());
+            assert!(game.server.lan_guest_swaps.is_empty());
             // A player saved in creative (game mode 1, mayfly and instabuild)
             // joins again: without force they stay creative; forced into the
             // default mode (survival) they get its abilities.
             let root = std::env::temp_dir().join(format!("abilities-force-{}", std::process::id()));
-            game.world_root = root.clone();
+            game.server.world_root = root.clone();
             game.lan
                 .as_mut()
                 .unwrap()
@@ -3764,7 +3764,7 @@ pub(super) mod tests {
                     .iter()
                     .any(|(chunk, _)| *chunk == (100, 0))
             );
-            game.next_entity = 100;
+            game.server.next_entity = 100;
             game.lan.as_ref().unwrap().hub.lan.shared.next_id();
             game.lan.as_ref().unwrap().hub.lan.shared.next_id();
             let level = game.level(game.dim.id()).unwrap();
@@ -3797,19 +3797,19 @@ pub(super) mod tests {
             assert_eq!(game.player_is_fake(made), None);
             let replacement = game.fake_player(level, 1234, "machine").unwrap();
             assert_ne!(made, replacement);
-            let saved_root = game.world_root.clone();
+            let saved_root = game.server.world_root.clone();
             let scratch = std::env::current_dir()
                 .unwrap()
                 .join("target/fake-player-save-test");
             let _ = std::fs::remove_dir_all(&scratch);
-            game.world_root = scratch.clone();
+            game.server.world_root = scratch.clone();
             let host = game.lan.as_mut().unwrap();
             let i = host.hub.guests.iter().position(|g| g.uuid == 1234).unwrap();
             let mut actor = host.hub.guests.remove(i);
             game.save_guest(&mut actor);
             game.lan.as_mut().unwrap().hub.guests.insert(i, actor);
             assert!(!scratch.exists());
-            game.world_root = saved_root;
+            game.server.world_root = saved_root;
             let conn = game
                 .lan
                 .as_ref()
@@ -4009,7 +4009,7 @@ pub(super) mod tests {
                     .guests
                     .update(0, |guest| guest.dimension = value);
             }
-            game.lan_acting = Some(real_id);
+            game.server.lan_acting = Some(real_id);
             let selector = sunrise_client::command::args::Selector {
                 kind: 'a',
                 limit: usize::MAX,
@@ -4023,7 +4023,7 @@ pub(super) mod tests {
             assert!(game.select(&named).is_empty());
             assert!(game.run_command_quietly("list"));
             assert!(!game.run_command_quietly("tp fake 0 64 0"));
-            game.lan_acting = None;
+            game.server.lan_acting = None;
             for (conn, learns) in [(fake_id, false), (real_id, true)] {
                 game.as_guest(conn, |game| {
                     let mut book =
@@ -4042,10 +4042,11 @@ pub(super) mod tests {
                 })
                 .unwrap();
             }
-            game.guest_packets
+            game.server
+                .guest_packets
                 .push(Clientbound::SetSimulationDistance(Distance { distance: 4 }));
             game.as_guest(fake_id, |game| {
-                assert!(game.lan_acting_fake);
+                assert!(game.server.lan_acting_fake);
                 assert!(game.player.as_ref().is_some_and(|p| p.client_loaded));
                 assert!(game.player_view().is_none());
                 let mut visited = 0;
@@ -4075,16 +4076,22 @@ pub(super) mod tests {
                     ..Default::default()
                 };
                 assert!(game.select(&uuid).is_empty());
-                game.guest_packets
+                game.server
+                    .guest_packets
                     .push(Clientbound::SetSimulationDistance(Distance {
                         distance: 12,
                     }));
-                game.guest_entity_events.push(3);
-                game.guest_cooldowns.push(("minecraft:test".into(), 20));
+                game.server.guest_entity_events.push(3);
+                game.server
+                    .guest_cooldowns
+                    .push(("minecraft:test".into(), 20));
             })
             .unwrap();
-            assert_eq!(game.guest_packets.len(), 1);
-            assert!(game.guest_entity_events.is_empty() && game.guest_cooldowns.is_empty());
+            assert_eq!(game.server.guest_packets.len(), 1);
+            assert!(
+                game.server.guest_entity_events.is_empty()
+                    && game.server.guest_cooldowns.is_empty()
+            );
             assert_eq!(
                 game.lan.as_ref().unwrap().hub.guests[1]
                     .sender
@@ -4094,20 +4101,25 @@ pub(super) mod tests {
             );
             assert!(rx.try_recv().is_err());
             game.with_guest_swap(real_id, game.dim, |game| {
-                assert!(!game.lan_acting_fake);
-                game.guest_cooldowns.push(("minecraft:real".into(), 7));
-                game.guest_player_sounds
+                assert!(!game.server.lan_acting_fake);
+                game.server
+                    .guest_cooldowns
+                    .push(("minecraft:real".into(), 7));
+                game.server
+                    .guest_player_sounds
                     .push(("outer".into(), [0.0; 3], 1.0, 1.0));
                 game.as_guest(fake_id, |game| {
-                    assert!(game.lan_acting_fake);
-                    game.guest_cooldowns.push(("minecraft:fake".into(), 20));
+                    assert!(game.server.lan_acting_fake);
+                    game.server
+                        .guest_cooldowns
+                        .push(("minecraft:fake".into(), 20));
                 })
                 .unwrap();
-                assert!(!game.lan_acting_fake);
-                assert_eq!(game.guest_cooldowns.len(), 1);
-                assert_eq!(&*game.guest_cooldowns[0].0, "minecraft:real");
-                assert_eq!(game.guest_player_sounds[0].0, "outer");
-                game.guest_player_sounds.clear();
+                assert!(!game.server.lan_acting_fake);
+                assert_eq!(game.server.guest_cooldowns.len(), 1);
+                assert_eq!(&*game.server.guest_cooldowns[0].0, "minecraft:real");
+                assert_eq!(game.server.guest_player_sounds[0].0, "outer");
+                game.server.guest_player_sounds.clear();
             })
             .unwrap();
             let out = rx.recv_timeout(std::time::Duration::from_secs(2)).unwrap();
@@ -4126,24 +4138,27 @@ pub(super) mod tests {
 
             // A real turn nested in a fake must not receive the fake's cooldown.
             game.with_guest_swap(fake_id, game.dim, |game| {
-                assert!(game.lan_acting_fake);
-                game.guest_cooldowns
+                assert!(game.server.lan_acting_fake);
+                game.server
+                    .guest_cooldowns
                     .push(("minecraft:fake_outer".into(), 8));
-                game.guest_player_sounds
+                game.server
+                    .guest_player_sounds
                     .push(("fake_outer".into(), [0.0; 3], 1.0, 1.0));
                 game.as_guest(real_id, |game| {
-                    assert!(!game.lan_acting_fake);
+                    assert!(!game.server.lan_acting_fake);
                     let before = game.stats.get("custom", "minecraft:jump");
                     game.award_stat("custom", "minecraft:jump", 1);
                     assert_eq!(game.stats.get("custom", "minecraft:jump"), before + 1);
-                    game.guest_cooldowns
+                    game.server
+                        .guest_cooldowns
                         .push(("minecraft:real_inner".into(), 9));
                 })
                 .unwrap();
-                assert!(game.lan_acting_fake);
-                assert_eq!(&*game.guest_cooldowns[0].0, "minecraft:fake_outer");
-                assert_eq!(game.guest_player_sounds[0].0, "fake_outer");
-                game.guest_player_sounds.clear();
+                assert!(game.server.lan_acting_fake);
+                assert_eq!(&*game.server.guest_cooldowns[0].0, "minecraft:fake_outer");
+                assert_eq!(game.server.guest_player_sounds[0].0, "fake_outer");
+                game.server.guest_player_sounds.clear();
             })
             .unwrap();
             let sunrise_client::lan::Out::Packet(body) =
@@ -4182,24 +4197,27 @@ pub(super) mod tests {
             second.placed = true;
             game.lan.as_mut().unwrap().hub.guests.push(second);
             game.with_guest_swap(real_id, game.dim, |game| {
-                game.guest_cooldowns
+                game.server
+                    .guest_cooldowns
                     .push(("minecraft:real_outer".into(), 10));
-                game.guest_player_sounds
+                game.server
+                    .guest_player_sounds
                     .push(("real_outer".into(), [0.0; 3], 1.0, 1.0));
                 game.as_guest(3, |game| {
-                    assert_eq!(game.lan_acting, Some(3));
+                    assert_eq!(game.server.lan_acting, Some(3));
                     assert!(
                         game.as_guest(real_id, |_| panic!("active guest re-entered"))
                             .is_none()
                     );
-                    assert_eq!(game.lan_acting, Some(3));
-                    game.guest_cooldowns
+                    assert_eq!(game.server.lan_acting, Some(3));
+                    game.server
+                        .guest_cooldowns
                         .push(("minecraft:real_second".into(), 11))
                 })
                 .unwrap();
-                assert_eq!(&*game.guest_cooldowns[0].0, "minecraft:real_outer");
-                assert_eq!(game.guest_player_sounds[0].0, "real_outer");
-                game.guest_player_sounds.clear();
+                assert_eq!(&*game.server.guest_cooldowns[0].0, "minecraft:real_outer");
+                assert_eq!(game.server.guest_player_sounds[0].0, "real_outer");
+                game.server.guest_player_sounds.clear();
             })
             .unwrap();
             for (receiver, expected) in [
@@ -4228,12 +4246,12 @@ pub(super) mod tests {
             let other_fake = game.fake_player(nether, 5678, "joiner").unwrap();
             game.enter_command_level(super::super::Dim::Overworld)
                 .unwrap();
-            let saved_root = game.world_root.clone();
+            let saved_root = game.server.world_root.clone();
             let scratch = std::env::current_dir()
                 .unwrap()
                 .join("target/fake-login-save-test");
             let _ = std::fs::remove_dir_all(&scratch);
-            game.world_root = scratch.clone();
+            game.server.world_root = scratch.clone();
             let shared = &game.lan.as_ref().unwrap().hub.lan.shared;
             let conn = shared.next_id().unwrap();
             let (tx, _rx) = std::sync::mpsc::channel();
@@ -4285,7 +4303,7 @@ pub(super) mod tests {
                 !sunrise_client::lan::playerdata::path(&scratch, 5678).exists(),
                 "fake login replacement saved player data"
             );
-            game.world_root = saved_root;
+            game.server.world_root = saved_root;
             let matching: Vec<_> = game
                 .lan
                 .as_ref()
@@ -5370,7 +5388,7 @@ pub(super) mod tests {
                 assert_eq!(seen, [92, 55, 11, 31]);
 
                 let block = game.entity(92).unwrap();
-                game.text_displays.get_mut(&92).unwrap().metadata(&[
+                game.client.text_displays.get_mut(&92).unwrap().metadata(&[
                     (10, 1, Value::Int(3)),
                     (20, 2, Value::Float(4.0)),
                     (21, 2, Value::Float(4.0)),
@@ -5405,7 +5423,7 @@ pub(super) mod tests {
                 let culling_only_lo = [16.5, 67.0, 2.5];
                 let culling_only_hi = [16.75, 68.0, 3.5];
                 assert!(ids(game, level, culling_only_lo, culling_only_hi).is_empty());
-                let (lo, hi) = game.text_displays[&92].interpolated_bounding_box(1.0);
+                let (lo, hi) = game.client.text_displays[&92].interpolated_bounding_box(1.0);
                 let culling = super::aabb_extents((lo.to_array(), hi.to_array()));
                 let culling_only = super::aabb_extents((culling_only_lo, culling_only_hi));
                 assert!(culling.intersects(culling_only));
@@ -5608,7 +5626,7 @@ pub(super) mod tests {
                         // on this tick, the pig ahead of the display the display loop moved.
                         add(game, 70, "minecraft:pig", [14.5, 65.5, 3.0]);
                         add(game, 71, "minecraft:block_display", [13.5, 65.5, 3.0]);
-                        game.text_displays.get_mut(&71).unwrap().metadata(&[(
+                        game.client.text_displays.get_mut(&71).unwrap().metadata(&[(
                             10,
                             1,
                             Value::Int(3),

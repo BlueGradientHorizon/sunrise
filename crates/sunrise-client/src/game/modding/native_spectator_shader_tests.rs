@@ -73,24 +73,33 @@ fn a_mods_entity_type_puts_its_chain_on_while_spectated() {
 
             add_entity(game, 31, "minecraft:cow");
             game.remote_set_camera(31);
-            assert_eq!(game.spectated_post_effect, Some("example:cow_vision"));
+            assert_eq!(
+                game.client.spectated_post_effect,
+                Some("example:cow_vision")
+            );
             // The third-person view clears it; back in first person it applies again.
             game.check_entity_post_effect(false);
-            assert_eq!(game.spectated_post_effect, None);
+            assert_eq!(game.client.spectated_post_effect, None);
             game.check_entity_post_effect(true);
-            assert_eq!(game.spectated_post_effect, Some("example:cow_vision"));
+            assert_eq!(
+                game.client.spectated_post_effect,
+                Some("example:cow_vision")
+            );
             // Removing the entity retains the detached camera's chain until SetCamera replaces it.
             game.handle_packet(C::RemoveEntities(play::RemoveEntities { ids: vec![31] }))
                 .unwrap();
-            assert_eq!(game.spectated_post_effect, Some("example:cow_vision"));
+            assert_eq!(
+                game.client.spectated_post_effect,
+                Some("example:cow_vision")
+            );
             let own = game.own_entity_id();
             game.remote_set_camera(own);
-            assert_eq!(game.spectated_post_effect, None);
+            assert_eq!(game.client.spectated_post_effect, None);
 
             // A vanilla mob keeps its own chain: the mod's registration for it was skipped.
             add_entity(game, 32, "minecraft:creeper");
             game.remote_set_camera(32);
-            assert_eq!(game.spectated_post_effect, Some("minecraft:creeper"));
+            assert_eq!(game.client.spectated_post_effect, Some("minecraft:creeper"));
         });
     });
 }

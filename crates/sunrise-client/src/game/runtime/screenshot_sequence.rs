@@ -61,20 +61,20 @@ impl Game<'_> {
         } else if !self.clock.frozen() || self.clock.stepping() || self.clock.sprinting() {
             Some("screenshot-sequence needs the world frozen (/tick freeze), not stepping")
         } else if self.title.is_some()
-            || self.screen != Screen::Playing
+            || self.client.screen != Screen::Playing
             || self.player.is_none()
             || self.integrated_starting.is_some()
-            || self.pending_entry.is_some()
-            || self.reload_overlay.is_some()
+            || self.client.pending_entry.is_some()
+            || self.client.reload_overlay.is_some()
             || self.pending_save.is_some()
             || self
                 .remote
                 .as_ref()
                 .is_some_and(|r| r.level_load.is_active())
-            || self.flight.is_some()
+            || self.client.flight.is_some()
             || self.world.chunks.is_empty()
             || self.streaming.pending() != 0
-            || !self.pending_uploads.is_empty()
+            || !self.client.pending_uploads.is_empty()
             || self.remote_backlog() != 0
             || !self.world.dirty_light.is_empty()
             || !self.world.dirty_sections.is_empty()
@@ -110,9 +110,12 @@ impl Game<'_> {
                     yaw.to_bits(),
                     pitch.to_bits()
                 ),
-                format!("{:?}", self.camera_type),
+                format!("{:?}", self.client.camera_type),
                 format!("{:?}", self.settings),
-                (&self.native_shaders.picked, renderer.shader_pack_kind()),
+                (
+                    &self.client.native_shaders.picked,
+                    renderer.shader_pack_kind()
+                ),
                 [renderer.config.width, renderer.config.height],
             )
         ))
@@ -144,7 +147,7 @@ impl Game<'_> {
         if let Some(refusal) = self.sequence_refusal() {
             return Err(refusal.into());
         }
-        let picked = self.native_shaders.picked.clone();
+        let picked = self.client.native_shaders.picked.clone();
         let kind = renderer.shader_pack_kind();
         if !picked.is_empty() && kind.is_none() {
             return Err("the shader pack isn't running (still loading, or it failed)".into());

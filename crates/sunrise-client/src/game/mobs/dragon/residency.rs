@@ -90,7 +90,7 @@ impl Game<'_> {
         crate::game::entity_residency::assign_resident_ids!(
             self.crystals,
             c,
-            &mut self.next_entity,
+            &mut self.server.next_entity,
             None
         );
     }

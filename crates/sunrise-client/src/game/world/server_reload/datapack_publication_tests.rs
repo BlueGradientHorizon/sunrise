@@ -161,11 +161,11 @@ fn datapack_game_open_reload_and_exhaustion_are_atomic() {
                 game.pack.data_changes = source;
                 game.load_world(request(root)).unwrap();
                 assert_eq!(
-                    game.fns.store.predicates["registry_test:native"]["chance"],
+                    game.server.fns.store.predicates["registry_test:native"]["chance"],
                     1
                 );
                 assert_eq!(
-                    game.fns.store.item_modifiers["registry_test:native"]["count"],
+                    game.server.fns.store.item_modifiers["registry_test:native"]["count"],
                     3
                 );
                 assert_eq!(power(game), DatapackValue::Int(7));
@@ -229,6 +229,7 @@ fn datapack_game_open_reload_and_exhaustion_are_atomic() {
                 ));
                 assert_eq!(power(game), DatapackValue::Int(7));
                 let old_files = game
+                    .server
                     .world_tables
                     .as_ref()
                     .map(|tables| tables.files.clone());
@@ -241,7 +242,8 @@ fn datapack_game_open_reload_and_exhaustion_are_atomic() {
                     &old
                 ));
                 assert_eq!(
-                    game.world_tables
+                    game.server
+                        .world_tables
                         .as_ref()
                         .map(|tables| tables.files.clone()),
                     old_files
@@ -341,7 +343,7 @@ fn world_open_and_wire_use_the_pack_biome_instead_of_the_bundled_file() {
         game.load_world(request(&world)).unwrap();
         let sync = crate::game::lan::sync::cached_reload_sync().unwrap();
         let biome = sync
-            .registry_packets(true, &game.level_shapes)
+            .registry_packets(true, &game.server.level_shapes)
             .into_iter()
             .find(|registry| registry.registry == BIOME_REGISTRY)
             .unwrap()
@@ -379,7 +381,7 @@ fn remote_reload_never_decodes_local_registry_files() {
             crate::game::native_entity_refs::tests::with_client_game(|game| {
                 let (pipe, _server) = sunrise_protocol::connection::Pipe::pair();
                 game.connect_local(pipe, "DatapackRemote").unwrap();
-                game.world_root = root.to_owned();
+                game.server.world_root = root.to_owned();
                 game.reload_datapacks(true, &[]).unwrap();
                 assert!(game.mods.datapack_registries.is_none());
             });
@@ -491,7 +493,8 @@ fn with_membership_fixture(run: impl FnOnce(&mut crate::game::Game<'_>, &Path)) 
     );
 }
 fn weights<'game>(game: &'game crate::game::Game<'_>) -> &'game [(String, Tag)] {
-    game.world_tables
+    game.server
+        .world_tables
         .as_ref()
         .unwrap()
         .data_maps

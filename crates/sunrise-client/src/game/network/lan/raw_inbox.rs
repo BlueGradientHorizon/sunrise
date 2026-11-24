@@ -16,7 +16,7 @@ impl Game<'_> {
             sea_level: self.end.locator().map_or(63, |terrain| terrain.sea_level()),
             world: &mut self.world,
             entities,
-            next_entity: &mut self.next_entity,
+            next_entity: &mut self.server.next_entity,
             spawn,
             spawn_angle: self.level.world_spawn_angle,
             spawn_dimension: crate::game::Dim::of_world_spawn(&self.level).id(),

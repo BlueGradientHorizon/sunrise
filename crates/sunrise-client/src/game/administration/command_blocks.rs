@@ -104,6 +104,7 @@ impl Game<'_> {
     /// the block state here (vanilla's `CommandBlockEntity.Mode`).
     pub(super) fn command_block_data_arrived(&mut self, pos: Pos) {
         if self
+            .client
             .command_block_screen
             .as_ref()
             .is_none_or(|s| s.cart.is_some() || s.pos != pos)
@@ -122,7 +123,7 @@ impl Game<'_> {
             dispatcher: super::chat::chat_tree(&self.remote),
             registries: &self.ui.registries,
         };
-        let Some(screen) = self.command_block_screen.as_mut() else {
+        let Some(screen) = self.client.command_block_screen.as_mut() else {
             return;
         };
         if let Some((mode, conditional)) = state {
@@ -332,11 +333,11 @@ impl Game<'_> {
     pub(super) fn run_as_game_master(&mut self, command: &str, source: Source) -> i32 {
         // performPrefixedCommand: a leading slash is allowed.
         let line = command.strip_prefix('/').unwrap_or(command).to_owned();
-        let outer = self.cmds.results.replace(Vec::new());
+        let outer = self.server.cmds.results.replace(Vec::new());
         let level = std::mem::replace(&mut self.ui.registries.permission, 2);
         self.with_source(source, |g| g.run_command(&line));
         self.ui.registries.permission = level;
-        let results = std::mem::replace(&mut self.cmds.results, outer).unwrap_or_default();
+        let results = std::mem::replace(&mut self.server.cmds.results, outer).unwrap_or_default();
         results.iter().filter(|(success, _)| *success).count() as i32
     }
     /// `CloseableCommandBlockSource.sendSystemMessage`: the block's last
@@ -400,17 +401,17 @@ impl Game<'_> {
             self.settings.auto_suggestions,
             std::time::Instant::now(),
         );
-        self.command_block_screen = Some(screen);
+        self.client.command_block_screen = Some(screen);
         self.set_screen(Screen::CommandBlock);
         self.capture(false);
     }
     pub(super) fn close_command_block(&mut self) {
-        self.command_block_screen = None;
+        self.client.command_block_screen = None;
         self.set_screen(Screen::Playing);
         self.capture(true);
     }
     pub(super) fn draw_command_block(&mut self, batch: &mut HudBatch) {
-        let Some(s) = self.command_block_screen.as_ref() else {
+        let Some(s) = self.client.command_block_screen.as_ref() else {
             self.draw_screen_phase(batch, sunrise_client::screen_draw::RenderPhase::Background);
             self.draw_screen_phase(batch, sunrise_client::screen_draw::RenderPhase::Foreground);
             return;
@@ -458,7 +459,7 @@ impl Game<'_> {
         let grey = rgba(160, 160, 160, 255);
         let label = Text::translate("advMode.command", &[]);
         batch.text_styled(atlas, &label, mid - 149.0, 40.0, grey, true);
-        let s = self.command_block_screen.as_mut().unwrap();
+        let s = self.client.command_block_screen.as_mut().unwrap();
         let cart = s.cart.is_some();
         if !s.previous.value.is_empty() {
             let label = Text::translate("advMode.previousOutput", &[]);
@@ -467,7 +468,7 @@ impl Game<'_> {
             batch.text_styled(atlas, &label, mid - 149.0, y, grey, true);
             s.previous.draw(batch, atlas, None);
         }
-        let s = self.command_block_screen.as_ref().unwrap();
+        let s = self.client.command_block_screen.as_ref().unwrap();
         let fallback;
         let buttons = match self.built_command_block(w, h) {
             Some(layout) => &layout.buttons,
@@ -477,7 +478,7 @@ impl Game<'_> {
             }
         };
         for &(b, x, y, bw) in buttons {
-            let hover = ui::hovered(self.cursor, x, y, bw, 20.0);
+            let hover = ui::hovered(self.client.cursor, x, y, bw, 20.0);
             let action = match b {
                 Button::Done => Some(sunrise_client::widgets::Action::Done),
                 Button::Cancel => Some(sunrise_client::widgets::Action::Cancel),
@@ -500,11 +501,14 @@ impl Game<'_> {
         // The command box, then its suggestions over the widgets: the build
         // made it at this size.
         let m = Measure(&atlas.font);
-        let mouse = (self.cursor.0.floor() as i32, self.cursor.1.floor() as i32);
+        let mouse = (
+            self.client.cursor.0.floor() as i32,
+            self.client.cursor.1.floor() as i32,
+        );
         let blink = s.opened.elapsed().as_millis() as u64;
         // The command box is added first.
         let mark = sunrise_client::widgets::narratables_mark();
-        let s = self.command_block_screen.as_mut().unwrap();
+        let s = self.client.command_block_screen.as_mut().unwrap();
         let draws = s.command.draw(&m, mouse, blink, 0);
         sunrise_client::widgets::move_narratables(mark, 0);
         let tooltip = sunrise_client::screen_draw::paint(batch, atlas, &draws);
@@ -513,14 +517,22 @@ impl Game<'_> {
     }
     /// The wheel over the suggestion list (`CommandSuggestions.mouseScrolled`).
     pub(super) fn command_block_scroll(&mut self, amount: f32) -> bool {
-        let mouse = (self.cursor.0.floor() as i32, self.cursor.1.floor() as i32);
-        self.command_block_screen
+        let mouse = (
+            self.client.cursor.0.floor() as i32,
+            self.client.cursor.1.floor() as i32,
+        );
+        self.client
+            .command_block_screen
             .as_mut()
             .is_some_and(|s| s.command.scroll(mouse, f64::from(amount)))
     }
     /// The command box's completion request for an `ask_server` node.
     pub(super) fn command_block_suggestion_request(&mut self) -> Option<(i32, String)> {
-        self.command_block_screen.as_mut()?.command.take_request()
+        self.client
+            .command_block_screen
+            .as_mut()?
+            .command
+            .take_request()
     }
     /// The server's completions for the command box's `ask_server` request.
     pub(super) fn command_block_server_suggestions(
@@ -529,7 +541,7 @@ impl Game<'_> {
         range: (usize, usize),
         list: Vec<(String, Option<String>)>,
     ) {
-        let Some(mut s) = self.command_block_screen.take() else {
+        let Some(mut s) = self.client.command_block_screen.take() else {
             return;
         };
         let m = Measure(&self.gui.atlas.font);
@@ -538,10 +550,10 @@ impl Game<'_> {
             registries: &self.ui.registries,
         };
         s.command.server_suggestions(&m, &c, id, range, list);
-        self.command_block_screen = Some(s);
+        self.client.command_block_screen = Some(s);
     }
     pub(super) fn command_block_click(&mut self) -> bool {
-        let Some(mut s) = self.command_block_screen.take() else {
+        let Some(mut s) = self.client.command_block_screen.take() else {
             return false;
         };
         // CommandSuggestions.mouseClicked first, then the command box.
@@ -551,10 +563,13 @@ impl Game<'_> {
                 dispatcher: super::chat::chat_tree(&self.remote),
                 registries: &self.ui.registries,
             };
-            let (x, y) = (f64::from(self.cursor.0), f64::from(self.cursor.1));
+            let (x, y) = (
+                f64::from(self.client.cursor.0),
+                f64::from(self.client.cursor.1),
+            );
             let double_click = s.command.live_double_click(x, y);
             if s.command.click(&m, &c, x, y, double_click) {
-                self.command_block_screen = Some(s);
+                self.client.command_block_screen = Some(s);
                 return true;
             }
         }
@@ -573,7 +588,7 @@ impl Game<'_> {
         };
         let hit = buttons
             .iter()
-            .find(|(_, x, y, bw)| ui::hovered(self.cursor, *x, *y, *bw, 20.0))
+            .find(|(_, x, y, bw)| ui::hovered(self.client.cursor, *x, *y, *bw, 20.0))
             .map(|b| b.0);
         if hit.is_some() {
             self.audio.play_button_click();
@@ -599,7 +614,7 @@ impl Game<'_> {
             }
             None => {}
         }
-        self.command_block_screen = Some(s);
+        self.client.command_block_screen = Some(s);
         hit.is_some()
     }
     /// `AbstractCommandBlockEditScreen.keyPressed`: the suggestions first,
@@ -616,7 +631,7 @@ impl Game<'_> {
         let shift = self.has_shift_down();
         // Windows' AltGr is Ctrl+Alt, and its characters still type.
         let types_text = self.types_text();
-        let Some(mut s) = self.command_block_screen.take() else {
+        let Some(mut s) = self.client.command_block_screen.take() else {
             return false;
         };
         let m = Measure(&self.gui.atlas.font);
@@ -625,7 +640,7 @@ impl Game<'_> {
             registries: &self.ui.registries,
         };
         if s.command.suggestions_key(&m, &c, key, shift) {
-            self.command_block_screen = Some(s);
+            self.client.command_block_screen = Some(s);
             return true;
         }
         let handled = match key {
@@ -639,7 +654,7 @@ impl Game<'_> {
                 }
             }
         };
-        self.command_block_screen = Some(s);
+        self.client.command_block_screen = Some(s);
         if !handled
             && types_text
             && let Some(text) = text
@@ -649,7 +664,7 @@ impl Game<'_> {
         match key {
             KeyCode::Escape => self.close_command_block(),
             KeyCode::Enter | KeyCode::NumpadEnter => {
-                if let Some(s) = self.command_block_screen.take() {
+                if let Some(s) = self.client.command_block_screen.take() {
                     self.set_command_block(&s);
                 }
                 self.close_command_block();
@@ -667,7 +682,7 @@ impl Game<'_> {
         if allowed.is_empty() {
             return;
         }
-        let Some(mut s) = self.command_block_screen.take() else {
+        let Some(mut s) = self.client.command_block_screen.take() else {
             return;
         };
         let m = Measure(&self.gui.atlas.font);
@@ -676,7 +691,7 @@ impl Game<'_> {
             registries: &self.ui.registries,
         };
         s.command.type_text(&m, &c, &allowed);
-        self.command_block_screen = Some(s);
+        self.client.command_block_screen = Some(s);
     }
     /// The edit screen's Done: a server's client sends the packet, the
     /// window's own world applies it (`handleSetCommandBlock`).
@@ -864,10 +879,10 @@ mod tests {
             game.settings.gui_scale = 3;
             let block = CommandBlock::default;
             game.open_edit_screen((0, 0, 0), None, block(), Mode::Redstone, false);
-            assert_eq!(game.screen, Screen::CommandBlock);
+            assert_eq!(game.client.screen, Screen::CommandBlock);
             game.build_screen();
             let boxes = |game: &Game<'_>| {
-                let s = game.command_block_screen.as_ref().unwrap();
+                let s = game.client.command_block_screen.as_ref().unwrap();
                 let (i, p) = (&s.command.input, &s.previous);
                 ([i.x, i.y, i.width, i.height], [p.x, p.y, p.width, p.height])
             };

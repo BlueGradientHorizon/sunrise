@@ -74,6 +74,7 @@ fn open_hub(game: &mut super::Game<'_>, role: ExecutionRole) {
         force_game_mode: false,
     };
     let singleplayer_profile = game
+        .server
         .singleplayer_profile
         .as_ref()
         .map(|profile| (profile.name.clone(), profile.uuid));
@@ -96,7 +97,7 @@ fn open_hub(game: &mut super::Game<'_>, role: ExecutionRole) {
         seed: 0,
         max_players: 4,
         integrated: role == ExecutionRole::IntegratedServer,
-        levels: game.level_shapes,
+        levels: game.server.level_shapes,
         level_seeds: game.levels.runtime.seeds(),
     };
     game.lan_host(settings, net, config).unwrap();
@@ -172,7 +173,7 @@ fn the_startup_hooks_read_the_whole_launch_profile_before_the_hub() {
             // The account answers after the server is created: its creation waits for it,
             // as `getGameProfile` joins `profileFuture`, so no read sees it half made.
             let account = slow_account(std::time::Duration::from_millis(200));
-            game.singleplayer_profile = Some(SingleplayerProfile::launched(
+            game.server.singleplayer_profile = Some(SingleplayerProfile::launched(
                 "Owner".into(),
                 OWNER,
                 Some(&account),
@@ -203,7 +204,7 @@ fn the_integrated_owner_is_the_launch_profile_matched_by_name() {
     }
     super::native_entity_refs::tests::with_game(|game| {
         let account = slow_account(std::time::Duration::ZERO);
-        game.singleplayer_profile = Some(SingleplayerProfile::launched(
+        game.server.singleplayer_profile = Some(SingleplayerProfile::launched(
             "Owner".into(),
             OWNER,
             Some(&account),

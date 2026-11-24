@@ -83,10 +83,11 @@ impl Game<'_> {
     ) -> Result<(), Gui3dError> {
         use mod_api::__private::game::Fields;
         let fields = model.fields();
-        if fields.generation != self.standalone_geometry.generation() {
+        if fields.generation != self.client.standalone_geometry.generation() {
             return Err(Gui3dError::Model(ModelError::StaleModel));
         }
         let model = self
+            .client
             .standalone_geometry
             .instance_slot(fields.slot)
             .and_then(|_| self.pack.render.model_catalog.model_by_slot(fields.slot))

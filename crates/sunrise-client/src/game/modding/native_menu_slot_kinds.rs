@@ -5,7 +5,7 @@ use sunrise_client::containers::{ModMenuType, mod_menu_type};
 
 impl Game<'_> {
     pub(super) fn menu_slot_kinds(&self, menu: MenuRef) -> Option<Vec<MenuSlotKind>> {
-        if !matches!(self.screen, Screen::Inventory | Screen::Creative) {
+        if !matches!(self.client.screen, Screen::Inventory | Screen::Creative) {
             return None;
         }
         self.remote.as_ref().filter(|remote| remote.has_level())?;
@@ -303,10 +303,10 @@ mod tests {
             let player = game.local_player().unwrap();
             let menu = game.player_container_menu(player).unwrap();
             assert_eq!(game.menu_slot_kinds(menu), None);
-            game.screen = Screen::Inventory;
+            game.client.screen = Screen::Inventory;
             let inventory = game.menu_slot_kinds(menu).unwrap();
             assert_eq!(inventory.len(), game.menu_slot_count(menu).unwrap());
-            game.screen = Screen::Creative;
+            game.client.screen = Screen::Creative;
             assert_eq!(game.menu_slot_kinds(menu), Some(inventory));
             let fields = menu.fields();
             let stale =

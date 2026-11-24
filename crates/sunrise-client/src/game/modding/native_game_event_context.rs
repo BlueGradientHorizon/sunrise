@@ -100,7 +100,7 @@ mod tests {
                     let source = game.entity(id).unwrap();
                     let level = game.level(game.dim.id()).unwrap();
                     heard.lock().unwrap().clear();
-                    assert!(game.lan_acting_entity.is_none());
+                    assert!(game.server.lan_acting_entity.is_none());
                     assert!(game.level_game_event(
                         level,
                         "minecraft:step",
@@ -111,7 +111,7 @@ mod tests {
                         }
                     ));
                     assert!(
-                        game.lan_acting_entity.is_none(),
+                        game.server.lan_acting_entity.is_none(),
                         "guest scope must be restored"
                     );
                     assert_eq!(*heard.lock().unwrap(), [Some(id)]);

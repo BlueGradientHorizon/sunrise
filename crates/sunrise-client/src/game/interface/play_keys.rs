@@ -18,7 +18,7 @@ impl Game<'_> {
         if self.instabuild() {
             self.set_screen(Screen::Creative);
             self.refresh_creative_tabs();
-            self.creative_screen.reopen();
+            self.client.creative_screen.reopen();
             self.refresh_saved_hotbars();
         } else {
             self.set_screen(Screen::Inventory);
@@ -41,7 +41,7 @@ impl Game<'_> {
             if let Some(slot) = VanillaMappingSlot::by_default_key(key)
                 && Self::tick_mapping(slot.definition().0)
             {
-                self.vanilla_mappings.click(slot);
+                self.client.vanilla_mappings.click(slot);
                 return Ok(());
             }
         }
@@ -64,15 +64,15 @@ impl Game<'_> {
 
     pub(super) fn immediate_key_pressed(&mut self, key: KeyCode, raw: KeyCode) -> Result<()> {
         self.direct_craft_stop();
-        if self.screen == Screen::Playing && self.replay.playing() {
+        if self.client.screen == Screen::Playing && self.replay.playing() {
             self.studio_key(key);
             return Ok(());
         }
         // `CreativeModeInventoryScreen.keyPressed` clears `ignoreTextInput` on
         // every key, before it decides anything.
-        self.creative_ignore_text = false;
+        self.client.creative_ignore_text = false;
         if self.sleeping.is_some()
-            && self.screen == Screen::Playing
+            && self.client.screen == Screen::Playing
             && !matches!(
                 key,
                 KeyCode::F1 | KeyCode::F2 | KeyCode::F11 | KeyCode::KeyT | KeyCode::Slash
@@ -97,18 +97,18 @@ impl Game<'_> {
             return Ok(());
         }
         match key {
-            KeyCode::Escape => match self.screen {
+            KeyCode::Escape => match self.client.screen {
                 Screen::Options => {
                     self.options_key(KeyCode::Escape, None)?;
                 }
                 Screen::Playing => {
-                    if self.replay.playing() && self.captured {
+                    if self.replay.playing() && self.client.captured {
                         self.capture(false);
                         return Ok(());
                     }
-                    self.pause_focus = None;
+                    self.client.pause_focus = None;
                     self.set_screen(Screen::Paused);
-                    self.pause_menu = true;
+                    self.client.pause_menu = true;
                     self.capture(false);
                 }
                 Screen::Creative => {
@@ -121,20 +121,20 @@ impl Game<'_> {
                 Screen::Paused | Screen::Inventory => {
                     // RecipeBookComponent.keyPressed: a narrow window's open
                     // book takes Escape to close itself, not the screen.
-                    if self.screen == Screen::Inventory && self.recipe_book_escape() {
+                    if self.client.screen == Screen::Inventory && self.recipe_book_escape() {
                         return Ok(());
                     }
                     // AbstractContainerScreen.onClose closes the menu (on a server, with
                     // a ServerboundContainerClosePacket); PauseScreen.onClose only
                     // swaps the screen.
-                    if self.screen == Screen::Inventory {
+                    if self.client.screen == Screen::Inventory {
                         self.close_container();
                     } else {
                         self.pad_clear_focus();
                     }
-                    self.pause_focus = None;
+                    self.client.pause_focus = None;
                     self.set_screen(Screen::Playing);
-                    self.pause_menu = true;
+                    self.client.pause_menu = true;
                     self.capture(true);
                 }
                 Screen::GameModeSwitcher => self.close_gamemode_switcher(false),
@@ -163,18 +163,19 @@ impl Game<'_> {
             },
             KeyCode::F11 => self.toggle_fullscreen(),
             KeyCode::KeyE
-                if self.screen == Screen::Creative && self.creative_screen.tab().search => {}
-            KeyCode::KeyE => match self.screen {
+                if self.client.screen == Screen::Creative
+                    && self.client.creative_screen.tab().search => {}
+            KeyCode::KeyE => match self.client.screen {
                 Screen::Creative | Screen::Inventory => self.close_inventory_key(),
                 _ => {}
             },
-            _ if self.screen == Screen::Paused && self.pause_menu => {
+            _ if self.client.screen == Screen::Paused && self.client.pause_menu => {
                 let _ = self.pause_key(key)?;
             }
-            _ if self.screen == Screen::Dead => {
+            _ if self.client.screen == Screen::Dead => {
                 let _ = self.death_key(key)?;
             }
-            _ if self.screen == Screen::Stats => self.stats_key(raw),
+            _ if self.client.screen == Screen::Stats => self.stats_key(raw),
             _ => {}
         }
         Ok(())
@@ -205,7 +206,7 @@ impl Game<'_> {
                             "multiplayer.socialInteractions.not_available",
                             &[],
                         );
-                        self.titles.set_overlay(message.clone(), false);
+                        self.client.titles.set_overlay(message.clone(), false);
                         self.say_system_now(&message);
                     }
                     "key.chat" => self.open_chat_method(""),
@@ -239,7 +240,8 @@ impl Game<'_> {
                     let all = self.has_control_down() || self.input_takes_stack_drop();
                     self.remote_drop(all);
                 } else {
-                    let all = drop_whole_stack(self.modifiers) || self.input_takes_stack_drop();
+                    let all =
+                        drop_whole_stack(self.client.modifiers) || self.input_takes_stack_drop();
                     self.drop_held_item(all);
                 }
             }
@@ -254,10 +256,10 @@ impl Game<'_> {
         if self.remote.is_some() && (self.riding_mount_with_menu() || self.riding_chest_boat()) {
             self.remote_request_mount_inventory();
         } else if self.remote.is_some() || (!self.spectator() && !self.open_ridden_mount_menu()) {
-            if self.tutorial.open_inventory() {
+            if self.client.tutorial.open_inventory() {
                 self.persist_tutorial_step();
             }
-            self.recipe_ui.reset_screen();
+            self.client.recipe_ui.reset_screen();
             self.craft_size = 2;
             self.open_player_inventory();
         }
@@ -414,8 +416,8 @@ mod swap_hands_tests {
                             .push_back(sunrise_client::lan::guest::InboxItem::Packet(swap, None))
                     })
                     .unwrap();
-                game.level_pass.first = false;
-                game.level_pass.packets_drained = false;
+                game.server.level_pass.first = false;
+                game.server.level_pass.packets_drained = false;
                 game.tick_lan_packets();
                 let hub = &game.lan.as_ref().unwrap().hub;
                 sunrise_client::lan::flush_all(hub.guests.iter().map(|g| &g.sender));
@@ -478,7 +480,7 @@ mod pause_close_tests {
             for (screen, closes) in [(Screen::Paused, 0), (Screen::Inventory, 1)] {
                 game.set_screen(screen);
                 game.key_pressed(KeyCode::Escape, KeyCode::Escape).unwrap();
-                assert_eq!(game.screen, Screen::Playing);
+                assert_eq!(game.client.screen, Screen::Playing);
                 let mut sent = 0;
                 while let Ok((id, bytes)) = peer.recv() {
                     if matches!(S::decode(id, &bytes), Ok(S::ContainerClose(_))) {
@@ -545,7 +547,7 @@ mod creative_close_tests {
                 veto.store(true, Ordering::SeqCst);
                 game.key_pressed(KeyCode::Escape, KeyCode::Escape).unwrap();
                 assert_eq!(
-                    game.screen,
+                    game.client.screen,
                     Screen::Creative,
                     "a vetoed close keeps the screen"
                 );
@@ -555,7 +557,7 @@ mod creative_close_tests {
                     game.set_screen(Screen::Creative);
                     closes(&mut peer);
                     game.key_pressed(key, key).unwrap();
-                    assert_eq!(game.screen, Screen::Playing, "{key:?}");
+                    assert_eq!(game.client.screen, Screen::Playing, "{key:?}");
                     assert_eq!(closes(&mut peer), [0], "{key:?}");
                 }
             });

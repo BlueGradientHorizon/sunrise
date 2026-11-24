@@ -213,7 +213,7 @@ pub(in crate::game) fn run_a_moved_thrown_item_projectile_saves_its_loaded_item(
         }
 
         // Run one real projectile tick so moving projectiles actually advance.
-        game.ticked_entities_through = game.next_entity;
+        game.server.ticked_entities_through = game.server.next_entity;
         game.tick_projectiles().unwrap();
 
         let live_by_uuid = collect_projectile_uuids(game);

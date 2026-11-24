@@ -14,9 +14,9 @@ fn game<'a>(resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>) -
 
 /// Runs `command`: whether it succeeded and what the issuer was told.
 fn run(game: &mut Game<'_>, command: &str) -> (bool, Vec<String>) {
-    game.chat_capture = Some(Vec::new());
+    game.server.chat_capture = Some(Vec::new());
     let ok = game.run_command(command);
-    let said = game.chat_capture.take().unwrap_or_default();
+    let said = game.server.chat_capture.take().unwrap_or_default();
     (
         ok,
         said.iter().map(sunrise_client::text::Text::plain).collect(),
@@ -25,7 +25,7 @@ fn run(game: &mut Game<'_>, command: &str) -> (bool, Vec<String>) {
 
 /// The bar's stored `(value, max)`.
 fn bar(game: &Game<'_>) -> (i32, i32) {
-    let b = game.bosses.bars.get("demo:bar").expect("the bar");
+    let b = game.server.bosses.bars.get("demo:bar").expect("the bar");
     (b.value, b.max)
 }
 

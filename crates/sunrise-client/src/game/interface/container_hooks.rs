@@ -221,12 +221,13 @@ impl Container for Open<'_, '_> {
     }
     fn spread(&self) -> usize {
         self.game()
+            .client
             .inv_drag
             .as_ref()
             .map_or(0, |(_, slots)| slots.len())
     }
     fn cursor(&self) -> (f32, f32) {
-        let (x, y) = self.game().cursor;
+        let (x, y) = self.game().client.cursor;
         (x - self.origin.0, y - self.origin.1)
     }
     fn shift(&self) -> bool {
@@ -273,7 +274,7 @@ impl<'g> Game<'g> {
     /// The menu type id of the open menu screen: the player's own, any container, workstation,
     /// trade, mount or mod menu; not creative's tabs, which have no menu type.
     fn container_menu_id(&self) -> Option<String> {
-        if self.screen != Screen::Inventory {
+        if self.client.screen != Screen::Inventory {
             return None;
         }
         if self.mount_active() {
@@ -387,7 +388,7 @@ impl<'g> Game<'g> {
     /// A mouse button's release clears the latch of a press a hook took: true when the press was
     /// the hooks', so the release is too. Called for every real button-up, before any hook.
     pub(in crate::game) fn container_button_up(&mut self, button: MouseButton) -> bool {
-        self.container_buttons.remove(&button)
+        self.client.container_buttons.remove(&button)
     }
     /// A mouse button down or up on a menu screen, once the mods' pre hooks let it through: true
     /// when a hook took it, or for the release of a press a hook took (`owned`). A release a hook
@@ -414,15 +415,15 @@ impl<'g> Game<'g> {
         }
         let taken = api::engine::press(&mut open, slot, button_of(button));
         if taken {
-            self.container_buttons.insert(button);
+            self.client.container_buttons.insert(button);
         }
         taken
     }
     /// Vanilla's quick craft drag ends with nothing clicked: its release, if it comes, does
     /// nothing.
     fn container_cancel_drag(&mut self) {
-        self.inv_drag = None;
-        self.inv_clicks.cancel_drag();
+        self.client.inv_drag = None;
+        self.client.inv_clicks.cancel_drag();
     }
     /// The cursor moved with a button held, once the mods' pre hook let it through: true when a
     /// hook took it. A drag taken from vanilla's own press ends its quick craft drag.
@@ -431,8 +432,9 @@ impl<'g> Game<'g> {
             return false;
         }
         let Some(button) = self
+            .client
             .drag_button
-            .filter(|b| self.physical_buttons.contains(b))
+            .filter(|b| self.client.physical_buttons.contains(b))
         else {
             return false;
         };
@@ -441,7 +443,7 @@ impl<'g> Game<'g> {
             return false;
         };
         let taken = api::engine::drag(&mut open, slot, button_of(button));
-        if taken && !self.container_buttons.contains(&button) {
+        if taken && !self.client.container_buttons.contains(&button) {
             self.container_cancel_drag();
         }
         taken
@@ -728,7 +730,7 @@ mod tests {
     fn a_hooks_click_goes_through_the_menu() {
         let mut resources = None;
         let mut game = server_game(&mut resources);
-        game.screen = Screen::Inventory;
+        game.client.screen = Screen::Inventory;
         let stone = ItemStack::new("minecraft:stone", 5);
         game.inventory[9] = Some(stone.clone());
         with_registrants(&[&PICK_NINE], || {
@@ -743,7 +745,7 @@ mod tests {
     fn a_taken_press_keeps_its_release_from_vanilla() {
         let mut resources = None;
         let mut game = server_game(&mut resources);
-        game.screen = Screen::Inventory;
+        game.client.screen = Screen::Inventory;
         with_registrants(&[&TAKE], || {
             assert!(game.container_mouse(MouseButton::Left, true, false));
             // Take takes no release: the button-up says the press was the hooks'.
@@ -766,12 +768,12 @@ mod tests {
     fn a_release_taken_from_vanillas_press_ends_its_drag_unclicked() {
         let mut resources = None;
         let mut game = server_game(&mut resources);
-        game.screen = Screen::Inventory;
-        game.inv_drag = Some((0, vec![9]));
+        game.client.screen = Screen::Inventory;
+        game.client.inv_drag = Some((0, vec![9]));
         with_registrants(&[&TAKE_RELEASE], || {
             assert!(game.container_mouse(MouseButton::Left, false, false))
         });
-        assert!(game.inv_drag.is_none());
+        assert!(game.client.inv_drag.is_none());
     }
 
     #[test]
@@ -779,7 +781,7 @@ mod tests {
     fn a_slot_outside_the_open_menu_reads_nothing() {
         let mut resources = None;
         let mut game = server_game(&mut resources);
-        game.screen = Screen::Inventory;
+        game.client.screen = Screen::Inventory;
         let reads = || READ_FAR.0.load(std::sync::atomic::Ordering::Relaxed);
         // The press is taken only when the hook ran and every far read came back empty.
         with_registrants(&[&READ_FAR], || {
@@ -796,7 +798,7 @@ mod tests {
     fn a_key_is_not_dispatched_while_the_recipe_search_is_focused() {
         let mut resources = None;
         let mut game = server_game(&mut resources);
-        game.screen = Screen::Inventory;
+        game.client.screen = Screen::Inventory;
         with_registrants(&[&TAKE], || assert!(game.container_key(KeyCode::KeyR)));
         game.level.recipe_book.open[sunrise_client::recipe_book::BookType::Crafting.index()] = true;
         game.ensure_recipe_search();
@@ -812,7 +814,7 @@ mod tests {
     fn no_view_is_built_without_a_registrant_or_a_held_button() {
         let mut resources = None;
         let mut game = server_game(&mut resources);
-        game.screen = Screen::Inventory;
+        game.client.screen = Screen::Inventory;
         BUILT.with(|n| n.set(0));
         with_registrants(&[], || {
             assert!(!game.container_mouse(MouseButton::Left, true, false))

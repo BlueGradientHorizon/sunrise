@@ -98,7 +98,7 @@ fn flint_and_steel_use_on_ends_the_click() {
     game.inventory[0] = Some(ItemStack::new("minecraft:flint_and_steel", 1));
     game.offhand = Some(ItemStack::new("minecraft:stick", 1));
     game.selected = 0;
-    game.forced_hit = Some(Hit {
+    game.server.forced_hit = Some(Hit {
         pos: [0, 63, 0],
         face: [0, 1, 0],
         point: [0.5, 64.0, 0.5],
@@ -143,7 +143,7 @@ fn an_end_crystal_click_on_a_block_ends_there() {
         game.selected = 0;
         while peer.recv().is_ok() {}
         let aim = |game: &mut crate::game::Game<'_>, z: i32| {
-            game.forced_hit = Some(Hit {
+            game.server.forced_hit = Some(Hit {
                 pos: [0, 63, z],
                 face: [0, 1, 0],
                 point: [0.5, 64.0, f64::from(z) + 0.5],

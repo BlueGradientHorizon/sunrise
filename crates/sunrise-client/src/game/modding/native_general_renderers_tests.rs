@@ -345,7 +345,7 @@ fn a_row_is_drawn_by_its_types_renderer_at_the_frames_pose_reading_its_synced_fi
         "a_row_is_drawn_by_its_types_renderer_at_the_frames_pose_reading_its_synced_fields",
         |game, scene| {
             // A one-plane test frustum: +Z in camera space is in front.
-            game.view_frustum = Some(sunrise_client::gfx::test_frustum([glam::Vec4::Z; 6]));
+            game.client.view_frustum = Some(sunrise_client::gfx::test_frustum([glam::Vec4::Z; 6]));
             for (id, at) in [
                 (8, [0.0, 321.0, -8.0]),  // behind the camera
                 (9, [0.0, 321.0, 300.0]), // beyond the draw range
@@ -429,7 +429,7 @@ fn general_submission_keeps_lookup_order_across_removal_and_reentry() {
                     data: 0,
                 })
             };
-            game.pack_ids = Some(super::shader_packs::PackIds::with_entity_ids([(
+            game.client.pack_ids = Some(super::shader_packs::PackIds::with_entity_ids([(
                 "test:missile",
                 77,
             )]));
@@ -450,6 +450,7 @@ fn general_submission_keeps_lookup_order_across_removal_and_reentry() {
             snapshot(game, 12, 1);
             assert_eq!(submitted(game), [5, 71, 12, 42, 8]);
             let own_type_spans = game
+                .client
                 .entity_spans
                 .borrow()
                 .windows(2)

@@ -60,9 +60,9 @@ impl Game<'_> {
         // Animal.setInLove: entity event 18.
         if loved {
             let id = self.mobs[index].id;
-            self.love_cause.insert(id, self.lan_acting);
+            self.server.love_cause.insert(id, self.server.lan_acting);
             let kind = self.mobs[index].kind.id.clone();
-            self.native_entity_enter_love_mode(id, &kind, self.lan_acting_uuid);
+            self.native_entity_enter_love_mode(id, &kind, self.server.lan_acting_uuid);
             self.mob_event_particles(id, 18);
         }
         self.llama_sound(index, "entity.llama.eat", 1.0);

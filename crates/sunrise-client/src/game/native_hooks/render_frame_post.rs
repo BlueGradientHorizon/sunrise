@@ -4,6 +4,7 @@ use super::*;
 impl Game<'_> {
     pub(in crate::game) fn finish_render_frame(&mut self, elapsed: Duration) {
         let (world_partial_tick, partial_tick) = self
+            .client
             .extras
             .frame_partial_ticks
             .take()

@@ -534,9 +534,9 @@ pub(in crate::game) fn run_comparator_and_hopper_live_state_survives_chunk_reloa
         game.world.block_entities.insert(*p, entity.clone());
     }
     game.world.chunks.insert((0, 0), Arc::new(restored));
-    game.hoppers.clear();
+    game.server.hoppers.clear();
     game.block_ticks = sunrise_world::level::Ticks::new(0);
-    game.tick_chunks.clear();
+    game.server.tick_chunks.clear();
     // Frozen: data must already show the saved values before any tick.
     assert_eq!(
         game.block_entity_nbt([1, 64, 1])
@@ -573,7 +573,7 @@ pub(in crate::game) fn run_comparator_and_hopper_live_state_survives_chunk_reloa
     }
     game.world.chunks.clear();
     game.sync_tick_chunks();
-    assert!(!game.hoppers.contains_key(&hopper));
+    assert!(!game.server.hoppers.contains_key(&hopper));
     assert!(
         !game
             .block_ticks
@@ -1212,8 +1212,8 @@ fn an_orb_saves_its_live_portal_cooldown() {
         let id = game.orbs[0].id;
         // One tick: the orb's own (ordered) tick, then Entity.handlePortal's
         // pass over the entities.
-        game.ordered.announced = sunrise_client::join_seq::JoinSeq::MAX;
-        game.tickets.update(None);
+        game.server.ordered.announced = sunrise_client::join_seq::JoinSeq::MAX;
+        game.server.tickets.update(None);
         game.begin_ordered_ticks();
         game.run_ordered_ticks(sunrise_client::join_seq::JoinSeq::MAX, false)
             .unwrap();

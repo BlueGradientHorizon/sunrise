@@ -74,8 +74,8 @@ fn rewritten_awards_update_counts_criteria_and_dirty_values_atomically() {
                     .iter()
                     .any(|id| id == "rewrite:steps")
             );
-            game.lan_acting_uuid = Some(12);
-            game.lan_acting_name = Some("player".into());
+            game.server.lan_acting_uuid = Some(12);
+            game.server.lan_acting_name = Some("player".into());
             game.award_stat("mined", "minecraft:stone", 1);
             assert_eq!(game.stats.get("mined", "minecraft:stone"), 2);
             assert_eq!(
@@ -290,9 +290,9 @@ fn real_integrated_stone_break_updates_counter_score_and_dirty_award() {
             game.build_registries();
             game.set_allow_commands(true);
             prepare_breaker(game);
-            game.lan_acting_uuid = Some(123);
-            game.lan_acting_entity = Some(20);
-            game.lan_acting_name = Some("Breaker".into());
+            game.server.lan_acting_uuid = Some(123);
+            game.server.lan_acting_entity = Some(20);
+            game.server.lan_acting_name = Some("Breaker".into());
             assert!(
                 game.run_command("scoreboard objectives add mined minecraft.mined:minecraft.stone")
             );

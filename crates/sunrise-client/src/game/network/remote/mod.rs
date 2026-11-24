@@ -1111,7 +1111,7 @@ impl Game<'_> {
         // The block events and block changes of a piston clock start and end
         // thousands of moves at once: the collision view and the renderer
         // take them all in one sync, before the tick or frame reads them.
-        if std::mem::take(&mut self.moving_pistons_stale) {
+        if std::mem::take(&mut self.client.moving_pistons_stale) {
             self.sync_moving_pistons();
         }
         polled
@@ -1278,9 +1278,9 @@ impl Game<'_> {
             // PingDebugMonitor.onPongReceived.
             C::PongResponse(p) => {
                 let delay = sunrise_client::net::ping_millis().wrapping_sub(p.time);
-                self.debug_charts.ping.log(delay);
+                self.client.debug_charts.ping.log(delay);
             }
-            C::DebugSample(p) => self.debug_charts.log_remote_sample(&p.sample)?,
+            C::DebugSample(p) => self.client.debug_charts.log_remote_sample(&p.sample)?,
             C::Login(p) => self.apply_login_packet(p),
             C::Respawn(p) => self.apply_respawn_packet(p),
             C::PlayerPosition(p) => self.remote_teleport(&p)?,
@@ -1489,15 +1489,15 @@ impl Game<'_> {
             // ClientPacketListener.setActionBarText, setTitleText,
             // setSubtitleText, setTitlesAnimation and handleTitlesClear.
             C::BossEvent(p) => self.apply_boss_event(&p),
-            C::SetActionBarText(p) => self.titles.set_overlay(remote_text(&p.text), false),
-            C::SetTitleText(p) => self.titles.set_title(remote_text(&p.text)),
-            C::SetSubtitleText(p) => self.titles.set_subtitle(remote_text(&p.text)),
-            C::SetTitlesAnimation(p) => self.titles.set_times(p.fade_in, p.stay, p.fade_out),
+            C::SetActionBarText(p) => self.client.titles.set_overlay(remote_text(&p.text), false),
+            C::SetTitleText(p) => self.client.titles.set_title(remote_text(&p.text)),
+            C::SetSubtitleText(p) => self.client.titles.set_subtitle(remote_text(&p.text)),
+            C::SetTitlesAnimation(p) => self.client.titles.set_times(p.fade_in, p.stay, p.fade_out),
             // ClientCommonPacketListenerImpl.handleShowDialog / handleClearDialog.
             C::ShowDialog(p) => self.show_play_dialog(&p.dialog),
             C::ClearDialog(_) => self.clear_dialog(),
             // ClientPacketListener.handleLowDiskSpaceWarning.
-            C::LowDiskSpaceWarning(_) => self.client_reports.report_low_disk_space(),
+            C::LowDiskSpaceWarning(_) => self.client.client_reports.report_low_disk_space(),
             C::ClearTitles(p) => self.apply_clear_titles_packet(p),
             _ => {}
         }
@@ -1859,7 +1859,7 @@ impl Game<'_> {
         // CommonComponents.GUI_DISCONNECT
         let label = sunrise_client::text::Text::translate("menu.disconnect", &[]);
         let active = self.ticks.saturating_sub(since) >= 600;
-        let hover = sunrise_client::ui::hovered(self.cursor, bx, by, 150.0, 20.0);
+        let hover = sunrise_client::ui::hovered(self.client.cursor, bx, by, 150.0, 20.0);
         sunrise_client::ui::button(batch, atlas, bx, by, 150.0, 20.0, &label, active, hover);
     }
 
@@ -1876,7 +1876,12 @@ impl Game<'_> {
     }
     pub(super) fn remote_player_uuid(&self, id: u32) -> Option<u128> {
         let remote = self.remote.as_ref()?;
-        if self.player_model.as_ref().is_some_and(|m| m.id == id) {
+        if self
+            .client
+            .player_model
+            .as_ref()
+            .is_some_and(|m| m.id == id)
+        {
             Some(remote.profile)
         } else {
             remote.level_players.get(&(id as i32)).copied()
@@ -2224,7 +2229,7 @@ impl sunrise_client::interaction_input::InteractionWorld for RemoteInputWorld<'_
         self.0.release_tick_targets();
     }
     fn using_item(&self) -> bool {
-        self.0.client_item_use.is_some() || self.0.using.is_some()
+        self.0.client.client_item_use.is_some() || self.0.using.is_some()
     }
     fn release_using(&mut self) {
         if !self.0.end_client_item_use(true) && self.0.using.is_some() {

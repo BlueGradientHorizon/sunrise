@@ -64,9 +64,9 @@ fn game(resources: &mut Option<std::sync::Arc<Resources>>) -> Game<'_> {
 
 /// What `data get block 8 100 8 <path>` says, if anything.
 fn read(game: &mut Game<'_>, path: &str) -> Option<String> {
-    game.chat_capture = Some(Vec::new());
+    game.server.chat_capture = Some(Vec::new());
     let ok = game.run_command(&format!("data get block 8 100 8 {path}"));
-    let said = game.chat_capture.take().unwrap_or_default();
+    let said = game.server.chat_capture.take().unwrap_or_default();
     ok.then(|| said.iter().map(sunrise_client::text::Text::plain).collect())
 }
 

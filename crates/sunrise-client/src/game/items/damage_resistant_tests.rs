@@ -45,7 +45,7 @@ fn drop_stack(game: &mut Game<'_>, input: &str, position: [f64; 3]) -> u32 {
     let item = game.dropped.last_mut().unwrap();
     item.no_gravity = true;
     let id = item.id;
-    game.ticked_entities_through = game.next_entity;
+    game.server.ticked_entities_through = game.server.next_entity;
     id
 }
 

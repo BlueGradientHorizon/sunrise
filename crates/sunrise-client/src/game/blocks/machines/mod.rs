@@ -76,7 +76,7 @@ fn wake_hoppers_reaching(
 
 impl Game<'_> {
     pub(super) fn hopper_cooldown(&self, pos: Pos) -> i32 {
-        hopper_cooldown_in(&self.hoppers, &self.world, pos)
+        hopper_cooldown_in(&self.server.hoppers, &self.world, pos)
     }
 }
 
@@ -1059,8 +1059,9 @@ impl Game<'_> {
         }
         if success && was_empty && view.kind == Kind::Hopper {
             let dest = view.parts[0].0;
-            let from_ticked = from_hopper.and_then(|p| self.hoppers.get(&p).map(|h| h.ticked));
-            let state = self.hoppers.entry(dest).or_default();
+            let from_ticked =
+                from_hopper.and_then(|p| self.server.hoppers.get(&p).map(|h| h.ticked));
+            let state = self.server.hoppers.entry(dest).or_default();
             if state.cooldown <= 8 {
                 let skip = i32::from(from_ticked.is_some_and(|t| state.ticked >= t));
                 state.cooldown = 8 - skip;
@@ -1188,7 +1189,7 @@ impl Game<'_> {
         // Every hopper keeps its cooldown and the tick it last ticked
         // (`HopperBlockEntity.tickedGameTime`), idle ones too: a hopper that
         // receives an item reads it for its cooldown (8, or 7 once it ticked).
-        let state = self.hoppers.entry(pos).or_default();
+        let state = self.server.hoppers.entry(pos).or_default();
         state.cooldown = state.cooldown.wrapping_sub(1);
         state.ticked = time;
         if state.cooldown > 0 {
@@ -1205,7 +1206,7 @@ impl Game<'_> {
                 .name,
         ) == "minecraft:hopper";
         if !hopper {
-            self.hoppers.remove(&pos);
+            self.server.hoppers.remove(&pos);
             return;
         }
         let state = self.world.block(pos.0, pos.1, pos.2);
@@ -1228,14 +1229,14 @@ impl Game<'_> {
     /// every tick, and a feeder that runs later in the same tick reads the
     /// stamp to choose 7 ticks over 8.
     pub(super) fn tick_sleeping_hopper(&mut self, pos: Pos) {
-        let state = self.hoppers.entry(pos).or_default();
+        let state = self.server.hoppers.entry(pos).or_default();
         state.cooldown = state.cooldown.wrapping_sub(1).max(0);
         state.ticked = self.world.game_time;
     }
     /// Drops the cooldowns of hoppers whose block entity is gone.
     pub(super) fn forget_gone_hoppers(&mut self) {
         let entities = &self.world.block_entities;
-        self.hoppers.retain(|p, _| {
+        self.server.hoppers.retain(|p, _| {
             matches!(entities.get(p), Some(BlockEntity::Chest(items)) if items.len() == HOPPER_SLOTS)
         });
     }
@@ -1251,7 +1252,13 @@ impl Game<'_> {
         let Some(view) = c.view(pos, false) else {
             return false;
         };
-        if self.hoppers.get(&pos).is_some_and(|h| h.cooldown > 0) || !enabled {
+        if self
+            .server
+            .hoppers
+            .get(&pos)
+            .is_some_and(|h| h.cooldown > 0)
+            || !enabled
+        {
             return false;
         }
         self.native_prepare_hopper_transfer([pos.0, pos.1, pos.2]);
@@ -1265,7 +1272,7 @@ impl Game<'_> {
             changed |= self.hopper_suck(pos, &view);
         }
         if changed {
-            self.hoppers.entry(pos).or_default().cooldown = 8;
+            self.server.hoppers.entry(pos).or_default().cooldown = 8;
             self.container_changed(pos);
         }
         changed
@@ -1417,7 +1424,12 @@ impl Game<'_> {
     /// `tryMoveItems(…, () -> addItem(hopper, itemEntity))`; true when the
     /// item entity was taken whole.
     fn hopper_take_item(&mut self, pos: Pos, i: usize) -> bool {
-        if self.hoppers.get(&pos).is_some_and(|h| h.cooldown > 0) {
+        if self
+            .server
+            .hoppers
+            .get(&pos)
+            .is_some_and(|h| h.cooldown > 0)
+        {
             return false;
         }
         let state = self.world.block(pos.0, pos.1, pos.2);
@@ -1458,7 +1470,7 @@ impl Game<'_> {
             }
         }
         if changed {
-            self.hoppers.entry(pos).or_default().cooldown = 8;
+            self.server.hoppers.entry(pos).or_default().cooldown = 8;
             self.container_changed(pos);
         }
         taken
@@ -1760,7 +1772,7 @@ impl Game<'_> {
                 f64::from(pos.2) + 1.0,
             ],
         );
-        if let Some(columns) = self.item_columns.as_mut()
+        if let Some(columns) = self.server.item_columns.as_mut()
             && !columns.may_reach(&self.dropped, pos.0, pos.2)
         {
             return false;
@@ -2082,6 +2094,7 @@ impl Game<'_> {
     /// explosion's push, a command, a pickup) makes them scan, then rebuild.
     fn cart_suck_items(&mut self, hopper: &View, min: [f64; 3], max: [f64; 3]) -> bool {
         if !self
+            .server
             .pickup_columns
             .get_or_insert_with(Default::default)
             .may_reach_area(
@@ -2438,7 +2451,7 @@ mod brewing_fuel_transfer_tests {
                     );
                     assert_eq!(containers.get(&target, 0).unwrap().count, 1);
                     assert!(containers.is_empty(&containers.view(pos, false).unwrap()));
-                    assert_eq!(game.hoppers[&pos].cooldown, 8);
+                    assert_eq!(game.server.hoppers[&pos].cooldown, 8);
                 }
             })
         });
@@ -2606,7 +2619,7 @@ mod furnace_fuel_transfer_tests {
                     recipes_used: Default::default(),
                 }),
             );
-            game.hoppers.remove(&hopper);
+            game.server.hoppers.remove(&hopper);
 
             game.hopper_try_move_items(hopper);
 
@@ -3256,8 +3269,8 @@ mod hopper_cart_transfer_tests {
             game.adv.loaded = true;
             let ai = game.adv.tree.by_id["parity:boat_loot"];
             for player in [false, true] {
-                game.next_entity += 1;
-                let id = game.next_entity;
+                game.server.next_entity += 1;
+                let id = game.server.next_entity;
                 game.boats
                     .push(Boat::new(id, "oak".into(), Vec3::new(8.5, 65.0, 8.5), 0.0).with_chest());
                 game.persist.raw.insert(
@@ -3290,8 +3303,8 @@ mod hopper_cart_transfer_tests {
             let sentinel = Some(ItemStack::new("minecraft:diamond", 17));
             for open in [false, true] {
                 for occupied in [1, 24, 27] {
-                    game.next_entity += 1;
-                    let id = game.next_entity;
+                    game.server.next_entity += 1;
+                    let id = game.server.next_entity;
                     let mut boat =
                         Boat::new(id, "oak".into(), Vec3::new(8.5, 65.0, 8.5), 0.0).with_chest();
                     if occupied > 1 {
@@ -3406,8 +3419,8 @@ mod hopper_cart_transfer_tests {
                 (8, 65, 8),
                 BlockEntity::Chest(vec![Some(ItemStack::new("minecraft:stone", 64)); 27]),
             );
-            game.next_entity += 1;
-            let id = game.next_entity;
+            game.server.next_entity += 1;
+            let id = game.server.next_entity;
             let mut cart = Minecart::new(id, CartKind::Hopper, Vec3::new(8.5, 64.0625, 8.5));
             cart.enabled = true;
             game.carts.push(cart);

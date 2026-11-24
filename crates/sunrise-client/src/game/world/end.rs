@@ -518,7 +518,7 @@ impl Game<'_> {
             && !self.settings.file.bool("hideLightningFlashes")
         {
             let intensity = self.end.flash.intensity(partial as f32);
-            sky.sky_light_factor += if self.boss_overlay.should_create_world_fog() {
+            sky.sky_light_factor += if self.client.boss_overlay.should_create_world_fog() {
                 intensity / 3.0
             } else {
                 intensity
@@ -554,7 +554,7 @@ impl Game<'_> {
         });
         let Some((hit, state)) = target else {
             // EnderEyeItem.useOn passes off a frame: a guest's UseItem throws it.
-            if matches!(self.guest_use, Some(super::GuestUse::OnBlock { .. })) {
+            if matches!(self.server.guest_use, Some(super::GuestUse::OnBlock { .. })) {
                 return Ok(false);
             }
             // EnderEyeItem.use: startUsingItem (getUseDuration 0, so the use
@@ -665,7 +665,7 @@ impl Game<'_> {
         // getDefaultClockTime: the End's own clock (the client keeps the
         // dimension's default clock in day_time), not the game time.
         self.end.flash.tick(self.world.day_time);
-        if self.end.flash.started_this_tick() && self.win.is_none() {
+        if self.end.flash.started_this_tick() && self.client.win.is_none() {
             let flash = &self.end.flash;
             let instance = sunrise_client::sound_engine::SoundInstance::directional(
                 "minecraft:weather.end_flash",
@@ -735,7 +735,7 @@ impl Game<'_> {
     /// the End when `entering`, else out of it to `target`, the respawn point's
     /// level or the world spawn's (which may be the End itself).
     pub(super) fn end_destination(&self, entering: bool, target: Dim) -> Option<Vec3> {
-        if !self.end_portal_travel {
+        if !self.server.end_portal_travel {
             return None;
         }
         if entering {
@@ -748,7 +748,7 @@ impl Game<'_> {
         }
         // Leaving the End: the respawn position, a bed's found once it has
         // loaded (findRespawnPositionAndUseSpawnBlock, not using it up).
-        if let Some(c) = self.respawn_config.filter(|c| c.dim == target) {
+        if let Some(c) = self.server.respawn_config.filter(|c| c.dim == target) {
             return Some(Vec3::new(
                 f64::from(c.pos[0]) + 0.5,
                 f64::from(c.pos[1]),
@@ -805,7 +805,7 @@ impl Game<'_> {
         // ServerPlayer.findRespawnPositionAndUseSpawnBlock: where the bed or
         // anchor puts the player, facing it; else onto the spawn column.
         let mut target = target;
-        if let Some(c) = self.respawn_config.filter(|c| c.dim == self.dim) {
+        if let Some(c) = self.server.respawn_config.filter(|c| c.dim == self.dim) {
             if let Some((at, yaw, pitch)) = self.find_respawn_and_use(c, false)? {
                 return Ok(Some((at, [Some(yaw), Some(pitch)])));
             }
@@ -822,7 +822,7 @@ impl Game<'_> {
         Ok(match self.end_exit_landing(target, finder) {
             Ok(at) => Some((at, facing)),
             Err(chunk) => {
-                self.spawn_wait.push(chunk);
+                self.server.spawn_wait.push(chunk);
                 None
             }
         })
@@ -855,7 +855,7 @@ impl Game<'_> {
         {
             return Ok(());
         }
-        let won = self.fight.previously_killed;
+        let won = self.server.fight.previously_killed;
         let gateway = self.first_gateway();
         if self.exit_portal().is_none() {
             // findExitPortal remembers the location of a podium that is already there.
@@ -1274,7 +1274,7 @@ impl Game<'_> {
         if self.crystals.is_empty() {
             return None;
         }
-        let model = self.crystal_model.as_ref()?;
+        let model = self.client.crystal_model.as_ref()?;
         let r = self
             .gui
             .atlas
@@ -1979,7 +1979,7 @@ mod tests {
                 chunk,
                 Arc::new(sunrise_client::chunk::Chunk::empty(chunk.0, chunk.1)),
             );
-            game.respawn_config = None;
+            game.server.respawn_config = None;
             game.spawn = None;
             game.level.world_spawn = None;
             game.level.world_spawn_angle = [45.0, -10.0];

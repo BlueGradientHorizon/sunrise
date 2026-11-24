@@ -28,11 +28,14 @@ impl Game<'_> {
             .ok_or(CollisionExclusionsError::Stale)?
         {
             Target::Guest(conn) => conn,
-            Target::Player => self.lan_acting.ok_or(CollisionExclusionsError::Stale)?,
+            Target::Player => self
+                .server
+                .lan_acting
+                .ok_or(CollisionExclusionsError::Stale)?,
             _ => return Err(CollisionExclusionsError::NotAPlayer),
         };
         // During the guest's own turn its body is the game's player.
-        let acting = self.lan_acting == Some(conn);
+        let acting = self.server.lan_acting == Some(conn);
         let host = self.lan.as_mut().ok_or(CollisionExclusionsError::Stale)?;
         let turn_body = host
             .hub

@@ -131,19 +131,25 @@ fn gives_uuid(t: Target) -> Option<u32> {
 
 impl Game<'_> {
     fn scoreboard_path(&self) -> std::path::PathBuf {
-        self.world_root.join("data/minecraft/scoreboard.dat")
+        self.server.world_root.join("data/minecraft/scoreboard.dat")
     }
     /// `ServerLevel.getWorldBorder`'s file: each dimension's own
     /// `data/minecraft/world_border.dat`.
     fn border_path(&self, dim: super::Dim) -> std::path::PathBuf {
-        save::dimension_dir(&self.world_root, dim.id()).join("data/minecraft/world_border.dat")
+        save::dimension_dir(&self.server.world_root, dim.id())
+            .join("data/minecraft/world_border.dat")
     }
     /// The border `dim`'s level saved. The Overworld also reads the root file older Sunrise
     /// builds wrote for their one shared border; the other levels start from the default.
     pub(super) fn load_border(&self, dim: super::Dim) -> sunrise_client::worldborder::WorldBorder {
         let mut root = save::read_dat(&self.border_path(dim));
         if root.is_none() && dim == super::Dim::Overworld {
-            root = save::read_dat(&self.world_root.join("data/minecraft/world_border.dat"));
+            root = save::read_dat(
+                &self
+                    .server
+                    .world_root
+                    .join("data/minecraft/world_border.dat"),
+            );
         }
         root.as_ref()
             .and_then(|root| root.get("data"))
@@ -179,16 +185,17 @@ impl Game<'_> {
             self.score.board = Scoreboard::unpack(data);
         }
         self.score.storage =
-            sunrise_client::command_storage::CommandStorage::load(&self.world_root);
-        self.score.stopwatches = sunrise_client::stopwatches::Stopwatches::load(&self.world_root);
+            sunrise_client::command_storage::CommandStorage::load(&self.server.world_root);
+        self.score.stopwatches =
+            sunrise_client::stopwatches::Stopwatches::load(&self.server.world_root);
         self.sync_score_registries();
     }
     pub(super) fn save_scoreboard(&mut self) {
         if !self.score.loaded || self.remote.is_some() {
             return;
         }
-        self.score.storage.save(&self.world_root);
-        self.score.stopwatches.save(&self.world_root);
+        self.score.storage.save(&self.server.world_root);
+        self.score.stopwatches.save(&self.server.world_root);
         // The border is saved with its level (`save_level`).
         let path = self.scoreboard_path();
         let board = &self.score.board;
@@ -419,7 +426,7 @@ impl Game<'_> {
                 for (id, negated) in &s.predicates {
                     // EntitySelectorOptions rejects a missing registry entry
                     // before applying the predicate's negation.
-                    let Some(json) = self.fns.store.predicates.get(id) else {
+                    let Some(json) = self.server.fns.store.predicates.get(id) else {
                         ok = false;
                         break;
                     };
@@ -985,7 +992,7 @@ impl Game<'_> {
             let mut downloads = self.skin_downloads.borrow_mut();
             (downloads.take_ready(), downloads.take_drawn())
         };
-        self.skin_slots.next_frame(drawn);
+        self.client.skin_slots.next_frame(drawn);
         for (location, rgba) in ready {
             self.store_skin(location, rgba);
         }
@@ -998,7 +1005,8 @@ impl Game<'_> {
         // Player heads and the player list both draw from the same skin
         // slots: a new frame, with what the last one drew.
         self.flush_skin_slots();
-        let key = self.screen == super::Screen::Playing && self.held_mapping(Action::Playerlist);
+        let key =
+            self.client.screen == super::Screen::Playing && self.held_mapping(Action::Playerlist);
         let count = self.remote.as_ref().map_or_else(
             || {
                 1 + self
@@ -1017,7 +1025,7 @@ impl Game<'_> {
             count,
             has_objective,
         );
-        let changed = self.tab_list.set_visible(shown);
+        let changed = self.client.tab_list.set_visible(shown);
         if !tab_players_needed(shown, changed) {
             // World skins still need download polling and atlas residency checks.
             self.update_remote_skins();
@@ -1054,6 +1062,7 @@ impl Game<'_> {
         }
         // The faces of the players the list shows.
         let faces: std::collections::HashSet<u128> = self
+            .client
             .tab_list
             .displayed_ids(&players, &self.score.board)
             .iter()
@@ -1076,7 +1085,7 @@ impl Game<'_> {
             background: tab_list::row_background(true, self.settings.text_background_opacity),
             upside_down: &up,
         };
-        let draws = self.tab_list.layout(&inputs, &self.gui.atlas.font);
+        let draws = self.client.tab_list.layout(&inputs, &self.gui.atlas.font);
         sunrise_client::hud_layout::paint(batch, &self.gui.atlas, &draws);
     }
 }
@@ -1171,7 +1180,7 @@ impl Env for GameEnv<'_, '_> {
         }
     }
     fn source(&mut self) -> Option<(Holder, bool)> {
-        let entity = match self.g.command_source {
+        let entity = match self.g.server.command_source {
             Some(s) => s.entity,
             None => Some(Target::Player),
         }?;

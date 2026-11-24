@@ -17,19 +17,23 @@ impl Game<'_> {
         raw: KeyCode,
         shortcut: Option<sunrise_client::clipboard::EditShortcut>,
     ) -> Result<bool> {
-        let creative = self.screen == Screen::Creative;
-        let search = creative && self.creative_screen.tab().search;
-        self.creative_ignore_text = false;
+        let creative = self.client.screen == Screen::Creative;
+        let search = creative && self.client.creative_screen.tab().search;
+        self.client.creative_ignore_text = false;
         let binding = sunrise_client::keybinds::key_name(raw);
         let chat = binding == Some(self.settings.keys.get("key.chat"));
         if creative
             && !search
             && chat
-            && let Some(tab) = self.creative_screen.search_tab()
+            && let Some(tab) = self.client.creative_screen.search_tab()
         {
-            select_creative_tab(&mut self.creative_screen, &mut self.inv_clicks, tab);
+            select_creative_tab(
+                &mut self.client.creative_screen,
+                &mut self.client.inv_clicks,
+                tab,
+            );
             self.build_screen();
-            self.creative_ignore_text = true;
+            self.client.creative_ignore_text = true;
             return Ok(true);
         }
         if raw == KeyCode::Escape {
@@ -41,17 +45,17 @@ impl Game<'_> {
         if !self.screen_state.widgets.has_focus() {
             if search && !self.mod_browser_typing() {
                 if self.search_tab_hotbar_key(raw) {
-                    self.creative_ignore_text = true;
+                    self.client.creative_ignore_text = true;
                     return Ok(true);
                 }
                 if let Some(shortcut) = shortcut {
                     self.creative_search_shortcut(shortcut);
                 } else {
-                    let before = self.creative_screen.search.value.clone();
+                    let before = self.client.creative_screen.search.value.clone();
                     let (ctrl, shift) = (self.has_control_down(), self.has_shift_down());
-                    self.creative_screen.search.key(raw, ctrl, shift);
-                    if self.creative_screen.search.value != before {
-                        self.creative_screen.scroll = 0.0;
+                    self.client.creative_screen.search.key(raw, ctrl, shift);
+                    if self.client.creative_screen.search.value != before {
+                        self.client.creative_screen.scroll = 0.0;
                     }
                 }
                 return Ok(true);
@@ -102,7 +106,7 @@ impl Game<'_> {
 
     /// `AbstractContainerScreen.keyPressed`: the inventory binding closes the current menu.
     pub(super) fn close_inventory_key(&mut self) {
-        if self.screen == Screen::Creative {
+        if self.client.screen == Screen::Creative {
             self.pad_clear_focus();
             if let Some(c) = self.carried.take() {
                 let _ = self.add_stack_to_inventory(c);
@@ -134,7 +138,7 @@ impl Game<'_> {
             return false;
         };
         let batch = HudBatch::new(size, self.settings.gui_scale_inputs());
-        let hover = match self.slot_at(&batch, self.cursor.0, self.cursor.1) {
+        let hover = match self.slot_at(&batch, self.client.cursor.0, self.client.cursor.1) {
             None => Hover::Nothing,
             Some(slot) if slot >= Creative::DISPLAY => Hover::Display {
                 filled: self.creative_display_stack(slot).is_some(),
@@ -156,7 +160,7 @@ impl Game<'_> {
             return false;
         };
         let batch = HudBatch::new(size, self.settings.gui_scale_inputs());
-        let Some(slot) = self.slot_at(&batch, self.cursor.0, self.cursor.1) else {
+        let Some(slot) = self.slot_at(&batch, self.client.cursor.0, self.client.cursor.1) else {
             return false;
         };
         let hotbar = HOTBAR_DIGITS
@@ -170,7 +174,7 @@ impl Game<'_> {
         let done = if let Some(button) = hotbar_swap(hotbar, self.carried.is_none()) {
             self.click_open_inventory(Some(slot), button, Input::Swap)
         } else if key == KeyCode::KeyQ {
-            let all = drop_whole_stack(self.modifiers);
+            let all = drop_whole_stack(self.client.modifiers);
             self.click_open_inventory(Some(slot), i32::from(all), Input::Throw)
         } else {
             false
@@ -184,8 +188,9 @@ impl Game<'_> {
     /// menu (`AbstractContainerScreen.keyPressed`): `CLONE` with button 0. The
     /// search tab's box takes the key instead.
     pub(super) fn inventory_pick_key(&mut self) {
-        let menu = (self.screen == Screen::Inventory
-            || (self.screen == Screen::Creative && !self.creative_screen.tab().search))
+        let menu = (self.client.screen == Screen::Inventory
+            || (self.client.screen == Screen::Creative
+                && !self.client.creative_screen.tab().search))
             && !self.dialog_open();
         let Some(size) = self
             .renderer
@@ -196,7 +201,7 @@ impl Game<'_> {
         };
         let batch = HudBatch::new(size, self.settings.gui_scale_inputs());
         let Some(slot) = self
-            .slot_at(&batch, self.cursor.0, self.cursor.1)
+            .slot_at(&batch, self.client.cursor.0, self.client.cursor.1)
             .filter(|_| menu)
         else {
             return;
@@ -223,11 +228,11 @@ impl Game<'_> {
         // AbstractContainerScreen starts a drag or chooses an outside slot.
         // Toggling it can move the inventory under the pointer before release.
         if self.recipe_book_click(right) {
-            self.inv_clicks.skip_release();
+            self.client.inv_clicks.skip_release();
             return true;
         }
         if self.native_screen_press(right) {
-            self.inv_clicks.skip_release();
+            self.client.inv_clicks.skip_release();
             return true;
         }
         let (slot, outside) = self.inventory_target();
@@ -235,14 +240,14 @@ impl Game<'_> {
         // the container, and the double click is the same slot and button
         // within 250 ms. A click outside records no slot, ending the chain.
         let double = sunrise_client::container_screen::double_click(
-            &mut self.last_inv_click,
+            &mut self.client.last_inv_click,
             slot,
             right,
             std::time::Instant::now(),
         );
         let shift = self.has_shift_down();
         let target = Target::of(slot, outside);
-        let input = self.inv_clicks.press(
+        let input = self.client.inv_clicks.press(
             &target,
             Self::screen_button(right),
             self.carried.is_none(),
@@ -254,8 +259,8 @@ impl Game<'_> {
             // starts a drag whose release drops it.
             match input {
                 Some(input) => self.throw_click(right, input),
-                None if self.inv_clicks.quick_crafting().is_some() => {
-                    self.inv_drag = Some((i32::from(right), Vec::new()));
+                None if self.client.inv_clicks.quick_crafting().is_some() => {
+                    self.client.inv_drag = Some((i32::from(right), Vec::new()));
                 }
                 None => return false,
             }
@@ -272,7 +277,7 @@ impl Game<'_> {
             // of a carried stack, mouseReleased's in vanilla) remember the
             // stack it moves.
             if input == Some(Input::QuickMove) || (self.carried.is_some() && !double) {
-                self.last_quick_moved = self.slot_view(slot);
+                self.client.last_quick_moved = self.slot_view(slot);
             }
             if double && !right {
                 // mouseReleased: every stack of lastQuickMoved's item in the
@@ -284,9 +289,9 @@ impl Game<'_> {
                     self.click_inventory(right);
                     return true;
                 }
-                if let Some(moved) = self.last_quick_moved.clone() {
+                if let Some(moved) = self.client.last_quick_moved.clone() {
                     // The creative screen clicks its own menu, on a server too.
-                    if self.remote.is_some() && self.screen != Screen::Creative {
+                    if self.remote.is_some() && self.client.screen != Screen::Creative {
                         self.remote_quick_move_all(slot, &moved);
                     } else {
                         self.menu_session(|menu, env, to_menu| {
@@ -297,8 +302,8 @@ impl Game<'_> {
                         }
                     }
                 }
-                self.last_inv_click = None;
-                self.inv_clicks.skip_release();
+                self.client.last_inv_click = None;
+                self.client.inv_clicks.skip_release();
                 return true;
             }
         }
@@ -314,9 +319,9 @@ impl Game<'_> {
                 && self.carried.is_some()
                 && self.pick_all_allowed(slot);
             if double && self.click_open_inventory(Some(slot), 0, Input::PickupAll) {
-                self.last_inv_click = None;
+                self.client.last_inv_click = None;
                 // The double click's own release (`mouseReleased`'s PICKUP_ALL).
-                self.inv_clicks.skip_release();
+                self.client.inv_clicks.skip_release();
                 return true;
             }
             if self.carried.is_some() {
@@ -327,9 +332,9 @@ impl Game<'_> {
                 // empty on a Shift press: a release with nothing spread is `mouseReleased`'s
                 // click on the hovered slot (Pickup, or QuickMove under Shift).
                 if !shift && !display && self.quick_craft_accepts(slot, ty, 0) {
-                    self.inv_drag = Some((ty, vec![slot]));
+                    self.client.inv_drag = Some((ty, vec![slot]));
                 } else {
-                    self.inv_drag = Some((ty, Vec::new()));
+                    self.client.inv_drag = Some((ty, Vec::new()));
                 }
                 return true;
             }
@@ -341,8 +346,8 @@ impl Game<'_> {
                 Some(input) => {
                     self.click_open_inventory(slot, i32::from(right), input);
                 }
-                None if self.inv_clicks.quick_crafting().is_some() => {
-                    self.inv_drag = Some((i32::from(right), Vec::new()));
+                None if self.client.inv_clicks.quick_crafting().is_some() => {
+                    self.client.inv_drag = Some((i32::from(right), Vec::new()));
                 }
                 None => return false,
             }
@@ -366,7 +371,7 @@ impl Game<'_> {
         if self.tweaks_on() && self.tweak_drag_move(self.inventory_target().0) {
             return true;
         }
-        let Some((ty, slots)) = self.inv_drag.clone() else {
+        let Some((ty, slots)) = self.client.inv_drag.clone() else {
             return self.carried.is_some() || self.inventory_target().0.is_some();
         };
         let Some(r) = self.renderer.as_ref() else {
@@ -376,12 +381,12 @@ impl Game<'_> {
             [r.config.width, r.config.height],
             self.settings.gui_scale_inputs(),
         );
-        if let Some(slot) = self.slot_at(&batch, self.cursor.0, self.cursor.1)
+        if let Some(slot) = self.slot_at(&batch, self.client.cursor.0, self.client.cursor.1)
             && slot != 200
             && slot < Creative::DISPLAY
             && !slots.contains(&slot)
             && self.quick_craft_accepts(slot, ty, slots.len())
-            && let Some((_, slots)) = self.inv_drag.as_mut()
+            && let Some((_, slots)) = self.client.inv_drag.as_mut()
         {
             slots.push(slot);
         }
@@ -412,7 +417,7 @@ impl Game<'_> {
     }
     /// `inventory_target` for the frame `batch` describes.
     pub(super) fn target_at(&self, batch: &HudBatch) -> (Option<usize>, bool) {
-        let slot = self.slot_at(batch, self.cursor.0, self.cursor.1);
+        let slot = self.slot_at(batch, self.client.cursor.0, self.client.cursor.1);
         // A mod screen may place a slot beyond its image: a click on one is
         // not a click outside the window.
         let outside =
@@ -432,11 +437,11 @@ impl Game<'_> {
     /// and a sneak the key no longer held: #4166's in-game report), so a
     /// cached key set is not vanilla's answer.
     pub(super) fn has_shift_down(&self) -> bool {
-        self.modifiers.shift_key()
+        self.client.modifiers.shift_key()
     }
     /// The same live word for Control (`InputWithModifiers.hasControlDown`).
     pub(super) fn has_control_down(&self) -> bool {
-        self.modifiers.control_key()
+        self.client.modifiers.control_key()
     }
 
     /// Real events word the modifiers by their own `ModifiersChanged`; a
@@ -444,8 +449,8 @@ impl Game<'_> {
     /// and every reader can ask the one live state.
     pub(super) fn press_modifier_key(&mut self, key: KeyCode, down: bool) {
         sunrise_client_input::modifiers::set_key(
-            &mut self.modifiers,
-            &mut self.physical_keys,
+            &mut self.client.modifiers,
+            &mut self.client.physical_keys,
             key,
             down,
         );
@@ -461,8 +466,8 @@ impl Game<'_> {
                 selected_tab_hovered: tab_hovered,
             });
         clicked_outside(
-            f64::from(self.cursor.0),
-            f64::from(self.cursor.1),
+            f64::from(self.client.cursor.0),
+            f64::from(self.client.cursor.1),
             image,
             book,
         )
@@ -482,7 +487,7 @@ impl Game<'_> {
     /// build holds this size.
     pub(super) fn container_image_parts(&self, batch: &HudBatch) -> [f32; 4] {
         let (ox, oy) = self.inventory_origin_unbuilt(batch);
-        let (shift, width, height) = if self.screen == Screen::Creative {
+        let (shift, width, height) = if self.client.screen == Screen::Creative {
             (0.0, Creative::WIDTH, Creative::HEIGHT)
         } else {
             let (shift, width) = match self.station.as_ref().map(|s| s.kind) {
@@ -511,7 +516,7 @@ impl Game<'_> {
         use sunrise_client::menu::Input;
         let button = i32::from(right);
         if self.remote.is_some() {
-            if self.screen == Screen::Creative {
+            if self.client.screen == Screen::Creative {
                 self.remote_creative_drop(right);
             } else {
                 self.remote_throw(right, input);
@@ -551,9 +556,13 @@ impl Game<'_> {
         use sunrise_client::container_screen::{Release, Target};
         let tweaked = self.tweak_release();
         let (slot, outside) = self.inventory_target();
-        let dragged = self.inv_drag.as_ref().is_some_and(|(_, s)| !s.is_empty());
-        let had_drag = self.inv_drag.is_some();
-        let release = self.inv_clicks.release(
+        let dragged = self
+            .client
+            .inv_drag
+            .as_ref()
+            .is_some_and(|(_, s)| !s.is_empty());
+        let had_drag = self.client.inv_drag.is_some();
+        let release = self.client.inv_clicks.release(
             &Target::of(slot, outside),
             Self::screen_button(right),
             self.carried.is_none(),
@@ -564,12 +573,12 @@ impl Game<'_> {
         match (release, Target::of(slot, outside)) {
             (Release::QuickCraft, _) => self.inventory_release(),
             (Release::Click(input), Target::Outside) => {
-                self.inv_drag = None;
+                self.client.inv_drag = None;
                 self.throw_click(right, input);
             }
             (Release::Click(input), Target::Slot(slot)) if had_drag => {
                 // The drag never reached a slot: a plain click where it ends.
-                self.inv_drag = None;
+                self.client.inv_drag = None;
                 if !self.click_open_inventory(Some(slot), i32::from(right), input) {
                     self.click_inventory(right);
                 }
@@ -578,10 +587,10 @@ impl Game<'_> {
                 }
             }
             (Release::Swallowed, _) => {
-                self.inv_drag = None;
+                self.client.inv_drag = None;
                 return true;
             }
-            _ => self.inv_drag = None,
+            _ => self.client.inv_drag = None,
         }
         tweaked
     }
@@ -594,8 +603,8 @@ impl Game<'_> {
     pub(super) fn inventory_pick_press(&mut self) -> bool {
         use sunrise_client::container_screen::{Button, Target};
         let (slot, outside) = self.inventory_target();
-        let was_crafting = self.inv_clicks.quick_crafting().is_some();
-        let input = self.inv_clicks.press(
+        let was_crafting = self.client.inv_clicks.quick_crafting().is_some();
+        let input = self.client.inv_clicks.press(
             &Target::of(slot, outside),
             Button::Middle,
             self.carried.is_none(),
@@ -607,12 +616,12 @@ impl Game<'_> {
             (Some(input), Some(slot)) if !outside => {
                 self.click_open_inventory(Some(slot), 2, input);
             }
-            (None, _) if !was_crafting && self.inv_clicks.quick_crafting().is_some() => {
+            (None, _) if !was_crafting && self.client.inv_clicks.quick_crafting().is_some() => {
                 // Item tab display slots take no drags.
                 let first = slot.filter(|&s| {
                     s != 200 && s < Creative::DISPLAY && self.quick_craft_accepts(s, 2, 0)
                 });
-                self.inv_drag = Some((2, first.into_iter().collect()));
+                self.client.inv_drag = Some((2, first.into_iter().collect()));
             }
             _ => return false,
         }
@@ -624,8 +633,12 @@ impl Game<'_> {
     pub(super) fn inventory_pick_release(&mut self) -> bool {
         use sunrise_client::container_screen::{Button, Release, Target};
         let (slot, outside) = self.inventory_target();
-        let dragged = self.inv_drag.as_ref().is_some_and(|(_, s)| !s.is_empty());
-        let release = self.inv_clicks.release(
+        let dragged = self
+            .client
+            .inv_drag
+            .as_ref()
+            .is_some_and(|(_, s)| !s.is_empty());
+        let release = self.client.inv_clicks.release(
             &Target::of(slot, outside),
             Button::Middle,
             self.carried.is_none(),
@@ -636,21 +649,21 @@ impl Game<'_> {
         match (release, slot) {
             (Release::QuickCraft, _) => self.inventory_release(),
             (Release::Click(input), Some(slot)) if !outside => {
-                self.inv_drag = None;
+                self.client.inv_drag = None;
                 self.click_open_inventory(Some(slot), 2, input);
             }
             (Release::Swallowed, _) => {
-                self.inv_drag = None;
+                self.client.inv_drag = None;
                 return true;
             }
-            _ => self.inv_drag = None,
+            _ => self.client.inv_drag = None,
         }
         false
     }
     /// Mouse release: finishes a quick craft drag (one slot is a plain click).
     pub(super) fn inventory_release(&mut self) {
         use sunrise_client::menu::Input;
-        let Some((ty, slots)) = self.inv_drag.take() else {
+        let Some((ty, slots)) = self.client.inv_drag.take() else {
             return;
         };
         if slots.len() == 1 {

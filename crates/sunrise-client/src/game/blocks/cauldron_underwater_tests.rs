@@ -41,9 +41,9 @@ fn held(game: &Game<'_>) -> Option<String> {
 
 /// Run `command`, reporting what it said when it failed.
 fn command(game: &mut Game<'_>, command: &str) {
-    game.chat_capture = Some(Vec::new());
+    game.server.chat_capture = Some(Vec::new());
     let ok = game.run_command(command);
-    let said = game.chat_capture.take().unwrap_or_default();
+    let said = game.server.chat_capture.take().unwrap_or_default();
     assert!(
         ok,
         "{command}: {}",

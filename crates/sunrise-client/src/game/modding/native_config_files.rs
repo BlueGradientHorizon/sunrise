@@ -319,11 +319,11 @@ impl GameConfigFiles {
 }
 
 fn world_root(game: &Game<'_>) -> Result<FileRoot, ConfigFileError> {
-    if game.world_root.as_os_str().is_empty() {
+    if game.server.world_root.as_os_str().is_empty() {
         return Err(ConfigFileError::NoWorld);
     }
     Ok(FileRoot {
-        path: game.world_root.clone(),
+        path: game.server.world_root.clone(),
         bulk: true,
     })
 }
@@ -853,7 +853,7 @@ mod tests {
             request
         };
         with_game(|game| {
-            game.world_root.clear();
+            game.server.world_root.clear();
             as_mod("fd", || {
                 assert_eq!(
                     Game::world_data_files(game).read(&path("tiles/nether/0.bin")),

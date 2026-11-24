@@ -43,10 +43,10 @@ fn hit(pos: [i32; 3]) -> Hit {
 fn use_block(game: &mut Game<'_>, pos: [i32; 3], stack: Option<ItemStack>) -> bool {
     game.dropped.clear();
     let hit = hit(pos);
-    game.forced_hit = Some(hit);
+    game.server.forced_hit = Some(hit);
     *game.held_mut() = stack;
     let used = game.use_hand(Some(&hit)).unwrap();
-    game.forced_hit = None;
+    game.server.forced_hit = None;
     *game.held_mut() = None;
     used
 }
@@ -184,7 +184,7 @@ fn harvest_game<'a>(
         )
         .unwrap(),
     );
-    game.server_loot.set(Some(std::sync::Arc::new(
+    game.server.server_loot.set(Some(std::sync::Arc::new(
         sunrise_world::loot::LootData::load(
             &game.options.resources,
             &Default::default(),

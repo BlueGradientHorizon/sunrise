@@ -134,7 +134,7 @@ fn a_hold_ended_by_a_trip_elsewhere_hears_the_client_again() {
     game.tick_server_travel();
     assert!(landing(game.lan.as_ref().unwrap()));
     // What a death, a respawn or a `tp` to another level does to the trip waiting for the player.
-    game.server_trips.retain(|t| !t.is(CONN));
+    game.server.server_trips.retain(|t| !t.is(CONN));
     game.tick_server_travel();
     assert!(!landing(game.lan.as_ref().unwrap()));
 }
@@ -193,7 +193,12 @@ fn a_hold_follows_the_destination_a_mod_chose() {
         .guests
         .update(0, |g| g.position = [-FAR, 150.0, 0.5]);
     game.tick_server_travel();
-    let trips: Vec<_> = game.server_trips.iter().filter(|t| t.is(CONN)).collect();
+    let trips: Vec<_> = game
+        .server
+        .server_trips
+        .iter()
+        .filter(|t| t.is(CONN))
+        .collect();
     assert_eq!(trips.len(), 1);
     assert_eq!(trips[0].target, Vec3::new(-FAR, 150.0, 0.5));
     // A mod canceled it: the player stays on lit land, so there is nothing to wait for.
@@ -235,7 +240,7 @@ fn a_command_arrival_holds_movement_until_lit_then_ticks_damage_again() {
         }
     }
     // Exercise the queued command arrival without opening a second saved level.
-    game.level_teleports.push(LevelTeleport {
+    game.server.level_teleports.push(LevelTeleport {
         conn: CONN,
         dim: game.dim,
         at,
@@ -474,7 +479,7 @@ fn a_world_spawn_search_keeps_movement_held_between_candidate_chunks() {
         game.guest_respawn(CONN);
         // A deterministic search starts at (-48, -48), outside the newly lit square.
         // This is the search state an arrival pass keeps when a candidate is missing.
-        game.server_trips[0].finder = Some(PlayerSpawnFinder::new(spawn, 64, |_| 0));
+        game.server.server_trips[0].finder = Some(PlayerSpawnFinder::new(spawn, 64, |_| 0));
         light(&mut game, 1);
         for _ in 0..2 {
             game.tick_server_travel();

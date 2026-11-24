@@ -19,7 +19,7 @@ impl Game<'_> {
     /// Feed the sounds the engine reported since the last tick
     /// (`SoundEventListener.onPlaySound`) while the overlay listens.
     pub(super) fn tick_subtitles(&mut self) {
-        let mut overlay = self.subtitles.overlay.borrow_mut();
+        let mut overlay = self.client.subtitles.overlay.borrow_mut();
         let listening = overlay.listening();
         self.audio.record_heard = listening;
         let heard = self.audio.take_heard();
@@ -34,13 +34,13 @@ impl Game<'_> {
     }
     /// Consume a paint scheduled by the original subtitle layer, without dispatching it again.
     pub(super) fn draw_deferred_subtitles(&self, batch: &mut HudBatch) {
-        if self.subtitles.deferred.take() {
+        if self.client.subtitles.deferred.take() {
             self.draw_subtitles(batch);
         }
     }
 
     pub(super) fn draw_subtitles(&self, batch: &mut HudBatch) {
-        let v = &self.view;
+        let v = &self.client.view;
         let frame = SubtitleFrame {
             show: self.settings.show_subtitles,
             position: v.position,
@@ -52,11 +52,12 @@ impl Game<'_> {
             height: batch.height as i32,
         };
         let atlas = &self.gui.atlas;
-        let draws = self
-            .subtitles
-            .overlay
-            .borrow_mut()
-            .extract(&frame, &atlas.font, now_ms());
+        let draws =
+            self.client
+                .subtitles
+                .overlay
+                .borrow_mut()
+                .extract(&frame, &atlas.font, now_ms());
         hud_layout::paint(batch, atlas, &draws);
     }
 }

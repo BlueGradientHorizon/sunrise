@@ -21,7 +21,9 @@ impl Game<'_> {
             .or_else(|| self.online_player_record(player).map(PlayerRead::Guest))?;
         Some(match read {
             PlayerRead::Guest(g) => g.permission,
-            PlayerRead::Acting { .. } if self.lan_acting.is_some() => self.ui.registries.permission,
+            PlayerRead::Acting { .. } if self.server.lan_acting.is_some() => {
+                self.ui.registries.permission
+            }
             PlayerRead::Acting { .. } if self.allow_commands() => 4,
             PlayerRead::Acting { .. } => 0,
         })

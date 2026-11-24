@@ -96,7 +96,7 @@ pub(in crate::game) fn run_crack_packets_follow_start_clock_and_strict_observer_
     let scratch =
         std::env::temp_dir().join(format!("sunrise-crack-feedback-{}", std::process::id()));
     std::fs::create_dir_all(&scratch).unwrap();
-    game.world_root = scratch.clone();
+    game.server.world_root = scratch.clone();
     game.world
         .chunks
         .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
@@ -171,14 +171,14 @@ pub(in crate::game) fn run_crack_packets_follow_start_clock_and_strict_observer_
             g.inventory[0] = (tick != 102).then(|| ItemStack::new("minecraft:diamond_pickaxe", 1))
         });
         game.as_guest(1, |g| {
-            g.forced_hit = Some(Hit {
+            g.server.forced_hit = Some(Hit {
                 inside: false,
                 pos,
                 face: [0, 1, 0],
                 point: [0.5, 100.5, 0.5],
             });
             g.tick_mining().unwrap();
-            g.forced_hit = None;
+            g.server.forced_hit = None;
         });
         game.guest_dig_feedback(1);
         game.guest_dig_feedback(1);

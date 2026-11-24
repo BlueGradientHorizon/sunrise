@@ -27,16 +27,16 @@ impl Game<'_> {
     /// How many picks (a tick's or a frame's) have been taken: an agent command that turned
     /// waits for the count to move before it reads the target.
     pub(in crate::game) fn client_picks(&self) -> u64 {
-        self.client_pick.taken
+        self.client.client_pick.taken
     }
 
     pub(in crate::game) fn uses_stored_pick(&self) -> bool {
-        self.native_window() && self.client_pick.ray.is_none()
+        self.native_window() && self.client.client_pick.ray.is_none()
     }
 
     pub(in crate::game) fn pick_distance(&self, point: [f64; 3]) -> f64 {
         (0..3)
-            .map(|i| (point[i] - self.client_pick.origin[i]).powi(2))
+            .map(|i| (point[i] - self.client.client_pick.origin[i]).powi(2))
             .sum::<f64>()
             .sqrt()
     }
@@ -56,13 +56,13 @@ impl Game<'_> {
     /// Consumers read the stored hit as-is until the next pick. In particular,
     /// a block broken earlier in a tick is still that tick's use target.
     pub(in crate::game) fn stored_client_pick(&self) -> Option<CrosshairTarget> {
-        if self.client_pick.dispatching {
-            return self.client_pick.result;
+        if self.client.client_pick.dispatching {
+            return self.client.client_pick.result;
         }
-        (self.client_pick.epoch == self.native_lifecycle.epoch()
-            && self.client_pick.dimension == Some(self.dim))
+        (self.client.client_pick.epoch == self.native_lifecycle.epoch()
+            && self.client.client_pick.dimension == Some(self.dim))
         .then_some(())?;
-        self.client_pick.result
+        self.client.client_pick.result
     }
 
     fn pick_target_live(&self, result: CrosshairTarget) -> bool {
@@ -90,7 +90,7 @@ impl Game<'_> {
                 }
                 (hit.point, self.block_reach)
             }
-            CrosshairTarget::Entity { point, .. } => (point, self.client_pick.entity_reach),
+            CrosshairTarget::Entity { point, .. } => (point, self.client.client_pick.entity_reach),
             _ => return false,
         };
         point.iter().all(|v| v.is_finite())
@@ -125,10 +125,10 @@ impl Game<'_> {
             camera.view_y_rot(partial_tick),
             camera.view_x_rot(partial_tick),
         );
-        self.client_pick.ray = Some((origin, direction));
-        self.client_pick.origin = origin;
-        self.client_pick.epoch = self.native_lifecycle.epoch();
-        self.client_pick.dimension = Some(self.dim);
+        self.client.client_pick.ray = Some((origin, direction));
+        self.client.client_pick.origin = origin;
+        self.client.client_pick.epoch = self.native_lifecycle.epoch();
+        self.client.client_pick.dimension = Some(self.dim);
         let from = sunrise_core::geometry::Vec3::new(origin[0], origin[1], origin[2]);
         let max_distance = self.block_reach.max(self.entity_reach);
         let block_hit = self.pick_unfiltered();
@@ -186,10 +186,10 @@ impl Game<'_> {
                     self.pick_entity_candidate_within(entity_max_distance, search_max_distance_sq);
                 // Refuse the pick if a rider listener changed camera, epoch, or dimension.
                 if camera_id != self.pick_camera_id()
-                    || self.client_pick.epoch != self.native_lifecycle.epoch()
-                    || self.client_pick.dimension != Some(self.dim)
+                    || self.client.client_pick.epoch != self.native_lifecycle.epoch()
+                    || self.client.client_pick.dimension != Some(self.dim)
                 {
-                    self.client_pick.ray = None;
+                    self.client.client_pick.ray = None;
                     self.publish_client_pick(None);
                     return;
                 }
@@ -214,9 +214,9 @@ impl Game<'_> {
             }
         };
         self.publish_client_pick(original);
-        self.client_pick.taken += 1;
+        self.client.client_pick.taken += 1;
         if !mod_api::__private::listened(mod_api::HookId::ClientPick) {
-            self.client_pick.ray = None;
+            self.client.client_pick.ray = None;
             return;
         }
         // Supply block and entity candidates independently only when a ClientPick listener is active.
@@ -238,10 +238,10 @@ impl Game<'_> {
                 self.entity_reach * self.entity_reach,
             );
             if camera_id != self.pick_camera_id()
-                || self.client_pick.epoch != self.native_lifecycle.epoch()
-                || self.client_pick.dimension != Some(self.dim)
+                || self.client.client_pick.epoch != self.native_lifecycle.epoch()
+                || self.client.client_pick.dimension != Some(self.dim)
             {
-                self.client_pick.ray = None;
+                self.client.client_pick.ray = None;
                 self.publish_client_pick(None);
                 return;
             }
@@ -256,12 +256,12 @@ impl Game<'_> {
         } else {
             None
         };
-        self.client_pick.ray = None;
+        self.client.client_pick.ray = None;
         // Capture the same forward-movement envelope as the vanilla item ray,
         // before listeners can change the player or held item.
-        self.client_pick.entity_reach = self.client_pick_entity_reach(direction);
+        self.client.client_pick.entity_reach = self.client_pick_entity_reach(direction);
         self.storage_scope(|game, _| {
-            game.client_pick.dispatching = true;
+            game.client.client_pick.dispatching = true;
             let mut result = original;
             game.native_client_pick(mod_api::__private::ClientPickCall {
                 partial_tick,
@@ -271,9 +271,9 @@ impl Game<'_> {
                 entity_candidate,
                 result: &mut result,
             });
-            game.client_pick.dispatching = false;
-            let valid_context = game.client_pick.epoch == game.native_lifecycle.epoch()
-                && game.client_pick.dimension == Some(game.dim);
+            game.client.client_pick.dispatching = false;
+            let valid_context = game.client.client_pick.epoch == game.native_lifecycle.epoch()
+                && game.client.client_pick.dimension == Some(game.dim);
             let result = result.filter(|&result| {
                 valid_context && (Some(result) == original || game.accept_client_pick(result))
             });
@@ -299,10 +299,10 @@ impl Game<'_> {
     }
 
     fn publish_client_pick(&mut self, result: Option<CrosshairTarget>) {
-        self.client_pick.result = result;
-        self.client_pick.entity_metadata = match result {
+        self.client.client_pick.result = result;
+        self.client.client_pick.entity_metadata = match result {
             Some(CrosshairTarget::Entity { entity, .. }) => (
-                !self.interactions.contains_key(&(entity.id() as i32))
+                !self.client.interactions.contains_key(&(entity.id() as i32))
                     && Self::has_pick_result(self.native_client_entity_target(entity)),
                 self.resident_dragon_part(entity.id()).is_none(),
             ),

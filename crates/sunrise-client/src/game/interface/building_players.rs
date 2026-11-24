@@ -237,7 +237,7 @@ mod tests {
                 .as_nanos()
         ));
         std::fs::create_dir_all(&scratch).unwrap();
-        game.world_root = scratch.clone();
+        game.server.world_root = scratch.clone();
         game.player = Some(PlayerMotion::new(game.motion, Vec3::new(10.5, 64.0, 0.5)).unwrap());
         let original = game.player.as_ref().unwrap().bounds();
         let net = NetConfig {
@@ -294,9 +294,9 @@ mod tests {
             assert_eq!(g.dim, Dim::Nether);
             // for_player already switched the level before entering the guest.
             // The host's body must not become a phantom blocker in the Nether.
-            assert!(g.lan_building_boxes.boxes(Dim::Nether).is_empty());
+            assert!(g.server.lan_building_boxes.boxes(Dim::Nether).is_empty());
             assert_eq!(
-                g.lan_building_boxes.boxes(Dim::Overworld),
+                g.server.lan_building_boxes.boxes(Dim::Overworld),
                 vec![(
                     original.min_position().components(),
                     original.max_position().components()

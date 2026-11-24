@@ -23,7 +23,7 @@ fn conversion_transfers_tags_and_team() {
             .clone();
         let from = Mob::new(100, kind, Vec3::ZERO, 0.0);
         game.mobs.push(from.clone());
-        game.next_entity = 100;
+        game.server.next_entity = 100;
         game.set_entity_tags(Target::Mob(100), &["tracked".into()]);
         let old = uuid_text(game.uuid_for(100));
         game.load_scoreboard();
@@ -113,7 +113,7 @@ fn wolf_owner_rejoining_receives_the_kill_statistic() {
                     .update(0, |guest| guest.placed = value);
             }
             game.resolve_player_responsible(101, Damage::mob(100, [0.0; 3]));
-            let credit = *game.last_hurt_by_player.get(&101).unwrap();
+            let credit = *game.server.last_hurt_by_player.get(&101).unwrap();
             assert!(game.resolve_player_credit(credit).is_none());
             {
                 let value = true;
@@ -135,7 +135,8 @@ fn wolf_owner_rejoining_receives_the_kill_statistic() {
             });
             let mut second = victim.clone();
             second.id = 102;
-            game.last_hurt_by_player
+            game.server
+                .last_hurt_by_player
                 .insert(102, super::super::combat::PlayerCredit(12));
             game.as_guest(12, |game| game.mob_die(&second)).unwrap();
             let host = game.lan.as_ref().unwrap();
@@ -153,14 +154,14 @@ fn wolf_owner_rejoining_receives_the_kill_statistic() {
             let mut third = victim.clone();
             third.id = 103;
             game.resolve_player_responsible(101, Damage::mob(100, [0.0; 3]));
-            let credit = game.last_hurt_by_player.remove(&101).unwrap();
-            game.last_hurt_by_player.insert(103, credit);
+            let credit = game.server.last_hurt_by_player.remove(&101).unwrap();
+            game.server.last_hurt_by_player.insert(103, credit);
             game.mob_die(&third);
             let host = game.lan.as_ref().unwrap();
             assert_eq!(host.play[&12].stats.get("custom", "minecraft:mob_kills"), 3);
             game.mobs[0].extra.owner = None;
             game.resolve_player_responsible(101, Damage::mob(100, [0.0; 3]));
-            assert!(!game.last_hurt_by_player.contains_key(&101));
+            assert!(!game.server.last_hurt_by_player.contains_key(&101));
         });
     }
 }

@@ -59,8 +59,8 @@ impl Game<'_> {
     /// a guest during its turn): the bed it lies in is occupied.
     pub(super) fn occupy_bed(&mut self, head: [i32; 3]) {
         self.set_bed_occupied(head, true);
-        if !self.player_beds.contains(&(self.dim, head)) {
-            self.player_beds.push((self.dim, head));
+        if !self.server.player_beds.contains(&(self.dim, head)) {
+            self.server.player_beds.push((self.dim, head));
         }
     }
 
@@ -82,13 +82,14 @@ impl Game<'_> {
     pub(super) fn free_left_beds(&mut self) {
         let dim = self.dim;
         let left: Vec<[i32; 3]> = self
+            .server
             .player_beds
             .iter()
             .filter(|(d, head)| *d == dim && !self.player_in_bed(*head))
             .map(|(_, head)| *head)
             .collect();
         for head in left {
-            self.player_beds.retain(|b| *b != (dim, head));
+            self.server.player_beds.retain(|b| *b != (dim, head));
             self.set_bed_occupied(head, false);
             // AbstractBedBlock.onStopSleeping: the Overworld's straw_bed_rule
             // has destroy_on_leave, so a straw bed breaks when its sleeper gets up.
@@ -106,7 +107,7 @@ impl Game<'_> {
     /// The levels with a bed a player marked occupied: they tick until the
     /// bed is freed.
     pub(super) fn player_bed_levels(&self) -> impl Iterator<Item = Dim> + '_ {
-        self.player_beds.iter().map(|(d, _)| *d)
+        self.server.player_beds.iter().map(|(d, _)| *d)
     }
 
     /// `PlayerList.removeAll` before the server's last save: every player
@@ -114,11 +115,11 @@ impl Game<'_> {
     /// saved occupied by a player who is not in it when the world opens
     /// again. Each bed is freed in its own level.
     pub(super) fn free_player_beds(&mut self) -> Result<()> {
-        if self.player_beds.is_empty() {
+        if self.server.player_beds.is_empty() {
             return Ok(());
         }
         let back = self.dim;
-        for (dim, head) in std::mem::take(&mut self.player_beds) {
+        for (dim, head) in std::mem::take(&mut self.server.player_beds) {
             self.enter_level(dim)?;
             // A client holds no other levels (`enter_level`).
             if self.dim == dim {

@@ -865,7 +865,7 @@ fn whole_state(game: &super::Game<'_>, pos: (i32, i32, i32)) -> String {
     format!(
         "{:?} {:?}",
         game.world.block_entities.get(&pos),
-        game.hoppers.get(&pos).map(|h| h.cooldown)
+        game.server.hoppers.get(&pos).map(|h| h.cooldown)
     )
 }
 
@@ -907,7 +907,7 @@ fn storage_writes_abort_to_the_exact_state_of_every_container_kind() {
                     game.level_set_block(level, [3, 64, 1], state, mod_api::BlockUpdateFlags::NONE)
                         .unwrap();
                 }
-                game.hoppers.remove(&pos);
+                game.server.hoppers.remove(&pos);
                 let storage = level
                     .capability(game, &mod_api::STORAGE, [3, 64, 1], side)
                     .unwrap_or_else(|| panic!("{block} must answer STORAGE"));

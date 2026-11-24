@@ -84,7 +84,7 @@ impl Game<'_> {
     /// once) before this update never reaches the engine. Called from the audio update
     /// (`tick_sound_engine`), before the engine's own tick.
     pub(super) fn apply_mod_sounds(&mut self) {
-        let sounds = &mut self.mod_sounds;
+        let sounds = &mut self.client.mod_sounds;
         let stopped: Vec<u64> = sounds
             .changes
             .get_mut()
@@ -127,7 +127,7 @@ impl Game<'_> {
             return None;
         }
         let id = sound.fields().id;
-        let sounds = &self.mod_sounds;
+        let sounds = &self.client.mod_sounds;
         if sounds
             .changes
             .borrow()
@@ -200,7 +200,11 @@ impl Game<'_> {
         match self.sound_state(sound) {
             Some(SoundState::Waiting | SoundState::Playing) => {
                 let id = sound.fields().id;
-                self.mod_sounds.changes.borrow_mut().push((id, change));
+                self.client
+                    .mod_sounds
+                    .changes
+                    .borrow_mut()
+                    .push((id, change));
                 true
             }
             _ => false,
@@ -315,10 +319,14 @@ mod tests {
                 };
                 assert_ne!(stopped, faded, "a handle per play");
                 game.tick_sound_engine();
-                assert!(game.mod_sounds.queued.borrow().is_empty());
+                assert!(game.client.mod_sounds.queued.borrow().is_empty());
                 assert_eq!(game.sound_state(stopped), Some(SoundState::Stopped));
                 assert!(
-                    !game.mod_sounds.started.contains_key(&stopped.fields().id),
+                    !game
+                        .client
+                        .mod_sounds
+                        .started
+                        .contains_key(&stopped.fields().id),
                     "a stop lets the play go"
                 );
                 // Without an output device (a test machine) the engine starts nothing, so the

@@ -144,7 +144,7 @@ impl Game<'_> {
         if !sunrise_client::mobs::raider::is_captain(mob) {
             return;
         }
-        let Some((pole, flag)) = &self.entity_models.banner else {
+        let Some((pole, flag)) = &self.client.entity_models.banner else {
             return;
         };
         let Some(head) = render::part_transform(mob, alpha as f32, camera, self, "head") else {
@@ -422,6 +422,7 @@ impl Game<'_> {
                 sunrise_client::mobs::gear::MAIN
             };
             let local_player = self
+                .client
                 .player_model
                 .as_ref()
                 .is_some_and(|p| p.id == mob.id && p.kind.id == mob.kind.id);
@@ -464,7 +465,7 @@ impl Game<'_> {
             owner.fishing_cast_with_this_item = if local_player {
                 self.cast_rod().is_some() && self.main_hand_rod() != off_hand
             } else {
-                let active = self.remote_hooks.iter().filter(|h| h.owner_fishing);
+                let active = self.client.remote_hooks.iter().filter(|h| h.owner_fishing);
                 fishing_cast_item(
                     mob.id,
                     active.map(|hook| hook.owner),
@@ -544,6 +545,7 @@ impl Game<'_> {
             return;
         }
         let local_player = self
+            .client
             .player_model
             .as_ref()
             .is_some_and(|p| p.id == mob.id && p.kind.id == mob.kind.id);

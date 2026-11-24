@@ -66,7 +66,7 @@ impl Game<'_> {
         }
     }
     pub(super) fn consume_mod_book_overlay(&mut self, right: bool) -> bool {
-        let Some(overlay) = self.recipe_ui.custom.overlay.take() else {
+        let Some(overlay) = self.client.recipe_ui.custom.overlay.take() else {
             return false;
         };
         if !right {
@@ -78,7 +78,7 @@ impl Game<'_> {
             for (n, source) in overlay.sources.iter().enumerate() {
                 let x = overlay.view.x as f32 + 4.0 + 25.0 * (n % columns) as f32;
                 let y = overlay.view.y as f32 + 5.0 + 25.0 * (n / columns) as f32;
-                if inside(self.cursor, x, y, 24.0, 24.0) {
+                if inside(self.client.cursor, x, y, 24.0, 24.0) {
                     self.request_mod_book_recipe(overlay.recipe, *source);
                     break;
                 }
@@ -159,13 +159,13 @@ impl Game<'_> {
             |slot| self.native_screen_slot(usize::from(slot)).is_some(),
             |display| self.resolve_mod_book_declaration_slot(display),
         );
-        self.recipe_ui.ghost = shown;
+        self.client.recipe_ui.ghost = shown;
     }
     pub(in crate::game) fn reset_mod_book_placement_ui(&mut self) {
-        self.recipe_ui.ghost.clear();
-        self.recipe_ui.custom.prepared = None;
-        self.recipe_ui.custom.presentation = None;
-        self.recipe_ui.custom.overlay = None;
+        self.client.recipe_ui.ghost.clear();
+        self.client.recipe_ui.custom.prepared = None;
+        self.client.recipe_ui.custom.presentation = None;
+        self.client.recipe_ui.custom.overlay = None;
     }
 }
 

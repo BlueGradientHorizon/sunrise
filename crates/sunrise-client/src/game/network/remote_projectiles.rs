@@ -587,7 +587,7 @@ impl Game<'_> {
             Some(&self.res.motion().blocks),
         );
         let side = game_side!(self);
-        let sections = self.client_pick.sections.get_mut();
+        let sections = self.client.client_pick.sections.get_mut();
         self.tnts.retain_mut(|t| {
             // A fluid lookup that fails leaves it where its move put it.
             let _ = t.tick_among(

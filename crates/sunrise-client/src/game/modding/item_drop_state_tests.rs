@@ -143,9 +143,9 @@ fn golem_dies(game: &mut super::Game<'_>, at: [f64; 3]) -> Vec<ItemEntity> {
         .get("minecraft:copper_golem")
         .unwrap()
         .clone();
-    game.next_entity += 1;
+    game.server.next_entity += 1;
     let position = Vec3::new(at[0], at[1], at[2]);
-    let mut golem = sunrise_client::mobs::Mob::new(game.next_entity, kind, position, 0.0);
+    let mut golem = sunrise_client::mobs::Mob::new(game.server.next_entity, kind, position, 0.0);
     sunrise_client::mobs::transport_items::set_held(
         &mut golem,
         Some(ItemStack::new("minecraft:diamond", 1)),
@@ -243,7 +243,7 @@ fn an_unlimited_lifetime_drop_outlives_an_ordinary_one() {
             mode.store(FLOAT_FOREVER, Ordering::SeqCst);
             let forever = ids(&golem_dies(game, CENTRE));
             assert!(!ordinary.is_empty() && !forever.is_empty());
-            game.ticked_entities_through = game.next_entity;
+            game.server.ticked_entities_through = game.server.next_entity;
             for _ in 0..5999 {
                 game.tick_items();
             }
@@ -274,7 +274,7 @@ fn the_largest_age_wraps_on_its_first_tick() {
             mode.store(FLOAT_OLDEST, Ordering::SeqCst);
             let oldest = ids(&golem_dies(game, CENTRE));
             assert!(!oldest.is_empty());
-            game.ticked_entities_through = game.next_entity;
+            game.server.ticked_entities_through = game.server.next_entity;
             game.tick_items();
             let ages: Vec<i32> = game
                 .dropped

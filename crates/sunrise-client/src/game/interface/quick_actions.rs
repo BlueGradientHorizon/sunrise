@@ -48,8 +48,8 @@ impl Game<'_> {
             return false;
         };
         let before_rev = self.dialog_screen_key();
-        let before_screen = self.screen;
+        let before_screen = self.client.screen;
         self.show_dialog(&dialog);
-        self.dialog_screen_key() != before_rev || self.screen != before_screen
+        self.dialog_screen_key() != before_rev || self.client.screen != before_screen
     }
 }

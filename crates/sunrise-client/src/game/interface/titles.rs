@@ -8,23 +8,24 @@ impl Game<'_> {
     /// `ServerPlayer.sendOverlayMessage`: the steady player sees it on this
     /// game's HUD; a server client receives it as a packet.
     pub(super) fn send_overlay_message(&mut self, message: Text) {
-        if self.lan_acting.is_some() {
-            self.guest_packets
-                .push(sunrise_protocol::packets::play::Clientbound::SystemChat(
+        if self.server.lan_acting.is_some() {
+            self.server.guest_packets.push(
+                sunrise_protocol::packets::play::Clientbound::SystemChat(
                     sunrise_protocol::packets::play::SystemChat {
                         content: sunrise_client::lan::data::component_nbt(&message.component()),
                         overlay: true,
                     },
-                ));
+                ),
+            );
         } else if self.options.dedicated.is_none() {
-            self.titles.set_overlay(message, false);
+            self.client.titles.set_overlay(message, false);
         }
     }
     /// `Hud.setOverlayMessage(line, animate_color)` on this window's HUD, outside a borrowed
     /// server guest's turn: no chat, narration or packet, as the direct setter does none.
     pub(in crate::game) fn set_overlay_message(&mut self, line: Text, animate_color: bool) {
-        if self.native_window() && self.lan_acting.is_none() {
-            self.titles.set_overlay(line, animate_color);
+        if self.native_window() && self.server.lan_acting.is_none() {
+            self.client.titles.set_overlay(line, animate_color);
         }
     }
 
@@ -34,7 +35,10 @@ impl Game<'_> {
         let partial = self.clock.fraction() as f32;
         let background = self.settings.text_background(0.0);
         let font = &self.gui.atlas.font;
-        let draws = self.titles.overlay_message(w, h, partial, font, background);
+        let draws = self
+            .client
+            .titles
+            .overlay_message(w, h, partial, font, background);
         hud_layout::paint(batch, &self.gui.atlas, &draws);
     }
     /// `Hud.extractTitle`.
@@ -43,7 +47,7 @@ impl Game<'_> {
         let partial = self.clock.fraction() as f32;
         let background = self.settings.text_background(0.0);
         let font = &self.gui.atlas.font;
-        let draws = self.titles.title(w, h, partial, font, background);
+        let draws = self.client.titles.title(w, h, partial, font, background);
         hud_layout::paint(batch, &self.gui.atlas, &draws);
     }
     /// `Hud.extractSavingIndicator`, under the screens: the option, then the
@@ -52,7 +56,7 @@ impl Game<'_> {
         if !self.settings.autosave_indicator {
             return;
         }
-        let draws = self.saving_indicator.draw(
+        let draws = self.client.saving_indicator.draw(
             batch.width as i32,
             batch.height as i32,
             self.clock.fraction() as f32,
@@ -67,6 +71,7 @@ impl Game<'_> {
         let stack = self.inventory.get(self.selected)?.as_ref()?;
         let custom = stack.data().is_some_and(|data| data.custom_name.is_some());
         let previous = self
+            .client
             .tool_highlight
             .last
             .as_ref()
@@ -85,7 +90,7 @@ impl Game<'_> {
     }
     /// The title, action bar and selected-item parts of `Hud.tick`.
     pub(super) fn tick_hud(&mut self) {
-        self.titles.tick();
+        self.client.titles.tick();
         // Hud.tick: the vignette after the titles, before the held item's name. (A local world,
         // which has no `Gui.tick` here, eases it in its level tick, `tick_particles`.)
         self.tick_vignette();
@@ -95,17 +100,18 @@ impl Game<'_> {
             .integrated
             .as_ref()
             .map_or(self.autosaving, |server| server.is_saving());
-        self.saving_indicator.tick(saving);
+        self.client.saving_indicator.tick(saving);
         let held = self.held_name();
-        self.tool_highlight
+        self.client
+            .tool_highlight
             .tick(held, self.settings.notification_display_time);
-        self.tool_highlight.tip = self.highlight_tip();
+        self.client.tool_highlight.tip = self.highlight_tip();
     }
     /// `IItemExtension.getHighlightTip` of the selected stack, while its name
     /// shows and a part of its item listens.
     fn highlight_tip(&self) -> Option<Text> {
-        let last = self.tool_highlight.last.as_ref()?;
-        if self.tool_highlight.timer <= 0 {
+        let last = self.client.tool_highlight.last.as_ref()?;
+        if self.client.tool_highlight.timer <= 0 {
             return None;
         }
         let stack = self.inventory.get(self.selected)?.as_ref()?;
@@ -118,7 +124,7 @@ impl Game<'_> {
     }
     /// `Hud.extractSelectedItemName`.
     pub(super) fn draw_selected_name(&self, batch: &mut HudBatch, can_hurt: bool) {
-        let draws = self.tool_highlight.draw(
+        let draws = self.client.tool_highlight.draw(
             batch.width as i32,
             batch.height as i32,
             can_hurt,
@@ -136,7 +142,7 @@ mod tests {
 
     /// What the action bar holds: its plain line, ticks left and whether its colour cycles.
     fn shown(game: &Game<'_>) -> Option<(String, i32, bool)> {
-        let titles = &game.titles;
+        let titles = &game.client.titles;
         let line = titles.overlay.as_ref()?.plain();
         Some((line, titles.overlay_time, titles.overlay_animated))
     }
@@ -156,7 +162,7 @@ mod tests {
                     );
                     assert_eq!(shown(game), Some(("Now Playing".into(), 60, true)));
                     for _ in 0..25 {
-                        game.titles.tick();
+                        game.client.titles.tick();
                     }
                     assert_eq!(shown(game), Some(("Now Playing".into(), 35, true)));
 
@@ -166,7 +172,7 @@ mod tests {
                         Ok(())
                     );
                     assert_eq!(shown(game), Some(("Saved".into(), 60, false)));
-                    game.titles.tick();
+                    game.client.titles.tick();
 
                     let mut refused = Text::literal("lost");
                     refused.metadata = sunrise_core::nbt::Tag::Int(7);

@@ -19,9 +19,9 @@ fn with_game(test: impl FnOnce(&mut Game<'_>)) {
 
 /// What a command says, and whether it succeeded.
 fn say(game: &mut Game<'_>, command: &str) -> (bool, String) {
-    game.chat_capture = Some(Vec::new());
+    game.server.chat_capture = Some(Vec::new());
     let ok = game.run_command(command);
-    let said = game.chat_capture.take().unwrap_or_default();
+    let said = game.server.chat_capture.take().unwrap_or_default();
     (
         ok,
         said.iter().map(sunrise_client::text::Text::plain).collect(),

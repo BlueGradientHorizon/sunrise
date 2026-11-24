@@ -155,7 +155,7 @@ mod tests {
         with_guests(|game| {
             let _serving = super::super::integrated::tests::install_serving(game, false);
             place_host(game);
-            game.next_entity = 100;
+            game.server.next_entity = 100;
             let level = game.level(game.dim.id()).unwrap();
             let fake = game.fake_player(level, 1234, "machine").unwrap();
             assert_eq!(
@@ -187,7 +187,7 @@ mod tests {
         with_guests(|game| {
             let _serving = super::super::integrated::tests::install_serving(game, false);
             place_host(game);
-            game.next_entity = 100;
+            game.server.next_entity = 100;
             let level = game.level(game.dim.id()).unwrap();
             let fake = game.fake_player(level, 1234, "machine").unwrap();
             for cz in -1..=1 {

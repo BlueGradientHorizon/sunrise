@@ -334,7 +334,8 @@ mod tests {
         with_inert_block(
             "reenabled_owner_resumes_held_scheduled_tick",
             |game, state, probe| {
-                game.tickets
+                game.server
+                    .tickets
                     .update(Some(sunrise_client::ticket_levels::Sources {
                         forced: vec![(0, 0)],
                         ..Default::default()
@@ -526,7 +527,8 @@ mod tests {
                 .map(|(block, source, target)| {
                     (target, state(block), state(source), state(target))
                 });
-                game.tickets
+                game.server
+                    .tickets
                     .update(Some(sunrise_client::ticket_levels::Sources {
                         forced: vec![(0, 0)],
                         ..Default::default()

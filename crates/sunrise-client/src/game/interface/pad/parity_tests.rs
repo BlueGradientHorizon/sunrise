@@ -47,7 +47,7 @@ fn playing(test: impl FnOnce(&mut Game)) {
     )
     .unwrap();
     game.title = None;
-    game.screen = Screen::Playing;
+    game.client.screen = Screen::Playing;
     test(&mut game);
 }
 
@@ -122,27 +122,30 @@ fn pad_smooth_camera_binding_toggles_the_cinematic_camera() {
         game.settings
             .controller
             .bind("key.smoothCamera", Some(Button::Select));
-        assert!(!game.smooth_camera);
+        assert!(!game.client.smooth_camera);
         pad_press(game, Button::Select, "key.smoothCamera");
         pad_release(game, Button::Select);
         assert!(
-            !game.smooth_camera,
+            !game.client.smooth_camera,
             "the pad click waits for keybind polling"
         );
         game.handle_play_keybinds();
-        assert!(game.smooth_camera);
+        assert!(game.client.smooth_camera);
         game.handle_play_keybinds();
-        assert!(game.smooth_camera, "the pad click was consumed");
+        assert!(game.client.smooth_camera, "the pad click was consumed");
 
         game.settings.keys.set("key.smoothCamera", "key.keyboard.k");
         game.mapped_key_event(KeyCode::KeyK, true, false).unwrap();
         game.mapped_key_event(KeyCode::KeyK, false, false).unwrap();
         assert!(
-            game.smooth_camera,
+            game.client.smooth_camera,
             "the keyboard click also waits for polling"
         );
         game.handle_play_keybinds();
-        assert!(!game.smooth_camera, "the keyboard toggles the same camera");
+        assert!(
+            !game.client.smooth_camera,
+            "the keyboard toggles the same camera"
+        );
     });
 }
 
@@ -165,7 +168,7 @@ fn bumpers_step_the_hotbar_where_the_wheel_does() {
         assert_eq!(game.selected, 8, "and back");
         game.pad_action("pad.hotbarNext", false).unwrap();
         assert_eq!(game.selected, 8, "a release does nothing");
-        game.screen = Screen::Paused;
+        game.client.screen = Screen::Paused;
         game.pad_action("pad.hotbarNext", true).unwrap();
         assert_eq!(game.selected, 8, "a screen keeps the wheel from the hotbar");
     });
@@ -197,7 +200,7 @@ fn readers_of_the_movement_keys_see_the_stick() {
         let back_mapping = game.vanilla_key_mapping("key.back").unwrap();
         let right_mapping = game.vanilla_key_mapping("key.right").unwrap();
         let jump_mapping = game.vanilla_key_mapping("key.jump").unwrap();
-        game.focused = true;
+        game.client.focused = true;
         assert!(!forward_mapping.is_down(game).unwrap());
         // Up and to the left, on a diagonal: two keys, as a keyboard would hold.
         game.pad.state.left = [-0.7, 0.7];
@@ -242,7 +245,7 @@ fn readers_of_the_movement_keys_see_the_stick() {
         forward_mapping.set_down(game, false).unwrap();
         game.pad.state.left = [-0.4, 0.0];
         game.resume_stick_mappings(before);
-        assert_eq!(game.keys.override_for(&KeyCode::KeyW), Some(false));
+        assert_eq!(game.client.keys.override_for(&KeyCode::KeyW), Some(false));
         game.pad.state.left = [0.0, 0.0];
         let before = game.pad_move();
         game.pad.state.left = [0.0, game.settings.controller.move_deadzone + 0.01];
@@ -252,7 +255,7 @@ fn readers_of_the_movement_keys_see_the_stick() {
         assert!(after.direction()[1] > 0.0);
 
         // A screen takes the stick away.
-        game.screen = Screen::Paused;
+        game.client.screen = Screen::Paused;
         assert!(!forward_mapping.is_down(game).unwrap());
     });
 }
@@ -262,7 +265,7 @@ fn readers_of_the_movement_keys_see_the_stick() {
 fn resolved_mapping_reads_live_state_and_binding() {
     playing(|game| {
         game.options.execution_role = ExecutionRole::Client;
-        game.focused = true;
+        game.client.focused = true;
         let forward = game.vanilla_key_mapping("key.forward").unwrap();
         assert_eq!(forward.binding(game), Ok("key.keyboard.w"));
         assert_eq!(forward.is_down(game), Ok(false));
@@ -349,7 +352,7 @@ fn the_mouse_letting_go_leaves_what_the_pad_holds_and_back() {
         assert!(!game.mapped_key_down("key.attack"));
 
         // The other way round: the mouse button is physically down.
-        game.physical_buttons.insert(MouseButton::Right);
+        game.client.physical_buttons.insert(MouseButton::Right);
         game.mouse_mapping(MouseButton::Right, true, Source::Keyboard)
             .unwrap();
         pad_press(game, Button::LeftTrigger, "key.use");
@@ -358,7 +361,7 @@ fn the_mouse_letting_go_leaves_what_the_pad_holds_and_back() {
             game.mapped_key_down("key.use"),
             "the mouse still holds the use"
         );
-        game.physical_buttons.remove(&MouseButton::Right);
+        game.client.physical_buttons.remove(&MouseButton::Right);
         game.mouse_mapping(MouseButton::Right, false, Source::Keyboard)
             .unwrap();
         assert!(!game.mapped_key_down("key.use"));

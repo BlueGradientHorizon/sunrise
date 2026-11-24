@@ -221,7 +221,7 @@ fn delayed_player_chat_checks_block_filter_and_visibility_on_accept() {
             assert!(game.ui.chat.recent_lines(3).is_empty());
             assert_eq!(game.chat_queue_len(), 3);
 
-            game.social.hidden.insert(ALICE);
+            game.client.social.hidden.insert(ALICE);
             game.tick_chat_queue();
             assert_eq!(game.chat_queue_len(), 0);
             let seen = take_seen_update(game);
@@ -359,7 +359,7 @@ fn validation_error_acks_on_accept_and_checks_the_current_block_list() {
             }))
             .unwrap();
             assert_eq!(game.chat_queue_len(), 1);
-            game.social.hidden.insert(ALICE);
+            game.client.social.hidden.insert(ALICE);
             game.tick_chat_queue();
             assert_eq!(game.chat_queue_len(), 0);
             let seen = take_seen_update(game);

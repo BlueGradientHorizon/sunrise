@@ -406,13 +406,13 @@ fn negative_place_xp_falls_through_to_vanilla_award() {
             assert_eq!(DISPATCHES.get(), 3);
             assert_eq!(slot(game, 2), Some(ItemStack::new("minecraft:dirt", 1)));
 
-            let events = game.lan_events.len();
+            let events = game.server.lan_events.len();
             script(Script::default());
             click(game, window, 2, 0);
             let resolved_xp = TAKE_XP.get().expect("take listener received resolved XP");
             assert!(resolved_xp > 0, "vanilla Sharpness III award is positive");
             assert_eq!(total_orb_xp(game), resolved_xp as u32);
-            assert_eq!(game.lan_events.len(), events + 1);
+            assert_eq!(game.server.lan_events.len(), events + 1);
             assert_eq!(slot(game, 0), None);
             assert!(game.transactions.is_empty());
         });
@@ -531,7 +531,7 @@ fn a_cancelled_take_keeps_the_click_and_listener_writes() {
     with_mod(|| {
         with_guests(|game| {
             let (window, original) = placed(game);
-            let events = game.lan_events.len();
+            let events = game.server.lan_events.len();
             script(Script {
                 take_write: true,
                 take_cancel: true,
@@ -550,7 +550,7 @@ fn a_cancelled_take_keeps_the_click_and_listener_writes() {
             assert_eq!(slot(game, 0), Some(original));
             assert_eq!(inventory(game, 20), 2);
             assert!(game.orbs.is_empty());
-            assert_eq!(game.lan_events.len(), events);
+            assert_eq!(game.server.lan_events.len(), events);
             assert!(PLACE_OBSERVED.with(|seen| seen.borrow().is_empty()));
             assert!(game.transactions.is_empty());
         });
@@ -564,7 +564,7 @@ fn non_positive_take_xp_awards_no_orbs_and_fires_sound() {
         with_mod(|| {
             with_guests(|game| {
                 let (window, _) = placed(game);
-                let events = game.lan_events.len();
+                let events = game.server.lan_events.len();
                 script(Script {
                     take_xp: Some(xp),
                     take_new_top: Some(1),
@@ -576,7 +576,7 @@ fn non_positive_take_xp_awards_no_orbs_and_fires_sound() {
                     Some(ItemStack::new("minecraft:dirt", 1))
                 );
                 assert!(game.orbs.is_empty());
-                assert_eq!(game.lan_events.len(), events + 1);
+                assert_eq!(game.server.lan_events.len(), events + 1);
                 assert_eq!(slot(game, 0), Some(ItemStack::new("minecraft:dirt", 1)));
                 assert_eq!(slot(game, 1), None);
                 assert!(game.transactions.is_empty());
@@ -601,7 +601,7 @@ fn an_outer_abort_undoes_an_accepted_grindstone_take() {
             // Five XP splits into 3, 1, 1. The 3-XP piece merges into this resident orb.
             let mut expected_random = LegacyRandom::new(23);
             let matching_id = 40 + expected_random.next_int_bound(40).unwrap() as u32;
-            game.next_entity = matching_id - 1;
+            game.server.next_entity = matching_id - 1;
             game.add_orb([1.5, 64.5, 1.5], 3);
             let orb = &mut game.orbs[0];
             orb.position = Vec3::new(1.5, 64.5, 1.5);
@@ -611,7 +611,7 @@ fn an_outer_abort_undoes_an_accepted_grindstone_take() {
             game.lan.as_mut().unwrap().hub.guests.update(0, |g| {
                 g.sender = PlayerSender::new(tx, Arc::default());
             });
-            let events = game.lan_events.len();
+            let events = game.server.lan_events.len();
             script(Script::default());
 
             for commit in [false, true] {
@@ -629,7 +629,7 @@ fn an_outer_abort_undoes_an_accepted_grindstone_take() {
                         "published station content before commit"
                     );
                     assert_eq!(
-                        game.lan_events.len(),
+                        game.server.lan_events.len(),
                         events,
                         "published level event before commit"
                     );
@@ -648,7 +648,7 @@ fn an_outer_abort_undoes_an_accepted_grindstone_take() {
                     );
                     assert!(rx.try_recv().is_err(), "published station content on abort");
                     assert_eq!(
-                        game.lan_events.len(),
+                        game.server.lan_events.len(),
                         events,
                         "published level event on abort"
                     );
@@ -658,7 +658,7 @@ fn an_outer_abort_undoes_an_accepted_grindstone_take() {
                         rx.try_recv().is_ok(),
                         "did not publish station content on commit"
                     );
-                    assert_eq!(game.lan_events.len(), events + 1);
+                    assert_eq!(game.server.lan_events.len(), events + 1);
                 }
             }
         });
@@ -727,7 +727,7 @@ fn panicking_grindstone_listeners_keep_vanilla_and_initial_behavior() {
             let output = Some(ItemStack::new("minecraft:dirt", 1));
             assert_eq!(slot(game, 2), output);
 
-            let events = game.lan_events.len();
+            let events = game.server.lan_events.len();
             script(Script {
                 take_xp: Some(99),
                 take_new_top: Some(1),
@@ -741,7 +741,7 @@ fn panicking_grindstone_listeners_keep_vanilla_and_initial_behavior() {
             assert_eq!(slot(game, 0), None);
             assert_eq!(slot(game, 1), None);
             assert_eq!(total_orb_xp(game), 5);
-            assert_eq!(game.lan_events.len(), events + 1);
+            assert_eq!(game.server.lan_events.len(), events + 1);
             assert!(game.transactions.is_empty());
         });
     });
@@ -918,13 +918,13 @@ fn place_only_take_awards_xp_and_event_before_replacing_inputs() {
 
             // Taking the result without a GrindstoneTake listener must award XP before
             // clearing slot 0 and slot 1 and sending the final container notification.
-            let events = game.lan_events.len();
+            let events = game.server.lan_events.len();
             click(game, window, 2, 0);
             assert_eq!(
                 *seen.lock().unwrap(),
                 vec![(None, Some(1), 7), (None, None, 7), (None, None, 7)]
             );
-            assert_eq!(game.lan_events.len(), events + 1);
+            assert_eq!(game.server.lan_events.len(), events + 1);
             assert_eq!(total_orb_xp(game), 7);
         });
     });
@@ -937,7 +937,7 @@ fn grindstone_on_take_rebuilds_the_result_before_shift_click_or_throw_all_repeat
         with_mod(|| {
             with_guests(|game| {
                 let (window, _) = placed(game);
-                let events = game.lan_events.len();
+                let events = game.server.lan_events.len();
                 script(Script {
                     place_output: Some(1),
                     place_xp: Some(7),
@@ -964,7 +964,7 @@ fn grindstone_on_take_rebuilds_the_result_before_shift_click_or_throw_all_repeat
                     ]
                 );
                 assert_eq!(
-                    game.lan_events[events..]
+                    game.server.lan_events[events..]
                         .iter()
                         .map(|e| e.kind)
                         .collect::<Vec<_>>(),

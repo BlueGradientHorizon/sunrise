@@ -34,7 +34,7 @@ fn witness(rows: &mut Map<String, Value>, name: &str, actual: Value, expected: V
 fn join(game: &mut Game<'_>, conn: u32, loaded: bool) -> mpsc::Receiver<Out> {
     let (tx, rx) = mpsc::channel();
     let id = 1000 + conn as i32;
-    game.next_entity = game.next_entity.max(id as u32 + 1);
+    game.server.next_entity = game.server.next_entity.max(id as u32 + 1);
     let mut guest = Guest::new(
         Joined {
             conn,
@@ -74,7 +74,7 @@ fn packet_tick(game: &mut Game<'_>, conn: u32, packets: impl IntoIterator<Item =
             InboxItem::Packet(S::decode(id, reader.rest()).unwrap(), None)
         }));
     });
-    game.level_pass = Default::default();
+    game.server.level_pass = Default::default();
     game.tick_lan_packets();
     assert_eq!(
         game.dim, level,
@@ -358,7 +358,7 @@ fn spectate(game: &mut Game<'_>, rx: &mpsc::Receiver<Out>, rows: &mut Map<String
             json!([
                 packets,
                 viewer.vehicle.is_none(),
-                !viewer.watching && !game.cmds.guest_cameras.contains_key(&VIEWER),
+                !viewer.watching && !game.server.cmds.guest_cameras.contains_key(&VIEWER),
                 body.fall_distance.to_bits() as i64,
                 vector_bits(body.velocity),
                 viewer.first_good == viewer.position,
@@ -794,7 +794,7 @@ fn run_witness() {
                     seed: 0,
                     max_players: 16,
                     integrated: false,
-                    levels: game.level_shapes,
+                    levels: game.server.level_shapes,
                     level_seeds: game.levels.runtime.seeds(),
                 },
             )

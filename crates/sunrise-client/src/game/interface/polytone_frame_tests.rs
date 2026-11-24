@@ -112,7 +112,7 @@ fn a_pending_clear_goes_before_the_heightmap_is_read() {
             [0.5, bottom + 2.0, 0.5],
             [0.0; 3],
         );
-        game.mod_clear_particles.set(true);
+        game.client.mod_clear_particles.set(true);
         game.polytone_gpu_decide(glam::DVec3::from_array(camera));
         assert_eq!(game.particles.polytone_gpu_records(), 0, "cleared first");
     });

@@ -75,7 +75,7 @@ fn chat_completion_reaches_mods_from_keyboard_and_mouse_isolated() {
     )]
     .into();
     mod_platform::testing::with_mods(mods, || {
-        game.screen = Screen::Chat;
+        game.client.screen = Screen::Chat;
         game.ui.registries.players = vec!["Steve".into(), "Steven".into()];
         game.ui.chat_screen = Some(ChatScreen::new(
             &Measure(&game.gui.atlas.font),
@@ -115,7 +115,7 @@ fn chat_completion_reaches_mods_from_keyboard_and_mouse_isolated() {
                 _ => None,
             })
             .expect("Steve is a visible suggestion");
-        game.cursor = at;
+        game.client.cursor = at;
         game.chat_click();
         assert_eq!(
             *calls.lock().unwrap(),

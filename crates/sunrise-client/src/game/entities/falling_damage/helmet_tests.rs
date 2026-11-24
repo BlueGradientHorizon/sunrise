@@ -41,10 +41,10 @@ pub(in crate::game) fn run_falling_impacts_wear_the_helmet_before_normal_armor_a
     .unwrap();
     let scratch = std::env::temp_dir().join(format!("sunrise-helmet-{}", std::process::id()));
     std::fs::create_dir_all(&scratch).unwrap();
-    game.world_root = scratch.clone();
+    game.server.world_root = scratch.clone();
     game.creative = false;
     // Equipment breaks are server notifications, with no local visual RNG.
-    game.lan_acting = Some(1);
+    game.server.lan_acting = Some(1);
     let position = Vec3::new(4.5, 100.0, 4.5);
     game.falling.push(FallingBlock {
         size_answer: None,

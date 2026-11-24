@@ -11,7 +11,9 @@ impl Game<'_> {
     /// focus stays as the run found it (`held_focus`) and its pointer grab stays inside the game
     /// (`internal_grab`).
     pub(super) fn scripted_run(&self) -> bool {
-        self.screenshot_sequence.is_some() || self.tick_script.playing() || self.repro.replaying()
+        self.screenshot_sequence.is_some()
+            || self.client.tick_script.playing()
+            || self.repro.replaying()
     }
 }
 
@@ -155,17 +157,17 @@ impl Game<'_> {
         if !ours {
             return;
         }
-        if let Some(modifiers) = held_modifiers(origin, self.unclaimed_window, &event) {
-            self.unclaimed_modifiers = Some(modifiers);
+        if let Some(modifiers) = held_modifiers(origin, self.client.unclaimed_window, &event) {
+            self.client.unclaimed_modifiers = Some(modifiers);
         }
         if locks_out(origin, self.scripted_run(), &event) {
             return;
         }
         if let Some(focused) = held_focus(origin, self.scripted_run(), &event) {
-            self.focus_after_run = Some(focused);
+            self.client.focus_after_run = Some(focused);
             return;
         }
-        match at_unclaimed(origin, self.unclaimed_window, &event) {
+        match at_unclaimed(origin, self.client.unclaimed_window, &event) {
             Unclaimed::Claims => self.claim_window(event_loop),
             Unclaimed::Dropped => return,
             Unclaimed::Passes => {}
@@ -174,9 +176,9 @@ impl Game<'_> {
         // MacosUtil.setCtrlClickEmulatesRightClick: Control + left click is a right click.
         if let WindowEvent::MouseInput { state, button, .. } = &mut event
             && *button == MouseButton::Left
-            && self.right_click_emulation.is_right_click(
+            && self.client.right_click_emulation.is_right_click(
                 *state == ElementState::Pressed,
-                self.modifiers.control_key(),
+                self.client.modifiers.control_key(),
                 cfg!(target_os = "macos") && self.settings.ctrl_click_emulates_right_click,
             )
         {
@@ -202,10 +204,10 @@ impl Game<'_> {
             && let PhysicalKey::Code(key) = event.physical_key
         {
             if event.state == ElementState::Pressed {
-                self.physical_keys.insert(key);
+                self.client.physical_keys.insert(key);
                 sunrise_client::keybinds::learn_layout(event);
             } else {
-                self.physical_keys.remove(&key);
+                self.client.physical_keys.remove(&key);
             }
         }
         if matches!(
@@ -220,13 +222,13 @@ impl Game<'_> {
         }
         if let WindowEvent::MouseInput { state, button, .. } = &event {
             if *state == ElementState::Pressed {
-                self.physical_buttons.insert(*button);
-                self.physical_presses += 1;
+                self.client.physical_buttons.insert(*button);
+                self.client.physical_presses += 1;
             } else {
-                self.physical_buttons.remove(button);
+                self.client.physical_buttons.remove(button);
             }
             // A container hook's press latch ends here, before any hook can cancel the release.
-            self.container_owned_up = *state == ElementState::Released
+            self.client.container_owned_up = *state == ElementState::Released
                 && !self.pad_synthetic_input()
                 && self.container_button_up(*button);
         }
@@ -236,7 +238,7 @@ impl Game<'_> {
             Some((
                 glfw_button(*button),
                 *state == ElementState::Pressed,
-                glfw_modifiers(self.modifiers),
+                glfw_modifiers(self.client.modifiers),
             ))
         } else {
             None
@@ -278,7 +280,7 @@ impl Game<'_> {
 
     /// The loop ended: close the pads' output, save the world.
     pub(super) fn shut_down(&mut self) {
-        self.client_quit.set(ClientQuit::Stopping);
+        self.client.client_quit.set(ClientQuit::Stopping);
         self.close_client_tasks();
         if self.error.is_none()
             && let Some(renderer) = &mut self.renderer
@@ -301,7 +303,7 @@ impl Game<'_> {
     /// winit's `about_to_wait`: what happens between frames (stop requests, the closing
     /// save, world entry, the control socket, pads), then the next frame.
     pub(super) fn idle(&mut self, event_loop: &dyn EventLoopCtl) {
-        let quit_requested = match self.client_quit.get() {
+        let quit_requested = match self.client.client_quit.get() {
             ClientQuit::Running => sunrise_threads::stop_requests() > 0,
             ClientQuit::Requested => true,
             ClientQuit::Stopping => false,
@@ -364,7 +366,7 @@ impl Game<'_> {
         self.settle_after_run(event_loop);
         self.pause_if_inactive();
         if let Some(limit) = self.options.time_limit()
-            && self.started.elapsed() > limit
+            && self.client.started.elapsed() > limit
         {
             self.error = Some(format!("run timed out after {} s", limit.as_secs()).into());
             event_loop.exit();
@@ -397,7 +399,7 @@ impl Game<'_> {
         // Consume the last frame's result: a hidden compositor may stop sending
         // redraws altogether, leaving a successful result stale indefinitely.
         event_loop.set_control_flow(event_loop::redraw_flow(
-            &mut self.frame_drawn,
+            &mut self.client.frame_drawn,
             self.options.offscreen,
             Instant::now(),
         ));
@@ -413,7 +415,7 @@ impl ApplicationHandler for Game<'_> {
         // The Window constructor: created fullscreen when options.txt or --fullscreen says so.
         let fullscreen = self.settings.fullscreen || self.options.fullscreen;
         let size = self.options.window_size.map(f64::from);
-        self.fullscreen = sunrise_client::window::FullscreenState::new(fullscreen);
+        self.client.fullscreen = sunrise_client::window::FullscreenState::new(fullscreen);
         let attributes = sunrise_client::window::with_icon(
             Window::default_attributes().with_title(super::window_title::base()),
         );
@@ -426,7 +428,7 @@ impl ApplicationHandler for Game<'_> {
         // the person keeps their keyboard and pointer until they click it (`unclaimed_window`).
         // X11 activates it anyway, and Windows can too: the focus claims nothing.
         let agent_started = self.options.control.is_some();
-        self.unclaimed_window = agent_started && !self.options.offscreen;
+        self.client.unclaimed_window = agent_started && !self.options.offscreen;
         // `--offscreen` renders into a texture: its window would only show white.
         let window_step = startup::step("window.create");
         let window = match event_loop.create_window(
@@ -449,12 +451,12 @@ impl ApplicationHandler for Game<'_> {
             sunrise_threads::system_menu::suppress(hwnd);
         }
         drop(window_step);
-        let pending = self.pending_initial_models.take();
+        let pending = self.client.pending_initial_models.take();
         let renderer = match &pending {
             Some(start) => self.renderer_for(window.clone(), &start.models.pack, &start.models.gui),
             None => self.new_renderer(window.clone()),
         };
-        self.resize_state = Some(self.resize_state_of(window.inner_size()));
+        self.client.resize_state = Some(self.resize_state_of(window.inner_size()));
         self.window = Some(window);
         if let Some(pending) = pending {
             match self.apply_pending_client_start(*pending, renderer.map(Some)) {
@@ -479,7 +481,7 @@ impl ApplicationHandler for Game<'_> {
             match renderer {
                 Ok(renderer) => {
                     self.renderer = Some(renderer);
-                    self.world_renderer_ready = true;
+                    self.client.world_renderer_ready = true;
                 }
                 Err(error) => {
                     self.error = Some(error);
@@ -488,22 +490,22 @@ impl ApplicationHandler for Game<'_> {
                 }
             }
         }
-        self.ime_allowed = false;
-        self.ime_area = None;
+        self.client.ime_allowed = false;
+        self.client.ime_area = None;
         self.apply_settings();
         self.previous = Instant::now();
     }
     fn window_event(&mut self, event_loop: &ActiveEventLoop, id: WindowId, event: WindowEvent) {
         let key = if self.window.as_ref().is_some_and(|w| w.id() == id)
             && !self.scripted_run()
-            && !self.unclaimed_window
+            && !self.client.unclaimed_window
             && let WindowEvent::KeyboardInput {
                 event,
                 is_synthetic: false,
                 ..
             } = &event
         {
-            Some((event.clone(), glfw_modifiers(self.modifiers)))
+            Some((event.clone(), glfw_modifiers(self.client.modifiers)))
         } else {
             None
         };
@@ -534,11 +536,11 @@ impl ApplicationHandler for Game<'_> {
         // Offscreen runs do not use native pointer motion.
         if self.pending_save.is_none()
             && !self.scripted_run()
-            && !self.unclaimed_window
-            && self.captured
-            && self.focused
+            && !self.client.unclaimed_window
+            && self.client.captured
+            && self.client.focused
             && !self.options.offscreen
-            && self.screen == Screen::Playing
+            && self.client.screen == Screen::Playing
             && let DeviceEvent::MouseMotion { delta: (x, y) } = event
         {
             if self.pad_radial_captures() {
@@ -552,8 +554,8 @@ impl ApplicationHandler for Game<'_> {
                 input_trace::InputOrigin::User,
                 input_trace::TraceKind::Motion { x, y },
             );
-            self.mouse.on_move(0.0, 0.0, x, y, true, true);
-            self.last_input = Instant::now();
+            self.client.mouse.on_move(0.0, 0.0, x, y, true, true);
+            self.client.last_input = Instant::now();
         }
     }
     fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {

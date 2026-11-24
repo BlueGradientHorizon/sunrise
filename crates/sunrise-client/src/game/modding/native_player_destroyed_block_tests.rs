@@ -95,10 +95,10 @@ fn with_player(
         .chunks
         .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
     game.player = Some(PlayerMotion::new(game.motion, Vec3::new(4.5, 64.0, 4.5)).unwrap());
-    game.lan_acting_uuid = Some(123);
-    game.lan_acting_entity = Some(20);
-    game.lan_acting_name = Some("Breaker".into());
-    game.lan_acting_permission = Some(0);
+    game.server.lan_acting_uuid = Some(123);
+    game.server.lan_acting_entity = Some(20);
+    game.server.lan_acting_name = Some("Breaker".into());
+    game.server.lan_acting_permission = Some(0);
     game.set_mode(mode);
     game.inventory[game.selected] = held;
     // The acting player as a hook would name them: this server's entity 20.

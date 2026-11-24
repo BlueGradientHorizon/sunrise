@@ -8,7 +8,7 @@ impl Game<'_> {
     /// level in place.
     pub(in crate::game) fn target_level(&self, t: Target) -> Dim {
         let conn = match t {
-            Target::Player => self.lan_acting,
+            Target::Player => self.server.lan_acting,
             Target::Guest(conn) => Some(conn),
             _ => None,
         };

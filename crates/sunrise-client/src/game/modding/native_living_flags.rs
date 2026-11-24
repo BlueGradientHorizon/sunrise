@@ -28,7 +28,7 @@ impl Game<'_> {
         write: impl FnOnce(&mut Self) -> bool,
     ) -> bool {
         match target {
-            Target::Player => !self.lan_acting_fake && write(self),
+            Target::Player => !self.server.lan_acting_fake && write(self),
             Target::Guest(conn) => {
                 let Some(gi) = self.guest_index(conn) else {
                     return false;
@@ -38,7 +38,7 @@ impl Game<'_> {
                 if self.lan.as_ref().unwrap().hub.guests[gi].dimension != self.dim.id() {
                     return false;
                 }
-                self.as_guest_at(gi, conn, |game| !game.lan_acting_fake && write(game))
+                self.as_guest_at(gi, conn, |game| !game.server.lan_acting_fake && write(game))
                     .unwrap_or(false)
             }
             _ => false,
@@ -701,7 +701,7 @@ pub(in crate::game) mod tests {
             seed: 0,
             max_players: 2,
             integrated: !dedicated,
-            levels: game.level_shapes,
+            levels: game.server.level_shapes,
             level_seeds: game.levels.runtime.seeds(),
         };
         game.lan_host(settings, net, config).unwrap();
@@ -783,7 +783,7 @@ pub(in crate::game) mod tests {
         let mut ctx = TickCtx {
             world: &mut game.world,
             entities: &[],
-            next_entity: &mut game.next_entity,
+            next_entity: &mut game.server.next_entity,
             spawn: [0.0, 64.0, 0.0],
             spawn_angle: [0.0; 2],
             spawn_dimension: "minecraft:overworld",
@@ -1020,7 +1020,7 @@ pub(in crate::game) mod tests {
                         let outer_guest_before = SleepState::guest(game, 12);
                         let foreign_bed = game.world.block(5, 64, 5);
                         let outer_bed = game.world.block(7, 64, 7);
-                        let player_beds = game.player_beds.clone();
+                        let player_beds = game.server.player_beds.clone();
                         for mutation in 0..4 {
                             let changed = match mutation {
                                 0 => game.living_start_sleeping(foreign, [5, 64, 5]),
@@ -1035,7 +1035,7 @@ pub(in crate::game) mod tests {
                             );
                             // No wake marker or bed cleanup may be queued for
                             // the current world by the refused foreign write.
-                            assert_eq!(game.player_beds, player_beds);
+                            assert_eq!(game.server.player_beds, player_beds);
                             assert_eq!(SleepState::guest(game, 13), foreign_before);
                             assert_eq!(SleepState::acting(game), outer_before);
                             assert_eq!(SleepState::guest(game, 12), outer_guest_before);
@@ -1051,8 +1051,8 @@ pub(in crate::game) mod tests {
                             let _ = packets(&outer_rx);
                             let _ = packets(&foreign_rx);
                             refuse(game);
-                            assert_eq!(game.lan_acting, Some(12));
-                            assert!(!game.lan_acting_fake);
+                            assert_eq!(game.server.lan_acting, Some(12));
+                            assert!(!game.server.lan_acting_fake);
                         })
                         .unwrap();
                     } else {
@@ -1067,7 +1067,7 @@ pub(in crate::game) mod tests {
                     assert_eq!(SleepState::guest(game, 13), foreign_before);
                     assert_eq!(game.world.block(5, 64, 5), foreign_bed);
                     assert_eq!(game.world.block(7, 64, 7), outer_bed);
-                    assert!(game.lan_guest_swaps.is_empty());
+                    assert!(game.server.lan_guest_swaps.is_empty());
                     assert_eq!(game.dim, super::super::Dim::Overworld);
                 });
             }
@@ -1231,7 +1231,7 @@ pub(in crate::game) mod tests {
                 let outer_pos = game.player.as_ref().unwrap().position;
                 assert!(game.living_set_sleeping_pos(outer, [7, 64, 7]));
                 game.as_guest(14, |game| {
-                    assert!(game.lan_acting_fake);
+                    assert!(game.server.lan_acting_fake);
                     assert_eq!(game.living_gliding_ticks(outer), None);
                     assert!(!game.living_stop_gliding(outer));
                     assert!(!game.living_clear_sleeping_pos(outer));
@@ -1240,18 +1240,18 @@ pub(in crate::game) mod tests {
                     assert!(!game.living_clear_sleeping_pos(fake));
                     assert!(!game.living_stop_sleeping(fake));
                     game.as_guest(13, |game| {
-                        assert!(!game.lan_acting_fake);
+                        assert!(!game.server.lan_acting_fake);
                         assert!(game.living_stop_gliding(inner));
                         assert!(game.living_start_sleeping(inner, [5, 64, 5]));
                     })
                     .unwrap();
-                    assert!(game.lan_acting_fake);
+                    assert!(game.server.lan_acting_fake);
                     assert_eq!(game.living_is_gliding(fake), Some(true));
                     assert_eq!(game.living_gliding_ticks(fake), Some(14));
                     assert!(game.living_stop_gliding(fake));
                 })
                 .unwrap();
-                assert!(!game.lan_acting_fake);
+                assert!(!game.server.lan_acting_fake);
                 assert_eq!(game.living_is_gliding(outer), Some(true));
                 assert_eq!(game.living_gliding_ticks(outer), Some(12));
                 assert_eq!(game.living_sleeping_pos(outer), Some([7, 64, 7]));
@@ -1263,7 +1263,7 @@ pub(in crate::game) mod tests {
             assert!(!game.command_guest(14).unwrap().fall_flying);
             assert_eq!(game.living_sleeping_pos(inner), Some([5, 64, 5]));
             assert_eq!(game.living_is_sleeping(fake), Some(false));
-            assert!(game.lan_guest_swaps.is_empty());
+            assert!(game.server.lan_guest_swaps.is_empty());
         });
     }
 

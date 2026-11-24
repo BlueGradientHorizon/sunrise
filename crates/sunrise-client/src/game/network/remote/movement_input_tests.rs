@@ -55,7 +55,7 @@ fn connect(game: &mut Game<'_>) -> sunrise_protocol::connection::Pipe {
     remote.loaded_sent = true;
     remote.entity_id = 42;
     remote.level_load.finish();
-    game.screen = Screen::Playing;
+    game.client.screen = Screen::Playing;
     game.streaming
         .insert_remote(&mut game.world, sunrise_client::chunk::Chunk::empty(0, 0));
     server

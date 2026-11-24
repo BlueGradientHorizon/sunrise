@@ -39,7 +39,7 @@ impl Game<'_> {
             | Target::Crystal(_)
             | Target::DragonPart(_)
             | Target::Cushion(_) => true,
-            Target::Other(id) => self.interactions.contains_key(&(id as i32)),
+            Target::Other(id) => self.client.interactions.contains_key(&(id as i32)),
             Target::Projectile(id) => self
                 .creatures
                 .projectiles

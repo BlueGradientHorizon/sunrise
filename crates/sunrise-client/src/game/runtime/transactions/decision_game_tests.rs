@@ -253,7 +253,7 @@ fn a_save_is_refused_in_an_action_savepoint_a_special_item_is_drawn_in_isolated(
         let identity = identity(game);
         // The world's folder, where a save would land: the fixture's world has none.
         let folder = tempfile::tempdir().unwrap();
-        game.world_root = folder.path().to_path_buf();
+        game.server.world_root = folder.path().to_path_buf();
         let saved = persisted(folder.path());
         let menu = Menu::new(tests::state());
         game.storage_scope(|game, _| {

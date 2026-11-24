@@ -276,7 +276,7 @@ struct PlayerEntityState<'a> {
 pub(in crate::game) struct View<'a, 'g>(pub(in crate::game) &'a Game<'g>);
 impl adv::World for View<'_, '_> {
     fn predicate(&self, id: &str) -> Option<&Value> {
-        self.0.fns.store.predicates.get(id)
+        self.0.server.fns.store.predicates.get(id)
     }
     fn dimension(&self) -> &str {
         self.0.dim.id()
@@ -364,7 +364,7 @@ impl adv::World for View<'_, '_> {
     }
     fn in_tag(&self, registry: &str, tag: &str, id: &str) -> bool {
         let tags = TagSources {
-            pack_tags: self.0.world_tables.as_ref().map(|t| &t.pack_tags),
+            pack_tags: self.0.server.world_tables.as_ref().map(|t| &t.pack_tags),
             items: self.0.items(),
             mob_data: self.0.res.mob_data(),
             damage: &self.0.health_resources.damage,
@@ -485,7 +485,7 @@ pub(super) fn item_view(s: &ItemStack) -> ItemView {
 impl Game<'_> {
     fn adv_path(&self) -> Option<std::path::PathBuf> {
         Some(super::stats::player_json(
-            &self.world_root,
+            &self.server.world_root,
             "advancements",
             self.level.player_uuid?,
         ))
@@ -493,7 +493,7 @@ impl Game<'_> {
     /// A server with no player of its own and nobody it acts for: there is
     /// no player for advancements and statistics.
     pub(super) fn no_player_here(&self) -> bool {
-        self.options.dedicated.is_some() && self.lan_acting.is_none()
+        self.options.dedicated.is_some() && self.server.lan_acting.is_none()
     }
     /// Load the local tree once; an empty server tree is still authoritative.
     pub(super) fn advancement_tree(&mut self) -> Arc<Tree> {
@@ -554,7 +554,10 @@ impl Game<'_> {
         if !self.adv.loaded
             || self.remote.is_some()
             || self.no_player_here()
-            || self.crash_save.holds_interrupted(self.lan_acting)
+            || self
+                .server
+                .crash_save
+                .holds_interrupted(self.server.lan_acting)
         {
             return;
         }
@@ -721,7 +724,7 @@ impl Game<'_> {
         let Some(g) = host
             .hub
             .guest(conn)
-            .filter(|_| self.lan_acting != Some(conn))
+            .filter(|_| self.server.lan_acting != Some(conn))
         else {
             return adv::PlayerFacts::default();
         };
@@ -1047,7 +1050,7 @@ impl Game<'_> {
     /// `SimpleCriterionTrigger.trigger`: test each open criterion of the
     /// trigger and award what it completes.
     pub(super) fn trigger(&mut self, name: &str, test: impl Fn(&Value, &dyn adv::World) -> bool) {
-        if self.lan_acting_fake || self.remote.is_some() || self.no_player_here() {
+        if self.server.lan_acting_fake || self.remote.is_some() || self.no_player_here() {
             return;
         }
         self.load_advancements();
@@ -1065,7 +1068,7 @@ impl Game<'_> {
         list: &[(usize, usize)],
         test: impl Fn(&Value, &dyn adv::World) -> bool,
     ) {
-        if self.lan_acting_fake {
+        if self.server.lan_acting_fake {
             return;
         }
         let mut hits = Vec::new();
@@ -1110,9 +1113,9 @@ impl Game<'_> {
             return;
         }
         if let (Some(uuid), Some(entity_id), Some(name)) = (
-            self.lan_acting_uuid,
-            self.lan_acting_entity,
-            self.lan_acting_name.clone(),
+            self.server.lan_acting_uuid,
+            self.server.lan_acting_entity,
+            self.server.lan_acting_name.clone(),
         ) {
             let progress = progress_snapshot(advancement, &self.adv.progress);
             self.native_player_advancement_progress(
@@ -1140,7 +1143,7 @@ impl Game<'_> {
         use sunrise_client::lan::hub::advancements::{AdvancementOwners, AdvancementState};
         let host = self.lan.as_mut()?;
         let mut owners = AdvancementOwners::active(
-            &self.lan_guest_swaps,
+            &self.server.lan_guest_swaps,
             AdvancementState {
                 progress: &mut self.adv.progress,
                 changed: &mut self.adv.changed,
@@ -1207,7 +1210,7 @@ impl Game<'_> {
                     })
                     .flatten()
                     .unwrap_or(false);
-                if self.lan_acting == Some(task.conn) {
+                if self.server.lan_acting == Some(task.conn) {
                     if !was_done && done {
                         self.award_definition(definition);
                     }
@@ -1229,7 +1232,7 @@ impl Game<'_> {
     }
     /// `PlayerAdvancements.progressChanged`, kept for a network player's client.
     fn progress_changed(&mut self, index: usize) {
-        if self.lan_acting.is_some() {
+        if self.server.lan_acting.is_some() {
             self.adv.changed.insert(index);
         }
     }
@@ -1241,7 +1244,10 @@ impl Game<'_> {
         let mut allowed = Vec::with_capacity(unlocked.len());
         let mut refused = Vec::new();
         let mut taken_back = 0;
-        if let (Some(player), Some(name)) = (self.lan_acting_uuid, self.lan_acting_name.clone()) {
+        if let (Some(player), Some(name)) = (
+            self.server.lan_acting_uuid,
+            self.server.lan_acting_name.clone(),
+        ) {
             for recipe in unlocked {
                 let mut cancel = false;
                 self.native_player_recipe_discovered(player, &name, recipe, &mut cancel);
@@ -1257,8 +1263,8 @@ impl Game<'_> {
                     .recipe_book
                     .remove_recipes(&world_stations!(self).recipe_index, &refused);
                 taken_back = removed.len();
-                if self.lan_acting.is_some() && !removed.is_empty() {
-                    self.guest_packets.push(C::RecipeBookRemove(
+                if self.server.lan_acting.is_some() && !removed.is_empty() {
+                    self.server.guest_packets.push(C::RecipeBookRemove(
                         sunrise_protocol::packets::recipes::RecipeBookRemove { ids: removed },
                     ));
                 }
@@ -1266,7 +1272,7 @@ impl Game<'_> {
         } else {
             allowed.extend_from_slice(unlocked);
         }
-        if self.lan_acting.is_some() {
+        if self.server.lan_acting.is_some() {
             // A network player's client gets them in ClientboundRecipeBookAddPacket.
             self.adv.unlocked.extend_from_slice(&allowed);
         } else {
@@ -1292,7 +1298,7 @@ impl Game<'_> {
     }
     /// `ServerPlayer.awardRecipes`: fake players learn no recipes.
     pub(super) fn award_recipes(&mut self, recipes: &[String]) -> usize {
-        if self.lan_acting_fake {
+        if self.server.lan_acting_fake {
             return 0;
         }
         let index = &world_stations!(self).recipe_index;
@@ -1356,7 +1362,7 @@ impl Game<'_> {
     /// `PlayerAdvancements.award` once done: `AdvancementRewards.grant`,
     /// then toast and announcement.
     fn award(&mut self, index: usize) {
-        if self.lan_acting_fake {
+        if self.server.lan_acting_fake {
             return;
         }
         let tree = self.adv.tree.clone();
@@ -1364,10 +1370,13 @@ impl Game<'_> {
     }
 
     fn award_definition(&mut self, a: &adv::Advancement) {
-        if self.lan_acting_fake {
+        if self.server.lan_acting_fake {
             return;
         }
-        if let (Some(player), Some(name)) = (self.lan_acting_uuid, self.lan_acting_name.clone()) {
+        if let (Some(player), Some(name)) = (
+            self.server.lan_acting_uuid,
+            self.server.lan_acting_name.clone(),
+        ) {
             self.native_player_advancement_done(player, &name, &a.id);
         }
         if self.defer_merchant_reward(a) {
@@ -1381,7 +1390,7 @@ impl Game<'_> {
         let rewards = self.grant_rewards(a);
         if let Some(d) = &a.display {
             // A network player's client shows its own toast.
-            if d.show_toast && !self.adv.quiet && self.lan_acting.is_none() {
+            if d.show_toast && !self.adv.quiet && self.server.lan_acting.is_none() {
                 self.add_advancement_toast(Toast {
                     icon: d.icon.clone(),
                     frame: d.frame,
@@ -1407,7 +1416,7 @@ impl Game<'_> {
                 let name = adv_name(a);
                 // PlayerList.broadcastSystemMessage: everyone hears of a
                 // network player's advancement.
-                match self.lan_acting_name.clone() {
+                match self.server.lan_acting_name.clone() {
                     // Player.getDisplayName.
                     Some(_) => {
                         let player = self.target_name(super::commands::Target::Player);
@@ -2653,7 +2662,8 @@ impl Game<'_> {
             mod_api::ToastKind::Advancement
         };
         if self.admit_toast(kind, &mut toast.title, &mut toast.description) {
-            self.toast_manager
+            self.client
+                .toast_manager
                 .queued
                 .push_back(super::toast_manager::Toast::Advancement(toast));
         }
@@ -2780,7 +2790,7 @@ impl Game<'_> {
     /// `AdvancementCommands.Action.GRANT` on one advancement (or one of
     /// its criteria): false when nothing changed.
     pub(super) fn grant_advancement(&mut self, index: usize, criterion: Option<&str>) -> bool {
-        if self.lan_acting_fake {
+        if self.server.lan_acting_fake {
             return false;
         }
         let tree = self.adv.tree.clone();
@@ -2809,7 +2819,7 @@ impl Game<'_> {
     }
     /// `AdvancementCommands.Action.REVOKE`.
     pub(super) fn revoke_advancement(&mut self, index: usize, criterion: Option<&str>) -> bool {
-        if self.lan_acting_fake {
+        if self.server.lan_acting_fake {
             return false;
         }
         let tree = self.adv.tree.clone();
@@ -3124,9 +3134,10 @@ mod tests {
                             last_changed: 0,
                         };
                         game.add_advancement_toast(advancement("cancel"));
-                        assert!(game.toast_manager.queued.is_empty());
+                        assert!(game.client.toast_manager.queued.is_empty());
                         game.add_advancement_toast(advancement("untouched"));
-                        let QueuedToast::Advancement(original) = &game.toast_manager.queued[0]
+                        let QueuedToast::Advancement(original) =
+                            &game.client.toast_manager.queued[0]
                         else {
                             panic!("expected advancement toast")
                         };
@@ -3141,7 +3152,8 @@ mod tests {
                             "not animated before admission"
                         );
                         game.add_advancement_toast(advancement("edit"));
-                        let QueuedToast::Advancement(edited) = &game.toast_manager.queued[1] else {
+                        let QueuedToast::Advancement(edited) = &game.client.toast_manager.queued[1]
+                        else {
                             panic!("expected advancement toast")
                         };
                         assert_eq!(edited.title.plain(), "replacement");
@@ -3162,7 +3174,8 @@ mod tests {
                             sunrise_client::toasts::SystemToast::new("system".into(), None);
                         system.message = Some(Text::literal("edit"));
                         assert!(game.add_system_toast(None, system));
-                        let Some(QueuedToast::System(_, system)) = game.toast_manager.queued.back()
+                        let Some(QueuedToast::System(_, system)) =
+                            game.client.toast_manager.queued.back()
                         else {
                             panic!("expected system toast")
                         };
@@ -3175,12 +3188,12 @@ mod tests {
                             ));
                         }
                         assert_eq!(
-                            game.toast_manager.update(1.0),
+                            game.client.toast_manager.update(1.0),
                             (None, true),
                             "both challenges share a promotion sound"
                         );
-                        assert_eq!(game.toast_manager.visible.len(), 5);
-                        assert_eq!(game.toast_manager.update(1.0), (Some(true), false));
+                        assert_eq!(game.client.toast_manager.visible.len(), 5);
+                        assert_eq!(game.client.toast_manager.update(1.0), (Some(true), false));
 
                         game.add_toast(mod_api::ModToast::new(mod_api::Text::literal(
                             "Older mod toast",
@@ -3189,40 +3202,47 @@ mod tests {
                         game.admit_mod_toasts();
                         game.add_advancement_toast(advancement("newer advancement"));
                         let fading = game
+                            .client
                             .toast_manager
                             .system_mut(SystemToastId::PackLoadFailure)
                             .unwrap();
                         fading.slide.origin = Some(Instant::now() - Duration::from_secs(1));
                         fading.force_hide();
-                        assert_eq!(game.toast_manager.update(1.0), (Some(false), false));
+                        assert_eq!(game.client.toast_manager.update(1.0), (Some(false), false));
                         assert_eq!(
-                            game.toast_manager.queued.len(),
+                            game.client.toast_manager.queued.len(),
                             2,
                             "a sliding-out toast still owns its slot"
                         );
-                        game.toast_manager
+                        game.client
+                            .toast_manager
                             .system_mut(SystemToastId::PackLoadFailure)
                             .unwrap()
                             .slide
                             .origin = Some(Instant::now() - Duration::from_secs(2));
-                        assert_eq!(game.toast_manager.update(1.0), (None, false));
+                        assert_eq!(game.client.toast_manager.update(1.0), (None, false));
                         assert!(matches!(
-                            game.toast_manager.visible.last().map(|entry| &entry.toast),
+                            game.client
+                                .toast_manager
+                                .visible
+                                .last()
+                                .map(|entry| &entry.toast),
                             Some(QueuedToast::Mod(_))
                         ));
                         assert!(matches!(
-                            game.toast_manager.queued.front(),
+                            game.client.toast_manager.queued.front(),
                             Some(QueuedToast::Advancement(_))
                         ));
 
                         let narrator = game
+                            .client
                             .toast_manager
                             .system_mut(SystemToastId::Narrator)
                             .unwrap();
                         narrator.slide.origin = Some(Instant::now() - Duration::from_secs(1));
                         narrator.force_hide();
                         assert_eq!(
-                            game.toast_manager.update(1.0),
+                            game.client.toast_manager.update(1.0),
                             (Some(false), false),
                             "the first visibility change wins, even while another family slides in"
                         );
@@ -3752,7 +3772,7 @@ mod structure_tag_tests {
             id_matches(&set(tag), "worldgen/structure", id, &View(game))
         };
         // A world without packs: the game's own tags.
-        assert!(game.world_tables.is_none());
+        assert!(game.server.world_tables.is_none());
         assert!(holds(
             &game,
             "#minecraft:village",
@@ -3788,7 +3808,7 @@ mod structure_tag_tests {
         .unwrap();
         let settings = json!({"enabled": ["file/mypack"], "disabled": []});
         std::fs::write(dir.join("datapacks.json"), settings.to_string()).unwrap();
-        game.world_root = dir.clone();
+        game.server.world_root = dir.clone();
         let stack = crate::game::functions::pack_stack(
             &dir,
             &root,
@@ -3798,11 +3818,11 @@ mod structure_tag_tests {
             &[],
             &[],
         );
-        game.world_tables = game
+        game.server.world_tables = game
             .stage_world_tables(&stack, false, &root)
             .unwrap()
             .tables;
-        assert!(game.world_tables.is_some());
+        assert!(game.server.world_tables.is_some());
         assert!(holds(&game, "#mypack:village", "minecraft:igloo"));
         assert!(holds(&game, "#mypack:village", "minecraft:village_plains"));
         assert!(!holds(&game, "#mypack:village", "minecraft:shipwreck"));
@@ -3885,7 +3905,7 @@ mod random_chance_command_tests {
             .unwrap();
         }
         std::fs::write(folder.join("pig.json"),r#"{"type":"minecraft:entity_properties","entity":"this","predicate":{"minecraft:entity_type":"minecraft:pig"}}"#).unwrap();
-        game.world_root = dir.clone();
+        game.server.world_root = dir.clone();
         game.reload_datapacks(false, &[]).unwrap();
         assert!(game.run_command("scoreboard objectives add h122 dummy"));
         assert!(game.run_command("function h122:admit"));
@@ -3914,10 +3934,10 @@ mod random_chance_command_tests {
         for row in &rows {
             let seed = row["seed"].as_i64().unwrap();
             let name = format!("h122:case_{}", row["case"]);
-            assert!(game.fns.store.predicates.contains_key(&name));
+            assert!(game.server.fns.store.predicates.contains_key(&name));
             game.world.random.set_seed(seed);
             game.run_command("scoreboard players set branch h122 -99");
-            game.exec = Default::default();
+            game.server.exec = Default::default();
             let source = game.player_source();
             game.execute_line(&format!("execute as 0000007a-0000-0000-0000-000000000001 if predicate {name} run scoreboard players set branch h122 1"),source).unwrap();
             assert_eq!(
@@ -4144,7 +4164,7 @@ mod movement_predicate_tests {
             r#"{"type":"minecraft:all_of","terms":[]}"#,
         )
         .unwrap();
-        game.world_root = root;
+        game.server.world_root = root;
         game.reload_datapacks(false, &[]).unwrap();
         assert!(game.run_command("scoreboard objectives add motion dummy"));
         assert!(game.run_command("execute if predicate motion:always"));
@@ -4170,7 +4190,8 @@ mod movement_predicate_tests {
         let mut failures = Vec::new();
         for (name, p, want) in probes {
             assert!(
-                game.fns
+                game.server
+                    .fns
                     .store
                     .predicates
                     .contains_key(&format!("motion:{name}"))

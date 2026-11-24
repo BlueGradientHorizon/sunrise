@@ -111,7 +111,7 @@ impl Game<'_> {
         };
         let left = match target {
             Target::Player if !self.is_logical_server() => self.settings.main_hand_left,
-            Target::Player => return self.guest_main_arm(self.lan_acting?),
+            Target::Player => return self.guest_main_arm(self.server.lan_acting?),
             Target::Guest(conn) => return self.guest_main_arm(conn),
             Target::Mob(_) => self.mobs[self.mobs.locate(location?.join)?].main_arm_left(),
             Target::Stand(_) | Target::Dragon(_) => false,
@@ -160,7 +160,9 @@ impl Game<'_> {
                 if player.set_sprinting(sprinting).is_err() {
                     return false;
                 }
-                if let (Some(&conn), Some(lan)) = (self.lan_guest_swaps.last(), self.lan.as_mut()) {
+                if let (Some(&conn), Some(lan)) =
+                    (self.server.lan_guest_swaps.last(), self.lan.as_mut())
+                {
                     lan.hub
                         .update_guest(conn, |guest| guest.sprinting = sprinting);
                 }
@@ -1278,8 +1280,8 @@ mod tests {
                 .registry
                 .default_state("minecraft:sand")
                 .unwrap();
-            game.next_entity += 1;
-            let falling = game.next_entity;
+            game.server.next_entity += 1;
+            let falling = game.server.next_entity;
             game.falling.push(FallingBlock {
                 size_answer: None,
                 ground: Default::default(),
@@ -1461,8 +1463,8 @@ mod tests {
                 .registry
                 .default_state("minecraft:sand")
                 .unwrap();
-            game.next_entity += 1;
-            let id = game.next_entity;
+            game.server.next_entity += 1;
+            let id = game.server.next_entity;
             game.falling.push(FallingBlock {
                 size_answer: None,
                 ground: Default::default(),

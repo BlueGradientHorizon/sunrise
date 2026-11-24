@@ -160,9 +160,9 @@ fn expected_frame(game: &Game<'_>, f: &ItemFrame, camera: glam::DVec3) -> Vec<Ve
         (u32::from(frame_light >> 4) * 16) | ((u32::from(frame_light & 15) * 16) << 8);
     // These fixtures never hold a map, so the ordinary (non-map) frame models apply.
     let model = if f.glow {
-        &game.glow_frame_model
+        &game.client.glow_frame_model
     } else {
-        &game.frame_model
+        &game.client.frame_model
     };
     let mut out = Vec::new();
     if !f.invisible {

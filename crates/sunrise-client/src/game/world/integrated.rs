@@ -554,7 +554,7 @@ impl Game<'_> {
         let (res, pack, settings) = (self.res.clone(), self.pack.clone(), self.settings.clone());
         sunrise_client::parallel::set_setting(settings.sunrise.parallel_tick);
         let flags = Arc::new(Flags {
-            reports: self.client_reports.clone(),
+            reports: self.client.client_reports.clone(),
             ..Flags::default()
         });
         flags
@@ -680,7 +680,7 @@ impl Game<'_> {
         }
         // IntegratedServer.getWorldScreenshotFile: the client grabs the frame
         // the Select World list shows, and needs the save folder for it.
-        self.world_icon = Some(WorldIcon {
+        self.client.world_icon = Some(WorldIcon {
             path: std::env::current_dir()?
                 .join("saves")
                 .join(&folder)
@@ -748,15 +748,15 @@ impl Game<'_> {
             _ => return,
         };
         let now = Instant::now();
-        let at = self.loading_progress_at.get_or_insert(now);
+        let at = self.client.loading_progress_at.get_or_insert(now);
         let steps = (now.duration_since(*at).as_millis() / 50).min(20) as u32;
         *at += Duration::from_millis(u64::from(steps) * 50);
         if now.duration_since(*at) > Duration::from_secs(1) {
             *at = now;
         }
         for _ in 0..steps {
-            self.loading_progress = sunrise_client::level_loading::smooth(
-                self.loading_progress,
+            self.client.loading_progress = sunrise_client::level_loading::smooth(
+                self.client.loading_progress,
                 view.server_progress(),
             );
         }
@@ -774,7 +774,7 @@ impl Game<'_> {
     ) -> Result<()> {
         // `IntegratedServer`'s constructor: `setSingleplayerProfile(minecraft.getGameProfile())`,
         // fixed before the configs and startup hooks, which mods may read it in.
-        self.singleplayer_profile = Some(SingleplayerProfile::launched(
+        self.server.singleplayer_profile = Some(SingleplayerProfile::launched(
             launch.player.clone(),
             launch.owner,
             launch.owner_profile.as_deref(),
@@ -828,7 +828,7 @@ impl Game<'_> {
                 self.wait_for_next_server_tick(&mut next, true);
                 continue;
             }
-            self.server_tick_deadline = Some(next + self.clock.tick_duration());
+            self.server.server_tick_deadline = Some(next + self.clock.tick_duration());
             let paused = flags.paused.load(Ordering::Relaxed);
             let ticked =
                 std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| -> Result<()> {
@@ -862,9 +862,11 @@ impl Game<'_> {
                             started.elapsed().as_secs_f32() * 1000.0,
                             on_cpu.map(|(end, start)| (end - start).as_secs_f32() * 1000.0),
                         );
-                        self.debug_charts.log_tick(started, started.elapsed());
+                        self.client
+                            .debug_charts
+                            .log_tick(started, started.elapsed());
                         flags.smoothed_tick_ms.store(
-                            self.debug_charts.smoothed_tick_ms.to_bits(),
+                            self.client.debug_charts.smoothed_tick_ms.to_bits(),
                             Ordering::Relaxed,
                         );
                         if let (Some(terrain), Ok(mut terrains)) =
@@ -984,7 +986,7 @@ impl Game<'_> {
             view_distance,
             simulation_distance: self.settings.simulation_distance.max(2),
             dimension: self.dim.id().to_owned(),
-            levels: self.level_shapes,
+            levels: self.server.level_shapes,
             level_seeds: self.levels.runtime.seeds(),
             seed: self.level.seed,
             max_players: MAX_PLAYERS,
@@ -1006,11 +1008,12 @@ impl Game<'_> {
                 )
                 .then(|| translatable("multiplayer.disconnect.not_whitelisted", &[]))
             })),
-            levels: self.level_shapes,
+            levels: self.server.level_shapes,
             owner_profile: launch.owner_profile.clone(),
             // `IntegratedServer.getSingleplayerProfile`: the window's own player logs in
             // through memory as the account's profile, whatever the hello says.
             singleplayer_profile: self
+                .server
                 .singleplayer_profile
                 .as_ref()
                 .map(|profile| (profile.name.clone(), profile.uuid)),
@@ -1152,7 +1155,7 @@ impl Game<'_> {
                     let command = command.strip_prefix('/').unwrap_or(command).to_owned();
                     game.recording_command_outcome(|game| {
                         game.as_console(|g| {
-                            g.chat_capture = Some(Vec::new());
+                            g.server.chat_capture = Some(Vec::new());
                             // A command a native mod registered goes to the mods
                             // first, as the owner's own chat does (the console is
                             // level 4, so every registered usage is allowed).
@@ -1161,7 +1164,7 @@ impl Game<'_> {
                             {
                                 g.run_command(&command);
                             }
-                            g.chat_capture.take().unwrap_or_default()
+                            g.server.chat_capture.take().unwrap_or_default()
                         })
                     })
                 })
@@ -1796,7 +1799,7 @@ pub(super) mod tests {
                     if failed_open {
                         Err("open failed after map publication".into())
                     } else {
-                        server.world_adopted = true;
+                        server.server.world_adopted = true;
                         Ok(())
                     }
                 });
@@ -2055,11 +2058,11 @@ pub(super) mod tests {
                     Some(Default::default()),
                 )
             };
-            game.world_root = root.to_path_buf();
+            game.server.world_root = root.to_path_buf();
             game.save = Arc::new(open());
             // Crash shutdown only saves an adopted world whose storage is owned.
             game.session_lock = Some(SessionLock::acquire(root).unwrap());
-            game.world_adopted = true;
+            game.server.world_adopted = true;
             game.native_level_opened(Dim::Overworld);
             game.native_lifecycle_world_ready();
 

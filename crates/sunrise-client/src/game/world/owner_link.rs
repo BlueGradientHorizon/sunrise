@@ -252,7 +252,7 @@ impl Game<'_> {
                 let _ = reply.send(self.lan_set_op(&name, level));
             }
             ControlRequest::WorldRoot(reply) => {
-                let _ = reply.send(self.world_root.clone());
+                let _ = reply.send(self.server.world_root.clone());
             }
             ControlRequest::SaveThenWait { saved, copied } => {
                 let _ = saved.send(self.save_game().map_err(|e| e.to_string()));

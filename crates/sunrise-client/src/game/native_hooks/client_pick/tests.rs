@@ -891,11 +891,14 @@ fn rider_pick_rejects_shared_passengers_unless_their_part_allows_them() {
                 assert_eq!(game.mobs[mob].id, 31);
                 assert_eq!(*calls.lock().unwrap(), usize::from(subscribed));
                 if !subscribed {
-                    assert_eq!(game.client_pick.rider_candidates.capacity(), 0);
+                    assert_eq!(game.client.client_pick.rider_candidates.capacity(), 0);
                 }
-                let capacity = game.client_pick.rider_candidates.capacity();
+                let capacity = game.client.client_pick.rider_candidates.capacity();
                 game.refresh_client_pick(1.0);
-                assert_eq!(game.client_pick.rider_candidates.capacity(), capacity);
+                assert_eq!(
+                    game.client.client_pick.rider_candidates.capacity(),
+                    capacity
+                );
 
                 game.remote_set_passengers(32, vec![]);
                 game.refresh_client_pick(1.0);

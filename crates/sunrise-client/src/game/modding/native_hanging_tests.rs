@@ -48,7 +48,7 @@ fn with_hanging_in(game: &mut super::Game<'_>) {
         check_interval: 0,
         ticks: 0,
     });
-    game.next_entity = game.next_entity.max(PAINTING);
+    game.server.next_entity = game.server.next_entity.max(PAINTING);
 }
 
 /// Which axes of a box are thin (a hanging entity's depth).

@@ -105,8 +105,8 @@ fn ordinary_entity_attacks_check_both_range_edges_and_set_only_instabuild_delay(
                             (max, true, 0),
                             (max.next_up(), false, 3),
                         ] {
-                            game.hand_strength.ticker = 100;
-                            game.hand_strength.swap_ticker = 100;
+                            game.client.hand_strength.ticker = 100;
+                            game.client.hand_strength.swap_ticker = 100;
                             game.remote.as_mut().unwrap().destroy_delay = delay_before;
                             let case = (kind, instabuild, distance.to_bits());
                             assert_eq!(
@@ -126,8 +126,8 @@ fn ordinary_entity_attacks_check_both_range_edges_and_set_only_instabuild_delay(
                                 "{case:?}: {attacks:?}"
                             );
                             let strength = if allowed { 0 } else { 100 };
-                            assert_eq!(game.hand_strength.ticker, strength, "{case:?}");
-                            assert_eq!(game.hand_strength.swap_ticker, strength, "{case:?}");
+                            assert_eq!(game.client.hand_strength.ticker, strength, "{case:?}");
+                            assert_eq!(game.client.hand_strength.swap_ticker, strength, "{case:?}");
                             assert_eq!(
                                 game.remote.as_ref().unwrap().destroy_delay,
                                 if instabuild && allowed {
@@ -161,7 +161,7 @@ fn out_of_range_entity_click_still_swings_without_attacking_or_resetting() {
                 game.inventory[game.selected] = Some(ranged_stick(2.0, 3.0, 0.0));
                 game.refresh_client_pick(1.0);
                 assert_eq!(game.crosshair_entity_id(), Some(101));
-                game.hand_strength.ticker = 100;
+                game.client.hand_strength.ticker = 100;
                 let swings = game.swings_started;
                 game.remote_start_attack();
                 let packets = outgoing(game, &mut reader);
@@ -171,7 +171,7 @@ fn out_of_range_entity_click_still_swings_without_attacking_or_resetting() {
                 );
                 assert!(!packets.iter().any(|p| matches!(p, S::Attack(_))));
                 assert_eq!(game.swings_started, swings + 1);
-                assert_eq!(game.hand_strength.ticker, 100);
+                assert_eq!(game.client.hand_strength.ticker, 100);
                 assert_eq!(game.clicks.miss_time, 0);
                 assert_eq!(game.remote.as_ref().unwrap().destroy_delay, 0);
 
@@ -184,7 +184,7 @@ fn out_of_range_entity_click_still_swings_without_attacking_or_resetting() {
                         .iter()
                         .any(|p| matches!(p, S::Attack(attack) if attack.id == 101))
                 );
-                assert_eq!(game.hand_strength.ticker, 0);
+                assert_eq!(game.client.hand_strength.ticker, 0);
             });
         },
     );

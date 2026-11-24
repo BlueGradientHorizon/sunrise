@@ -35,7 +35,7 @@ impl Game<'_> {
             let [x, y, z] = case.velocity;
             b.velocity = Vec3::new(x, y, z);
             b.delta_rotation = case.spin;
-            for key in self.keys.release_source(Source::Agent) {
+            for key in self.client.keys.release_source(Source::Agent) {
                 self.release_device_key(&key, Source::Agent);
             }
             for (key, held) in [KeyCode::KeyA, KeyCode::KeyD, KeyCode::KeyW, KeyCode::KeyS]

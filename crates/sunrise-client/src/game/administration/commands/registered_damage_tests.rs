@@ -297,7 +297,7 @@ fn setup_live_damage_world(game: &mut Game<'_>) {
     game.player = Some(PlayerMotion::new(game.motion, Vec3::new(14.5, 64.0, 14.5)).unwrap());
     crate::game::native_entity_refs::tests::bind_local_player(game, 1, 99);
     game.set_mode_id(0);
-    game.next_entity = 100;
+    game.server.next_entity = 100;
 }
 
 fn spawn_test_projectile(
@@ -308,8 +308,8 @@ fn spawn_test_projectile(
     uuid: [i32; 4],
 ) -> u32 {
     use sunrise_client::projectiles::Projectile;
-    game.next_entity += 1;
-    let id = game.next_entity;
+    game.server.next_entity += 1;
+    let id = game.server.next_entity;
     let mut shot = Projectile::new(kind, at, owner);
     shot.id = id;
     shot.previous = at;
@@ -515,11 +515,11 @@ fn live_damage_and_blast_warden_reactions_follow_source_entities_and_cooldown() 
                 Some(_) => "@s[type=minecraft:ender_dragon]",
                 None => "@s",
             };
-            game.cmds.results = Some(Vec::new());
+            game.server.cmds.results = Some(Vec::new());
             assert!(game.run_command(&format!(
                 "execute as {WARDEN} on target if entity {selector}"
             )));
-            let results = game.cmds.results.take().unwrap();
+            let results = game.server.cmds.results.take().unwrap();
             if expected.is_some() {
                 assert_eq!(results, [(true, 1)], "{selector}");
             } else {
@@ -773,7 +773,7 @@ pub(in crate::game) fn run_live_damage_and_blast_creaking_reactions_and_timed_pl
         );
         assert_eq!(creaking_state(game), (start_health, 8, 100));
         assert_eq!(heart_emitter(game), 100);
-        assert_eq!(game.lan_entity_events, [(creaking_id as i32, 66)]);
+        assert_eq!(game.server.lan_entity_events, [(creaking_id as i32, 66)]);
         let events = TEST_POSTED_EVENTS.with(|events| events.borrow_mut().take().unwrap());
         assert_eq!(
             events.first(),
@@ -815,7 +815,7 @@ pub(in crate::game) fn run_live_damage_and_blast_creaking_reactions_and_timed_pl
             .unwrap()
             .ai
             .last_hurt_by_player = 0;
-        game.last_hurt_by_player.remove(&creaking_id);
+        game.server.last_hurt_by_player.remove(&creaking_id);
         assert!(
             !game.run_command("damage 00000055-0000-0000-0000-000000000001 1 minecraft:generic")
         );
@@ -838,7 +838,7 @@ pub(in crate::game) fn run_live_damage_and_blast_creaking_reactions_and_timed_pl
         // remembered player credit, and player-lit TNT replaces stale offline player credit.
         clear_anim(game);
         clear_emitter(game);
-        game.last_hurt_by_player.remove(&creaking_id);
+        game.server.last_hurt_by_player.remove(&creaking_id);
         game.native_explode(
             Some((unowned_tnt_id, Target::Tnt(unowned_tnt_id))),
             [4.5, 64.0, 4.5],
@@ -878,7 +878,8 @@ pub(in crate::game) fn run_live_damage_and_blast_creaking_reactions_and_timed_pl
             .unwrap()
             .ai
             .last_hurt_by_player = 50;
-        game.last_hurt_by_player
+        game.server
+            .last_hurt_by_player
             .insert(creaking_id, PlayerCredit(777));
         game.add_primed_tnt(BlockPos::new(4, 64, 4), 0.0, 80, Some(Who::Player), None);
         let player_tnt_id = game.tnts.last().unwrap().id;
@@ -907,7 +908,7 @@ pub(in crate::game) fn run_live_damage_and_blast_creaking_reactions_and_timed_pl
             }
         });
         game.audio.capture.as_mut().unwrap().clear();
-        game.lan_entity_events.clear();
+        game.server.lan_entity_events.clear();
         TEST_POSTED_EVENT_ORDER.with(|order| *order.borrow_mut() = Some(Vec::new()));
         let reaction = |game: &Game<'_>| {
             let sounds = game.audio.capture.as_ref().unwrap();
@@ -917,7 +918,7 @@ pub(in crate::game) fn run_live_damage_and_blast_creaking_reactions_and_timed_pl
                     "minecraft:entity.creaking.sway" | "minecraft:entity.arrow.hit"
                 )
             };
-            let flashes = game.lan_entity_events.as_slice();
+            let flashes = game.server.lan_entity_events.as_slice();
             let is_flash = |event: &(i32, i8)| *event == (creaking_id as i32, 66);
             let action = TEST_POSTED_EVENT_ORDER.with(|order| {
                 order

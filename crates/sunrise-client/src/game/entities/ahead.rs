@@ -365,9 +365,9 @@ mod tests {
         }
         // Real solid-entity boxes, not a stubbed obstacle query. One item is
         // caught inside the boat; another falls onto its top this tick.
-        game.next_entity += 1;
+        game.server.next_entity += 1;
         let boat = super::super::boats::Boat::new(
-            game.next_entity,
+            game.server.next_entity,
             Arc::from("oak"),
             Vec3::new(8.5, 80.0, 8.5),
             0.0,
@@ -412,7 +412,7 @@ mod tests {
         for item in game.dropped.iter_mut() {
             item.ticks = 39;
         }
-        game.ticked_entities_through = u32::MAX;
+        game.server.ticked_entities_through = u32::MAX;
         let (items, random) = (game.dropped.clone(), game.world.random.clone());
         // Each merge-written field independently invalidates a prepared move.
         // Rejecting it must not overwrite the merge or advance the item's RNG.

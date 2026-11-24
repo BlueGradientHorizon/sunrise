@@ -71,7 +71,7 @@ fn click(game: &mut Game<'_>, pos: [i32; 3], stack: ItemStack) {
     game.cooldowns = Default::default();
     *game.held_mut() = Some(stack);
     let hit = hit(pos);
-    game.forced_hit = Some(hit);
+    game.server.forced_hit = Some(hit);
     game.with_player_actor(|g| g.use_hand(Some(&hit))).unwrap();
 }
 
@@ -82,10 +82,10 @@ fn click_as_guest(game: &mut Game<'_>, pos: [i32; 3], stack: ItemStack) {
     game.cooldowns = Default::default();
     *game.held_mut() = Some(stack);
     let hit = hit(pos);
-    game.forced_hit = Some(hit);
-    game.guest_use = Some(GuestUse::on_block(Hand::Main));
+    game.server.forced_hit = Some(hit);
+    game.server.guest_use = Some(GuestUse::on_block(Hand::Main));
     game.with_player_actor(|g| g.use_hand(Some(&hit))).unwrap();
-    game.guest_use = None;
+    game.server.guest_use = None;
 }
 
 fn state(game: &Game<'_>, pos: [i32; 3]) -> BlockStateId {

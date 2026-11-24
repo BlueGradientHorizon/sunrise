@@ -31,15 +31,15 @@ impl Game<'_> {
     pub(super) fn on_tick_rate_changed(&mut self) {
         self.native_server_tick_rate_changed();
         let interval = self.next_autosave_interval();
-        if interval < self.ticks_until_autosave {
-            self.ticks_until_autosave = interval;
+        if interval < self.server.ticks_until_autosave {
+            self.server.ticks_until_autosave = interval;
         }
     }
 
     pub(super) fn finish_player_autosaves(&mut self, wait: bool) -> Result<bool> {
         let saved = self.player_autosaves.completed(wait);
         if !saved.is_empty() {
-            let directory = sunrise_client::lan::playerdata::directory(&self.world_root);
+            let directory = sunrise_client::lan::playerdata::directory(&self.server.world_root);
             for player in saved {
                 self.native_player_save_to_file(player.uuid, &player.name, &directory);
             }
@@ -65,14 +65,14 @@ impl Game<'_> {
         let stored_owner = self.store_owner();
         write_level_for_role(
             &mut self.level,
-            &self.world_root,
+            &self.server.world_root,
             self.options.execution_role,
             self.res.items(),
-            self.crash_save.keep_owner_file,
+            self.server.crash_save.keep_owner_file,
         )?;
         // PlayerEvent.SaveToFile for the owner, once level.dat is written.
         if let Some((uuid, name)) = stored_owner {
-            let directory = sunrise_client::lan::playerdata::directory(&self.world_root);
+            let directory = sunrise_client::lan::playerdata::directory(&self.server.world_root);
             self.native_player_save_to_file(uuid, &name, &directory);
         }
         // PlayerList.saveAll: every placed player saves with the server, to
@@ -85,7 +85,7 @@ impl Game<'_> {
             // The vehicle tree goes into a player's file when they leave
             // (`take_parent_vehicle`); here it stays in the chunk saves.
             host.hub.guests.update_all(|g| {
-                if g.placed && !self.crash_save.excludes(g.conn) {
+                if g.placed && !self.server.crash_save.excludes(g.conn) {
                     // Read-only fixture input, correlated with the real save receipt.
                     // Keep this identical on the untouched/fixed selector builds.
                     if std::env::var_os("SUNRISE_DEV_ADVANCEMENT_SELECTOR_AUDIT").is_some() {
@@ -97,7 +97,7 @@ impl Game<'_> {
                                 "progress":g.advancements.to_json(&self.adv.tree, sunrise_world::DATA_VERSION)})
                         );
                     }
-                    self.player_autosaves.enqueue(g, &self.world_root, self.res.items());
+                    self.player_autosaves.enqueue(g, &self.server.world_root, self.res.items());
                 }
             });
         }
@@ -140,7 +140,7 @@ impl Game<'_> {
         self.save_game_metadata()?;
         let _ = self.finish_player_autosaves(wait);
         if wait {
-            self.message = Some((
+            self.client.message = Some((
                 sunrise_client::lang::get("commands.save.success"),
                 Instant::now(),
             ));

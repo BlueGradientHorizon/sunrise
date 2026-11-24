@@ -294,9 +294,9 @@ fn entity_sounds_bound_sounds_particles_and_level_events_defer_inside_transactio
                     game.creatures.lan_sounds.clear();
                     game.creatures.lan_particles.clear();
                     game.level_events.clear();
-                    game.lan_events.clear();
-                    game.lan_global_events.clear();
-                    game.lan_entity_events.clear();
+                    game.server.lan_events.clear();
+                    game.server.lan_global_events.clear();
+                    game.server.lan_entity_events.clear();
                     if let Some(captured) = game.audio.capture.as_mut() {
                         captured.clear();
                     }
@@ -347,9 +347,9 @@ fn entity_sounds_bound_sounds_particles_and_level_events_defer_inside_transactio
                     assert!(game.level_global_level_event(level, 1038, pos, 0));
                     assert!(game.creatures.lan_sounds.is_empty());
                     assert!(game.creatures.lan_particles.is_empty());
-                    assert!(game.lan_events.is_empty());
-                    assert!(game.lan_global_events.is_empty());
-                    assert!(game.lan_entity_events.is_empty());
+                    assert!(game.server.lan_events.is_empty());
+                    assert!(game.server.lan_global_events.is_empty());
+                    assert!(game.server.lan_entity_events.is_empty());
                     assert_eq!(portal_plays(game), portal_before_abort);
                     assert!(decode_packets(&rx12).is_empty());
                     assert!(decode_packets(&rx13).is_empty());
@@ -358,9 +358,9 @@ fn entity_sounds_bound_sounds_particles_and_level_events_defer_inside_transactio
                 assert!(rolled.is_err());
                 assert!(game.creatures.lan_sounds.is_empty());
                 assert!(game.creatures.lan_particles.is_empty());
-                assert!(game.lan_events.is_empty());
-                assert!(game.lan_global_events.is_empty());
-                assert!(game.lan_entity_events.is_empty());
+                assert!(game.server.lan_events.is_empty());
+                assert!(game.server.lan_global_events.is_empty());
+                assert!(game.server.lan_entity_events.is_empty());
                 assert_eq!(
                     portal_plays(game),
                     portal_before_abort,
@@ -444,9 +444,9 @@ fn entity_sounds_bound_sounds_particles_and_level_events_defer_inside_transactio
                     // Nothing published before outermost commit.
                     assert!(game.creatures.lan_sounds.is_empty());
                     assert!(game.creatures.lan_particles.is_empty());
-                    assert!(game.lan_events.is_empty());
-                    assert!(game.lan_global_events.is_empty());
-                    assert!(game.lan_entity_events.is_empty());
+                    assert!(game.server.lan_events.is_empty());
+                    assert!(game.server.lan_global_events.is_empty());
+                    assert!(game.server.lan_entity_events.is_empty());
                     assert_eq!(portal_plays(game), portal_before_commit);
                     assert!(decode_packets(&rx12).is_empty());
                     assert!(decode_packets(&rx13).is_empty());
@@ -455,9 +455,9 @@ fn entity_sounds_bound_sounds_particles_and_level_events_defer_inside_transactio
                 assert!(committed.is_ok());
 
                 // Committed effects deliver directly without waiting for `lan_flush_effects`.
-                assert!(game.lan_events.is_empty());
-                assert!(game.lan_global_events.is_empty());
-                assert!(game.lan_entity_events.is_empty());
+                assert!(game.server.lan_events.is_empty());
+                assert!(game.server.lan_global_events.is_empty());
+                assert!(game.server.lan_entity_events.is_empty());
                 assert_eq!(
                     portal_plays(game),
                     portal_before_commit + 1,
@@ -573,24 +573,24 @@ fn entity_sounds_bound_sounds_particles_and_level_events_defer_inside_transactio
                 decode_packets(&rx13);
                 let rolled_plain = game.storage_transaction(|game, _| {
                     assert!(game.level_global_level_event(level, 1023, pos, 0));
-                    assert!(game.lan_events.is_empty());
-                    assert!(game.lan_global_events.is_empty());
+                    assert!(game.server.lan_events.is_empty());
+                    assert!(game.server.lan_global_events.is_empty());
                     assert!(game.audio.capture.as_ref().unwrap().is_empty());
                     Err::<(), ()>(())
                 });
                 assert!(rolled_plain.is_err());
-                assert!(game.lan_events.is_empty());
-                assert!(game.lan_global_events.is_empty());
+                assert!(game.server.lan_events.is_empty());
+                assert!(game.server.lan_global_events.is_empty());
                 assert!(game.audio.capture.as_ref().unwrap().is_empty());
 
                 let committed_plain = game.storage_transaction(|game, _| {
                     assert!(game.level_global_level_event(level, 1023, pos, 0));
-                    assert!(game.lan_events.is_empty());
+                    assert!(game.server.lan_events.is_empty());
                     Ok::<(), ()>(())
                 });
                 assert!(committed_plain.is_ok());
-                assert!(game.lan_global_events.is_empty());
-                assert!(game.lan_events.is_empty());
+                assert!(game.server.lan_global_events.is_empty());
+                assert!(game.server.lan_events.is_empty());
                 assert!(game.audio.capture.as_ref().unwrap().is_empty());
                 let plain12: Vec<_> = decode_packets(&rx12)
                     .into_iter()
@@ -623,9 +623,9 @@ fn entity_sounds_bound_sounds_particles_and_level_events_defer_inside_transactio
                 assert_eq!(game.creatures.lan_sounds[0].entity, None);
                 assert_eq!(game.creatures.lan_sounds[1].entity, Some(entity13_id));
                 assert_eq!(game.creatures.lan_particles.len(), 1);
-                assert_eq!(game.lan_events.len(), 1);
-                assert_eq!(game.lan_global_events.len(), 1);
-                assert_eq!(game.lan_entity_events, vec![(entity13_id, 35)]);
+                assert_eq!(game.server.lan_events.len(), 1);
+                assert_eq!(game.server.lan_global_events.len(), 1);
+                assert_eq!(game.server.lan_entity_events, vec![(entity13_id, 35)]);
                 let direct13 = decode_packets(&rx13);
                 assert!(direct13.iter().any(|p| matches!(p, C::Sound(_))));
                 assert!(direct13.iter().any(|p| matches!(p, C::StopSound(_))));
@@ -997,9 +997,9 @@ fn committed_effects_leave_unrelated_queues_intact_prevent_sound_recursion_and_k
                     assert!(game.entity_broadcast_event(entity13, 2));
                     assert_eq!(game.creatures.lan_sounds.len(), 1);
                     assert_eq!(game.creatures.lan_particles.len(), 1);
-                    assert_eq!(game.lan_events.len(), 1);
-                    assert_eq!(game.lan_global_events.len(), 1);
-                    assert_eq!(game.lan_entity_events, vec![(entity13_id, 2)]);
+                    assert_eq!(game.server.lan_events.len(), 1);
+                    assert_eq!(game.server.lan_global_events.len(), 1);
+                    assert_eq!(game.server.lan_entity_events, vec![(entity13_id, 2)]);
                     decode_packets(&rx12);
 
                     // Part B: Inside a transaction, `play_level_sound_at_position` runs synchronously at
@@ -1040,11 +1040,11 @@ fn committed_effects_leave_unrelated_queues_intact_prevent_sound_recursion_and_k
                     assert_eq!(game.creatures.lan_sounds[0].sound, burp);
                     assert_eq!(game.creatures.lan_particles.len(), 1);
                     assert_eq!(game.creatures.lan_particles[0].count, 4);
-                    assert_eq!(game.lan_events.len(), 1);
-                    assert_eq!(game.lan_events[0].kind, 1000);
-                    assert_eq!(game.lan_global_events.len(), 1);
-                    assert_eq!(game.lan_global_events[0].1, 1028);
-                    assert_eq!(game.lan_entity_events, vec![(entity13_id, 2)]);
+                    assert_eq!(game.server.lan_events.len(), 1);
+                    assert_eq!(game.server.lan_events[0].kind, 1000);
+                    assert_eq!(game.server.lan_global_events.len(), 1);
+                    assert_eq!(game.server.lan_global_events[0].1, 1028);
+                    assert_eq!(game.server.lan_entity_events, vec![(entity13_id, 2)]);
 
                     // Commit replay ran zero mod callbacks and delivered both sounds in journal order.
                     assert!(triggered.load(Ordering::SeqCst));
@@ -1062,7 +1062,7 @@ fn committed_effects_leave_unrelated_queues_intact_prevent_sound_recursion_and_k
                     // Part C: Non-player `living_hurt_and_break` inside an aborted transaction mutates the
                     // mob's equipment immediately (unjournaled), so its break event (49 for Head) must
                     // also emit immediately rather than being discarded on rollback.
-                    game.lan_entity_events.clear();
+                    game.server.lan_entity_events.clear();
                     let zombie_id = game
                         .spawn_mob(
                             "minecraft:zombie",
@@ -1095,7 +1095,7 @@ fn committed_effects_leave_unrelated_queues_intact_prevent_sound_recursion_and_k
                         "non-player equipment write stays broken after abort"
                     );
                     assert_eq!(
-                        game.lan_entity_events,
+                        game.server.lan_entity_events,
                         vec![(zombie_id as i32, 49)],
                         "coupled non-player break event stays on the immediate side of the rollback boundary"
                     );

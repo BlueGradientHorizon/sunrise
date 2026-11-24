@@ -199,7 +199,7 @@ mod player_leave_tests {
         let mods = vec![ModEntry::new("leave_test", Box::new(Leave(heard.clone())))].into();
         mod_platform::testing::with_mods(mods, || {
             with_guests(|game| {
-                game.world_root = game.save.root.clone();
+                game.server.world_root = game.save.root.clone();
                 game.options.dedicated = Some(Vec::new());
                 game.native_level_opened(Dim::Overworld);
                 game.world
@@ -256,7 +256,7 @@ mod player_leave_tests {
                 assert_eq!(game.guest_index(12), None);
                 let mut saved = guest(12);
                 saved.uuid = 12;
-                assert!(playerdata::load(&mut saved, &game.world_root));
+                assert!(playerdata::load(&mut saved, &game.server.world_root));
                 assert_eq!(VALUE.get(&mut saved.attachments, Holder::Level), Ok(77));
                 if !credits {
                     assert_eq!(saved.health, 7.0);

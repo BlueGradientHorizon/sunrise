@@ -427,18 +427,21 @@ impl Game<'_> {
                 {
                     return;
                 }
-                let plan =
-                    self.prepare_knockback_credit(id as i32, source.attacker, self.combat.attack());
+                let plan = self.prepare_knockback_credit(
+                    id as i32,
+                    source.attacker,
+                    self.server.combat.attack(),
+                );
                 // The hit's causing entity, lent to its listeners beside the victim.
                 let causing = self.causer_id(source.attacker);
                 let decision = crate::game::entity::causer_decision!(self, causing);
-                let mut credit = plan.lend(&mut self.last_hurt_by_player);
+                let mut credit = plan.lend(&mut self.server.last_hurt_by_player);
                 let (victim, lend) =
                     crate::game::entity::victim_and_causer!(self, index, causing, decision);
                 let hurt = victim.damage(
                     crate::game::entity::damage_level_of!(
                         self,
-                        self.combat.attack(),
+                        self.server.combat.attack(),
                         &mut credit,
                         lend
                     ),
@@ -559,7 +562,7 @@ impl Game<'_> {
         // each swapped in as the player. In a guest's turn (a mace's wind
         // burst) the player is that guest.
         let own = self.wind_push_player(center, radius, multiplier, src, blocks);
-        let mut pushed: Vec<_> = self.lan_acting.zip(own).into_iter().collect();
+        let mut pushed: Vec<_> = self.server.lan_acting.zip(own).into_iter().collect();
         if let Some(host) = self.lan.as_ref() {
             let guests: Vec<u32> = host
                 .hub
@@ -592,7 +595,7 @@ impl Game<'_> {
             spared: None,
         };
         let source = self.creatures.wind_source;
-        let (done, announced) = (self.ordered.done, self.ordered.announced);
+        let (done, announced) = (self.server.ordered.done, self.server.ordered.announced);
         let mut late = Vec::new();
         let mut entities = self.take_entities();
         for_each_entity_mut!(entities, entity => {
@@ -740,7 +743,7 @@ impl Game<'_> {
         // In a guest's turn (their charge landing, their mace's burst) the
         // host holds the other players (`as_guest`): the burst waits for the
         // turn to end so that it reaches every player, the guest too.
-        if self.lan_acting.is_some() && self.lan.is_none() {
+        if self.server.lan_acting.is_some() && self.lan.is_none() {
             self.creatures.wind_bursts.push(Burst {
                 center,
                 radius,
@@ -832,7 +835,7 @@ impl Game<'_> {
             let swap = self.world.random.next_int_bound(i as i32).unwrap_or(0) as usize;
             targets.swap(i - 1, swap);
         }
-        let breeze = self.combat.explosion_source.is_some_and(|id| {
+        let breeze = self.server.combat.explosion_source.is_some_and(|id| {
             self.creatures
                 .projectiles
                 .iter()
@@ -943,7 +946,7 @@ impl Game<'_> {
         partial: f32,
         out: &mut Vec<sunrise_client_render::render_geometry::Vertex>,
     ) {
-        let Some(model) = self.entity_models.wind_charge.as_ref() else {
+        let Some(model) = self.client.entity_models.wind_charge.as_ref() else {
             return;
         };
         let Some(r) = self
@@ -1065,9 +1068,9 @@ mod tests {
                 .add_empty_chunk(ChunkPos::new(0, 0))
                 .unwrap();
             assert!(game.run_command("forceload add 0 0"));
-            game.tickets.update(None);
+            game.server.tickets.update(None);
 
-            game.ordered.announced = JoinSeq::upcoming();
+            game.server.ordered.announced = JoinSeq::upcoming();
             assert!(
                 game.run_command(
                     "summon tnt 8.25 70.5 8.5 {fuse:80,Motion:[0d,0d,0d],NoGravity:1b}"
@@ -1079,7 +1082,7 @@ mod tests {
             let charge = game.creatures.projectiles[0].clone();
             game.begin_ordered_ticks();
             game.run_ordered_ticks(charge.join_seq(), false).unwrap();
-            assert_eq!(game.ordered.done, Some(game.orbs[0].join_seq()));
+            assert_eq!(game.server.ordered.done, Some(game.orbs[0].join_seq()));
             assert_eq!(game.orbs[0].age, 1);
             assert_eq!(game.tnts[0].fuse, 80);
 
@@ -1099,7 +1102,7 @@ mod tests {
             // Three blocks from the centre, unobstructed: (1 - 3 / 6) due east.
             assert_eq!(game.tnts[0].velocity.x, 0.5);
 
-            game.ordered.announced = JoinSeq::upcoming();
+            game.server.ordered.announced = JoinSeq::upcoming();
             game.begin_ordered_ticks();
             game.run_ordered_ticks(charge.join_seq(), false).unwrap();
             assert_eq!(game.tnts[0].fuse, 78);

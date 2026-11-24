@@ -59,9 +59,9 @@ impl Game<'_> {
     pub(super) fn ui_nodes(&self) -> Vec<Node> {
         let size = self.gui_batch().map(|b| [b.width, b.height]);
         let mut nodes = widgets::tree(&widgets::last_labelled(), &widgets::last_targets(), size);
-        if matches!(self.screen, Screen::Inventory | Screen::Creative)
+        if matches!(self.client.screen, Screen::Inventory | Screen::Creative)
             && self.title.is_none()
-            && self.book.is_none()
+            && self.client.book.is_none()
             && let Ok((ox, oy)) = self.gui_origin()
         {
             nodes.extend(self.slots().into_iter().map(|i| {
@@ -97,8 +97,9 @@ impl Game<'_> {
                         self.craft_result()
                     } else if slot >= Creative::DISPLAY {
                         // An item tab's display slot shows the tab's list.
-                        let first = self.creative_screen.first_row(&self.pack.names);
-                        self.creative_screen
+                        let first = self.client.creative_screen.first_row(&self.pack.names);
+                        self.client
+                            .creative_screen
                             .shown(&self.pack.names, first * 9 + slot - Creative::DISPLAY)
                     } else {
                         self.slot_mut(slot).clone()
@@ -138,8 +139,8 @@ impl Game<'_> {
         if !matches!(words[0], "ui" | "click" | "set") && !first_frame {
             return Ok(Handled::No);
         }
-        if self.ui_wait.stale() {
-            self.ui_wait.waiting.push(Request {
+        if self.client.ui_wait.stale() {
+            self.client.ui_wait.waiting.push(Request {
                 line: line.to_owned(),
                 reply: reply.clone(),
             });
@@ -188,7 +189,7 @@ impl Game<'_> {
                     };
                     self.synth_click(event_loop, x, y, button)?;
                 }
-                self.ui_wait.clicked();
+                self.client.ui_wait.clicked();
                 Ok(Handled::Reply(
                     json!({ "ok": true, "clicked": node.id, "screen": self.screen_label() }),
                 ))
@@ -215,7 +216,7 @@ impl Game<'_> {
                 let x = track[0] + value.clamp(0.0, 1.0) * track[1];
                 let y = node.rect[1] + node.rect[3] / 2.0;
                 self.synth_click(event_loop, x, y, MouseButton::Left)?;
-                self.ui_wait.clicked();
+                self.client.ui_wait.clicked();
                 Ok(Handled::Reply(
                     json!({ "ok": true, "set": node.id, "screen": self.screen_label() }),
                 ))

@@ -343,12 +343,12 @@ impl Game<'_> {
         let mut local = Some(local);
         for &t in players {
             match t {
-                Target::Player if self.lan_acting.is_some() => {
-                    self.guest_packets.push(packet.clone());
+                Target::Player if self.server.lan_acting.is_some() => {
+                    self.server.guest_packets.push(packet.clone());
                 }
                 Target::Player => {
                     if let Some(local) = local.take() {
-                        local(&mut self.titles);
+                        local(&mut self.client.titles);
                     }
                 }
                 Target::Guest(conn) => {

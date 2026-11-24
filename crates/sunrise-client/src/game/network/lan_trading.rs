@@ -297,7 +297,7 @@ impl Game<'_> {
         };
         // Clicks and closes need the player's own inventory, not the body swapped out
         // into their guest entry. Price refreshes below only touch the merchant slots.
-        if self.lan_guest_swaps.contains(&conn) {
+        if self.server.lan_guest_swaps.contains(&conn) {
             return false;
         }
         let Some(gm) = host.menus.get(&conn).and_then(|p| p.merchant.as_ref()) else {
@@ -982,12 +982,12 @@ impl Game<'_> {
         let session = &mut gm.merchant.session;
         for id in stale {
             if let Some(random) = session.sequences.remove(&id) {
-                self.rand_sequences.give_back(id, random);
+                self.server.rand_sequences.give_back(id, random);
             }
         }
         for id in needed {
             if let std::collections::btree_map::Entry::Vacant(slot) = session.sequences.entry(id) {
-                let random = self.rand_sequences.lend(slot.key(), self.level.seed);
+                let random = self.server.rand_sequences.lend(slot.key(), self.level.seed);
                 slot.insert(random);
             }
         }
@@ -1045,7 +1045,7 @@ mod tests {
             seed: 0,
             max_players: 2,
             integrated: true,
-            levels: game.level_shapes,
+            levels: game.server.level_shapes,
             level_seeds: game.levels.runtime.seeds(),
         };
         game.lan_host(settings, net, config).unwrap();
@@ -1089,7 +1089,7 @@ mod tests {
         for id in
             merchant::Session::sequences_needed(&game.stations().trades, &session.profession, level)
         {
-            let random = game.rand_sequences.lend(&id, game.level.seed);
+            let random = game.server.rand_sequences.lend(&id, game.level.seed);
             session.sequences.insert(id, random);
         }
         let gm = GuestMerchant {
@@ -1202,7 +1202,7 @@ mod tests {
                 ),
                 _ => false,
             }));
-            assert_eq!(game.missing_professions.len(), 1);
+            assert_eq!(game.server.missing_professions.len(), 1);
             let tag = sunrise_client::entity_nbt::mob_to_nbt(
                 &game.mobs[0],
                 [0; 4],
@@ -1213,7 +1213,7 @@ mod tests {
             );
             game.apply_entity_nbt(super::super::commands::Target::Mob(40), tag)
                 .unwrap();
-            assert_eq!(game.missing_professions.len(), 1);
+            assert_eq!(game.server.missing_professions.len(), 1);
             let second = spawn(game, 41, "minecraft:villager");
             let mut tag = sunrise_client::entity_nbt::mob_to_nbt(
                 &game.mobs[1],
@@ -1238,14 +1238,14 @@ mod tests {
                 tag.clone(),
             )
             .unwrap();
-            assert_eq!(game.missing_professions.len(), 1);
-            game.missing_professions.clear();
+            assert_eq!(game.server.missing_professions.len(), 1);
+            game.server.missing_professions.clear();
             game.apply_entity_nbt(
                 super::super::commands::Target::Mob(second.entity().id()),
                 tag,
             )
             .unwrap();
-            assert_eq!(game.missing_professions.len(), 1);
+            assert_eq!(game.server.missing_professions.len(), 1);
             assert_eq!(
                 game.mobs[0].extra.trade.as_ref().unwrap().offers,
                 vec![offer]

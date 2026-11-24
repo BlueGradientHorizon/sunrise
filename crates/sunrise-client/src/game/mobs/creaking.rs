@@ -125,7 +125,7 @@ impl Game<'_> {
         #[cfg(test)]
         super::entity::taken_pass_tests::after_take(self);
         let mut uuids = std::mem::take(&mut self.persist.uuids);
-        let mut next_entity = self.next_entity;
+        let mut next_entity = self.server.next_entity;
         let mut random = self.world.random.clone();
         let spawning = self.spawning_monsters();
         let creaking = self.res.mob_types().get("minecraft:creaking").cloned();
@@ -159,7 +159,7 @@ impl Game<'_> {
         self.mobs
             .restore(mobs, sunrise_client::join_seq::RestoreOrder::SurvivorsFirst);
         self.persist.uuids = uuids;
-        self.next_entity = next_entity;
+        self.server.next_entity = next_entity;
         self.world.random = random;
         let mut mob_events = Vec::new();
         for e in events {
@@ -402,8 +402,9 @@ impl Game<'_> {
         {
             return;
         }
-        self.creaking.follow_chunks(&self.world.chunks);
+        self.server.creaking.follow_chunks(&self.world.chunks);
         let mut keys: Vec<(i32, i32)> = self
+            .server
             .creaking
             .unscanned
             .iter()
@@ -412,13 +413,13 @@ impl Game<'_> {
             .collect();
         keys.sort_unstable();
         for key in keys {
-            self.creaking.unscanned.remove(&key);
-            self.creaking.scanned.insert(key);
+            self.server.creaking.unscanned.remove(&key);
+            self.server.creaking.scanned.insert(key);
             let Some(chunk) = self.world.chunks.get(&key).cloned() else {
                 continue;
             };
-            if self.creaking.hearts.is_empty() {
-                self.creaking.hearts = self
+            if self.server.creaking.hearts.is_empty() {
+                self.server.creaking.hearts = self
                     .res
                     .facts()
                     .states
@@ -426,7 +427,7 @@ impl Game<'_> {
                     .map(|f| &*f.name == "minecraft:creaking_heart")
                     .collect();
             }
-            let hearts = &self.creaking.hearts;
+            let hearts = &self.server.creaking.hearts;
             let is_heart = |id: u32| hearts.get(id as usize).copied().unwrap_or(false);
             for (si, section) in chunk.sections.iter().enumerate() {
                 // Only a section whose palette holds a heart state can have

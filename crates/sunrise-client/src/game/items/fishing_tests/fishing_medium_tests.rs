@@ -79,15 +79,15 @@ fn caster(game: &mut Game<'_>) {
     game.player =
         Some(PlayerMotion::new(game.motion, Vec3::new(FEET[0], FEET[1], FEET[2])).unwrap());
     game.inventory[game.selected] = Some(ItemStack::new("minecraft:fishing_rod", 1));
-    game.lan_acting_uuid = Some(7);
-    game.lan_acting_entity = Some(20);
+    game.server.lan_acting_uuid = Some(7);
+    game.server.lan_acting_entity = Some(20);
     let loot = sunrise_world::loot::LootData::load(
         &game.options.resources,
         &Default::default(),
         game.res.item_defaults(),
     )
     .unwrap();
-    game.server_loot.set(Some(Arc::new(loot)));
+    game.server.server_loot.set(Some(Arc::new(loot)));
 }
 /// Cast a bobber at (5.5, 66, 0.5), over the air, and tick it `ticks` times: its id.
 fn cast(game: &mut Game<'_>, ticks: usize) -> u32 {
@@ -134,7 +134,7 @@ fn a_mods_medium_floats_the_bobber_and_its_catch_rolls_the_checked_table() {
     mod_platform::testing::with_mods(mods(&[("medium", &medium)]), || {
         with_game(|game| {
             let scratch = tempfile::tempdir().unwrap();
-            game.world_root = scratch.path().into();
+            game.server.world_root = scratch.path().into();
             caster(game);
 
             // Answered None: asked, and the bobber falls as vanilla's.

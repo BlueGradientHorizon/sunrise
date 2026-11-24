@@ -23,7 +23,7 @@ fn a_piglin_converting_as_its_admiring_ends_drops_its_stash_and_is_replaced_befo
                 game.res.item_defaults(),
             )
             .unwrap();
-            game.server_loot.set(Some(Arc::new(loot)));
+            game.server.server_loot.set(Some(Arc::new(loot)));
             game.set_allow_commands(true);
             game.world
                 .chunks

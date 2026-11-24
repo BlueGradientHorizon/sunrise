@@ -151,13 +151,16 @@ mod tests {
         tool: Option<&ItemStack>,
     ) -> (usize, i32, i32) {
         *game.world.random = LegacyRandom::new(7);
-        game.rand_sequences = Default::default();
+        game.server.rand_sequences = Default::default();
         let flint = (0..ROLLS)
             .flat_map(|_| game.block_loot_at(POS, gravel, tool))
             .filter(|stack| &*stack.item == "minecraft:flint")
             .count();
         let seed = game.level.seed;
-        let sequence = game.rand_sequences.get("minecraft:blocks/gravel", seed);
+        let sequence = game
+            .server
+            .rand_sequences
+            .get("minecraft:blocks/gravel", seed);
         (flint, game.world.random.next_int(), sequence.next_int())
     }
 
@@ -180,8 +183,8 @@ mod tests {
                 .registry
                 .default_state("minecraft:gravel")
                 .unwrap();
-            game.lan_acting_entity = Some(42);
-            game.lan_acting = Some(1);
+            game.server.lan_acting_entity = Some(42);
+            game.server.lan_acting = Some(1);
             let mut pick = ItemStack::new("minecraft:iron_pickaxe", 1);
             pick.enchant("minecraft:fortune", 3);
             let reads = Arc::new(Mutex::new(Vec::new()));
@@ -215,8 +218,8 @@ mod tests {
             );
             reads.lock().unwrap().clear();
 
-            game.lan_acting_entity = None;
-            game.lan_acting = None;
+            game.server.lan_acting_entity = None;
+            game.server.lan_acting = None;
             let origin = sunrise_core::geometry::Vec3::ZERO;
             let mut host = sunrise_client::motion::PlayerMotion::new(game.motion, origin).unwrap();
             host.entity_id = 7;
@@ -249,12 +252,12 @@ mod tests {
                 assert_eq!(level_side.entity, None);
                 reads.lock().unwrap().clear();
 
-                game.combat.explosion_direct = Some(9);
+                game.server.combat.explosion_direct = Some(9);
                 game.world.set(POS[0], POS[1], POS[2], gravel).unwrap();
                 let center = POS.map(|c| f64::from(c) + 0.5);
                 let blast = crate::game::explosion::BlockInteraction::Destroy;
                 game.server_explode(center, 4.0, blast, false).unwrap();
-                game.combat.explosion_direct = None;
+                game.server.combat.explosion_direct = None;
                 let blast = reads.lock().unwrap().swap_remove(0);
                 assert_eq!((blast.tool, blast.entity), (None, Some(9)));
             });

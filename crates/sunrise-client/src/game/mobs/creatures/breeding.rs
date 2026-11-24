@@ -10,7 +10,7 @@ impl Game<'_> {
         child: Option<&Mob>,
         order: OrbOrder,
     ) {
-        if let Some(cause) = breeding_credit(&mut self.love_cause, parent.id, partner) {
+        if let Some(cause) = breeding_credit(&mut self.server.love_cause, parent.id, partner) {
             let parent_view = self.mob_entity(parent);
             let partner_view = self
                 .mobs

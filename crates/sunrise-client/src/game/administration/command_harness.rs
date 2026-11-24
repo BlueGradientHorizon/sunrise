@@ -159,7 +159,9 @@ impl Game<'_> {
                 true,
             );
             Ok((
-                g.lan_acting.ok_or("command harness: no acting owner")?,
+                g.server
+                    .lan_acting
+                    .ok_or("command harness: no acting owner")?,
                 plan,
             ))
         })?;
@@ -271,16 +273,16 @@ impl Game<'_> {
             match op["op"].as_str().unwrap_or("") {
                 "cmd" => {
                     let command = op["cmd"].as_str().unwrap_or("");
-                    self.chat_capture = Some(Vec::new());
-                    self.cmds.results = Some(Vec::new());
+                    self.server.chat_capture = Some(Vec::new());
+                    self.server.cmds.results = Some(Vec::new());
                     let earlier = self.adv.announced.len();
-                    self.cmds.broadcast_announced = earlier;
+                    self.server.cmds.broadcast_announced = earlier;
                     self.harness_owner(|g| {
-                        let previous = g.command_source;
+                        let previous = g.server.command_source;
                         if op["source"].as_str() == Some("console") {
                             // Actual server source; permission-only `as_console`
                             // otherwise keeps the connected owner's entity.
-                            g.command_source = Some(super::commands::execute::Source {
+                            g.server.command_source = Some(super::commands::execute::Source {
                                 silent: false,
                                 ..g.server_source()
                             });
@@ -288,7 +290,7 @@ impl Game<'_> {
                         g.as_console(|g| {
                             g.run_command(command.strip_prefix('/').unwrap_or(command))
                         });
-                        g.command_source = previous;
+                        g.server.command_source = previous;
                         Ok(())
                     })?;
                     // What the command's own `broadcastChanges` earned is announced
@@ -296,7 +298,11 @@ impl Game<'_> {
                     // (`announce_guest_advancements`); the rest is left for the tick.
                     let earned: Vec<_> = {
                         let len = self.adv.announced.len();
-                        let end = self.cmds.broadcast_announced.clamp(earlier.min(len), len);
+                        let end = self
+                            .server
+                            .cmds
+                            .broadcast_announced
+                            .clamp(earlier.min(len), len);
                         self.adv.announced.drain(earlier.min(len)..end).collect()
                     };
                     if let Some(host) = self.lan.as_mut() {
@@ -308,8 +314,8 @@ impl Game<'_> {
                         }
                     }
                     let mut messages = earned;
-                    messages.extend(self.chat_capture.take().unwrap_or_default());
-                    let results = self.cmds.results.take().unwrap_or_default();
+                    messages.extend(self.server.chat_capture.take().unwrap_or_default());
+                    let results = self.server.cmds.results.take().unwrap_or_default();
                     if op["record"].as_bool() != Some(false) || op["trace"].as_bool() == Some(true)
                     {
                         let mut record = json!({
@@ -587,11 +593,11 @@ impl Game<'_> {
                             .unwrap_or(0))
                     };
                     let before = self.harness_owner(count)?;
-                    self.chat_capture = Some(Vec::new());
+                    self.server.chat_capture = Some(Vec::new());
                     for _ in 0..ticks {
                         self.tick_server(false)?;
                     }
-                    let messages = self.chat_capture.take().unwrap_or_default();
+                    let messages = self.server.chat_capture.take().unwrap_or_default();
                     let delta = self.harness_owner(count)? - before;
                     if delta != ticks as i32 {
                         return Err(format!(
@@ -637,7 +643,7 @@ impl Game<'_> {
                     }
                 }
                 "tick" => {
-                    self.chat_capture = Some(Vec::new());
+                    self.server.chat_capture = Some(Vec::new());
                     let paced_start = Instant::now();
                     for i in 0..op["n"].as_u64().unwrap_or(1) {
                         // The oracle's profile resolver answers at once; the
@@ -664,7 +670,7 @@ impl Game<'_> {
                             paced_start.elapsed().as_millis()
                         );
                     }
-                    let messages = self.chat_capture.take().unwrap_or_default();
+                    let messages = self.server.chat_capture.take().unwrap_or_default();
                     if op["record"].as_bool() == Some(true) {
                         let record = json!({
                             "cmd": "#tick",
@@ -677,7 +683,7 @@ impl Game<'_> {
                 }
                 "settle" => {
                     // Finish portal arrivals using connection-only passes too.
-                    while !self.server_trips.is_empty() {
+                    while !self.server.server_trips.is_empty() {
                         self.tick_server(true)?;
                         if Instant::now() > deadline {
                             return Err("command harness: portal did not arrive".into());
@@ -997,7 +1003,7 @@ impl Game<'_> {
                     let state = self.harness_owner(|g| {
                         use sunrise_core::nbt::Tag;
                         g.save_maps();
-                        let directory = g.world_root.join("data/minecraft/maps");
+                        let directory = g.server.world_root.join("data/minecraft/maps");
                         let maps: Vec<_> = op["ids"].as_array().ok_or("map IDs")?.iter().map(|id| {
                             let path = directory.join(format!("{}.dat", id.as_i64().unwrap()));
                             sunrise_client::save::read_dat(&path).map(|root| {
@@ -1077,7 +1083,7 @@ impl Game<'_> {
                         if !g.stats.loaded { return Err("merchant stats not loaded".into()); }
                         g.save_stats();
                         let uuid = g.level.player_uuid.ok_or("merchant stats UUID")?;
-                        let path = super::stats::player_json(&g.world_root, "stats", uuid);
+                        let path = super::stats::player_json(&g.server.world_root, "stats", uuid);
                         let raw = std::fs::read_to_string(path)?;
                         let saved: Value = serde_json::from_str(&raw)?;
                         let value = |ty: &str, key: &str| saved["stats"][ty][key].as_i64().unwrap_or(0);
@@ -1284,7 +1290,7 @@ impl Game<'_> {
                     );
                     sunrise_client::random_source::set_thread_uniquifier(uniquifier)?;
                     self.harness_owner(|g| {
-                        g.next_entity = u32::try_from(entity_id)?;
+                        g.server.next_entity = u32::try_from(entity_id)?;
                         sunrise_core::random::RandomSource::set_seed(
                             &mut g.world.random,
                             level_seed,

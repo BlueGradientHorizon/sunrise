@@ -45,7 +45,7 @@ fn mining_uses_admitted_stack_tools_and_actual_eye_immersion() {
             .as_nanos()
     ));
     std::fs::create_dir_all(&scratch).unwrap();
-    game.world_root = scratch.clone();
+    game.server.world_root = scratch.clone();
     game.player = Some(PlayerMotion::new(game.motion, Vec3::new(4.5, 62.0, 4.5)).unwrap());
     game.player.as_mut().unwrap().ground.on_ground = true;
     game.creative = false;
@@ -127,19 +127,19 @@ fn mining_uses_admitted_stack_tools_and_actual_eye_immersion() {
     }
     // The refactored final mutation must keep the caller's explicit break slot.
     assert!(game.run_command("item replace entity @s weapon.mainhand with minecraft:diamond_pickaxe[minecraft:damage=1560]"));
-    game.lan_acting = Some(777);
-    game.guest_equipment_breaks.clear();
+    game.server.lan_acting = Some(777);
+    game.server.guest_equipment_breaks.clear();
     game.damage_held_in_slot(1, sunrise_core::equipment_slot::EquipmentSlot::OffHand);
     assert!(game.held().is_none());
-    assert_eq!(*game.guest_equipment_breaks.last().unwrap(), 48);
-    game.lan_acting = None;
+    assert_eq!(*game.server.guest_equipment_breaks.last().unwrap(), 48);
+    game.server.lan_acting = None;
     assert!(game.run_command(&format!("item replace entity @s weapon.mainhand with minecraft:diamond_pickaxe[{tool},minecraft:damage=1560]")));
-    game.lan_acting = Some(777);
-    game.guest_equipment_breaks.clear();
+    game.server.lan_acting = Some(777);
+    game.server.guest_equipment_breaks.clear();
     assert!(game.mine_block_with_held("minecraft:stone", 1.5).is_some());
     assert!(game.held().is_none());
-    assert_eq!(*game.guest_equipment_breaks.last().unwrap(), 47);
-    game.lan_acting = None;
+    assert_eq!(*game.server.guest_equipment_breaks.last().unwrap(), 47);
+    game.server.lan_acting = None;
     std::fs::remove_dir_all(scratch).unwrap();
 }
 

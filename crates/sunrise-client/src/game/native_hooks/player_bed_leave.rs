@@ -17,10 +17,10 @@ impl Game<'_> {
         wake_immediately: bool,
         update_level: bool,
     ) {
-        if let (Some(head), Some(player)) = (self.sleeping, self.lan_acting_uuid)
+        if let (Some(head), Some(player)) = (self.sleeping, self.server.lan_acting_uuid)
             && mod_api::__private::listened(mod_api::HookId::PlayerBedLeave)
         {
-            let name = self.lan_acting_name.clone().unwrap_or_default();
+            let name = self.server.lan_acting_name.clone().unwrap_or_default();
             self.native_player_bed_leave(player, &name, head, wake_immediately, update_level);
         }
     }

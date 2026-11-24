@@ -56,9 +56,9 @@ fn game<'a>(resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>) -
 }
 
 fn pos(game: &mut Game<'_>, uuid: &str) -> String {
-    game.chat_capture = Some(Vec::new());
+    game.server.chat_capture = Some(Vec::new());
     assert!(game.run_command(&format!("data get entity {uuid} Pos")));
-    let said = game.chat_capture.take().unwrap_or_default();
+    let said = game.server.chat_capture.take().unwrap_or_default();
     said.iter().map(sunrise_client::text::Text::plain).collect()
 }
 

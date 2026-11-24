@@ -23,7 +23,7 @@ impl Game<'_> {
             }
         }
         let now = self.world.game_time;
-        for crack in self.destroying.values() {
+        for crack in self.client.destroying.values() {
             if now.saturating_sub(crack.updated_at) <= 400 {
                 add(crack.pos, u32::from(crack.stage));
                 for &pos in &crack.positions {
@@ -131,7 +131,7 @@ impl Game<'_> {
         light: u32,
         out: &mut Vec<Vertex>,
     ) {
-        let Some(avatar) = self.player_model.as_ref() else {
+        let Some(avatar) = self.client.player_model.as_ref() else {
             return;
         };
         let Some(arm) = self.res.player_arm(avatar.slim, left).as_ref() else {
@@ -179,23 +179,27 @@ impl Game<'_> {
         // replay player's hands remain visible in first person; freecam has
         // no player-view hand.
         if !fov::studio_draws_hand(
-            self.studio.flying(),
+            self.client.studio.flying(),
             self.ui.hands_drawn(
                 self.spectator(),
                 self.camera_subject().is_some_and(|c| c.is_sleeping),
-                self.camera_type.is_first_person(),
+                self.client.camera_type.is_first_person(),
                 self.player
                     .as_ref()
                     .is_some_and(|p| !p.health.dead_or_dying()),
-                self.screen == Screen::Dead,
+                self.client.screen == Screen::Dead,
             ),
         ) {
             return (out, runs);
         }
         let a = alpha as f32;
-        let interpolated_pitch = self.player_model.as_ref().map_or(self.pitch, |model| {
-            model.previous_head_pitch + a * (self.pitch - model.previous_head_pitch)
-        });
+        let interpolated_pitch = self
+            .client
+            .player_model
+            .as_ref()
+            .map_or(self.pitch, |model| {
+                model.previous_head_pitch + a * (self.pitch - model.previous_head_pitch)
+            });
         // FirstPersonHandsAndItemsRenderer: the swing goes to the hand that
         // swings; each hand has its inverse arm height (the swap scale is 1
         // for every item but spears).
@@ -207,9 +211,9 @@ impl Game<'_> {
                 0.0
             }
         });
-        let heights = self.heights.interpolated(a);
+        let heights = self.client.heights.interpolated(a);
         // The hand sway: both hands turn by a tenth of the bobs' lag.
-        let to_world = self.sway.to_world(a, &self.view);
+        let to_world = self.client.sway.to_world(a, &self.client.view);
         let eye = self.eye_position().unwrap_or_default();
         let light = self.world.light(
             eye[0].floor() as i32,
@@ -229,7 +233,7 @@ impl Game<'_> {
         // Only the picture changes: the clicks and what they send stay 26.3's.
         let legacy_block = self.pvp_legacy_look()
             && self.mapped_key_down("key.use")
-            && self.screen == Screen::Playing
+            && self.client.screen == Screen::Playing
             && items[0]
                 .as_ref()
                 .is_some_and(|s| s.item.ends_with("_sword"))
@@ -518,7 +522,7 @@ impl Game<'_> {
                 ) else {
                     continue;
                 };
-                let parameters = self.weather_parameters.get(x, z);
+                let parameters = self.client.weather_parameters.get(x, z);
                 let light = self.world.light(x, top.max(cy), z);
                 let coords = i32::from(light & 15) << 4 | i32::from(light >> 4) << 20;
                 // Only light brightening is needed here; UV phases stay zero.

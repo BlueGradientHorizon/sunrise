@@ -161,8 +161,8 @@ fn with_local(test: impl FnOnce(&mut crate::game::Game<'_>)) {
         .unwrap();
         body.entity_id = 99;
         game.player = Some(body);
-        game.next_entity = 100;
-        game.screen = crate::game::Screen::Inventory;
+        game.server.next_entity = 100;
+        game.client.screen = crate::game::Screen::Inventory;
         reset_local(game);
         test(game);
     });
@@ -456,7 +456,7 @@ fn a_lan_hub_click_is_decided_the_same_way() {
             assert_eq!(click(game, window), (0, 3, 0));
             assert_eq!(dispatches(), 1);
             assert!(game.lan.is_some());
-            assert!(game.lan_guest_swaps.is_empty());
+            assert!(game.server.lan_guest_swaps.is_empty());
             let window = open(game);
             script(Script::default());
             assert_eq!(click(game, window), (3, 0, 0));
@@ -1809,7 +1809,7 @@ mod item_part_tests {
                 //    HostSide::Client (never global listener), predicts the edit locally, and
                 //    sends ContainerClick with the predicted slots/carried.
                 game.creative = false;
-                game.screen = Screen::Inventory;
+                game.client.screen = Screen::Inventory;
                 game.inventory = vec![None; game.inventory.len()];
                 game.inventory[9] = Some(ItemStack::new("minecraft:flint", 1));
                 game.carried = Some(ItemStack::new("minecraft:stick", 1));
@@ -1948,15 +1948,16 @@ mod item_part_tests {
                 // 3. Creative Survival Inventory tab pickup runs ItemPart on HostSide::Client and
                 //    sends SetCreativeModeSlot (never ContainerClick).
                 game.creative = true;
-                game.screen = Screen::Creative;
+                game.client.screen = Screen::Creative;
                 game.refresh_creative_tabs();
                 let inv_tab = game
+                    .client
                     .creative_screen
                     .tabs
                     .iter()
                     .position(|t| t.inventory)
                     .expect("creative inventory tab");
-                game.creative_screen.select(inv_tab);
+                game.client.creative_screen.select(inv_tab);
                 assert!(game.creative_inventory_open());
                 game.inventory[9] = Some(ItemStack::new("minecraft:flint", 1));
                 game.carried = Some(ItemStack::new("minecraft:stick", 1));
@@ -1994,12 +1995,13 @@ mod item_part_tests {
                 // 4. Creative item-tab hotbar pickup runs ItemPart on HostSide::Client and sends
                 //    SetCreativeModeSlot; creative catalogue display slots do NOT dispatch Parts.
                 let item_tab = game
+                    .client
                     .creative_screen
                     .tabs
                     .iter()
                     .position(|t| !t.inventory && !t.search && !t.items.is_empty())
                     .expect("creative item tab");
-                game.creative_screen.select(item_tab);
+                game.client.creative_screen.select(item_tab);
                 assert!(game.creative_tab_open());
                 game.inventory[0] = Some(ItemStack::new("minecraft:flint", 1));
                 game.carried = Some(ItemStack::new("minecraft:stick", 1));

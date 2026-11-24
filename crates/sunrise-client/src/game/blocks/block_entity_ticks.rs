@@ -275,12 +275,12 @@ struct Enclosing<'g, 'a> {
 impl Drop for Enclosing<'_, '_> {
     fn drop(&mut self) {
         // A pass that ended early left its own; a pass in progress is known by them.
-        self.game.item_columns = None;
-        self.game.pass_mobs = None;
+        self.game.server.item_columns = None;
+        self.game.server.pass_mobs = None;
         if let Some(scratch) = self.scratch.take() {
             (
-                self.game.item_columns,
-                self.game.pass_mobs,
+                self.game.server.item_columns,
+                self.game.server.pass_mobs,
                 self.game.spawner_tick_positions,
                 self.game.trial_spawner_tick_positions,
             ) = scratch;
@@ -310,10 +310,10 @@ impl Game<'_> {
         slot: &mut S,
     ) -> Result<()> {
         // Only a pass in progress holds item columns: every pass drops them as it ends.
-        let scratch = self.item_columns.is_some().then(|| {
+        let scratch = self.server.item_columns.is_some().then(|| {
             (
-                self.item_columns.take(),
-                self.pass_mobs.take(),
+                self.server.item_columns.take(),
+                self.server.pass_mobs.take(),
                 std::mem::take(&mut self.spawner_tick_positions),
                 std::mem::take(&mut self.trial_spawner_tick_positions),
             )
@@ -352,8 +352,8 @@ impl Game<'_> {
         let ticking = this.block_ticking_area();
         this.spawner_tick_positions.clear();
         this.trial_spawner_tick_positions.clear();
-        this.item_columns = Some(Default::default());
-        this.pass_mobs = Some(Default::default());
+        this.server.item_columns = Some(Default::default());
+        this.server.pass_mobs = Some(Default::default());
         let tickers = this.world.block_entity_tickers();
         let mut last_chunk = (i32::MIN, i32::MIN);
         let mut last_chunk_ticking = false;
@@ -467,8 +467,8 @@ impl Game<'_> {
         }
         sunrise_threads::work::clear_work();
         // Items move between passes: the columns hold for this one only.
-        this.item_columns = None;
-        this.pass_mobs = None;
+        this.server.item_columns = None;
+        this.server.pass_mobs = None;
         this.tick_sign_editors();
         this.update_song_volumes();
         this.scan_for_hearts();
@@ -601,13 +601,18 @@ impl Game<'_> {
     /// every player's tickets (`update_chunk_tickets`), its entities loaded
     /// (`ServerLevel.areEntitiesLoaded`).
     pub(super) fn block_ticking_area(&self) -> impl Fn(i32, i32) -> bool + use<> {
-        let levels = self.tickets.levels();
+        let levels = self.server.tickets.levels();
         let pending = self.world.entities_pending.clone();
         move |x, z| block_ticking_at(&levels, &pending, x, z)
     }
     /// Single-position read without copying the pending-entity set.
     pub(super) fn block_ticking_at(&self, x: i32, z: i32) -> bool {
-        block_ticking_at(&self.tickets.levels(), &self.world.entities_pending, x, z)
+        block_ticking_at(
+            &self.server.tickets.levels(),
+            &self.world.entities_pending,
+            x,
+            z,
+        )
     }
     /// `DaylightDetectorBlock.tickEntity` of the detector at `pos`.
     fn tick_daylight_detector(&mut self, pos: Pos) {
@@ -1426,7 +1431,13 @@ mod furnace_changed_tests {
         .unwrap();
         request.save_root = root.to_owned();
         game.load_world(request).unwrap();
-        assert!(game.fns.enabled().iter().any(|name| name == "file/furnace"));
+        assert!(
+            game.server
+                .fns
+                .enabled()
+                .iter()
+                .any(|name| name == "file/furnace")
+        );
         game.world
             .chunks
             .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
@@ -1708,7 +1719,10 @@ mod slot_mutation_tests {
                     tick.game.tick_block_entities().unwrap();
                     // The nested pass ticked the spawner; the outer one has not yet.
                     assert_eq!(tick.game.spawner_tick_positions, []);
-                    assert!(tick.game.item_columns.is_some(), "the outer pass's columns");
+                    assert!(
+                        tick.game.server.item_columns.is_some(),
+                        "the outer pass's columns"
+                    );
                     stone_above(tick.game, C);
                 });
                 game.tick_block_entities_with(&mut slot).unwrap();
@@ -1721,7 +1735,7 @@ mod slot_mutation_tests {
                 );
                 assert!(game.dropped.is_empty());
                 assert_eq!(game.spawner_tick_positions, [B]);
-                assert!(game.item_columns.is_none());
+                assert!(game.server.item_columns.is_none());
             },
         );
     }
@@ -1747,8 +1761,14 @@ mod slot_mutation_tests {
                     }));
                     assert!(nested.is_err());
                     assert_eq!(tick.game.spawner_tick_positions, [A]);
-                    assert!(tick.game.item_columns.is_some(), "the outer pass's columns");
-                    assert!(tick.game.pass_mobs.is_some(), "the outer pass's mobs");
+                    assert!(
+                        tick.game.server.item_columns.is_some(),
+                        "the outer pass's columns"
+                    );
+                    assert!(
+                        tick.game.server.pass_mobs.is_some(),
+                        "the outer pass's mobs"
+                    );
                     stone_above(tick.game, C);
                 }
                 LoopFlow::Continue
@@ -1768,7 +1788,7 @@ mod slot_mutation_tests {
                     "the outer pass's hopper took the item"
                 );
                 assert_eq!(game.spawner_tick_positions, [A]);
-                assert!(game.item_columns.is_none());
+                assert!(game.server.item_columns.is_none());
             },
         );
     }

@@ -230,6 +230,7 @@ impl Game<'_> {
     /// `BlockTransformer.TransformParticle.send`: its level event.
     pub(super) fn transform_particle(&mut self, particle: &str, pos: [i32; 3]) {
         let source = self
+            .server
             .lan_acting_uuid
             .map(sunrise_world::level::LevelEventPlayer);
         match particle {

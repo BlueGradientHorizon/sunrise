@@ -125,8 +125,8 @@ impl Game<'_> {
             self.invalidate_mod_book_placement_knowledge();
         }
         // A network player's client drops them from its book.
-        if self.lan_acting.is_some() && !removed.is_empty() {
-            self.guest_packets.push(C::RecipeBookRemove(
+        if self.server.lan_acting.is_some() && !removed.is_empty() {
+            self.server.guest_packets.push(C::RecipeBookRemove(
                 sunrise_protocol::packets::recipes::RecipeBookRemove { ids: removed },
             ));
         }
@@ -363,7 +363,7 @@ impl Game<'_> {
                 let creative_source = self.creative_source_of(cause.or(by));
                 // resolvePlayerResponsibleForDamage: remember the causing player's UUID.
                 let by_player = match cause.or(by) {
-                    Some(Target::Player) => self.lan_acting,
+                    Some(Target::Player) => self.server.lan_acting,
                     Some(Target::Guest(conn)) => Some(conn),
                     _ => None,
                 }
@@ -378,7 +378,7 @@ impl Game<'_> {
                         }
                         let hurt = g.hurt_player_from(amount, from, ty, attacker, creative_source);
                         if hurt && let Some(credit) = by_player {
-                            g.combat.note_hurt_by_player(credit, now);
+                            g.server.combat.note_hurt_by_player(credit, now);
                         }
                         hurt
                     })
@@ -404,7 +404,7 @@ impl Game<'_> {
                 // DamageSource.getEntity is the causing player, even when
                 // another client issued the command or supplied the direct entity.
                 let guest = match cause.or(by) {
-                    Some(Target::Guest(conn)) if self.lan_acting != Some(conn) => Some(conn),
+                    Some(Target::Guest(conn)) if self.server.lan_acting != Some(conn) => Some(conn),
                     _ => None,
                 };
                 if let Some(conn) = guest {
@@ -503,7 +503,7 @@ impl Game<'_> {
             direct: entity_id(direct),
             position,
         };
-        if crate::game::entity::damage_level_of!(self, self.combat.attack(), no_push, None)
+        if crate::game::entity::damage_level_of!(self, self.server.combat.attack(), no_push, None)
             .invulnerability_check(
                 sunrise_client::health::Hurting::Entity(id as i32, &entity_kind, source),
                 vanilla,
@@ -537,9 +537,10 @@ impl Game<'_> {
         let Some(index) = self.mob_index.find(&self.mobs, id) else {
             return false;
         };
-        let plan = self.prepare_knockback_credit(id as i32, damage.attacker, self.combat.attack());
-        let attack = self.combat.attack();
-        let mut credit = plan.lend(&mut self.last_hurt_by_player);
+        let plan =
+            self.prepare_knockback_credit(id as i32, damage.attacker, self.server.combat.attack());
+        let attack = self.server.combat.attack();
+        let mut credit = plan.lend(&mut self.server.last_hurt_by_player);
         let mob = &mut self.mobs[index];
         let (queued, old_health) = (mob.outbox.len(), mob.health);
         let hurt = mob.damage(
@@ -560,7 +561,7 @@ impl Game<'_> {
             if damage.attacker == Some(Who::Player) {
                 self.remember_mob_player_credit(id);
                 if let Some(host) = self.lan.as_mut() {
-                    match self.lan_acting {
+                    match self.server.lan_acting {
                         Some(conn) => {
                             host.mob_players.insert(id, conn);
                         }
@@ -621,7 +622,7 @@ impl Game<'_> {
             };
             // LookAt.perform: Entity.lookAt from the source's anchor (the
             // feet, unless `anchored eyes`).
-            let anchored_eyes = self.command_source.is_some_and(|s| s.eyes);
+            let anchored_eyes = self.server.command_source.is_some_and(|s| s.eyes);
             let eye = if anchored_eyes {
                 self.target_eye_height(t)
             } else {
@@ -648,7 +649,8 @@ impl Game<'_> {
             self.entities(ctx, "targets", false)?
         } else {
             vec![
-                self.command_source
+                self.server
+                    .command_source
                     .and_then(|s| s.entity)
                     .unwrap_or(Target::Player),
             ]
@@ -799,7 +801,7 @@ impl Game<'_> {
     ) {
         let guest = match t {
             Target::Guest(conn) => Some(conn),
-            Target::Player => self.lan_acting,
+            Target::Player => self.server.lan_acting,
             _ => return,
         };
         match guest.and_then(|conn| Some((conn, self.lan.as_ref()?))) {
@@ -808,7 +810,7 @@ impl Game<'_> {
                     .hub
                     .sound_packet(sound, at, volume, pitch, source as i32, seed);
                 if t == Target::Player && !committing {
-                    self.guest_packets.push(packet);
+                    self.server.guest_packets.push(packet);
                 } else {
                     host.hub.send_to(conn, &packet);
                 }
@@ -851,12 +853,12 @@ impl Game<'_> {
         for &t in targets {
             let guest = match t {
                 Target::Guest(conn) => Some(conn),
-                Target::Player => self.lan_acting,
+                Target::Player => self.server.lan_acting,
                 _ => continue,
             };
             match guest {
                 Some(_) if t == Target::Player && !committing => {
-                    self.guest_packets.push(packet.clone());
+                    self.server.guest_packets.push(packet.clone());
                 }
                 Some(conn) => {
                     if let Some(host) = self.lan.as_ref() {
@@ -1034,11 +1036,11 @@ impl Game<'_> {
         let viewers = if ctx.get("viewers").is_some() {
             self.entities(ctx, "viewers", true)?
         } else {
-            let acting = self.lan_acting;
+            let acting = self.server.lan_acting;
             let guests = self.lan.iter().flat_map(|h| h.hub.online_players());
             self.player
                 .as_ref()
-                .filter(|_| !self.lan_acting_fake)
+                .filter(|_| !self.server.lan_acting_fake)
                 .map(|_| Target::Player)
                 .into_iter()
                 .chain(
@@ -1055,7 +1057,7 @@ impl Game<'_> {
             .filter(|&t| {
                 if options.mod_particle.is_some() {
                     let conn = match t {
-                        Target::Player => self.lan_acting,
+                        Target::Player => self.server.lan_acting,
                         Target::Guest(conn) => Some(conn),
                         _ => None,
                     };
@@ -1099,12 +1101,12 @@ impl Game<'_> {
         let mut sent = 0;
         for t in reached {
             match (t, &packet) {
-                (Target::Player, _) if self.lan_acting.is_none() => {
+                (Target::Player, _) if self.server.lan_acting.is_none() => {
                     local = true;
                     sent += 1;
                 }
                 (Target::Player, Some(p)) => {
-                    self.guest_packets.push(p.clone());
+                    self.server.guest_packets.push(p.clone());
                     sent += 1;
                 }
                 (Target::Guest(conn), Some(p)) => {
@@ -1567,12 +1569,12 @@ impl Game<'_> {
             }
             return mob.extra.armor_attributes.as_deref_mut();
         }
-        if !self.cmds.attributes.contains_key(&t) {
+        if !self.server.cmds.attributes.contains_key(&t) {
             let ty = self.target_type(t);
             let map = self.motion.attributes.create(&ty)?;
-            self.cmds.attributes.insert(t, map);
+            self.server.cmds.attributes.insert(t, map);
         }
-        self.cmds.attributes.get_mut(&t)
+        self.server.cmds.attributes.get_mut(&t)
     }
     /// A sulfur cube's body archetype attributes live on its own map, beside
     /// the archetype's transient modifiers.
@@ -2199,7 +2201,7 @@ impl Game<'_> {
             {
                 let mut moved = to;
                 let uuid = match t {
-                    Target::Player => self.lan_acting_uuid,
+                    Target::Player => self.server.lan_acting_uuid,
                     Target::Guest(conn) => self.command_guest(conn).map(|g| g.uuid),
                     _ => None,
                 };
@@ -2393,14 +2395,14 @@ mod allay_owner_damage_tests {
             game.player = Some(player);
             game.level.player_uuid = Some(actual);
             assert_eq!(game.attack_of(7).player_uuid, Some(actual));
-            game.lan_acting = Some(12);
-            game.lan_acting_uuid = Some(sunrise_client::lan::playerdata::ints_uuid(other));
+            game.server.lan_acting = Some(12);
+            game.server.lan_acting_uuid = Some(sunrise_client::lan::playerdata::ints_uuid(other));
             assert_eq!(
                 game.attack_of(7).player_uuid,
                 Some(other),
                 "the acting guest is the causing player"
             );
-            game.lan_acting_uuid = None;
+            game.server.lan_acting_uuid = None;
             game.level.player_uuid = None;
             assert_eq!(
                 game.attack_of(7).player_uuid,
@@ -2408,7 +2410,7 @@ mod allay_owner_damage_tests {
                 "no invented UUID for an unknown source"
             );
             game.level.player_uuid = Some(actual);
-            game.lan_acting = None;
+            game.server.lan_acting = None;
             let kind = game.res.mob_types().get("minecraft:allay").unwrap().clone();
             let before = game.world.game_time;
             for melee in [true, false] {
@@ -2494,7 +2496,7 @@ pub(in crate::game) mod datapack_damage_tests {
     }
 
     fn pig(game: &mut crate::game::Game<'_>, id: u32, at: Vec3) {
-        game.next_entity = game.next_entity.max(id);
+        game.server.next_entity = game.server.next_entity.max(id);
         let kind = game.res.mob_types().get("minecraft:pig").unwrap().clone();
         let mut pig = Mob::new(id, kind, at, 0.0);
         pig.no_ai = true;
@@ -2583,7 +2585,7 @@ pub(in crate::game) mod datapack_damage_tests {
         with_game(|game| {
             with_pack(game);
             let crystal = |game: &mut crate::game::Game<'_>, id: u32| {
-                game.next_entity = game.next_entity.max(id);
+                game.server.next_entity = game.server.next_entity.max(id);
                 game.crystals.push(crate::game::dragon::Crystal::new(
                     id,
                     Vec3::new(0.5, 64.0, 0.5),
@@ -2876,8 +2878,8 @@ mod vehicle_damage_command_tests {
         use std::sync::{atomic::AtomicI32, mpsc};
         use sunrise_client::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubConfig};
         use sunrise_protocol::packets::configuration::ClientInformation;
-        game.world_root = game.options.game_dir.as_ref().unwrap().join("h082-world");
-        std::fs::create_dir_all(&game.world_root).unwrap();
+        game.server.world_root = game.options.game_dir.as_ref().unwrap().join("h082-world");
+        std::fs::create_dir_all(&game.server.world_root).unwrap();
         game.lan_host(
             crate::game::lan::LanSettings {
                 port: 0,
@@ -3018,9 +3020,9 @@ mod vehicle_damage_command_tests {
             for rx in &receivers {
                 attribute_chat_count(rx);
             }
-            game.chat_capture = Some(Vec::new());
+            game.server.chat_capture = Some(Vec::new());
             let accepted = game.run_command("attribute Bob minecraft:armor base set 4");
-            let issuer = game.chat_capture.take().unwrap();
+            let issuer = game.server.chat_capture.take().unwrap();
             // This assertion fails old on the actual guest model, not feedback alone.
             assert_eq!(
                 game.for_player(Target::Guest(2), |g| g
@@ -3065,11 +3067,11 @@ mod vehicle_damage_command_tests {
                     .unwrap()),
                 Some(20.0)
             );
-            game.chat_capture = Some(Vec::new());
+            game.server.chat_capture = Some(Vec::new());
             assert!(
                 !game.run_command("attribute Bob minecraft:armor modifier remove h082:missing")
             );
-            let errors = game.chat_capture.take().unwrap();
+            let errors = game.server.chat_capture.take().unwrap();
             assert_eq!(errors.len(), 1);
             assert!(errors[0].plain().contains("h082:missing"));
             assert_eq!(
@@ -3077,9 +3079,9 @@ mod vehicle_damage_command_tests {
                 0,
                 "error returns to issuer"
             );
-            game.chat_capture = Some(Vec::new());
+            game.server.chat_capture = Some(Vec::new());
             assert!(game.run_command("attribute Bob minecraft:armor base reset"));
-            assert_eq!(game.chat_capture.take().unwrap().len(), 1);
+            assert_eq!(game.server.chat_capture.take().unwrap().len(), 1);
             assert_eq!(
                 game.for_player(Target::Guest(2), |g| g
                     .player
@@ -3090,7 +3092,7 @@ mod vehicle_damage_command_tests {
                 Some(0.0)
             );
             assert_eq!(game.acting_uuid(), host_uuid);
-            assert_eq!(game.lan_acting, None);
+            assert_eq!(game.server.lan_acting, None);
             assert_eq!(game.dim, dimension);
             assert_eq!(game.world.game_time, clock);
             assert_eq!(game.player.as_ref().unwrap().health.health(), 20.0);
@@ -3127,15 +3129,15 @@ mod vehicle_damage_command_tests {
                     "modifier remove h082:reply",
                 ] {
                     let command = format!("attribute {target} minecraft:armor {operation}");
-                    game.chat_capture = Some(Vec::new());
-                    game.cmds.results = Some(Vec::new());
+                    game.server.chat_capture = Some(Vec::new());
+                    game.server.cmds.results = Some(Vec::new());
                     assert!(game.run_command(&command), "{command}");
-                    let messages = game.chat_capture.take().unwrap();
+                    let messages = game.server.chat_capture.take().unwrap();
                     assert_eq!(messages.len(), 1, "{command}");
                     let components: Vec<_> = messages.iter().map(|m| m.component()).collect();
                     println!(
                         "H082_EXISTING {}",
-                        serde_json::json!({"command":command,"messages":components,"results":game.cmds.results.take().unwrap()})
+                        serde_json::json!({"command":command,"messages":components,"results":game.server.cmds.results.take().unwrap()})
                     );
                 }
             }

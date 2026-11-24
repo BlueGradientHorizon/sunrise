@@ -94,7 +94,7 @@ impl Game<'_> {
         }
         let (cx, cy) = ((w - 15) / 2 + 7, (h - 15) / 2 + 7);
         let atlas = &self.gui.atlas;
-        let (shape, rim) = self.pvp.crosshair.runs(&c);
+        let (shape, rim) = self.client.pvp.crosshair.runs(&c);
         let fill = |batch: &mut HudBatch, &(x0, y, x1): &(i32, i32, i32), colour: u32| {
             let (x, y) = ((cx + x0) as f32, (cy + y) as f32);
             batch.fill(atlas, x, y, (x1 - x0) as f32, 1.0, colour);
@@ -244,14 +244,14 @@ impl Game<'_> {
     /// ray met its box (the combo counter waits for the server's report; the reach widget
     /// shows the distance).
     pub(in crate::game) fn pvp_attacked(&mut self, id: i32, distance: f64) {
-        let now = self.started.elapsed().as_secs_f64();
-        self.pvp.combo.attacked(id, now);
-        self.pvp.reach.hit(distance, now);
+        let now = self.client.started.elapsed().as_secs_f64();
+        self.client.pvp.combo.attacked(id, now);
+        self.client.pvp.reach.hit(distance, now);
     }
     /// A mouse press, counted for clicks per second while playing with a widget that shows them.
     pub(in crate::game) fn pvp_click(&mut self, button: MouseButton) {
         let hud = &self.settings.extras.pvp.hud;
-        if !(hud.cps || hud.keys) || self.screen != crate::game::Screen::Playing {
+        if !(hud.cps || hud.keys) || self.client.screen != crate::game::Screen::Playing {
             return;
         }
         let i = match button {
@@ -259,14 +259,14 @@ impl Game<'_> {
             MouseButton::Right => 1,
             _ => return,
         };
-        let now = self.started.elapsed().as_secs_f64();
-        self.pvp.clicks[i].press(now);
+        let now = self.client.started.elapsed().as_secs_f64();
+        self.client.pvp.clicks[i].press(now);
     }
     /// Whether the key `mapping` is bound to is held: a keyboard key or a mouse button.
     fn binding_held(&self, mapping: &str) -> bool {
         let bound = self.settings.keys.get(mapping);
         if let Some(button) = sunrise_client::keybinds::mouse_button(bound) {
-            return self.physical_buttons.contains(&button);
+            return self.client.physical_buttons.contains(&button);
         }
         self.mapped_key_down(mapping)
     }
@@ -274,10 +274,10 @@ impl Game<'_> {
     /// `by_me` whether this player was the damage's direct entity (if named).
     pub(in crate::game) fn pvp_hurt(&mut self, id: i32, own: bool, by_me: Option<bool>) {
         if own {
-            self.pvp.combo.broken();
+            self.client.pvp.combo.broken();
         } else {
-            let now = self.started.elapsed().as_secs_f64();
-            self.pvp.combo.hurt(id, by_me, now);
+            let now = self.client.started.elapsed().as_secs_f64();
+            self.client.pvp.combo.hurt(id, by_me, now);
         }
     }
     /// Whether the effects widget replaces vanilla's effect icons (`Hud.extractEffects`).
@@ -290,7 +290,7 @@ impl Game<'_> {
         let hud = self.settings.extras.pvp.hud;
         if self.player.is_none() || !hud.any() {
             // The editor frames only what was drawn.
-            self.pvp.boxes.clear();
+            self.client.pvp.boxes.clear();
             return;
         }
         // What each widget shows, read before its cache is borrowed.
@@ -310,19 +310,19 @@ impl Game<'_> {
         });
         // The address is copied only when it changed (`server_address` borrows the whole game).
         let server = self.server_address().filter(|_| multiplayer);
-        let server = (hud.server && self.pvp.server.next.as_deref() != server)
+        let server = (hud.server && self.client.pvp.server.next.as_deref() != server)
             .then(|| server.map(str::to_owned));
-        let now = self.started.elapsed().as_secs_f64();
-        let fps = self.fps.round() as u32;
+        let now = self.client.started.elapsed().as_secs_f64();
+        let fps = self.client.fps.round() as u32;
         let position = self.player.as_ref().map(|p| (p.position.x, p.position.z));
         if hud.keys {
             let held = Key::ALL.map(|k| self.binding_held(k.mapping()));
-            self.pvp.keys.held = held;
+            self.client.pvp.keys.held = held;
             self.keystroke_labels();
         }
         let atlas = &self.gui.atlas;
         let width = |s: &str| HudBatch::text_width(atlas, s);
-        let state = &mut self.pvp;
+        let state = &mut self.client.pvp;
         if hud.armour {
             let w = &mut state.armour;
             w.next = (armour, hud.armour_percent);
@@ -518,9 +518,9 @@ impl Game<'_> {
         };
         let layout = self.settings.extras.pvp.layout;
         let screen = (batch.width, batch.height);
-        let mut boxes = std::mem::take(&mut self.pvp.boxes);
+        let mut boxes = std::mem::take(&mut self.client.pvp.boxes);
         boxes.clear();
-        let p = &self.pvp;
+        let p = &self.client.pvp;
         use pvp_hud::WidgetId as W;
         let widgets = [
             (
@@ -628,7 +628,7 @@ impl Game<'_> {
                 boxes.push((W::Keys, rect));
             }
         }
-        self.pvp.boxes = boxes;
+        self.client.pvp.boxes = boxes;
     }
     /// Where a widget of `size` goes at its `place`'s scale: where the player put it, else in
     /// its corner (unless a mod hides that corner). `[x, y, w, h]`, scaled.
@@ -652,7 +652,7 @@ impl Game<'_> {
     /// The keystrokes' labels: each key's name, made again only when a binding changed.
     fn keystroke_labels(&mut self) {
         let keys = &self.settings.keys;
-        let k = &mut self.pvp.keys;
+        let k = &mut self.client.pvp.keys;
         let same = Key::ALL
             .iter()
             .zip(&k.bound)
@@ -679,7 +679,7 @@ impl Game<'_> {
     fn paint_keys(&self, batch: &mut HudBatch, [x, y, sw, _]: [f32; 4], style: &Style) {
         let start = batch.vertices.len();
         let atlas = &self.gui.atlas;
-        let k = &self.pvp.keys;
+        let k = &self.client.pvp.keys;
         let colour = |c: u32| {
             let [a, r, g, b] = c.to_be_bytes();
             rgba(r, g, b, a)

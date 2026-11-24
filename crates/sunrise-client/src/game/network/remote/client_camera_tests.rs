@@ -69,7 +69,7 @@ fn client_camera_entity_returns_to_player_after_removal() {
         game.remote_set_camera(31);
         assert!(!game.controls_camera());
         assert!(game.hides_as_camera(31));
-        assert!(game.spectated_post_effect.is_some());
+        assert!(game.client.spectated_post_effect.is_some());
         let attached = camera(game).unwrap();
         game.handle_packet(C::RemoveEntities(play::RemoveEntities { ids: vec![99] }))
             .unwrap();
@@ -97,7 +97,7 @@ fn client_camera_entity_returns_to_player_after_removal() {
             "movement stays paused while camera remains detached"
         );
         assert!(!game.hides_as_camera(31));
-        assert!(game.spectated_post_effect.is_some());
+        assert!(game.client.spectated_post_effect.is_some());
         game.handle_packet(C::SetCamera(play::SetCamera { camera_id: 7 }))
             .unwrap();
         assert_eq!(camera(game), Some(local));
@@ -105,7 +105,7 @@ fn client_camera_entity_returns_to_player_after_removal() {
             game.controls_camera(),
             "movement input and position packets are enabled after SetCamera restores player"
         );
-        assert!(game.spectated_post_effect.is_none());
+        assert!(game.client.spectated_post_effect.is_none());
 
         game.title = Some(game.new_title(game.save.root.clone()));
         assert!(

@@ -99,10 +99,11 @@ impl Game<'_> {
         // is `Game::new`'s placeholder under the working directory.
         if self.world.carrier_fences.is_broken()
             || self.remote.is_some()
-            || self.world_root.as_os_str().is_empty()
+            || self.server.world_root.as_os_str().is_empty()
             || self.agent.hold_server
             || self.clock.sprinting()
             || self
+                .server
                 .server_lists
                 .as_ref()
                 .is_some_and(|lists| !lists.lock().unwrap().autosave)
@@ -113,6 +114,7 @@ impl Game<'_> {
             return;
         }
         let deadline = self
+            .server
             .server_tick_deadline
             .unwrap_or_else(|| Instant::now() + self.clock.tick_duration());
         let mut modified = std::mem::take(&mut self.world.modified);
@@ -153,9 +155,9 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         mod_platform::testing::with_mods(Vec::new().into(), || {
             with_game(|game| {
-                game.world_root = dir.path().to_path_buf();
+                game.server.world_root = dir.path().to_path_buf();
                 game.save = Arc::new(SaveDir::new(
-                    game.world_root.clone(),
+                    game.server.world_root.clone(),
                     LevelShape::OVERWORLD,
                     Some(Default::default()),
                 ));

@@ -152,7 +152,7 @@ fn axe_disabled_shield_posts_finish() {
     use sunrise_client::health::{BlockOutcome, NO_ATTACK};
     let lines = with_game("minecraft:shield", |game| {
         assert!(game.start_using_item());
-        game.combat.player_attacker = Some(([11.5, 64.0, -3.25], 5.0));
+        game.server.combat.player_attacker = Some(([11.5, 64.0, -3.25], 5.0));
         game.after_block(
             BlockOutcome {
                 blocking_item_used: true,
@@ -175,7 +175,7 @@ fn axe_disabled_shield_posts_finish() {
             &NO_ATTACK,
         );
         assert!(game.using.is_none());
-        assert!(game.shield_cooldown > 0);
+        assert!(game.server.shield_cooldown > 0);
     })
     .expect("prepared resources");
     assert_eq!(
@@ -264,7 +264,7 @@ fn nether_portal_stops_use_in_target_level() {
         || {
             with_game("minecraft:golden_apple", |game| {
                 let scratch = tempfile::tempdir().unwrap();
-                game.world_root = scratch.path().to_path_buf();
+                game.server.world_root = scratch.path().to_path_buf();
                 game.reset_entity_residency();
                 game.native_lifecycle
                     .begin_open(mod_api::Authority::IntegratedServer);

@@ -77,7 +77,7 @@ fn settle(game: &mut Game<'_>, main: ItemStack) {
     for _ in 0..20 {
         game.tick_hand();
     }
-    assert_eq!(game.heights.main, 1.0);
+    assert_eq!(game.client.heights.main, 1.0);
     REEQUIP_ASKED.lock().unwrap().clear();
 }
 
@@ -87,8 +87,11 @@ fn dip(game: &mut Game<'_>) -> Vec<(f32, u32)> {
     (0..6)
         .map(|_| {
             game.tick_hand();
-            let shown = game.visible_hands[0].1.as_ref().map_or(0, |s| s.count);
-            (game.heights.main, shown)
+            let shown = game.client.visible_hands[0]
+                .1
+                .as_ref()
+                .map_or(0, |s| s.count);
+            (game.client.heights.main, shown)
         })
         .collect()
 }
@@ -250,14 +253,14 @@ fn remote_mining_component_update_restarts_unless_the_part_refuses() {
                         .default_state("minecraft:stone")
                         .unwrap();
                     game.world.set(0, 64, 0, stone).unwrap();
-                    game.forced_hit = Some(crate::game::Hit {
+                    game.server.forced_hit = Some(crate::game::Hit {
                         pos: [0, 64, 0],
                         face: [0, 1, 0],
                         point: [0.5, 65.0, 0.5],
                         inside: false,
                     });
                     game.refresh_client_pick(1.0);
-                    game.forced_hit = None;
+                    game.server.forced_hit = None;
                     for _ in 0..4 {
                         game.remote_continue_attack(true);
                     }

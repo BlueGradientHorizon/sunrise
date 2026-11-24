@@ -1314,7 +1314,7 @@ impl Game<'_> {
         hub.rule_registry = self.level.rule_registry.clone();
         hub.sync_attachments = !mod_api::__private::mods().is_empty();
         hub.flat_world = self.world_flat;
-        hub.debug_world = self.world_debug;
+        hub.debug_world = self.server.world_debug;
         let port = hub.lan.port;
         self.world.block_log = Some(Vec::new());
         self.world.connection_group_log = Some(Default::default());
@@ -1390,11 +1390,11 @@ impl Game<'_> {
         self.world.connection_group_log = None;
         self.world.light_log = None;
         self.audio.capture = None;
-        self.bound_sounds.clear();
-        self.lan_events.clear();
-        self.lan_songs.clear();
-        self.lan_critical_hits.clear();
-        self.lan_cushion_breaks.clear();
+        self.server.bound_sounds.clear();
+        self.server.lan_events.clear();
+        self.server.lan_songs.clear();
+        self.server.lan_critical_hits.clear();
+        self.server.lan_cushion_breaks.clear();
         self.streaming.extra.clear();
         if announce {
             self.system_message(Text::translate(
@@ -1421,7 +1421,7 @@ impl Game<'_> {
             .filter(|g| {
                 g.placed
                     && g.participates_in_player_simulation()
-                    && !self.crash_save.excludes(g.conn)
+                    && !self.server.crash_save.excludes(g.conn)
             })
             .map(|g| (g.conn, super::Dim::from_id(&g.dimension)))
             .collect();
@@ -1462,7 +1462,7 @@ impl Game<'_> {
             return;
         }
         // A proxy released this record to another server, which now owns saving it.
-        if guest.joined() && !guest.released && !self.crash_save.excludes(guest.conn) {
+        if guest.joined() && !guest.released && !self.server.crash_save.excludes(guest.conn) {
             let _ = self.finish_player_autosaves(true);
             if self
                 .lan
@@ -1470,12 +1470,17 @@ impl Game<'_> {
                 .and_then(|host| host.owner.as_ref())
                 .is_some_and(|o| o.uuid == guest.uuid)
             {
-                playerdata::save_owner(guest, &mut self.level, &self.world_root, self.res.items());
+                playerdata::save_owner(
+                    guest,
+                    &mut self.level,
+                    &self.server.world_root,
+                    self.res.items(),
+                );
             } else {
                 self.player_autosaves
-                    .save_after(guest, &self.world_root, self.res.items());
+                    .save_after(guest, &self.server.world_root, self.res.items());
             }
-            let directory = playerdata::directory(&self.world_root);
+            let directory = playerdata::directory(&self.server.world_root);
             self.native_player_save_to_file(guest.uuid, &guest.name, &directory);
         }
         if let Some(host) = self.lan.as_ref() {
@@ -1540,7 +1545,7 @@ impl Game<'_> {
     /// is not written, so nothing would hold it.
     pub(super) fn take_parent_vehicle(&mut self, guest: &mut sunrise_client::lan::guest::Guest) {
         // An interrupted player's file is not written, so the vehicle stays in the world.
-        if self.crash_save.excludes(guest.conn) {
+        if self.server.crash_save.excludes(guest.conn) {
             return;
         }
         let Some(vehicle) = guest.vehicle.take() else {
@@ -1628,15 +1633,18 @@ impl Game<'_> {
     /// live record, independently of the dirty entries sent to their client.
     pub(super) fn save_connected_guest_statistics(&self, host: &LanHost) {
         for guest in &host.hub.guests {
-            if !guest.joined() || guest.released || self.crash_save.excludes(guest.conn) {
+            if !guest.joined() || guest.released || self.server.crash_save.excludes(guest.conn) {
                 continue;
             }
             let Some(uuid) = self.records_uuid(host, guest.uuid) else {
                 continue;
             };
             if let Some(play) = host.play.get(&guest.conn) {
-                play.stats
-                    .write(&super::stats::player_json(&self.world_root, "stats", uuid));
+                play.stats.write(&super::stats::player_json(
+                    &self.server.world_root,
+                    "stats",
+                    uuid,
+                ));
             }
         }
     }
@@ -1656,7 +1664,7 @@ impl Game<'_> {
             return Ok(());
         };
         let write = |dir: &str, json: &serde_json::Value| {
-            let path = super::stats::player_json(&self.world_root, dir, uuid);
+            let path = super::stats::player_json(&self.server.world_root, dir, uuid);
             let text = serde_json::to_string_pretty(json).map_err(|e| e.to_string())?;
             sunrise_client::save::write_durable(&path, text.as_bytes())
                 .map_err(|e| format!("{} is not saved: {e}", path.display()))
@@ -1687,7 +1695,7 @@ impl Game<'_> {
             return;
         };
         let tree = self.advancement_tree();
-        let path = super::stats::player_json(&self.world_root, "advancements", uuid);
+        let path = super::stats::player_json(&self.server.world_root, "advancements", uuid);
         let saved = std::fs::read_to_string(path)
             .ok()
             .and_then(|t| serde_json::from_str::<serde_json::Value>(&t).ok());
@@ -1707,7 +1715,7 @@ impl Game<'_> {
         }
         // PlayerList.getPlayerStats: locateStatsFile moves an old name-based file first.
         let mut stats = super::stats::Stats::read(&super::stats::locate_player_json(
-            &self.world_root,
+            &self.server.world_root,
             "stats",
             uuid,
             &name,
@@ -1730,16 +1738,15 @@ impl Game<'_> {
             .map(|(tag, _)| tag);
         let mut host = self.lan.take()?;
         let mut stored = None;
-        if let Some(i) = host
-            .hub
-            .guests
-            .iter()
-            .position(|g| g.uuid == uuid && g.placed && !self.crash_save.excludes(g.conn))
+        if let Some(i) =
+            host.hub.guests.iter().position(|g| {
+                g.uuid == uuid && g.placed && !self.server.crash_save.excludes(g.conn)
+            })
         {
             // The owner's map is the game's only during their own turn
             // (`guest_turn`); otherwise their record holds it, whoever acts.
-            let live =
-                (self.lan_acting_uuid == Some(uuid)).then(|| self.player_state.attachments.clone());
+            let live = (self.server.lan_acting_uuid == Some(uuid))
+                .then(|| self.player_state.attachments.clone());
             host.hub.guests.update(i, |g| {
                 let held = live.map(|a| std::mem::replace(&mut g.attachments, a));
                 playerdata::store(g, &mut self.level, vehicle);
@@ -1876,7 +1883,7 @@ impl Game<'_> {
         }
         // ChunkMap.tick sends the changes of an entity outside the
         // entity-ticking range only when it changed section or needs sync.
-        let levels = self.tickets.levels();
+        let levels = self.server.tickets.levels();
         let idle_at = |p: sunrise_core::geometry::Vec3| {
             !levels.in_entity_ticking_range((p.x.floor() as i32) >> 4, (p.z.floor() as i32) >> 4)
         };
@@ -1902,7 +1909,7 @@ impl Game<'_> {
                     None => player_entity(),
                 },
                 Holder::Mob(id) | Holder::Boat(id) => Some(id as i32),
-                Holder::Knot(p) => self.knot_ids.get(&p).map(|&id| id as i32),
+                Holder::Knot(p) => self.server.knot_ids.get(&p).map(|&id| id as i32),
             });
             let idle = idle_at(m.position);
             let place = super::lan_idle::Place {
@@ -2556,7 +2563,7 @@ impl Game<'_> {
     /// sees the support (#4510). `tick_lan` then syncs the level; a paused
     /// tick that never calls this still drains inside `tick_lan`.
     pub(in crate::game) fn tick_lan_packets(&mut self) {
-        if self.level_pass.packets_drained {
+        if self.server.level_pass.packets_drained {
             return;
         }
         let Some(mut host) = self.lan.take() else {
@@ -2566,11 +2573,17 @@ impl Game<'_> {
         // guest. Snapshot the new requests before polling play events: the old connection
         // publishes Left before releasing the reservation that admitted its replacement.
         let configuration_requests = self
+            .server
             .level_pass
             .first
             .then(|| host.hub.lan.configuration_requests().collect::<Vec<_>>());
-        let handoffs = self.level_pass.first.then(|| host.hub.lan.take_handoffs());
+        let handoffs = self
+            .server
+            .level_pass
+            .first
+            .then(|| host.hub.lan.take_handoffs());
         let login_profiles = self
+            .server
             .level_pass
             .first
             .then(|| host.hub.lan.login_profile_requests().collect::<Vec<_>>());
@@ -2588,7 +2601,7 @@ impl Game<'_> {
                 sea_level: self.end.locator().map_or(63, |terrain| terrain.sea_level()),
                 world: &mut self.world,
                 entities: entities.as_slice(),
-                next_entity: &mut self.next_entity,
+                next_entity: &mut self.server.next_entity,
                 spawn,
                 spawn_angle: self.level.world_spawn_angle,
                 spawn_dimension: crate::game::Dim::of_world_spawn(&self.level).id(),
@@ -2611,7 +2624,7 @@ impl Game<'_> {
                     .bool_at(sunrise_client::gamerules::vanilla::ELYTRA_MOVEMENT_CHECK),
             );
             Self::sync_hub_mod_flags(&mut host.hub);
-            let pass = self.level_pass;
+            let pass = self.server.level_pass;
             let mut events = if pass.first {
                 sunrise_client::spans::time("lan_poll", || host.hub.poll(&mut ctx))
             } else {
@@ -2660,7 +2673,7 @@ impl Game<'_> {
                 .expect("the hub is back after the menu events");
         }
         host.states = entities;
-        self.level_pass.packets_drained = true;
+        self.server.level_pass.packets_drained = true;
         drop(holding);
         self.lan = Some(host);
         if let Some(handoffs) = handoffs {
@@ -2761,7 +2774,7 @@ impl Game<'_> {
             return None;
         }
         self.lan_assign_ids();
-        Some(self.next_entity as i32)
+        Some(self.server.next_entity as i32)
     }
 
     /// ServerLevel.tick's ChunkMap.tick point, after the block ticks and
@@ -2841,7 +2854,7 @@ impl Game<'_> {
             && host.hub.guests.iter().any(|g| host.hub.watches(g))
         {
             self.lan_assign_ids();
-            if self.next_entity != next {
+            if self.server.next_entity != next {
                 let mut states = States::default();
                 self.lan_entities(&mut states, false, next, None);
                 self.lan_hook_states(&mut states);
@@ -2849,7 +2862,7 @@ impl Game<'_> {
                 host.hub
                     .note_joined(states.as_slice(), Some(&*self.entity_attachments));
             }
-            host.states_next_entity = Some(self.next_entity);
+            host.states_next_entity = Some(self.server.next_entity);
         }
     }
 
@@ -2863,9 +2876,9 @@ impl Game<'_> {
         self.tick_lan_packets();
         if self.lan.is_none() {
             // No one else to tell: the host's `broadcastToAdmins` lines go.
-            self.admin_feedback.clear();
-            if self.level_pass.running.is_none() {
-                self.level_pass.packets_drained = false;
+            self.server.admin_feedback.clear();
+            if self.server.level_pass.running.is_none() {
+                self.server.level_pass.packets_drained = false;
             }
             return;
         }
@@ -2874,10 +2887,10 @@ impl Game<'_> {
         self.register_native_commands();
         // The host's own commands' (and command blocks') players moving
         // to another level, and their broadcastToAdmins lines.
-        if !self.level_teleports.is_empty() {
+        if !self.server.level_teleports.is_empty() {
             self.run_level_teleports();
         }
-        if !self.admin_feedback.is_empty() {
+        if !self.server.admin_feedback.is_empty() {
             self.send_admin_feedback();
         }
         // An animal whose rider left the game (or the level) stops taking
@@ -2898,7 +2911,7 @@ impl Game<'_> {
         // Keep chunk and entity publication in the level pass. A real server
         // then runs each connection's player body after all levels; a standalone
         // level tick (e.g. a fixture) has no outer server pass.
-        let defer_connections = self.level_pass.running.is_some();
+        let defer_connections = self.server.level_pass.running.is_some();
         if !paused {
             sunrise_client::spans::time("lan_guests", || self.tick_level_guests());
             if !defer_connections {
@@ -2920,7 +2933,7 @@ impl Game<'_> {
         // A guest's mount fired its `started_riding` with that guest alone in
         // place (the hub held by its action): now every player on the vehicle
         // hears it (`Entity.startRiding`).
-        if !self.started_riding.is_empty() {
+        if !self.server.started_riding.is_empty() {
             self.flush_started_riding();
         }
         {
@@ -2955,7 +2968,7 @@ impl Game<'_> {
                 // the clients that could pair are known. The range scale is
                 // the one the tracker gets below.
                 let mut idle_states = std::mem::take(&mut host.idle_states);
-                let mut kept = if self.level_pass.packets_drained {
+                let mut kept = if self.server.level_pass.packets_drained {
                     let percent = if host.hub.config.integrated {
                         (self.settings.entity_distance * 100.0).round() as i32
                     } else {
@@ -2977,7 +2990,7 @@ impl Game<'_> {
                     return;
                 };
                 host.idle_states = idle_states;
-                host.states_next_entity = Some(self.next_entity);
+                host.states_next_entity = Some(self.server.next_entity);
             } else {
                 let Some(host) = self.lan.as_mut() else {
                     return;
@@ -3007,7 +3020,7 @@ impl Game<'_> {
             // before them (`lan_broadcast_changes`): the guest re-runs a
             // piston's `triggerEvent` on the blocks as they were before the
             // move, a base the last tick restored included.
-            for (pos, b0, b1, state) in std::mem::take(&mut self.lan_block_events) {
+            for (pos, b0, b1, state) in std::mem::take(&mut self.server.lan_block_events) {
                 host.hub.block_event(pos, b0, b1, state);
             }
             let entities = states.as_slice();
@@ -3019,10 +3032,10 @@ impl Game<'_> {
             // that hit) is dropped by the tracker below: its event goes out
             // first, as `Level.broadcastEntityEvent` precedes the discard.
             let (gone, later) = partition_lan_entity_events(
-                std::mem::take(&mut self.lan_entity_events),
+                std::mem::take(&mut self.server.lan_entity_events),
                 entities.iter().map(|entity| entity.id),
             );
-            self.lan_entity_events = later;
+            self.server.lan_entity_events = later;
             for (id, event) in gone {
                 host.hub.entity_event(id, event);
             }
@@ -3047,7 +3060,7 @@ impl Game<'_> {
                     sea_level: self.end.locator().map_or(63, |terrain| terrain.sea_level()),
                     world: &mut self.world,
                     entities,
-                    next_entity: &mut self.next_entity,
+                    next_entity: &mut self.server.next_entity,
                     spawn,
                     spawn_angle: self.level.world_spawn_angle,
                     spawn_dimension: crate::game::Dim::of_world_spawn(&self.level).id(),
@@ -3091,7 +3104,7 @@ impl Game<'_> {
                 // Player packets may already have been drained before
                 // scheduled block ticks (`tick_lan_packets`).
                 Self::sync_hub_mod_flags(&mut host.hub);
-                let pass = self.level_pass;
+                let pass = self.server.level_pass;
                 // Even paused worlds completed their ordered input segments at
                 // entry, before world sync/physics or any scheduled work.
                 let mut events = Vec::new();
@@ -3180,8 +3193,8 @@ impl Game<'_> {
         self.flush_native_sounds();
         // `tick_server` resets the pass after all dimensions; outside a pass
         // the packet gate is per-tick.
-        if self.level_pass.running.is_none() {
-            self.level_pass.packets_drained = false;
+        if self.server.level_pass.running.is_none() {
+            self.server.level_pass.packets_drained = false;
         }
     }
 
@@ -3213,7 +3226,7 @@ impl Game<'_> {
                 log::error!("could not open {}: {e}", level.id());
                 return;
             }
-            self.tickets.add_spawn(
+            self.server.tickets.add_spawn(
                 prepared.chunk(),
                 sunrise_client::ticket_levels::SpawnTicketKind::Player,
             );
@@ -3229,7 +3242,7 @@ impl Game<'_> {
         };
         let default_mode = host.hub.config.default_game_mode;
         let force = host.hub.config.force_game_mode;
-        let root = self.world_root.clone();
+        let root = self.server.world_root.clone();
         let in_place = host.hub.config.dimension.clone();
         let levels = host.hub.config.levels;
         let owner = host.owner.as_mut();
@@ -3332,7 +3345,7 @@ impl Game<'_> {
             sea_level: self.end.locator().map_or(63, |terrain| terrain.sea_level()),
             world: &mut self.world,
             entities,
-            next_entity: &mut self.next_entity,
+            next_entity: &mut self.server.next_entity,
             spawn,
             spawn_angle: self.level.world_spawn_angle,
             spawn_dimension: crate::game::Dim::of_world_spawn(&self.level).id(),
@@ -3371,7 +3384,7 @@ impl Game<'_> {
                     data,
                     source,
                 } => {
-                    self.lan_events.push(super::QueuedLevelEvent {
+                    self.server.lan_events.push(super::QueuedLevelEvent {
                         kind: *id,
                         pos: [pos.x, pos.y, pos.z],
                         data: *data,
@@ -3384,7 +3397,8 @@ impl Game<'_> {
                 // what animates the move there. `state` is the block the
                 // event named, read before it ran (the packet's `block`).
                 sunrise_world::level::LevelEvent::BlockEntityEvent { pos, state, a, b } => {
-                    self.lan_block_events
+                    self.server
+                        .lan_block_events
                         .push(([pos.x, pos.y, pos.z], *a, *b, state.0));
                 }
                 _ => {}
@@ -3396,13 +3410,13 @@ impl Game<'_> {
     pub(super) fn lan_block_event(&mut self, pos: [i32; 3], b0: i32, b1: i32) {
         if self.audio.capture.is_some() {
             let state = self.world.block(pos[0], pos[1], pos[2]).0;
-            self.lan_block_events.push((pos, b0, b1, state));
+            self.server.lan_block_events.push((pos, b0, b1, state));
         }
     }
     /// `Level.broadcastEntityEvent` for the guests.
     pub(super) fn lan_entity_event(&mut self, id: i32, event: i8, at: [f64; 3]) {
         if self.audio.capture.is_some() {
-            self.lan_entity_events.push((id, event));
+            self.server.lan_entity_events.push((id, event));
         }
         self.lan_entity_event_local(id, event, at);
     }
@@ -3412,7 +3426,7 @@ impl Game<'_> {
         if let Some(host) = self.lan.as_ref() {
             host.hub.entity_event(id, event);
         } else if self.audio.capture.is_some() {
-            self.lan_entity_events.push((id, event));
+            self.server.lan_entity_events.push((id, event));
         }
         self.lan_entity_event_local(id, event, at);
     }
@@ -3481,9 +3495,9 @@ impl Game<'_> {
         else {
             return;
         };
-        let told = self.lan_acting.is_some();
+        let told = self.server.lan_acting.is_some();
         if told {
-            self.guest_equipment_breaks.push(event);
+            self.server.guest_equipment_breaks.push(event);
         }
         if told && !self.options.execution_role.is_client() {
             return;
@@ -3526,7 +3540,7 @@ impl Game<'_> {
             body,
         );
         if self.audio.capture.is_some() {
-            self.lan_critical_hits.push((attacker, id, magic));
+            self.server.lan_critical_hits.push((attacker, id, magic));
         }
     }
     /// Send the tick's level events, sounds and mob animations.
@@ -3534,9 +3548,9 @@ impl Game<'_> {
         let Some(host) = self.lan.as_mut() else {
             return;
         };
-        let critical_hits = std::mem::take(&mut self.lan_critical_hits);
-        let kinetic_hits = std::mem::take(&mut self.lan_kinetic_hits);
-        for (state, at) in std::mem::take(&mut self.lan_cushion_breaks) {
+        let critical_hits = std::mem::take(&mut self.server.lan_critical_hits);
+        let kinetic_hits = std::mem::take(&mut self.server.lan_kinetic_hits);
+        for (state, at) in std::mem::take(&mut self.server.lan_cushion_breaks) {
             if let Some(id) = host
                 .hub
                 .registry_id("minecraft:particle_type", "minecraft:block")
@@ -3568,7 +3582,7 @@ impl Game<'_> {
             pos,
             data,
             source,
-        } in std::mem::take(&mut self.lan_events)
+        } in std::mem::take(&mut self.server.lan_events)
         {
             if kind == 2001 {
                 host.broken
@@ -3584,7 +3598,7 @@ impl Game<'_> {
             host.hub.level_event(kind, pos, data, except);
         }
         // Level events 1010 and 1011: the guests' parrots dance or stop.
-        for (pos, song) in std::mem::take(&mut self.lan_songs) {
+        for (pos, song) in std::mem::take(&mut self.server.lan_songs) {
             match song {
                 Some(name) => {
                     let id = host.hub.registry_id("minecraft:jukebox_song", &name);
@@ -3593,13 +3607,13 @@ impl Game<'_> {
                 None => host.hub.level_event(1011, pos, 0, None),
             }
         }
-        for (pos, b0, b1, state) in std::mem::take(&mut self.lan_block_events) {
+        for (pos, b0, b1, state) in std::mem::take(&mut self.server.lan_block_events) {
             host.hub.block_event(pos, b0, b1, state);
         }
-        for (id, event) in std::mem::take(&mut self.lan_entity_events) {
+        for (id, event) in std::mem::take(&mut self.server.lan_entity_events) {
             host.hub.entity_event(id, event);
         }
-        for (level, kind, pos, data) in std::mem::take(&mut self.lan_global_events) {
+        for (level, kind, pos, data) in std::mem::take(&mut self.server.lan_global_events) {
             host.hub.global_level_event(level, kind, pos, data);
         }
         self.lan_broadcast_effects();
@@ -4183,7 +4197,7 @@ pub(in crate::game) mod tests {
                     let deadline = Instant::now() + WAIT;
                     while seen.lock().unwrap().len() < count {
                         assert!(Instant::now() < deadline, "handshake was not dispatched");
-                        game.level_pass = Default::default();
+                        game.server.level_pass = Default::default();
                         game.tick_lan_packets();
                         thread::yield_now();
                     }
@@ -4327,7 +4341,7 @@ pub(in crate::game) mod tests {
                     assert!(reason.reason_json.contains(key));
                     assert_closed(&mut c);
                 }
-                game.level_pass = Default::default();
+                game.server.level_pass = Default::default();
                 game.tick_lan_packets();
                 assert!(seen.lock().unwrap().is_empty());
                 assert_eq!(gate_calls.try_recv(), Err(mpsc::TryRecvError::Empty));
@@ -5389,7 +5403,7 @@ pub(in crate::game) mod tests {
                     seed: 0,
                     max_players: 3,
                     integrated: true,
-                    levels: game.level_shapes,
+                    levels: game.server.level_shapes,
                     level_seeds: game.levels.runtime.seeds(),
                 };
                 game.lan_host(settings, net, config).unwrap();
@@ -5658,7 +5672,7 @@ pub(in crate::game) mod tests {
                 seed: 0,
                 max_players: 2,
                 integrated: true,
-                levels: game.level_shapes,
+                levels: game.server.level_shapes,
                 level_seeds: game.levels.runtime.seeds(),
             };
             game.lan_host(settings, net, config).unwrap();
@@ -6200,7 +6214,7 @@ mod world_spawn_join_tests {
     #[ignore = "daily"]
     fn a_returning_player_from_a_missing_level_joins_in_the_world_spawn_level() {
         crate::game::native_guest_turn_tests::with_guests(|game| {
-            game.world_root = game.save.root.clone();
+            game.server.world_root = game.save.root.clone();
             game.level.world_spawn_dimension = Some("minecraft:the_nether".into());
             let guests = &mut game.lan.as_mut().unwrap().hub.guests;
             guests.update(0, |g| {
@@ -6211,7 +6225,7 @@ mod world_spawn_join_tests {
             });
             sunrise_client::lan::playerdata::save(
                 &guests[0],
-                &game.world_root,
+                &game.server.world_root,
                 &Default::default(),
             );
             guests.update(0, |g| g.placed = false);

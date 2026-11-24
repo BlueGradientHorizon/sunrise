@@ -392,9 +392,9 @@ fn a_teleporting_shulker_posts_teleport_where_it_stood() {
             "seed {seed}: the teleport event is posted from the shulker at its old position"
         );
         // The sensor above the old block holds that vibration.
-        game.chat_capture = Some(Vec::new());
+        game.server.chat_capture = Some(Vec::new());
         assert!(game.run_command("data get block 8 5 8 listener.selector.event"));
-        let said = game.chat_capture.take().unwrap_or_default();
+        let said = game.server.chat_capture.take().unwrap_or_default();
         let said: String = said.iter().map(sunrise_client::text::Text::plain).collect();
         assert!(
             said.contains("minecraft:teleport") && said.contains("[8.5d, 4.5d, 8.5d]"),

@@ -89,7 +89,7 @@ mod tests {
                 )
                 .unwrap();
                 let scratch = tempfile::tempdir().unwrap();
-                game.world_root = scratch.path().to_path_buf();
+                game.server.world_root = scratch.path().to_path_buf();
                 game.world
                     .chunks
                     .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
@@ -522,9 +522,9 @@ mod tests {
                         .unwrap();
                     game.player =
                         Some(PlayerMotion::new(game.motion, Vec3::new(4.5, 64.0, 4.5)).unwrap());
-                    game.lan_acting_uuid = Some(123);
-                    game.lan_acting_entity = Some(20);
-                    game.lan_acting_permission = Some(0);
+                    game.server.lan_acting_uuid = Some(123);
+                    game.server.lan_acting_entity = Some(20);
+                    game.server.lan_acting_permission = Some(0);
                     let place = |game: &mut crate::game::Game<'_>, name| {
                         let pos = (7, 64, 4);
                         let state = game.pack.assets.registry.default_state(name).unwrap();

@@ -43,14 +43,14 @@ fn save_requested_during_pickup_keeps_lifted_items_on_disk() {
         std::fs::create_dir_all(&root).unwrap();
         let calls = Arc::new(AtomicUsize::new(0));
         native_guest_turn_tests::with_guests(|game| {
-            game.world_root = root.clone();
+            game.server.world_root = root.clone();
             game.save = Arc::new(SaveDir::new(
                 root.clone(),
                 LevelShape::OVERWORLD,
                 Some(Default::default()),
             ));
             game.options.dedicated = Some(Vec::new());
-            game.server_lists = Some(Arc::new(Mutex::new(dedicated::Lists {
+            game.server.server_lists = Some(Arc::new(Mutex::new(dedicated::Lists {
                 ops: OpList::new(root.join("ops.json")),
                 white: WhiteList::new(root.join("whitelist.json")),
                 bans: BanList::new(root.join("bans.json")),

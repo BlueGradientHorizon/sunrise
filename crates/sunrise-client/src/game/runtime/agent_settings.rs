@@ -18,7 +18,7 @@ impl Game<'_> {
 
     /// At startup: open the socket if the game was started for an agent or Agent Control is on.
     pub(super) fn start_agent_control(&mut self) -> Result<()> {
-        self.agent_control_on = self.settings.extras.agent_control;
+        self.client.agent_control_on = self.settings.extras.agent_control;
         if self.options.benchmark.is_some() && self.options.control.is_none() {
             return Ok(());
         }
@@ -37,7 +37,7 @@ impl Game<'_> {
                 .map_err(|e| format!("control socket {}: {e}", path.display()))?;
             log::info!("Sunrise: control socket {}", server.path().display());
             self.control = Some(server);
-        } else if self.agent_control_on {
+        } else if self.client.agent_control_on {
             self.open_agent_socket();
         }
         Ok(())
@@ -60,8 +60,8 @@ impl Game<'_> {
     /// closes it.
     pub(super) fn sync_agent_control(&mut self) {
         let wanted = self.settings.extras.agent_control;
-        let changed = wanted != self.agent_control_on;
-        self.agent_control_on = wanted;
+        let changed = wanted != self.client.agent_control_on;
+        self.client.agent_control_on = wanted;
         let open = self
             .control
             .as_ref()
@@ -78,7 +78,7 @@ impl Game<'_> {
 
     /// An agent's command arrived.
     pub(super) fn agent_command_seen(&mut self) {
-        self.agent_last = Some(std::time::Instant::now());
+        self.client.agent_last = Some(std::time::Instant::now());
     }
 
     /// The AI Agent page's lines: the state, then where agents connect.
@@ -98,8 +98,8 @@ impl Game<'_> {
             });
         let mut lines = status_lines(
             server,
-            self.agent_last.map(|t| t.elapsed().as_secs()),
-            self.options.control.is_some() && !self.agent_control_on,
+            self.client.agent_last.map(|t| t.elapsed().as_secs()),
+            self.options.control.is_some() && !self.client.agent_control_on,
         );
         if let Some(line) = self.repro.agent_line(self.input_trace.events()) {
             lines.push(line);

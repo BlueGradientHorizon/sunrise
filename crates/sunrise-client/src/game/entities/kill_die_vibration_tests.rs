@@ -36,9 +36,9 @@ pub(super) fn game(test: impl FnOnce(&mut Game<'_>)) {
 
 /// Runs `command`: whether it succeeded and what it said.
 pub(super) fn run(game: &mut Game<'_>, command: &str) -> (bool, Vec<String>) {
-    game.chat_capture = Some(Vec::new());
+    game.server.chat_capture = Some(Vec::new());
     let ok = game.run_command(command);
-    let said = game.chat_capture.take().unwrap_or_default();
+    let said = game.server.chat_capture.take().unwrap_or_default();
     (
         ok,
         said.iter().map(sunrise_client::text::Text::plain).collect(),

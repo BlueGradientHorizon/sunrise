@@ -30,8 +30,8 @@ fn item_part_results_control_real_server_and_client_use() {
                         game.offhand = None;
                         game.using = None;
                         game.swing = Default::default();
-                        game.use_failed = false;
-                        game.guest_use =
+                        game.server.use_failed = false;
+                        game.server.guest_use =
                             guest.then_some(super::super::super::GuestUse::Item(Hand::Main));
                         let actual = if client {
                             game.remote_use_item(Hand::Main)
@@ -66,8 +66,8 @@ fn failed_item_part_still_tries_the_off_hand() {
                 };
                 game.inventory[game.selected] = Some(ItemStack::new("minecraft:shield", 1));
                 game.offhand = Some(ItemStack::new("minecraft:shield", 1));
-                game.forced_hit = None;
-                game.guest_use = None;
+                game.server.forced_hit = None;
+                game.server.guest_use = None;
                 game.swing = Default::default();
                 if client {
                     game.remote_use_hands(Hand::Main, mod_api::InteractionAttempt::Press, None);

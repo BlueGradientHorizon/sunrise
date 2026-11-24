@@ -1024,9 +1024,9 @@ fn a_panicking_live_quick_move_rolls_back_and_disables_only_its_callback() {
 
             // The normal toast collector names the failing mod and hook once.
             game.add_hook_panic_toasts();
-            assert_eq!(game.toast_manager.queued.len(), 1);
+            assert_eq!(game.client.toast_manager.queued.len(), 1);
             let Some(crate::game::toast_manager::Toast::Diagnostic { toast, .. }) =
-                game.toast_manager.queued.front()
+                game.client.toast_manager.queued.front()
             else {
                 panic!("expected one shared hook error toast");
             };

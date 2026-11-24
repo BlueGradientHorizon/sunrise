@@ -1049,7 +1049,7 @@ fn an_active_vault_ends_a_held_item_s_click_on_the_client() {
             .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
         game.sync_tick_chunks();
         let hit = top_of(0, 0);
-        game.forced_hit = Some(hit);
+        game.server.forced_hit = Some(hit);
         let registry = game.pack.assets.registry;
         let vault = |state: &str| {
             registry

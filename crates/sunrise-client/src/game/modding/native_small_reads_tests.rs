@@ -414,7 +414,7 @@ fn gui_ticks_follow_unpaused_client_ticks() {
             game.clock.set_frozen(true);
             game.client_tick_steps(1, None).unwrap();
             assert_eq!(game.gui_ticks(), 3);
-            game.gui_ticks = i32::MAX;
+            game.client.gui_ticks = i32::MAX;
             game.client_tick_steps(1, None).unwrap();
             assert_eq!(game.gui_ticks(), i32::MIN);
         });

@@ -23,7 +23,7 @@ impl Game<'_> {
     pub(in crate::game) fn tick_remote_player(&mut self, running: bool, hold: bool) -> Result<()> {
         // Inventory.tick's ItemStack.inventoryTick: the pop time runs down.
         if !hold {
-            for pop in &mut self.hotbar_pop {
+            for pop in &mut self.client.hotbar_pop {
                 *pop = pop.saturating_sub(1);
             }
         }
@@ -100,7 +100,7 @@ impl Game<'_> {
             return;
         }
         let camera = self.camera_eye_position();
-        let mut looks = std::mem::take(&mut self.guardian_look_scratch);
+        let mut looks = std::mem::take(&mut self.client.guardian_look_scratch);
         looks.clear();
         looks.extend(
             self.mobs
@@ -124,14 +124,22 @@ impl Game<'_> {
         for &(i, look) in &looks {
             guardian::look_at(&mut self.mobs[i], look);
         }
-        self.guardian_look_scratch = looks;
+        self.client.guardian_look_scratch = looks;
     }
 
     /// `ClientLevel.tickEntities`: the section index takes each crossing at its entity's turn.
     pub(in crate::game) fn tick_remote_entities(&mut self, running: bool) {
-        self.client_pick.sections.get_mut().begin_entity_ticks();
+        self.client
+            .client_pick
+            .sections
+            .get_mut()
+            .begin_entity_ticks();
         self.tick_remote_entity_turns(running);
-        self.client_pick.sections.get_mut().end_entity_ticks();
+        self.client
+            .client_pick
+            .sections
+            .get_mut()
+            .end_entity_ticks();
     }
 
     fn tick_remote_entity_turns(&mut self, running: bool) {
@@ -167,7 +175,7 @@ impl Game<'_> {
                     t.previous_pitch = t.pitch;
                 }
             }
-            for i in self.interactions.values_mut() {
+            for i in self.client.interactions.values_mut() {
                 i.snapshot_previous();
             }
             self.tick_remote_ominous_item_spawners();
@@ -183,7 +191,7 @@ impl Game<'_> {
                 }
             }
             for &id in &frozen_ticking {
-                if let Some(i) = self.interactions.get_mut(&id) {
+                if let Some(i) = self.client.interactions.get_mut(&id) {
                     i.snapshot_previous();
                 }
             }
@@ -766,7 +774,7 @@ impl Game<'_> {
                 .next_float()
         };
         if running {
-            let sections = self.client_pick.sections.get_mut();
+            let sections = self.client.client_pick.sections.get_mut();
             self.orbs.retain_mut(|o| {
                 let distance = |feet: &[f64; 3]| -> f64 {
                     (feet[0] - o.position.x).powi(2)
@@ -914,7 +922,8 @@ impl Game<'_> {
                         &mut a.client_effects,
                         &mut a.darkness_blend,
                     );
-                    self.client_pick
+                    self.client
+                        .client_pick
                         .sections
                         .get_mut()
                         .move_id(a.id, a.position.components());
@@ -978,7 +987,8 @@ impl Game<'_> {
                         &mut a.client_effects,
                         &mut a.darkness_blend,
                     );
-                    self.client_pick
+                    self.client
+                        .client_pick
                         .sections
                         .get_mut()
                         .move_id(a.id, a.position.components());
@@ -1012,7 +1022,7 @@ impl Game<'_> {
         let told = |id: i32| {
             let id = id as u32;
             self.mob_index.get_ref(&self.mobs, id).is_some()
-                || self.text_displays.contains_key(&(id as i32))
+                || self.client.text_displays.contains_key(&(id as i32))
                 || flying.contains(&id)
         };
         if running {
@@ -1066,7 +1076,9 @@ impl Game<'_> {
             .player
             .as_ref()
             .is_some_and(|p| p.is_eye_in_fluid(sunrise_client::motion::WATER));
-        self.fog.tick(in_water, self.own_player_is_spectator());
+        self.client
+            .fog
+            .tick(in_water, self.own_player_is_spectator());
     }
 
     /// `LocalPlayer.tick`'s `Player.tick` work: input, riding, motion and
@@ -1098,7 +1110,7 @@ impl Game<'_> {
             .remote
             .as_ref()
             .is_some_and(|r| r.level_load.is_active());
-        let playing = self.screen == Screen::Playing && !loading && !self.dialog_open();
+        let playing = self.client.screen == Screen::Playing && !loading && !self.dialog_open();
         let stick = self.pad_move();
         let mut keys = if playing {
             self.sample_movement_keys(stick)
@@ -1124,16 +1136,16 @@ impl Game<'_> {
         // The held lead's end eases from the look at the start of the tick
         // (`yRotO`/`xRotO`), as the local tick does; `tick` returns before it
         // reaches its own write when this window is a server client.
-        self.rope_rot_old = (self.yaw, self.pitch);
+        self.client.rope_rot_old = (self.yaw, self.pitch);
         // Entity.rideTick: the vehicle ticks first, then its rider, which moves itself
         // from where it sat before (`rider_tick`, in the riding branch below, once its
         // look and the vehicle's fluid shelter are this tick's); positionRider then puts
         // it on the new seat and changes nothing else.
         let old_seat = self
             .riding
-            .filter(|_| self.screen != Screen::Dead)
+            .filter(|_| self.client.screen != Screen::Dead)
             .and_then(|_| self.player.as_ref().map(|p| p.position));
-        let riding = self.screen != Screen::Dead && self.remote_ride(keys);
+        let riding = self.client.screen != Screen::Dead && self.remote_ride(keys);
         // LocalPlayer.isShiftKeyDown is the input's sneak, riding or not: the tick after a
         // dismount crouches (a passenger never does) on the sneak held to get off.
         if riding && let Some(p) = self.player.as_mut() {
@@ -1205,7 +1217,7 @@ impl Game<'_> {
         };
         let body = player.entity_id;
         let was_gliding = fall_flying_before_hooks.unwrap_or(player.fall_flying);
-        let dead = self.screen == Screen::Dead;
+        let dead = self.client.screen == Screen::Dead;
         // LivingEntity.isImmobile: a sleeper lies still, even if its bed's
         // shape is unavailable here; only the server decides when to wake.
         if sleeping.is_some() {
@@ -1324,7 +1336,8 @@ impl Game<'_> {
         let Some(player) = self.player.as_mut().filter(|p| p.entity_id == body) else {
             return Ok(None);
         };
-        self.client_pick
+        self.client
+            .client_pick
             .sections
             .get_mut()
             .move_id(body as u32, player.position.components());
@@ -1344,7 +1357,7 @@ impl Game<'_> {
         // server (ServerboundPlayerCommandPacket START_FALL_FLYING).
         let started_gliding = player.fall_flying && !was_gliding;
         let events = std::mem::take(&mut player.events);
-        self.previous_eye = self.eye;
+        self.client.previous_eye = self.eye;
         self.eye += (player.dimensions.eye_height - self.eye) * 0.5;
         for event in events {
             match event {
@@ -1619,7 +1632,7 @@ impl Game<'_> {
         if !self.remote.as_ref().is_some_and(|r| r.loaded_sent) {
             return Ok(None);
         }
-        self.drop_spam_throttler.tick();
+        self.client.drop_spam_throttler.tick();
         let entity_collisions = self.entity_collisions(Mover::Player);
         // Those added before it tick before it: their pushes reach this move.
         let pushed = self.remote_pushes(true);

@@ -110,6 +110,7 @@ impl Game<'_> {
     /// `StructureBlock.setPlacedBy`: the placing player is the author.
     pub(super) fn structure_block_placed(&mut self, pos: Pos) {
         let author = self
+            .server
             .lan_acting_name
             .clone()
             .unwrap_or_else(|| self.options.player_name());
@@ -121,14 +122,15 @@ impl Game<'_> {
     /// `StructureTemplateManager.get`: the cache (misses included), else the
     /// world's saved structures, else the game's own.
     pub(super) fn template_entry(&mut self, name: &str) -> Option<TemplateEntry> {
-        if let Some(cached) = self.structure_templates.get(name) {
+        if let Some(cached) = self.server.structure_templates.get(name) {
             return cached.clone();
         }
         let loaded = self.read_template_tag(name).map(|tag| TemplateEntry {
             tag,
             author: "?".to_owned(),
         });
-        self.structure_templates
+        self.server
+            .structure_templates
             .insert(name.to_owned(), loaded.clone());
         loaded
     }
@@ -136,7 +138,7 @@ impl Game<'_> {
     /// `StructureTemplateManager.save`: the file under the world's
     /// `generated` folder.
     fn write_template(&self, name: &str, tag: &Tag) -> bool {
-        let Some(file) = template_file(&self.world_root, name) else {
+        let Some(file) = template_file(&self.server.world_root, name) else {
             return false;
         };
         let Some(parent) = file.parent() else {
@@ -309,7 +311,7 @@ impl Game<'_> {
             )
         };
         let saved = !to_disk || self.write_template(name, &tag);
-        self.structure_templates.insert(
+        self.server.structure_templates.insert(
             name.to_owned(),
             Some(TemplateEntry {
                 tag,
@@ -517,7 +519,7 @@ impl Game<'_> {
             // `unloadStructure`: the manager forgets it, the next use reads the file.
             StructureMode::Corner => {
                 if let Some(name) = self.structure_block_at(pos).and_then(|b| b.name.clone()) {
-                    self.structure_templates.remove(&name);
+                    self.server.structure_templates.remove(&name);
                 }
             }
             StructureMode::Data => {}

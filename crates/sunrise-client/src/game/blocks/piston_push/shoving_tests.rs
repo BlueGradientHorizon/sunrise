@@ -176,7 +176,7 @@ fn a_predicted_collider_shove_passes_the_server_move_check() {
                         .unwrap();
                     finish_login(game, &mut wire);
                     game.title = None;
-                    game.screen = crate::game::Screen::Playing;
+                    game.client.screen = crate::game::Screen::Playing;
                     empty_chunk(game);
                     let mut player = PlayerMotion::new(game.motion, from).unwrap();
                     player.entity_id = PLAYER as i32;
@@ -236,14 +236,14 @@ fn a_predicted_collider_shove_passes_the_server_move_check() {
                 empty_chunk(game);
                 holder(game, 4.75);
                 game.player = Some(PlayerMotion::new(game.motion, from).unwrap());
-                game.lan_acting = Some(CONN);
-                game.lan_acting_entity = Some(PLAYER);
-                game.lan_acting_uuid = Some(11);
-                game.lan_acting_name = Some("pushed-player".into());
+                game.server.lan_acting = Some(CONN);
+                game.server.lan_acting_entity = Some(PLAYER);
+                game.server.lan_acting_uuid = Some(11);
+                game.server.lan_acting_name = Some("pushed-player".into());
                 bind_acting_guest(game);
                 // The packet belongs to the hub guest, not a second local body.
                 game.remove_local_player_body();
-                game.lan_acting = None;
+                game.server.lan_acting = None;
                 let hub = &mut game.lan.as_mut().unwrap().hub;
                 hub.update_guest(CONN, |g| {
                     g.loaded = true;

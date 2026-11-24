@@ -23,7 +23,7 @@ fn scene<'a>(resources: &'a mut Option<Arc<crate::game::Resources>>, scratch: &P
     g.set_allow_commands(true);
     let folder = scratch.join("data/fall/advancement");
     std::fs::create_dir_all(&folder).unwrap();
-    g.world_root = scratch.to_path_buf();
+    g.server.world_root = scratch.to_path_buf();
     for (name, distance) in CRITERIA.into_iter().zip([
         serde_json::Value::Null,
         serde_json::json!({"max": 1.0}),
@@ -87,7 +87,7 @@ fn scene<'a>(resources: &'a mut Option<Arc<crate::game::Resources>>, scratch: &P
     guest.load_timeout = 0;
     g.lan.as_mut().unwrap().hub.guests.push(guest);
     g.sync_tick_chunks();
-    g.ticked_entities_through = g.next_entity;
+    g.server.ticked_entities_through = g.server.next_entity;
     g
 }
 

@@ -218,20 +218,20 @@ fn typed_particle_command_encoder_refusal_does_not_deliver_to_a_guest() {
         }
     });
     game.lan = Some(crate::game::lan::LanHost::for_test(hub));
-    game.lan_acting = Some(1);
+    game.server.lan_acting = Some(1);
     game.particles.created_requests = Some(Vec::new());
     assert!(game.run_command("particle test:measured{measure:1} 0.5 100.5 0.5 0 0 0 0 1 force @s"));
-    assert!(game.guest_packets.iter().any(|p| matches!(
+    assert!(game.server.guest_packets.iter().any(|p| matches!(
         p,
         sunrise_protocol::packets::play::Clientbound::LevelParticles(_)
     )));
-    game.guest_packets.clear();
+    game.server.guest_packets.clear();
     let (ok, outcome) = game.recording_command_outcome(|game| {
         game.run_command("particle test:measured{measure:-1} 0.5 100.5 0.5 0 0 0 0 1 force @s")
     });
     assert!(!ok);
     assert_eq!(outcome, Some((false, 0)));
-    assert!(game.guest_packets.iter().all(|p| !matches!(
+    assert!(game.server.guest_packets.iter().all(|p| !matches!(
         p,
         sunrise_protocol::packets::play::Clientbound::LevelParticles(_)
     )));

@@ -58,7 +58,7 @@ fn a_client_mod_counts_and_clears_particles() {
         let host: &dyn ClientHost = game;
         assert_eq!(host.particle_count(), 0);
         fill(game);
-        assert_eq!(game.pickups.live.len(), 1, "the pickup is live");
+        assert_eq!(game.client.pickups.live.len(), 1, "the pickup is live");
         let engine = game.particles.group_count();
         assert_eq!(engine, 5, "three flames, one starter and one guardian");
         let host: &dyn ClientHost = game;
@@ -79,7 +79,7 @@ fn a_client_mod_counts_and_clears_particles() {
         assert_eq!(host.particle_count(), 0);
         game.extras_frame(Duration::ZERO);
         assert_eq!(game.particles.group_count(), 0);
-        assert!(game.pickups.live.is_empty());
+        assert!(game.client.pickups.live.is_empty());
         assert!(game.particles.elder_guardians().is_empty());
         // The emitter and the queue went too: a tick brings nothing back.
         game.tick_particles();
@@ -89,7 +89,7 @@ fn a_client_mod_counts_and_clears_particles() {
         assert!(host_clear(game));
         game.tick_particles();
         assert_eq!(game.particles.group_count(), 0);
-        assert!(game.pickups.live.is_empty());
+        assert!(game.client.pickups.live.is_empty());
         let host: &dyn ClientHost = game;
         assert_eq!(host.particle_count(), 0);
         game.options.execution_role = super::ExecutionRole::IntegratedServer;
@@ -177,7 +177,7 @@ fn a_model_callback_clear_discards_particle_geometry_already_extracted() {
             let previous = out.len();
             assert!(previous > 0);
             let positions: Vec<_> = out.iter().map(|v| v.pos).collect();
-            let motion = game.entity_motion.borrow().clone();
+            let motion = game.client.entity_motion.borrow().clone();
             // An actual picked-up item resolves a conditional model while the
             // preceding ordinary-particle pass has already produced geometry.
             std::sync::Arc::get_mut(&mut game.pack.item_renderer)
@@ -208,7 +208,7 @@ fn a_model_callback_clear_discards_particle_geometry_already_extracted() {
             game.client_particle_geometry(camera, 0.0, 70.0, None, &mut out);
             assert_eq!(calls.load(std::sync::atomic::Ordering::Relaxed), 1);
             assert_eq!(out.iter().map(|v| v.pos).collect::<Vec<_>>(), positions);
-            assert_eq!(&game.entity_motion.borrow()[..motion.len()], &motion);
+            assert_eq!(&game.client.entity_motion.borrow()[..motion.len()], &motion);
             assert_eq!(game.client_particle_count(), 0);
             game.tick_particles();
             assert_eq!(game.client_particle_count(), 0);

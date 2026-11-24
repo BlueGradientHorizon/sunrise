@@ -83,7 +83,7 @@ fn the_active_stack_survives_a_partial_contact_and_consumption_removes_the_entit
         let mut stack = input.clone();
         stack.count = count;
         game.spawn_item(stack, [landing[0], 64.1, landing[2]], [0.0, -0.3, 0.0], 20);
-        game.ticked_entities_through = game.next_entity;
+        game.server.ticked_entities_through = game.server.next_entity;
         game.dropped[0].clone()
     };
     let mut vanilla = None;
@@ -703,10 +703,12 @@ fn step_on_edits_grounded_bodies_before_inside_effects_and_settle() {
                     assert_eq!(clear_calls(), [(client, 77, floor, true)]);
 
                     if !client {
-                        game.tickets.update(Some(crate::ticket_levels::Sources {
-                            forced: vec![(0, 0)],
-                            ..Default::default()
-                        }));
+                        game.server
+                            .tickets
+                            .update(Some(crate::ticket_levels::Sources {
+                                forced: vec![(0, 0)],
+                                ..Default::default()
+                            }));
                         let mut stand = sunrise_client::entities::ArmorStand::new(
                             78,
                             Vec3::new(4.5, 64.25, 4.5),
@@ -726,10 +728,10 @@ fn step_on_edits_grounded_bodies_before_inside_effects_and_settle() {
                         game.world.set(8, 63, 4, stone).unwrap();
                         game.player = Some(PlayerMotion::new(game.motion, seat).unwrap());
                         bind_local_player(game, 80, 1);
-                        game.lan_acting = Some(2);
-                        game.lan_acting_name = Some("boat_step".into());
+                        game.server.lan_acting = Some(2);
+                        game.server.lan_acting_name = Some("boat_step".into());
                         bind_acting_guest(game);
-                        game.lan_acting = None;
+                        game.server.lan_acting = None;
                         game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
                             guest.vehicle = Some(79);
                         });
@@ -962,7 +964,7 @@ fn step_on_can_hurt_only_living_bodies_on_the_same_block() {
                         .default_state("minecraft:stone")
                         .unwrap();
                     game.world.set(4, 63, 4, stone).unwrap();
-                    game.tickets.update(None);
+                    game.server.tickets.update(None);
 
                     let kind = game.res.mob_types().get("minecraft:pig").unwrap().clone();
                     let mut pig =
@@ -1378,7 +1380,7 @@ fn contact_hurt_uses_the_orbs_level_fall_immunity_tag() {
                     .default_state("minecraft:terracotta")
                     .unwrap();
                 game.world.set(4, 63, 4, block).unwrap();
-                game.tickets.update(None);
+                game.server.tickets.update(None);
                 for tagged in [false, true] {
                     let mut items = world_items!(game).clone();
                     let mut tags = items.entity_type_tags.ordered().clone();
@@ -1400,7 +1402,7 @@ fn contact_hurt_uses_the_orbs_level_fall_immunity_tag() {
                         Vec3::new(0.0, -0.5, 0.0),
                         1,
                     ));
-                    game.ordered.announced = JoinSeq::MAX;
+                    game.server.ordered.announced = JoinSeq::MAX;
                     game.begin_ordered_ticks();
                     sunrise_client::block_contact::in_level(
                         game.tick,

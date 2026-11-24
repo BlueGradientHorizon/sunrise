@@ -548,7 +548,7 @@ fn observe_overlay(effect: BlockScreenEffect, run: impl FnOnce()) -> Option<Over
 fn underwater_third_person_neither_extracts_nor_draws_the_overlay() {
     with_client_game(|game| {
         burning_player(game);
-        game.camera_type = CameraType::ThirdPersonBack;
+        game.client.camera_type = CameraType::ThirdPersonBack;
         let water = game
             .pack
             .assets
@@ -641,8 +641,8 @@ fn a_dead_players_water_overlay_uses_the_last_sample_after_removal() {
         remote.joined = true;
         remote.entity_id = 42;
         remote.level_load.finish();
-        game.screen = Screen::Playing;
-        game.camera_type = CameraType::FirstPerson;
+        game.client.screen = Screen::Playing;
+        game.client.camera_type = CameraType::FirstPerson;
         game.player = Some(PlayerMotion::new(game.motion, Vec3::new(8.5, 64.0, 8.5)).unwrap());
         let chunk = Chunk::with_layout(0, 0, game.world.layout());
         game.streaming.insert_remote(&mut game.world, chunk);
@@ -656,7 +656,7 @@ fn a_dead_players_water_overlay_uses_the_last_sample_after_removal() {
         game.world.set(8, 65, 8, water).unwrap();
         game.tick_remote().unwrap();
 
-        game.screen = Screen::Dead;
+        game.client.screen = Screen::Dead;
         use sunrise_protocol::packets::play::{Clientbound, SetHealth};
         game.apply_packet(Clientbound::SetHealth(SetHealth {
             health: 0.0,
@@ -1012,7 +1012,7 @@ fn screen_effect_quads_draw_over_the_level_and_under_the_gui() {
             burning_player(game);
             game.previous_position = game.player.as_ref().unwrap().position;
             // A black vignette is no quad: the HUD's camera overlays would darken the colours.
-            game.screen_fx.vignette_brightness = 0.0;
+            game.client.screen_fx.vignette_brightness = 0.0;
             game.player.as_mut().unwrap().fire_ticks = 0;
             let (level, width) = drawn_frame(game);
             game.player.as_mut().unwrap().fire_ticks = 100;

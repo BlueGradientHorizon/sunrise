@@ -390,7 +390,7 @@ impl Game<'_> {
         let playing = self.pad.devices.dualsense
             && self.pad_has_window()
             && self.title.is_none()
-            && self.screen == Screen::Playing
+            && self.client.screen == Screen::Playing
             && !self.screen_over_playing()
             && !self.pause;
         let (using, attacking) = if playing {
@@ -477,7 +477,7 @@ impl Game<'_> {
             Some((_, "minecraft:warped_fungus_on_a_stick")) if mount == "minecraft:strider" => {
                 TriggerFeel::Boost
             }
-            Some((s, _)) if self.blocks_attacks(s).is_some() => match self.shield_cooldown {
+            Some((s, _)) if self.blocks_attacks(s).is_some() => match self.server.shield_cooldown {
                 0 => TriggerFeel::Brace,
                 _ => TriggerFeel::Locked,
             },

@@ -94,7 +94,7 @@ impl Game<'_> {
             if digging.is_some() || play.mining.is_some() || play.destroy_delay > 0 {
                 let _ = self.as_guest_at(gi, conn, |g| {
                     if let Some((pos, face)) = digging {
-                        g.forced_hit = Some(Hit {
+                        g.server.forced_hit = Some(Hit {
                             pos,
                             face,
                             point: [
@@ -106,7 +106,7 @@ impl Game<'_> {
                         });
                     }
                     let _ = g.tick_mining();
-                    g.forced_hit = None;
+                    g.server.forced_hit = None;
                 });
                 // Instant STARTs complete without a STOP; do not break a later
                 // block planted in the same position again.
@@ -184,7 +184,7 @@ impl Game<'_> {
         building_cache(self.lan.as_ref());
         let result = self.tick_guest_connections_inner(across_levels);
         building_cache(None);
-        self.pickup_columns = None;
+        self.server.pickup_columns = None;
         result
     }
 
@@ -233,7 +233,7 @@ impl Game<'_> {
                 }
                 active_level = Some(dim);
                 // Most players aren't in any of the columns items reach.
-                self.pickup_columns = Some(Default::default());
+                self.server.pickup_columns = Some(Default::default());
                 if self
                     .lan
                     .as_ref()
@@ -404,14 +404,14 @@ impl Game<'_> {
                 Vec::new()
             };
             let _ = self.as_guest_at(gi, conn, |g| {
-                let outer = std::mem::replace(&mut g.stab_players, players);
+                let outer = std::mem::replace(&mut g.server.stab_players, players);
                 // Player.tick's attackStrengthTicker, part of the body.
                 if body {
-                    g.attack_ticks = g.attack_ticks.saturating_add(1);
+                    g.server.attack_ticks = g.server.attack_ticks.saturating_add(1);
                 }
                 g.set_mapping_held("key.use", g.using.is_some());
                 g.tick_using();
-                g.stab_players = outer;
+                g.server.stab_players = outer;
                 if g.use_delay > 0 {
                     g.use_delay -= 1;
                 }
@@ -521,7 +521,7 @@ impl Game<'_> {
     fn tick_guests_inner(&mut self) {
         self.tick_level_guests_inner();
         self.tick_guest_connections_inner(false).unwrap();
-        self.pickup_columns = None;
+        self.server.pickup_columns = None;
     }
 
     /// Whether guest `g`'s body ticks this tick: `ServerPlayer.doTick`'s

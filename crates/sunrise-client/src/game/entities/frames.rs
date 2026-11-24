@@ -154,7 +154,10 @@ impl Game<'_> {
     /// of type `kind` at `pos` (`native_hanging_place`): true when one
     /// cancelled it. A game's own player is not asked.
     pub(super) fn hanging_place_cancelled(&mut self, kind: &str, pos: [i32; 3]) -> bool {
-        let (Some(uuid), Some(name)) = (self.lan_acting_uuid, self.lan_acting_name.clone()) else {
+        let (Some(uuid), Some(name)) = (
+            self.server.lan_acting_uuid,
+            self.server.lan_acting_name.clone(),
+        ) else {
             return false;
         };
         let mut cancel = false;
@@ -172,7 +175,7 @@ impl Game<'_> {
         by_player: bool,
     ) -> bool {
         let player = if by_player {
-            let Some(uuid) = self.lan_acting_uuid else {
+            let Some(uuid) = self.server.lan_acting_uuid else {
                 return false;
             };
             Some(uuid)
@@ -198,13 +201,13 @@ impl Game<'_> {
             .contains(&pos[1])
         {
             // ItemFrameItem.mayPlace's FAIL.
-            self.use_failed = true;
+            self.server.use_failed = true;
             return true;
         }
         let mut frame = ItemFrame {
             attachment_lifetime: Default::default(),
             join: Default::default(),
-            id: self.next_entity + 1,
+            id: self.server.next_entity + 1,
             pos,
             facing: facing_of(hit.face),
             glow,
@@ -241,7 +244,7 @@ impl Game<'_> {
         if self.hanging_place_cancelled(kind, pos) {
             return true;
         }
-        self.next_entity += 1;
+        self.server.next_entity += 1;
         self.audio
             .play(&sound(&frame, "place"), Some(center(&frame)), 1.0, 1.0);
         // HangingEntityItem.useOn: ENTITY_PLACE at the frame, by the player, before it is
@@ -355,7 +358,10 @@ impl Game<'_> {
         if action == "put" && !self.creative {
             self.consume_held();
         }
-        if let (Some(player), Some(name)) = (self.lan_acting_uuid, self.lan_acting_name.clone()) {
+        if let (Some(player), Some(name)) = (
+            self.server.lan_acting_uuid,
+            self.server.lan_acting_name.clone(),
+        ) {
             let frame = self.item_frames.iter().find(|f| f.id == entity_id);
             let item = frame
                 .and_then(|f| f.item.as_ref())
@@ -386,13 +392,13 @@ impl Game<'_> {
             // (canHurtWhenFixed), so skipAttackInteraction is false and
             // Player.attack goes on to onAttack.
             if !self.creative {
-                self.attack_ticks = 0;
+                self.server.attack_ticks = 0;
             }
             return true;
         }
         // `isInvulnerableToBase`: a refused hit goes on to onAttack, as a fixed frame's does.
         if self.native_player_hit_invulnerable(self.item_frames[i].id, self.item_frames[i].kind()) {
-            self.attack_ticks = 0;
+            self.server.attack_ticks = 0;
             return true;
         }
         self.hit_frame_by(
@@ -526,7 +532,10 @@ impl Game<'_> {
         }
         self.world.modified.insert((f.pos[0] >> 4, f.pos[2] >> 4));
         if by_player
-            && let (Some(player), Some(name)) = (self.lan_acting_uuid, self.lan_acting_name.clone())
+            && let (Some(player), Some(name)) = (
+                self.server.lan_acting_uuid,
+                self.server.lan_acting_name.clone(),
+            )
         {
             self.native_player_item_frame_change(
                 player,
@@ -637,7 +646,7 @@ impl Game<'_> {
                     / diameter;
             if dist > 1.0
                 || self.item_frames[i].fixed
-                || !self.combat.visits(self.item_frames[i].id)
+                || !self.server.combat.visits(self.item_frames[i].id)
                 || !self.break_frame_by(i, self.explosion_kill_credit())
             {
                 i += 1;
@@ -893,10 +902,10 @@ impl Game<'_> {
             };
             if !f.invisible {
                 let model = match (f.glow, map.is_some()) {
-                    (true, true) => &self.glow_map_frame_model,
-                    (false, true) => &self.map_frame_model,
-                    (true, false) => &self.glow_frame_model,
-                    (false, false) => &self.frame_model,
+                    (true, true) => &self.client.glow_map_frame_model,
+                    (false, true) => &self.client.map_frame_model,
+                    (true, false) => &self.client.glow_frame_model,
+                    (false, false) => &self.client.frame_model,
                 };
                 for (corners, uv, sprite) in model {
                     let Some(r) = sprites.get(sprite) else {

@@ -8,8 +8,8 @@ mod typed_state_range_read_tests {
         let mut game = crate::game::game_tests::tests::server_game(&mut resources);
         let source =
             std::path::PathBuf::from(std::env::var_os("SUNRISE_TYPED_RANGE_PACK").unwrap());
-        game.world_root = std::env::current_dir().unwrap().join("typed-range-world");
-        let target = game.world_root.join("datapacks/typed_ranges");
+        game.server.world_root = std::env::current_dir().unwrap().join("typed-range-world");
+        let target = game.server.world_root.join("datapacks/typed_ranges");
         let preds = target.join("data/ranges/predicate");
         std::fs::create_dir_all(&preds).unwrap();
         std::fs::copy(source.join("pack.mcmeta"), target.join("pack.mcmeta")).unwrap();
@@ -20,14 +20,20 @@ mod typed_state_range_read_tests {
         game.build_registries();
         game.set_allow_commands(true);
         assert!(game.run_command("reload"));
-        assert!(game.fns.enabled.contains(&"file/typed_ranges".to_owned()));
         assert!(
-            game.fns.store.errors.is_empty(),
+            game.server
+                .fns
+                .enabled
+                .contains(&"file/typed_ranges".to_owned())
+        );
+        assert!(
+            game.server.fns.store.errors.is_empty(),
             "{:?}",
-            game.fns.store.errors
+            game.server.fns.store.errors
         );
         assert_eq!(
-            game.fns
+            game.server
+                .fns
                 .store
                 .predicates
                 .keys()
@@ -40,7 +46,11 @@ mod typed_state_range_read_tests {
             let id = format!("ranges:{}", path.file_stem().unwrap().to_str().unwrap());
             let expected: serde_json::Value =
                 serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
-            assert_eq!(game.fns.store.predicates.get(&id), Some(&expected), "{id}");
+            assert_eq!(
+                game.server.fns.store.predicates.get(&id),
+                Some(&expected),
+                "{id}"
+            );
         }
         // The helper's empty resident column has not passed server loading.
         // Use actual streaming and forced-ticket paths, never a lit/status override.
@@ -155,10 +165,10 @@ mod typed_state_range_read_tests {
         let mut game = crate::game::game_tests::tests::server_game(&mut resources);
         let source =
             std::path::PathBuf::from(std::env::var_os("SUNRISE_TYPED_RANGE_PACK").unwrap());
-        game.world_root = std::env::current_dir()
+        game.server.world_root = std::env::current_dir()
             .unwrap()
             .join("typed-direction-world");
-        let target = game.world_root.join("datapacks/typed_ranges");
+        let target = game.server.world_root.join("datapacks/typed_ranges");
         let preds = target.join("data/ranges/predicate");
         std::fs::create_dir_all(&preds).unwrap();
         std::fs::copy(source.join("pack.mcmeta"), target.join("pack.mcmeta")).unwrap();
@@ -169,14 +179,20 @@ mod typed_state_range_read_tests {
         game.build_registries();
         game.set_allow_commands(true);
         assert!(game.run_command("reload"));
-        assert!(game.fns.enabled.contains(&"file/typed_ranges".to_owned()));
         assert!(
-            game.fns.store.errors.is_empty(),
+            game.server
+                .fns
+                .enabled
+                .contains(&"file/typed_ranges".to_owned())
+        );
+        assert!(
+            game.server.fns.store.errors.is_empty(),
             "{:?}",
-            game.fns.store.errors
+            game.server.fns.store.errors
         );
         assert_eq!(
-            game.fns
+            game.server
+                .fns
                 .store
                 .predicates
                 .keys()
@@ -189,7 +205,11 @@ mod typed_state_range_read_tests {
             let id = format!("ranges:{}", path.file_stem().unwrap().to_str().unwrap());
             let expected: serde_json::Value =
                 serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
-            assert_eq!(game.fns.store.predicates.get(&id), Some(&expected), "{id}");
+            assert_eq!(
+                game.server.fns.store.predicates.get(&id),
+                Some(&expected),
+                "{id}"
+            );
         }
         // The helper's empty resident column has not passed server loading.
         // Use actual streaming and forced-ticket paths, never a lit/status override.
@@ -239,7 +259,8 @@ mod typed_state_range_read_tests {
         }
         assert!(game.run_command("reload"));
         assert_eq!(
-            game.fns
+            game.server
+                .fns
                 .store
                 .predicates
                 .keys()

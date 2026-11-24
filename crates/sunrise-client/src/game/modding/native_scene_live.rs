@@ -247,6 +247,7 @@ impl Game<'_> {
         }
         let owner = mod_api::content::crash::current_native_mod().unwrap_or("");
         let mut scenes = self
+            .client
             .live_scenes
             .try_borrow_mut()
             .map_err(|_| SceneError::Unavailable)?;
@@ -263,7 +264,7 @@ impl Game<'_> {
                     .zip(&scene.entities)
                     .all(|(a, b)| *a == b.entity)
         };
-        let frame = self.frames;
+        let frame = self.client.frames;
         if !scenes.admit(frame, owner, clock.id) {
             // Past the budget: the blocks, and the scene's last state when it is this one's.
             let last = at.filter(|&i| same(&scenes.live[i]));
@@ -407,7 +408,7 @@ impl Game<'_> {
             key,
             entities: scene.entities.iter().map(|e| e.entity.clone()).collect(),
             tick: clock.tick,
-            frame: self.frames,
+            frame: self.client.frames,
             world,
             picks,
             engine,
@@ -444,7 +445,7 @@ impl Game<'_> {
         let tables = &self.pack.context.tables;
         let model_offset = |state, x, z| tables.offset(state, x, z);
         let ctx = AnimateContext {
-            enchant_power: &self.ambience.enchant_power,
+            enchant_power: &self.client.ambience.enchant_power,
             world,
             facts,
             collision: self.collision,
@@ -523,7 +524,7 @@ fn entity_quads(verts: &[Vertex], quads: &mut Vec<SceneQuad>) {
 impl Game<'_> {
     /// The live particles of the mod's scene `id`: positions, previous positions and ages.
     pub(super) fn scene_particles(&self, owner: &str, id: u32) -> Vec<([f64; 3], [f64; 3], i32)> {
-        let scenes = self.live_scenes.borrow();
+        let scenes = self.client.live_scenes.borrow();
         scenes
             .live
             .iter()
@@ -538,7 +539,7 @@ impl Game<'_> {
     }
     /// The tick the mod's scene `id` last ran, when it is kept.
     pub(super) fn scene_tick(&self, owner: &str, id: u32) -> Option<u64> {
-        let scenes = self.live_scenes.borrow();
+        let scenes = self.client.live_scenes.borrow();
         scenes
             .live
             .iter()

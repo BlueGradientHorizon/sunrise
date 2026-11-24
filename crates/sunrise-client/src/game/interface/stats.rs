@@ -94,7 +94,7 @@ impl Game<'_> {
 
     fn stats_path(&self) -> Option<PathBuf> {
         Some(locate_player_json(
-            &self.world_root,
+            &self.server.world_root,
             "stats",
             self.level.player_uuid?,
             &self.options.player_name(),
@@ -115,7 +115,10 @@ impl Game<'_> {
         if !self.stats.loaded
             || self.remote.is_some()
             || self.no_player_here()
-            || self.crash_save.holds_interrupted(self.lan_acting)
+            || self
+                .server
+                .crash_save
+                .holds_interrupted(self.server.lan_acting)
         {
             return;
         }
@@ -126,14 +129,18 @@ impl Game<'_> {
     /// `ServerPlayer.awardStat`: `n` more of the statistic `ty` (a bare type
     /// such as `used`) and `key`, unless a native mod cancels the award.
     pub(super) fn award_stat(&mut self, ty: &str, key: &str, n: i32) {
-        if self.lan_acting_fake {
+        if self.server.lan_acting_fake {
             return;
         }
         self.award_stat_to(
             ty,
             key,
             n,
-            |game| game.lan_acting_uuid.zip(game.lan_acting_name.clone()),
+            |game| {
+                game.server
+                    .lan_acting_uuid
+                    .zip(game.server.lan_acting_name.clone())
+            },
             |game| &mut game.stats,
         );
     }
@@ -179,7 +186,7 @@ impl Game<'_> {
     }
 
     pub(super) fn award_displaced_stat(&mut self, depth: usize, key: &str, n: i32) {
-        let frame = &self.lan_displaced_players[depth];
+        let frame = &self.server.lan_displaced_players[depth];
         if frame.fake {
             return;
         }
@@ -189,7 +196,7 @@ impl Game<'_> {
                 key,
                 n,
                 |game| {
-                    let frame = &game.lan_displaced_players[depth];
+                    let frame = &game.server.lan_displaced_players[depth];
                     frame.uuid.map(|uuid| {
                         (
                             uuid,
@@ -200,7 +207,7 @@ impl Game<'_> {
                         )
                     })
                 },
-                |game| &mut game.lan_displaced_players[depth].stats,
+                |game| &mut game.server.lan_displaced_players[depth].stats,
             );
         });
     }
@@ -530,7 +537,7 @@ mod tests {
                 std::thread::current().id()
             ));
             let _ = std::fs::remove_dir_all(&world);
-            game.world_root = world.clone();
+            game.server.world_root = world.clone();
             game.level.player_uuid = Some([0, 0, 0, 5]);
             game.stats.loaded = true;
             game.adv.loaded = true;

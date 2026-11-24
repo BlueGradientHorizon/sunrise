@@ -132,7 +132,7 @@ impl Game<'_> {
             }
             // GUI clicks land where the pointer is; in the world the pointer is
             // grabbed and turns the view through `device_event` instead.
-            WindowEvent::CursorMoved { .. } if self.screen != Screen::Playing => {
+            WindowEvent::CursorMoved { .. } if self.client.screen != Screen::Playing => {
                 if let Some(sample) = cursor_sample {
                     self.note_input(origin, TraceKind::cursor(sample));
                 }

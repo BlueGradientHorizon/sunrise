@@ -80,15 +80,16 @@ impl Game<'_> {
     /// `registryAccess().get(testKey)`: the test instance from the game's
     /// data (`data/<namespace>/test_instance/<path>.json`).
     pub(super) fn test_def(&self, id: &str) -> Option<TestDef> {
-        if let Some(known) = self.test_defs.borrow().get(id) {
+        if let Some(known) = self.server.test_defs.borrow().get(id) {
             return known.clone();
         }
         // A world's test instances are the ones it opened with.
-        if self.test_defs_snapshot {
+        if self.server.test_defs_snapshot {
             return None;
         }
         let def = self.read_test_def(id);
-        self.test_defs
+        self.server
+            .test_defs
             .borrow_mut()
             .insert(id.to_owned(), def.clone());
         def
@@ -101,11 +102,11 @@ impl Game<'_> {
     /// It replaces the previous world's definitions and selector ids.
     pub(super) fn snapshot_test_defs(&mut self) {
         let stack = super::functions::pack_stack(
-            &self.world_root,
+            &self.server.world_root,
             &self.options.resources,
             &self.pack.data_source,
             &self.pack.data_changes,
-            self.cmds.vanilla_disabled,
+            self.server.cmds.vanilla_disabled,
             &self.level.enabled_features,
             &super::pack_finders::data_packs(&self.mods),
         );
@@ -152,8 +153,8 @@ impl Game<'_> {
             .entry("minecraft:test_instance".into())
             .or_default()
             .ids = ids;
-        *self.test_defs.borrow_mut() = defs;
-        self.test_defs_snapshot = true;
+        *self.server.test_defs.borrow_mut() = defs;
+        self.server.test_defs_snapshot = true;
     }
     fn read_test_def(&self, id: &str) -> Option<TestDef> {
         let (ns, path) = id.split_once(':').unwrap_or(("minecraft", id));
@@ -199,7 +200,8 @@ impl Game<'_> {
     pub(super) fn highlight_test_pos(&mut self, absolute: [i32; 3], relative: [i32; 3]) {
         let text = format!("{}, {}, {}", relative[0], relative[1], relative[2]);
         let until = std::time::Instant::now() + std::time::Duration::from_millis(10_000);
-        self.test_highlights
+        self.client
+            .test_highlights
             .insert((absolute[0], absolute[1], absolute[2]), (text, until));
     }
 
@@ -217,8 +219,11 @@ impl Game<'_> {
         // `GameTestBlockHighlightRenderer.emitGizmos`: expired highlights go,
         // the rest are a green box with the relative position over it.
         let now = std::time::Instant::now();
-        self.test_highlights.retain(|_, (_, until)| now <= *until);
+        self.client
+            .test_highlights
+            .retain(|_, (_, until)| now <= *until);
         let mut markers: Vec<(_, _, u32)> = self
+            .client
             .test_highlights
             .iter()
             .map(|(&pos, (text, _))| ([pos.0, pos.1, pos.2], text.clone(), HIGHLIGHT_FILL))
@@ -287,7 +292,7 @@ impl Game<'_> {
                 super::text_displays::submit_distance_sq(o.x as f32, o.y as f32, o.z as f32);
             see_through.finish(st_start, dist_sq);
         }
-        self.map_patches.extend(patches);
+        self.client.map_patches.extend(patches);
     }
 
     /// `getRotation`: the test's rotation turned by the block's.
@@ -611,7 +616,7 @@ impl Game<'_> {
         self.clear_error_markers(pos);
         // GameTestTicker.SINGLETON.clear(), FailedTestTracker.forgetFailedTests().
         self.clear_game_tests();
-        self.game_tests.failed.clear();
+        self.server.game_tests.failed.clear();
         let Some(block) = self.test_instance_at(pos) else {
             return;
         };
@@ -626,7 +631,7 @@ impl Game<'_> {
             "test_instance_block.starting",
             &[Text::literal(key.clone())],
         ));
-        let id = self.game_tests.next_id();
+        let id = self.server.game_tests.next_id();
         let info = Info::new(id, key, def, Some(pos), self.dim, rotation);
         self.track_and_start_runner(vec![info], false, None, false);
     }

@@ -26,9 +26,10 @@ fn with_game(test: impl FnOnce(&mut Game<'_>)) {
 
 /// The number a successful `/attribute` read says, or None when it failed.
 fn read(game: &mut Game<'_>, command: &str) -> Option<String> {
-    game.chat_capture = Some(Vec::new());
+    game.server.chat_capture = Some(Vec::new());
     let ok = game.run_command(command);
     let said: String = game
+        .server
         .chat_capture
         .take()
         .unwrap_or_default()
@@ -136,7 +137,7 @@ fn a_given_invisibility_hides_a_mobs_waypoint_and_a_loaded_one_does_not() {
             game.tick_waypoints();
         };
         set_range(game);
-        let tracked = |game: &Game<'_>| game.cmds.waypoints.clone().unwrap_or_default();
+        let tracked = |game: &Game<'_>| game.server.cmds.waypoints.clone().unwrap_or_default();
         assert!(tracked(game).contains(&given));
         assert!(tracked(game).contains(&loaded));
         assert!(

@@ -64,7 +64,7 @@ fn client_tick_to_server(
             .extend(packets.iter().cloned().map(|p| InboxItem::Packet(p, None)));
     })
     .unwrap();
-    server.level_pass = Default::default();
+    server.server.level_pass = Default::default();
     server.tick_lan_packets();
     let hub = &mut server.lan.as_mut().unwrap().hub;
     hub.end_tick();
@@ -101,7 +101,7 @@ fn riptide_ground_release_keeps_launch_velocity() {
                 with_client_game(|client| {
                     let (mut peer, _writer) = tests::connect_menu_test(client);
                     tests::spawn_menu_test(client);
-                    client.screen = Screen::Playing;
+                    client.client.screen = Screen::Playing;
                     let remote = client.remote.as_mut().unwrap();
                     remote.loaded_sent = true;
                     remote.entity_id = OWNER as i32;

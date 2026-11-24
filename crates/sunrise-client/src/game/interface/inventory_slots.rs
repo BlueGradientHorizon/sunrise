@@ -78,11 +78,16 @@ impl Game<'_> {
             }
             stack.count = left;
         }
-        self.draw_item(batch, &stack, self.cursor.0 - 8.0, self.cursor.1 - 8.0);
+        self.draw_item(
+            batch,
+            &stack,
+            self.client.cursor.0 - 8.0,
+            self.client.cursor.1 - 8.0,
+        );
     }
     /// The quick craft drag in progress, as the menu engine previews it.
     pub(super) fn drag_view(&mut self) -> Option<DragView> {
-        let (ty, slots) = self.inv_drag.clone()?;
+        let (ty, slots) = self.client.inv_drag.clone()?;
         let mut view = None;
         self.menu_session(|menu, env, to_menu| {
             let menu_slots: Option<Vec<usize>> = slots.iter().map(|&g| to_menu(g)).collect();
@@ -180,7 +185,7 @@ impl Game<'_> {
     /// open book moves the window right, the room the mods ask beside it
     /// (`screen_room`) left.
     pub(super) fn inventory_origin_unbuilt(&self, batch: &HudBatch) -> (f32, f32) {
-        if self.screen == Screen::Creative {
+        if self.client.screen == Screen::Creative {
             return Self::creative_origin(batch);
         }
         let width = self.native_screen_width().unwrap_or(176.0);
@@ -361,7 +366,7 @@ impl Game<'_> {
         ox: f32,
         oy: f32,
     ) {
-        let Some(slot) = self.slot_at(batch, self.cursor.0, self.cursor.1) else {
+        let Some(slot) = self.slot_at(batch, self.client.cursor.0, self.client.cursor.1) else {
             return;
         };
         if slot == 309 && matches!(self.container_kind(), Some(BlockEntity::Crafter(_))) {
@@ -644,13 +649,13 @@ impl Game<'_> {
         let browser_tip = self.draw_mod_browser(batch);
         self.draw_screen_phase(batch, sunrise_client::screen_draw::RenderPhase::Foreground);
         if let Some(lines) = book_tip {
-            self.draw_tooltip_lines(batch, &lines, self.cursor.0, self.cursor.1);
+            self.draw_tooltip_lines(batch, &lines, self.client.cursor.0, self.client.cursor.1);
         }
         self.draw_carried(batch);
         self.draw_slot_tooltip(batch);
         self.draw_native_screen_tooltip(batch);
         if let Some(lines) = effect_tip {
-            self.draw_tooltip_lines(batch, &lines, self.cursor.0, self.cursor.1);
+            self.draw_tooltip_lines(batch, &lines, self.client.cursor.0, self.client.cursor.1);
         }
         if let Some(tooltip) = browser_tip {
             self.draw_mod_browser_tooltip(batch, tooltip);

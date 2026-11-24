@@ -74,7 +74,7 @@ impl Game<'_> {
             sea_level,
             world: &mut self.world,
             entities: states.as_slice(),
-            next_entity: &mut self.next_entity,
+            next_entity: &mut self.server.next_entity,
             spawn,
             spawn_angle: self.level.world_spawn_angle,
             spawn_dimension: crate::game::Dim::of_world_spawn(&self.level).id(),
@@ -244,8 +244,8 @@ pub(in crate::game) mod tests {
             address: "127.0.0.1:25565".parse().unwrap(),
             expected: false,
         };
-        game.next_entity += 1;
-        let mut guest = Guest::new(joined, game.next_entity as i32, [0.5, 80.0, 0.5], 0);
+        game.server.next_entity += 1;
+        let mut guest = Guest::new(joined, game.server.next_entity as i32, [0.5, 80.0, 0.5], 0);
         guest.placed = true;
         guest.loaded = true;
         guest.dimension = Dim::Overworld.id().into();
@@ -854,7 +854,8 @@ pub(in crate::game) mod tests {
     /// Sends the viewer (connection 2) into level `dim` at `at`, as `/tp` into another level
     /// does (`ServerPlayer.teleport(TeleportTransition)`).
     fn travel(game: &mut Game<'_>, dim: Dim, at: [f64; 3]) {
-        game.level_teleports
+        game.server
+            .level_teleports
             .push(crate::game::server_travel::LevelTeleport {
                 conn: 2,
                 dim,

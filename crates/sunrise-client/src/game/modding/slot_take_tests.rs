@@ -1026,7 +1026,7 @@ fn an_oversized_swap_delivers_the_displaced_stack_even_when_the_holder_is_remove
         assert_eq!(guest.inventory[0], item(dirt, 63));
         assert_eq!(guest.inventory[8], stone(64));
         let spawned = game.dropped.iter().map(|e| &e.stack);
-        let queued = game.spill.spawns.iter().map(|e| &e.stack);
+        let queued = game.server.spill.spawns.iter().map(|e| &e.stack);
         assert_eq!(
             spawned
                 .chain(queued)
@@ -1054,7 +1054,7 @@ fn replacing_the_detached_holder_spills_only_the_contents_after_the_take() {
         assert_eq!(guest.carried, None);
         assert_eq!(guest.inventory[0], stone(5));
         let spawned = game.dropped.iter().map(|e| &e.stack);
-        let queued = game.spill.spawns.iter().map(|e| &e.stack);
+        let queued = game.server.spill.spawns.iter().map(|e| &e.stack);
         assert_eq!(
             spawned
                 .chain(queued)

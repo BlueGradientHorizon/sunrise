@@ -325,7 +325,7 @@ impl Game<'_> {
             }
             ItemPlace::PlayerCursor { menu } => {
                 let guest = self.native_menu_guest(*menu)?;
-                if self.lan_acting == Some(guest.conn) {
+                if self.server.lan_acting == Some(guest.conn) {
                     self.carried.as_ref()
                 } else {
                     guest.carried.as_ref()
@@ -489,7 +489,7 @@ impl Game<'_> {
                     .native_menu_guest(menu)
                     .ok_or(ItemPlaceEditError::NotHeld)?;
                 let player = guest.uuid;
-                let (parked, carried) = if self.lan_acting == Some(guest.conn) {
+                let (parked, carried) = if self.server.lan_acting == Some(guest.conn) {
                     (None, &self.carried)
                 } else {
                     (
@@ -1480,7 +1480,8 @@ pub(super) mod tests {
 
             // With no tickets every chunk is entity-ticking; the zombie must lie outside that
             // range for the tracker to describe it idle (`ChunkMap.tick`).
-            game.tickets
+            game.server
+                .tickets
                 .update(Some(sunrise_client::ticket_levels::Sources {
                     players: vec![(40, 40)],
                     view_distance: 2,
@@ -1504,7 +1505,7 @@ pub(super) mod tests {
             game.mobs[0].first_tick = false;
             // Track once to pair, again to cache a full idle state, then confirm it can go bare.
             for _ in 0..3 {
-                game.level_pass.packets_drained = true;
+                game.server.level_pass.packets_drained = true;
                 game.mobs[0].needs_sync = false;
                 game.tick_lan(false);
             }
@@ -1534,7 +1535,7 @@ pub(super) mod tests {
             assert!(super::super::dispense_fixture::stop_recording().is_empty());
 
             let tracked = |game: &mut super::Game<'_>| {
-                game.level_pass.packets_drained = true;
+                game.server.level_pass.packets_drained = true;
                 game.tick_lan(false);
                 let hub = &game.lan.as_ref().unwrap().hub;
                 rx.try_iter()
@@ -3310,7 +3311,7 @@ pub(super) mod tests {
 
         super::super::native_guest_turn_tests::with_guests(|game| {
             let save = tempfile::tempdir().unwrap();
-            game.world_root = save.path().to_owned();
+            game.server.world_root = save.path().to_owned();
             let maps_dir = save.path().join("data/minecraft/maps");
             let source = game.new_map_id(MapData::fresh(0.0, 0.0, 0, "minecraft:overworld"));
             let map = |directive| {

@@ -86,9 +86,9 @@ fn a_score_for_another_player_uses_their_team_formatted_name() {
     ] {
         assert!(game.run_command(command), "{command}");
     }
-    game.chat_capture = Some(Vec::new());
+    game.server.chat_capture = Some(Vec::new());
     assert!(game.run_command("scoreboard players set Alex o 5"));
-    let lines = game.chat_capture.take().unwrap();
+    let lines = game.server.chat_capture.take().unwrap();
     assert_eq!(lines.len(), 1);
     assert_eq!(lines[0].plain(), "Set [o] for [R] Alex to 5");
 }
@@ -160,11 +160,11 @@ fn a_wildcard_reset_names_tracked_holders_without_their_team_formatting() {
     // `Scoreboard.getTrackedPlayers` hands out `ScoreHolder.forNameOnly`, which has no display name.
     let (ok, lines) = game
         .with_guest_swap(2, game.dim, |game| {
-            game.chat_capture = Some(Vec::new());
+            game.server.chat_capture = Some(Vec::new());
             let permission = std::mem::replace(&mut game.ui.registries.permission, 4);
             let ok = game.run_command("scoreboard players reset *");
             game.ui.registries.permission = permission;
-            (ok, game.chat_capture.take().unwrap())
+            (ok, game.server.chat_capture.take().unwrap())
         })
         .unwrap();
     assert!(ok);

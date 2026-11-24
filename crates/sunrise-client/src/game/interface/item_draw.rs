@@ -55,7 +55,7 @@ pub(super) struct Env<'a, 'g> {
 impl Game<'_> {
     /// Before a frame is drawn: drop the model draws prepared for the last one.
     pub(super) fn begin_frame_draws(&self) {
-        self.prepared_model_draws.borrow_mut().clear();
+        self.client.prepared_model_draws.borrow_mut().clear();
     }
 }
 
@@ -279,7 +279,7 @@ impl ItemEnv for Env<'_, '_> {
                 (self.game.visual_ticks() ^ 0x9e37_79b9).wrapping_mul(0x9e37_79b9_7f4a_7c15);
             return (mixed >> 40) as f32 / (1u64 << 24) as f32;
         }
-        let nanos = self.game.started.elapsed().subsec_nanos();
+        let nanos = self.game.client.started.elapsed().subsec_nanos();
         (nanos % 1_000_000) as f32 / 1_000_000.0
     }
 }
@@ -477,12 +477,12 @@ impl Game<'_> {
     pub(super) fn item_level(&self) -> LevelState {
         let dimension = self.dim.id();
         let key = (
-            self.frames,
+            self.client.frames,
             self.world.game_time,
             self.world.day_time,
             dimension,
         );
-        let mut cached = self.item_level_cache.borrow_mut();
+        let mut cached = self.client.item_level_cache.borrow_mut();
         if let Some((at, level)) = cached.as_ref()
             && *at == key
         {
@@ -687,7 +687,7 @@ impl Game<'_> {
             batch,
             x,
             y,
-            self.glint_frame,
+            self.client.glint_frame,
         );
     }
     /// An item under `pose` (GUI pixels), cut by no slot and with a depth of its own: what
@@ -710,7 +710,7 @@ impl Game<'_> {
             },
             batch,
             pose,
-            self.glint_frame,
+            self.client.glint_frame,
         )
     }
     /// The glint clock, options and sprite for this frame: read once per
@@ -729,7 +729,9 @@ impl Game<'_> {
     }
     /// The `GLINT_TEXTURING` inputs of this frame (`WorldSink` picks `ENTITY_SCALE` per quad).
     pub(super) fn glint(&self) -> Option<item_render::Glint> {
-        self.glint_frame.glint(item_render::Glint::ITEM_SCALE)
+        self.client
+            .glint_frame
+            .glint(item_render::Glint::ITEM_SCALE)
     }
     /// Submit a resolved item under `pose` (camera-relative) at `light`
     /// (packed lightmap coordinates).
@@ -825,8 +827,8 @@ impl Game<'_> {
         light: u32,
         lights: (glam::Vec3, glam::Vec3),
     ) -> Option<((usize, usize, u32), Option<(glam::Vec3, glam::Vec3)>)> {
-        let mut models = self.skin_models.borrow_mut();
-        let mut frame = self.skin_frame.borrow_mut();
+        let mut models = self.client.skin_models.borrow_mut();
+        let mut frame = self.client.skin_frame.borrow_mut();
         let mark = frame.mark();
         let mut skin = sunrise_client::mobs::skin::Skin::new(&mut models, &mut frame);
         for &pose in poses {
@@ -917,15 +919,20 @@ impl Game<'_> {
         out: &mut Vec<Vertex>,
     ) {
         // ItemPickupParticle: the render state extracted at partial tick 1.
-        let taken = self.pickups.live.iter().filter_map(|p| match &p.taken {
-            super::pickups::Taken::Item(item) => Some(ItemEntityDraw {
-                item,
-                at: super::pickups::position(p, alpha),
-                partial: 1.0,
-                entity: false,
-            }),
-            _ => None,
-        });
+        let taken = self
+            .client
+            .pickups
+            .live
+            .iter()
+            .filter_map(|p| match &p.taken {
+                super::pickups::Taken::Item(item) => Some(ItemEntityDraw {
+                    item,
+                    at: super::pickups::position(p, alpha),
+                    partial: 1.0,
+                    entity: false,
+                }),
+                _ => None,
+            });
         self.item_entity_geometry(camera, taken, out);
     }
 
@@ -963,7 +970,7 @@ impl Game<'_> {
             }
             // EntityRenderer.shouldRender: the item's 0.25 box, grown by 0.5,
             // in the view frustum. Checked before its model is resolved.
-            if entity && let Some(view) = &self.view_frustum {
+            if entity && let Some(view) = &self.client.view_frustum {
                 let (lo, hi) = dropped_item_cull_box(glam::DVec3::from_array(at), camera);
                 if !view.intersects(lo, hi) {
                     continue;
@@ -1066,7 +1073,10 @@ impl Game<'_> {
                 self.mark_outline(&out[entity_start..], rgb);
                 if let Some(((first, _, _), _)) = skinned {
                     let color = sunrise_client::mobs::render::abgr(rgb);
-                    self.skin_frame.borrow_mut().outline_since(first, color);
+                    self.client
+                        .skin_frame
+                        .borrow_mut()
+                        .outline_since(first, color);
                 }
             } else if let Some(culling) = culling {
                 self.finish_entity_occlusion(culling, item, out, entity_start);
@@ -1826,7 +1836,7 @@ pub(in crate::game) mod tests {
                             .item_renderer
                             .prepare_glint_atlas(16384, (0, 2))
                             .unwrap();
-                        game.glint_frame = item_render::GlintFrame {
+                        game.client.glint_frame = item_render::GlintFrame {
                             millis: 123_456,
                             speed: 0.5,
                             alpha: 0.75,

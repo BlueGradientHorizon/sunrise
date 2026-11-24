@@ -562,7 +562,7 @@ impl Game<'_> {
     /// one of it) is dropped through `handleCreativeModeItemDrop`, a SetCreativeModeSlot to slot
     /// -1, and the hand swings as `Player.drop` predicts.
     pub(in crate::game) fn remote_creative_drop(&mut self, right: bool) {
-        if !self.drop_spam_throttler.is_under_threshold() {
+        if !self.client.drop_spam_throttler.is_under_threshold() {
             return;
         }
         let one = right && !self.creative_inventory_open();
@@ -592,7 +592,7 @@ impl Game<'_> {
 
     fn creative_drop_features(&self) -> Option<&Arc<[String]>> {
         // Screen::Inventory covers the non-creative AbstractContainerScreens.
-        (self.creative && self.remote.is_some() && self.screen != Screen::Inventory)
+        (self.creative && self.remote.is_some() && self.client.screen != Screen::Inventory)
             .then(|| self.enabled_feature_ids())
     }
 
@@ -603,7 +603,13 @@ impl Game<'_> {
         let Some(flags) = self.creative_drop_features() else {
             return false;
         };
-        if thrown.is_empty() || !self.creative_screen.catalog().item_enabled(thrown, flags) {
+        if thrown.is_empty()
+            || !self
+                .client
+                .creative_screen
+                .catalog()
+                .item_enabled(thrown, flags)
+        {
             return false;
         }
         let Some(item) = self.to_network(&Some(thrown.clone())) else {
@@ -619,7 +625,7 @@ impl Game<'_> {
     /// this sender, checks the threshold. Only an accepted send incurs a charge.
     pub(in crate::game) fn remote_creative_throw(&mut self, thrown: ItemStack) {
         if self.try_send_creative_drop_packet(&thrown) {
-            self.drop_spam_throttler.increment();
+            self.client.drop_spam_throttler.increment();
         }
     }
     pub(in crate::game) fn remote_close_container(&mut self) {
@@ -658,7 +664,7 @@ impl Game<'_> {
     }
     pub(in crate::game) fn remote_reject_container(&mut self, container: i32) {
         self.remote_close_local();
-        if self.screen == Screen::Inventory {
+        if self.client.screen == Screen::Inventory {
             self.set_screen(Screen::Playing);
             self.capture(true);
         }
@@ -674,7 +680,7 @@ impl Game<'_> {
         // container's keyboard focus must not outlive it (a Tab bound to the
         // inventory moves the focus and closes the container in one press).
         self.pad_clear_focus();
-        self.recipe_ui.reset_screen();
+        self.client.recipe_ui.reset_screen();
         if self.mod_screen.take().is_some() {
             self.clear_mod_book_placement_screen();
             self.screen_state.build.reopened();
@@ -789,7 +795,7 @@ impl Game<'_> {
             // the replaced menu's local state, not the screen or pointer grab.
             self.remote_close_local();
         } else {
-            self.recipe_ui.reset_screen();
+            self.client.recipe_ui.reset_screen();
         }
         if menu == "minecraft:lectern" {
             // LecternScreen: the book and page come in the menu's content and data.

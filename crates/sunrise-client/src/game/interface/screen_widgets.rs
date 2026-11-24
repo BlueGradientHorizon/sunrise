@@ -510,10 +510,11 @@ impl Game<'_> {
         inner.entries = entries.into_iter().map(Some).collect();
         inner.removed_pause_actions = removed_pause_actions;
         if self
+            .client
             .pause_focus
             .is_some_and(|id| inner.removed_pause_actions.contains(&id))
         {
-            self.pause_focus = None;
+            self.client.pause_focus = None;
         }
         drop(inner);
         if let Some(idx) = initial_focus {
@@ -537,7 +538,7 @@ impl Game<'_> {
     pub(super) fn clear_screen_widgets(&mut self) {
         self.screen_state.widgets.clear();
         sunrise_client::preedit::reset();
-        self.ime_area = None;
+        self.client.ime_area = None;
     }
 
     /// Remove focus from any currently focused mounted widget.
@@ -551,7 +552,7 @@ impl Game<'_> {
             return;
         }
         sunrise_client::preedit::reset();
-        self.ime_area = None;
+        self.client.ime_area = None;
         self.screen_state.widgets.inner.borrow_mut().focused = target;
         if let Some(old_idx) = previous {
             let disabled = {
@@ -851,7 +852,7 @@ impl Game<'_> {
     ) -> bool {
         let generation = self.screen_state.widgets.generation();
         let mouse = [x, y];
-        let modifiers = super::glfw_modifiers(self.modifiers);
+        let modifiers = super::glfw_modifiers(self.client.modifiers);
         let handled = self.mounted_widget_click(Some(id), mouse, 0, modifiers, false);
         if handled && self.screen_state.widgets.generation() == generation {
             self.mounted_widget_mouse_released(mouse, 0, modifiers);

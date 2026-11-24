@@ -196,9 +196,9 @@ pub(super) mod hotbar_slot_tests {
         }
         with_client_game(|game| {
             let mut reader = logged_in(game);
-            game.debug = true;
-            game.debug_charts.fps = true;
-            game.debug_charts.network = true;
+            game.client.debug = true;
+            game.client.debug_charts.fps = true;
+            game.client.debug_charts.network = true;
             assert_eq!(game.select_hotbar_slot(4), Ok(()));
             game.tick_remote_level().unwrap();
             let names: Vec<_> = sent(&mut reader)
@@ -238,15 +238,15 @@ pub(super) mod hotbar_slot_tests {
                     use sunrise_client::hud_layout::GuiDraw;
 
                     let _reader = logged_in(game);
-                    game.debug = true;
-                    game.debug_charts.fps = true;
+                    game.client.debug = true;
+                    game.client.debug_charts.fps = true;
                     game.clock.set_rate(20.0);
                     game.handle_packet(C::DebugSample(play::DebugSample {
                         sample: vec![25_000_000, 10_000_000, 0, 15_000_000],
                         kind: play::DEBUG_SAMPLE_TICK_TIME,
                     }))
                     .unwrap();
-                    let draws = game.debug_charts.draw(
+                    let draws = game.client.debug_charts.draw(
                         &game.gui.atlas.font,
                         484,
                         100,
@@ -289,8 +289,8 @@ pub(super) mod hotbar_slot_tests {
         }
         with_client_game(|game| {
             let (mut reader, _writer) = connect_menu_test(game);
-            game.debug = true;
-            game.debug_charts.fps = true;
+            game.client.debug = true;
+            game.client.debug_charts.fps = true;
             game.tick_remote_level().unwrap();
             assert!(
                 !sent(&mut reader)

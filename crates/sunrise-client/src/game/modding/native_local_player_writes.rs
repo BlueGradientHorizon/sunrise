@@ -45,7 +45,9 @@ impl Game<'_> {
 
     /// Whether the local player can move itself rather than being held in place.
     pub(in crate::game) fn can_move_local_player(&self) -> bool {
-        self.riding.is_none() && self.sleeping.is_none() && self.screen != super::Screen::Dead
+        self.riding.is_none()
+            && self.sleeping.is_none()
+            && self.client.screen != super::Screen::Dead
     }
 
     pub(super) fn player_reset_fall_distance(
@@ -563,7 +565,7 @@ mod tests {
             game.sleeping = Some([0, 64, 0]);
             assert_eq!(game.move_local_player_by([1.0, 0.0, 0.0]), Ok(None));
             game.sleeping = None;
-            game.screen = crate::game::Screen::Dead;
+            game.client.screen = crate::game::Screen::Dead;
             assert_eq!(game.move_local_player_by([1.0, 0.0, 0.0]), Ok(None));
             assert_eq!(game.player.as_ref().unwrap().position, before);
         });

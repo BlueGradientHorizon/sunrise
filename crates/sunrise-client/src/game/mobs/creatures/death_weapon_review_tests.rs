@@ -13,21 +13,21 @@ fn fixture_with_source(
 ) {
     crate::game::native_entity_refs::tests::with_game(|game| {
         let scratch = tempfile::tempdir().unwrap();
-        game.world_root = scratch.path().to_path_buf();
+        game.server.world_root = scratch.path().to_path_buf();
         game.save = Arc::new(sunrise_client::save::SaveDir::new(
             scratch.path().join("save"),
             sunrise_client::save::LevelShape::OVERWORLD,
             Some(Default::default()),
         ));
         game.build_registries();
-        game.next_entity = 1000;
+        game.server.next_entity = 1000;
         let loot = sunrise_world::loot::LootData::load(
             &game.options.resources,
             &Default::default(),
             game.res.item_defaults(),
         )
         .unwrap();
-        game.server_loot.set(Some(Arc::new(loot)));
+        game.server.server_loot.set(Some(Arc::new(loot)));
         let seen = Arc::new(Mutex::new(0));
         let mods = vec![mod_api::ModEntry::new(
             "review_weapon",

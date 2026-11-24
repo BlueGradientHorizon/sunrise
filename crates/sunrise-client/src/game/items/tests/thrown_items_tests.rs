@@ -25,7 +25,7 @@ fn standing_game<'a>(
     game.load_ticking_neighbourhood(0, 0);
     game.update_chunk_tickets();
     assert!(game.entity_ticking_area()(8, 8));
-    game.ticked_entities_through = u32::MAX;
+    game.server.ticked_entities_through = u32::MAX;
     game.audio.capture = Some(Vec::new());
     game
 }

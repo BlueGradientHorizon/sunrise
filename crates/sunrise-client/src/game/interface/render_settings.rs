@@ -61,7 +61,7 @@ impl Game<'_> {
             return;
         }
         let picked = shader_packs::picked_pack(&self.settings);
-        let path = self.native_shaders.resolve_path(
+        let path = self.client.native_shaders.resolve_path(
             &Self::shader_packs_dir(),
             picked,
             shader_packs::dev_pack().is_some(),
@@ -82,7 +82,7 @@ impl Game<'_> {
             .renderer
             .as_ref()
             .map(|r| r.requested_frame(&self.settings.sunrise, request));
-        if !self.frame_attempted.changed((wanted, path, outcome)) {
+        if !self.client.frame_attempted.changed((wanted, path, outcome)) {
             return;
         }
         if self
@@ -235,13 +235,13 @@ impl Game<'_> {
     /// (skins, maps, mods' dynamic textures, the themed UI's glyphs and corners) has to be drawn
     /// again.
     pub(super) fn forget_atlas_slots(&mut self) {
-        self.skin_slots.forget();
+        self.client.skin_slots.forget();
         self.maps.slots.forget();
-        self.trim_slots.forget();
-        self.map_patches.clear();
-        self.text_patches.get_mut().clear();
-        self.dynamic_textures.forget_uploads();
-        self.kept_block_entities.get_mut().clear();
+        self.client.trim_slots.forget();
+        self.client.map_patches.clear();
+        self.client.text_patches.get_mut().clear();
+        self.client.dynamic_textures.forget_uploads();
+        self.client.kept_block_entities.get_mut().clear();
         sunrise_client::ui_theme::reset_atlas();
     }
 
@@ -265,18 +265,18 @@ impl Game<'_> {
         }
         // And has no wall for the world border. Its sections' sources are kept as the meshes
         // on their way carry them.
-        self.border_renderer.invalidate();
+        self.client.border_renderer.invalidate();
         renderer.keep_pack_sources(self.streaming.shader_pack);
         self.renderer = Some(renderer);
         self.forget_atlas_slots();
         if !world_kept {
             self.clear_lod();
-            self.pending_uploads.clear();
+            self.client.pending_uploads.clear();
             let context = self.worker_context();
             self.streaming.reload_resources(&mut self.world, context);
         }
-        self.native_shaders = native_shaders::NativeShaders::picking(&std::mem::take(
-            &mut self.native_shaders.picked,
+        self.client.native_shaders = native_shaders::NativeShaders::picking(&std::mem::take(
+            &mut self.client.native_shaders.picked,
         ));
         self.apply_ui_settings();
     }
@@ -285,7 +285,7 @@ impl Game<'_> {
     /// discarded, then every loaded section is rebuilt.
     pub(super) fn all_sections_changed(&mut self) {
         self.clear_lod();
-        self.pending_uploads.clear();
+        self.client.pending_uploads.clear();
         if let Some(renderer) = self.renderer.as_mut() {
             renderer.clear_sections(self.world.layout());
         }

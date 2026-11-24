@@ -31,7 +31,7 @@ impl Hooks for Idle {}
 fn the_creative_screen_excludes_its_two_tab_rows() {
     with_mods(Vec::new().into(), || {
         crate::game::native_entity_refs::tests::with_game(|game| {
-            game.screen = Screen::Creative;
+            game.client.screen = Screen::Creative;
             let batch = HudBatch::scratch([854, 480]);
             let image = game.container_image(&batch);
             let (x, y) = (image.left as f32, image.top as f32);
@@ -139,15 +139,15 @@ fn a_cancelled_repeat_keeps_the_hold_and_a_cancelled_first_press_is_never_held()
     with_mods(mods, || {
         crate::game::native_entity_refs::tests::with_game(|game| {
             game.title = None;
-            game.screen = Screen::Playing;
+            game.client.screen = Screen::Playing;
             let space = KeyCode::Space;
             // The first down is allowed and held; its repeat is cancelled but the hold stays.
-            game.physical_keys.insert(space);
+            game.client.physical_keys.insert(space);
             assert!(!game.key_press_canceled(space, true, false));
-            game.physical_keys.insert(space);
+            game.client.physical_keys.insert(space);
             assert!(game.key_press_canceled(space, true, true));
-            assert!(game.physical_keys.contains(&space));
-            assert!(!game.rejected_keys.contains(&space));
+            assert!(game.client.physical_keys.contains(&space));
+            assert!(!game.client.rejected_keys.contains(&space));
         });
     });
     let mods = vec![ModEntry::new(
@@ -158,18 +158,18 @@ fn a_cancelled_repeat_keeps_the_hold_and_a_cancelled_first_press_is_never_held()
     with_mods(mods, || {
         crate::game::native_entity_refs::tests::with_game(|game| {
             game.title = None;
-            game.screen = Screen::Playing;
+            game.client.screen = Screen::Playing;
             let space = KeyCode::Space;
             // A cancelled first press is not held, and neither is its repeat.
-            game.physical_keys.insert(space);
+            game.client.physical_keys.insert(space);
             assert!(game.key_press_canceled(space, true, false));
-            assert!(!game.physical_keys.contains(&space));
-            game.physical_keys.insert(space);
+            assert!(!game.client.physical_keys.contains(&space));
+            game.client.physical_keys.insert(space);
             assert!(game.key_press_canceled(space, true, true));
-            assert!(!game.physical_keys.contains(&space));
+            assert!(!game.client.physical_keys.contains(&space));
             // Its release clears the rejection.
             assert!(!game.key_press_canceled(space, false, false));
-            assert!(!game.rejected_keys.contains(&space));
+            assert!(!game.client.rejected_keys.contains(&space));
         });
     });
 }
@@ -188,10 +188,10 @@ fn a_cancelled_mapping_press_is_dropped_and_its_release_is_not() {
     with_mods(mods, || {
         crate::game::native_entity_refs::tests::with_game(|game| {
             game.title = None;
-            game.screen = Screen::Playing;
+            game.client.screen = Screen::Playing;
             assert!(game.key_mapping_canceled(Some("key.keyboard.space"), true));
             assert!(!game.key_mapping_canceled(Some("key.keyboard.space"), false));
-            game.screen = Screen::Inventory;
+            game.client.screen = Screen::Inventory;
             assert!(!game.key_mapping_canceled(Some("key.keyboard.space"), true));
         });
     });
@@ -268,8 +268,8 @@ fn a_mod_with_no_screen_hook_leaves_set_screen_plain() {
     with_game_of(vec![ModEntry::new("idle", Box::new(Idle))].into(), |game| {
         game.insert_device_key(KeyCode::KeyW);
         game.set_screen(Screen::Mod);
-        assert_eq!(game.screen, Screen::Mod);
-        assert!(game.keys.is_empty());
+        assert_eq!(game.client.screen, Screen::Mod);
+        assert!(game.client.keys.is_empty());
     });
 }
 fn take(log: &Arc<Mutex<Vec<String>>>) -> Vec<String> {
@@ -284,10 +284,10 @@ fn take(log: &Arc<Mutex<Vec<String>>>) -> Vec<String> {
 fn a_new_screen_fires_opening_then_closing_of_the_old_one() {
     run(|game, log, _| {
         game.set_screen(Screen::Inventory);
-        assert_eq!(game.screen, Screen::Inventory);
+        assert_eq!(game.client.screen, Screen::Inventory);
         assert_eq!(take(log), ["opening playing->inventory"]);
         game.set_screen(Screen::Playing);
-        assert_eq!(game.screen, Screen::Playing);
+        assert_eq!(game.client.screen, Screen::Playing);
         assert_eq!(
             take(log),
             ["opening inventory->playing", "closing inventory"]
@@ -303,7 +303,7 @@ fn cancelling_opening_keeps_the_current_screen() {
         take(log);
         *answer.lock().unwrap() = Some(ScreenOpening::Cancel);
         game.set_screen(Screen::Options);
-        assert_eq!(game.screen, Screen::Paused);
+        assert_eq!(game.client.screen, Screen::Paused);
         assert_eq!(take(log), ["opening paused->options"]);
     });
 }
@@ -316,14 +316,14 @@ fn replacing_opening_opens_the_mods_screen_instead() {
         take(log);
         *answer.lock().unwrap() = Some(ScreenOpening::ModScreen);
         game.set_screen(Screen::Options);
-        assert_eq!(game.screen, Screen::Mod);
+        assert_eq!(game.client.screen, Screen::Mod);
         // The second mod answered: the screen is its own, not the passer's.
         assert_eq!(game.mod_screen(), Some("screens"));
         // One Opening, for the screen asked for: the replacement does not fire it again.
         assert_eq!(take(log), ["opening paused->options", "closing paused"]);
         *answer.lock().unwrap() = None;
         game.close_mod_screen();
-        assert_eq!(game.screen, Screen::Playing);
+        assert_eq!(game.client.screen, Screen::Playing);
         assert_eq!(game.mod_screen(), None);
         assert_eq!(take(log), ["opening mod->playing", "closing mod"]);
     });
@@ -393,7 +393,7 @@ fn an_overlay_fires_opening_then_closing_through_the_observer() {
 fn an_overlay_fires_opening_before_it_opens() {
     run(|game, log, _| {
         game.open_sign_editor((0, 64, 0), true);
-        assert!(game.sign_edit.is_some());
+        assert!(game.client.sign_edit.is_some());
         assert_eq!(take(log), ["opening playing->sign_editor"]);
         game.observe_screen();
         assert!(take(log).is_empty());
@@ -527,7 +527,7 @@ fn replacing_opening_opens_another_vanilla_screen_where_it_can() {
         *answer.lock().unwrap() = Some(ScreenOpening::Vanilla(ScreenTarget::Multiplayer));
         // Leaving the world: no title screen opens in it.
         game.set_screen(Screen::Playing);
-        assert_eq!(game.screen, Screen::Playing);
+        assert_eq!(game.client.screen, Screen::Playing);
         game.show_title(game.new_title(saves));
         assert_eq!(game.title.as_ref().unwrap().mode.id(), "multiplayer");
         // The replacement fires nothing again.
@@ -564,13 +564,13 @@ fn replacing_a_title_screen_opens_the_mods_screen_over_the_title() {
                 selected: None,
             });
             game.settle_title_mode();
-            assert_eq!(game.screen, Screen::Mod);
+            assert_eq!(game.client.screen, Screen::Mod);
             assert_eq!(game.mod_screen(), Some("screens"));
             assert!(matches!(game.title.as_ref().unwrap().mode, Mode::Main));
             assert_eq!(take(log), ["opening title->world_select", "closing title"]);
             *answer.lock().unwrap() = None;
             back(game);
-            assert_eq!(game.screen, Screen::Playing);
+            assert_eq!(game.client.screen, Screen::Playing);
             assert!(matches!(game.title.as_ref().unwrap().mode, Mode::Main));
             assert_eq!(take(log), ["opening mod->title", "closing mod"]);
         }
@@ -670,8 +670,8 @@ fn an_overlay_replaced_by_a_vanilla_screen_fires_its_init_post() {
     with_game_of(mods, |game| {
         game.title = None;
         game.open_sign_editor((0, 64, 0), true);
-        assert!(game.sign_edit.is_none());
-        assert_eq!(game.screen, Screen::Paused);
+        assert!(game.client.sign_edit.is_none());
+        assert_eq!(game.client.screen, Screen::Paused);
         assert_eq!(take(&log), ["opening sign_editor", "init paused"]);
     });
 }
@@ -710,14 +710,14 @@ fn client_gui_state_matches_screen_init_hook() {
     let mods = vec![ModEntry::new("observe", Box::new(Observe(seen.clone())))].into();
     with_mods(mods, || {
         crate::game::native_entity_refs::tests::with_client_game(|game| {
-            game.focused = false;
+            game.client.focused = false;
             assert!(!mod_api::prelude::ScreensClientHost::window_focused(game));
-            game.focused = true;
+            game.client.focused = true;
             assert!(mod_api::prelude::ScreensClientHost::window_focused(game));
             game.title = None;
-            game.screen = Screen::Playing;
+            game.client.screen = Screen::Playing;
             assert!(mod_api::prelude::ScreensClientHost::observed_screen_id(game).is_none());
-            game.screen = Screen::Inventory;
+            game.client.screen = Screen::Inventory;
             assert!(mod_api::prelude::ScreensClientHost::observed_screen_id(game).is_none());
             let mut builder = winit::event_loop::EventLoop::builder();
             #[cfg(target_os = "linux")]
@@ -738,7 +738,7 @@ fn client_gui_state_matches_screen_init_hook() {
             );
             game.options.offscreen = true;
             game.renderer = Some(game.new_renderer(window).unwrap());
-            game.screen = Screen::Playing;
+            game.client.screen = Screen::Playing;
             assert!(mod_api::prelude::ScreensClientHost::observed_screen_id(game).is_none());
             game.set_screen(Screen::Inventory);
             game.observe_screen();
@@ -749,7 +749,7 @@ fn client_gui_state_matches_screen_init_hook() {
                 "inventory"
             );
             game.open_screen_overlay("link_prompt", |game| {
-                game.link_prompt = Some("https://example.com".into());
+                game.client.link_prompt = Some("https://example.com".into());
             });
             assert_eq!(
                 mod_api::prelude::ScreensClientHost::observed_screen_id(game)
@@ -778,13 +778,13 @@ fn cancelling_opening_keeps_an_overlay_shut() {
     run(|game, log, answer| {
         *answer.lock().unwrap() = Some(ScreenOpening::Cancel);
         game.open_sign_editor((0, 64, 0), true);
-        assert!(game.sign_edit.is_none());
+        assert!(game.client.sign_edit.is_none());
         assert_eq!(take(log), ["opening playing->sign_editor"]);
         let opened = game.open_screen_overlay("link_prompt", |game| {
-            game.link_prompt = Some("https://example.com".into())
+            game.client.link_prompt = Some("https://example.com".into())
         });
         assert!(!opened);
-        assert!(game.link_prompt.is_none());
+        assert!(game.client.link_prompt.is_none());
         assert_eq!(take(log), ["opening playing->link_prompt"]);
     });
 }
@@ -800,8 +800,8 @@ fn replacing_opening_of_an_overlay_opens_the_mods_screen() {
             page: 0,
             lectern: None,
         });
-        assert!(game.book.is_none());
-        assert_eq!(game.screen, Screen::Mod);
+        assert!(game.client.book.is_none());
+        assert_eq!(game.client.screen, Screen::Mod);
         assert_eq!(game.mod_screen(), Some("screens"));
         assert_eq!(take(log), ["opening playing->book_view"]);
     });
@@ -814,7 +814,7 @@ fn no_mods_is_a_plain_assignment() {
         crate::game::native_entity_refs::tests::with_game(|game| {
             game.options.execution_role = ExecutionRole::Client;
             game.set_screen(Screen::Inventory);
-            assert_eq!(game.screen, Screen::Inventory);
+            assert_eq!(game.client.screen, Screen::Inventory);
         });
     });
 }
@@ -888,7 +888,7 @@ fn mod_screen_open_replaces_vanilla_screens_overlays_and_mod_screens() {
             // 1) Refused when headless (`renderer.is_none()`).
             assert!(game.renderer.is_none());
             assert!(!game.mod_screen_open("mod_a"));
-            assert_eq!(game.screen, Screen::Playing);
+            assert_eq!(game.client.screen, Screen::Playing);
             assert!(take(&log).is_empty());
 
             // Attach an offscreen window + renderer for live screen transitions.
@@ -920,19 +920,19 @@ fn mod_screen_open_replaces_vanilla_screens_overlays_and_mod_screens() {
                 )
                 .unwrap(),
             );
-            game.focused = true;
+            game.client.focused = true;
 
             // 2) Refused when acting on a guest's behalf (`lan_acting.is_some()`).
-            game.lan_acting = Some(1);
+            game.server.lan_acting = Some(1);
             assert!(!game.mod_screen_open("mod_a"));
-            game.lan_acting = None;
+            game.server.lan_acting = None;
             assert!(take(&log).is_empty());
 
             // 3) Opens over `Screen::Paused`, fires opening/closing/init_post.
             game.set_screen(Screen::Paused);
             take(&log);
             assert!(game.mod_screen_open("mod_a"));
-            assert_eq!(game.screen, Screen::Mod);
+            assert_eq!(game.client.screen, Screen::Mod);
             assert_eq!(game.mod_screen(), Some("mod_a"));
             assert!(game.screen_hooks_open());
             assert_eq!(
@@ -950,7 +950,7 @@ fn mod_screen_open_replaces_vanilla_screens_overlays_and_mod_screens() {
 
             // 5) Switches from `mod_a` to another mod `mod_b`, firing opening/closing/init_post.
             assert!(game.mod_screen_open("mod_b"));
-            assert_eq!(game.screen, Screen::Mod);
+            assert_eq!(game.client.screen, Screen::Mod);
             assert_eq!(game.mod_screen(), Some("mod_b"));
             assert_eq!(
                 take(&log),
@@ -964,7 +964,7 @@ fn mod_screen_open_replaces_vanilla_screens_overlays_and_mod_screens() {
             // 6) `ScreenOpening::Cancel` keeps `mod_b` open and returns `false`.
             *answer.lock().unwrap() = Some(ScreenOpening::Cancel);
             assert!(!game.mod_screen_open("mod_c"));
-            assert_eq!(game.screen, Screen::Mod);
+            assert_eq!(game.client.screen, Screen::Mod);
             assert_eq!(game.mod_screen(), Some("mod_b"));
             assert_eq!(take(&log), vec!["opening mod->mod"]);
             *answer.lock().unwrap() = None;
@@ -973,7 +973,7 @@ fn mod_screen_open_replaces_vanilla_screens_overlays_and_mod_screens() {
             game.set_screen(Screen::Creative);
             take(&log);
             assert!(game.mod_screen_open("mod_a"));
-            assert_eq!(game.screen, Screen::Mod);
+            assert_eq!(game.client.screen, Screen::Mod);
             assert_eq!(game.mod_screen(), Some("mod_a"));
             assert_eq!(
                 take(&log),
@@ -1042,7 +1042,7 @@ fn mod_screen_open_replaces_vanilla_screens_overlays_and_mod_screens() {
                 title: Tag::String("Chest".into()),
             }))
             .unwrap();
-            assert_eq!(game.screen, Screen::Inventory);
+            assert_eq!(game.client.screen, Screen::Inventory);
             reader
                 .set_read_timeout(Some(std::time::Duration::from_millis(100)))
                 .unwrap();
@@ -1050,7 +1050,7 @@ fn mod_screen_open_replaces_vanilla_screens_overlays_and_mod_screens() {
             take(&log);
 
             assert!(game.mod_screen_open("mod_a"));
-            assert_eq!(game.screen, Screen::Mod);
+            assert_eq!(game.client.screen, Screen::Mod);
             assert_eq!(game.mod_screen(), Some("mod_a"));
             assert!(game.remote.as_ref().unwrap().menu.as_ref().is_none());
             let mut closed_container = None;
@@ -1081,7 +1081,7 @@ fn mod_screen_open_replaces_vanilla_screens_overlays_and_mod_screens() {
             assert!(game.screen_over_playing());
             take(&log);
             assert!(game.mod_screen_open("mod_a"));
-            assert!(game.book.is_none());
+            assert!(game.client.book.is_none());
             assert!(!game.screen_over_playing());
             assert!(game.screen_hooks_open());
             assert_eq!(
@@ -1098,7 +1098,7 @@ fn mod_screen_open_replaces_vanilla_screens_overlays_and_mod_screens() {
             assert!(game.screen_over_playing());
             take(&log);
             assert!(game.mod_screen_open("mod_a"));
-            assert!(game.sign_edit.is_none());
+            assert!(game.client.sign_edit.is_none());
             assert!(!game.screen_over_playing());
             assert!(game.screen_hooks_open());
             assert_eq!(
@@ -1133,12 +1133,12 @@ fn mod_screen_open_replaces_vanilla_screens_overlays_and_mod_screens() {
 
             game.set_screen(Screen::Playing);
             game.open_screen_overlay("link_prompt", |game| {
-                game.link_prompt = Some("https://example.com".into());
+                game.client.link_prompt = Some("https://example.com".into());
             });
             assert!(game.screen_over_playing());
             take(&log);
             assert!(game.mod_screen_open("mod_a"));
-            assert!(game.link_prompt.is_none());
+            assert!(game.client.link_prompt.is_none());
             assert!(!game.screen_over_playing());
             assert!(game.screen_hooks_open());
             assert_eq!(
@@ -1158,7 +1158,7 @@ fn mod_screen_open_replaces_vanilla_screens_overlays_and_mod_screens() {
             game.title = Some(game.new_title(saves.path().to_path_buf()));
             take(&log);
             assert!(game.mod_screen_open("mod_a"));
-            assert_eq!(game.screen, Screen::Mod);
+            assert_eq!(game.client.screen, Screen::Mod);
             assert_eq!(game.mod_screen(), Some("mod_a"));
             assert_eq!(
                 take(&log),
@@ -1176,7 +1176,7 @@ fn mod_screen_open_replaces_vanilla_screens_overlays_and_mod_screens() {
             assert!(game.remote_loading());
             take(&log);
             assert!(!game.mod_screen_open("mod_a"));
-            assert_eq!(game.screen, Screen::Playing);
+            assert_eq!(game.client.screen, Screen::Playing);
             assert!(take(&log).is_empty());
 
             drop(event_loop);

@@ -21,7 +21,7 @@ impl Game<'_> {
             !cancel
         };
         // The guest whose turn it is is in place already.
-        if self.lan_acting == Some(conn) {
+        if self.server.lan_acting == Some(conn) {
             Some(hook(self))
         } else {
             self.as_guest(conn, hook)
@@ -435,7 +435,7 @@ impl Game<'_> {
     /// `ContainerOpenersCounter.incrementOpeners` / `ContainerOpenersCounter.decrementOpeners`:
     /// the first opener and the last closer each trigger a sound and game event.
     fn guest_container_opener(&mut self, conn: u32, pos: (i32, i32, i32), open: bool) {
-        let acting = self.lan_acting == Some(conn);
+        let acting = self.server.lan_acting == Some(conn);
         let spectator = if acting {
             self.spectator()
         } else {

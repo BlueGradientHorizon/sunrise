@@ -80,9 +80,9 @@ fn sky_pack(shaders: &[&str]) -> ResourceSource {
 /// open (the game asks the renderer for the readback each frame): a frame copies it, the device
 /// maps the copy once the frame is done, and a later frame takes it in.
 fn drawn_texture(game: &mut super::Game<'_>) -> [u8; 16 * 16 * 4] {
-    game.screen = super::Screen::Playing;
-    game.debug = true;
-    game.debug_charts.lightmap = true;
+    game.client.screen = super::Screen::Playing;
+    game.client.debug = true;
+    game.client.debug_charts.lightmap = true;
     for _ in 0..32 {
         game.render_with(|renderer, frame| renderer.render(frame))
             .unwrap();
@@ -149,11 +149,11 @@ fn a_packs_lightmap_draws_its_expression_uniform() {
         game.renderer.as_mut().unwrap().fullbright = fullbright;
         // The expression context's strings, given room up front: every frame rewrites them in
         // place, so their buffers (address and capacity) are the same after the frames.
-        let context = &mut game.expression_frame;
+        let context = &mut game.client.expression_frame;
         context.dimension = String::with_capacity(64);
         context.biome = String::with_capacity(64);
         let buffers = |game: &super::Game<'_>| {
-            let context = &game.expression_frame;
+            let context = &game.client.expression_frame;
             [&context.dimension, &context.biome].map(|s| (s.as_ptr(), s.capacity()))
         };
         let before = buffers(game);
@@ -163,8 +163,8 @@ fn a_packs_lightmap_draws_its_expression_uniform() {
             // written.
             assert!(!game.reads_pack_expressions());
             assert!(texture.iter().all(|&b| b == 255));
-            assert_eq!(game.expression_frame.dimension, "");
-            assert_eq!(game.expression_frame.biome, "");
+            assert_eq!(game.client.expression_frame.dimension, "");
+            assert_eq!(game.client.expression_frame.biome, "");
         } else {
             assert!(game.reads_pack_expressions());
             for texel in texture.chunks(4) {
@@ -175,7 +175,7 @@ fn a_packs_lightmap_draws_its_expression_uniform() {
                     .unwrap();
             }
             assert_eq!(buffers(game), before);
-            let context = &game.expression_frame;
+            let context = &game.client.expression_frame;
             assert_eq!(context.dimension, "minecraft:overworld");
             assert_eq!(context.biome, BIOME);
         }
@@ -199,7 +199,7 @@ fn the_particles_frame_keeps_its_strings() {
         let registry = std::sync::Arc::new(registry);
         game.pack.polytone_particles = Some(registry.clone());
         let _event_loop = frame_scene(game);
-        game.screen = super::Screen::Playing;
+        game.client.screen = super::Screen::Playing;
         let buffers = || {
             let held = registry.frame.read().unwrap();
             [&held.dimension, &held.biome].map(|s| (s.as_ptr(), s.capacity()))
@@ -372,7 +372,7 @@ fn a_post_effect_reads_poly_globals() {
                 .unwrap()
                 .post_effects_read_poly_globals()
         );
-        game.post_effects = vec!["minecraft:globals".to_owned()];
+        game.client.post_effects = vec!["minecraft:globals".to_owned()];
         assert_eq!(corner(game), [64, 51, 0]);
         assert!(
             game.renderer

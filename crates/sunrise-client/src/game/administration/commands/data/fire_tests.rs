@@ -70,7 +70,7 @@ fn summon_target_at(
 }
 
 fn tick_fire_entities(game: &mut crate::game::Game<'_>) {
-    game.ticked_entities_through = u32::MAX;
+    game.server.ticked_entities_through = u32::MAX;
     game.tick_summoned_eyes();
     game.tick_fangs();
     game.tick_ominous_item_spawners();

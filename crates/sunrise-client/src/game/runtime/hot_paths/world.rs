@@ -28,19 +28,19 @@ impl Game<'_> {
             }
         }
         self.block_ticks = Ticks::new(0);
-        self.tick_chunks.clear();
+        self.server.tick_chunks.clear();
         self.sync_tick_chunks();
         self.mobs.clear();
         self.dropped.clear();
         self.orbs.clear();
-        self.hoppers.clear();
+        self.server.hoppers.clear();
         self.level_events.clear();
         self.ui.rules = Default::default();
         self.dim = super::super::Dim::Overworld;
         self.world.shape = self.dim.shape();
         self.ui.difficulty = 2;
         self.level.seed = seed;
-        self.rand_sequences = Default::default();
+        self.server.rand_sequences = Default::default();
         self.world.game_time = 0;
         self.world.day_time = 6000;
         for cx in -radius..=radius {
@@ -71,9 +71,9 @@ impl Game<'_> {
 
     /// A setup command that must succeed; its failure message is the error.
     pub(super) fn hot_command(&mut self, command: &str) -> Result<()> {
-        let outer = self.chat_capture.replace(Vec::new());
+        let outer = self.server.chat_capture.replace(Vec::new());
         let ran = self.run_command(command);
-        let said = std::mem::replace(&mut self.chat_capture, outer).unwrap_or_default();
+        let said = std::mem::replace(&mut self.server.chat_capture, outer).unwrap_or_default();
         if ran {
             return Ok(());
         }

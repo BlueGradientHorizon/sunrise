@@ -45,7 +45,7 @@ fn a_baby_rabbit_takes_a_parents_colour_or_a_fresh_biome_variant() {
         game.mobs.clear();
         game.orbs.clear();
         // Ids the spawner hands out stay clear of the pair's.
-        game.next_entity = 10_000 + 4 * i;
+        game.server.next_entity = 10_000 + 4 * i;
         for (id, variant) in [(part, 0u8), (mate_id, 1)] {
             let mut m = Mob::new(id, kind.clone(), Vec3::new(8.5, 64.0, 8.5), 0.0);
             m.random = LegacyRandom::new(parent_seed + i64::from(id));

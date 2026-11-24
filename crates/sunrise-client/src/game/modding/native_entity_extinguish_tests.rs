@@ -95,9 +95,9 @@ fn extinguish_fire_preserves_player_guest_stand_and_item_sound_routes() {
                 *game.particles.random() = LegacyRandom::new(1234);
                 game.dropped[0].random = LegacyRandom::new(1234);
                 game.audio.capture = Some(Vec::new());
-                let actor = game.lan_acting;
+                let actor = game.server.lan_acting;
                 assert!(entity.extinguish_fire(game));
-                assert_eq!(game.lan_acting, actor);
+                assert_eq!(game.server.lan_acting, actor);
                 assert_eq!(entity.fire_ticks(game), Some(ticks.min(0)));
                 let captured = game.audio.capture.as_ref().unwrap();
                 if ticks > 0 {

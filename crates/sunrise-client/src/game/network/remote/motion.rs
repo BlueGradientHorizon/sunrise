@@ -191,7 +191,7 @@ impl Game<'_> {
             }
             // Interaction extends Entity and keeps its NO_OP interpolation
             // handler: the server's position replaces its own at once.
-            if let Some(i) = self.interactions.get_mut(&id) {
+            if let Some(i) = self.client.interactions.get_mut(&id) {
                 let target_pos = Vec3::new(position[0], position[1], position[2]);
                 let d = target_pos.subtract(i.position);
                 let snap = matches!(packet, MovePacket::PositionSyncSnap)
@@ -256,7 +256,12 @@ impl Game<'_> {
                     h.move_to(position, on_ground);
                     return;
                 }
-                if let Some(h) = self.remote_hooks.iter_mut().find(|h| h.id() == id as u32) {
+                if let Some(h) = self
+                    .client
+                    .remote_hooks
+                    .iter_mut()
+                    .find(|h| h.id() == id as u32)
+                {
                     h.move_to(position, on_ground);
                     return;
                 }
@@ -331,7 +336,7 @@ impl Game<'_> {
                         }
                     });
                 }
-            } else if !self.text_displays.contains_key(&id) {
+            } else if !self.client.text_displays.contains_key(&id) {
                 // AbstractInterpolationHandler.interpolateTo: without a
                 // rotation, the one it was heading for.
                 let rotation = rotation.or_else(|| r.lerps.get(&id).and_then(|l| l.rotation));

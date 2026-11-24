@@ -45,7 +45,7 @@ fn game<'a>(resources: &'a mut Option<Arc<crate::game::Resources>>) -> Game<'a> 
         assert!(game.run_command(command), "{command}");
     }
     game.update_chunk_tickets();
-    assert!(game.tickets.levels().block_ticking(0, 0));
+    assert!(game.server.tickets.levels().block_ticking(0, 0));
     game
 }
 

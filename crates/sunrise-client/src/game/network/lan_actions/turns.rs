@@ -43,6 +43,7 @@ impl Game<'_> {
             return Some(CombatPlayer::InPlace);
         }
         if let Some((depth, body)) = self
+            .server
             .lan_displaced_players
             .iter()
             .enumerate()
@@ -68,7 +69,14 @@ impl Game<'_> {
             .map(|id| id as u32)
             .or_else(|| {
                 conn.is_none().then_some(())?;
-                Some(self.lan_displaced_players.first()?.body.as_ref()?.entity_id as u32)
+                Some(
+                    self.server
+                        .lan_displaced_players
+                        .first()?
+                        .body
+                        .as_ref()?
+                        .entity_id as u32,
+                )
             })
     }
 
@@ -81,7 +89,7 @@ impl Game<'_> {
         match self.combat_player(shooter) {
             Some(CombatPlayer::InPlace) => self.remember_player_target(target),
             Some(CombatPlayer::Displaced(depth, _)) => {
-                if let Some(body) = self.lan_displaced_players[depth].body.as_mut() {
+                if let Some(body) = self.server.lan_displaced_players[depth].body.as_mut() {
                     body.health.last_hurt_mob = target.map(|id| (id, body.health.tick_count));
                 }
             }
@@ -161,8 +169,8 @@ impl Game<'_> {
     ) -> Option<R> {
         let host = self.lan.as_ref()?;
         let conn = host.hub.guests[gi].conn;
-        let swap = match self.lan_guest_swaps.iter().position(|&c| c == conn) {
-            Some(loan) => match self.lan_guest_swaps.get(loan + 1) {
+        let swap = match self.server.lan_guest_swaps.iter().position(|&c| c == conn) {
+            Some(loan) => match self.server.lan_guest_swaps.get(loan + 1) {
                 Some(&inner) => Some(Some(host.hub.guests.connection_index(inner)?)),
                 None => Some(None),
             },
@@ -176,7 +184,7 @@ impl Game<'_> {
                     // The fields `guest_turn` swaps.
                     std::mem::swap(&mut game.inventory, &mut g.inventory);
                     std::mem::swap(&mut game.armor, &mut g.armor);
-                    std::mem::swap(&mut game.location_armor, &mut g.location_armor);
+                    std::mem::swap(&mut game.server.location_armor, &mut g.location_armor);
                     std::mem::swap(&mut game.offhand, &mut g.offhand);
                     std::mem::swap(&mut game.equipment, &mut g.equipment);
                     std::mem::swap(&mut game.carried, &mut g.carried);
@@ -201,9 +209,9 @@ impl Game<'_> {
         // feedback isn't trapped in this guest's capture. What the guest was already told still
         // reaches them before the panic goes on, after `as_guest` has restored the swap.
         let (result, lines) = self.as_guest(conn, |game| {
-            let outer = game.chat_capture.replace(Vec::new());
+            let outer = game.server.chat_capture.replace(Vec::new());
             let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| f(game)));
-            let lines = std::mem::replace(&mut game.chat_capture, outer).unwrap_or_default();
+            let lines = std::mem::replace(&mut game.server.chat_capture, outer).unwrap_or_default();
             (result, lines)
         })?;
         if let Some(host) = self.lan.as_ref() {
@@ -230,16 +238,16 @@ impl Game<'_> {
     /// Record that a panic interrupted `conn`'s turn: the crash save keeps that player's last
     /// saved file. The record clears at the start of the next server tick.
     pub(in crate::game) fn record_interrupted_turn(&mut self, conn: u32) {
-        if !self.interrupted_turns.contains(&conn) {
-            self.interrupted_turns.push(conn);
+        if !self.server.interrupted_turns.contains(&conn) {
+            self.server.interrupted_turns.push(conn);
         }
     }
 
     /// Record every swap still open: a panic going through them leaves each of their players'
     /// state displaced or half-done.
     fn record_open_turns(&mut self) {
-        for i in 0..self.lan_guest_swaps.len() {
-            self.record_interrupted_turn(self.lan_guest_swaps[i]);
+        for i in 0..self.server.lan_guest_swaps.len() {
+            self.record_interrupted_turn(self.server.lan_guest_swaps[i]);
         }
     }
 
@@ -287,12 +295,14 @@ impl Game<'_> {
                 .and_then(|g| self.spawn_protection_for(host, g.uuid))
         });
         let outer = BuildingPlayer {
-            conn: self.lan_acting,
+            conn: self.server.lan_acting,
             dimension: outer_dimension,
             bounds: self
                 .player
                 .as_ref()
-                .filter(|p| !self.lan_acting_fake && !self.spectator() && !p.health.dead_or_dying())
+                .filter(|p| {
+                    !self.server.lan_acting_fake && !self.spectator() && !p.health.dead_or_dying()
+                })
                 .map(PlayerMotion::bounds),
             borrowed: true,
         };
@@ -304,11 +314,12 @@ impl Game<'_> {
             return Err(TurnRefused::Gone);
         }
         // An active guest's record holds an outer player's state, not theirs.
-        if self.lan_guest_swaps.contains(&conn) {
+        if self.server.lan_guest_swaps.contains(&conn) {
             return Err(TurnRefused::Nested);
         }
         let other_boxes =
-            self.lan_building_boxes
+            self.server
+                .lan_building_boxes
                 .for_turn(conn, Some(outer), building_players(host));
         let fresh = host.hub.guests[i].motion.is_none();
         if fresh {
@@ -325,7 +336,7 @@ impl Game<'_> {
             return Err(TurnRefused::Gone);
         };
         host.hub.guests[i].residency.extract();
-        self.lan_guest_swaps.push(conn);
+        self.server.lan_guest_swaps.push(conn);
         // `ServerPlayer.permissions()`: the guest's own command level for its
         // turn, so game-master checks see it (not the host's).
         let permission = std::mem::replace(
@@ -353,9 +364,9 @@ impl Game<'_> {
         let guest_combat = if fresh {
             Default::default()
         } else {
-            self.guest_combat.remove(&conn).unwrap_or_default()
+            self.server.guest_combat.remove(&conn).unwrap_or_default()
         };
-        let host_combat = std::mem::replace(&mut self.combat, guest_combat);
+        let host_combat = std::mem::replace(&mut self.server.combat, guest_combat);
         host.hub.guests.update(i, |g| {
             self.potions.swap_player(&mut g.effects, &mut play.potions)
         });
@@ -392,7 +403,7 @@ impl Game<'_> {
         motion.health.food.food = g.food;
         motion.health.food.saturation = g.saturation;
         let mut player = Some(*motion);
-        match self.lan_acting {
+        match self.server.lan_acting {
             Some(outer) => {
                 if let Some(guest) = host.hub.guest(outer) {
                     guest.residency.extract();
@@ -409,7 +420,7 @@ impl Game<'_> {
         host.hub.guests.update(i, |g| {
             std::mem::swap(&mut self.inventory, &mut g.inventory);
             std::mem::swap(&mut self.armor, &mut g.armor);
-            std::mem::swap(&mut self.location_armor, &mut g.location_armor);
+            std::mem::swap(&mut self.server.location_armor, &mut g.location_armor);
             std::mem::swap(&mut self.offhand, &mut g.offhand);
             std::mem::swap(&mut self.equipment, &mut g.equipment);
             std::mem::swap(&mut self.carried, &mut g.carried);
@@ -417,7 +428,7 @@ impl Game<'_> {
         let g = &host.hub.guests[i];
         let selected = std::mem::replace(&mut self.selected, g.selected);
         let (mode, creative) = (self.mode, self.creative);
-        let outer_abilities = self.acting_abilities.replace(g.abilities);
+        let outer_abilities = self.server.acting_abilities.replace(g.abilities);
         let (entity_reach, block_reach) = (self.entity_reach, self.block_reach);
         let (game_mode, guest_previous) = (g.game_mode, g.previous_game_mode);
         self.set_mode_raw(game_mode);
@@ -438,11 +449,12 @@ impl Game<'_> {
                 total: g.xp_total,
             },
         );
-        let level_up_sound = std::mem::replace(&mut self.level_up_sound, play.level_up_sound);
+        let level_up_sound =
+            std::mem::replace(&mut self.server.level_up_sound, play.level_up_sound);
         // The host's held keys stay theirs: the guest holds only sneak, and a
         // screen the guest opens (`keys.clear()`) leaves the host walking.
-        let host_keys = std::mem::take(&mut self.keys);
-        let saved_mappings = std::mem::take(&mut self.vanilla_mappings);
+        let host_keys = std::mem::take(&mut self.client.keys);
+        let saved_mappings = std::mem::take(&mut self.client.vanilla_mappings);
         let sneaking = g.sneaking;
         let guest_vehicle = g.vehicle;
         if sneaking {
@@ -451,31 +463,32 @@ impl Game<'_> {
         // The window's screens are the host's: a sign, book, command block or
         // mount menu the guest's action opens is not drawn over the host's
         // world (#687). The guest's client opens its own.
-        let screen = std::mem::replace(&mut self.screen, Screen::Playing);
-        let host_sign = self.sign_edit.take();
-        let host_book = self.book.take();
-        let host_command_block = self.command_block_screen.take();
-        let host_mount_menu = std::mem::take(&mut self.mount_menu);
+        let screen = std::mem::replace(&mut self.client.screen, Screen::Playing);
+        let host_sign = self.client.sign_edit.take();
+        let host_book = self.client.book.take();
+        let host_command_block = self.client.command_block_screen.take();
+        let host_mount_menu = std::mem::take(&mut self.client.mount_menu);
         // The host's crafting grid stays theirs; a crafting table the guest
         // opens shows as the 3x3 size.
         let craft_size = std::mem::replace(&mut self.craft_size, 2);
-        let craft_table = self.craft_table.take();
+        let craft_table = self.server.craft_table.take();
         play.craft_grid.clear();
         play.craft_grid.resize(9, None);
         let craft_grid =
             std::mem::replace(&mut self.craft_grid, std::mem::take(&mut play.craft_grid));
         let container = self.container.take();
         let mining = std::mem::replace(&mut self.mining, play.mining.take());
-        let destroy_delay = std::mem::replace(&mut self.destroy_delay, play.destroy_delay);
+        let destroy_delay = std::mem::replace(&mut self.server.destroy_delay, play.destroy_delay);
         let using = std::mem::replace(&mut self.using, play.using.take());
         let use_duration = std::mem::replace(&mut self.use_duration, play.use_duration);
         let use_start = std::mem::replace(&mut self.use_start, std::mem::take(&mut play.use_start));
         let use_delay = std::mem::replace(&mut self.use_delay, play.use_delay);
-        let shield_cooldown = std::mem::replace(&mut self.shield_cooldown, play.shield_cooldown);
+        let shield_cooldown =
+            std::mem::replace(&mut self.server.shield_cooldown, play.shield_cooldown);
         let cooldowns = std::mem::replace(&mut self.cooldowns, std::mem::take(&mut play.cooldowns));
-        let xp_delay = std::mem::replace(&mut self.xp_delay, play.xp_delay);
-        let attack_ticks = std::mem::replace(&mut self.attack_ticks, play.attack_ticks);
-        let attack_item = std::mem::replace(&mut self.attack_item, play.attack_item.take());
+        let xp_delay = std::mem::replace(&mut self.server.xp_delay, play.xp_delay);
+        let attack_ticks = std::mem::replace(&mut self.server.attack_ticks, play.attack_ticks);
+        let attack_item = std::mem::replace(&mut self.server.attack_item, play.attack_item.take());
         let swing = std::mem::replace(&mut self.swing, play.swing);
         std::mem::swap(&mut self.mount, &mut play.mount);
         // `Entity.portalCooldown` and `portalProcess` are the player's own.
@@ -506,21 +519,21 @@ impl Game<'_> {
             &mut self.spawn,
             g.spawn.map(|s| Vec3::new(s[0], s[1], s[2])),
         );
-        let respawn = (self.respawn_config.take(), self.level.spawn);
-        self.respawn_config = g
+        let respawn = (self.server.respawn_config.take(), self.level.spawn);
+        self.server.respawn_config = g
             .respawn_elsewhere
             .as_ref()
             .and_then(RespawnConfig::from_saved);
-        let message = self.message.take();
+        let message = self.client.message.take();
         // The guest's own ender inventory; one the host has open goes back
         // into the host's while the guest acts.
-        let host_ender = self.ender_open;
+        let host_ender = self.server.ender_open;
         self.close_ender_chest();
         let Some(host) = self.lan.as_mut() else {
             unreachable!("LanHost dropped inside a guest turn; closes are deferred");
         };
         let simulated = host.hub.guests.update(i, |g| {
-            std::mem::swap(&mut self.ender_items, &mut g.ender_items);
+            std::mem::swap(&mut self.server.ender_items, &mut g.ender_items);
             g.participates_in_player_simulation()
         });
         // The guest's advancements, recipe book and statistics.
@@ -551,18 +564,21 @@ impl Game<'_> {
         let marks = std::mem::replace(&mut self.adv.marks, std::mem::take(&mut play.marks));
         let death_cause = std::mem::replace(&mut self.ui.death_cause, play.death_cause.take());
         let [x, y, z] = g.known_movement;
-        let known_movement = std::mem::replace(&mut self.known_movement, Vec3::new(x, y, z));
+        let known_movement = std::mem::replace(&mut self.server.known_movement, Vec3::new(x, y, z));
         let acting = (
-            self.lan_acting.replace(conn),
-            self.lan_acting_permission.replace(g.permission),
-            self.lan_acting_entity.replace(g.entity_id as u32),
-            std::mem::replace(&mut self.lan_acting_spawn_protection, spawn_protection),
+            self.server.lan_acting.replace(conn),
+            self.server.lan_acting_permission.replace(g.permission),
+            self.server.lan_acting_entity.replace(g.entity_id as u32),
+            std::mem::replace(
+                &mut self.server.lan_acting_spawn_protection,
+                spawn_protection,
+            ),
         );
-        self.lan_displaced_players.push(DisplacedPlayer {
+        self.server.lan_displaced_players.push(DisplacedPlayer {
             body: player,
-            name: self.lan_acting_name.replace(g.name.clone()),
-            uuid: self.lan_acting_uuid.replace(g.uuid),
-            fake: std::mem::replace(&mut self.lan_acting_fake, !g.participates_online()),
+            name: self.server.lan_acting_name.replace(g.name.clone()),
+            uuid: self.server.lan_acting_uuid.replace(g.uuid),
+            fake: std::mem::replace(&mut self.server.lan_acting_fake, !g.participates_online()),
             mode,
             input_sneak,
             record_conn: conn,
@@ -578,16 +594,16 @@ impl Game<'_> {
         g.residency.put_back();
         self.hook.finish_loan();
         self.bind_current_hook_residency();
-        let packets = std::mem::take(&mut self.guest_packets);
-        let entity_events = std::mem::take(&mut self.guest_entity_events);
-        let cooldown_events = std::mem::take(&mut self.guest_cooldowns);
-        let player_sounds = std::mem::take(&mut self.guest_player_sounds);
-        let block_sounds = std::mem::take(&mut self.guest_block_sounds);
-        let equipment_breaks = std::mem::take(&mut self.guest_equipment_breaks);
+        let packets = std::mem::take(&mut self.server.guest_packets);
+        let entity_events = std::mem::take(&mut self.server.guest_entity_events);
+        let cooldown_events = std::mem::take(&mut self.server.guest_cooldowns);
+        let player_sounds = std::mem::take(&mut self.server.guest_player_sounds);
+        let block_sounds = std::mem::take(&mut self.server.guest_block_sounds);
+        let equipment_breaks = std::mem::take(&mut self.server.guest_equipment_breaks);
         let swings = self.swings_started;
         let projectiles = self.creatures.projectiles.len();
         let modifiers = std::mem::replace(
-            &mut self.applied_modifiers,
+            &mut self.server.applied_modifiers,
             std::mem::take(&mut play.modifiers),
         );
         // The player's effects are on the new body before anything it does
@@ -599,7 +615,7 @@ impl Game<'_> {
         self.update_totem_ready();
         self.entity_reach = self.interaction_range("minecraft:entity_interaction_range", 3.0, 5.0);
         self.block_reach = self.interaction_range("minecraft:block_interaction_range", 4.5, 5.0);
-        let building_boxes = std::mem::replace(&mut self.lan_building_boxes, other_boxes);
+        let building_boxes = std::mem::replace(&mut self.server.lan_building_boxes, other_boxes);
 
         run(self);
 
@@ -610,7 +626,7 @@ impl Game<'_> {
         debug_assert_eq!(host.hub.guests.get(i).map(|g| g.conn), Some(conn));
         // Recorded before the callbacks run, cleared only after a clean put-back (a record the
         // turn's own panic made stays).
-        let already_recorded = self.interrupted_turns.contains(&conn);
+        let already_recorded = self.server.interrupted_turns.contains(&conn);
         self.record_interrupted_turn(conn);
         let turn_events = self
             .player
@@ -662,9 +678,9 @@ impl Game<'_> {
         self.ui.registries.permission = permission;
         self.sculk.swap_player(&mut play.sculk);
         // The guest's damage record back into their slot, the host's in place.
-        let guest_combat = std::mem::replace(&mut self.combat, host_combat);
-        self.guest_combat.insert(conn, guest_combat);
-        play.modifiers = std::mem::replace(&mut self.applied_modifiers, modifiers);
+        let guest_combat = std::mem::replace(&mut self.server.combat, host_combat);
+        self.server.guest_combat.insert(conn, guest_combat);
+        play.modifiers = std::mem::replace(&mut self.server.applied_modifiers, modifiers);
         // What the guest shot is theirs (Projectile.setOwner).
         for i in projectiles..self.creatures.projectiles.len() {
             self.creatures.projectiles.update(i, |p| {
@@ -711,19 +727,19 @@ impl Game<'_> {
         // Player.playSound: everyone near but the guest, in the players' source,
         // through `ServerLevel.playSeededSound` like any level sound.
         for (name, at, volume, pitch) in
-            std::mem::replace(&mut self.guest_player_sounds, player_sounds)
+            std::mem::replace(&mut self.server.guest_player_sounds, player_sounds)
         {
             let sound = LevelSound::new(&name, at, volume, pitch).in_source(SoundSource::Players);
             self.send_level_sound(sound, Some(conn));
         }
         // Block-source sounds exclude the acting player, like player sounds.
         for (name, at, volume, pitch) in
-            std::mem::replace(&mut self.guest_block_sounds, block_sounds)
+            std::mem::replace(&mut self.server.guest_block_sounds, block_sounds)
         {
             let sound = LevelSound::new(&name, at, volume, pitch).in_source(SoundSource::Blocks);
             self.send_level_sound(sound, Some(conn));
         }
-        let outgoing = std::mem::replace(&mut self.guest_packets, packets);
+        let outgoing = std::mem::replace(&mut self.server.guest_packets, packets);
         let Some(host) = self.lan.as_mut() else {
             unreachable!("LanHost dropped inside a guest turn; closes are deferred");
         };
@@ -734,7 +750,8 @@ impl Game<'_> {
         }
         // ServerPlayer.connection.send: the guest's own entity events.
         let entity_id = host.hub.guests[i].entity_id;
-        let outgoing_events = std::mem::replace(&mut self.guest_entity_events, entity_events);
+        let outgoing_events =
+            std::mem::replace(&mut self.server.guest_entity_events, entity_events);
         if host.hub.guests[i].participates_online() {
             for event in outgoing_events {
                 host.hub.send_to(
@@ -747,11 +764,12 @@ impl Game<'_> {
             }
         }
         // LivingEntity.onEquippedItemBroken: `broadcastEntityEvent`, the guest too.
-        for event in std::mem::replace(&mut self.guest_equipment_breaks, equipment_breaks) {
+        for event in std::mem::replace(&mut self.server.guest_equipment_breaks, equipment_breaks) {
             host.hub.entity_event(entity_id, event);
         }
         // ServerItemCooldowns.onCooldownStarted: the guest's own cooldown.
-        let outgoing_cooldowns = std::mem::replace(&mut self.guest_cooldowns, cooldown_events);
+        let outgoing_cooldowns =
+            std::mem::replace(&mut self.server.guest_cooldowns, cooldown_events);
         if host.hub.guests[i].participates_online() {
             for (group, duration) in outgoing_cooldowns {
                 host.hub.send_to(
@@ -765,18 +783,22 @@ impl Game<'_> {
         }
         host.hub.guests[i].residency.extract();
         self.hook.begin_loan();
-        let outer_player = self.lan_displaced_players.pop().expect("open guest turn");
+        let outer_player = self
+            .server
+            .lan_displaced_players
+            .pop()
+            .expect("open guest turn");
         (
-            self.lan_acting,
-            self.lan_acting_permission,
-            self.lan_acting_entity,
-            self.lan_acting_spawn_protection,
+            self.server.lan_acting,
+            self.server.lan_acting_permission,
+            self.server.lan_acting_entity,
+            self.server.lan_acting_spawn_protection,
         ) = acting;
-        self.lan_acting_name = outer_player.name;
-        self.lan_acting_uuid = outer_player.uuid;
-        self.lan_acting_fake = outer_player.fake;
-        self.known_movement = known_movement;
-        self.lan_building_boxes = building_boxes;
+        self.server.lan_acting_name = outer_player.name;
+        self.server.lan_acting_uuid = outer_player.uuid;
+        self.server.lan_acting_fake = outer_player.fake;
+        self.server.known_movement = known_movement;
+        self.server.lan_building_boxes = building_boxes;
         play.death_cause = std::mem::replace(&mut self.ui.death_cause, death_cause);
         // An ender chest the guest opened: the menu shows their inventory
         // itself (lan_open_container), not a stand-in block entity.
@@ -784,7 +806,7 @@ impl Game<'_> {
 
         // What the action opened: handed to the guest instead of the host.
         let opened = self.container.take();
-        let guest_table = std::mem::replace(&mut self.craft_table, craft_table);
+        let guest_table = std::mem::replace(&mut self.server.craft_table, craft_table);
         let opened_table = (std::mem::replace(&mut self.craft_size, craft_size) == 3)
             .then_some(guest_table)
             .flatten();
@@ -793,31 +815,31 @@ impl Game<'_> {
         let bed = std::mem::replace(&mut self.sleeping, sleeping);
         let guest_sleep_timer = std::mem::replace(&mut self.sleep_timer, sleep_timer);
         let guest_spawn = std::mem::replace(&mut self.spawn, spawn).map(|s| [s.x, s.y, s.z]);
-        let guest_respawn = std::mem::replace(&mut self.respawn_config, respawn.0);
+        let guest_respawn = std::mem::replace(&mut self.server.respawn_config, respawn.0);
         self.level.spawn = respawn.1;
         // ServerPlayer.displayClientMessage(_, true): the guest's action bar.
-        let guest_message = std::mem::replace(&mut self.message, message);
+        let guest_message = std::mem::replace(&mut self.client.message, message);
         let guest_vehicle = std::mem::replace(&mut self.riding, outer_player.riding);
         play.mining = std::mem::replace(&mut self.mining, mining);
-        play.destroy_delay = std::mem::replace(&mut self.destroy_delay, destroy_delay);
+        play.destroy_delay = std::mem::replace(&mut self.server.destroy_delay, destroy_delay);
         play.using = std::mem::replace(&mut self.using, using);
         play.use_duration = std::mem::replace(&mut self.use_duration, use_duration);
         play.use_start = std::mem::replace(&mut self.use_start, use_start);
         play.use_delay = std::mem::replace(&mut self.use_delay, use_delay);
-        play.shield_cooldown = std::mem::replace(&mut self.shield_cooldown, shield_cooldown);
+        play.shield_cooldown = std::mem::replace(&mut self.server.shield_cooldown, shield_cooldown);
         play.cooldowns = std::mem::replace(&mut self.cooldowns, cooldowns);
-        play.xp_delay = std::mem::replace(&mut self.xp_delay, xp_delay);
-        play.attack_ticks = std::mem::replace(&mut self.attack_ticks, attack_ticks);
-        play.attack_item = std::mem::replace(&mut self.attack_item, attack_item);
+        play.xp_delay = std::mem::replace(&mut self.server.xp_delay, xp_delay);
+        play.attack_ticks = std::mem::replace(&mut self.server.attack_ticks, attack_ticks);
+        play.attack_item = std::mem::replace(&mut self.server.attack_item, attack_item);
         play.swing = std::mem::replace(&mut self.swing, swing);
         std::mem::swap(&mut self.mount, &mut play.mount);
         std::mem::swap(&mut self.portals.player, &mut play.portal);
         self.container = container;
-        self.screen = screen;
+        self.client.screen = screen;
         // A sign the guest's placement opened (SignBlock.openTextEdit).
-        let guest_sign = std::mem::replace(&mut self.sign_edit, host_sign);
+        let guest_sign = std::mem::replace(&mut self.client.sign_edit, host_sign);
         // A lectern the guest's use opened (LecternBlock.openScreen).
-        let guest_lectern = match std::mem::replace(&mut self.book, host_book) {
+        let guest_lectern = match std::mem::replace(&mut self.client.book, host_book) {
             Some(crate::game::books::BookScreen::View {
                 lectern: Some(key), ..
             }) => Some(key),
@@ -825,15 +847,17 @@ impl Game<'_> {
         };
         // A command block the guest's use opened (Player.openCommandBlock).
         let guest_command_block =
-            std::mem::replace(&mut self.command_block_screen, host_command_block).map(|s| s.pos());
+            std::mem::replace(&mut self.client.command_block_screen, host_command_block)
+                .map(|s| s.pos());
         // A mount inventory the guest's action opened (shift + use, or the
         // inventory key while riding).
-        let guest_mount = std::mem::replace(&mut self.mount_menu, host_mount_menu).opened_mob();
-        self.keys = host_keys;
-        self.vanilla_mappings = saved_mappings;
+        let guest_mount =
+            std::mem::replace(&mut self.client.mount_menu, host_mount_menu).opened_mob();
+        self.client.keys = host_keys;
+        self.client.vanilla_mappings = saved_mappings;
         let new_mode = self.mode_id();
         let turn_previous = std::mem::replace(&mut self.previous_mode, outer_previous);
-        let turn_abilities = std::mem::replace(&mut self.acting_abilities, outer_abilities);
+        let turn_abilities = std::mem::replace(&mut self.server.acting_abilities, outer_abilities);
         let Some(host) = self.lan.as_mut() else {
             unreachable!("LanHost dropped inside a guest turn; closes are deferred");
         };
@@ -866,7 +890,7 @@ impl Game<'_> {
                     overlay: true,
                 }));
             }
-            std::mem::swap(&mut self.ender_items, &mut g.ender_items);
+            std::mem::swap(&mut self.server.ender_items, &mut g.ender_items);
             std::mem::swap(&mut self.adv.progress, &mut g.advancements);
             std::mem::swap(&mut self.adv.changed, &mut g.advancements_changed);
             std::mem::swap(&mut self.adv.unlocked, &mut g.recipes_unlocked);
@@ -887,10 +911,11 @@ impl Game<'_> {
             if let Some(key) = host_ender {
                 self.world
                     .block_entities
-                    .insert(key, BlockEntity::Chest(self.ender_items.clone()));
-                self.ender_open = Some(key);
+                    .insert(key, BlockEntity::Chest(self.server.ender_items.clone()));
+                self.server.ender_open = Some(key);
             }
-            play.level_up_sound = std::mem::replace(&mut self.level_up_sound, level_up_sound);
+            play.level_up_sound =
+                std::mem::replace(&mut self.server.level_up_sound, level_up_sound);
             let new_xp = std::mem::replace(&mut self.experience, outer_player.experience);
             g.xp_level = new_xp.level;
             g.xp_progress = new_xp.progress;
@@ -902,13 +927,13 @@ impl Game<'_> {
             g.selected = std::mem::replace(&mut self.selected, outer_player.selected);
             std::mem::swap(&mut self.inventory, &mut g.inventory);
             std::mem::swap(&mut self.armor, &mut g.armor);
-            std::mem::swap(&mut self.location_armor, &mut g.location_armor);
+            std::mem::swap(&mut self.server.location_armor, &mut g.location_armor);
             std::mem::swap(&mut self.offhand, &mut g.offhand);
             std::mem::swap(&mut self.equipment, &mut g.equipment);
             std::mem::swap(&mut self.carried, &mut g.carried);
             // A teleport with a rotation (commands) turns the guest. `/rotate`
             // (ServerPlayer.forceSetRotation) sends the rotation alone, rider or not.
-            let forced = std::mem::take(&mut self.rotation_forced);
+            let forced = std::mem::take(&mut self.server.rotation_forced);
             let turned = !forced && [self.yaw, self.pitch] != [g.yaw, g.pitch];
             [g.yaw, g.pitch] = [self.yaw, self.pitch];
             if forced {
@@ -1008,11 +1033,11 @@ impl Game<'_> {
         let ended_digging = host.hub.guests[i].dead
             && (play.digging.is_some() || play.delayed.is_some() || play.destroy_pos.is_some());
         host.play.insert(conn, play);
-        let finished = self.lan_guest_swaps.pop();
+        let finished = self.server.lan_guest_swaps.pop();
         debug_assert_eq!(finished, Some(conn));
         host.hub.guests[i].residency.put_back();
         host.play[&conn].hook.finish_loan();
-        match self.lan_acting {
+        match self.server.lan_acting {
             Some(outer) => {
                 if let Some(guest) = host.hub.guest(outer) {
                     guest.residency.put_back();
@@ -1067,16 +1092,17 @@ impl Game<'_> {
             refresh_building_player(host, conn);
         }
         // An inner turn can move, kill, or change the mode of a hub-owned body.
-        if let (Some(actor), Some(host)) = (self.lan_acting, self.lan.as_ref()) {
-            self.lan_building_boxes =
-                self.lan_building_boxes
+        if let (Some(actor), Some(host)) = (self.server.lan_acting, self.lan.as_ref()) {
+            self.server.lan_building_boxes =
+                self.server
+                    .lan_building_boxes
                     .for_turn(actor, None, building_players(host));
         }
         if let Some(payload) = panic {
             std::panic::resume_unwind(payload);
         }
         if !already_recorded {
-            self.interrupted_turns.retain(|&c| c != conn);
+            self.server.interrupted_turns.retain(|&c| c != conn);
         }
         Ok(())
     }
@@ -1124,7 +1150,7 @@ impl Game<'_> {
     /// potion, a warden's darkness, an elder guardian's curse) lands on each
     /// of them, not only on the host. A server has no player of its own.
     pub(in crate::game) fn for_each_player(&mut self, mut f: impl FnMut(&mut Self)) {
-        if self.player.is_some() && !self.lan_acting_fake {
+        if self.player.is_some() && !self.server.lan_acting_fake {
             f(self);
         }
         let Some(host) = self.lan.as_ref() else {

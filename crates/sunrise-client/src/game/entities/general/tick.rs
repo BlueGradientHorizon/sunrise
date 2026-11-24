@@ -50,7 +50,7 @@ impl Game<'_> {
         }
         // `begin_ordered_ticks`' cutoff: a row numbered at or above `born`
         // joined during this tick and first ticks the next.
-        let born = self.ordered.born;
+        let born = self.server.ordered.born;
         let catalog = general_type_catalog();
         // One bit per type slot, resolved once per pass. The rows keep plain
         // slots, so the walk itself never names a type until a part hears it.

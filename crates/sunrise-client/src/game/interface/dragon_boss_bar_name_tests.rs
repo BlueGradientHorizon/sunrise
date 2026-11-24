@@ -71,9 +71,10 @@ fn the_dragon_boss_bar_takes_the_dragons_custom_name() {
         game.tick_fight();
     }
     let id = game.dragon.as_ref().expect("the fight's dragon").id;
-    game.boss_overlay.reset();
+    game.client.boss_overlay.reset();
     game.publish_boss_bars();
     let default = game
+        .client
         .boss_overlay
         .bars(sunrise_client::boss_overlay::now_millis())
         .pop()
@@ -90,6 +91,7 @@ fn the_dragon_boss_bar_takes_the_dragons_custom_name() {
     );
     game.publish_boss_bars();
     let named = game
+        .client
         .boss_overlay
         .bars(sunrise_client::boss_overlay::now_millis())
         .pop()
@@ -104,6 +106,7 @@ fn the_dragon_boss_bar_takes_the_dragons_custom_name() {
     );
     game.publish_boss_bars();
     let still = game
+        .client
         .boss_overlay
         .bars(sunrise_client::boss_overlay::now_millis())
         .pop()

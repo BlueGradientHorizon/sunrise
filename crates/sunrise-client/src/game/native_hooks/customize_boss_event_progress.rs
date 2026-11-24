@@ -70,7 +70,7 @@ mod customize_boss_event_progress_tests {
                     fog: false,
                 },
             };
-            game.boss_overlay.apply(&packet, 0);
+            game.client.boss_overlay.apply(&packet, 0);
         }
     }
 
@@ -110,7 +110,7 @@ mod customize_boss_event_progress_tests {
                     ]),
                 ),
             ]);
-            game.boss_overlay.apply(
+            game.client.boss_overlay.apply(
                 &BossEvent {
                     id: 1,
                     action: BossAction::Add {
@@ -126,7 +126,11 @@ mod customize_boss_event_progress_tests {
                 0,
             );
             assert!(matches!(
-                game.boss_overlay.mod_bar(0, 0).unwrap().try_into_api(),
+                game.client
+                    .boss_overlay
+                    .mod_bar(0, 0)
+                    .unwrap()
+                    .try_into_api(),
                 Err(TextFormError::Malformed)
             ));
             let vanilla = game.boss_bar_draws(480, 270);

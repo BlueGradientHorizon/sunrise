@@ -39,7 +39,7 @@ impl Game<'_> {
             })
             .map(|r| r.1);
         if let Some(sound) = started
-            && self.riding_sound != Some(sound.id)
+            && self.client.riding_sound != Some(sound.id)
             && !sound.silent
         {
             let nautilus = matches!(
@@ -53,7 +53,7 @@ impl Game<'_> {
             };
             self.audio.play_instance(instance, false);
         }
-        self.riding_sound = started.map(|g| g.id);
+        self.client.riding_sound = started.map(|g| g.id);
         ridden.map(|r| r.1)
     }
     /// Start the buzz of each bee that has none (or whose anger changed, which
@@ -99,12 +99,13 @@ impl Game<'_> {
             }
             mobs.push(sound);
         }
-        self.bee_sounds
+        self.client
+            .bee_sounds
             .retain(|id, _| mobs.iter().any(|m| m.id == *id));
         for &idx in &bee_indices {
             let sound = &mobs[idx];
-            if self.bee_sounds.get(&sound.id) != Some(&sound.angry) {
-                self.bee_sounds.insert(sound.id, sound.angry);
+            if self.client.bee_sounds.get(&sound.id) != Some(&sound.angry) {
+                self.client.bee_sounds.insert(sound.id, sound.angry);
                 let instance = SoundInstance::bee(sound, sound.angry, random_source::create());
                 self.audio.play_instance(instance, false);
             }

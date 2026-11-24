@@ -93,7 +93,7 @@ fn with_server(role: ExecutionRole, test: impl FnOnce(&mut Game<'_>)) {
             seed: 0,
             max_players: 2,
             integrated: role == ExecutionRole::IntegratedServer,
-            levels: game.level_shapes,
+            levels: game.server.level_shapes,
             level_seeds: game.levels.runtime.seeds(),
         };
         game.lan_host(
@@ -159,7 +159,12 @@ fn light(game: &mut Game<'_>, cx: i32, cz: i32) {
 fn finish_trip(game: &mut Game<'_>, dim: Dim) {
     let home = game.dim;
     for _ in 0..20 {
-        let Some(trip) = game.server_trips.iter().find(|trip| trip.conn == CONN) else {
+        let Some(trip) = game
+            .server
+            .server_trips
+            .iter()
+            .find(|trip| trip.conn == CONN)
+        else {
             break;
         };
         let (target_dim, target) = (trip.dim, trip.target);
@@ -184,7 +189,8 @@ fn finish_trip(game: &mut Game<'_>, dim: Dim) {
         !game.has_pending_travel(CONN),
         "the trip into {dim:?} never ended (current {:?}, trips {:?})",
         game.dim,
-        game.server_trips
+        game.server
+            .server_trips
             .iter()
             .map(|trip| (
                 trip.dim,
@@ -275,7 +281,7 @@ fn a_cross_level_teleport_returns_both_cursors_before_arrival() {
         .unwrap();
         hub.guests
             .update(0, |g| g.carried = Some(open_cursor.clone()));
-        game.level_teleports.push(super::LevelTeleport {
+        game.server.level_teleports.push(super::LevelTeleport {
             conn: CONN,
             dim: Dim::Nether,
             at: [8.5, 70.0, 8.5],
@@ -407,7 +413,7 @@ fn a_failed_cross_level_trip_closes_the_retired_client_window() {
             // Opening an unloaded destination refuses an unreadable saved biome layout.
             // Set a world path: the constructor-only fixture otherwise reads the process's cwd.
             let world = tempfile::tempdir().unwrap();
-            game.world_root = world.path().to_path_buf();
+            game.server.world_root = world.path().to_path_buf();
             let record = world.path().join("data/sunrise/biome_regions.dat");
             std::fs::create_dir_all(record.parent().unwrap()).unwrap();
             std::fs::write(record, b"not a biome layout").unwrap();

@@ -17,11 +17,11 @@ impl Game<'_> {
     )]
     pub(crate) fn look(&mut self) -> &Look {
         let generation = look::engine::generation();
-        if self.look.generation != generation {
-            self.look.look = look::engine::get(sunrise_hooks::seat());
-            self.look.generation = generation;
+        if self.client.look.generation != generation {
+            self.client.look.look = look::engine::get(sunrise_hooks::seat());
+            self.client.look.generation = generation;
         }
-        &self.look.look
+        &self.client.look.look
     }
 }
 

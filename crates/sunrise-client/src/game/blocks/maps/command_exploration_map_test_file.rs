@@ -22,11 +22,11 @@ mod command_exploration_map_tests {
         game.build_registries();
         game.set_allow_commands(true);
         // A world of its own under the temporary folder, removed at the end.
-        game.world_root = std::env::temp_dir().join(format!(
+        game.server.world_root = std::env::temp_dir().join(format!(
             "sunrise-command-exploration-map-{}",
             std::process::id()
         ));
-        let _ = std::fs::remove_dir_all(&game.world_root);
+        let _ = std::fs::remove_dir_all(&game.server.world_root);
         let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
         let terrain = sunrise_client::vanillagen::VanillaTerrain::new(
             sunrise_client::vanillagen::TerrainResources {
@@ -91,10 +91,14 @@ mod command_exploration_map_tests {
             .and_then(|d| d.other("minecraft:map_decorations"))
             .cloned();
         game.save_maps();
-        let saved =
-            sunrise_client::save::read_dat(&game.world_root.join("data/minecraft/maps/0.dat"));
+        let saved = sunrise_client::save::read_dat(
+            &game.server.world_root.join("data/minecraft/maps/0.dat"),
+        );
         let counter = sunrise_client::save::read_dat(
-            &game.world_root.join("data/minecraft/maps/last_id.dat"),
+            &game
+                .server
+                .world_root
+                .join("data/minecraft/maps/last_id.dat"),
         );
         let headers = saved.as_ref().and_then(|t| t.get("data")).map(|d| {
             (
@@ -149,9 +153,9 @@ mod added_preservation_tests {
             )
             .unwrap(),
         );
-        game.world_root =
+        game.server.world_root =
             std::path::PathBuf::from(std::env::var_os("SUNRISE_HOME").unwrap()).join(label);
-        let pack = game.world_root.join("datapacks/mapcmd");
+        let pack = game.server.world_root.join("datapacks/mapcmd");
         let tag = pack.join("data/mapcmd/tags/worldgen/structure/empty.json");
         std::fs::create_dir_all(tag.parent().unwrap()).unwrap();
         std::fs::write(
@@ -231,6 +235,7 @@ mod added_preservation_tests {
         let mut game_resources = None;
         let mut game = game("map-command-reference-order", &mut game_resources);
         let path = game
+            .server
             .world_root
             .join("datapacks/mapcmd/data/mapcmd/item_modifier");
         std::fs::create_dir_all(&path).unwrap();
@@ -258,7 +263,7 @@ mod added_preservation_tests {
         }
         game.reload_datapacks(false, &[]).unwrap();
         assert_eq!(
-            game.fns.store.item_modifiers.get("mapcmd:ordered"),
+            game.server.fns.store.item_modifiers.get("mapcmd:ordered"),
             Some(&ordered)
         );
         assert!(
@@ -282,7 +287,7 @@ mod added_preservation_tests {
             custom.as_ref()
         );
         assert_eq!(
-            game.fns.store.item_modifiers.get("mapcmd:ordered"),
+            game.server.fns.store.item_modifiers.get("mapcmd:ordered"),
             Some(&ordered)
         );
         assert!(!game.run_command("item modify entity @s hotbar.2 mapcmd:ordered"));
@@ -292,6 +297,6 @@ mod added_preservation_tests {
         assert!(game.maps.data.is_empty());
         assert!(game.maps.last_id.is_none());
         assert_eq!(game.world.game_time, 0);
-        let _ = std::fs::remove_dir_all(&game.world_root);
+        let _ = std::fs::remove_dir_all(&game.server.world_root);
     }
 }

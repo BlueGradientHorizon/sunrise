@@ -42,19 +42,22 @@ fn a_part_names_the_selected_stick_while_its_name_shows() {
                     game.inventory[0] = Some(ItemStack::new("minecraft:stick", 1));
                     game.selected = 0;
                     game.tick_hud();
-                    assert_eq!(game.tool_highlight.timer, 40);
-                    assert_eq!(game.tool_highlight.tip, Some(Text::literal("Charge: 5")));
+                    assert_eq!(game.client.tool_highlight.timer, 40);
+                    assert_eq!(
+                        game.client.tool_highlight.tip,
+                        Some(Text::literal("Charge: 5"))
+                    );
                     // Asked once a tick from 40 down to 1, then no more.
                     for _ in 0..45 {
                         game.tick_hud();
                     }
                     assert_eq!(ASKED.load(Ordering::Relaxed), 40);
-                    assert_eq!(game.tool_highlight.tip, None);
+                    assert_eq!(game.client.tool_highlight.tip, None);
                     // An apple has no part: vanilla's name, never asked.
                     game.inventory[0] = Some(ItemStack::new("minecraft:apple", 1));
                     game.tick_hud();
-                    assert_eq!(game.tool_highlight.timer, 40);
-                    assert_eq!(game.tool_highlight.tip, None);
+                    assert_eq!(game.client.tool_highlight.timer, 40);
+                    assert_eq!(game.client.tool_highlight.tip, None);
                     assert_eq!(ASKED.load(Ordering::Relaxed), 40);
                 });
             });

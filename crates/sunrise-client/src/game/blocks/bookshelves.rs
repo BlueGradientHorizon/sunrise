@@ -88,7 +88,7 @@ impl Game<'_> {
         if self.is_logical_server() {
             return;
         }
-        self.ambience.enchant_power.rebuild(
+        self.client.ambience.enchant_power.rebuild(
             self.pack.assets.registry.len(),
             |state| {
                 let origin = BlockPos::new(0, 0, 0);

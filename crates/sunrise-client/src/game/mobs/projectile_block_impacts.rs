@@ -41,7 +41,9 @@ impl Game<'_> {
         if let Some(strength) = hit {
             let _ = self.process_level_events();
             self.native_target_hit(self.dim.id(), pos, strength);
-            if p.owner == Some(Who::Player) && (p.guest.is_none() || p.guest == self.lan_acting) {
+            if p.owner == Some(Who::Player)
+                && (p.guest.is_none() || p.guest == self.server.lan_acting)
+            {
                 self.award_custom_stat("target_hit", 1);
                 let projectile = sunrise_client::advancements::EntityView {
                     kind: p.kind.to_owned(),

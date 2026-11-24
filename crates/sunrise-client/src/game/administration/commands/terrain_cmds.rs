@@ -596,6 +596,7 @@ impl Game<'_> {
             }));
         }
         let entity = self
+            .server
             .command_source
             .and_then(|s| s.entity)
             .unwrap_or(Target::Player);
@@ -636,7 +637,7 @@ impl Game<'_> {
                     };
                     let drops = match json["random_sequence"].as_str() {
                         Some(sequence) => {
-                            let random = self.rand_sequences.get(sequence, self.level.seed);
+                            let random = self.server.rand_sequences.get(sequence, self.level.seed);
                             world_items!(self).inline_loot_table_for_command(
                                 &json,
                                 held.as_ref(),
@@ -663,7 +664,7 @@ impl Game<'_> {
                     };
                     let drops = match world_items!(self).loot_sequence(&table) {
                         Some(seq) => {
-                            let random = self.rand_sequences.get(&seq, self.level.seed);
+                            let random = self.server.rand_sequences.get(&seq, self.level.seed);
                             world_items!(self).loot_table_for_command(
                                 &table,
                                 false,
@@ -701,7 +702,7 @@ impl Game<'_> {
                 // LootCommand.dropKillLoot: the source's entity is the killer.
                 // A connected player is the last damage player, and its own
                 // stack counts; it is in place only to read that stack.
-                let guest = match self.command_source.map(|s| s.entity) {
+                let guest = match self.server.command_source.map(|s| s.entity) {
                     Some(Some(Target::Guest(conn))) => self.for_player(Target::Guest(conn), |g| {
                         g.slot_get(&super::items::Slot::Inv(g.selected))
                     }),
@@ -711,7 +712,7 @@ impl Game<'_> {
                     Some(held) => (true, held),
                     None => (
                         matches!(
-                            self.command_source.map(|s| s.entity),
+                            self.server.command_source.map(|s| s.entity),
                             None | Some(Some(Target::Player))
                         ),
                         self.slot_get(&super::items::Slot::Inv(self.selected)),
@@ -722,6 +723,7 @@ impl Game<'_> {
                     table: &table,
                     target: t,
                     killer: self
+                        .server
                         .command_source
                         .map(|s| s.entity)
                         .unwrap_or(Some(Target::Player)),
@@ -750,7 +752,7 @@ impl Game<'_> {
                     pending.record_saved(p, &saved);
                 }
                 // LootCommand: the source's entity is `this`, if it has one.
-                let entity = match self.command_source.map(|s| s.entity) {
+                let entity = match self.server.command_source.map(|s| s.entity) {
                     None | Some(Some(Target::Player)) => Some(self.native_clicker().1 as u32),
                     Some(Some(Target::Guest(conn))) => self
                         .player_entity_id_by_connection(Some(conn))
@@ -1239,7 +1241,7 @@ mod loot_mine_component_tests {
         assert!(game.run_command("forceload add 0 0"));
         assert!(game.run_command("fill 0 199 0 15 199 15 stone"));
 
-        game.command_source = Some(crate::game::commands::execute::Source {
+        game.server.command_source = Some(crate::game::commands::execute::Source {
             silent: false,
             ..game.server_source()
         });
@@ -1579,9 +1581,10 @@ mod loot_mine_location_tests {
                     .add_empty_chunk(ChunkPos::new(x, z))
                     .unwrap();
             }
-            game.world_root = std::path::PathBuf::from(std::env::var_os("SUNRISE_HOME").unwrap())
-                .join("h079-world");
-            let pack = game.world_root.join("datapacks/h079");
+            game.server.world_root =
+                std::path::PathBuf::from(std::env::var_os("SUNRISE_HOME").unwrap())
+                    .join("h079-world");
+            let pack = game.server.world_root.join("datapacks/h079");
             std::fs::create_dir_all(pack.join("data/minecraft/loot_table/blocks")).unwrap();
             std::fs::create_dir_all(pack.join("data/h079/function")).unwrap();
             std::fs::write(
@@ -1600,16 +1603,16 @@ mod loot_mine_location_tests {
             )
             .unwrap();
             std::fs::write(
-                game.world_root.join("datapacks.json"),
+                game.server.world_root.join("datapacks.json"),
                 r#"{"enabled":["vanilla","file/h079"],"disabled":[]}"#,
             )
             .unwrap();
             let stack = game.reload_datapacks(false, &[]).unwrap();
-            game.world_tables = game
+            game.server.world_tables = game
                 .stage_world_tables(&stack, false, &game.options.resources.clone())
                 .unwrap()
                 .tables;
-            assert!(game.world_tables.is_some());
+            assert!(game.server.world_tables.is_some());
             game.ensure_datapacks();
             assert!(game.run_command("scoreboard objectives add h079 dummy"));
             game.run_command("function h079:admit");

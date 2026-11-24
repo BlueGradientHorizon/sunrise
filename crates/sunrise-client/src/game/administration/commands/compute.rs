@@ -111,7 +111,7 @@ impl Game<'_> {
     fn provider_file(&self, registry: &str, id: &str) -> Option<Value> {
         let id = sunrise_client::command::args::normalized(id);
         match registry {
-            "minecraft:predicate" => self.fns.store.predicates.get(id.as_ref()),
+            "minecraft:predicate" => self.server.fns.store.predicates.get(id.as_ref()),
             _ => self.context_registry(registry)?.get(id.as_ref()),
         }
         .cloned()
@@ -285,7 +285,10 @@ impl Game<'_> {
                 blocks_ok && props_ok
             }
             _ => {
-                let source = self.command_source.unwrap_or_else(|| self.player_source());
+                let source = self
+                    .server
+                    .command_source
+                    .unwrap_or_else(|| self.player_source());
                 // Scores are read from the holder's board only where
                 // an `entity_scores` leaf may ask.
                 let scored = adv::asks_scores(cond);
@@ -493,7 +496,7 @@ mod tests {
             None,
         )
         .unwrap();
-        game.fns.store.predicates.insert(
+        game.server.fns.store.predicates.insert(
             "minecraft:nested/true".into(),
             json!({"condition": "minecraft:all_of", "terms": []}),
         );
@@ -551,7 +554,7 @@ mod tests {
         assert!(game.run_command("scoreboard players set @s points 5"));
         let mut source = game.player_source();
         source.entity = None;
-        game.command_source = Some(source);
+        game.server.command_source = Some(source);
         let on_target = |kind: &str| {
             json!({
                 "type": "minecraft:conditional",

@@ -61,7 +61,7 @@ impl Game<'_> {
     /// prompt over the row has the buttons first.
     pub(super) fn pad_binding(&self) -> bool {
         !self.prompt_open()
-            && self.screen == Screen::Options
+            && self.client.screen == Screen::Options
             && (self.options_waiting_for_key() || self.ui.options.selected_pad_action.is_some())
     }
 

@@ -125,7 +125,7 @@ impl Game<'_> {
         let player = match self
             .remote
             .as_ref()
-            .filter(|_| self.lan_acting_uuid.is_none())
+            .filter(|_| self.server.lan_acting_uuid.is_none())
         {
             Some(r) => r.profile(),
             None => sunrise_client::lan::playerdata::ints_uuid(self.acting_player_uuid()),
@@ -257,8 +257,8 @@ impl Game<'_> {
             .player
             .as_ref()
             .map(|p| [p.position.x, p.position.y, p.position.z]);
-        let (played, start, middle) = charge_sounds(now, self.crossbow_sounds, sounds);
-        self.crossbow_sounds = played;
+        let (played, start, middle) = charge_sounds(now, self.server.crossbow_sounds, sounds);
+        self.server.crossbow_sounds = played;
         if let Some(sound) = start {
             self.audio.play(sound, at, 0.5, 1.0);
         }
@@ -398,7 +398,7 @@ impl Game<'_> {
                 let (player, name, projectile) = (
                     sunrise_client::lan::playerdata::ints_uuid(self.acting_player_uuid()),
                     self.acting_player_name().to_owned(),
-                    self.next_entity,
+                    self.server.next_entity,
                 );
                 self.native_entity_shoot_bow(player, &name, projectile, power as f32);
             }

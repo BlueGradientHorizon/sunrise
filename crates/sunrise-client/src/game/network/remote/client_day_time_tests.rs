@@ -148,13 +148,13 @@ fn client_day_time_reads_overworld_clock_across_packets_and_levels() {
         // Same-level respawn keeps the epoch and clocks, but replaces the
         // local player and its mood handler, with or without entity data.
         for keep in [0, 2] {
-            game.ambience.moodiness = 0.375;
+            game.client.ambience.moodiness = 0.375;
             game.handle_packet(C::Respawn(play::Respawn {
                 spawn: spawn.clone(),
                 keep,
             }))
             .unwrap();
-            assert_eq!(game.ambience.moodiness, 0.0);
+            assert_eq!(game.client.ambience.moodiness, 0.0);
             assert_eq!(end.day_time(game), Some(60_004));
         }
         spawn.dimension_type = 0;

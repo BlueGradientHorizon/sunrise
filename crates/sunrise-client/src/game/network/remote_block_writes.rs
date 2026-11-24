@@ -23,7 +23,7 @@ impl Game<'_> {
         let moving = |s: BlockStateId| &*facts.get(s).name == "minecraft:moving_piston";
         if moving(previous) && !moving(state) {
             self.forget_moving_piston(at);
-            self.moving_pistons_stale = true;
+            self.client.moving_pistons_stale = true;
         }
         if previous == state {
             return;

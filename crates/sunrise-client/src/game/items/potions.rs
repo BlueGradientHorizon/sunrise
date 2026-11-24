@@ -841,7 +841,7 @@ impl Game<'_> {
                 shot.shoot_from_rotation(
                     self.pitch, self.yaw, -20.0, power, 1.0, velocity, on_ground,
                 );
-                shot.guest = self.lan_acting;
+                shot.guest = self.server.lan_acting;
                 self.add_projectile(shot);
                 // ThrowablePotionItem.use / ExperienceBottleItem.use: awardStat(ITEM_USED).
                 self.award_stat("used", &stack.item, 1);
@@ -1130,7 +1130,7 @@ impl Game<'_> {
                                 m.damage(
                                     crate::game::entity::damage_level_of!(
                                         self,
-                                        self.combat.attack(),
+                                        self.server.combat.attack(),
                                         no_push,
                                         None
                                     ),
@@ -1184,7 +1184,7 @@ impl Game<'_> {
         };
         let rules = self.world.health_rules;
         let Some(p) = self.player.as_mut() else {
-            self.combat.forget_noted(false);
+            self.server.combat.forget_noted(false);
             return;
         };
         match action {
@@ -1201,7 +1201,7 @@ impl Game<'_> {
                     && let Ok(o) = p.hurt_blocking(
                         crate::game::entity::damage_level_of!(
                             self,
-                            self.combat.attack(),
+                            self.server.combat.attack(),
                             no_push,
                             None,
                             acting_equipment!(self)
@@ -1216,7 +1216,7 @@ impl Game<'_> {
                     canceled = o.canceled;
                 }
 
-                self.combat.forget_noted(canceled);
+                self.server.combat.forget_noted(canceled);
                 self.finish_guest_damage();
             }
             EffectAction::Poison => {
@@ -1226,7 +1226,7 @@ impl Game<'_> {
                     let _ = p.hurt(
                         crate::game::entity::damage_level_of!(
                             self,
-                            self.combat.attack(),
+                            self.server.combat.attack(),
                             no_push,
                             None,
                             acting_equipment!(self)
@@ -2230,7 +2230,7 @@ impl Game<'_> {
                                 let attack = self.potion_attack(owner, guest);
                                 let plan =
                                     self.prepare_knockback_credit(mob as i32, owner, &attack);
-                                let mut credit = plan.lend(&mut self.last_hurt_by_player);
+                                let mut credit = plan.lend(&mut self.server.last_hurt_by_player);
                                 let Some(index) = self.mob_index.find(&self.mobs, mob) else {
                                     return;
                                 };
@@ -2460,7 +2460,7 @@ impl Game<'_> {
                 name: Some(self.player_display_text()),
                 attacker: None,
                 player: true,
-                guest: self.lan_acting,
+                guest: self.server.lan_acting,
             },
             Some(Who::Mob(id)) => PotionOwner {
                 name: self.mob_display_name(id),
@@ -2631,11 +2631,11 @@ impl Game<'_> {
                     let source = Damage::indirect_magic(owner.who(), [at.x, at.y, at.z]);
                     let id = m.id;
                     let mut attack = self.potion_attack(owner.who(), owner.guest);
-                    attack.projectile = self.combat.attack().projectile;
-                    attack.projectile_kind = self.combat.attack().projectile_kind;
-                    attack.projectile_type = self.combat.attack().projectile_type;
+                    attack.projectile = self.server.combat.attack().projectile;
+                    attack.projectile_kind = self.server.combat.attack().projectile_kind;
+                    attack.projectile_type = self.server.combat.attack().projectile_type;
                     let plan = self.prepare_knockback_credit(id as i32, owner.who(), &attack);
-                    let mut credit = plan.lend(&mut self.last_hurt_by_player);
+                    let mut credit = plan.lend(&mut self.server.last_hurt_by_player);
                     self.mobs[i].damage_by(
                         crate::game::entity::damage_level_of!(self, &attack, &mut credit, None),
                         harm,
@@ -2656,7 +2656,7 @@ impl Game<'_> {
     /// draw their own effect list when `EffectsInInventory.canSeeEffects`
     /// (32 or more pixels right of the screen).
     fn screen_shows_active_effects(&self, batch: &HudBatch) -> bool {
-        let (ox, image_width) = match self.screen {
+        let (ox, image_width) = match self.client.screen {
             Screen::Inventory
                 if self.container.is_none() && self.craft_size == 2 && !self.mount_active() =>
             {
@@ -2706,7 +2706,7 @@ impl Game<'_> {
             batch,
             &self.gui.atlas,
             &panels,
-            [self.cursor.0 as i32, self.cursor.1 as i32],
+            [self.client.cursor.0 as i32, self.client.cursor.1 as i32],
         )?;
         Some(self.effect_tooltip(batch, hovered))
     }
@@ -2720,7 +2720,7 @@ impl Game<'_> {
         let panel = hovered.panel;
         let mut lines = inventory_effects::tooltip(hovered);
         if mod_api::__private::listened(mod_api::HookId::GatherEffectScreenTooltips) {
-            let view = self.screen_view(batch, self.screen);
+            let view = self.screen_view(batch, self.client.screen);
             let effect = super::native_living_effects::active_effect(panel.effect);
             self.native_gather_effect_screen_tooltips(&view, &effect, &mut lines);
         }
@@ -2790,13 +2790,14 @@ impl Game<'_> {
         if let Some(answer) =
             self.screen_state
                 .build
-                .effects_answer(self.frames, self.screen, *space)
+                .effects_answer(self.client.frames, self.client.screen, *space)
         {
             return answer;
         }
         // Asked while the screen is laid out: nothing is drawn beside it yet.
-        let view =
-            super::screen_backgrounds::without_regions(&self.screen_view_at(self.screen, rect));
+        let view = super::screen_backgrounds::without_regions(
+            &self.screen_view_at(self.client.screen, rect),
+        );
         let mut canceled = false;
         self.native_screen_render_inventory_mob_effects(
             &view,
@@ -2806,9 +2807,12 @@ impl Game<'_> {
             &mut canceled,
         );
         layout.hidden = canceled;
-        self.screen_state
-            .build
-            .keep_effects_answer(self.frames, self.screen, *space, layout);
+        self.screen_state.build.keep_effects_answer(
+            self.client.frames,
+            self.client.screen,
+            *space,
+            layout,
+        );
         layout
     }
     /// Effects saved in level.dat (`Player.active_effects`).
@@ -3002,7 +3006,7 @@ pub(super) mod tests {
             }
             let first = game.breath_clouds[0].id;
             let second = game.breath_clouds[1].id;
-            let next = game.next_entity;
+            let next = game.server.next_entity;
             super::super::entity::taken_pass_tests::with_spawn(
                 |game| {
                     assert!(game.breath_clouds.is_empty());
@@ -3168,7 +3172,7 @@ pub(super) mod tests {
                 });
             }
             game.add_remote_ominous_item_spawner(0, [0.0, 80.0, 0.0]);
-            let before = game.next_entity;
+            let before = game.server.next_entity;
             assert_eq!(game.breath_clouds[1].id, 0);
             game.lan_assign_ids();
             assert_eq!(game.ominous_spawners[0].id, before + 1);
@@ -4200,7 +4204,7 @@ pub(super) mod tests {
                 (Screen::Inventory, "inventory", 176),
                 (Screen::Creative, "creative", 195),
             ] {
-                game.screen = screen;
+                game.client.screen = screen;
                 // Fixed panel position; right-side room selects wide or compact.
                 // The longer effect name also clips in the smallest wide layout.
                 for case in [
@@ -4227,7 +4231,7 @@ pub(super) mod tests {
                     let left = 102 + image_width;
                     let origin = (100.0, 50.0);
                     let mut batch = HudBatch::scratch([(left + case.room) as u32, 480]);
-                    game.cursor = ((left + 7) as f32, 57.0);
+                    game.client.cursor = ((left + 7) as f32, 57.0);
                     let vanilla = if case.default_tooltip {
                         vec![
                             (case.name.to_owned(), u32::MAX),
@@ -4249,7 +4253,12 @@ pub(super) mod tests {
                     // The existing shared renderer draws nothing for an unchanged
                     // empty list, without running other tooltip hooks.
                     let painted = batch.vertices.len();
-                    game.draw_tooltip_lines(&mut batch, &lines, game.cursor.0, game.cursor.1);
+                    game.draw_tooltip_lines(
+                        &mut batch,
+                        &lines,
+                        game.client.cursor.0,
+                        game.client.cursor.1,
+                    );
                     assert_eq!(batch.vertices.len() > painted, case.default_tooltip);
 
                     for suppress in [false, true] {
@@ -4282,19 +4291,19 @@ pub(super) mod tests {
                             game.draw_tooltip_lines(
                                 &mut batch,
                                 &lines,
-                                game.cursor.0,
-                                game.cursor.1,
+                                game.client.cursor.0,
+                                game.client.cursor.1,
                             );
                             assert_eq!(batch.vertices.len() > painted, !suppress);
 
                             // A miss, a hidden layout and too little room must
                             // never gather tooltips, even with a subscriber.
-                            game.cursor = (0.0, 0.0);
+                            game.client.cursor = (0.0, 0.0);
                             assert!(
                                 game.draw_inventory_effects(&mut batch, origin, image_width)
                                     .is_none()
                             );
-                            game.cursor = ((left + 7) as f32, 57.0);
+                            game.client.cursor = ((left + 7) as f32, 57.0);
                             let hidden: Mods = vec![
                                 ModEntry::new("effect-tips", Box::new(listener.clone())),
                                 ModEntry::new("hide-panels", Box::new(HidePanels)),
@@ -4302,7 +4311,7 @@ pub(super) mod tests {
                             .into();
                             mod_platform::testing::with_mods(hidden, || {
                                 // Layout hooks run at screen construction, not painting.
-                                game.frames += 1;
+                                game.client.frames += 1;
                                 let space = Game::effects_space(
                                     &batch,
                                     [origin.0, origin.1],
@@ -4318,7 +4327,7 @@ pub(super) mod tests {
                                         &mut batch,
                                         &game.gui.atlas,
                                         &panels,
-                                        [game.cursor.0 as i32, game.cursor.1 as i32],
+                                        [game.client.cursor.0 as i32, game.client.cursor.1 as i32],
                                     )
                                     .is_none()
                                 );

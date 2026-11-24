@@ -260,7 +260,7 @@ fn disabled_tnt_rule_discards_primed_carts_but_keeps_unprimed_ticks() {
         for primed in [false, true] {
             super::super::native_entity_refs::tests::with_game(|game| {
                 game.options.dedicated = Some(Vec::new());
-                game.tickets.update(None);
+                game.server.tickets.update(None);
                 game.reset_entity_residency();
                 assert!(game.ui.rules.set(
                     "tnt_explodes",
@@ -344,7 +344,7 @@ fn destroyed_carts_retain_authoritative_state_and_retire_their_registration() {
         mod_platform::testing::with_mods(mods, || {
             super::super::native_entity_refs::tests::with_game(|game| {
                 game.options.dedicated = Some(Vec::new());
-                game.tickets.update(None);
+                game.server.tickets.update(None);
                 game.reset_entity_residency();
                 let start = Vec3::new(0.5, 70.0, 0.5);
                 let mut cart = Minecart::new(
@@ -560,7 +560,7 @@ fn a_bound_cart_survives_the_parked_level_swap() {
 
 fn bound_cart_case(kind: CartKind, action: impl FnOnce(&mut Game<'_>)) {
     super::super::native_entity_refs::tests::with_game(|game| {
-        game.tickets.update(None);
+        game.server.tickets.update(None);
         game.carts
             .push(Minecart::new(71, kind, Vec3::new(0.5, 70.0, 0.5)));
         let holder = {
@@ -586,7 +586,7 @@ fn bound_cart_case(kind: CartKind, action: impl FnOnce(&mut Game<'_>)) {
         assert_eq!(VALUE.get(&mut values, Holder::Entity(71)), Ok(10));
         let taken = game.take_entities();
         assert_eq!(index.lock().unwrap().snapshot(&key).len(), 1);
-        game.next_entity = game.next_entity.max(72);
+        game.server.next_entity = game.server.next_entity.max(72);
         game.summon_with_nbt("minecraft:minecart", [8.5, 70.0, 0.5], "{}")
             .unwrap();
         let spawned = game.carts[0].id;
@@ -720,7 +720,7 @@ fn terminal_vehicle_damage_and_native_removal_retire_residency() {
         for mode in 0..3 {
             super::super::native_entity_refs::tests::with_game(|game| {
                 game.reset_entity_residency();
-                game.tickets.update(None);
+                game.server.tickets.update(None);
                 game.summon_with_nbt(
                     if cart {
                         "minecraft:minecart"

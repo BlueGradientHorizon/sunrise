@@ -78,7 +78,7 @@ fn with_callback_game(
         with_interaction_game(true, |game| {
             game.set_local_mode(sunrise_client::command::args::GameMode::Survival);
             game.title = None;
-            game.screen = Screen::Playing;
+            game.client.screen = Screen::Playing;
             game.remote.as_mut().unwrap().loaded_sent = true;
             let attack = click.then(|| {
                 let attack = game.vanilla_key_mapping("key.attack").unwrap();
@@ -107,7 +107,7 @@ fn stone_under_the_crosshair(game: &mut Game<'_>) {
         .default_state("minecraft:stone")
         .unwrap();
     game.world.set(0, 64, 0, stone).unwrap();
-    game.forced_hit = Some(hit());
+    game.server.forced_hit = Some(hit());
 }
 
 /// Holding use with a bow drawn starts one use and repeats nothing while the bow is in use;
@@ -202,7 +202,7 @@ fn clicking_attack_on_a_block_starts_the_break_and_punches() {
 fn clicking_attack_on_nothing_punches_and_waits_out_the_miss_cooldown() {
     with_pressing_game(|game, packets, _| {
         let attack_mapping = game.vanilla_key_mapping("key.attack").unwrap();
-        game.forced_hit = None;
+        game.server.forced_hit = None;
         assert_eq!(attack_mapping.set_down(game, true), Ok(()));
         assert_eq!(attack_mapping.click(game), Ok(()));
         game.remote_handle_input();
@@ -284,9 +284,9 @@ fn the_host_presses_by_name_and_refuses_the_others() {
             assert_eq!(mapping.is_down(game), Ok(false));
             assert_eq!(mapping.click(game), Ok(()));
             if key == "key.chat" {
-                assert_eq!(game.screen, Screen::Playing);
+                assert_eq!(game.client.screen, Screen::Playing);
                 game.remote_handle_input();
-                assert_eq!(game.screen, Screen::Chat);
+                assert_eq!(game.client.screen, Screen::Chat);
                 game.set_screen(Screen::Playing);
             }
         }
@@ -299,7 +299,7 @@ fn the_host_presses_by_name_and_refuses_the_others() {
         game.title = Some(game.new_title(game.save.root.clone()));
         assert!(game.mod_mappings_screen_open());
         let hotbar_slot = game.vanilla_mapping_slot(hotbar).unwrap();
-        let before_clicks = game.vanilla_mappings.pending_clicks(hotbar_slot);
+        let before_clicks = game.client.vanilla_mappings.pending_clicks(hotbar_slot);
         {
             assert_eq!(forward.set_down(game, true), Ok(()));
             assert_eq!(forward.is_down(game), Ok(true));
@@ -308,10 +308,10 @@ fn the_host_presses_by_name_and_refuses_the_others() {
             assert_eq!(hotbar.click(game), Ok(()));
         }
         assert_eq!(
-            game.vanilla_mappings.pending_clicks(hotbar_slot),
+            game.client.vanilla_mappings.pending_clicks(hotbar_slot),
             before_clicks + 1
         );
-        assert!(game.vanilla_mappings.consume_click(hotbar_slot));
+        assert!(game.client.vanilla_mappings.consume_click(hotbar_slot));
     });
 }
 
@@ -354,7 +354,8 @@ fn opening_a_screen_releases_mod_holds() {
         attack_mapping.set_down(game, true).unwrap();
         use_mapping.set_down(game, true).unwrap();
         assert!(game.mapped_key_down("key.attack") && game.mapped_key_down("key.use"));
-        game.physical_buttons
+        game.client
+            .physical_buttons
             .extend([MouseButton::Left, MouseButton::Right]);
         game.set_screen(Screen::Inventory);
         // No redraw/reconciliation before the screen closes. Controller releases
@@ -369,7 +370,7 @@ fn opening_a_screen_releases_mod_holds() {
         // ModifiersChanged can contain an unrelated change, or be the OS's only
         // report of a real release. Only the recovered sneak release takes over.
         game.settings.toggle_crouch = false;
-        game.physical_keys.insert(KeyCode::ShiftLeft);
+        game.client.physical_keys.insert(KeyCode::ShiftLeft);
         game.update_modifiers(ModifiersState::SHIFT | ModifiersState::ALT);
         game.mapped_key_event(KeyCode::ShiftLeft, true, false)
             .unwrap();
@@ -390,7 +391,7 @@ fn opening_a_screen_releases_mod_holds() {
 fn a_creative_drop_sends_no_creative_slot() {
     with_pressing_game(|game, packets, _| {
         game.set_local_mode(sunrise_client::command::args::GameMode::Creative);
-        game.forced_hit = None;
+        game.server.forced_hit = None;
         game.inventory[game.selected] = Some(ItemStack::new("minecraft:stone", 16));
         // The setup's stack is the server's as well.
         game.remote_synced();
@@ -425,7 +426,7 @@ fn a_creative_drop_sends_no_creative_slot() {
 fn a_toolbar_load_goes_out_before_a_drop_in_its_tick() {
     with_pressing_game(|game, packets, _| {
         game.set_local_mode(sunrise_client::command::args::GameMode::Creative);
-        game.forced_hit = None;
+        game.server.forced_hit = None;
         game.inventory[game.selected] = Some(ItemStack::new("minecraft:stone", 16));
         game.remote_synced();
         // handleHotbarLoadOrSave puts the saved stack in the slot and sends it.
@@ -490,7 +491,7 @@ fn a_mod_releases_the_toolbar_mapping_while_its_physical_key_stays_down() {
         let mapping = game
             .vanilla_key_mapping("key.saveToolbarActivator")
             .unwrap();
-        game.physical_keys.insert(KeyCode::KeyC);
+        game.client.physical_keys.insert(KeyCode::KeyC);
         game.mapped_key_event(KeyCode::KeyC, true, false).unwrap();
         assert!(game.mapped_key_down("key.saveToolbarActivator"));
         mapping.set_down(game, false).unwrap();

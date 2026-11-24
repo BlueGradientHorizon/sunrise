@@ -201,7 +201,7 @@ fn a_saved_song_comes_back_without_its_sound() {
                 clock,
                 (j.playing, j.ticks, j.song_clock_present),
                 signal(game),
-                game.titles.overlay.is_some(),
+                game.client.titles.overlay.is_some(),
                 events,
             ));
         }

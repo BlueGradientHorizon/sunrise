@@ -214,7 +214,7 @@ impl Game<'_> {
             let name_text = |s: &str| Text::literal(s.to_owned());
             return match (sequence, int("seed")) {
                 (None, None) => {
-                    let n = self.rand_sequences.clear();
+                    let n = self.server.rand_sequences.clear();
                     self.feedback(Text::translate(
                         "commands.random.reset.all.success",
                         &[Text::literal(n.to_string())],
@@ -222,12 +222,12 @@ impl Game<'_> {
                     Ok(n as i32)
                 }
                 (None, Some(salt)) => {
-                    self.rand_sequences.set_defaults(
+                    self.server.rand_sequences.set_defaults(
                         salt,
                         flag("includeWorldSeed"),
                         flag("includeSequenceId"),
                     );
-                    let n = self.rand_sequences.clear();
+                    let n = self.server.rand_sequences.clear();
                     self.feedback(Text::translate(
                         "commands.random.reset.all.success",
                         &[Text::literal(n.to_string())],
@@ -235,7 +235,7 @@ impl Game<'_> {
                     Ok(n as i32)
                 }
                 (Some(s), None) => {
-                    self.rand_sequences.reset(&s, seed);
+                    self.server.rand_sequences.reset(&s, seed);
                     self.feedback(Text::translate(
                         "commands.random.reset.success",
                         &[name_text(&s)],
@@ -243,7 +243,7 @@ impl Game<'_> {
                     Ok(1)
                 }
                 (Some(s), Some(salt)) => {
-                    self.rand_sequences.reset_with(
+                    self.server.rand_sequences.reset_with(
                         &s,
                         seed,
                         salt,
@@ -272,7 +272,8 @@ impl Game<'_> {
         let value = match ctx.get("sequence") {
             Some(Arg::Resource(s)) => {
                 let s = s.clone();
-                self.rand_sequences
+                self.server
+                    .rand_sequences
                     .get(&s, seed)
                     .next_int_between_inclusive(min, max)
             }
@@ -291,7 +292,11 @@ impl Game<'_> {
             );
             // PlayerList.broadcastSystemMessage: every player hears the roll,
             // the source's own copy with the captured output it has (`/say`'s).
-            let captured = self.chat_capture.as_ref().and(self.lan_acting);
+            let captured = self
+                .server
+                .chat_capture
+                .as_ref()
+                .and(self.server.lan_acting);
             if let Some(host) = &self.lan {
                 let content = sunrise_client::lan::data::component_nbt(&line.component());
                 match captured {
@@ -302,7 +307,7 @@ impl Game<'_> {
             // MinecraftServer.sendSystemMessage: the server's log, unless the
             // console's captured reply below is what logs it (`console_reply`).
             if self.options.dedicated.is_some()
-                && (self.lan_acting.is_some() || self.chat_capture.is_none())
+                && (self.server.lan_acting.is_some() || self.server.chat_capture.is_none())
             {
                 super::super::dedicated::log("INFO", &format!("System chat: {}", line.plain()));
             }
@@ -317,7 +322,7 @@ impl Game<'_> {
     }
     /// `/teammsg`: the executor's team hears the message.
     pub(super) fn cmd_teammsg(&mut self, ctx: &Context) -> R<i32> {
-        let entity = match self.command_source {
+        let entity = match self.server.command_source {
             Some(s) => s.entity,
             None => Some(Target::Player),
         };

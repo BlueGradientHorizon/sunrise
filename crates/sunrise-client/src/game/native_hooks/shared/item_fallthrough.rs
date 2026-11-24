@@ -6,15 +6,15 @@ impl Game<'_> {
         &mut self,
         hit: &crate::game::Hit,
     ) -> sunrise_client::Result<bool> {
-        self.guest_use = Some(crate::game::GuestUse::on_block(self.hand));
+        self.server.guest_use = Some(crate::game::GuestUse::on_block(self.hand));
         let result = self.with_block_use_original(self.hand, |g| {
             let result = g.use_hand(Some(hit));
-            if matches!(result, Ok(true)) && !g.use_failed {
+            if matches!(result, Ok(true)) && !g.server.use_failed {
                 g.finish_block_use(hit.pos, g.hand);
             }
             result
         });
-        self.guest_use = None;
+        self.server.guest_use = None;
         if result? {
             return Ok(true);
         }

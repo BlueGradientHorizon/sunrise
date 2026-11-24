@@ -95,7 +95,7 @@ struct SlotChangedGuard<'a, 'g> {
 
 impl Drop for SlotChangedGuard<'_, '_> {
     fn drop(&mut self) {
-        self.game.slot_changed_active.pop();
+        self.game.server.slot_changed_active.pop();
     }
 }
 
@@ -426,10 +426,10 @@ impl Game<'_> {
         target: SlotChangedTarget,
         f: impl FnOnce(&mut Self) -> R,
     ) -> Option<R> {
-        if self.slot_changed_active.contains(&target) {
+        if self.server.slot_changed_active.contains(&target) {
             return None;
         }
-        self.slot_changed_active.push(target);
+        self.server.slot_changed_active.push(target);
         let guard = SlotChangedGuard { game: self };
         Some(f(guard.game))
     }
@@ -443,7 +443,7 @@ impl Game<'_> {
         context: &SlotChangedSnapshot,
     ) -> Option<Vec<(usize, Option<ItemStack>)>> {
         let conn = menu.conn;
-        if self.lan_acting == Some(conn) || self.lan_guest_swaps.contains(&conn) {
+        if self.server.lan_acting == Some(conn) || self.server.lan_guest_swaps.contains(&conn) {
             self.fire_validated_slot_changed(menu, changed, context)
         } else {
             self.as_guest(conn, |game| {
@@ -745,6 +745,7 @@ impl Game<'_> {
         fallback_before: &[Option<ItemStack>],
     ) {
         if self
+            .server
             .slot_changed_active
             .contains(&SlotChangedTarget::Owned(generation))
         {
@@ -793,6 +794,7 @@ impl Game<'_> {
         fallback_before: impl FnOnce(&Self) -> Option<Vec<Option<ItemStack>>>,
     ) {
         if self
+            .server
             .slot_changed_active
             .contains(&SlotChangedTarget::Block(pos))
             || !mod_api::__private::has_part_hook(mod_api::HookId::MenuSlotChanged)
@@ -804,7 +806,7 @@ impl Game<'_> {
         });
         let Some(rep) = viewers
             .iter()
-            .find(|v| Some(v.conn) == self.lan_acting)
+            .find(|v| Some(v.conn) == self.server.lan_acting)
             .or(viewers.first())
         else {
             return;

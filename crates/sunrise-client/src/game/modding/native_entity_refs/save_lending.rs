@@ -12,9 +12,9 @@ impl Game<'_> {
         if mod_api::__private::mods().is_empty() {
             return action(self);
         }
-        self.held_out.push(id);
+        self.server.held_out.push(id);
         let result = action(self);
-        self.held_out.pop();
+        self.server.held_out.pop();
         result
     }
 }

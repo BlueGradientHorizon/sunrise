@@ -54,7 +54,7 @@ impl Game<'_> {
             // A lead that came before its knot waits as a mob holder with the
             // knot's id (handleEntityLinkPacket's delayed holder); now it can
             // be tied to the fence.
-            self.remote_knots.insert(id, block);
+            self.client.remote_knots.insert(id, block);
             for m in &mut self.mobs {
                 if m.extra.leash == Some(Holder::Mob(id)) {
                     m.extra.leash = Some(Holder::Knot(block));
@@ -66,7 +66,7 @@ impl Game<'_> {
                 }
             });
         } else if let Some(shows) = super::text_displays::Shows::from_kind(kind) {
-            self.text_displays.insert(
+            self.client.text_displays.insert(
                 id as i32,
                 super::text_displays::RemoteTextDisplay::new(shows, position, yaw)
                     .with_pitch(pitch),
@@ -75,7 +75,7 @@ impl Game<'_> {
             self.add_remote_ominous_item_spawner(id, position);
         } else if kind == "minecraft:interaction" {
             // The width, height and response follow in SetEntityData.
-            self.interactions.insert(
+            self.client.interactions.insert(
                 id as i32,
                 super::interactions::RemoteInteraction::new_with_rotation(position, yaw, pitch),
             );
@@ -87,7 +87,7 @@ impl Game<'_> {
             c.previous_pitch = pitch;
             self.carts.push(c);
         } else if let Some((wood, chest)) = super::boats::any_boat_wood(kind)
-            && self.boat_models.has(wood, chest)
+            && self.client.boat_models.has(wood, chest)
         {
             let mut b = super::boats::Boat::new(id, Arc::from(wood), at, yaw);
             if chest {
@@ -180,7 +180,7 @@ impl Game<'_> {
 
     /// `handleSetEntityData` for an object: what changes how it looks.
     pub(super) fn remote_object_data(&mut self, id: i32, values: &[(u8, i32, Value)]) {
-        if self.text_displays.contains_key(&id) {
+        if self.client.text_displays.contains_key(&id) {
             // ItemDisplay.DATA_ITEM_STACK, read with the server's registries.
             let item = values
                 .iter()
@@ -188,7 +188,7 @@ impl Game<'_> {
                     (23, Value::Item(stack)) => Some(self.to_stack(stack)),
                     _ => None,
                 });
-            if let Some(display) = self.text_displays.get_mut(&id) {
+            if let Some(display) = self.client.text_displays.get_mut(&id) {
                 display.show(values, item);
                 display.metadata(values);
             }
@@ -554,7 +554,7 @@ impl Game<'_> {
                 "yaw": c.yaw, "color": c.color_name()}),
             );
         }
-        for (&id, i) in &self.interactions {
+        for (&id, i) in &self.client.interactions {
             out.push(json!({"id": id, "kind": "minecraft:interaction",
                 "position": at(i.position), "width": i.width, "height": i.height,
                 "response": i.response}));
@@ -579,10 +579,10 @@ impl Game<'_> {
     /// the player (`ExperienceOrb.tick` on the client) and is never
     /// `playerTouch`ed.
     pub(super) fn clear_remote_objects(&mut self) {
-        self.text_displays.clear();
-        self.interactions.clear();
+        self.client.text_displays.clear();
+        self.client.interactions.clear();
         self.ominous_spawners.clear();
-        self.remote_knots.clear();
+        self.client.remote_knots.clear();
         self.carts.clear();
         self.boats.clear();
         self.armor_stands.clear();
@@ -594,10 +594,10 @@ impl Game<'_> {
     }
 
     pub(super) fn remove_remote_object(&mut self, id: u32) {
-        self.text_displays.shift_remove(&(id as i32));
-        self.interactions.remove(&(id as i32));
+        self.client.text_displays.shift_remove(&(id as i32));
+        self.client.interactions.remove(&(id as i32));
         self.ominous_spawners.retain(|s| s.id != id);
-        self.remote_knots.remove(&id);
+        self.client.remote_knots.remove(&id);
         self.carts.retain(|c| c.id != id);
         self.boats.retain(|b| b.id != id);
         self.armor_stands.retain(|a| a.id != id);

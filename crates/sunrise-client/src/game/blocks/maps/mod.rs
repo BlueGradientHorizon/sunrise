@@ -879,7 +879,10 @@ impl Game<'_> {
         self.dim.id()
     }
     fn map_path(&self, name: &str) -> std::path::PathBuf {
-        self.world_root.join("data/minecraft/maps").join(name)
+        self.server
+            .world_root
+            .join("data/minecraft/maps")
+            .join(name)
     }
     /// `f` of map `id`'s data: the loaded map, else its `.dat` read without keeping it, so a
     /// read needs no `&mut`. None for a map id nothing made.
@@ -913,6 +916,7 @@ impl Game<'_> {
         }
         if !self.maps.data.contains_key(&id) && !self.maps.missing.contains(&id) {
             let path = self
+                .server
                 .world_root
                 .join(format!("data/minecraft/maps/{id}.dat"));
             let loaded = sunrise_client::save::read_dat(&path).and_then(|t| MapData::from_nbt(&t));
@@ -1219,7 +1223,10 @@ impl Game<'_> {
         }
         // EmptyMapItem.use: consumed, then counted.
         self.award_stat("used", "minecraft:map", 1);
-        if let (Some(player), Some(name)) = (self.lan_acting_uuid, self.lan_acting_name.clone()) {
+        if let (Some(player), Some(name)) = (
+            self.server.lan_acting_uuid,
+            self.server.lan_acting_name.clone(),
+        ) {
             self.native_player_map_filled(player, &name, id);
         }
         self.play_player_bound_sound(
@@ -1393,7 +1400,7 @@ impl Game<'_> {
         let game_time = self.world.game_time;
         let invisible = self.map_invisibility_worn(&self.armor);
         // The guest whose turn it is, else the host.
-        let me = self.lan_acting.unwrap_or(HOST);
+        let me = self.server.lan_acting.unwrap_or(HOST);
         for (id, targets) in carried {
             let Some(m) = self.map(id) else { continue };
             let h = m.holder(me);
@@ -1559,7 +1566,7 @@ impl Game<'_> {
         if has_ceiling {
             radius /= 2;
         }
-        let h = m.holder(self.lan_acting.unwrap_or(HOST));
+        let h = m.holder(self.server.lan_acting.unwrap_or(HOST));
         h.step += 1;
         let step = h.step;
         let mut changes: Vec<(i32, i32, u8)> = Vec::new();
@@ -1691,6 +1698,7 @@ impl Game<'_> {
         for (id, m) in &mut self.maps.data {
             if m.dirty {
                 let path = self
+                    .server
                     .world_root
                     .join("data/minecraft/maps")
                     .join(format!("{id}.dat"));
@@ -1705,7 +1713,10 @@ impl Game<'_> {
                 ("DataVersion", Tag::Int(sunrise_world::DATA_VERSION)),
             ]);
             if let Err(e) = sunrise_client::save::write_dat(
-                &self.world_root.join("data/minecraft/maps/last_id.dat"),
+                &self
+                    .server
+                    .world_root
+                    .join("data/minecraft/maps/last_id.dat"),
                 tag,
             ) {
                 log::warn!("Sunrise: the next map id is not saved: {e}");
@@ -1736,7 +1747,7 @@ impl Game<'_> {
             m.texture_dirty = false;
             let rgba: Vec<u8> = m.colors.iter().flat_map(|&c| packed_rgba(c)).collect();
             let (w, h) = (self.gui.atlas.width as f32, self.gui.atlas.height as f32);
-            self.map_patches.push(sunrise_client::font::Patch {
+            self.client.map_patches.push(sunrise_client::font::Patch {
                 x: (rect.u0 * w).round() as u32,
                 y: (rect.v0 * h).round() as u32,
                 width: 128,
@@ -1828,7 +1839,7 @@ impl Game<'_> {
                     let mut text_batch = HudBatch::scratch([1, 1]);
                     let behind =
                         text_batch.name_tag(&self.gui.atlas, &text, 0.0, 0xFFFF_FFFF, 0x8000_0000);
-                    self.map_patches.append(&mut text_batch.patches);
+                    self.client.map_patches.append(&mut text_batch.patches);
                     let tm = glam::Mat4::from_translation(glam::Vec3::new(
                         f32::from(d.x) / 2.0 + 64.0,
                         f32::from(d.y) / 2.0 + 64.0 + 4.0,

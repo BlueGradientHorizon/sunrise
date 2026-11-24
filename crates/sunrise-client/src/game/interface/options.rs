@@ -74,7 +74,7 @@ impl Game<'_> {
                 let before_atlas = self.settings.texture_atlas_settings();
                 self.settings = self.settings.with_option(key, value)?;
                 if self.settings.reduced_debug_info != reduced {
-                    self.debug_entries.invalidate();
+                    self.client.debug_entries.invalidate();
                 }
                 // As the options screen applies a change (OptionInstance.set
                 // runs the narrator's onValueUpdate for a new value only).
@@ -92,7 +92,7 @@ impl Game<'_> {
                     _ => {}
                 }
                 // Labels change (a language, a value): `ui` reads the redrawn screen.
-                self.ui_wait.clicked();
+                self.client.ui_wait.clicked();
                 let now = self.settings.to_file().describe(key);
                 Ok(Some(json!({ "ok": true, "key": key, "option": now })))
             }
@@ -124,12 +124,12 @@ impl Game<'_> {
     /// were opened: the recipe book's settings, World Options, the title or
     /// the pause menu.
     pub(super) fn leave_options(&mut self) {
-        let to_game = self.options_from_title;
-        let back = if let Some(screen) = self.panel.recipes_settings_return.take() {
+        let to_game = self.client.options_from_title;
+        let back = if let Some(screen) = self.client.panel.recipes_settings_return.take() {
             screen
-        } else if std::mem::take(&mut self.options_to_world_options) {
+        } else if std::mem::take(&mut self.client.options_to_world_options) {
             Screen::WorldOptions
-        } else if self.options_from_title {
+        } else if self.client.options_from_title {
             Screen::Playing
         } else {
             Screen::Paused
@@ -154,7 +154,7 @@ impl Game<'_> {
         // bindings can also change before the physical key is released.
         self.clear_device_keys();
         self.set_screen(Screen::Options);
-        self.options_from_title = from_title;
+        self.client.options_from_title = from_title;
         let minecart_improvements = self.minecart_improvements();
         // Restore fullbright when leaving another server.
         self.hold_fullbright();
@@ -170,11 +170,12 @@ impl Game<'_> {
     /// watcher).
     fn watch_pack_folder(&mut self) {
         if !self.ui.options.resource_packs_open() {
-            self.pack_folder = None;
+            self.client.pack_folder = None;
             return;
         }
         let now = std::time::Instant::now();
         if self
+            .client
             .pack_folder
             .as_ref()
             .is_some_and(|(at, _)| now.duration_since(*at).as_secs_f32() < 1.0)
@@ -196,10 +197,11 @@ impl Game<'_> {
                 })
                 .collect();
         let changed = self
+            .client
             .pack_folder
             .as_ref()
             .is_some_and(|(_, seen)| *seen != signature);
-        self.pack_folder = Some((now, signature));
+        self.client.pack_folder = Some((now, signature));
         if changed {
             let infos = self.resource_pack_infos();
             self.ui.options.update_pack_infos(infos);
@@ -226,11 +228,11 @@ impl Game<'_> {
         self.draw_screen_phase(batch, sunrise_client::screen_draw::RenderPhase::Background);
         self.ui
             .options
-            .draw_contents(&self.settings, batch, &self.gui.atlas, self.cursor);
+            .draw_contents(&self.settings, batch, &self.gui.atlas, self.client.cursor);
         self.draw_screen_phase(batch, sunrise_client::screen_draw::RenderPhase::Foreground);
         self.ui
             .options
-            .draw_overlays(batch, &self.gui.atlas, self.cursor);
+            .draw_overlays(batch, &self.gui.atlas, self.client.cursor);
         self.show_calibration((batch.width, batch.height));
     }
     fn controller_settings_context(&self) -> sunrise_client::controller_ui::Context {
@@ -244,7 +246,7 @@ impl Game<'_> {
     /// HDR calibration's test picture to the renderer, full screen while it runs: the
     /// window goes fullscreen for it and back after, as it was (maximized, say).
     pub(super) fn show_calibration(&mut self, size: (f32, f32)) {
-        let picture = (self.screen == Screen::Options)
+        let picture = (self.client.screen == Screen::Options)
             .then(|| self.ui.options.calibration_picture(&self.gui.atlas, size))
             .flatten();
         if let Some(r) = self.renderer.as_mut() {
@@ -296,12 +298,12 @@ impl Game<'_> {
             [r.config.width as i32, r.config.height as i32]
         });
         let mut ui = std::mem::take(&mut self.ui.options);
-        ui.shift = self.modifiers.shift_key();
+        ui.shift = self.client.modifiers.shift_key();
         let (events, handled) = ui.click_with_outcome(
             &mut self.settings,
             &self.gui.atlas,
-            self.cursor.0,
-            self.cursor.1,
+            self.client.cursor.0,
+            self.client.cursor.1,
             size,
             framebuffer,
             false,
@@ -320,7 +322,7 @@ impl Game<'_> {
         let (handled, events) = ui.drag(
             &mut self.settings,
             &self.gui.atlas,
-            self.cursor,
+            self.client.cursor,
             size,
             framebuffer,
             false,
@@ -366,7 +368,7 @@ impl Game<'_> {
             let size = self.gui_size();
             self.ui
                 .options
-                .scroll_at(&self.settings, size, self.cursor, amount);
+                .scroll_at(&self.settings, size, self.client.cursor, amount);
             return Ok(true);
         }
         let framebuffer = self.renderer.as_ref().map_or([1280, 720], |r| {
@@ -381,10 +383,13 @@ impl Game<'_> {
             return Ok(true);
         }
         let size = self.gui_size();
-        let (handled, events) =
-            self.ui
-                .options
-                .wheel_input(&mut self.settings, size, self.cursor, framebuffer, amount);
+        let (handled, events) = self.ui.options.wheel_input(
+            &mut self.settings,
+            size,
+            self.client.cursor,
+            framebuffer,
+            amount,
+        );
         self.handle_option_events(events)?;
         Ok(handled)
     }
@@ -401,7 +406,7 @@ impl Game<'_> {
         for e in events {
             match e {
                 Event::ButtonClick => self.audio.play_button_click(),
-                Event::DebugEntriesChanged => self.debug_entries.invalidate(),
+                Event::DebugEntriesChanged => self.client.debug_entries.invalidate(),
                 Event::Changed => {
                     self.settings.save(&Self::options_path());
                     self.settings.keys.sync_action_bindings();
@@ -569,7 +574,7 @@ impl Game<'_> {
         lang::set(lang::Language::load(&[&self.pack.source], code));
         self.refresh_remote_language();
         self.ui.chat.rescale(&self.gui.atlas);
-        self.creative_screen.forget_items();
+        self.client.creative_screen.forget_items();
     }
     /// Window.updateFullscreenIfChanged: only a changed option asks the
     /// window to change, so applying settings never undoes a fullscreen
@@ -578,12 +583,14 @@ impl Game<'_> {
         if let Some(w) = self.window.clone() {
             let monitor = w.current_monitor().or_else(|| w.primary_monitor());
             if let Some(modes) = self
+                .client
                 .video_modes
                 .refresh(monitor, sunrise_client::window::monitor_video_modes)
             {
                 self.settings.video_modes = modes;
             }
-            let in_video_screen = self.screen == Screen::Options && self.ui.options.video_open();
+            let in_video_screen =
+                self.client.screen == Screen::Options && self.ui.options.video_open();
             let wanted = self.settings.fullscreen;
             let exclusive = self.settings.file.bool("exclusiveFullscreen");
             let preferred = self
@@ -592,7 +599,8 @@ impl Game<'_> {
                 .fullscreen_resolution
                 .as_deref()
                 .and_then(sunrise_client::window::VideoMode::read);
-            self.fullscreen
+            self.client
+                .fullscreen
                 .apply(&w, wanted, exclusive, preferred, in_video_screen);
         }
     }
@@ -628,9 +636,10 @@ impl Game<'_> {
             );
             // Dynamic Resolution's scale where it is on; turned off, it starts over at the floor.
             if !s.sunrise.dynamic_resolution {
-                self.dynamic_resolution.reset();
+                self.client.dynamic_resolution.reset();
             }
-            let scale = super::frame_autotune::world_scale(&s.sunrise, &self.dynamic_resolution);
+            let scale =
+                super::frame_autotune::world_scale(&s.sunrise, &self.client.dynamic_resolution);
             super::frame_autotune::apply_world_post(r, &s.sunrise, scale);
             r.set_frame_generation(
                 s.sunrise.frame_generation != sunrise_client::graphics::FrameGeneration::Off,
@@ -642,10 +651,10 @@ impl Game<'_> {
             let gpu_culling = match s.sunrise.gpu_culling {
                 sunrise_client::graphics::GpuCullingMode::Off => false,
                 sunrise_client::graphics::GpuCullingMode::On => true,
-                sunrise_client::graphics::GpuCullingMode::Auto => self.gpu_culling_auto.on(),
+                sunrise_client::graphics::GpuCullingMode::Auto => self.client.gpu_culling_auto.on(),
             };
             if s.sunrise.gpu_culling != sunrise_client::graphics::GpuCullingMode::Auto {
-                self.gpu_culling_auto.reset();
+                self.client.gpu_culling_auto.reset();
             }
             let _ = r.set_gpu_culling(gpu_culling);
             r.update_output(
@@ -701,7 +710,7 @@ impl Game<'_> {
             return;
         };
         let now = self.resize_state_of(winit::dpi::PhysicalSize::new(width, height));
-        if now.differs_from(&mut self.resize_state) {
+        if now.differs_from(&mut self.client.resize_state) {
             self.native_window_resize(
                 now.size.width,
                 now.size.height,
@@ -720,7 +729,7 @@ impl Game<'_> {
             return;
         }
         let Some(w) = &self.window else { return };
-        if let Some(now) = self.fullscreen.observe(w.fullscreen().is_some())
+        if let Some(now) = self.client.fullscreen.observe(w.fullscreen().is_some())
             && self.settings.fullscreen != now
         {
             self.settings.fullscreen = now;
@@ -791,27 +800,31 @@ impl Game<'_> {
                 .window
                 .as_ref()
                 .is_some_and(|w| w.is_minimized().unwrap_or(false)),
-            focused: self.focused,
+            focused: self.client.focused,
             // Window.isExclusiveFullscreen.
             exclusive_fullscreen: self
                 .window
                 .as_ref()
                 .is_some_and(|w| matches!(w.fullscreen(), Some(Fullscreen::Exclusive(_)))),
-            now_ms: self.started.elapsed().as_millis() as i64,
-            latest_input_ms: self.last_input.duration_since(self.started).as_millis() as i64,
+            now_ms: self.client.started.elapsed().as_millis() as i64,
+            latest_input_ms: self
+                .client
+                .last_input
+                .duration_since(self.client.started)
+                .as_millis() as i64,
             has_level: self.title.is_none(),
-            has_screen: self.title.is_some() || self.screen != super::Screen::Playing,
+            has_screen: self.title.is_some() || self.client.screen != super::Screen::Playing,
             has_overlay: false,
         };
         let limit = framerate_limit(self.settings.max_fps as i32, context);
-        let limit = self
-            .settings
-            .sunrise
-            .battery_limit(limit, self.title.is_none(), self.focused);
+        let limit =
+            self.settings
+                .sunrise
+                .battery_limit(limit, self.title.is_none(), self.client.focused);
         // A native mod may only lower it (`native_framerate_limit`).
         let mut hooked = limit;
         self.native_framerate_limit(
-            self.focused,
+            self.client.focused,
             context.iconified,
             self.title.is_none(),
             &mut hooked,
@@ -831,12 +844,18 @@ impl Game<'_> {
         }
         let limit = self.framerate_limit();
         match self.settings.sunrise.pacing {
-            sunrise_client::graphics::Pacing::Precise => {
-                sunrise_client::window::end_frame(&mut self.limiter, limit, &mut self.frame_clock)
-            }
+            sunrise_client::graphics::Pacing::Precise => sunrise_client::window::end_frame(
+                &mut self.client.limiter,
+                limit,
+                &mut self.client.frame_clock,
+            ),
             sunrise_client::graphics::Pacing::Efficient => {
-                let mut clock = sunrise_client::window::SleepingClock(self.frame_clock);
-                sunrise_client::window::end_frame_on_grid(&mut self.limiter, limit, &mut clock);
+                let mut clock = sunrise_client::window::SleepingClock(self.client.frame_clock);
+                sunrise_client::window::end_frame_on_grid(
+                    &mut self.client.limiter,
+                    limit,
+                    &mut clock,
+                );
             }
         }
     }

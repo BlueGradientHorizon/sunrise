@@ -9,9 +9,9 @@ impl Game<'_> {
     /// (`ServerChunkCache.tick`'s broadcast), before the block events and the
     /// block entities ran.
     pub(super) fn tick_blocks(&mut self) -> Result<Option<usize>> {
-        let mut scratch = std::mem::take(&mut self.tick_scratch);
+        let mut scratch = std::mem::take(&mut self.server.tick_scratch);
         let result = self.tick_blocks_with_scratch(&mut scratch);
-        self.tick_scratch = scratch;
+        self.server.tick_scratch = scratch;
         result
     }
     pub(super) fn tick_blocks_with_scratch(
@@ -21,7 +21,8 @@ impl Game<'_> {
         let mut laps = sunrise_client::spans::laps();
         // ServerChunkCache.tick: the tickets that time out.
         let world = &self.world;
-        self.tickets
+        self.server
+            .tickets
             .tick_portal(|ticket| portal_ticket_can_expire(world, ticket));
         self.sync_tick_chunks();
         self.start_ticking_chunks();
@@ -113,7 +114,7 @@ impl Game<'_> {
         // applyEffectsFromBlocks runs in their tick: a mob or item past the
         // simulation distance presses, burns and slows on nothing.
         let entity_ticking = self.entity_ticking_area();
-        let first_contact_drop = self.next_entity + 1;
+        let first_contact_drop = self.server.next_entity + 1;
         self.with_level(|b, level, ticks| {
             // LilyPadBlock.entityInside: a boat inside a lily pad breaks it.
             scratch.boat_cells.clear();
@@ -214,11 +215,11 @@ impl Game<'_> {
             }
         });
         self.process_level_events()?;
-        self.contact_drops = first_contact_drop..self.next_entity + 1;
+        self.server.contact_drops = first_contact_drop..self.server.next_entity + 1;
         laps.lap("tb_entity_inside");
         // ServerLevel.tick: a Debug world runs no scheduled block or fluid ticks, and
         // ServerChunkCache.tickChunks no random ticks.
-        let debug = self.world_debug;
+        let debug = self.server.world_debug;
         if !debug {
             self.tick_scheduled()?;
         }
@@ -302,7 +303,7 @@ impl Game<'_> {
     /// order is the same every run; vanilla's exact order is its fastutil
     /// table's slot order, which follows that table's whole history.
     pub(super) fn random_tick_chunks(&self, out: &mut Vec<(i32, i32)>) {
-        let levels = self.tickets.levels();
+        let levels = self.server.tickets.levels();
         let bounds = levels.random_tick_bounds();
         out.clear();
         out.extend(self.world.chunks.keys().copied().filter(|&(x, z)| {
@@ -317,29 +318,31 @@ impl Game<'_> {
     }
     /// Track which chunks are ticking (Ticks needs chunk load/unload).
     pub(super) fn sync_tick_chunks(&mut self) {
-        if !self.tick_chunks.synchronize(&self.world.chunks) {
+        if !self.server.tick_chunks.synchronize(&self.world.chunks) {
             return;
         }
         // Move only the added keys out so registration can borrow all of Game.
-        let added = self.tick_chunks.take_added();
+        let added = self.server.tick_chunks.take_added();
         for &key in &added {
             self.register_chunk_ticks(key);
         }
-        for &key in self.tick_chunks.removed() {
-            self.random_tick_sections.remove(&key);
+        for &key in self.server.tick_chunks.removed() {
+            self.server.random_tick_sections.remove(&key);
             self.portals.sections.remove(&key);
             self.block_ticks
                 .remove_chunk(sunrise_core::position::ChunkPos::new(key.0, key.1));
             self.block_ticks
                 .comparator_outputs
                 .retain(|p, _| (p.x >> 4, p.z >> 4) != key);
-            self.hoppers.retain(|p, _| (p.0 >> 4, p.2 >> 4) != key);
+            self.server
+                .hoppers
+                .retain(|p, _| (p.0 >> 4, p.2 >> 4) != key);
             // Its moving pistons were saved with it and load back with it.
             self.block_ticks
                 .moving_pistons
                 .retain(|(p, _)| (p.x >> 4, p.z >> 4) != key);
         }
-        self.tick_chunks.recycle_added(added);
+        self.server.tick_chunks.recycle_added(added);
     }
 
     /// `ServerLevel.tick`: moving block entities push after entity travel.

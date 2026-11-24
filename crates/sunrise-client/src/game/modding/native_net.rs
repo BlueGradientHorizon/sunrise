@@ -54,7 +54,7 @@ impl Game<'_> {
         if self.player.is_none() {
             return Err("no player in a world".into());
         }
-        if self.screen != super::Screen::Playing {
+        if self.client.screen != super::Screen::Playing {
             return Err("another screen is open".into());
         }
         self.begin_chat_screen(text, false);

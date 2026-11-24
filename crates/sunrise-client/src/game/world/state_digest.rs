@@ -249,7 +249,7 @@ impl Game<'_> {
             level_random.0,
             level_random.1,
             self.block_ticks.random_tick_value,
-            self.next_entity,
+            self.server.next_entity,
             next_join,
             block_ticks.len(),
             fluid_ticks.len(),
@@ -273,7 +273,7 @@ impl Game<'_> {
         let num = |v: &str| v.parse::<i64>().map_err(|err| format!("{v}: {err}"));
         let (u, e, s) = (num(u)?, num(e)?, num(s)?);
         sunrise_client::random_source::set_thread_uniquifier(u)?;
-        self.next_entity = u32::try_from(e).map_err(|err| err.to_string())?;
+        self.server.next_entity = u32::try_from(e).map_err(|err| err.to_string())?;
         sunrise_core::random::RandomSource::set_seed(&mut self.world.random, s);
         JOIN_BASE.store(JoinSeq::upcoming().get(), Ordering::Relaxed);
         Ok(())

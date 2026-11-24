@@ -53,7 +53,8 @@ fn a_click_from_inside_a_scaffolding_block_places_on_the_opposite_face() {
     *game.held_mut() = Some(ItemStack::new("minecraft:scaffolding", 1));
     game.yaw = 0.0;
     game.pitch = -90.0;
-    game.keys
+    game.client
+        .keys
         .press(KeyCode::ShiftLeft, sunrise_client::held::Source::Keyboard);
     let hit: Hit = game.pick().expect("the eye is inside the column");
     assert_eq!(hit.pos, COLUMN, "the click is on the block the eye is in");

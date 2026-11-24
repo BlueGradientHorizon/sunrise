@@ -71,8 +71,8 @@ impl Game<'_> {
         mut shot: Projectile,
         stack: &ItemStack,
     ) -> Option<u32> {
-        self.next_entity += 1;
-        shot.id = self.next_entity;
+        self.server.next_entity += 1;
+        shot.id = self.server.next_entity;
         let id = shot.id;
         // Projectile.spawnProjectile: the spawn effects read the supplied
         // stack, whatever its count, and never change it.

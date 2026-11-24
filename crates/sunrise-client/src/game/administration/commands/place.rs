@@ -64,6 +64,7 @@ impl Game<'_> {
             return None;
         }
         let saved = self
+            .server
             .world_root
             .join("generated")
             .join(ns)
@@ -76,7 +77,7 @@ impl Game<'_> {
             .join(ns)
             .join(format!("{path}.nbt"));
         let name = format!("data/{ns}/structure/{path}.nbt");
-        let resource = self.fns.data_resource(&name).or_else(|| {
+        let resource = self.server.fns.data_resource(&name).or_else(|| {
             self.pack
                 .data_source
                 .contains(&name)
@@ -93,7 +94,7 @@ impl Game<'_> {
     }
     /// `PlaceCommand.checkLoaded`: every chunk of the inclusive range.
     fn place_check_loaded(&self, min: [i32; 2], max: [i32; 2]) -> R<()> {
-        let dimension = self.command_source.map_or(self.dim, |s| s.dimension);
+        let dimension = self.server.command_source.map_or(self.dim, |s| s.dimension);
         for cx in min[0]..=max[0] {
             for cz in min[1]..=max[1] {
                 if dimension != self.dim || !self.world.chunks.contains_key(&(cx, cz)) {

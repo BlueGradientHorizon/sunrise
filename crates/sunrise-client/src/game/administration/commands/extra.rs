@@ -181,7 +181,7 @@ fn civil(secs: i64) -> (i64, i64, i64, i64, i64, i64) {
 impl Game<'_> {
     /// CommandSourceStack.getPlayerOrException.
     pub(super) fn source_player(&self) -> R<Target> {
-        match self.command_source.map(|s| s.entity) {
+        match self.server.command_source.map(|s| s.entity) {
             None | Some(Some(Target::Player)) => Ok(Target::Player),
             _ => Err(err("permissions.requires.player", &[])),
         }
@@ -225,14 +225,14 @@ impl Game<'_> {
         }
         // A guest's camera is the hub's: the view moves in the guests' tick.
         let guest = match player {
-            Target::Player => self.lan_acting,
+            Target::Player => self.server.lan_acting,
             Target::Guest(conn) => Some(conn),
             _ => None,
         };
         match guest {
             Some(conn) => {
                 let camera = target.and_then(|t| self.network_entity_id(t));
-                self.cmds.camera_requests.push((conn, camera));
+                self.server.cmds.camera_requests.push((conn, camera));
             }
             None => self.set_camera(target),
         }
@@ -251,10 +251,10 @@ impl Game<'_> {
     /// `ServerPlayer.setCamera`: a new camera moves the player to it.
     pub(in crate::game) fn set_camera(&mut self, target: Option<Target>) {
         let target = target.filter(|t| *t != Target::Player);
-        if self.cmds.camera == target {
+        if self.server.cmds.camera == target {
             return;
         }
-        self.cmds.camera = target;
+        self.server.cmds.camera = target;
         if let Some(t) = target
             && let Some(p) = self.target_position(t)
             && let Some(player) = self.player.as_mut()
@@ -266,9 +266,9 @@ impl Game<'_> {
     /// Per-tick server work of these commands: the delayed tick profiler
     /// start, queued messages and the spectator camera.
     pub(in crate::game) fn tick_command_extras(&mut self) {
-        if self.cmds.profiler_delay {
-            self.cmds.profiler_delay = false;
-            self.cmds.profiler = Some((Instant::now(), self.ticks));
+        if self.server.cmds.profiler_delay {
+            self.server.cmds.profiler_delay = false;
+            self.server.cmds.profiler = Some((Instant::now(), self.ticks));
         }
         self.tick_profile_fetches();
         self.tick_camera();
@@ -277,14 +277,15 @@ impl Game<'_> {
     /// The camera part of `ServerPlayer.tick`: follow a living camera, drop a
     /// removed one, and stop when the player sneaks or leaves spectator mode.
     fn tick_camera(&mut self) {
-        let Some(t) = self.cmds.camera else {
+        let Some(t) = self.server.cmds.camera else {
             return;
         };
         if !self.spectator() {
             self.set_camera(None);
             return;
         }
-        let sneaking = self.held_mapping(Action::Sneak) && self.screen == super::Screen::Playing;
+        let sneaking =
+            self.held_mapping(Action::Sneak) && self.client.screen == super::Screen::Playing;
         match self.target_position(t) {
             Some(p) if !sneaking => {
                 let rot = self.target_rotation(t);
@@ -304,7 +305,7 @@ impl Game<'_> {
     /// must use its connection so the next server tick still finds that body.
     pub(in crate::game) fn waypoint_target(&self, t: Target) -> Target {
         match t {
-            Target::Player => self.lan_acting.map_or(t, Target::Guest),
+            Target::Player => self.server.lan_acting.map_or(t, Target::Guest),
             _ => t,
         }
     }
@@ -346,7 +347,7 @@ impl Game<'_> {
         let Some(key) = catalog.id("minecraft:waypoint_transmit_range") else {
             return 0.0;
         };
-        match self.cmds.attributes.get_mut(&t) {
+        match self.server.cmds.attributes.get_mut(&t) {
             Some(map) => map.value(key).unwrap_or(0.0),
             None => 0.0,
         }
@@ -356,25 +357,25 @@ impl Game<'_> {
     /// entity next ticks (`LivingEntity.onAttributeUpdated`), and
     /// `/waypoint modify` re-tracks its waypoint whatever its range.
     fn waypoint_transmitters(&mut self) -> Vec<Target> {
-        if self.cmds.waypoints.is_none() {
+        if self.server.cmds.waypoints.is_none() {
             let tracked = if self.lan.is_none() && self.transmit_range(Target::Player) > 0.0 {
                 vec![self.waypoint_target(Target::Player)]
             } else {
                 Vec::new()
             };
-            self.cmds.waypoints = Some(tracked);
+            self.server.cmds.waypoints = Some(tracked);
         }
-        let tracked = self.cmds.waypoints.clone().unwrap_or_default();
+        let tracked = self.server.cmds.waypoints.clone().unwrap_or_default();
         let alive: Vec<Target> = tracked
             .into_iter()
             .filter(|t| self.target_position(*t).is_some())
             .collect();
-        self.cmds.waypoints = Some(alive.clone());
+        self.server.cmds.waypoints = Some(alive.clone());
         alive
             .into_iter()
             .filter(|t| self.target_level(*t) == self.dim)
             .map(|t| match t {
-                Target::Guest(conn) if self.lan_acting == Some(conn) => Target::Player,
+                Target::Guest(conn) if self.server.lan_acting == Some(conn) => Target::Player,
                 _ => t,
             })
             .collect()
@@ -382,7 +383,7 @@ impl Game<'_> {
     /// The waypoint part of a living entity's tick: dirty transmit ranges
     /// track or untrack it.
     pub(in crate::game) fn tick_waypoints(&mut self) {
-        let dirty = std::mem::take(&mut self.cmds.waypoint_dirty);
+        let dirty = std::mem::take(&mut self.server.cmds.waypoint_dirty);
         if dirty.is_empty() {
             return;
         }
@@ -398,7 +399,7 @@ impl Game<'_> {
     }
 
     pub(in crate::game) fn set_waypoint_transmitter(&mut self, target: Target, on: bool) {
-        let tracked = self.cmds.waypoints.get_or_insert_default();
+        let tracked = self.server.cmds.waypoints.get_or_insert_default();
         tracked.retain(|t| *t != target);
         if on {
             tracked.push(target);
@@ -408,7 +409,8 @@ impl Game<'_> {
         }
     }
     pub(in crate::game) fn waypoint_icon(&self, t: Target) -> Icon {
-        self.cmds
+        self.server
+            .cmds
             .waypoint_icons
             .get(&self.waypoint_target(t))
             .cloned()
@@ -539,9 +541,9 @@ impl Game<'_> {
             Self::save_waypoint_icon(&icon, &mut self.level.player_extra);
         }
         let t = self.waypoint_target(t);
-        self.cmds.waypoint_icons.insert(t, icon);
+        self.server.cmds.waypoint_icons.insert(t, icon);
         self.waypoint_transmitters();
-        if let Some(tracked) = self.cmds.waypoints.as_mut() {
+        if let Some(tracked) = self.server.cmds.waypoints.as_mut() {
             tracked.retain(|x| *x != t);
             tracked.push(t);
         }
@@ -587,7 +589,7 @@ impl Game<'_> {
     fn post_effects_of(&self, t: Target) -> Vec<String> {
         let conn = match t {
             Target::Guest(conn) => Some(conn),
-            Target::Player => self.lan_acting,
+            Target::Player => self.server.lan_acting,
             _ => return Vec::new(),
         };
         match conn {
@@ -595,7 +597,7 @@ impl Game<'_> {
                 .command_guest(conn)
                 .map(|g| g.post_effects.clone())
                 .unwrap_or_default(),
-            None => self.cmds.post_effects.clone(),
+            None => self.server.cmds.post_effects.clone(),
         }
     }
 
@@ -608,7 +610,7 @@ impl Game<'_> {
     ) -> bool {
         let conn = match t {
             Target::Guest(conn) => Some(conn),
-            Target::Player => self.lan_acting,
+            Target::Player => self.server.lan_acting,
             _ => return false,
         };
         match conn {
@@ -623,7 +625,7 @@ impl Game<'_> {
                     })
                 })
                 .unwrap_or(false),
-            None => change(&mut self.cmds.post_effects),
+            None => change(&mut self.server.cmds.post_effects),
         }
     }
 
@@ -834,11 +836,11 @@ impl Game<'_> {
                 Some(Arg::Str(s)) => s.clone(),
                 _ => String::new(),
             };
-            self.cmds.profile_fetches.push(ProfileFetch {
+            self.server.cmds.profile_fetches.push(ProfileFetch {
                 key: NameOrId::Name(name.clone()),
                 kind: "name",
                 argument: Text::literal(name),
-                source: self.command_source,
+                source: self.server.command_source,
             });
             return Ok(1);
         }
@@ -849,11 +851,11 @@ impl Game<'_> {
             }
             .unwrap_or_default();
             // `Component.translationArg(id)`: the UUID's string form.
-            self.cmds.profile_fetches.push(ProfileFetch {
+            self.server.cmds.profile_fetches.push(ProfileFetch {
                 key: NameOrId::Id(id),
                 kind: "id",
                 argument: Text::literal(sunrise_protocol::crypto::uuid_string(id)),
-                source: self.command_source,
+                source: self.server.command_source,
             });
             return Ok(1);
         }
@@ -884,19 +886,20 @@ impl Game<'_> {
     /// harness waits for them, as vanilla's oracle resolves at once).
     pub(in crate::game) fn profile_fetches_pending(&mut self) -> bool {
         let mut resolver = self.skin_profiles.borrow_mut();
-        self.cmds
+        self.server
+            .cmds
             .profile_fetches
             .iter()
             .any(|f| matches!(resolver.state(&f.key), Resolve::Pending))
     }
     fn tick_profile_fetches(&mut self) {
-        let fetches = std::mem::take(&mut self.cmds.profile_fetches);
+        let fetches = std::mem::take(&mut self.server.cmds.profile_fetches);
         for fetch in fetches {
             let state = self.skin_profiles.borrow_mut().state(&fetch.key);
             match state {
-                Resolve::Pending => self.cmds.profile_fetches.push(fetch),
+                Resolve::Pending => self.server.cmds.profile_fetches.push(fetch),
                 Resolve::Done(result) => {
-                    let outer = std::mem::replace(&mut self.command_source, fetch.source);
+                    let outer = std::mem::replace(&mut self.server.command_source, fetch.source);
                     match result {
                         Some(profile) => self.report_resolved_profile(
                             &format!("commands.fetchprofile.{}.success", fetch.kind),
@@ -908,7 +911,7 @@ impl Game<'_> {
                             &[fetch.argument],
                         )),
                     }
-                    self.command_source = outer;
+                    self.server.command_source = outer;
                 }
             }
         }
@@ -1044,19 +1047,19 @@ impl Game<'_> {
         // MinecraftServer.isTimeProfilerRunning / startTimeProfiler /
         // stopTimeProfiler: a stop before the delayed start took effect
         // reports empty results and leaves the start pending.
-        let running = self.cmds.profiler_delay || self.cmds.profiler.is_some();
+        let running = self.server.cmds.profiler_delay || self.server.cmds.profiler.is_some();
         if ctx.literals.iter().any(|l| l == "start") {
             if running {
                 return Err(err("commands.debug.alreadyRunning", &[]));
             }
-            self.cmds.profiler_delay = true;
+            self.server.cmds.profiler_delay = true;
             self.feedback(Text::translate("commands.debug.started", &[]));
             return Ok(0);
         }
         if !running {
             return Err(err("commands.debug.notRunning", &[]));
         }
-        let (seconds, ticks) = match self.cmds.profiler.take() {
+        let (seconds, ticks) = match self.server.cmds.profiler.take() {
             Some((started, ticks)) => (
                 started.elapsed().as_nanos() as f64 / 1.0e9,
                 (self.ticks - ticks) as f64,
@@ -1077,7 +1080,7 @@ impl Game<'_> {
     /// `DebugCommand.TraceCustomExecutor`: run the functions with a tracer
     /// writing to `debug/debug-trace-<time>.txt`.
     fn cmd_debug_function(&mut self, ctx: &Context) -> R<i32> {
-        if !self.exec.functions.is_empty() {
+        if !self.server.exec.functions.is_empty() {
             return Err(err("commands.debug.function.noRecursion", &[]));
         }
         let Some(Arg::Resource(id)) = ctx.get("name").cloned() else {
@@ -1157,15 +1160,15 @@ impl Game<'_> {
     /// the recording is its own tick timing, dumped as JSON.
     pub(super) fn cmd_jfr(&mut self, ctx: &Context) -> R<i32> {
         if ctx.literals.iter().any(|l| l == "start") {
-            if self.cmds.jfr.is_some() {
+            if self.server.cmds.jfr.is_some() {
                 return Err(err("commands.jfr.start.failed", &[]));
             }
             let stamp = filename_date_time();
-            self.cmds.jfr = Some((Instant::now(), self.ticks, stamp));
+            self.server.cmds.jfr = Some((Instant::now(), self.ticks, stamp));
             self.feedback(Text::translate("commands.jfr.started", &[]));
             return Ok(1);
         }
-        let Some((started, ticks, stamp)) = self.cmds.jfr.take() else {
+        let Some((started, ticks, stamp)) = self.server.cmds.jfr.take() else {
             return Err(tr_error(
                 "commands.jfr.dump.failed",
                 &[Text::literal("Not currently profiling")],
@@ -1237,7 +1240,7 @@ impl Game<'_> {
     }
     /// `VersionCommand`.
     pub(super) fn cmd_version(&mut self) -> R<i32> {
-        if !self.command_source.is_some_and(|s| s.silent) {
+        if !self.server.command_source.is_some_and(|s| s.silent) {
             self.system_message(Text::translate("commands.version.header", &[]));
             for line in self.version_lines() {
                 self.system_message(line);
@@ -1277,8 +1280,8 @@ impl Game<'_> {
         });
         for &t in targets {
             match t {
-                Target::Player if self.lan_acting.is_some() => {
-                    self.guest_packets.push(packet.clone());
+                Target::Player if self.server.lan_acting.is_some() => {
+                    self.server.guest_packets.push(packet.clone());
                 }
                 Target::Player => self.show_play_dialog(holder),
                 Target::Guest(conn) => {
@@ -1295,8 +1298,8 @@ impl Game<'_> {
         let packet = C::ClearDialog(Empty);
         for &t in targets {
             match t {
-                Target::Player if self.lan_acting.is_some() => {
-                    self.guest_packets.push(packet.clone());
+                Target::Player if self.server.lan_acting.is_some() => {
+                    self.server.guest_packets.push(packet.clone());
                 }
                 Target::Player => self.clear_dialog(),
                 Target::Guest(conn) => {

@@ -192,10 +192,10 @@ impl Game<'_> {
                 Ok(Side::Live(i))
             };
         }
-        if self.world_root.as_os_str().is_empty() {
+        if self.server.world_root.as_os_str().is_empty() {
             return Err("no world".into());
         }
-        read_level(&self.world_root, uuid)
+        read_level(&self.server.world_root, uuid)
             .map(|l| Side::File(Box::new(l)))
             .ok_or_else(|| "no saved player".into())
     }
@@ -251,7 +251,7 @@ impl Game<'_> {
             return Err("no room".into());
         }
         // The file first: when it can't be written, nothing has moved.
-        let world = self.world_root.clone();
+        let world = self.server.world_root.clone();
         let write =
             |side: Side, kind, slots: Vec<Option<ItemStack>>, uuid| -> Result<Side, String> {
                 if let Side::File(mut level) = side {

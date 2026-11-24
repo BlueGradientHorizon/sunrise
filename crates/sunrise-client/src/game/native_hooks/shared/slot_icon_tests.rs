@@ -16,7 +16,7 @@ fn empty_slot_draws_icon_but_a_filled_slot_does_not() {
                 panic!("the shield icon must resolve to a real GUI sprite");
             };
             let generation = seed_native_menu(game, 1, "test:menu");
-            game.screen = Screen::Inventory;
+            game.client.screen = Screen::Inventory;
             game.container = Some((1, 2, 3));
             game.mod_screen = Some(OpenNativeScreen {
                 menu: OpenNativeMenu {

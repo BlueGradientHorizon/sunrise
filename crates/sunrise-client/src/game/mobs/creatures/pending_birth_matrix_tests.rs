@@ -25,15 +25,15 @@ impl Hooks for Native {
 
 /// Select the fixture mode without reusing an ID issued to an earlier mob or breeding orb.
 fn next_parent_id(game: &Game<'_>, mode: u32) -> u32 {
-    (game.next_entity + 1).next_multiple_of(10) + mode
+    (game.server.next_entity + 1).next_multiple_of(10) + mode
 }
 
 /// A size-4 slime whose entity id ends in `mode`, split by the real route.
 fn split(game: &mut Game<'_>, mode: u32) -> Vec<Mob> {
     game.mobs.clear();
     let mut dying = cube(game, "minecraft:slime", 4, SEED);
-    game.next_entity = next_parent_id(game, mode);
-    dying.id = game.next_entity;
+    game.server.next_entity = next_parent_id(game, mode);
+    dying.id = game.server.next_entity;
     game.split_cube_children(&mut dying);
     game.mobs.to_vec()
 }
@@ -41,7 +41,7 @@ fn split(game: &mut Game<'_>, mode: u32) -> Vec<Mob> {
 /// Two cows bred by the real route; the parent's id ends in `mode`.
 fn breed(game: &mut Game<'_>, mode: u32) -> (u32, u32, Option<u32>) {
     game.mobs.clear();
-    game.next_entity = next_parent_id(game, mode) - 1;
+    game.server.next_entity = next_parent_id(game, mode) - 1;
     breed_pair(game, "minecraft:cow")
 }
 

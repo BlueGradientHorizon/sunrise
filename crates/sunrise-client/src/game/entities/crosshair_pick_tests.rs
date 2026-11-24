@@ -108,7 +108,7 @@ fn setup_remote_overworld(game: &mut Game<'_>, player_id: i32, player_pos: [f64;
     let pos = Vec3::new(player_pos[0], player_pos[1], player_pos[2]);
     game.player = Some(PlayerMotion::new(game.motion, pos).unwrap());
     game.previous_position = pos;
-    game.camera_type = CameraType::FirstPerson;
+    game.client.camera_type = CameraType::FirstPerson;
     game.settings.fov = 70.0;
     game.settings.render_distance = 8;
     server
@@ -210,7 +210,7 @@ fn pin_entity_pose(
             (c.yaw, c.previous_yaw, c.pitch, c.previous_pitch) = (yaw, yaw, pitch, pitch);
         }
     });
-    if let Some(inter) = game.interactions.get_mut(&id) {
+    if let Some(inter) = game.client.interactions.get_mut(&id) {
         (inter.position, inter.previous) = (pos, pos);
         (
             inter.yaw,
@@ -1073,7 +1073,7 @@ pub(in crate::game) fn run_singleplayer_and_unstored_pick_share_unified_query_an
                 let mut inter = RemoteInteraction::new([0.5, 66.1, 1.9]);
                 inter.vehicle = Some(110);
                 inter.dimensions_refreshed = true;
-                game.interactions.insert(113, inter);
+                game.client.interactions.insert(113, inter);
                 let behind_fb = Vec3::new(0.5, 66.1, 2.9);
                 game.falling.push(FallingBlock {
                     size_answer: None,
@@ -1116,7 +1116,7 @@ pub(in crate::game) fn run_singleplayer_and_unstored_pick_share_unified_query_an
                 // and a block at exact block_reach (4.5) fails strict `<`.
                 game.mobs.clear();
                 game.armor_stands.clear();
-                game.interactions.clear();
+                game.client.interactions.clear();
                 game.falling.clear();
                 game.tnts.clear();
                 game.riding = None;

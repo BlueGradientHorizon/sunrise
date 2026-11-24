@@ -50,7 +50,7 @@ impl Game<'_> {
         if self.remote_loading() {
             return false;
         }
-        if self.screen == Screen::Playing
+        if self.client.screen == Screen::Playing
             && let Some(title) = self.title.as_mut()
         {
             // A caret field, an append-only one (`focused_field`), or a game
@@ -58,9 +58,10 @@ impl Game<'_> {
             // `title_edit` types into it).
             return title.has_caret_field() || title.focused_field().is_some();
         }
-        match self.screen {
+        match self.client.screen {
             Screen::Chat | Screen::CommandBlock | Screen::Social => true,
             Screen::DebugOptions => self
+                .client
                 .debug_options
                 .as_ref()
                 .is_some_and(|s| s.search_focused()),
@@ -68,8 +69,14 @@ impl Game<'_> {
             // screen's search (OptionsUi::typing).
             Screen::Options => self.ui.options.typing(),
             Screen::WorldOptions => self.world_options_typing(),
-            Screen::Creative => self.mod_browser_typing() || self.creative_screen.tab().search,
-            Screen::BlockEditor => self.block_editor.as_ref().is_some_and(|s| s.text_focused()),
+            Screen::Creative => {
+                self.mod_browser_typing() || self.client.creative_screen.tab().search
+            }
+            Screen::BlockEditor => self
+                .client
+                .block_editor
+                .as_ref()
+                .is_some_and(|s| s.text_focused()),
             Screen::Inventory => {
                 self.mod_browser_typing() || self.recipe_search_focused() || self.station_typing()
             }
@@ -102,10 +109,10 @@ impl Game<'_> {
             id.raw().hash(&mut h);
         } else {
             0u8.hash(&mut h);
-            std::mem::discriminant(&self.screen).hash(&mut h);
+            std::mem::discriminant(&self.client.screen).hash(&mut h);
             self.dialog_open().hash(&mut h);
-            self.sign_edit.is_some().hash(&mut h);
-            self.book.is_some().hash(&mut h);
+            self.client.sign_edit.is_some().hash(&mut h);
+            self.client.book.is_some().hash(&mut h);
             self.mod_browser_typing().hash(&mut h);
             self.recipe_search_focused().hash(&mut h);
             self.station_typing().hash(&mut h);
@@ -124,15 +131,15 @@ impl Game<'_> {
         let want = focus.is_some();
         if focus != self.screen_state.ime_focus {
             self.screen_state.ime_focus = focus;
-            self.ime_area = None;
+            self.client.ime_area = None;
             preedit::reset();
         }
-        if want != self.ime_allowed
+        if want != self.client.ime_allowed
             && let Some(window) = &self.window
         {
             window.set_ime_allowed(want);
-            self.ime_allowed = want;
-            self.ime_area = None;
+            self.client.ime_allowed = want;
+            self.client.ime_area = None;
             if !want {
                 preedit::reset();
             }
@@ -238,24 +245,24 @@ impl Game<'_> {
         let width = (((x1 - x0) * scale).round() as i32).max(1);
         let height = (((y1 - y0) * scale).round() as i32).max(1);
         let area = [x, y, width, height];
-        if self.ime_area == Some(area) {
+        if self.client.ime_area == Some(area) {
             return;
         }
         if let Some(window) = &self.window
-            && self.ime_allowed
+            && self.client.ime_allowed
         {
             window.set_ime_cursor_area(
                 winit::dpi::PhysicalPosition::new(x, y),
                 winit::dpi::PhysicalSize::new(width as u32, height as u32),
             );
-            self.ime_area = Some(area);
+            self.client.ime_area = Some(area);
         }
     }
 
     /// Text the input method committed (`WindowEvent::Ime(Commit)`).
     pub(super) fn ime_commit(&mut self, text: &str) {
         preedit::mark_committed();
-        if text.is_empty() || self.held_key_text.swallows(text) {
+        if text.is_empty() || self.client.held_key_text.swallows(text) {
             return;
         }
         // ScreenEvent.CharacterTyped.Pre, mounted widgets, focused vanilla
@@ -284,17 +291,17 @@ impl Game<'_> {
         if self.dialog_type(text) {
             return true;
         }
-        if self.screen == Screen::Playing && self.title.is_some() {
+        if self.client.screen == Screen::Playing && self.title.is_some() {
             self.title_edit(Some(text), false);
             true
-        } else if self.book.is_some() {
+        } else if self.client.book.is_some() {
             self.book_input(None, Some(text));
             true
-        } else if self.sign_edit.is_some() {
+        } else if self.client.sign_edit.is_some() {
             self.sign_input(None, Some(text));
             true
         } else {
-            match self.screen {
+            match self.client.screen {
                 Screen::Chat => self.chat_type(text),
                 Screen::CommandBlock => self.command_block_type(text),
                 Screen::Social => self.social_type(text),

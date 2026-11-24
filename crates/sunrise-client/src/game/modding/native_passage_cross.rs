@@ -124,7 +124,7 @@ impl Game<'_> {
         self.previous_position = Motion::new(ox, oy, oz);
         let turn = yaw_turn(&p);
         self.yaw += turn;
-        self.rope_rot_old.0 += turn;
+        self.client.rope_rot_old.0 += turn;
         self.passages.crossing = Some(passage);
         self.passages.refused = None;
         Ok(())

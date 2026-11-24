@@ -11,7 +11,10 @@ impl Game<'_> {
     }
 
     pub(in crate::game) fn preset_editor_title(&self) -> Option<&sunrise_client::title::Title> {
-        if self.screen != Screen::Playing || self.screen_over_playing() || self.remote_loading() {
+        if self.client.screen != Screen::Playing
+            || self.screen_over_playing()
+            || self.remote_loading()
+        {
             return None;
         }
         self.title
@@ -412,13 +415,13 @@ mod tests {
                     title.draw(
                         &game.gui.atlas,
                         &mut stock,
-                        game.cursor,
+                        game.client.cursor,
                         false,
                         &mut |_, _| {},
                     );
                     assert!(!stock.vertices.is_empty());
                     game.title = Some(title);
-                    game.screen = Screen::Playing;
+                    game.client.screen = Screen::Playing;
                     let frame = game.hud(size);
                     let (prefix, later) = frame.vertices.split_at(stock.vertices.len());
                     assert!(
@@ -445,7 +448,7 @@ mod tests {
                                 },
                             ..
                         },
-                    ] = game.toast_manager.visible.as_slice()
+                    ] = game.client.toast_manager.visible.as_slice()
                     else {
                         panic!("the preset editor failure should produce one mandatory toast");
                     };
@@ -561,7 +564,7 @@ mod tests {
                         Some("Islands Editor")
                     );
                     game.title = Some(title);
-                    game.screen = Screen::Playing;
+                    game.client.screen = Screen::Playing;
                     game.settle_title_mode();
                     let mut batch = HudBatch::new([640, 480], game.settings.gui_scale_inputs());
                     game.title.as_ref().unwrap().draw(
@@ -629,8 +632,8 @@ mod tests {
                         game.control_command(input, &reply, &NoopLoop).unwrap();
                     }
                     assert!(!game.has_shift_down());
-                    assert!(!game.physical_keys.contains(&KeyCode::Tab));
-                    assert!(!game.physical_keys.contains(&KeyCode::ShiftLeft));
+                    assert!(!game.client.physical_keys.contains(&KeyCode::Tab));
+                    assert!(!game.client.physical_keys.contains(&KeyCode::ShiftLeft));
                     game.control_command("type Ωx", &reply, &NoopLoop).unwrap();
                     // Outside composition the same window dispatcher reaches the editor;
                     // Q is declined by both the editor and its widgets.
@@ -672,10 +675,10 @@ mod tests {
                             "minecraft:overworld_caves".into()
                         ))
                     );
-                    game.screen = Screen::Options;
+                    game.client.screen = Screen::Options;
                     assert!(game.preset_editor_dimensions().is_none());
                     assert!(!game.set_preset_editor_dimensions(dimensions));
-                    game.screen = Screen::Playing;
+                    game.client.screen = Screen::Playing;
 
                     // Releases target the screen that is open when they arrive, not the editor
                     // that saw the presses. No world is loaded on either screen.
@@ -684,8 +687,8 @@ mod tests {
                         game.control_command(line, &reply, &NoopLoop).unwrap();
                     }
                     assert!(game.has_shift_down());
-                    assert!(game.physical_keys.contains(&KeyCode::ShiftLeft));
-                    assert!(game.physical_keys.contains(&KeyCode::KeyQ));
+                    assert!(game.client.physical_keys.contains(&KeyCode::ShiftLeft));
+                    assert!(game.client.physical_keys.contains(&KeyCode::KeyQ));
                     game.control_command("key escape tap", &reply, &NoopLoop)
                         .unwrap();
                     assert_eq!(game.title.as_ref().unwrap().mode.id(), "world_create");
@@ -693,8 +696,8 @@ mod tests {
                         game.control_command(line, &reply, &NoopLoop).unwrap();
                     }
                     assert!(!game.has_shift_down());
-                    assert!(!game.physical_keys.contains(&KeyCode::ShiftLeft));
-                    assert!(!game.physical_keys.contains(&KeyCode::KeyQ));
+                    assert!(!game.client.physical_keys.contains(&KeyCode::ShiftLeft));
+                    assert!(!game.client.physical_keys.contains(&KeyCode::KeyQ));
                     assert_eq!(create_openings.load(Ordering::Relaxed), 1);
                     assert_eq!(
                         releases
@@ -756,7 +759,7 @@ mod tests {
                     let other = MouseButton::Other(300);
                     mouse.lock().unwrap().events.clear(); // The direct edit above is not a window press.
                     open_editor(game);
-                    game.cursor = (20.0, 30.0);
+                    game.client.cursor = (20.0, 30.0);
 
                     // Post sees the original answer even when it forces unhandled. The next
                     // press is not a double-click: the first press was not recorded.
@@ -801,7 +804,7 @@ mod tests {
                             (x..x + width).contains(&done.0) && (y..y + height).contains(&done.1)
                         })
                         .expect("the rendered Done button is a focus target");
-                    game.cursor = done;
+                    game.client.cursor = done;
                     mouse.lock().unwrap().cancel_press = true;
                     assert_eq!(press(game, left, Some(2000)), [Pre(0, false)]);
                     assert_eq!(game.title.as_ref().unwrap().mode.id(), PRESET);
@@ -809,13 +812,13 @@ mod tests {
                     assert_eq!(game.key_focus_key(&NoopLoop, KeyCode::Tab), Some(false));
                     assert_eq!(game.pad.menu.focus.map(|t| t.rect), Some(target.rect));
                     game.pad_clear_focus();
-                    game.cursor = (20.0, 30.0);
+                    game.client.cursor = (20.0, 30.0);
                     editor_press(game, left, Some(2001), 0, true, true);
 
                     // Done and Cancel are taken by the footer, not the editor callback. The
                     // release resolves its own receiver on the screen they have just opened.
                     // Start the footer sequence outside the preceding press's double-click window.
-                    game.cursor = done;
+                    game.client.cursor = done;
                     assert_eq!(
                         press(game, left, Some(2251)),
                         [Pre(0, false), Post(PRESET, 0, false, true, false)]
@@ -826,10 +829,10 @@ mod tests {
                         [Release("world_create", 0, false)]
                     );
                     open_editor(game);
-                    game.cursor = (20.0, 30.0);
+                    game.client.cursor = (20.0, 30.0);
                     // Same hook ID and button as Done, but a different editor instance.
                     editor_press(game, left, Some(2260), 0, false, true);
-                    game.cursor = (w / 2.0 + 80.0, h - 18.0);
+                    game.client.cursor = (w / 2.0 + 80.0, h - 18.0);
                     assert_eq!(
                         press(game, left, Some(2270)),
                         [Pre(0, true), Post(PRESET, 0, true, true, false)]

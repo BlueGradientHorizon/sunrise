@@ -361,7 +361,7 @@ mod tests {
                     let events = game.level_events.clone();
                     game.lan_record_events(&events);
                     assert_eq!(
-                        game.lan_events[1],
+                        game.server.lan_events[1],
                         super::super::QueuedLevelEvent {
                             kind: 1500,
                             pos: [1, 64, 1],
@@ -370,7 +370,7 @@ mod tests {
                         }
                     );
                     assert_eq!(
-                        game.lan_events[2],
+                        game.server.lan_events[2],
                         super::super::QueuedLevelEvent {
                             kind: 2005,
                             pos: [2, 64, 2],
@@ -403,17 +403,17 @@ mod tests {
             let level = game.level(game.dim.id()).unwrap();
             let stale = LevelRef::new(WorldEpoch::new(level.epoch().get() + 1), level.dimension());
             game.audio.capture = Some(Vec::new());
-            game.lan_global_events.clear();
-            game.lan_events.clear();
+            game.server.lan_global_events.clear();
+            game.server.lan_events.clear();
 
             // An End portal opening: one packet with the global flag for every player.
             assert!(level.global_level_event(game, 1038, [10, 64, -3], 0));
             assert_eq!(
-                game.lan_global_events,
+                game.server.lan_global_events,
                 [("minecraft:overworld", 1038, [10, 64, -3], 0)]
             );
             assert!(
-                game.lan_events.is_empty(),
+                game.server.lan_events.is_empty(),
                 "no plain event while the rule is on"
             );
             assert!(
@@ -421,15 +421,19 @@ mod tests {
                 "2001 carries a block state"
             );
             assert!(!stale.global_level_event(game, 1038, [0, 64, 0], 0));
-            assert_eq!(game.lan_global_events.len(), 1, "refusals send nothing");
+            assert_eq!(
+                game.server.lan_global_events.len(),
+                1,
+                "refusals send nothing"
+            );
 
             // ServerLevel.globalLevelEvent without global_sound_events: levelEvent(null, ...).
             assert!(game.ui.rules.set("global_sound_events", Value::Bool(false)));
-            game.lan_global_events.clear();
+            game.server.lan_global_events.clear();
             assert!(level.global_level_event(game, 1038, [10, 64, -3], 0));
-            assert!(game.lan_global_events.is_empty());
+            assert!(game.server.lan_global_events.is_empty());
             assert_eq!(
-                game.lan_events,
+                game.server.lan_events,
                 [super::super::QueuedLevelEvent {
                     kind: 1038,
                     pos: [10, 64, -3],
@@ -478,7 +482,7 @@ mod tests {
                 seed: 0,
                 max_players: 2,
                 integrated: true,
-                levels: game.level_shapes,
+                levels: game.server.level_shapes,
                 level_seeds: game.levels.runtime.seeds(),
             };
             let settings = LanSettings {

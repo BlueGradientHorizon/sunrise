@@ -138,8 +138,8 @@ impl Game<'_> {
     /// A copy of server player `uuid`'s body in the level in place, and the connection to lend
     /// equipment from if the guest's state has not been swapped into Game.
     fn native_bot_body(&self, uuid: u128) -> Option<(PlayerMotion, Option<u32>)> {
-        if self.lan_acting_uuid == Some(uuid) {
-            self.lan_acting?;
+        if self.server.lan_acting_uuid == Some(uuid) {
+            self.server.lan_acting?;
             let p = self.player.as_ref()?;
             let mut body = (p.health.health() > 0.0 && !p.spectator && self.riding.is_none())
                 .then(|| p.clone())?;
@@ -149,7 +149,7 @@ impl Game<'_> {
             self.set_bot_item_use(&mut body, using);
             return Some((body, None));
         }
-        if self.lan_acting.is_some() {
+        if self.server.lan_acting.is_some() {
             return None;
         }
         let host = self.lan.as_ref()?;
@@ -529,7 +529,7 @@ mod tests {
                         .hub
                         .update_guest(1, |guest| guest.armor[3] = Some(boots))
                         .unwrap();
-                    assert_eq!(game.lan_acting, None);
+                    assert_eq!(game.server.lan_acting, None);
                     assert_eq!(
                         preview(game),
                         0,

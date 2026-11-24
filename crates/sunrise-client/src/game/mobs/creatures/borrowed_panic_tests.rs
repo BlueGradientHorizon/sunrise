@@ -597,7 +597,7 @@ fn run_fixture(family: Family, output: Output, dim: Dim) {
     mod_platform::testing::with_mods(entries().into(), || {
         crate::game::api_values::install_parts(&entries()).unwrap();
         fixture_game(output, |game| {
-            game.world_root = scratch.path().to_path_buf();
+            game.server.world_root = scratch.path().to_path_buf();
             game.enter_level(dim).unwrap();
             game.options.dedicated = Some(Vec::new());
             if output != Output::Quiet {
@@ -659,7 +659,8 @@ fn run_fixture(family: Family, output: Output, dim: Dim) {
                         guests: vec![(12, 71, MobEvent::AttackPlayer(2.0, [1.0, 80.0, 0.5], None))],
                     });
             }
-            game.last_hurt_by_player
+            game.server
+                .last_hurt_by_player
                 .insert(71, super::super::combat::PlayerCredit(99));
             let rows: Vec<_> = game.mobs.iter().map(|m| (m.id, m.join)).collect();
             VALUE
@@ -801,7 +802,10 @@ fn run_fixture(family: Family, output: Output, dim: Dim) {
                     .unwrap(),
                 Some(expected_value)
             );
-            assert_eq!(game.last_hurt_by_player.get(&71).map(|c| c.0), Some(99));
+            assert_eq!(
+                game.server.last_hurt_by_player.get(&71).map(|c| c.0),
+                Some(99)
+            );
             assert_eq!(game.world.attachment_syncs, syncs);
             let mut random = LegacyRandom::new(LEVEL_SEED);
             let draw = (expected_value == 314).then(|| random.next_long());
@@ -1125,7 +1129,7 @@ fn with_consumer_game(dim: Dim, test: impl FnOnce(&mut Game<'_>, &ConsumerProbe)
     .into();
     mod_platform::testing::with_mods(mods, || {
         with_game(|game| {
-            game.world_root = scratch.path().to_path_buf();
+            game.server.world_root = scratch.path().to_path_buf();
             game.enter_level(dim).unwrap();
             game.options.dedicated = Some(Vec::new());
             game.load_server_loot();
@@ -1319,7 +1323,7 @@ fn retained_stale_push_target() {
     let scratch =
         Scratch(std::env::temp_dir().join(format!("sunrise-stale-push-{}", std::process::id())));
     crate::game::native_entity_refs::tests::with_game(|game| {
-        game.world_root = scratch.0.clone();
+        game.server.world_root = scratch.0.clone();
         game.options.dedicated = Some(Vec::new());
         game.world
             .chunks
@@ -1404,7 +1408,7 @@ fn breathing_tick(meddle: bool) -> (Vec<i32>, i32, i32) {
         .into(),
         || {
             crate::game::native_entity_refs::tests::with_game(|game| {
-                game.world_root = scratch.0.clone();
+                game.server.world_root = scratch.0.clone();
                 game.enter_level(Dim::Overworld).unwrap();
                 game.options.dedicated = Some(Vec::new());
                 game.world
@@ -1494,7 +1498,7 @@ fn retained_breathing_tail() {
         .into(),
         || {
             crate::game::native_entity_refs::tests::with_game(|game| {
-                game.world_root = scratch.0.clone();
+                game.server.world_root = scratch.0.clone();
                 game.enter_level(Dim::Overworld).unwrap();
                 game.options.dedicated = Some(Vec::new());
                 game.world

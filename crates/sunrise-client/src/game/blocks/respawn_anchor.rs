@@ -211,8 +211,10 @@ impl Game<'_> {
         pos: Option<[i32; 3]>,
         forced: bool,
     ) -> bool {
-        let (Some(player), Some(name)) = (self.lan_acting_uuid, self.lan_acting_name.clone())
-        else {
+        let (Some(player), Some(name)) = (
+            self.server.lan_acting_uuid,
+            self.server.lan_acting_name.clone(),
+        ) else {
             return false;
         };
         let mut cancel = false;
@@ -241,7 +243,7 @@ impl Game<'_> {
         if config.is_some() {
             self.spawn = None;
         }
-        self.respawn_config = config;
+        self.server.respawn_config = config;
         true
     }
     /// `RespawnAnchorBlock.useWithoutItem` on a charged anchor: outside the
@@ -260,6 +262,7 @@ impl Game<'_> {
         };
         // RespawnConfig.isSamePosition: dimension and block.
         let same = self
+            .server
             .respawn_config
             .is_some_and(|c| c.dim == config.dim && c.pos == config.pos);
         if !same {
@@ -269,7 +272,7 @@ impl Game<'_> {
             // setRespawnPosition(config, true): the message, the point; the
             // anchor replaces a bed.
             self.system_message(Text::translate("block.minecraft.set_spawn", &[]));
-            self.respawn_config = Some(config);
+            self.server.respawn_config = Some(config);
             if let Some([x, y, z]) = self.level.world_spawn {
                 self.spawn = Some(Vec3::new(
                     f64::from(x) + 0.5,
@@ -726,7 +729,7 @@ mod connected_spawnpoint_rotation_tests {
     };
 
     fn command(game: &mut Game<'_>, text: &str) {
-        game.chat_capture = Some(Vec::new());
+        game.server.chat_capture = Some(Vec::new());
         game.ui.registries.permission = 4;
         let dispatcher = sunrise_client::command::vanilla::build_for(false, true);
         let parsed = dispatcher.parse(text, &game.ui.registries);
@@ -736,7 +739,7 @@ mod connected_spawnpoint_rotation_tests {
         let (root, ctx) = (parsed.context.clone(), ctx.clone());
         assert_eq!(game.run_chain(&root, &ctx).unwrap(), 1, "{text}");
         assert!(
-            !game.chat_capture.take().unwrap().is_empty(),
+            !game.server.chat_capture.take().unwrap().is_empty(),
             "actual command feedback {text}"
         );
     }
@@ -756,7 +759,7 @@ mod connected_spawnpoint_rotation_tests {
                 .as_nanos()
         ));
         std::fs::create_dir_all(&scratch).unwrap();
-        game.world_root = scratch.clone();
+        game.server.world_root = scratch.clone();
         // Fixture setup through the existing column insertion API; admit every lit column below.
         for x in -2..=2 {
             for z in -2..=2 {

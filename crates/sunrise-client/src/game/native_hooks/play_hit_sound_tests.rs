@@ -37,7 +37,7 @@ fn play_hit_sound_helper_and_eight_mining_ticks() {
         mod_platform::testing::with_mods(mods.into(), || {
             with_game(|game| {
                 let scratch = tempfile::tempdir().unwrap();
-                game.world_root = scratch.path().to_path_buf();
+                game.server.world_root = scratch.path().to_path_buf();
                 game.save = Arc::new(sunrise_client::save::SaveDir::new(
                     scratch.path().to_path_buf(),
                     sunrise_client::save::LevelShape::OVERWORLD,
@@ -50,10 +50,10 @@ fn play_hit_sound_helper_and_eight_mining_ticks() {
                     Some(PlayerMotion::new(game.motion, Vec3::new(4.5, 62.0, 4.5)).unwrap());
                 game.player.as_mut().unwrap().ground.on_ground = true;
                 game.creative = false;
-                game.screen = Screen::Playing;
+                game.client.screen = Screen::Playing;
                 game.title = None;
                 game.set_mapping_held("key.attack", true);
-                game.forced_hit = Some(Hit {
+                game.server.forced_hit = Some(Hit {
                     pos: [5, 63, 4],
                     face: [-1, 0, 0],
                     point: [5.0, 63.5, 4.5],

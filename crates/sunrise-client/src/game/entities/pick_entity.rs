@@ -56,15 +56,15 @@ impl Game<'_> {
                 id: entity.id() as i32,
                 distance,
                 point,
-                pickable: self.client_pick.entity_metadata.0,
-                suggest_uuid: self.client_pick.entity_metadata.1,
+                pickable: self.client.client_pick.entity_metadata.0,
+                suggest_uuid: self.client.client_pick.entity_metadata.1,
             });
         }
         let hit = self.pick_entity_hit_unified()?;
         let is_synthetic_dragon_part =
             (super::dragon::SPECIAL..super::dragon::SPECIAL + 8).contains(&hit.id);
         let id = hit.id as i32;
-        let pickable = !self.interactions.contains_key(&id)
+        let pickable = !self.client.interactions.contains_key(&id)
             && !is_synthetic_dragon_part
             && Self::has_pick_result(self.level_entity(id));
         let suggest_uuid = !is_synthetic_dragon_part && self.resident_dragon_part(hit.id).is_none();
@@ -121,7 +121,7 @@ impl Game<'_> {
         let mut pick = if subscribed {
             PickAccumulator::recording(
                 max_distance_sq,
-                std::mem::take(&mut self.client_pick.rider_candidates),
+                std::mem::take(&mut self.client.client_pick.rider_candidates),
             )
         } else {
             PickAccumulator::new(max_distance_sq)
@@ -129,7 +129,7 @@ impl Game<'_> {
         self.collect_pick_candidates_within(max_distance, &mut pick);
         if subscribed {
             self.storage_scope(|game, _| {
-                game.client_pick.rider_candidates = pick.dispatch(game);
+                game.client.client_pick.rider_candidates = pick.dispatch(game);
                 ((), true)
             });
         }
@@ -164,7 +164,7 @@ impl Game<'_> {
         };
         let from = Vec3::new(eye[0], eye[1], eye[2]);
         let max_distance = self.block_reach.max(self.entity_reach);
-        let block_hit = if self.client_pick.ray.is_some() {
+        let block_hit = if self.client.client_pick.ray.is_some() {
             None
         } else {
             self.pick_unfiltered()
@@ -409,7 +409,7 @@ mod tests {
                         "far knot outside reach+3 must fail server reach"
                     );
                     // Cross the signed i32 boundary so later dragon parts carry negative wire IDs.
-                    game.next_entity = (i32::MAX as u32) - 3;
+                    game.server.next_entity = (i32::MAX as u32) - 3;
                     let dragon = game
                         .spawn_dragon_facing([0.5, 65.0, 3.5], SpawnSite::Plain, Some(0.0))
                         .unwrap();

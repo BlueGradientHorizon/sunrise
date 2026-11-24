@@ -103,11 +103,11 @@ impl Game<'_> {
             },
         )
         .unwrap();
-        if let Some(tables) = &self.world_tables {
+        if let Some(tables) = &self.server.world_tables {
             prepared.loot.bind_from(&tables.loot_modifier_manager);
         }
         self.reload_resources.install(prepared.retained, &skipped);
-        self.structure_templates.clear();
+        self.server.structure_templates.clear();
     }
     /// The retained server reload listeners of the last successful reload.
     pub(super) fn reload_resources(&self) -> &dyn ServerReloadResources {

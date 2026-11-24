@@ -29,6 +29,7 @@ impl Game<'_> {
             (None, None)
         };
         let base = self
+            .server
             .world_tables
             .as_ref()
             .map_or_else(|| self.res.items(), |tables| &tables.items);

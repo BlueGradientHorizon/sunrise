@@ -61,39 +61,44 @@ impl Game<'_> {
         }
         self.release_mappings_on_screen_open();
         self.clear_device_keys();
-        self.pvp.editor = Some(HudEditor {
+        self.client.pvp.editor = Some(HudEditor {
             from_options,
             ..HudEditor::default()
         });
-        self.screen = Screen::HudEditor;
+        self.client.screen = Screen::HudEditor;
         self.commit_screen_transition();
         self.capture(false);
     }
     pub(in crate::game) fn close_hud_editor(&mut self) {
-        let from_options = self.pvp.editor.take().is_some_and(|e| e.from_options);
+        let from_options = self
+            .client
+            .pvp
+            .editor
+            .take()
+            .is_some_and(|e| e.from_options);
         self.settings.save(&Self::options_path());
         if from_options {
             self.open_options_at(false, sunrise_client::options_ui::Page::Pvp);
         } else {
-            self.screen = Screen::Playing;
+            self.client.screen = Screen::Playing;
             self.commit_screen_transition();
             self.capture(true);
         }
     }
     /// The editor key, from the game.
     pub(super) fn hud_editor_key_press(&mut self, name: &str) -> bool {
-        if self.screen != Screen::Playing
+        if self.client.screen != Screen::Playing
             || self.settings.extras.pvp.editor_key != name
             || name == "key.keyboard.unknown"
         {
             return false;
         }
         self.open_hud_editor(false);
-        self.screen == Screen::HudEditor
+        self.client.screen == Screen::HudEditor
     }
     /// Whether the HUD draws the editor's stand-ins for widgets that have nothing to show.
     pub(super) fn hud_editing(&self) -> bool {
-        self.screen == Screen::HudEditor
+        self.client.screen == Screen::HudEditor
     }
     fn style_label(&self, opt: Opt) -> Text {
         let p = &self.settings.extras.pvp;
@@ -106,8 +111,9 @@ impl Game<'_> {
     }
     /// The topmost widget under the cursor.
     fn widget_under_cursor(&self) -> Option<(WidgetId, [f32; 4])> {
-        let (cx, cy) = self.cursor;
-        self.pvp
+        let (cx, cy) = self.client.cursor;
+        self.client
+            .pvp
             .boxes
             .iter()
             .rev()
@@ -122,16 +128,22 @@ impl Game<'_> {
             let [a, r, g, b] = c.to_be_bytes();
             rgba(r, g, b, a)
         };
-        let held = self.pvp.editor.as_ref().and_then(|e| e.drag).map(|d| d.0);
+        let held = self
+            .client
+            .pvp
+            .editor
+            .as_ref()
+            .and_then(|e| e.drag)
+            .map(|d| d.0);
         let hot = held.or(self.widget_under_cursor().map(|(id, _)| id));
-        for &(id, [x, y, bw, bh]) in &self.pvp.boxes {
+        for &(id, [x, y, bw, bh]) in &self.client.pvp.boxes {
             let c = colour(if Some(id) == hot { FRAME_HOT } else { FRAME });
             batch.fill(atlas, x - 1.0, y - 1.0, bw + 2.0, 1.0, c);
             batch.fill(atlas, x - 1.0, y + bh, bw + 2.0, 1.0, c);
             batch.fill(atlas, x - 1.0, y, 1.0, bh, c);
             batch.fill(atlas, x + bw, y, 1.0, bh, c);
         }
-        if let Some(e) = &self.pvp.editor {
+        if let Some(e) = &self.client.pvp.editor {
             if let Some(x) = e.guides.0 {
                 batch.fill(atlas, x, 0.0, 1.0, h, colour(GUIDE));
             }
@@ -154,7 +166,7 @@ impl Game<'_> {
         let boxes = self.settings.extras.pvp.hud.background;
         for (i, (label, &(x, y))) in labels.iter().chain(&rest).zip(&places).enumerate() {
             let active = i != 3 || boxes;
-            let hover = active && ui::hovered(self.cursor, x, y, BUTTON_W, BUTTON_H);
+            let hover = active && ui::hovered(self.client.cursor, x, y, BUTTON_W, BUTTON_H);
             ui::button(batch, atlas, x, y, BUTTON_W, BUTTON_H, label, active, hover);
         }
         self.draw_screen_phase(batch, sunrise_client::screen_draw::RenderPhase::Foreground);
@@ -163,7 +175,7 @@ impl Game<'_> {
     pub(super) fn hud_editor_press(&mut self, right: bool) -> bool {
         let size = self.gui_size();
         for (i, &(x, y)) in buttons(size).iter().enumerate() {
-            if right || !ui::hovered(self.cursor, x, y, BUTTON_W, BUTTON_H) {
+            if right || !ui::hovered(self.client.cursor, x, y, BUTTON_W, BUTTON_H) {
                 continue;
             }
             let back = self.has_shift_down();
@@ -189,35 +201,35 @@ impl Game<'_> {
             *self.settings.extras.pvp.layout.get_mut(id) = Place::default();
             self.settings.save(&Self::options_path());
             return true;
-        } else if let Some(e) = &mut self.pvp.editor {
-            e.drag = Some((id, self.cursor.0 - x, self.cursor.1 - y));
+        } else if let Some(e) = &mut self.client.pvp.editor {
+            e.drag = Some((id, self.client.cursor.0 - x, self.client.cursor.1 - y));
             return true;
         }
         false
     }
     /// The cursor moved: the held widget follows, snapping to edges near it.
     pub(super) fn hud_editor_drag(&mut self) -> bool {
-        let Some((id, dx, dy)) = self.pvp.editor.as_ref().and_then(|e| e.drag) else {
+        let Some((id, dx, dy)) = self.client.pvp.editor.as_ref().and_then(|e| e.drag) else {
             return false;
         };
-        let Some(&(_, [_, _, w, h])) = self.pvp.boxes.iter().find(|(b, _)| *b == id) else {
+        let Some(&(_, [_, _, w, h])) = self.client.pvp.boxes.iter().find(|(b, _)| *b == id) else {
             return false;
         };
         let screen = self.gui_size();
-        let others = || self.pvp.boxes.iter().filter(|(b, _)| *b != id);
+        let others = || self.client.pvp.boxes.iter().filter(|(b, _)| *b != id);
         let xs: Vec<(f32, f32)> = others().map(|(_, r)| (r[0], r[2])).collect();
         let ys: Vec<(f32, f32)> = others().map(|(_, r)| (r[1], r[3])).collect();
-        let (x, gx) = pvp_hud::snap(self.cursor.0 - dx, w, screen.0, &xs);
-        let (y, gy) = pvp_hud::snap(self.cursor.1 - dy, h, screen.1, &ys);
+        let (x, gx) = pvp_hud::snap(self.client.cursor.0 - dx, w, screen.0, &xs);
+        let (y, gy) = pvp_hud::snap(self.client.cursor.1 - dy, h, screen.1, &ys);
         let at = pvp_hud::to_fractions((x, y), (w, h), screen);
         self.settings.extras.pvp.layout.get_mut(id).at = Some(at);
-        if let Some(e) = &mut self.pvp.editor {
+        if let Some(e) = &mut self.client.pvp.editor {
             e.guides = (gx, gy);
         }
         true
     }
     pub(super) fn hud_editor_release(&mut self) -> bool {
-        if let Some(e) = &mut self.pvp.editor
+        if let Some(e) = &mut self.client.pvp.editor
             && e.drag.take().is_some()
         {
             e.guides = (None, None);

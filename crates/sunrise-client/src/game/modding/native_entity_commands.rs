@@ -59,7 +59,7 @@ impl Game<'_> {
         let permission = level.level();
         match target {
             // The acting player, in place for this turn.
-            Target::Player => match self.lan_acting_uuid {
+            Target::Player => match self.server.lan_acting_uuid {
                 Some(uuid) => self.run_command_as_player(uuid, line, permission, suppress_output),
                 None => (false, Vec::new()),
             },
@@ -124,13 +124,13 @@ impl Game<'_> {
             silent: suppress_output,
             ..self.player_source()
         };
-        let outer_admins = std::mem::take(&mut self.admin_feedback);
+        let outer_admins = std::mem::take(&mut self.server.admin_feedback);
         let (ok, lines) = self.run_command_from(source, line, permission);
         for line in &lines {
             self.native_send(uuid, system_chat(line));
         }
         self.send_admin_feedback();
-        self.admin_feedback = outer_admins;
+        self.server.admin_feedback = outer_admins;
         (ok, lines)
     }
     /// `line` run from `source` at `permission`, with what it tells its source:
@@ -142,26 +142,26 @@ impl Game<'_> {
         permission: u8,
     ) -> (bool, Vec<Text>) {
         let silent = source.silent;
-        let outer = self.command_source.replace(source);
-        let filter = std::mem::replace(&mut self.native_command_filter, true);
-        let console = self.console_broadcast.take();
+        let outer = self.server.command_source.replace(source);
+        let filter = std::mem::replace(&mut self.server.native_command_filter, true);
+        let console = self.server.console_broadcast.take();
         // A silent source has no recipient for command feedback. Do not capture
         // explicit broadcasts such as /say; they go straight to their recipients.
         let capture = std::mem::replace(
-            &mut self.chat_capture,
+            &mut self.server.chat_capture,
             if silent { None } else { Some(Vec::new()) },
         );
-        let outer_exec = std::mem::take(&mut self.exec);
-        let outer_results = self.cmds.results.take();
+        let outer_exec = std::mem::take(&mut self.server.exec);
+        let outer_results = self.server.cmds.results.take();
         let level = std::mem::replace(&mut self.ui.registries.permission, permission);
         let ok = self.run_command(line);
         self.ui.registries.permission = level;
-        self.exec = outer_exec;
-        self.cmds.results = outer_results;
-        let lines = std::mem::replace(&mut self.chat_capture, capture).unwrap_or_default();
-        self.console_broadcast = console;
-        self.native_command_filter = filter;
-        self.command_source = outer;
+        self.server.exec = outer_exec;
+        self.server.cmds.results = outer_results;
+        let lines = std::mem::replace(&mut self.server.chat_capture, capture).unwrap_or_default();
+        self.server.console_broadcast = console;
+        self.server.native_command_filter = filter;
+        self.server.command_source = outer;
         (ok, lines)
     }
 }
@@ -214,7 +214,7 @@ mod tests {
                 })
                 .collect();
             game.as_guest(12, |game| {
-                game.chat_capture = Some(vec![Text::literal("outer command")]);
+                game.server.chat_capture = Some(vec![Text::literal("outer command")]);
                 let denied = stand.run_command_with_output(
                     game,
                     "/say forbidden",
@@ -235,7 +235,8 @@ mod tests {
                 assert!(result.success);
                 assert!(result.feedback.is_empty());
                 assert_eq!(
-                    game.chat_capture
+                    game.server
+                        .chat_capture
                         .as_ref()
                         .unwrap()
                         .iter()
@@ -282,9 +283,9 @@ mod tests {
                     let level = PermissionLevel::from_level(i32::from(
                         player.permission_level(game).unwrap(),
                     ));
-                    let before = game.guest_packets.len();
+                    let before = game.server.guest_packets.len();
                     // A surrounding command's output must stay separate from this run.
-                    game.chat_capture = Some(vec![Text::literal("outer command")]);
+                    game.server.chat_capture = Some(vec![Text::literal("outer command")]);
                     let result = player.entity().run_command_with_output(
                         game,
                         "/gamemode creative",
@@ -305,7 +306,7 @@ mod tests {
                         assert_eq!(result.feedback, ["Set own game mode to Creative Mode"]);
                         assert_eq!(player.game_mode(game), Some(GameMode::Creative));
                     }
-                    let chat: Vec<_> = game.guest_packets[before..]
+                    let chat: Vec<_> = game.server.guest_packets[before..]
                         .iter()
                         .filter_map(|packet| match packet {
                             C::SystemChat(chat) if !chat.overlay => {
@@ -315,7 +316,7 @@ mod tests {
                         })
                         .collect();
                     assert_eq!(chat, result.feedback);
-                    let outer = game.chat_capture.take().unwrap();
+                    let outer = game.server.chat_capture.take().unwrap();
                     assert_eq!(outer.len(), 1);
                     assert_eq!(outer[0].plain(), "outer command");
                 })
@@ -371,7 +372,7 @@ mod tests {
                     "the operator hears unsuppressed feedback"
                 );
 
-                let before = game.guest_packets.len();
+                let before = game.server.guest_packets.len();
                 let quiet = entity.run_command_with_output(
                     game,
                     "gamemode survival",
@@ -383,7 +384,7 @@ mod tests {
                 assert_eq!(player.game_mode(game), Some(GameMode::Survival));
                 assert!(!entity.run_command(game, "gamemode creative", PermissionLevel::All, true));
                 assert!(
-                    !game.guest_packets[before..]
+                    !game.server.guest_packets[before..]
                         .iter()
                         .any(|p| matches!(p, C::SystemChat(_)))
                 );

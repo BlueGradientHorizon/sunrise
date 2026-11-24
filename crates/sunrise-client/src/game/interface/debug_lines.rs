@@ -47,10 +47,10 @@ impl Game<'_> {
             .iter()
             .map(|e| e.path)
             .filter(|path| {
-                self.debug_entries.enabled(
-                    &self.registered_debug_entries,
+                self.client.debug_entries.enabled(
+                    &self.client.registered_debug_entries,
                     path,
-                    self.debug,
+                    self.client.debug,
                     reduced,
                 )
             })
@@ -78,7 +78,7 @@ impl Game<'_> {
                     "Minecraft {v} ({v}/sunrise)",
                     v = sunrise_client::save::VERSION_NAME
                 )),
-                "gpu_utilization" => d.line(overlay::gpu_line(self.gpu_utilization)),
+                "gpu_utilization" => d.line(overlay::gpu_line(self.client.gpu_utilization)),
                 "heightmap" => self.debug_heightmap_lines(d, server.as_ref()),
                 "light_levels" => {
                     if let Some(feet) = self.debug_feet() {
@@ -113,7 +113,7 @@ impl Game<'_> {
                     d.group("looking_at_fluid", lines);
                 }
                 "memory" => {
-                    if let Some(lines) = self.memory_meter.borrow_mut().lines() {
+                    if let Some(lines) = self.client.memory_meter.borrow_mut().lines() {
                         d.group("memory", lines);
                     }
                 }
@@ -166,7 +166,7 @@ impl Game<'_> {
                                 sunrise_client::sound_engine::STATIC_CHANNELS,
                                 sunrise_client::sound_engine::STREAMING_CHANNELS,
                             ],
-                            self.ambience.moodiness,
+                            self.client.ambience.moodiness,
                         ));
                     }
                 }
@@ -177,14 +177,14 @@ impl Game<'_> {
                     let pass_lines = self.renderer.as_ref().map_or_else(Vec::new, |r| {
                         overlay::shader_pass_lines(&r.shader_pass_times())
                     });
-                    if self.debug && !pass_lines.is_empty() {
+                    if self.client.debug && !pass_lines.is_empty() {
                         d.group("shader pack", pass_lines);
                     }
                     // Sunrise's own passes, in a group of their own.
                     let own_lines = self.renderer.as_ref().map_or_else(Vec::new, |r| {
                         overlay::labelled_pass_lines("Sunrise GPU", &r.own_pass_times())
                     });
-                    if self.debug && !own_lines.is_empty() {
+                    if self.client.debug && !own_lines.is_empty() {
                         d.group("Sunrise passes", own_lines);
                     }
                     let detail_lines = self.renderer.as_ref().map_or_else(Vec::new, |r| {
@@ -197,7 +197,7 @@ impl Game<'_> {
                             )
                         })
                     });
-                    if self.debug && !detail_lines.is_empty() {
+                    if self.client.debug && !detail_lines.is_empty() {
                         d.group("Sunrise pass detail", detail_lines);
                     }
                 }
@@ -211,7 +211,7 @@ impl Game<'_> {
                             .as_ref()
                             .and_then(|server| server.terrain(self.dim.id()));
                         let dim = self.dim.id();
-                        let mut cache = self.debug_density.borrow_mut();
+                        let mut cache = self.client.debug_density.borrow_mut();
                         let line = cache.line(
                             dim,
                             feet,
@@ -229,10 +229,10 @@ impl Game<'_> {
         }
         // A native mod's entries come after vanilla's, in registration order.
         for (group, lines) in debug_entries::mod_lines(
-            &self.registered_debug_entries,
+            &self.client.registered_debug_entries,
             self,
-            &self.debug_entries,
-            self.debug,
+            &self.client.debug_entries,
+            self.client.debug,
             reduced,
         ) {
             d.group(debug_entries::group_key(group), lines);
@@ -304,7 +304,7 @@ impl Game<'_> {
             .map_or(self.settings.simulation_distance, |r| r.simulation_distance);
         d.line(format!(
             "E: {}/{}, SD: {simulation}",
-            self.rendered_mobs.get(),
+            self.client.rendered_mobs.get(),
             self.debug_entity_count()
         ));
     }
@@ -586,6 +586,7 @@ impl Game<'_> {
             overlay::local_difficulty_line(self.local_difficulty(at).effective)
         });
         let spawn_counts = self
+            .server
             .spawn_counts
             .get(&self.dim)
             .map(|(chunks, counts)| overlay::spawn_counts_line(*chunks, counts));

@@ -40,7 +40,7 @@ impl Game<'_> {
         let dimension = self.dim;
         let still = |game: &Self| {
             game.dim == dimension
-                && !game.world_debug
+                && !game.server.world_debug
                 && game.world.is_loaded_at(pos.x, pos.y, pos.z)
                 && !game.world.carrier_fences.locks_cell(&at)
                 && game.world.block(pos.x, pos.y, pos.z) == state

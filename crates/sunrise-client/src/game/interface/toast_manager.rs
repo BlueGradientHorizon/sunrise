@@ -125,7 +125,8 @@ impl Game<'_> {
         ) {
             return false;
         }
-        self.toast_manager
+        self.client
+            .toast_manager
             .queued
             .push_back(Toast::System(id, toast));
         true
@@ -136,7 +137,7 @@ impl Game<'_> {
         id: SystemToastId,
         new: SystemToast,
     ) -> bool {
-        if let Some(toast) = self.toast_manager.system_mut(id) {
+        if let Some(toast) = self.client.toast_manager.system_mut(id) {
             toast.reset_from(new);
             true
         } else {
@@ -154,7 +155,7 @@ impl Game<'_> {
         self.add_hook_panic_toasts();
         self.update_tutorial_toasts();
         let multiplier = self.settings.notification_display_time;
-        let (visibility_sound, challenge_sound) = self.toast_manager.update(multiplier);
+        let (visibility_sound, challenge_sound) = self.client.toast_manager.update(multiplier);
         if let Some(show) = visibility_sound {
             let event = if show {
                 "minecraft:ui.toast.in"
@@ -168,7 +169,7 @@ impl Game<'_> {
                 .play("minecraft:ui.toast.challenge_complete", None, 1.0, 1.0);
         }
         let atlas = &self.gui.atlas;
-        for entry in &self.toast_manager.visible {
+        for entry in &self.client.toast_manager.visible {
             let y = entry.slot as f32 * 32.0;
             match &entry.toast {
                 Toast::Diagnostic {

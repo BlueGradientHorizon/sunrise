@@ -194,7 +194,7 @@ fn run(game: &mut super::Game<'_>, scene: &Scene, ticks: impl IntoIterator<Item 
     for tick in ticks {
         let mut at = scene.clone();
         at.clock.as_mut().unwrap().tick = tick;
-        game.frames += 1;
+        game.client.frames += 1;
         assert_eq!(draw(game, &at, view()).0, Ok(()), "tick {tick}");
     }
 }
@@ -208,12 +208,12 @@ fn a_scene_of_blocks_alone_keeps_no_state_and_reads_no_clock() {
         let (result, drawn) = draw(game, &alone, view());
         assert_eq!(result, Ok(()));
         assert!(drawn > 0, "the furnace is drawn");
-        assert_eq!(game.live_scenes.borrow().len(), 0);
+        assert_eq!(game.client.live_scenes.borrow().len(), 0);
         let still =
             Scene::new(blocks).with_clock(SceneClock::new(3, 40, 0.5).animate_blocks(false));
         assert_eq!(draw(game, &still, view()), (Ok(()), drawn));
         assert_eq!(
-            game.live_scenes.borrow().len(),
+            game.client.live_scenes.borrow().len(),
             0,
             "a clock that animates nothing"
         );
@@ -243,7 +243,7 @@ fn a_scene_accepts_4096_blocks_and_refuses_4097_without_drawing_or_changing_stat
         run(game, &live, 0..=30);
         let particles = game.scene_particles("", 41);
         assert!(!particles.is_empty(), "the running furnace has particles");
-        let kept = game.live_scenes.borrow().len();
+        let kept = game.client.live_scenes.borrow().len();
         assert_eq!(game.scene_tick("", 41), Some(30));
 
         let mut refused = accepted.with_clock(SceneClock::new(41, 31, 0.0));
@@ -254,7 +254,7 @@ fn a_scene_accepts_4096_blocks_and_refuses_4097_without_drawing_or_changing_stat
             (Err(SceneError::TooManyBlocks), 0)
         );
         assert_eq!(
-            game.live_scenes.borrow().len(),
+            game.client.live_scenes.borrow().len(),
             kept,
             "no scene added or removed"
         );
@@ -285,7 +285,7 @@ fn a_furnaces_particles_replay_pause_step_and_start_over_from_the_last_twenty_ti
             "a lit furnace's animate ticks make particles"
         );
         assert_eq!(game.scene_tick("", 11), Some(40));
-        game.live_scenes.borrow_mut().clear();
+        game.client.live_scenes.borrow_mut().clear();
         run(game, &scene, 0..=40);
         assert_eq!(
             game.scene_particles("", 11),
@@ -308,16 +308,16 @@ fn a_furnaces_particles_replay_pause_step_and_start_over_from_the_last_twenty_ti
         let jumped = game.scene_particles("", 11);
         assert_eq!(game.scene_tick("", 11), Some(1000));
         assert!(jumped.iter().all(|p| p.2 <= 20), "{jumped:?}");
-        game.live_scenes.borrow_mut().clear();
+        game.client.live_scenes.borrow_mut().clear();
         run(game, &scene, [980, 1000]);
         assert_eq!(game.scene_particles("", 11), jumped);
         // The view never changes what lives, an extreme finite centre included.
-        game.live_scenes.borrow_mut().clear();
+        game.client.live_scenes.borrow_mut().clear();
         let far = SceneView::new([f32::MAX, -f32::MAX, f32::MAX], 0.0, 0.0, 20.0);
         for tick in [980, 1000] {
             let mut at = scene.clone();
             at.clock.as_mut().unwrap().tick = tick;
-            game.frames += 1;
+            game.client.frames += 1;
             let _ = draw(game, &at, far);
         }
         assert_eq!(game.scene_tick("", 11), Some(1000));
@@ -354,7 +354,7 @@ fn a_fifth_animating_scene_draws_its_last_state_and_is_refused_by_name() {
         let scene = |id| Scene::new(blocks.clone()).with_clock(SceneClock::new(id, 0, 0.0));
         run(game, &scene(4), 0..=30);
         let last = game.scene_particles("", 4);
-        game.frames += 1;
+        game.client.frames += 1;
         for id in 0..4 {
             let mut at = scene(id);
             at.clock.as_mut().unwrap().tick = 31;
@@ -371,7 +371,7 @@ fn a_fifth_animating_scene_draws_its_last_state_and_is_refused_by_name() {
             "its clock did not advance"
         );
         assert_eq!(game.scene_particles("", 4), last);
-        game.frames += 1;
+        game.client.frames += 1;
         assert_eq!(draw(game, &fifth, view()).0, Ok(()));
         assert_eq!(game.scene_tick("", 4), Some(31));
     });

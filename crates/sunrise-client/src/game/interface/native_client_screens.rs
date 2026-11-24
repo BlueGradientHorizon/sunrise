@@ -25,24 +25,24 @@ impl Game<'_> {
         if let Some(closed) = self.close_foreground() {
             return closed;
         }
-        if self.sign_edit.is_some() {
+        if self.client.sign_edit.is_some() {
             self.close_sign_editor();
             return true;
         }
         // A book or a lectern's book is the same kind of overlay: its screen's onClose (a
         // lectern's closes its menu, sending the container close).
-        if self.book.is_some() {
+        if self.client.book.is_some() {
             self.close_book();
             return true;
         }
-        if self.screen == Screen::Playing {
+        if self.client.screen == Screen::Playing {
             return false;
         }
-        let before = self.screen;
+        let before = self.client.screen;
         // The Escape path itself, so every screen's own close and follow-ups
         // (and the screen hooks' closing notices) are exactly the key's.
         let _ = self.key_pressed(KeyCode::Escape, KeyCode::Escape);
-        self.screen != before
+        self.client.screen != before
     }
     /// Escape on a screen opened in front of the others, in the order `window_event` gives
     /// it the key: the death-exit confirmation answers no after its delay, a command's or
@@ -50,7 +50,7 @@ impl Game<'_> {
     /// declines (disconnecting for a required pack), and a dialog runs its own Escape.
     /// Returns whether it closed, or `None` when no such screen is open.
     fn close_foreground(&mut self) -> Option<bool> {
-        if self.screen == Screen::Dead
+        if self.client.screen == Screen::Dead
             && let Some(shown) = self.ui.death_confirm
         {
             if shown.elapsed().as_millis() >= 1000
@@ -60,15 +60,15 @@ impl Game<'_> {
             }
             return Some(self.ui.death_confirm.is_none());
         }
-        if self.command_prompt.is_some() {
+        if self.client.command_prompt.is_some() {
             self.command_prompt_key(KeyCode::Escape);
-            return Some(self.command_prompt.is_none());
+            return Some(self.client.command_prompt.is_none());
         }
-        if self.link_prompt.is_some() {
+        if self.client.link_prompt.is_some() {
             self.answer_link_prompt(false);
             return Some(true);
         }
-        if self.code_of_conduct.is_some() {
+        if self.client.code_of_conduct.is_some() {
             return Some(false);
         }
         if self.server_packs.prompt.is_some() {
@@ -95,8 +95,8 @@ impl Game<'_> {
     /// world.
     pub(in crate::game) fn open_inventory(&mut self) -> bool {
         if self.player.is_none()
-            || self.screen != Screen::Playing
-            || self.sign_edit.is_some()
+            || self.client.screen != Screen::Playing
+            || self.client.sign_edit.is_some()
             || self.spectator()
             || self.in_portal_transition()
         {
@@ -107,13 +107,13 @@ impl Game<'_> {
             return true;
         }
         self.open_inventory_key_action();
-        self.screen != Screen::Playing
+        self.client.screen != Screen::Playing
     }
     /// `AbstractSignEditScreen`'s sign: its block position and the side the
     /// editor is on. None when no sign editor is open, or outside a world.
     pub(in crate::game) fn sign_editor(&self) -> Option<SignEditView> {
         self.player.as_ref()?;
-        let edit = self.sign_edit.as_ref()?;
+        let edit = self.client.sign_edit.as_ref()?;
         Some(SignEditView {
             pos: BlockPos::new(edit.pos.0, edit.pos.1, edit.pos.2),
             front: edit.front,
@@ -224,7 +224,7 @@ pub(in crate::game) mod client_screen_tests {
             sent(&mut reader);
 
             assert!(game.close_screen(), "the lectern's book is open");
-            assert!(game.book.is_none());
+            assert!(game.client.book.is_none());
             let Some(S::ContainerClose(close)) = sent(&mut reader)
                 .into_iter()
                 .find(|p| matches!(p, S::ContainerClose(_)))
@@ -253,7 +253,7 @@ pub(in crate::game) mod client_screen_tests {
             (game.settings.chat_links, game.settings.chat_links_prompt) = (true, true);
             game.click_url("https://example.org".into());
             assert!(
-                game.link_prompt.is_some(),
+                game.client.link_prompt.is_some(),
                 "the confirmation is over the book"
             );
             sent(&mut reader);
@@ -262,10 +262,10 @@ pub(in crate::game) mod client_screen_tests {
             }
 
             assert!(game.close_screen(), "the confirmation was open");
-            assert!(game.link_prompt.is_none());
+            assert!(game.client.link_prompt.is_none());
             assert!(
                 matches!(
-                    game.book,
+                    game.client.book,
                     Some(BookScreen::View {
                         lectern: Some(_),
                         ..
@@ -277,7 +277,7 @@ pub(in crate::game) mod client_screen_tests {
             assert!(sent(&mut reader).is_empty(), "no menu close went out");
 
             assert!(game.close_screen(), "the lectern is the screen now");
-            assert!(game.book.is_none());
+            assert!(game.client.book.is_none());
             assert_eq!(menu(game), None);
             assert!(
                 sent(&mut reader)
@@ -299,10 +299,10 @@ pub(in crate::game) mod client_screen_tests {
                 page: 0,
                 lectern: None,
             });
-            assert!(game.book.is_some());
+            assert!(game.client.book.is_some());
             sent(&mut reader);
             assert!(game.close_screen(), "the written book was open");
-            assert!(game.book.is_none());
+            assert!(game.client.book.is_none());
             assert!(
                 sent(&mut reader).is_empty(),
                 "a written book's close sends nothing"
@@ -314,7 +314,7 @@ pub(in crate::game) mod client_screen_tests {
             game.book_input(None, Some("unsaved"));
             sent(&mut reader);
             assert!(game.close_screen(), "the editor was open");
-            assert!(game.book.is_none());
+            assert!(game.client.book.is_none());
             assert!(
                 sent(&mut reader).is_empty(),
                 "Escape in the editor sends no edit and no menu close"
@@ -390,7 +390,12 @@ pub(in crate::game) mod client_screen_tests {
                 );
                 sent(&mut reader);
                 game.save_book(false);
-                assert_eq!(game.book.is_none(), case.screen_closed, "{}", case.name);
+                assert_eq!(
+                    game.client.book.is_none(),
+                    case.screen_closed,
+                    "{}",
+                    case.name
+                );
                 let edits: Vec<_> = sent(&mut reader)
                     .into_iter()
                     .filter(|p| matches!(p, S::EditBook(_)))
@@ -465,12 +470,12 @@ pub(in crate::game) mod client_screen_tests {
                 title: sunrise_core::nbt::Tag::String("Chest".into()),
             }))
             .unwrap();
-            assert_eq!(game.screen, Screen::Inventory);
+            assert_eq!(game.client.screen, Screen::Inventory);
             assert!(game.screen_title().is_some(), "the server's menu is open");
             sent(&mut reader);
 
             assert!(game.close_screen(), "a chest screen is open");
-            assert_eq!(game.screen, Screen::Playing);
+            assert_eq!(game.client.screen, Screen::Playing);
             assert!(game.screen_title().is_none(), "the client menu is closed");
             let Some(S::ContainerClose(close)) = sent(&mut reader)
                 .into_iter()
@@ -489,7 +494,7 @@ pub(in crate::game) mod client_screen_tests {
             let mut reader = logged_in(game);
             game.set_screen(Screen::Inventory);
             assert!(game.close_screen());
-            assert_eq!(game.screen, Screen::Playing);
+            assert_eq!(game.client.screen, Screen::Playing);
             let Some(S::ContainerClose(close)) = sent(&mut reader)
                 .into_iter()
                 .find(|p| matches!(p, S::ContainerClose(_)))
@@ -505,7 +510,7 @@ pub(in crate::game) mod client_screen_tests {
     fn closing_with_no_screen_reports_false_and_sends_nothing() {
         with_client_game(|game| {
             let mut reader = logged_in(game);
-            assert_eq!(game.screen, Screen::Playing);
+            assert_eq!(game.client.screen, Screen::Playing);
             assert!(!game.close_screen());
             assert!(sent(&mut reader).is_empty());
         });
@@ -517,13 +522,13 @@ pub(in crate::game) mod client_screen_tests {
         with_client_game(|game| {
             let mut reader = logged_in(game);
             assert!(game.open_inventory());
-            assert_eq!(game.screen, Screen::Inventory);
+            assert_eq!(game.client.screen, Screen::Inventory);
             assert!(
                 sent(&mut reader).is_empty(),
                 "the inventory opens without telling the server"
             );
             assert!(!game.open_inventory(), "a screen is already open");
-            assert_eq!(game.screen, Screen::Inventory);
+            assert_eq!(game.client.screen, Screen::Inventory);
         });
     }
 
@@ -554,7 +559,7 @@ pub(in crate::game) mod client_screen_tests {
             });
             assert!(!game.open_inventory(), "the sign editor is already open");
             assert!(game.sign_editor().is_some());
-            assert_eq!(game.screen, Screen::Playing);
+            assert_eq!(game.client.screen, Screen::Playing);
             assert!(
                 sent(&mut reader).is_empty(),
                 "no vehicle menu command was sent"

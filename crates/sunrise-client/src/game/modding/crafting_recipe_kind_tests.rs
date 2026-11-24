@@ -120,7 +120,7 @@ fn registered_crafting_remainder_drops_through_server_item_toss() {
                 game.res.core.item_data.context(),
             )
             .unwrap();
-            game.world_tables = None;
+            game.server.world_tables = None;
             game.recipe_tables.install_test_recipes(recipes);
             let host: &dyn mod_api::Host = game;
             let machine = host.recipes_of_type("recipe_probe:machine_type");
@@ -190,7 +190,7 @@ fn registered_crafting_remainder_drops_through_server_item_toss() {
                 )
                 .unwrap(),
             );
-            game.screen = Screen::Inventory;
+            game.client.screen = Screen::Inventory;
             game.craft_size = 2;
             game.creative = false;
             game.carried = None;
@@ -229,7 +229,7 @@ fn unregistered_serializer_failed_reload_preserves_previous_recipes() {
     mod_platform::testing::with_mods(mods, || {
         super::native_entity_refs::tests::with_game(|game| {
             let scratch = tempfile::tempdir().unwrap();
-            game.world_root = scratch.path().to_path_buf();
+            game.server.world_root = scratch.path().to_path_buf();
             let recipes = sunrise_client::crafting::Recipes::from_sources(
                 &game.options.resources,
                 game.items(),
@@ -241,7 +241,7 @@ fn unregistered_serializer_failed_reload_preserves_previous_recipes() {
                 game.res.core.item_data.context(),
             )
             .unwrap();
-            game.world_tables = None;
+            game.server.world_tables = None;
             game.recipe_tables.install_test_recipes(recipes);
             assert!(game.recipes().recipe("recipe_probe:literal").is_some());
             bad_recipe.store(true, Ordering::Relaxed);

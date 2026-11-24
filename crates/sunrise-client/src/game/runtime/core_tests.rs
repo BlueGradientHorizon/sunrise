@@ -42,11 +42,11 @@ fn reload_resolves_parts_against_reloaded_tags() {
         );
         game.load_server_loot();
         let stack = super::functions::pack_stack(
-            &game.world_root,
+            &game.server.world_root,
             &game.options.resources,
             &game.pack.data_source,
             &game.pack.data_changes,
-            game.cmds.vanilla_disabled,
+            game.server.cmds.vanilla_disabled,
             &game.level.enabled_features,
             &game.pack.additional_data,
         );
@@ -188,7 +188,7 @@ fn client_modifier_snapshot_tracks_focus_loss() {
         fn set_control_flow(&self, _: ControlFlow) {}
     }
     super::native_entity_refs::tests::with_client_game(|game| {
-        game.modifiers = ModifiersState::SHIFT | ModifiersState::ALT;
+        game.client.modifiers = ModifiersState::SHIFT | ModifiersState::ALT;
         let snapshot = (game as &dyn ClientHost).modifiers();
         assert!(snapshot.shift());
         assert!(snapshot.alt());
@@ -258,7 +258,7 @@ fn exercise_blank_inventory_presses() {
                         game.settings.gui_scale_inputs(),
                     );
                     let (x, y) = game.inventory_origin(&batch);
-                    game.cursor = (x + 3.0, y + 3.0);
+                    game.client.cursor = (x + 3.0, y + 3.0);
                     assert_eq!(game.inventory_target(), (None, false));
                     for button in [
                         MouseButton::Left,
@@ -428,8 +428,8 @@ fn right_click_block_controls_cauldron_use() {
         mob.extra.leash = Some(sunrise_client::mobs::leash::Holder::Player);
         game.mobs.push(mob);
         game.inventory[game.selected] = Some(ItemStack::new("minecraft:lead", 1));
-        game.guest_use = Some(GuestUse::on_block(Hand::Main));
-        game.forced_hit = Some(hit);
+        game.server.guest_use = Some(GuestUse::on_block(Hand::Main));
+        game.server.forced_hit = Some(hit);
         cancel.store(true, Ordering::SeqCst);
         let before = calls.load(Ordering::SeqCst);
         game.use_item_as_player().unwrap();
@@ -441,8 +441,8 @@ fn right_click_block_controls_cauldron_use() {
 
         // A spectator's packet reaches the event, even when canceled.
         game.set_mode_id(3);
-        game.guest_use = Some(GuestUse::on_block(Hand::Main));
-        game.forced_hit = Some(hit);
+        game.server.guest_use = Some(GuestUse::on_block(Hand::Main));
+        game.server.forced_hit = Some(hit);
         cancel.store(true, Ordering::SeqCst);
         let before = calls.load(Ordering::SeqCst);
         game.use_item_as_player().unwrap();
@@ -486,8 +486,8 @@ fn fence_ties_without_a_lead_only_on_main_hand() {
         );
         mob.extra.leash = Some(Holder::Player);
         game.mobs.push(mob);
-        game.forced_hit = Some(hit);
-        game.guest_use = Some(GuestUse::on_block(Hand::Off));
+        game.server.forced_hit = Some(hit);
+        game.server.guest_use = Some(GuestUse::on_block(Hand::Off));
         game.with_hand(Hand::Off, |game| game.use_hand(Some(&hit)))
             .unwrap();
         assert_eq!(game.mobs[0].extra.leash, Some(Holder::Player));
@@ -497,7 +497,7 @@ fn fence_ties_without_a_lead_only_on_main_hand() {
         assert_eq!(game.mobs[0].extra.leash, Some(Holder::Knot(hit.pos)));
         game.mobs[0].extra.leash = Some(Holder::Player);
         game.offhand = None;
-        game.guest_use = Some(GuestUse::on_block(Hand::Main));
+        game.server.guest_use = Some(GuestUse::on_block(Hand::Main));
         game.with_hand(Hand::Main, |game| game.use_hand(Some(&hit)))
             .unwrap();
         assert_eq!(game.mobs[0].extra.leash, Some(Holder::Knot(hit.pos)));
@@ -1335,7 +1335,7 @@ fn eager_saves_wait_for_an_open_world_and_for_light() {
     game.world.modified.extend([(0, 0), (1, 0)]);
     game.save_chunks_eagerly(); // no world open: nothing to save into
     assert!(game.world.modified.contains(&(0, 0)));
-    game.world_root = dir.clone();
+    game.server.world_root = dir.clone();
     game.save_chunks_eagerly();
     assert!(!game.world.modified.contains(&(0, 0)));
     assert!(game.world.modified.contains(&(1, 0))); // not lit yet
@@ -1446,7 +1446,7 @@ mod wind_charge_burst_tests {
                 at,
                 Some(Who::Player),
             ));
-            game.ticked_entities_through = game.next_entity;
+            game.server.ticked_entities_through = game.server.next_entity;
             let id = game.creatures.projectiles.last().unwrap().id;
             game.tick_projectiles().unwrap();
             let bursts: Vec<_> = game

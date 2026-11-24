@@ -85,7 +85,9 @@ impl Game<'_> {
             && let Some((rgba, is_slim)) = skins::offline_skin()
         {
             const OFFLINE: &str = "sunrise/offline_skin";
-            if !self.skin_slots.contains(OFFLINE) || !self.gui.atlas.sprites.contains_key(OFFLINE) {
+            if !self.client.skin_slots.contains(OFFLINE)
+                || !self.gui.atlas.sprites.contains_key(OFFLINE)
+            {
                 self.store_skin(OFFLINE.into(), rgba.clone());
             }
             skins.entry(local).or_default().custom_body = Some((OFFLINE.into(), *is_slim));
@@ -95,7 +97,9 @@ impl Game<'_> {
             && let Some(rgba) = skins::offline_cape()
         {
             const OFFLINE: &str = "capes/offline";
-            if !self.skin_slots.contains(OFFLINE) || !self.gui.atlas.sprites.contains_key(OFFLINE) {
+            if !self.client.skin_slots.contains(OFFLINE)
+                || !self.gui.atlas.sprites.contains_key(OFFLINE)
+            {
                 // Kept for `again`, which finds no download or disk file for this cape.
                 self.skin_downloads
                     .borrow_mut()
@@ -127,14 +131,14 @@ impl Game<'_> {
             mob.slim = is_slim;
             mob.cape = cape.map(str::to_owned);
         }
-        if self.player_model.is_some() {
+        if self.client.player_model.is_some() {
             // Avatar.isModelPartShown(CAPE): the Skin Customization option.
             let show_cape = self.settings.file.bool("modelPart_cape");
             let (skin, is_slim, cape) =
                 skins::drawable_skin(local, skins.get(&local), show_cape, |sprite| {
                     self.again_skin(sprite)
                 });
-            if let Some(mob) = self.player_model.as_mut() {
+            if let Some(mob) = self.client.player_model.as_mut() {
                 mob.skin = Some(skin.to_owned());
                 mob.slim = is_slim;
                 mob.cape = cape.map(str::to_owned);
@@ -257,12 +261,12 @@ impl Game<'_> {
                 .map(|m| m.id)
                 .collect::<Vec<_>>(),
             // The player's own model exists (third person and the inventory draw it).
-            "player_model": self.player_model.is_some(),
+            "player_model": self.client.player_model.is_some(),
             // The world view draws its body now (third person, or lying in a bed;
             // not while invisible).
             "own_body": self.player_model_shown() && self.own_body_visible(),
-            "text_display_vertices": self.text_display_vertices,
-            "text_displays": self.text_displays.len(),
+            "text_display_vertices": self.client.text_display_vertices,
+            "text_displays": self.client.text_displays.len(),
             "health": r.health.0,
             "food": r.health.1,
             "decode_errors": r.decode_errors,

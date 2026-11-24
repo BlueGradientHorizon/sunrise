@@ -55,7 +55,7 @@ fn live_skin_selection_reaches_the_hand_body_and_preview_and_restores_vanilla() 
             with_client_game(|game| {
                 let _event_loop = frame_scene(game);
                 game.tick_player_model();
-                let avatar = game.player_model.as_mut().unwrap();
+                let avatar = game.client.player_model.as_mut().unwrap();
                 let vanilla = "entity/player/wide/steve";
                 avatar.skin = Some(vanilla.into());
                 avatar.slim = false;
@@ -99,7 +99,7 @@ fn live_skin_selection_reaches_the_hand_body_and_preview_and_restores_vanilla() 
                         .unwrap();
                     assert!(rendered);
                     assert_eq!(choice.lock().unwrap().calls, before_calls + 1);
-                    let avatar = game.player_model.as_ref().unwrap();
+                    let avatar = game.client.player_model.as_ref().unwrap();
                     assert_eq!(avatar.skin.as_deref(), Some(vanilla));
                     assert!(!avatar.slim, "the selected width must not escape the frame");
                     (hand, body, preview)
@@ -121,13 +121,13 @@ fn live_skin_selection_reaches_the_hand_body_and_preview_and_restores_vanilla() 
                 );
 
                 game.apply_camera_type(CameraType::ThirdPersonBack);
-                game.screen = Screen::Inventory;
+                game.client.screen = Screen::Inventory;
                 let (_, body, preview) = draw(game, &slim.to_string());
                 assert!(body, "the world avatar uses the selection");
                 assert!(preview, "the inventory avatar uses that same selection");
 
                 game.apply_camera_type(CameraType::FirstPerson);
-                game.screen = Screen::Playing;
+                game.client.screen = Screen::Playing;
                 choice.lock().unwrap().selection = None;
                 assert_eq!(
                     draw(game, vanilla).0,

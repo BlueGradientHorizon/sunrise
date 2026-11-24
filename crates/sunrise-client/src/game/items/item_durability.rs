@@ -45,7 +45,7 @@ impl Game<'_> {
                 causing,
                 creative_source,
                 helmet,
-                !self.combat.refuse_player_hit,
+                !self.server.combat.refuse_player_hit,
                 armor_weapon,
             )?;
         if let Some(damage) = hit.helmet_damage() {
@@ -191,7 +191,8 @@ impl Game<'_> {
         // ArmorHurtEvent: once for the pieces that would wear, a server player's only.
         let mut amounts = [amount; 4];
         if mod_api::__private::listened(mod_api::HookId::ArmorHurt)
-            && let (Some(uuid), Some(player)) = (self.lan_acting_uuid, self.lan_acting_entity)
+            && let (Some(uuid), Some(player)) =
+                (self.server.lan_acting_uuid, self.server.lan_acting_entity)
         {
             let mut entries: Vec<mod_api::ArmorHurt> = eligible
                 .iter()

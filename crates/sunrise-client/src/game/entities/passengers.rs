@@ -321,6 +321,7 @@ impl Game<'_> {
                         continue;
                     };
                     let before = self
+                        .client
                         .text_displays
                         .get(&(v as i32))
                         .map(|d| d.seat().1)
@@ -420,10 +421,11 @@ impl Game<'_> {
         // A rider of a rider settles over a few passes, as the mobs above.
         for _ in 0..3 {
             let mut vehicles: Vec<u32> = self
+                .client
                 .text_displays
                 .values()
                 .filter_map(|d| d.vehicle)
-                .chain(self.interactions.values().filter_map(|i| i.vehicle))
+                .chain(self.client.interactions.values().filter_map(|i| i.vehicle))
                 .collect();
             vehicles.sort_unstable();
             vehicles.dedup();
@@ -434,14 +436,14 @@ impl Game<'_> {
                         .map(|at| (v, at))
                 })
                 .collect();
-            let sections = self.client_pick.sections.get_mut();
-            for (&id, display) in &mut self.text_displays {
+            let sections = self.client.client_pick.sections.get_mut();
+            for (&id, display) in &mut self.client.text_displays {
                 if let Some(at) = display.vehicle.and_then(|v| seats.get(&v)) {
                     display.ride(*at);
                     sections.move_id(id as u32, display.position().to_array());
                 }
             }
-            for interaction in self.interactions.values_mut() {
+            for interaction in self.client.interactions.values_mut() {
                 if let Some(at) = interaction.vehicle.and_then(|v| seats.get(&v)) {
                     interaction.ride_to(*at);
                 }
@@ -611,14 +613,14 @@ impl Game<'_> {
             let at = riders::seat(attachment, 0.0, v.position, v.yaw);
             return Some(glam::DVec3::new(at.x, at.y, at.z));
         }
-        if let Some(d) = self.text_displays.get(&(vehicle as i32)) {
+        if let Some(d) = self.client.text_displays.get(&(vehicle as i32)) {
             return if let Some(parent) = d.vehicle {
                 self.passenger_riding_position_inner(parent, me, own_seat, index, path)
             } else {
                 Some(d.position())
             };
         }
-        if let Some(i) = self.interactions.get(&(vehicle as i32)) {
+        if let Some(i) = self.client.interactions.get(&(vehicle as i32)) {
             if let Some(parent) = i.vehicle {
                 return self.passenger_riding_position_inner(parent, me, own_seat, index, path);
             }
@@ -1328,7 +1330,7 @@ mod nested_vehicle_discard_tests {
                 std::path::PathBuf::from(std::env::var_os("SUNRISE_HOME").unwrap())
                     .join(format!("guard-{:?}", std::thread::current().id())),
             );
-            game.world_root = game.options.game_dir.as_ref().unwrap().join("world");
+            game.server.world_root = game.options.game_dir.as_ref().unwrap().join("world");
             let at = Vec3::new(10.0, 200.0, 20.0);
             if cart {
                 game.carts.push(super::super::minecarts::Minecart::new(
@@ -1356,7 +1358,7 @@ mod nested_vehicle_discard_tests {
             game.mobs.push(child);
             // These manually installed owners bypass the normal allocator.
             // Destruction drops must not reuse the removed vehicle's ID.
-            game.next_entity = game.next_entity.max(73);
+            game.server.next_entity = game.server.next_entity.max(73);
             test(game);
         });
     }
@@ -2004,7 +2006,7 @@ mod nested_vehicle_discard_tests {
                 .into();
                 mod_platform::testing::with_mods(mods, || {
                     with_vehicle_tree(cart, true, |game| {
-                        game.next_entity = game.next_entity.max(100);
+                        game.server.next_entity = game.server.next_entity.max(100);
                         let items = vec![Some(sunrise_client::items::ItemStack::new(
                             "minecraft:diamond",
                             5,

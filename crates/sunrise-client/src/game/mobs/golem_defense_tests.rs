@@ -92,7 +92,7 @@ fn game<'a>(resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>) -
     )
     .unwrap();
     // Reserve the manually installed guest in the shared runtime ID allocator.
-    game.next_entity = game.next_entity.max(2);
+    game.server.next_entity = game.server.next_entity.max(2);
     let (tx, _rx) = mpsc::channel();
     let mut guest = Guest::new(
         Joined {
@@ -121,9 +121,9 @@ fn game<'a>(resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>) -
 
 /// Runs `command`: whether it succeeded and what the issuer was told.
 fn run(game: &mut Game<'_>, command: &str) -> (bool, Vec<String>) {
-    game.chat_capture = Some(Vec::new());
+    game.server.chat_capture = Some(Vec::new());
     let ok = game.run_command(command);
-    let said = game.chat_capture.take().unwrap_or_default();
+    let said = game.server.chat_capture.take().unwrap_or_default();
     (
         ok,
         said.iter().map(sunrise_client::text::Text::plain).collect(),

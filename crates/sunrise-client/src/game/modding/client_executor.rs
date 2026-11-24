@@ -77,7 +77,7 @@ mod tests {
             .unwrap();
             assert!(calls.lock().unwrap().is_empty());
             assert!(game.remote.is_none());
-            game.focused = true;
+            game.client.focused = true;
             game.poll_remote().unwrap();
             assert_eq!(
                 *calls.lock().unwrap(),

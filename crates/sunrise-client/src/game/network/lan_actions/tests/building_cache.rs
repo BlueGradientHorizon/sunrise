@@ -116,7 +116,7 @@ fn game<'a>(resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>) -
 
 /// The other players' boxes in the Builder's turn: what blocks its placing.
 fn seen_by_builder(game: &mut Game<'_>) -> Boxes {
-    let seen = game.as_guest(3, |g| g.lan_building_boxes.boxes(Dim::Overworld));
+    let seen = game.as_guest(3, |g| g.server.lan_building_boxes.boxes(Dim::Overworld));
 
     seen.unwrap()
 }

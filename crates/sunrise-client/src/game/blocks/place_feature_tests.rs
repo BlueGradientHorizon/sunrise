@@ -60,16 +60,16 @@ fn game(resources: &mut Option<std::sync::Arc<Resources>>) -> Game<'_> {
         }
     }
     assert!(game.run_command("fill 0 99 0 15 99 15 stone"));
-    game.chat_capture = Some(Vec::new());
+    game.server.chat_capture = Some(Vec::new());
     game
 }
 
 /// Runs `command` and returns whether it succeeded and the text of the one
 /// message it sent, as vanilla 26.3 shows it.
 fn run(game: &mut Game<'_>, command: &str) -> (bool, Option<String>) {
-    game.chat_capture = Some(Vec::new());
+    game.server.chat_capture = Some(Vec::new());
     let ok = game.run_command(command);
-    let messages = game.chat_capture.take().unwrap_or_default();
+    let messages = game.server.chat_capture.take().unwrap_or_default();
     let text = messages.first().map(sunrise_client::text::Text::plain);
     (ok, text)
 }

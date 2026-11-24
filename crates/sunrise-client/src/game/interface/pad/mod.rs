@@ -284,9 +284,9 @@ impl Game<'_> {
         Context {
             screen: self.key_screen(),
             focus_navigation: self.pad_navigation_mode(),
-            focused: self.focused,
+            focused: self.client.focused,
             osk: self.pad_keyboard_captures(),
-            dialog: self.dialog_open() || self.code_of_conduct.is_some(),
+            dialog: self.dialog_open() || self.client.code_of_conduct.is_some(),
             enabled: self.settings.controller.enabled,
         }
     }
@@ -367,7 +367,7 @@ impl Game<'_> {
         let threshold = self.settings.controller.trigger_threshold;
         let edges = self.pad.edges.update(&state, threshold);
         if activity && self.pad_focused() {
-            self.last_input = Instant::now();
+            self.client.last_input = Instant::now();
             self.pad.in_use = true;
             self.pad.keyboard_took_over = false;
         }
@@ -387,7 +387,7 @@ impl Game<'_> {
         if let Some(damage) = self.pad.health.observe(health) {
             self.pad_rumble(Rumble::Hurt(damage));
         }
-        let ticking = self.title.is_none() && self.screen == Screen::Playing && !self.pause;
+        let ticking = self.title.is_none() && self.client.screen == Screen::Playing && !self.pause;
         let mut due = Vec::new();
         for button in std::mem::take(&mut self.pad.late_releases) {
             if !ticking || self.pad.pressed_at[button as usize] != Some(self.ticks) {
@@ -421,7 +421,7 @@ impl Game<'_> {
     }
 
     fn pad_edge(&mut self, event_loop: &dyn EventLoopCtl, button: Button, down: bool) {
-        let ticking = self.title.is_none() && self.screen == Screen::Playing && !self.pause;
+        let ticking = self.title.is_none() && self.client.screen == Screen::Playing && !self.pause;
         if down {
             // Pressed again before its held-back release went out.
             if let Some(i) = self.pad.late_releases.iter().position(|b| *b == button) {
@@ -492,7 +492,7 @@ impl Game<'_> {
 
     /// The window has focus, or the player lets the pad play without it (Play in Background).
     pub(super) fn pad_has_window(&self) -> bool {
-        self.focused || self.settings.controller.play_in_background
+        self.client.focused || self.settings.controller.play_in_background
     }
 
     /// Losing focus doesn't pause a game the pad is playing in the background.
@@ -524,7 +524,7 @@ impl Game<'_> {
             self.pad.actions[button as usize].clear();
             return Ok(());
         }
-        if down && playing && !self.captured && self.focused {
+        if down && playing && !self.client.captured && self.client.focused {
             // Like a click into the window: take the pointer.
             self.capture(true);
         }
@@ -591,10 +591,10 @@ impl Game<'_> {
                 if !down {
                     return Ok(());
                 }
-                let screen_open = self.screen != Screen::Playing || self.title.is_some();
-                self.keys.resume_device_input(&KeyCode::ShiftLeft);
+                let screen_open = self.client.screen != Screen::Playing || self.title.is_some();
+                self.client.keys.resume_device_input(&KeyCode::ShiftLeft);
                 if !screen_open {
-                    let state = self.vanilla_mappings.toggle_state_mut(SNEAK);
+                    let state = self.client.vanilla_mappings.toggle_state_mut(SNEAK);
                     state.pad_toggle();
                     state.click();
                 }
@@ -628,7 +628,7 @@ impl Game<'_> {
             // KeyboardHandler: F3 alone, let go, shows or hides the debug screen.
             Route::DebugOverlay => {
                 if down {
-                    self.debug = !self.debug;
+                    self.client.debug = !self.client.debug;
                 }
                 Ok(())
             }
@@ -639,7 +639,7 @@ impl Game<'_> {
                 Ok(())
             }
             Route::Mouse(button) => {
-                let playing = self.title.is_none() && self.screen == Screen::Playing;
+                let playing = self.title.is_none() && self.client.screen == Screen::Playing;
                 // What the window path tells mods and the click counters. Pick block isn't one
                 // they count.
                 if playing
@@ -700,7 +700,7 @@ impl Game<'_> {
         }
         // The options open over the title screen too: they come first, as
         // for the keyboard's Escape.
-        if self.screen == Screen::Options {
+        if self.client.screen == Screen::Options {
             return self.options_key(KeyCode::Escape, None).map(|_| ());
         }
         // A mod's screen in front of the title takes the Escape itself.
@@ -711,11 +711,11 @@ impl Game<'_> {
             self.save_title_options();
             return Ok(());
         }
-        if self.sign_edit.is_some() {
+        if self.client.sign_edit.is_some() {
             self.close_sign_editor();
             return Ok(());
         }
-        if self.book.is_some() {
+        if self.client.book.is_some() {
             self.close_book();
             return Ok(());
         }
@@ -748,10 +748,10 @@ impl Game<'_> {
         .enumerate()
         {
             if before[axis].max(0.0) != after[axis].max(0.0) {
-                self.keys.resume_device_input(&positive);
+                self.client.keys.resume_device_input(&positive);
             }
             if before[axis].min(0.0) != after[axis].min(0.0) {
-                self.keys.resume_device_input(&negative);
+                self.client.keys.resume_device_input(&negative);
             }
         }
     }
@@ -771,7 +771,7 @@ impl Game<'_> {
         let seconds = seconds.min(0.1);
         let turn = gamepad::look_delta(self.pad.state.right, settings, seconds, self.scoping());
         // The cinematic camera eases the stick's turn in and out, as it does the mouse's.
-        let (yaw, pitch) = self.pad.look.turn(turn, seconds, self.smooth_camera);
+        let (yaw, pitch) = self.pad.look.turn(turn, seconds, self.client.smooth_camera);
         if yaw == 0.0 && pitch == 0.0 {
             return;
         }
@@ -817,13 +817,13 @@ impl Game<'_> {
                 label("sunrise.controller.notice.controller_disconnected.hint"),
             ),
         };
-        self.controller_notice.raise(notice);
+        self.client.controller_notice.raise(notice);
     }
 
     /// Connection notices sit below the boss bars and last as long as a toast.
     pub(super) fn draw_controller_notice(&mut self, batch: &mut HudBatch) {
         let shown_for = Duration::from_secs_f64(5.0 * self.settings.notification_display_time);
-        self.controller_notice.draw(
+        self.client.controller_notice.draw(
             batch,
             &self.gui.atlas,
             self.ui.room.below_top(18.0),
@@ -862,7 +862,7 @@ impl Game<'_> {
                         "reason": why, "strong": p.strong, "weak": p.weak, "ms": p.millis,
                     })),
                     "in_use": self.pad.in_use,
-                    "notice": self.controller_notice.showing().map(|(title, body)| {
+                    "notice": self.client.controller_notice.showing().map(|(title, body)| {
                         json!({ "title": title, "body": body })
                     }),
                     "menu": self.pad_menu_status(),

@@ -137,7 +137,7 @@ fn same_mob_guest_attack_survives_movement_panic() {
         .into(),
         || {
             with_guests(|game| {
-                game.world_root = PathBuf::from(std::env::var_os("SUNRISE_HOME").unwrap())
+                game.server.world_root = PathBuf::from(std::env::var_os("SUNRISE_HOME").unwrap())
                     .join("same-mob-guest-attack");
                 game.options.dedicated = Some(Vec::new());
                 game.load_server_loot();

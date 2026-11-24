@@ -45,7 +45,7 @@ impl Game<'_> {
             self.native_lifecycle
                 .epoch()
                 .unwrap_or(mod_api::WorldEpoch::new(0)),
-            if self.lan_acting.is_some() {
+            if self.server.lan_acting.is_some() {
                 self.native_acting_entity()
             } else {
                 self.own_entity_id() as u32
@@ -61,8 +61,10 @@ impl Game<'_> {
     /// `ServerPlayer.completeUsingItem`: the player's own client is told
     /// first, and completes the use itself (eating the food there too).
     pub(super) fn send_use_item_complete(&mut self) {
-        if self.lan_acting.is_some() {
-            self.guest_entity_events.push(USE_ITEM_COMPLETE_EVENT);
+        if self.server.lan_acting.is_some() {
+            self.server
+                .guest_entity_events
+                .push(USE_ITEM_COMPLETE_EVENT);
         }
     }
     /// `Consumable.emitParticlesAndSounds(user.getRandom(), user, stack, count)`.
@@ -451,7 +453,7 @@ impl Game<'_> {
         self.previous_position = at;
         // `broadcastEntityEvent(46)` after the teleport. A server-thread window
         // is a remote client, so the packet is what draws the particles there.
-        if let Some(id) = self.lan_acting_entity {
+        if let Some(id) = self.server.lan_acting_entity {
             self.lan_entity_event(id as i32, 46, [at.x, at.y, at.z]);
         } else {
             self.portal_particles();
@@ -618,10 +620,13 @@ impl EmissionWorld for Emitter<'_, '_> {
         let at = self.0.feet();
         if !self.0.is_logical_server() {
             self.0.play_client_player_sound(&sound, volume, pitch);
-        } else if self.0.lan_acting.is_some() {
+        } else if self.0.server.lan_acting.is_some() {
             self.0.audio.play_unshared(&sound, at, volume, pitch);
             if let Some(at) = at {
-                self.0.guest_player_sounds.push((sound, at, volume, pitch));
+                self.0
+                    .server
+                    .guest_player_sounds
+                    .push((sound, at, volume, pitch));
             }
         } else {
             self.0.audio.play(&sound, at, volume, pitch);
@@ -652,10 +657,10 @@ impl TeleportConsumeWorld for Teleporter<'_, '_> {
         &mut self.0.world.random
     }
     fn min_y(&mut self, level: Dim) -> Result<i32, Infallible> {
-        Ok(self.0.level_shapes.get(level.id()).min_y)
+        Ok(self.0.server.level_shapes.get(level.id()).min_y)
     }
     fn logical_height(&mut self, level: Dim) -> Result<i32, Infallible> {
-        Ok(self.0.level_shapes.get(level.id()).logical_height)
+        Ok(self.0.server.level_shapes.get(level.id()).logical_height)
     }
     fn is_passenger(&mut self) -> Result<bool, Infallible> {
         Ok(self.0.riding.is_some())
@@ -701,7 +706,7 @@ impl TeleportConsumeWorld for Teleporter<'_, '_> {
         // huge y would walk down a long way); one that is not a number keeps
         // the draw.
         if to.iter().all(|v| v.is_finite()) {
-            let shape = self.0.level_shapes.get(self.0.dim.id());
+            let shape = self.0.server.level_shapes.get(self.0.dim.id());
             let high = shape.min_y + shape.logical_height - 1;
             let y = to[1].clamp(f64::from(shape.min_y), f64::from(high));
             *target = Vec3::new(to[0], y, to[2]);
@@ -1013,11 +1018,11 @@ pub(in crate::game) mod teleport_hook_tests {
                 // This body belongs to the guest record installed below, never
                 // to a separately admitted local player with the same runtime ID.
                 game.player.as_mut().unwrap().entity_id = 2;
-                game.lan_acting = Some(12);
-                game.lan_acting_uuid = Some(7);
-                game.lan_acting_name = Some("ConsumedStackTest".into());
-                game.lan_acting_entity = Some(2);
-                game.lan_acting_permission = Some(4);
+                game.server.lan_acting = Some(12);
+                game.server.lan_acting_uuid = Some(7);
+                game.server.lan_acting_name = Some("ConsumedStackTest".into());
+                game.server.lan_acting_entity = Some(2);
+                game.server.lan_acting_permission = Some(4);
                 crate::game::native_entity_refs::tests::bind_acting_guest(game);
                 game.creative = false;
                 let mut consumed = ItemStack::new("minecraft:chorus_fruit", 7);
@@ -1373,7 +1378,7 @@ pub(in crate::game) mod fox_consumption_hook_tests {
                         game.world.set(x, 63, z, stone).unwrap();
                     }
                 }
-                game.next_entity = 300;
+                game.server.next_entity = 300;
                 let ty = game.res.mob_types().get("minecraft:fox").unwrap().clone();
                 for (id, x) in [(200, 8.5), (201, 11.5), (202, 13.5), (204, 6.5)] {
                     let mut actor = Mob::new(id, ty.clone(), Vec3::new(x, 64.0, 8.5), 0.0);

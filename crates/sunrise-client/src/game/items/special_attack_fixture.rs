@@ -62,7 +62,7 @@ impl Game<'_> {
                 "weakness", 200, 0,
             ));
         }
-        self.attack_ticks = op["ticks"].as_u64().unwrap_or(20) as u32;
+        self.server.attack_ticks = op["ticks"].as_u64().unwrap_or(20) as u32;
         self.world.game_time = 100;
         let at = Vec3::new(0.5, 1.0, 0.5);
         // The fixture targets and the live drops from breaking them share one allocator.
@@ -180,7 +180,7 @@ impl Game<'_> {
             player.velocity.x.to_bits(),
             player.velocity.z.to_bits(),
             player.sprinting,
-            self.attack_ticks
+            self.server.attack_ticks
         )])
     }
 }

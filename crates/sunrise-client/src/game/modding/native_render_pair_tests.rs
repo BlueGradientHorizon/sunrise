@@ -165,7 +165,7 @@ fn two_entities_are_asked_in_the_draw_queues_order() {
     }
     let heard = Arc::default();
     with_pair(&heard, |game| {
-        game.pack_ids = Some(Default::default());
+        game.client.pack_ids = Some(Default::default());
         game.mobs.push(mob(game, "minecraft:zombie", 91, 0.0));
         admit_own_player(game, false);
         game.mobs.push(mob(game, "minecraft:cow", 92, 2.0));
@@ -184,14 +184,14 @@ fn two_entities_are_asked_in_the_draw_queues_order() {
             ]
         );
         assert_eq!(markers(&out), 12, "each pre hook's marker is kept");
-        let motion = game.entity_motion.borrow();
+        let motion = game.client.entity_motion.borrow();
         let tracked: Vec<_> = motion.iter().copied().filter(|&(_, id)| id != 0).collect();
         assert_eq!(
             tracked.iter().map(|&(_, id)| id).collect::<Vec<_>>(),
             [(1 << 32) | 91, Game::MOTION_OWN_PLAYER, (1 << 32) | 92]
         );
         assert!(tracked[0].0 < tracked[1].0 && tracked[1].0 < tracked[2].0);
-        let spans = game.entity_spans.borrow();
+        let spans = game.client.entity_spans.borrow();
         let local = spans.iter().find(|span| span.player).unwrap();
         assert_eq!(local.start, tracked[1].0);
         assert!(!local.hidden);
@@ -221,11 +221,12 @@ fn a_spectator_following_an_entity_submits_no_local_body() {
             (CameraType::ThirdPersonBack, false),
             (CameraType::FirstPerson, true),
         ] {
-            game.camera_type = camera;
-            game.occlusion.shadow_casters.1 = player_shadow;
+            game.client.camera_type = camera;
+            game.client.occlusion.shadow_casters.1 = player_shadow;
             game.entity_geometry(CAMERA, 1.0, None, Vec::new(), &mut Vec::new());
             assert!(
                 !game
+                    .client
                     .entity_runs
                     .iter()
                     .any(|run| run.family == super::entity::DrawFamily::LocalPlayer)
@@ -278,17 +279,23 @@ pub(super) fn submitted_bodies<T>(
         .into_iter()
         .map(|w| (w.vertices.start as u32, w.id))
         .collect();
-    bodies.extend(game.entity_motion.borrow().windows(2).filter_map(|marks| {
-        let (start, id) = marks[0];
-        (id != 0 && start < marks[1].0).then(|| {
-            let id = if id == Game::MOTION_OWN_PLAYER {
-                game.own_entity_id() as u32
-            } else {
-                id as u32
-            };
-            (start, id)
-        })
-    }));
+    bodies.extend(
+        game.client
+            .entity_motion
+            .borrow()
+            .windows(2)
+            .filter_map(|marks| {
+                let (start, id) = marks[0];
+                (id != 0 && start < marks[1].0).then(|| {
+                    let id = if id == Game::MOTION_OWN_PLAYER {
+                        game.own_entity_id() as u32
+                    } else {
+                        id as u32
+                    };
+                    (start, id)
+                })
+            }),
+    );
     bodies.sort_unstable_by_key(|&(start, _)| start);
     (output, bodies.into_iter().map(|(_, id)| id).collect())
 }
@@ -334,7 +341,7 @@ pub(in crate::game) fn run_entity_draw_order_after_client_packets() {
             portal_cooldown: 0,
             sea_level: 63,
         };
-        game.pack_ids = Some(super::shader_packs::PackIds::with_entity_ids([
+        game.client.pack_ids = Some(super::shader_packs::PackIds::with_entity_ids([
             ("minecraft:ender_dragon", 101),
             ("minecraft:end_crystal", 102),
         ]));
@@ -435,7 +442,7 @@ pub(in crate::game) fn run_entity_draw_order_after_client_packets() {
                     relatives: 0,
                 }),
                 ["frame"] => {
-                    game.camera_type = CameraType::ThirdPersonBack;
+                    game.client.camera_type = CameraType::ThirdPersonBack;
                     game.tick_player_model();
                     let ((vertices, ..), ids) = submitted_bodies(game, |game| {
                         game.entity_geometry(
@@ -447,7 +454,7 @@ pub(in crate::game) fn run_entity_draw_order_after_client_packets() {
                         )
                     });
                     if std::mem::take(&mut check_beams) {
-                        let spans = game.entity_spans.borrow();
+                        let spans = game.client.entity_spans.borrow();
                         let entities = sunrise_shaders::render_stage("ENTITIES");
                         let none = sunrise_shaders::render_stage("NONE");
                         let beams: Vec<_> = spans
@@ -545,11 +552,11 @@ fn a_canceled_entity_draws_no_name_tag() {
         let tag = |game: &mut Game<'_>| {
             mob_frame(game);
             let (mut out, mut see_through) = (Vec::new(), Vec::new());
-            let mut collector = std::mem::take(&mut game.see_through_collector);
+            let mut collector = std::mem::take(&mut game.client.see_through_collector);
             collector.clear();
             game.name_tag_geometry(CAMERA, 1.0, &mut out, &mut collector);
             collector.flush(&mut see_through);
-            game.see_through_collector = collector;
+            game.client.see_through_collector = collector;
             out.len() + see_through.len()
         };
         assert!(tag(game) > 0, "a named zombie's tag");
@@ -670,10 +677,10 @@ fn admit_own_player(game: &mut Game<'_>, spectator: bool) {
     if let Some(remote) = game.remote.as_mut() {
         remote.entity_id = 4321;
     }
-    game.camera_type = sunrise_client::camera::CameraType::ThirdPersonBack;
+    game.client.camera_type = sunrise_client::camera::CameraType::ThirdPersonBack;
     game.resident_entities.local_player.renew();
     game.tick_player_model();
-    game.player_model.as_mut().unwrap().extra.spectator = spectator;
+    game.client.player_model.as_mut().unwrap().extra.spectator = spectator;
 }
 
 fn own_player_frame(game: &mut Game<'_>, spectator: bool) -> Vec<Vertex> {

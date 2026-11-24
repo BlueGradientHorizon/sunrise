@@ -124,14 +124,14 @@ impl Game<'_> {
             panda::hold(m, item, 1, false);
         }
         if loved {
-            self.love_cause.insert(id, self.lan_acting);
+            self.server.love_cause.insert(id, self.server.lan_acting);
             let kind = self
                 .mobs
                 .iter()
                 .find(|m| m.id == id)
                 .map(super::native_hooks::mob_kind)
                 .unwrap_or_default();
-            self.native_entity_enter_love_mode(id, &kind, self.lan_acting_uuid);
+            self.native_entity_enter_love_mode(id, &kind, self.server.lan_acting_uuid);
             // Animal.setInLove: entity event 18, the love hearts.
             self.mob_event_particles(id, 18);
         }
@@ -278,7 +278,7 @@ mod pickup_tests {
         game.level.player_uuid = Some(THROWER);
         game.level.health = 20.0;
         game.creative = false;
-        game.world_root = world.path().to_owned();
+        game.server.world_root = world.path().to_owned();
         game.set_allow_commands(true);
         // Opening the world installs its staged advancement tree. Install the
         // custom tree afterwards so the first tick cannot replace it.

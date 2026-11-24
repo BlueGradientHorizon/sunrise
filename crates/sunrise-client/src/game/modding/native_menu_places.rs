@@ -62,7 +62,7 @@ impl Game<'_> {
         guest: &'a Guest,
         hand: Hand,
     ) -> (usize, Option<&'a ItemStack>) {
-        let (selected, inventory, offhand) = match self.lan_acting == Some(guest.conn) {
+        let (selected, inventory, offhand) = match self.server.lan_acting == Some(guest.conn) {
             true => (self.selected, &self.inventory, &self.offhand),
             false => (guest.selected, &guest.inventory, &guest.offhand),
         };
@@ -99,7 +99,7 @@ impl Game<'_> {
         let conn = self
             .native_conn(uuid)
             .ok_or(MenuSlotBackRefusal::NoPlayerOrWindow)?;
-        let acting = self.lan_acting == Some(conn);
+        let acting = self.server.lan_acting == Some(conn);
         let (size, slots, owned) = self
             .lan
             .as_ref()

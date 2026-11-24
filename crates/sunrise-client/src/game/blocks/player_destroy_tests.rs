@@ -19,7 +19,7 @@ fn breaking_player(game: &mut Game<'_>) -> PathBuf {
         std::thread::current().id()
     ));
     std::fs::create_dir_all(&scratch).unwrap();
-    game.world_root = scratch.clone();
+    game.server.world_root = scratch.clone();
     game.player = Some(PlayerMotion::new(game.motion, Vec3::new(4.5, 62.0, 4.5)).unwrap());
     game.player.as_mut().unwrap().ground.on_ground = true;
     game.creative = false;

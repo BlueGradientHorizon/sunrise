@@ -1004,7 +1004,7 @@ fn replacement_and_item_stack_journals_close_in_their_own_dimensions() {
     }
     let scratch = tempfile::tempdir().unwrap();
     with_ticker(|game, _| {
-        game.world_root = scratch.path().into();
+        game.server.world_root = scratch.path().into();
         let overworld = place_subject(game, KIND);
         game.enter_level(Dim::Nether).unwrap();
         let nether = place_subject(game, KIND);

@@ -83,18 +83,22 @@ impl Game<'_> {
         }
         // ServerPlayerGameMode.handleBlockBreakAction's `mayInteract`.
         if self
+            .server
             .lan_acting_spawn_protection
             .is_some_and(|radius| self.spawn_protects(radius, self.dim.id(), pos))
         {
             return false;
         }
         // A break inside another's hook keeps where the outer one's drops go.
-        let outer = std::mem::replace(&mut self.break_collect, into_inventory.then(Vec::new));
+        let outer = std::mem::replace(
+            &mut self.server.break_collect,
+            into_inventory.then(Vec::new),
+        );
         let broke = self.player_break_block(pos).unwrap_or_else(|e| {
             log::warn!("a mod's break at {pos:?} failed: {e}");
             false
         });
-        let drops = std::mem::replace(&mut self.break_collect, outer).unwrap_or_default();
+        let drops = std::mem::replace(&mut self.server.break_collect, outer).unwrap_or_default();
         for stack in drops {
             self.give_or_drop(stack);
         }
@@ -115,6 +119,7 @@ impl Game<'_> {
         correct_tool: bool,
     ) -> bool {
         let source = self
+            .server
             .lan_acting_uuid
             .map(sunrise_world::level::LevelEventPlayer);
         let state = self.world.block(pos[0], pos[1], pos[2]);
@@ -152,11 +157,11 @@ mod tests {
             .block_ticks
             .add_empty_chunk(sunrise_core::position::ChunkPos::new(0, 0));
         game.player = Some(PlayerMotion::new(game.motion, Vec3::new(4.5, 64.0, 4.5)).unwrap());
-        game.lan_acting_uuid = Some(123);
+        game.server.lan_acting_uuid = Some(123);
         // The host acts, whose entity the hooks name as 0 while no guest acts.
-        game.lan_acting_entity = Some(0);
-        game.lan_acting_name = Some("Breaker".into());
-        game.lan_acting_permission = Some(0);
+        game.server.lan_acting_entity = Some(0);
+        game.server.lan_acting_name = Some("Breaker".into());
+        game.server.lan_acting_permission = Some(0);
         game.set_mode(GameMode::Survival);
         game.inventory[game.selected] = Some(held);
         game.native_acting_player().unwrap()

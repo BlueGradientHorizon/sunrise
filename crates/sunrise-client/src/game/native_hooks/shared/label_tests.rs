@@ -8,7 +8,7 @@ fn inventory_label_default_follows_image_height_not_inventory_slots() {
             let (pipe, _server) = sunrise_protocol::connection::Pipe::pair();
             game.connect_local(pipe, "labels").unwrap();
             let generation = seed_native_menu(game, 1, "test:menu");
-            game.screen = Screen::Inventory;
+            game.client.screen = Screen::Inventory;
             game.container = Some((1, 2, 3));
             game.mod_screen = Some(OpenNativeScreen {
                 menu: OpenNativeMenu {

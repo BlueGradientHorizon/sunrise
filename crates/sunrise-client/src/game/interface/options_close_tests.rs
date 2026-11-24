@@ -13,13 +13,13 @@ fn closing_options_opened_from_the_title_leaves_the_pointer_free() {
     crate::game::native_entity_refs::tests::with_game(|game| {
         let saves = tempfile::tempdir().unwrap();
         game.title = Some(game.new_title(saves.path().to_path_buf()));
-        game.focused = true;
+        game.client.focused = true;
         game.open_options(true);
-        game.agent_pointer = true;
+        game.client.agent_pointer = true;
         game.leave_options();
-        assert_eq!(game.screen, Screen::Playing);
+        assert_eq!(game.client.screen, Screen::Playing);
         assert!(game.title.is_some());
-        assert!(game.agent_pointer, "the title is shown: no grab");
+        assert!(game.client.agent_pointer, "the title is shown: no grab");
     });
 }
 
@@ -30,13 +30,13 @@ fn closing_options_opened_from_the_title_leaves_the_pointer_free() {
 fn closing_title_options_into_a_world_entered_behind_them_grabs() {
     crate::game::native_entity_refs::tests::with_game(|game| {
         game.title = None;
-        game.focused = true;
+        game.client.focused = true;
         game.open_options(true);
-        game.agent_pointer = true;
+        game.client.agent_pointer = true;
         game.leave_options();
-        assert_eq!(game.screen, Screen::Playing);
+        assert_eq!(game.client.screen, Screen::Playing);
         assert!(
-            !game.agent_pointer,
+            !game.client.agent_pointer,
             "a world is shown: the pointer is grabbed"
         );
     });
@@ -49,11 +49,14 @@ fn closing_title_options_into_a_world_entered_behind_them_grabs() {
 fn closing_pause_menu_options_leaves_the_pointer_free() {
     crate::game::native_entity_refs::tests::with_game(|game| {
         game.title = None;
-        game.focused = true;
+        game.client.focused = true;
         game.open_options(false);
-        game.agent_pointer = true;
+        game.client.agent_pointer = true;
         game.leave_options();
-        assert_eq!(game.screen, Screen::Paused);
-        assert!(game.agent_pointer, "the pause menu keeps the pointer free");
+        assert_eq!(game.client.screen, Screen::Paused);
+        assert!(
+            game.client.agent_pointer,
+            "the pause menu keeps the pointer free"
+        );
     });
 }

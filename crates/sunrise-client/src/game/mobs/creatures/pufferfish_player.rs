@@ -80,10 +80,12 @@ impl Game<'_> {
     /// stung player's own client plays it (`ClientPacketListener.handleGameEvent`). A server has
     /// no player of its own, so the packet is the only way to reach it.
     fn puffer_fish_sting(&mut self) {
-        self.guest_packets.push(Clientbound::GameEvent(GameEvent {
-            event: PUFFER_FISH_STING,
-            param: 0.0,
-        }));
+        self.server
+            .guest_packets
+            .push(Clientbound::GameEvent(GameEvent {
+                event: PUFFER_FISH_STING,
+                param: 0.0,
+            }));
     }
 }
 

@@ -154,8 +154,8 @@ fn the_bridge_names_the_attacker_and_what_it_holds() {
                 Hurting::Mob(mob, _) => mob.id as i32,
                 _ => 12,
             };
-            let plan = game.prepare_knockback_credit(victim, None, game.combat.attack());
-            let mut credit = plan.lend(&mut game.last_hurt_by_player);
+            let plan = game.prepare_knockback_credit(victim, None, game.server.combat.attack());
+            let mut credit = plan.lend(&mut game.server.last_hurt_by_player);
             let mut knock = PUSH;
             let canceled = super::native_hooks::knockback(
                 damage_level_of!(game, attack, &mut credit, None).reborrow(),
@@ -214,8 +214,8 @@ fn the_bridge_names_the_attacker_and_what_it_holds() {
 #[ignore = "daily"]
 fn a_canceled_push_is_reported() {
     let heard = heard(|game, log| {
-        let plan = game.prepare_knockback_credit(12, None, game.combat.attack());
-        let mut credit = plan.lend(&mut game.last_hurt_by_player);
+        let plan = game.prepare_knockback_credit(12, None, game.server.combat.attack());
+        let mut credit = plan.lend(&mut game.server.last_hurt_by_player);
         let level = damage_level_of!(game, &NO_ATTACK, &mut credit, None);
         log.lock().unwrap().cancel = true;
         let mut knock = PUSH;
@@ -582,7 +582,7 @@ fn with_detached_credit<R>(
     push: impl FnOnce(&mut sunrise_client::health::DamageLevel<'_>) -> R,
 ) -> R {
     let plan = game.prepare_knockback_credit(victim, None, &NO_ATTACK);
-    let mut credit = plan.lend(&mut game.last_hurt_by_player);
+    let mut credit = plan.lend(&mut game.server.last_hurt_by_player);
     push(damage_level_of!(game, &NO_ATTACK, &mut credit, None))
 }
 
@@ -673,7 +673,8 @@ pub(in crate::game) fn credit_pig(game: &mut super::Game<'_>) {
     game.world
         .chunks
         .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
-    game.tickets
+    game.server
+        .tickets
         .update(Some(sunrise_client::ticket_levels::Sources {
             players: vec![(0, 0)],
             forced: Vec::new(),
@@ -693,8 +694,8 @@ pub(in crate::game) fn credit_pig(game: &mut super::Game<'_>) {
 }
 
 fn credit_push(game: &mut super::Game<'_>) {
-    let plan = game.prepare_knockback_credit(100, None, game.combat.attack());
-    let mut credit = plan.lend(&mut game.last_hurt_by_player);
+    let plan = game.prepare_knockback_credit(100, None, game.server.combat.attack());
+    let mut credit = plan.lend(&mut game.server.last_hurt_by_player);
     let mob = &mut game.mobs[0];
     mob.velocity = Vec3::ZERO;
     mob.ground.on_ground = false;
@@ -740,7 +741,7 @@ fn accepted_wolf_hits_commit_owner_replacement_clearing_and_unresolved_precedenc
             if owner == Some(12) {
                 game.mobs[1].extra.owner = Some(sunrise_client::lan::playerdata::uuid_ints(999));
                 assert!(!game.mob_hits_mob(100, 0.5, Damage::mob(101, [1.0, 0.0, 0.0])));
-                let credit = game.last_hurt_by_player[&100];
+                let credit = game.server.last_hurt_by_player[&100];
                 assert_eq!(
                     game.resolve_player_credit(credit),
                     Some(Some(12)),

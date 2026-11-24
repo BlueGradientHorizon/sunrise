@@ -168,7 +168,7 @@ impl LifecycleFixture {
                 std::process::id(),
                 std::thread::current().id()
             )));
-            game.world_root = root.0.clone();
+            game.server.world_root = root.0.clone();
             let active = if singleton || self.unloads_with_chunk {
                 vec![103]
             } else {
@@ -319,7 +319,7 @@ pub(in crate::game) fn in_both_dimensions(mut test: impl FnMut(&mut Game<'_>, &P
             std::thread::current().id()
         )));
         crate::game::native_entity_refs::tests::with_game(|game| {
-            game.world_root = root.0.clone();
+            game.server.world_root = root.0.clone();
             game.enter_level(dimension).unwrap();
             use sunrise_client::join_seq::residency::{Kind, Owner};
             let balance = PassBalance {

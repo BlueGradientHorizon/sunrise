@@ -153,7 +153,7 @@ impl Game<'_> {
         // stands at `pos`.
         place_summoned(&mut tag, pos);
         let from = self.mobs.len();
-        let first = self.next_entity + 1;
+        let first = self.server.next_entity + 1;
         let deferred = (self.tnts.len(), self.falling.len(), self.rockets.len());
         let target = self.spawn_entity_from_nbt(tag);
         // These roots take their id as they load, and a rocket has no command
@@ -164,7 +164,7 @@ impl Game<'_> {
                     self.tnts,
                     deferred.0,
                     e,
-                    &mut self.next_entity,
+                    &mut self.server.next_entity,
                     None
                 ))
             }
@@ -173,7 +173,7 @@ impl Game<'_> {
                     self.falling,
                     deferred.1,
                     f,
-                    &mut self.next_entity,
+                    &mut self.server.next_entity,
                     Some(&f.attachment_lifetime)
                 ))
             }
@@ -182,7 +182,7 @@ impl Game<'_> {
                     self.rockets,
                     deferred.2,
                     e,
-                    &mut self.next_entity,
+                    &mut self.server.next_entity,
                     None
                 ))
             }
@@ -351,21 +351,21 @@ impl Game<'_> {
     fn assign_pending_join_ids(&mut self) {
         self.assign_dragon_and_crystal_ids();
         use super::entity_residency::assign_resident_ids;
-        assign_resident_ids!(self.tnts, t, &mut self.next_entity, None);
+        assign_resident_ids!(self.tnts, t, &mut self.server.next_entity, None);
         assign_resident_ids!(
             self.falling,
             f,
-            &mut self.next_entity,
+            &mut self.server.next_entity,
             Some(&f.attachment_lifetime)
         );
         assign_resident_ids!(
             self.creatures.projectiles,
             p,
-            &mut self.next_entity,
+            &mut self.server.next_entity,
             Some(&p.attachment_lifetime)
         );
-        assign_resident_ids!(self.tridents, t, &mut self.next_entity, None);
-        assign_resident_ids!(self.rockets, r, &mut self.next_entity, None);
+        assign_resident_ids!(self.tridents, t, &mut self.server.next_entity, None);
+        assign_resident_ids!(self.rockets, r, &mut self.server.next_entity, None);
     }
     /// The entity inserted earliest after `mark` (and, with a `through`, no later than it), but
     /// the `skipped`.
@@ -690,7 +690,7 @@ mod tests {
                     Some(&("minecraft:eye_of_ender".to_owned(), false))
                 );
                 // A quarantined missing-mod record shares storage, not level membership.
-                game.next_entity += 1;
+                game.server.next_entity += 1;
                 let mut record = Tag::compound([(
                     "Pos",
                     Tag::List(
@@ -700,7 +700,8 @@ mod tests {
                     ),
                 )]);
                 let opaque =
-                    Game::other_from_nbt(&mut record, game.next_entity, "missing:object").unwrap();
+                    Game::other_from_nbt(&mut record, game.server.next_entity, "missing:object")
+                        .unwrap();
                 game.others.push(opaque);
                 game.native_joins_flush(true, 0);
                 assert_eq!(
@@ -742,7 +743,7 @@ mod tests {
             pending!(game.creatures.projectiles);
             pending!(game.tridents);
             pending!(game.rockets);
-            let base = game.next_entity;
+            let base = game.server.next_entity;
             let joined = game.persist.joined_seq;
             let announced = game.persist.live.clone();
             game.assign_pending_join_ids();
@@ -766,7 +767,7 @@ mod tests {
                 game.native_lifecycle.epoch().unwrap(),
                 |f| f.id,
             );
-            assert_eq!(game.next_entity, base + 5);
+            assert_eq!(game.server.next_entity, base + 5);
             assert_eq!(game.persist.joined_seq, joined);
             assert_eq!(game.persist.live, announced);
             assert_eq!(
@@ -805,7 +806,7 @@ mod tests {
                     "minecraft:falling_block" => pending!(game.falling),
                     _ => pending!(game.rockets),
                 }
-                let base = game.next_entity;
+                let base = game.server.next_entity;
                 let (Tag::Compound(tag), _) = sunrise_core::nbt::parse_snbt(nbt).unwrap() else {
                     unreachable!()
                 };
@@ -813,7 +814,7 @@ mod tests {
                     .summon(game.dim.id(), kind, [1.0, 70.0, 1.0], tag)
                     .unwrap();
                 assert_eq!(id, base + 1);
-                assert_eq!(game.next_entity, base + 1);
+                assert_eq!(game.server.next_entity, base + 1);
                 assert!(game.entity(id).is_some());
                 let waiting = match kind {
                     "minecraft:tnt" => game.tnts[0].id,
@@ -832,7 +833,7 @@ mod tests {
                         .summon(game.dim.id(), kind, [1.0, 70.0, 1.0], unknown_state)
                         .unwrap();
                     assert_eq!(fallback, base + 2);
-                    assert_eq!(game.next_entity, base + 2);
+                    assert_eq!(game.server.next_entity, base + 2);
                     assert_eq!(game.falling.len(), 3);
                     assert_eq!(game.falling[0].id, 0);
                     assert_eq!(game.falling[1].id, id);
@@ -878,9 +879,9 @@ mod tests {
             }
             game.rockets[1].attached_to = Some(123);
             game.rockets[2].attached = true;
-            let base = game.next_entity;
+            let base = game.server.next_entity;
             game.find_ridden_vehicle_portals(&[999]);
-            assert_eq!(game.next_entity, base);
+            assert_eq!(game.server.next_entity, base);
             game.find_entity_portals();
             assert_eq!(
                 game.tridents.iter().map(|t| t.id).collect::<Vec<_>>(),
@@ -891,7 +892,7 @@ mod tests {
                 [base + 3, 0, 0]
             );
             game.find_entity_portals();
-            assert_eq!(game.next_entity, base + 3);
+            assert_eq!(game.server.next_entity, base + 3);
         });
     }
 
@@ -936,12 +937,12 @@ mod tests {
                 } else {
                     bind_zero!(game.falling);
                 }
-                let before = game.next_entity;
+                let before = game.server.next_entity;
                 let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                     game.assign_pending_join_ids()
                 }));
                 assert!(result.is_err());
-                assert_eq!(game.next_entity, before);
+                assert_eq!(game.server.next_entity, before);
                 assert!(game.falling.iter().all(|owner| owner.id == 0));
                 assert!(game.creatures.projectiles.iter().all(|owner| owner.id == 0));
             });
@@ -1000,11 +1001,11 @@ mod tests {
         mod_platform::testing::with_mods(mods, || {
             super::super::native_entity_refs::tests::with_game(|game| {
                 game.native_joins_skip();
-                let base = game.next_entity;
+                let base = game.server.next_entity;
                 let cow = game.res.mob_types().get("minecraft:cow").unwrap().clone();
                 let sheep = game.res.mob_types().get("minecraft:sheep").unwrap().clone();
                 let child = Mob::new(base + 1, cow.clone(), Vec3::ZERO, 0.0);
-                game.next_entity += 2;
+                game.server.next_entity += 2;
                 game.mobs.push(Mob::new(base + 2, cow, Vec3::ZERO, 0.0));
                 game.native_joins_flush(false, 0);
                 game.mobs.push(child);
@@ -1017,7 +1018,7 @@ mod tests {
                         (base + 1, "minecraft:cow".into(), false)
                     ]
                 );
-                game.next_entity += 1;
+                game.server.next_entity += 1;
                 game.mobs.push(Mob::new(base + 3, sheep, Vec3::ZERO, 0.0));
                 assert!(!game.native_joins_flush(true, base + 3));
                 assert!(!game.mobs.iter().any(|mob| mob.id == base + 3));
@@ -1079,7 +1080,7 @@ mod tests {
                 dragon.id = base + 8;
                 dragon.join = sunrise_client::join_seq::JoinSeq::next();
                 game.dragon.replace(dragon);
-                game.next_entity = base + 8;
+                game.server.next_entity = base + 8;
                 game.native_joins_flush(true, 0);
                 game.native_joins_flush(true, 0);
                 let seen = joins.lock().unwrap();

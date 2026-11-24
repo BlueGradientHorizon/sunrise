@@ -352,7 +352,7 @@ fn client_clouds_fog_and_precipitation_follow_the_joined_level() {
                     let mut no_tint = sky;
                     no_tint.sunrise_color[3] = 0.0;
                     let mut sample = |forward, distance, sky, draws_sky| {
-                        game.view.forwards = [forward, 0.0, 0.0];
+                        game.client.view.forwards = [forward, 0.0, 0.0];
                         game.streaming.radius = distance;
                         game.settings.sunrise.sky = draws_sky;
                         let f = game.frame_fog(camera, sky, 0, [0.0; 3]);

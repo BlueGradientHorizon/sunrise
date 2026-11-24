@@ -35,7 +35,7 @@ impl Game<'_> {
             return Err(Refusal::Client);
         }
         let conn = match self.player_handle_read(player).ok_or(Refusal::Stale)? {
-            PlayerRead::Acting { .. } => self.lan_acting.ok_or(Refusal::NoConnection)?,
+            PlayerRead::Acting { .. } => self.server.lan_acting.ok_or(Refusal::NoConnection)?,
             PlayerRead::Guest(g) if !g.is_fake() => g.conn,
             PlayerRead::Guest(_) => return Err(Refusal::NoConnection),
         };

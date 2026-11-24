@@ -54,14 +54,14 @@ impl Game<'_> {
         if self.potions.effects.get("nausea").is_none() {
             return 0.0;
         }
-        let fx = &self.screen_fx;
+        let fx = &self.client.screen_fx;
         fx.o_nausea + partial * (fx.nausea - fx.o_nausea)
     }
     /// The spin `GameRenderer.renderLevel` multiplies into the level's
     /// projection: the larger of the portal and Nausea intensities, scaled by
     /// Distortion Effects squared, turning by `LocalPlayer.getSpinningEffectAngle`.
     pub(super) fn spinning_matrix(&self, partial: f32) -> glam::Mat4 {
-        let fx = &self.screen_fx;
+        let fx = &self.client.screen_fx;
         let portal = fx.o_portal + partial * (fx.portal - fx.o_portal);
         let scale = self.screen_effect_scale();
         let intensity = portal.max(self.nausea_blend(partial)) * (scale * scale);
@@ -90,7 +90,7 @@ impl Game<'_> {
     /// `Camera.tick`: the eye height and the field-of-view modifier ease
     /// halfway toward the camera player's each tick.
     pub(super) fn tick_fov(&mut self) {
-        let first_person = self.camera_type.is_first_person();
+        let first_person = self.client.camera_type.is_first_person();
         let effect = self.fov_effect_scale();
         let (fov_player, eye) = match self.camera_subject() {
             Some(cam) if !cam.is_local_player => (cam.fov_player, Some(cam.camera.eye_height)),
@@ -114,7 +114,7 @@ impl Game<'_> {
             self.native_compute_fov_modifier(&player, base, &mut modifier);
             valid_fov_modifier(modifier, base)
         });
-        self.view.tick(eye, self.zoomed_fov_target(target));
+        self.client.view.tick(eye, self.zoomed_fov_target(target));
     }
     /// The player's `deathTime` while dead or dying: whole ticks counted by
     /// `LivingEntity.tickDeath`, so `deathTime + partialTicks` in
@@ -171,10 +171,10 @@ impl Game<'_> {
     }
     /// `Camera.calculateFov` with `modifyFovBasedOnDeathOrFluid`.
     pub(super) fn fov_degrees(&self, partial: f32, camera: [f64; 3]) -> f32 {
-        if self.studio.flying() {
-            return self.studio.freecam.fov.clamp(1.0, 179.0);
+        if self.client.studio.flying() {
+            return self.client.studio.freecam.fov.clamp(1.0, 179.0);
         }
-        let fov = self.view.calculate_fov(
+        let fov = self.client.view.calculate_fov(
             partial,
             self.settings.fov as i32,
             self.fov_effect_scale(),
@@ -222,7 +222,7 @@ impl Game<'_> {
     }
     /// `Camera.calculateHudFov`: the first-person hand's field of view.
     pub(super) fn hud_fov_degrees(&self, partial: f32, camera: [f64; 3]) -> f32 {
-        self.view.calculate_hud_fov(
+        self.client.view.calculate_hud_fov(
             partial,
             self.fov_effect_scale(),
             self.camera_death_time(),
@@ -263,13 +263,14 @@ impl Game<'_> {
             (p.position.x - start[0]) as f32,
             (p.position.z - start[2]) as f32,
         );
-        self.avatar.tick(start);
-        self.avatar
+        self.client.avatar.tick(start);
+        self.client
+            .avatar
             .update_bob(ground && alive && !swimming, velocity);
         if riding {
-            self.avatar.reset_bob();
+            self.client.avatar.reset_bob();
         } else {
-            self.avatar.add_walked(dx, dz);
+            self.client.avatar.add_walked(dx, dz);
         }
     }
     /// `SpyglassItem.use`: the sound, then start scoping (a mod's `Start`
@@ -294,16 +295,20 @@ impl Game<'_> {
     /// towards 1.125 by half the frame's game ticks and reset to 0.5 while
     /// not scoping in first person.
     pub(super) fn draw_spyglass(&mut self, batch: &mut HudBatch) {
-        self.scope_scale += 0.5 * self.frame_ticks * (1.125 - self.scope_scale);
-        if !self.camera_type.is_first_person() {
+        self.client.scope_scale +=
+            0.5 * self.client.frame_ticks * (1.125 - self.client.scope_scale);
+        if !self.client.camera_type.is_first_person() {
             return;
         }
         if !self.scoping() {
-            self.scope_scale = 0.5;
+            self.client.scope_scale = 0.5;
             return;
         }
-        let draws =
-            hud_overlays::spyglass(batch.width as i32, batch.height as i32, self.scope_scale);
+        let draws = hud_overlays::spyglass(
+            batch.width as i32,
+            batch.height as i32,
+            self.client.scope_scale,
+        );
         hud_layout::paint(batch, &self.gui.atlas, &draws);
     }
 }

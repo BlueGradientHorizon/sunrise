@@ -223,10 +223,10 @@ impl Game<'_> {
     /// (`shows_held_stack`) until the hand shows the held stack again.
     pub(super) fn hand_stack_replaced(&mut self, slot: usize) {
         if slot == self.selected {
-            self.hands_replaced[0] = true;
+            self.client.hands_replaced[0] = true;
         }
         if slot == super::shield::OFFHAND_SLOT {
-            self.hands_replaced[1] = true;
+            self.client.hands_replaced[1] = true;
         }
     }
     /// Opening a screen stops breaking before the next game tick (which may pause).
@@ -296,28 +296,28 @@ impl Game<'_> {
         let before = self.swings_started;
         self.swing_arm();
         if self.swings_started != before {
-            self.predicted_swings += 1;
+            self.server.predicted_swings += 1;
         }
     }
     /// `Player.resetAttackStrengthTicker`.
     pub(super) fn reset_attack_strength(&mut self) {
-        self.attack_ticks = 0;
-        self.hand_strength.reset();
+        self.server.attack_ticks = 0;
+        self.client.hand_strength.reset();
     }
     /// The window tick already picked before key handling. Simulation keeps its own ray.
     pub(super) fn pick_tick_targets(&mut self) {
         if self.native_window() {
             return;
         }
-        self.tick_hit.set(None);
-        self.tick_mob = None;
+        self.server.tick_hit.set(None);
+        self.server.tick_mob = None;
         match self.compute_crosshair_decision() {
             super::pick_entity::CrosshairDecision::Block(hit) => {
-                self.tick_hit.set(Some(Some(hit)));
-                self.tick_mob = Some(None);
+                self.server.tick_hit.set(Some(Some(hit)));
+                self.server.tick_mob = Some(None);
             }
             super::pick_entity::CrosshairDecision::Entity(hit) => {
-                self.tick_hit.set(Some(None));
+                self.server.tick_hit.set(Some(None));
                 let mob = self.mob_index.find(&self.mobs, hit.id).map(|i| {
                     let feet = self.mobs[i].position;
                     (
@@ -330,11 +330,11 @@ impl Game<'_> {
                         ],
                     )
                 });
-                self.tick_mob = Some(mob);
+                self.server.tick_mob = Some(mob);
             }
             super::pick_entity::CrosshairDecision::Miss => {
-                self.tick_hit.set(Some(None));
-                self.tick_mob = Some(None);
+                self.server.tick_hit.set(Some(None));
+                self.server.tick_mob = Some(None);
             }
         }
     }
@@ -372,8 +372,8 @@ impl Game<'_> {
     }
     /// Release only the non-window simulation's tick-local caches.
     pub(super) fn release_tick_targets(&mut self) {
-        self.tick_hit.set(None);
-        self.tick_mob = None;
+        self.server.tick_hit.set(None);
+        self.server.tick_mob = None;
     }
     /// `Minecraft.startAttack` on an entity: a main-hand item with an
     /// `attack_range` attacks only a hit inside it.
@@ -794,7 +794,7 @@ impl Game<'_> {
             _ => false,
         };
         if (swung && spent) || (!using && self.using.is_some() && after.is_some()) {
-            self.heights.item_used(hand);
+            self.client.heights.item_used(hand);
         }
         Ok(())
     }
@@ -804,7 +804,7 @@ impl Game<'_> {
     pub(super) fn tick_hand(&mut self) {
         // LocalPlayer.applyInput (the camera is the player's own).
         if self.player.is_some() {
-            self.sway.tick_wrapped(self.pitch, self.yaw);
+            self.client.sway.tick_wrapped(self.pitch, self.yaw);
         }
         self.swing.tick();
         let main = self.inventory[self.selected].clone();
@@ -816,37 +816,37 @@ impl Game<'_> {
             item: s.item.to_string(),
             rest: format!("{} {} {:?}", s.count, s.damage, s.extra),
         });
-        let changed = self.hand_strength.main_hand_changed(&held);
-        if self.hand_strength.tick(held) {
-            self.attack_ticks = 0;
+        let changed = self.client.hand_strength.main_hand_changed(&held);
+        if self.client.hand_strength.tick(held) {
+            self.server.attack_ticks = 0;
         }
         if changed {
             self.apply_equipment();
         }
-        self.attack_item = main.as_ref().map(|s| s.item.clone());
+        self.server.attack_item = main.as_ref().map(|s| s.item.clone());
         let next = [(self.selected, main), (OFFHAND, self.offhand.clone())];
         let mut changed = [false; 2];
         for h in 0..2 {
-            let replaced = self.hands_replaced[h];
-            let mut same = shows_held_stack(&self.visible_hands[h], &next[h], replaced);
+            let replaced = self.client.hands_replaced[h];
+            let mut same = shows_held_stack(&self.client.visible_hands[h], &next[h], replaced);
             self.reequip_part(h, &next[h], &mut same);
             if same {
-                self.visible_hands[h] = next[h].clone();
-                self.hands_replaced[h] = false;
+                self.client.visible_hands[h] = next[h].clone();
+                self.client.hands_replaced[h] = false;
             }
             changed[h] = !same;
         }
         let speed = self.main_hand_attack_speed();
-        let replace = self.heights.tick_with(
+        let replace = self.client.heights.tick_with(
             self.hands_busy(),
-            self.hand_strength.swap_scale(1.0, speed),
+            self.client.hand_strength.swap_scale(1.0, speed),
             changed,
             self.pvp_legacy_look(),
         );
         for h in 0..2 {
             if replace[h] {
-                self.visible_hands[h] = next[h].clone();
-                self.hands_replaced[h] = false;
+                self.client.visible_hands[h] = next[h].clone();
+                self.client.hands_replaced[h] = false;
             }
         }
     }
@@ -859,7 +859,7 @@ impl Game<'_> {
         let Some(stack) = &held.1 else {
             return;
         };
-        let visible = &self.visible_hands[h];
+        let visible = &self.client.visible_hands[h];
         if visible.0 == held.0 && visible.1.as_ref() == Some(stack) {
             return;
         }
@@ -887,16 +887,16 @@ impl Game<'_> {
     /// or the replay player's visible stacks.
     pub(super) fn reset_studio_hand_state(&mut self) {
         let main = self.inventory.get(self.selected).cloned().flatten();
-        self.visible_hands = [(self.selected, main), (OFFHAND, self.offhand.clone())];
-        self.hands_replaced = [false; 2];
-        self.heights = sunrise_client::first_person::HandHeights {
+        self.client.visible_hands = [(self.selected, main), (OFFHAND, self.offhand.clone())];
+        self.client.hands_replaced = [false; 2];
+        self.client.heights = sunrise_client::first_person::HandHeights {
             main: 1.0,
             old_main: 1.0,
             off: 1.0,
             old_off: 1.0,
         };
         self.swing = Default::default();
-        self.sway = Default::default();
+        self.client.sway = Default::default();
     }
 
     /// `Minecraft.crosshairPickEntity` when it is a `LivingEntity`: whether
@@ -1034,7 +1034,7 @@ impl Game<'_> {
                 .attributes
                 .computed_value_of("minecraft:attack_speed")
             && (self.remote.is_some()
-                || !self.applied_modifiers.is_empty()
+                || !self.server.applied_modifiers.is_empty()
                 || self.potions.effects.get("haste").is_some()
                 || self.potions.effects.get("mining_fatigue").is_some())
         {
@@ -1074,7 +1074,7 @@ impl Game<'_> {
     }
     /// The item whose attack damage and speed modifiers the player has (`attack_item`).
     pub(super) fn attack_item_info(&self) -> Option<&sunrise_client::items::ItemInfo> {
-        self.items().get(self.attack_item.as_deref()?)
+        self.items().get(self.server.attack_item.as_deref()?)
     }
 
     /// `Player.attack`: the attack damage attribute, with the held weapon's
@@ -1105,8 +1105,8 @@ impl Game<'_> {
     /// The visible main- and off-hand items.
     pub(super) fn visible_hand_items(&self) -> [Option<ItemStack>; 2] {
         [
-            self.visible_hands[0].1.clone(),
-            self.visible_hands[1].1.clone(),
+            self.client.visible_hands[0].1.clone(),
+            self.client.visible_hands[1].1.clone(),
         ]
     }
 }
@@ -1191,7 +1191,7 @@ impl HandWorld for GameHands<'_, '_> {
         self.game.creative
     }
     fn cannot_attack(&mut self) -> bool {
-        let ticker = self.game.hand_strength.ticker;
+        let ticker = self.game.client.hand_strength.ticker;
         self.game.cannot_attack_with_item(ticker, 0)
     }
     fn piercing_weapon(&mut self) -> bool {
@@ -1210,7 +1210,7 @@ impl HandWorld for GameHands<'_, '_> {
         if let Some(sound) = self.game.jab() {
             self.game.play_at_feet(sound);
         }
-        self.game.hand_strength.reset_attack();
+        self.game.client.hand_strength.reset_attack();
     }
     fn attack_entity(&mut self) -> bool {
         self.game.attack()
@@ -1276,7 +1276,7 @@ impl HandWorld for GameHands<'_, '_> {
         UseResult::Pass
     }
     fn item_used(&mut self, hand: Hand) {
-        self.game.heights.item_used(hand);
+        self.game.client.heights.item_used(hand);
     }
     fn release_using(&mut self) {}
 }

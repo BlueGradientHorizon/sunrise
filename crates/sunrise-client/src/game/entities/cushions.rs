@@ -264,8 +264,8 @@ impl Game<'_> {
         {
             return false;
         }
-        self.next_entity += 1;
-        let id = self.next_entity;
+        self.server.next_entity += 1;
+        let id = self.server.next_entity;
         // `BlockAttachedEntity.setPos`: `BlockPos.containing(position)`.
         let attached = [
             position.x.floor() as i32,
@@ -384,7 +384,7 @@ impl Game<'_> {
         // `Cushion.hurtServer` refuses a player who may not build, so
         // skipAttackInteraction is false and Player.attack goes on to onAttack.
         if !self.may_build() {
-            self.attack_ticks = 0;
+            self.server.attack_ticks = 0;
             return true;
         }
         self.break_cushion(i, true);
@@ -457,7 +457,7 @@ impl Game<'_> {
             Some(Target::Player) => self.creative,
             // The guest whose turn it is is in place already (the hub is out of
             // `self.lan` while it acts), as `sculk::entity_event_by` reads it.
-            Some(Target::Guest(conn)) if self.lan_acting == Some(*conn) => self.creative,
+            Some(Target::Guest(conn)) if self.server.lan_acting == Some(*conn) => self.creative,
             Some(Target::Guest(conn)) => self.command_guest(*conn).is_some_and(|g| g.creative()),
             _ => false,
         }
@@ -485,7 +485,7 @@ impl Game<'_> {
         // Guest actions temporarily take self.lan; flush once the hub is back.
         // Queue before resolving a sprite: a dedicated server has no renderer.
         if self.audio.capture.is_some() {
-            self.lan_cushion_breaks.push((state, particle_at));
+            self.server.lan_cushion_breaks.push((state, particle_at));
         }
         let at = [p.x.floor() as i32, p.y.floor() as i32, p.z.floor() as i32];
         let Some((sprite, tint)) = self.particle_sprite(state, at) else {
@@ -714,7 +714,7 @@ impl Game<'_> {
         camera: glam::DVec3,
         out: &mut Vec<sunrise_client_render::render_geometry::Vertex>,
     ) {
-        let Some(model) = self.cushion_model.as_ref() else {
+        let Some(model) = self.client.cushion_model.as_ref() else {
             return;
         };
         let sprites = &self.gui.atlas.sprites;

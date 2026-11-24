@@ -541,7 +541,7 @@ impl Game<'_> {
             let mut players = Vec::new();
             // A command runs with its source player swapped out of the hub.
             if game.riding.is_some_and(|id| tree.contains(&id))
-                && let (Some(conn), Some(player)) = (game.lan_acting, game.player.as_ref())
+                && let (Some(conn), Some(player)) = (game.server.lan_acting, game.player.as_ref())
             {
                 players.push((
                     conn,
@@ -552,7 +552,7 @@ impl Game<'_> {
             }
             if let Some(host) = game.lan.as_ref() {
                 for guest in &host.hub.guests {
-                    if Some(guest.conn) != game.lan_acting
+                    if Some(guest.conn) != game.server.lan_acting
                         && guest.vehicle.is_some_and(|id| tree.contains(&id))
                     {
                         players.push((
@@ -598,7 +598,8 @@ impl Game<'_> {
                 }
             }
             for (conn, at, rotation, mount) in players {
-                game.level_teleports
+                game.server
+                    .level_teleports
                     .push(super::server_travel::LevelTeleport {
                         conn,
                         dim: destination,
@@ -773,7 +774,7 @@ impl Game<'_> {
         transition: Transition,
         riding: &mut Vec<u32>,
     ) {
-        let acting = self.lan_acting.filter(|_| self.player.is_some());
+        let acting = self.server.lan_acting.filter(|_| self.player.is_some());
         let seated = self.riding;
         if seated == Some(vehicle)
             && let Some(p) = self.player.as_mut()
@@ -904,7 +905,7 @@ impl Game<'_> {
                     self.pitch = pitch;
                 }
                 // A server's player hears the turn alone when its turn ends.
-                self.rotation_forced = self.lan_acting.is_some();
+                self.server.rotation_forced = self.server.lan_acting.is_some();
             }
             Target::Mob(id) => {
                 if let Some(m) = self.mobs.iter_mut().find(|m| m.id == id) {

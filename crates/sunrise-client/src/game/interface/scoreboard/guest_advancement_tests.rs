@@ -21,7 +21,7 @@ fn selector_reads_independent_host_and_guest_progress() {
                 .as_nanos()
         ));
         std::fs::create_dir_all(&scratch).unwrap();
-        game.world_root = scratch.clone();
+        game.server.world_root = scratch.clone();
         game.player = Some(PlayerMotion::new(game.motion, Vec3::new(10.5, 64.0, 0.5)).unwrap());
         let net = NetConfig {
             announce: false,

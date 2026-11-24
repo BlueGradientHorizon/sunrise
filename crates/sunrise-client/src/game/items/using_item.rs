@@ -115,7 +115,8 @@ impl Game<'_> {
             return;
         }
         let hand_changed = self.use_hand_changed(slot);
-        if !self.mapped_key_down("key.use") || hand_changed || self.screen != Screen::Playing {
+        if !self.mapped_key_down("key.use") || hand_changed || self.client.screen != Screen::Playing
+        {
             self.using = None;
             self.release_used_item(&stack, ticks, hand_changed);
             return;

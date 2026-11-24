@@ -65,7 +65,7 @@ fn game<'a>(
         None,
     )
     .unwrap();
-    game.world_root = world.to_path_buf();
+    game.server.world_root = world.to_path_buf();
     game.build_registries();
     game.set_allow_commands(true);
     game
@@ -104,9 +104,10 @@ fn a_test_instance_from_an_enabled_world_pack_is_found_and_runs() {
         sunrise_client::motion::PlayerMotion::new(game.motion, Vec3::new(24.5, 100.0, 8.5))
             .unwrap(),
     );
-    game.chat_capture = Some(Vec::new());
+    game.server.chat_capture = Some(Vec::new());
     assert!(game.run_command("test run h275:broken"));
     let said: Vec<String> = game
+        .server
         .chat_capture
         .take()
         .unwrap()
@@ -198,7 +199,7 @@ fn a_world_keeps_the_test_instances_it_opened_with() {
     );
     assert_eq!(ids(&game), ["h275:broken", "minecraft:always_pass"]);
     // World B.
-    game.world_root = b.clone();
+    game.server.world_root = b.clone();
     game.reload_datapacks(false, &game.level.enabled_features.clone())
         .unwrap();
     game.load_world_state().unwrap();

@@ -96,7 +96,7 @@ impl Game<'_> {
             return;
         }
         let now = Instant::now();
-        let state = &mut self.native_shaders;
+        let state = &mut self.client.native_shaders;
         if state.looked.is_some_and(|t| now - t < LOOK_EVERY) {
             return;
         }

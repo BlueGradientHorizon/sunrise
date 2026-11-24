@@ -39,7 +39,7 @@ fn a_packs_separate_ao_reaches_the_terrain() {
         for _ in 0..2 {
             game.shader_pack_inputs(camera, camera, 0.0, &sky);
         }
-        let ids = game.pack_ids.as_ref().expect("the pack loads");
+        let ids = game.client.pack_ids.as_ref().expect("the pack loads");
         assert!(ids.separate_ao);
         game.shader_pack_inputs(camera, camera, 0.0, &sky);
         assert!(game.streaming.separate_ao);

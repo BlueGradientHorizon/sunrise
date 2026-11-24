@@ -61,7 +61,7 @@ impl Game<'_> {
 
     pub(in crate::game) fn bucket_liquid_user(&self) -> sunrise_world::level::LiquidUser {
         sunrise_world::level::LiquidUser {
-            entity_id: self.lan_acting_entity.or_else(|| {
+            entity_id: self.server.lan_acting_entity.or_else(|| {
                 (self.remote.is_some() || self.player.is_some())
                     .then(|| self.own_entity_id() as u32)
             }),
@@ -74,7 +74,8 @@ impl Game<'_> {
     /// protection radius (at the block the bucket's own ray met), then
     /// `player.mayUseItemAt` (adventure mode's `can_place_on`).
     pub(super) fn bucket_use_refused(&self, pos: [i32; 3]) -> bool {
-        self.lan_acting_spawn_protection
+        self.server
+            .lan_acting_spawn_protection
             .is_some_and(|radius| self.spawn_protects(radius, self.dim.id(), pos))
             || (!self.may_build() && !self.can_place_on_in_adventure(pos))
     }

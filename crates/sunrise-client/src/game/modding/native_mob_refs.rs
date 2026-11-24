@@ -84,7 +84,7 @@ impl Game<'_> {
                 })
             }
             Target::Player => {
-                if self.lan_acting_fake {
+                if self.server.lan_acting_fake {
                     return None;
                 }
                 let player = self.player.as_ref()?;
@@ -95,6 +95,7 @@ impl Game<'_> {
                         || player.health.permanently_invulnerable
                         || player.health.invulnerable_time > 0,
                     uuid: self
+                        .server
                         .lan_acting_uuid
                         .map(sunrise_client::lan::playerdata::uuid_ints)
                         .or(self.level.player_uuid)
@@ -423,7 +424,7 @@ impl Game<'_> {
             None => (None, None),
             Some(target) => match self.native_entity_target(target.entity())? {
                 Target::Mob(id) => (Some(Who::Mob(id)), None),
-                t @ Target::Guest(conn) if self.lan_acting_uuid.is_none() => {
+                t @ Target::Guest(conn) if self.server.lan_acting_uuid.is_none() => {
                     self.native_player_facts(t)?;
                     let guest = self.lan.as_ref()?.hub.guest(conn)?;
                     if guest.dimension != self.dim.id() {
@@ -433,7 +434,7 @@ impl Game<'_> {
                 }
                 t @ Target::Player => {
                     self.native_player_facts(t)?;
-                    match self.lan_acting {
+                    match self.server.lan_acting {
                         Some(conn) if self.lan.is_some() => (Some(Who::Player), Some(conn)),
                         _ => return None,
                     }
@@ -988,7 +989,7 @@ mod tests {
                 seed: 0,
                 max_players: 2,
                 integrated: true,
-                levels: game.level_shapes,
+                levels: game.server.level_shapes,
                 level_seeds: game.levels.runtime.seeds(),
             };
             game.lan_host(settings, net, config).unwrap();
@@ -1230,10 +1231,10 @@ mod tests {
             ));
             assert_eq!(stale.requires_custom_persistence(game), None);
             assert!(!stale.set_baby(game, true));
-            game.held_out.push(14);
+            game.server.held_out.push(14);
             assert_eq!(mob.requires_custom_persistence(game), None);
             assert!(!mob.set_baby(game, true));
-            game.held_out.pop();
+            game.server.held_out.pop();
             game.mobs.last_mut().unwrap().removed = true;
             assert_eq!(mob.requires_custom_persistence(game), None);
             assert!(!mob.set_baby(game, true));
@@ -1341,7 +1342,7 @@ mod tests {
                     .last_hurt_by_player,
                 42
             );
-            assert!(!game.last_hurt_by_player.contains_key(&13));
+            assert!(!game.server.last_hurt_by_player.contains_key(&13));
             assert!(piglin.set_target(game, None));
             assert_eq!(
                 game.mobs

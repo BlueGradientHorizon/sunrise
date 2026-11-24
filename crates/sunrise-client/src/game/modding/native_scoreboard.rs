@@ -619,7 +619,7 @@ pub(in crate::game) mod tests {
             seed: 0,
             max_players: 10,
             integrated: true,
-            levels: game.level_shapes,
+            levels: game.server.level_shapes,
             level_seeds: game.levels.runtime.seeds(),
         };
         let mut net = NetConfig::lan(0, "test".into(), 10);
@@ -631,7 +631,7 @@ pub(in crate::game) mod tests {
         };
         game.lan_host(settings, net, config).unwrap();
         // The test world keeps its folder between runs: start from no saved board.
-        let saved_board = game.world_root.join("data/minecraft/scoreboard.dat");
+        let saved_board = game.server.world_root.join("data/minecraft/scoreboard.dat");
         let _ = std::fs::remove_file(&saved_board);
         saved_board
     }

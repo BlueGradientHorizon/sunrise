@@ -59,7 +59,7 @@ impl Game<'_> {
             .unwrap_or_default();
         let food = nautilus::is_food(m, item, &taming);
         let sneaking = self.held_mapping(Action::Sneak)
-            || self.keys.raw(&winit::keyboard::KeyCode::ShiftRight);
+            || self.client.keys.raw(&winit::keyboard::KeyCode::ShiftRight);
         let tame = m.extra.tame;
         if m.is_baby() {
             // Animal.mobInteract: food grows a baby up by a tenth.
@@ -98,7 +98,7 @@ impl Game<'_> {
                     m.nav_stop();
                 }
                 if tamed {
-                    self.set_event_ai_target(self.mobs[index].id, None, self.lan_acting);
+                    self.set_event_ai_target(self.mobs[index].id, None, self.server.lan_acting);
                 }
                 let sound = nautilus::eat_sound(&self.mobs[index]);
                 // TamableAnimal.spawnTamingParticles (entity event 7 or 6).
@@ -176,9 +176,9 @@ impl Game<'_> {
             m.extra.love_player = true;
             let sound = nautilus::eat_sound(m);
             let id = m.id;
-            self.love_cause.insert(id, self.lan_acting);
+            self.server.love_cause.insert(id, self.server.lan_acting);
             let kind = self.mobs[index].kind.id.clone();
-            self.native_entity_enter_love_mode(id, &kind, self.lan_acting_uuid);
+            self.native_entity_enter_love_mode(id, &kind, self.server.lan_acting_uuid);
             self.use_nautilus_food(item);
             self.nautilus_sound(index, sound);
             // Animal.setInLove: entity event 18.

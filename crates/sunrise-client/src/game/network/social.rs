@@ -66,7 +66,7 @@ impl Game<'_> {
     }
     /// `Minecraft.isBlocked`: whether a player's chat is hidden (never the player's own).
     pub(super) fn social_hides(&self, id: u128) -> bool {
-        if !self.social.hidden.contains(&id) {
+        if !self.client.social.hidden.contains(&id) {
             return false;
         }
         let me = self.remote.as_ref().map_or_else(
@@ -82,16 +82,16 @@ impl Game<'_> {
     }
     /// `new SocialInteractionsScreen(lastScreen)`: it opens on All, with an empty search.
     pub(super) fn open_social(&mut self, from_pause: bool) {
-        self.social.page = Page::All;
-        self.social.search.set_value("");
-        self.social.tooltip = Default::default();
-        self.social.scroll = 0.0;
-        self.social.from_pause = from_pause;
+        self.client.social.page = Page::All;
+        self.client.social.search.set_value("");
+        self.client.social.tooltip = Default::default();
+        self.client.social.scroll = 0.0;
+        self.client.social.from_pause = from_pause;
         self.set_screen(Screen::Social);
         self.capture(false);
     }
     pub(super) fn close_social(&mut self) {
-        if self.social.from_pause {
+        if self.client.social.from_pause {
             self.set_screen(Screen::Paused);
         } else {
             self.set_screen(Screen::Playing);
@@ -102,13 +102,13 @@ impl Game<'_> {
     fn social_view(&mut self) -> SocialView {
         let (players, me) = self.social_players();
         for p in &players {
-            self.social.names.insert(p.uuid, p.name.clone());
+            self.client.social.names.insert(p.uuid, p.name.clone());
         }
-        let hidden = self.social.hidden.clone();
-        let search = self.social.search.value.to_lowercase();
+        let hidden = self.client.social.hidden.clone();
+        let search = self.client.social.search.value.to_lowercase();
         let mut entries: Vec<Entry> = Vec::new();
         let online = |id: u128| players.iter().find(|p| p.uuid == id);
-        let page = self.social.page;
+        let page = self.client.social.page;
         let ids: Vec<u128> = match page {
             Page::All => players.iter().map(|p| p.uuid).collect(),
             Page::Hidden => hidden.iter().copied().collect(),
@@ -119,7 +119,12 @@ impl Game<'_> {
             let (name, skin, removed) = match online(id) {
                 Some(p) => (p.name.clone(), p.skin.clone(), false),
                 None => (
-                    self.social.names.get(&id).cloned().unwrap_or_default(),
+                    self.client
+                        .social
+                        .names
+                        .get(&id)
+                        .cloned()
+                        .unwrap_or_default(),
                     sunrise_client::tab_list::default_skin(id).to_owned(),
                     true,
                 ),
@@ -147,13 +152,13 @@ impl Game<'_> {
         };
         let args = [Text::literal(server), Text::literal(count.to_string())];
         let max = social_screen::max_scroll(self.gui_size().1, entries.len());
-        self.social.scroll = self.social.scroll.clamp(0.0, max);
+        self.client.social.scroll = self.client.social.scroll.clamp(0.0, max);
         SocialView {
             page,
-            search: self.social.search.value.clone(),
+            search: self.client.social.search.value.clone(),
             entries,
             server_label: Text::translate(key, &args),
-            scroll: self.social.scroll,
+            scroll: self.client.social.scroll,
         }
     }
     /// The server's name: a local world's name, a server's entry in the list.
@@ -175,19 +180,19 @@ impl Game<'_> {
         let tooltip = social_screen::draw_contents(
             batch,
             &self.gui.atlas,
-            self.cursor,
+            self.client.cursor,
             &view,
-            &mut self.social.search,
-            &mut self.social.tooltip,
+            &mut self.client.social.search,
+            &mut self.client.social.tooltip,
         );
         self.draw_screen_phase(batch, sunrise_client::screen_draw::RenderPhase::Foreground);
         if let Some(tooltip) = tooltip {
-            sunrise_client::ui::tooltip(batch, &self.gui.atlas, &[tooltip], self.cursor);
+            sunrise_client::ui::tooltip(batch, &self.gui.atlas, &[tooltip], self.client.cursor);
         }
     }
     pub(super) fn social_click(&mut self) -> bool {
         let size = self.gui_size();
-        let cursor = self.cursor;
+        let cursor = self.client.cursor;
         let view = self.social_view();
         let Some(kind) = social_screen::click_kind(size, cursor, &view) else {
             return false;
@@ -196,7 +201,8 @@ impl Game<'_> {
         // pointer, before any list button is considered.
         if let social_screen::Click::Search = kind {
             let shift = self.has_shift_down();
-            self.social
+            self.client
+                .social
                 .search
                 .click(&self.gui.atlas, cursor.0, shift, false);
             return true;
@@ -207,16 +213,22 @@ impl Game<'_> {
         self.audio.play_button_click();
         match action {
             Action::Page(page) => {
-                self.social.page = page;
-                self.social.scroll = 0.0;
+                self.client.social.page = page;
+                self.client.social.scroll = 0.0;
             }
             Action::Hide(id) | Action::Show(id) => {
                 let hiding = matches!(action, Action::Hide(_));
-                let name = self.social.names.get(&id).cloned().unwrap_or_default();
+                let name = self
+                    .client
+                    .social
+                    .names
+                    .get(&id)
+                    .cloned()
+                    .unwrap_or_default();
                 if hiding {
-                    self.social.hidden.insert(id);
+                    self.client.social.hidden.insert(id);
                 } else {
-                    self.social.hidden.remove(&id);
+                    self.client.social.hidden.remove(&id);
                 }
                 // `PlayerEntry.onHiddenOrShown`: a line in the chat, and the narrator says it.
                 let key = if hiding {
@@ -236,11 +248,11 @@ impl Game<'_> {
     pub(super) fn social_scroll(&mut self, delta: f32) -> bool {
         if !self.pad_stick_scroll()
             && !self.pad_step_scroll()
-            && !social_screen::list_contains(self.cursor, self.gui_size())
+            && !social_screen::list_contains(self.client.cursor, self.gui_size())
         {
             return false;
         }
-        self.social.scroll -= delta * 18.0;
+        self.client.social.scroll -= delta * 18.0;
         // `social_view` clamps it to the list.
         let _ = self.social_view();
         true
@@ -252,18 +264,21 @@ impl Game<'_> {
             return true;
         }
         let (ctrl, shift) = (self.has_control_down(), self.has_shift_down());
-        let handled = self.social.search.key(key, ctrl, shift);
-        self.social.scroll = 0.0;
+        let handled = self.client.social.search.key(key, ctrl, shift);
+        self.client.social.scroll = 0.0;
         handled
     }
     pub(super) fn social_backspace(&mut self) {
-        self.social.search.key(KeyCode::Backspace, false, false);
-        self.social.scroll = 0.0;
+        self.client
+            .social
+            .search
+            .key(KeyCode::Backspace, false, false);
+        self.client.social.scroll = 0.0;
     }
     /// Characters into the search box (`searchBox.setMaxLength(16)`).
     pub(super) fn social_type(&mut self, text: &str) {
         let text: String = text.chars().filter(|c| !c.is_control()).collect();
-        self.social.search.insert_text(&text);
-        self.social.scroll = 0.0;
+        self.client.social.search.insert_text(&text);
+        self.client.social.scroll = 0.0;
     }
 }

@@ -117,7 +117,10 @@ impl Game<'_> {
                 _ => false,
             };
         if shearable
-            && let (Some(uuid), Some(name)) = (self.lan_acting_uuid, self.lan_acting_name.clone())
+            && let (Some(uuid), Some(name)) = (
+                self.server.lan_acting_uuid,
+                self.server.lan_acting_name.clone(),
+            )
         {
             let mut cancel = false;
             let off_hand = self.hand == Hand::Off;
@@ -227,7 +230,7 @@ mod tests {
             game.resolve_parts().unwrap();
             // The mobs below take ids 1 and 2 by hand: reserve them in the game's allocator, or the
             // first drop is given id 1 too.
-            game.next_entity = game.next_entity.max(2);
+            game.server.next_entity = game.server.next_entity.max(2);
             let mut add = |id: u32, kind: &str, x: i32| {
                 let kind = game.res.mob_types().get(kind).unwrap().clone();
                 let at = Vec3::new(f64::from(x) + 0.5, 64.0, 0.5);

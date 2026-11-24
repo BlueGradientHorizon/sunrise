@@ -34,11 +34,12 @@ impl Game<'_> {
             }
         }
         for id in self
+            .client
             .text_displays
             .values()
             .filter_map(|d| d.vehicle)
             .chain(self.armor_stands.iter().filter_map(|a| a.vehicle))
-            .chain(self.interactions.values().filter_map(|i| i.vehicle))
+            .chain(self.client.interactions.values().filter_map(|i| i.vehicle))
             .chain(
                 self.boats
                     .iter()

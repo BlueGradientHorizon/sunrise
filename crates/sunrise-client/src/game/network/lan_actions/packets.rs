@@ -1027,9 +1027,10 @@ impl Game<'_> {
                     .and_then(|index| sunrise_client::command::args::GameMode::ALL.get(index))
                 {
                     let lines = self.as_guest(conn, |g| {
-                        g.chat_capture = Some(Vec::new());
+                        g.server.chat_capture = Some(Vec::new());
                         g.change_game_mode(*mode);
-                        g.chat_capture
+                        g.server
+                            .chat_capture
                             .take()
                             .unwrap_or_default()
                             .iter()
@@ -1273,7 +1274,7 @@ impl Game<'_> {
             game.native_creative_slot(uuid, &name, slot, item, count, &mut cancel)
         };
         // The guest whose turn it is is in place already.
-        if self.lan_acting == Some(conn) {
+        if self.server.lan_acting == Some(conn) {
             hook(self);
         } else {
             self.as_guest(conn, hook);

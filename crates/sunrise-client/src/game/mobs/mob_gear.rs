@@ -32,7 +32,7 @@ impl Game<'_> {
         let Some((name, chances)) = equipment_table(table) else {
             return;
         };
-        let Some(loot) = self.server_loot.get() else {
+        let Some(loot) = self.server.server_loot.get() else {
             return;
         };
         let Some(m) = self.mobs.iter().find(|m| m.id == id) else {
@@ -48,7 +48,7 @@ impl Game<'_> {
         let seed = self.level.seed;
         let stacks = match loot.random_sequence(&name) {
             Some(sequence) => {
-                let random = self.rand_sequences.get(sequence, seed);
+                let random = self.server.rand_sequences.get(sequence, seed);
                 loot.roll_entity(&name, random, &params)
             }
             None => loot.roll_entity(&name, &mut self.world.random, &params),

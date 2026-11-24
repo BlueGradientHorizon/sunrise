@@ -135,14 +135,14 @@ impl Game<'_> {
         deals_knockback: bool,
         dismounts: bool,
     ) -> Option<PlayerStab> {
-        let victim = self.stab_players.get(target)?.conn;
+        let victim = self.server.stab_players.get(target)?.conn;
         let from = self
             .player
             .as_ref()
             .map(|p| [p.position.x, p.position.y, p.position.z])?;
         let magic_boost = self.enchant_damage_bonus(
             "minecraft:player",
-            Some(self.stab_players[target].entity_id as u32),
+            Some(self.server.stab_players[target].entity_id as u32),
         );
         let (base_damage, magic_boost) = if self.using.is_none() {
             let scale = self.attack_strength_scale();
@@ -199,10 +199,10 @@ impl Game<'_> {
         last_mob: Option<usize>,
         stabs: Vec<PlayerStab>,
     ) {
-        let Some(attacker) = self.lan_acting.filter(|_| !stabs.is_empty()) else {
+        let Some(attacker) = self.server.lan_acting.filter(|_| !stabs.is_empty()) else {
             return;
         };
-        self.player_stabs.push(StabBatch {
+        self.server.player_stabs.push(StabBatch {
             attacker,
             kinetic,
             charge,
@@ -214,7 +214,7 @@ impl Game<'_> {
     /// The queued stabs on players landing, each then followed by the
     /// attacker's side of a stab that affected its victim.
     pub(super) fn land_player_stabs(&mut self) {
-        for batch in std::mem::take(&mut self.player_stabs) {
+        for batch in std::mem::take(&mut self.server.player_stabs) {
             let landed: Vec<Landed> = (batch.stabs.iter())
                 .filter_map(|s| self.land_player_stab(batch.attacker, s))
                 .collect();
@@ -236,7 +236,7 @@ impl Game<'_> {
         let attack = self.attack_of(attacker_id);
         let land = |g: &mut Self| {
             g.with_attack(attack.clone(), |g| {
-                g.combat.player_attacker = Some((s.from, s.disable_blocking));
+                g.server.combat.player_attacker = Some((s.from, s.disable_blocking));
                 g.note_player_attacker(
                     "minecraft:spear",
                     attacker_id as u32,
@@ -247,7 +247,7 @@ impl Game<'_> {
                 let old_health = health(g);
                 let hurt =
                     s.deals_damage && { g.mob_hits_player(s.amount, s.from, "minecraft:spear") };
-                g.combat.player_attacker = None;
+                g.server.combat.player_attacker = None;
                 // causeExtraKnockback: a push of 0.4, then the weapon's Knockback,
                 // whether or not the hurt went through.
                 let (strength, xd, zd) = s.knockback;
@@ -318,7 +318,14 @@ impl Game<'_> {
             affected = true;
             // attackVisualEffects: no attack sound, the enchantments' magic crit.
             if l.magic {
-                self.critical_hit(self.lan_acting, l.id, l.feet, l.width, l.height, true);
+                self.critical_hit(
+                    self.server.lan_acting,
+                    l.id,
+                    l.feet,
+                    l.width,
+                    l.height,
+                    true,
+                );
             }
             // setLastHurtMob at this stab's own tail: a mob contact that came later
             // in the same use already wrote the record during the turn.

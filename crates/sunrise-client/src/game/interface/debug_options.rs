@@ -100,22 +100,22 @@ impl Game<'_> {
     /// it over whatever screen yields (`canInterruptScreen`), closing that
     /// screen first.
     pub(super) fn toggle_debug_options(&mut self) {
-        if self.screen == Screen::DebugOptions {
+        if self.client.screen == Screen::DebugOptions {
             self.close_debug_options();
             return;
         }
-        if !debug_options_interrupts(self.screen, self.screen_over_playing()) {
+        if !debug_options_interrupts(self.client.screen, self.screen_over_playing()) {
             return;
         }
         self.close_screen_behind_debug_options();
         let mut search = EditBox::new(0.0, 0.0, (ROW_WIDTH / 3.0).floor(), 20.0);
         search.max_length = 32;
-        self.debug_options = Some(DebugOptionsUi {
+        self.client.debug_options = Some(DebugOptionsUi {
             search,
             scroll: Scroll::default(),
         });
         self.set_screen(Screen::DebugOptions);
-        self.pause_menu = true;
+        self.client.pause_menu = true;
         self.capture(false);
         self.mining = None;
     }
@@ -124,12 +124,12 @@ impl Game<'_> {
     /// screen whose close only swaps the screen (stats, links, the pause menu)
     /// yields by being overwritten instead.
     fn close_screen_behind_debug_options(&mut self) {
-        match self.screen {
+        match self.client.screen {
             Screen::Inventory => {
                 self.close_container();
-                self.pause_focus = None;
+                self.client.pause_focus = None;
                 self.set_screen(Screen::Playing);
-                self.pause_menu = true;
+                self.client.pause_menu = true;
                 self.capture(true);
             }
             Screen::Creative => {
@@ -144,7 +144,7 @@ impl Game<'_> {
     }
     /// `Screen.onClose`: back to the title when no level is open, otherwise the game.
     pub(super) fn close_debug_options(&mut self) {
-        self.debug_options = None;
+        self.client.debug_options = None;
         self.set_screen(Screen::Playing);
         self.capture(self.title.is_none());
     }
@@ -199,7 +199,7 @@ impl Game<'_> {
         self.settings.save(&Self::options_path());
     }
     pub(super) fn draw_debug_options(&mut self, batch: &mut HudBatch) {
-        let Some(s) = self.debug_options.as_ref() else {
+        let Some(s) = self.client.debug_options.as_ref() else {
             self.draw_screen_phase(batch, sunrise_client::screen_draw::RenderPhase::Background);
             self.draw_screen_phase(batch, sunrise_client::screen_draw::RenderPhase::Foreground);
             return;
@@ -215,10 +215,11 @@ impl Game<'_> {
         let in_world = self.player.is_some();
         ui::menu_background(batch, atlas, 0.0, 0.0, w, h, in_world);
         let reduced = self.reduced_debug_info();
-        let rows = rows(&self.registered_debug_entries, &s.search.value);
+        let rows = rows(&self.client.registered_debug_entries, &s.search.value);
         let (top, bottom) = (HEADER, h - FOOTER);
         let content = content_height(rows.len());
-        self.debug_options
+        self.client
+            .debug_options
             .as_mut()
             .unwrap()
             .scroll
@@ -229,10 +230,10 @@ impl Game<'_> {
         self.draw_screen_phase(batch, sunrise_client::screen_draw::RenderPhase::Background);
         let (title_x, header_top, lines) = self.debug_options_header(w);
         let gui_scale_label = self.debug_gui_scale_label();
-        let s = self.debug_options.as_mut().unwrap();
+        let s = self.client.debug_options.as_mut().unwrap();
         let first = batch.vertices.len();
         let left = row_left(w);
-        let inside = self.cursor.1 >= top && self.cursor.1 < bottom;
+        let inside = self.client.cursor.1 >= top && self.client.cursor.1 < bottom;
         let mut tooltip = None;
         for (i, row) in rows.iter().enumerate() {
             let y = top + 2.0 - s.scroll.amount.trunc() + i as f32 * ITEM;
@@ -258,7 +259,7 @@ impl Game<'_> {
                     };
                     batch.text_styled(atlas, &name, cx, cy + 5.0, u32::MAX, true);
                     let xs = button_xs(cx);
-                    let status = self.debug_entries.status(entry.path);
+                    let status = self.client.debug_entries.status(entry.path);
                     for ((status_of, key, color), x) in BUTTONS.into_iter().zip(xs) {
                         let selected = status == status_of;
                         let label = Text::translate(key, &[]).with_color(if selected {
@@ -266,10 +267,13 @@ impl Game<'_> {
                         } else {
                             UNSELECTED
                         });
-                        let hover = inside && ui::hovered(self.cursor, x, cy, BUTTON, 16.0);
+                        let hover = inside && ui::hovered(self.client.cursor, x, cy, BUTTON, 16.0);
                         ui::button(batch, atlas, x, cy, BUTTON, 16.0, &label, !selected, hover);
                     }
-                    if !allowed && inside && ui::hovered(self.cursor, cx, y, xs[0] - cx, ITEM) {
+                    if !allowed
+                        && inside
+                        && ui::hovered(self.client.cursor, cx, y, xs[0] - cx, ITEM)
+                    {
                         tooltip = Some(Text::translate("debug.options.notAllowed.tooltip", &[]));
                     }
                 }
@@ -317,13 +321,16 @@ impl Game<'_> {
             Text::translate("gui.done", &[]),
         ];
         let active = [
-            !self.debug_entries.is_using_profile(Profile::Default),
-            !self.debug_entries.is_using_profile(Profile::Performance),
+            !self.client.debug_entries.is_using_profile(Profile::Default),
+            !self
+                .client
+                .debug_entries
+                .is_using_profile(Profile::Performance),
             true,
             true,
         ];
         for (i, label) in labels.iter().enumerate() {
-            let hover = ui::hovered(self.cursor, xs[i], fy, FOOTER_BUTTONS[i], 20.0);
+            let hover = ui::hovered(self.client.cursor, xs[i], fy, FOOTER_BUTTONS[i], 20.0);
             if i == 3 {
                 sunrise_client::widgets::declare_action(
                     sunrise_client::widgets::Action::Done,
@@ -349,65 +356,66 @@ impl Game<'_> {
         self.draw_screen_phase(batch, sunrise_client::screen_draw::RenderPhase::Foreground);
         if let Some(tooltip) = tooltip {
             let lines = atlas.font.split(&tooltip, 200.0);
-            ui::tooltip(batch, atlas, &lines, self.cursor);
+            ui::tooltip(batch, atlas, &lines, self.client.cursor);
         }
     }
     /// A left click: a status button, the search box, a footer button.
     pub(super) fn debug_options_click(&mut self) -> bool {
-        let Some(mut s) = self.debug_options.take() else {
+        let Some(mut s) = self.client.debug_options.take() else {
             return false;
         };
         let (w, h) = self.gui_size();
         let (top, bottom) = (HEADER, h - FOOTER);
-        let rows = rows(&self.registered_debug_entries, &s.search.value);
+        let rows = rows(&self.client.registered_debug_entries, &s.search.value);
         let left = row_left(w);
         // A press on the scrollbar holds it and clicks nothing else.
         if s.scroll.press(
-            self.cursor,
+            self.client.cursor,
             left + ROW_WIDTH + 8.0,
             top,
             bottom,
             content_height(rows.len()),
         ) {
-            self.debug_options = Some(s);
+            self.client.debug_options = Some(s);
             return true;
         }
         let shift = self.has_shift_down();
         s.search.focused = ui::hovered(
-            self.cursor,
+            self.client.cursor,
             s.search.x,
             s.search.y,
             s.search.width,
             s.search.height,
         );
         if s.search.focused {
-            s.search.click(&self.gui.atlas, self.cursor.0, shift, false);
+            s.search
+                .click(&self.gui.atlas, self.client.cursor.0, shift, false);
         }
-        let inside = self.cursor.1 >= top && self.cursor.1 < bottom;
+        let inside = self.client.cursor.1 >= top && self.client.cursor.1 < bottom;
         let mut clicked = None;
         if inside {
             for (i, row) in rows.iter().enumerate() {
                 let Row::Option(entry) = row else { continue };
                 let cy = top + 2.0 - s.scroll.amount.trunc() + i as f32 * ITEM + 2.0;
-                let status = self.debug_entries.status(entry.path);
+                let status = self.client.debug_entries.status(entry.path);
                 for ((status_of, _, _), x) in BUTTONS.into_iter().zip(button_xs(left + 2.0)) {
-                    if status != status_of && ui::hovered(self.cursor, x, cy, BUTTON, 16.0) {
+                    if status != status_of && ui::hovered(self.client.cursor, x, cy, BUTTON, 16.0) {
                         clicked = Some((entry.path, status_of));
                     }
                 }
             }
         }
         let search = s.search.focused;
-        self.debug_options = Some(s);
+        self.client.debug_options = Some(s);
         if let Some((path, status)) = clicked {
             // OptionEntry.setValue.
             self.audio.play_button_click();
-            self.debug_entries.set_status(path, status);
+            self.client.debug_entries.set_status(path, status);
             return true;
         }
         let (xs, fy) = footer(w, h);
         let Some(i) =
-            (0..4).find(|&i| ui::hovered(self.cursor, xs[i], fy, FOOTER_BUTTONS[i], 20.0))
+            (0..4).find(|&i| ui::hovered(self.client.cursor, xs[i], fy, FOOTER_BUTTONS[i], 20.0))
         else {
             return search;
         };
@@ -418,11 +426,11 @@ impl Game<'_> {
                 } else {
                     Profile::Performance
                 };
-                if self.debug_entries.is_using_profile(profile) {
+                if self.client.debug_entries.is_using_profile(profile) {
                     return search;
                 }
                 self.audio.play_button_click();
-                self.debug_entries.load_profile(profile);
+                self.client.debug_entries.load_profile(profile);
             }
             2 => {
                 self.audio.play_button_click();
@@ -440,10 +448,10 @@ impl Game<'_> {
         let (_, h) = self.gui_size();
         let scroll = self.pad_stick_scroll()
             || self.pad_step_scroll()
-            || (HEADER..h - FOOTER).contains(&self.cursor.1);
-        if scroll && let Some(s) = &mut self.debug_options {
+            || (HEADER..h - FOOTER).contains(&self.client.cursor.1);
+        if scroll && let Some(s) = &mut self.client.debug_options {
             let content =
-                content_height(rows(&self.registered_debug_entries, &s.search.value).len());
+                content_height(rows(&self.client.registered_debug_entries, &s.search.value).len());
             s.scroll
                 .wheel(delta, ITEM / 2.0, HEADER, h - FOOTER, content);
             return true;
@@ -453,12 +461,12 @@ impl Game<'_> {
     /// The pointer moved while the list's scrollbar is held.
     pub(super) fn debug_options_drag(&mut self) -> bool {
         let (_, h) = self.gui_size();
-        let y = self.cursor.1;
-        if let Some(s) = &mut self.debug_options
+        let y = self.client.cursor.1;
+        if let Some(s) = &mut self.client.debug_options
             && s.scroll.held()
         {
             let content =
-                content_height(rows(&self.registered_debug_entries, &s.search.value).len());
+                content_height(rows(&self.client.registered_debug_entries, &s.search.value).len());
             s.scroll.drag(y, HEADER, h - FOOTER, content);
             return true;
         }
@@ -466,7 +474,7 @@ impl Game<'_> {
     }
     /// The button came up: the scrollbar lets go.
     pub(super) fn debug_options_release(&mut self) -> bool {
-        self.debug_options.as_mut().is_some_and(|s| {
+        self.client.debug_options.as_mut().is_some_and(|s| {
             let handled = s.scroll.held();
             s.scroll.release();
             handled
@@ -484,7 +492,12 @@ impl Game<'_> {
         }
         let ctrl = self.has_control_down_with_quirk();
         let shift = self.has_shift_down();
-        let Some(s) = self.debug_options.as_mut().filter(|s| s.search.focused) else {
+        let Some(s) = self
+            .client
+            .debug_options
+            .as_mut()
+            .filter(|s| s.search.focused)
+        else {
             return false;
         };
         if let Some(shortcut) = shortcut {
@@ -496,7 +509,7 @@ impl Game<'_> {
     }
     /// One character off the search box, for the controller's on-screen keyboard.
     pub(super) fn debug_options_backspace(&mut self) {
-        if let Some(s) = &mut self.debug_options
+        if let Some(s) = &mut self.client.debug_options
             && s.search.focused
         {
             s.search.key(KeyCode::Backspace, false, false);
@@ -508,7 +521,7 @@ impl Game<'_> {
             .chars()
             .filter(|&c| c != '\u{a7}' && c >= ' ' && c != '\u{7f}')
             .collect();
-        if let Some(s) = &mut self.debug_options
+        if let Some(s) = &mut self.client.debug_options
             && s.search.focused
             && !allowed.is_empty()
         {
@@ -681,7 +694,7 @@ pub(in crate::game) mod tests {
         game.debug_key(KeyCode::F3, KeyAction::Press);
         game.debug_key(KeyCode::F3, KeyAction::Release);
         assert!(
-            game.debug,
+            game.client.debug,
             "the ordinary F3 toggle already reaches the title"
         );
         assert!(ScreensClientHost::debug_overlay_visible(&game));
@@ -699,13 +712,15 @@ pub(in crate::game) mod tests {
         assert!(!hidden_hud.vertices.is_empty());
         game.debug_key(KeyCode::F3, KeyAction::Press);
         game.debug_key(KeyCode::F3, KeyAction::Release);
-        assert!(!game.debug);
-        game.debug_entries.set_status("fps", Status::AlwaysOn);
+        assert!(!game.client.debug);
+        game.client
+            .debug_entries
+            .set_status("fps", Status::AlwaysOn);
         assert!(ScreensClientHost::debug_overlay_visible(&game));
 
         // With no screen open, the hidden HUD suppresses even an always-on entry.
         game.title = None;
-        game.screen = Screen::Playing;
+        game.client.screen = Screen::Playing;
         assert!(!ScreensClientHost::debug_overlay_visible(&game));
         game.ui.hide_gui = false;
         assert!(ScreensClientHost::debug_overlay_visible(&game));
@@ -722,14 +737,14 @@ pub(in crate::game) mod tests {
         let mut resources = None;
         let mut game = title_game(&mut resources);
         let original_title = game.title.as_ref().unwrap().screen_key();
-        assert!(!game.captured);
+        assert!(!game.client.captured);
         game.debug_key(KeyCode::F3, KeyAction::Press);
         game.debug_key(KeyCode::F6, KeyAction::Press);
         assert!(
-            game.screen == Screen::DebugOptions,
+            game.client.screen == Screen::DebugOptions,
             "F3+F6 must open over the title"
         );
-        assert!(game.debug_options.is_some());
+        assert!(game.client.debug_options.is_some());
         // RedrawRequested only updates the world, spawns a player and ticks
         // gameplay when title.is_none(). Keep that no-level sentinel intact.
         assert!(
@@ -761,41 +776,44 @@ pub(in crate::game) mod tests {
             }),
             "debug options buttons, rather than title buttons, must be visible"
         );
-        game.debug_options.as_mut().unwrap().search.focused = true;
+        game.client.debug_options.as_mut().unwrap().search.focused = true;
         assert!(
             game.text_field_focused(),
             "the covered title must not hide search focus"
         );
         game.ime_commit("fps");
-        assert_eq!(game.debug_options.as_ref().unwrap().search.value, "fps");
-        game.debug_options.as_mut().unwrap().search.focused = false;
+        assert_eq!(
+            game.client.debug_options.as_ref().unwrap().search.value,
+            "fps"
+        );
+        game.client.debug_options.as_mut().unwrap().search.focused = false;
         game.debug_key(KeyCode::F6, KeyAction::Release);
         game.debug_key(KeyCode::F6, KeyAction::Press);
-        assert!(game.screen == Screen::Playing);
-        assert!(game.title.is_some() && game.debug_options.is_none());
+        assert!(game.client.screen == Screen::Playing);
+        assert!(game.title.is_some() && game.client.debug_options.is_none());
         assert_eq!(game.title.as_ref().unwrap().screen_key(), original_title);
         assert!(
-            !game.captured,
+            !game.client.captured,
             "closing a title screen must not capture the pointer"
         );
         game.debug_key(KeyCode::F6, KeyAction::Release);
         game.debug_key(KeyCode::F3, KeyAction::Release);
         assert!(
-            !game.debug,
+            !game.client.debug,
             "a used debug combination does not toggle the overlay"
         );
         game.debug_key(KeyCode::F3, KeyAction::Press);
         game.debug_key(KeyCode::F6, KeyAction::Press);
         let (w, h) = game.gui_size();
         let (xs, y) = footer(w, h);
-        game.cursor = (xs[3] + 1.0, y + 1.0);
+        game.client.cursor = (xs[3] + 1.0, y + 1.0);
         game.debug_options_click();
-        assert!(game.title.is_some() && game.debug_options.is_none());
+        assert!(game.title.is_some() && game.client.debug_options.is_none());
         assert!(
-            !game.captured,
+            !game.client.captured,
             "Done also returns without grabbing the pointer"
         );
-        assert!(game.screen == Screen::Playing);
+        assert!(game.client.screen == Screen::Playing);
         game.title.as_mut().unwrap().mode = sunrise_client::title::Mode::Select {
             worlds: Vec::new(),
             selected: None,
@@ -803,7 +821,7 @@ pub(in crate::game) mod tests {
         let selection = game.title.as_ref().unwrap().screen_key();
         game.debug_key(KeyCode::F6, KeyAction::Release);
         game.debug_key(KeyCode::F6, KeyAction::Press);
-        assert!(game.debug_options.is_none());
+        assert!(game.client.debug_options.is_none());
         assert_eq!(game.title.as_ref().unwrap().screen_key(), selection);
     }
 }

@@ -186,7 +186,10 @@ impl Game<'_> {
 
         let hidden = self.chat_hidden_from(|game| {
             let sender = match game.source_entity() {
-                Some(Target::Player) => game.lan_acting_uuid.unwrap_or_else(|| game.own_uuid()),
+                Some(Target::Player) => game
+                    .server
+                    .lan_acting_uuid
+                    .unwrap_or_else(|| game.own_uuid()),
                 Some(Target::Guest(conn)) => game.command_guest(conn).map_or(0, |guest| guest.uuid),
                 _ => 0, // PlayerChatMessage.system uses the nil UUID.
             };
@@ -205,6 +208,7 @@ impl Game<'_> {
         Some(
             captured_for.is_some()
                 && !self
+                    .server
                     .lan_acting_uuid
                     .is_some_and(|uuid| hidden.contains(&uuid)),
         )

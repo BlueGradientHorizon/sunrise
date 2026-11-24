@@ -110,7 +110,7 @@ fn send(game: &mut Game<'_>, packet: S) {
         g.inbox
             .push_back(InboxItem::Packet(S::ClientTickEnd(Empty), None));
     });
-    game.level_pass.packets_drained = false;
+    game.server.level_pass.packets_drained = false;
     game.tick_lan_packets();
     // The packet phase holds output until the tick's usual network handoff.
     guest(game).sender.flush();

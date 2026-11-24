@@ -53,7 +53,7 @@ fn game<'a>(
         sunrise_client::command::args::GameMode::Survival
     };
     // A full attack charge (`getAttackStrengthScale(0.5)` = 1).
-    game.attack_ticks = 20;
+    game.server.attack_ticks = 20;
     game.build_registries();
     game.set_allow_commands(true);
     game.world
@@ -131,7 +131,7 @@ fn a_hit_that_deals_no_damage_has_no_knockback_anger_or_exhaustion() {
         "causeFoodExhaustion(0.1F) ran for a hit that dealt no damage"
     );
     assert_eq!(
-        game.attack_ticks, 0,
+        game.server.attack_ticks, 0,
         "Player.onAttack did not start the attack strength again"
     );
 }
@@ -166,7 +166,7 @@ fn the_melee_knockback_scales_with_the_attackers_attack_knockback() {
     game.mobs[0].velocity = Vec3::ZERO;
     game.mobs[0].invulnerable = 0;
     game.mobs[0].last_hurt = 0.0;
-    game.attack_ticks = 20;
+    game.server.attack_ticks = 20;
     assert!(game.attack(), "the second attack reached the pig");
     let boosted = game.mobs[0].velocity.z;
     assert!(
@@ -193,7 +193,7 @@ fn a_creative_player_hurts_an_invulnerable_mob() {
     // The same hit from a creative player: `source.isCreativePlayer()`.
     game.creative = true;
     game.mode = sunrise_client::command::args::GameMode::Creative;
-    game.attack_ticks = 20;
+    game.server.attack_ticks = 20;
     assert!(game.attack(), "the second attack reached the pig");
     assert_eq!(
         game.mobs[0].health, 9.0,

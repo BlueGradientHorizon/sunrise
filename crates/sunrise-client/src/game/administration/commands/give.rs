@@ -116,6 +116,6 @@ impl Game<'_> {
             }
         };
         self.push_item_entity(stack, at, Some(velocity), delay, Some(random));
-        self.join_item_entity(self.next_entity, at);
+        self.join_item_entity(self.server.next_entity, at);
     }
 }

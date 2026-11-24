@@ -140,7 +140,7 @@ impl Game<'_> {
         let t = self.native_entity_target(entity)?;
         if matches!(t, Target::Player | Target::Guest(_)) {
             let conn = match t {
-                Target::Player => self.lan_acting?,
+                Target::Player => self.server.lan_acting?,
                 Target::Guest(conn) => conn,
                 _ => return None,
             };
@@ -247,7 +247,7 @@ impl Game<'_> {
             },
             Some(t @ (Target::Player | Target::Guest(_))) => {
                 let conn = match t {
-                    Target::Player => self.lan_acting,
+                    Target::Player => self.server.lan_acting,
                     Target::Guest(conn) => Some(conn),
                     _ => None,
                 };
@@ -339,7 +339,7 @@ impl Game<'_> {
         target: Target,
     ) -> Option<(u32, &mut sunrise_client::motion::PlayerMotion)> {
         let conn = match target {
-            Target::Player => self.lan_acting,
+            Target::Player => self.server.lan_acting,
             Target::Guest(conn) => Some(conn),
             _ => None,
         }?;

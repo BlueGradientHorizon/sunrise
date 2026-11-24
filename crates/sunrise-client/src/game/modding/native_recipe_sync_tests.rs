@@ -183,7 +183,7 @@ fn datapack_sync_decision_precedes_join_recipe_packets() {
         || {
             with_guests(|game| {
                 let scratch = tempfile::tempdir().unwrap();
-                game.world_root = scratch.path().to_path_buf();
+                game.server.world_root = scratch.path().to_path_buf();
                 game.native_lifecycle.world_open_ready().unwrap();
                 let mut receivers = Vec::new();
                 for conn in [12, 13] {

@@ -10,6 +10,7 @@ impl Game<'_> {
         guest: Option<u32>,
     ) -> sunrise_world::loot::LootEntity {
         let capture_nbt = self
+            .server
             .server_loot
             .get()
             .is_some_and(|data| data.copies_entity_nbt());
@@ -35,7 +36,7 @@ impl Game<'_> {
             }
             e
         };
-        if let Some(conn) = guest.filter(|_| self.lan_acting.is_none())
+        if let Some(conn) = guest.filter(|_| self.server.lan_acting.is_none())
             && let Some(entity) = self.as_guest(conn, |g| own(g))
         {
             return entity;

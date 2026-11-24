@@ -177,7 +177,7 @@ impl Game<'_> {
         let Some(kind) = self.res.mob_types().get("minecraft:iron_golem").cloned() else {
             return false;
         };
-        let id = self.next_entity + 1;
+        let id = self.server.next_entity + 1;
         let mut random = self.world.random.clone();
         let golem = villager::summon_golem(
             &self.mob_world_base(&[]),
@@ -193,7 +193,7 @@ impl Game<'_> {
         let Some(golem) = golem else {
             return false;
         };
-        self.next_entity = id;
+        self.server.next_entity = id;
         let sound = golem.kind.sounds[0];
         if !sound.is_empty() {
             let at = golem.center();
@@ -368,7 +368,7 @@ impl Game<'_> {
             let mut best: Option<(f64, Vec3)> = None;
             let mut scan = nearby
                 .as_mut()
-                .map(|index| index.scan(&self.dropped, self.next_entity, area));
+                .map(|index| index.scan(&self.dropped, self.server.next_entity, area));
             let mut j = 0;
             loop {
                 if let Some(indexed) = &mut scan {
@@ -442,7 +442,7 @@ impl Game<'_> {
                 Vec3::new(pos.x - half, pos.y - 0.25, pos.z - half),
                 Vec3::new(pos.x + half, pos.y + top, pos.z + half),
             );
-            let mut scan = near_items.scan(&self.dropped, self.next_entity, reach);
+            let mut scan = near_items.scan(&self.dropped, self.server.next_entity, reach);
             if scan.is_empty() {
                 continue;
             }
@@ -507,7 +507,7 @@ impl Game<'_> {
         let uuid = match who {
             None => return self.level.player_uuid,
             // While that guest acts its own UUID is swapped in.
-            Some(conn) if self.lan_acting == Some(conn) => self.lan_acting_uuid?,
+            Some(conn) if self.server.lan_acting == Some(conn) => self.server.lan_acting_uuid?,
             Some(conn) => self.lan.as_ref()?.hub.guest(conn)?.uuid,
         };
         Some(sunrise_client::lan::playerdata::uuid_ints(uuid))
@@ -586,7 +586,7 @@ impl Game<'_> {
     /// Retain the accepted trade's actual player until the eligible mob AI
     /// phase, including across menu close. XP and rewards stay in the session.
     pub(super) fn villager_trade_pending(&mut self, id: u32) {
-        let Some(player) = self.player_uuid_of(self.lan_acting) else {
+        let Some(player) = self.player_uuid_of(self.server.lan_acting) else {
             return;
         };
         let Some(i) = self.villager_index(id) else {
@@ -869,9 +869,9 @@ mod birth_tests {
             .get("minecraft:villager")
             .unwrap()
             .clone();
-        let parent = game.next_entity + 1;
+        let parent = game.server.next_entity + 1;
         let partner = parent + 1;
-        game.next_entity = partner;
+        game.server.next_entity = partner;
         for id in [parent, partner] {
             game.mobs.push(Mob::with_random(
                 id,
@@ -886,7 +886,7 @@ mod birth_tests {
         game.mobs[0].extra.age = 6000;
         game.native_joins_skip();
         game.audio.capture = Some(Vec::new());
-        game.lan_entity_events.clear();
+        game.server.lan_entity_events.clear();
         (parent, partner)
     }
 
@@ -946,7 +946,7 @@ mod birth_tests {
                 assert_eq!(joins.load(Ordering::SeqCst), 1);
                 assert_eq!(game.mobs.len(), 2);
                 assert!(bed_owners(game).is_empty());
-                assert!(game.lan_entity_events.is_empty());
+                assert!(game.server.lan_entity_events.is_empty());
             });
         });
     }
@@ -962,7 +962,7 @@ mod birth_tests {
         assert_eq!(baby.extra.variant, 2);
         assert_eq!(baby.extra.bed, Some(BED));
         assert_eq!(bed_owners(game), vec![baby.id]);
-        assert_eq!(game.lan_entity_events, vec![(baby.id as i32, 12)]);
+        assert_eq!(game.server.lan_entity_events, vec![(baby.id as i32, 12)]);
     }
 
     #[test]

@@ -62,7 +62,7 @@ impl Game<'_> {
         let beam = sunrise_client::mobs::guardian::beam(mob, alpha as f32);
         // EntityRenderer.shouldRender: the renderer's interpolated culling box,
         // grown by 0.5 (GuardianRenderer also draws while its beam is out).
-        if let Some(view) = &self.view_frustum
+        if let Some(view) = &self.client.view_frustum
             && beam.is_none()
         {
             let (lo, hi) = super::super::entity_culling::cull_box(mob, alpha);
@@ -111,7 +111,9 @@ impl Game<'_> {
         let entity_start = out.len();
         self.mark_motion(entity_start, (1 << 32) | u64::from(mob.id));
         self.mark_entity(entity_start, &mob.kind.id);
-        self.rendered_mobs.set(self.rendered_mobs.get() + 1);
+        self.client
+            .rendered_mobs
+            .set(self.client.rendered_mobs.get() + 1);
         let packed = self.mob_packed_light(mob, alpha);
         // The mods' pre hooks (a player's `render_player_pre`, then `render_living_pre`),
         // before any of the vanilla model's parts (a sulfur cube's swallowed block) are
@@ -178,8 +180,8 @@ impl Game<'_> {
         frame_draw.capture_model = !modded
             && (added.is_some() || (listened && self.mob_render_post_listened(who.is_some())));
         if posable {
-            let mut models = self.skin_models.borrow_mut();
-            let mut frame = self.skin_frame.borrow_mut();
+            let mut models = self.client.skin_models.borrow_mut();
+            let mut frame = self.client.skin_frame.borrow_mut();
             let mark = frame.mark();
             let mut skin = sunrise_client::mobs::skin::Skin::new(&mut models, &mut frame);
             sunrise_client::mobs::render::render_skinned(
@@ -281,7 +283,10 @@ impl Game<'_> {
             self.mark_outline(&out[entity_start..], rgb);
             if let Some(((first, _, _), _)) = skinned {
                 let color = sunrise_client::mobs::render::abgr(rgb);
-                self.skin_frame.borrow_mut().outline_since(first, color);
+                self.client
+                    .skin_frame
+                    .borrow_mut()
+                    .outline_since(first, color);
             }
             if invisible && !seen_invisible {
                 out.truncate(entity_start);

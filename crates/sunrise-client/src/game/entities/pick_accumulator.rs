@@ -203,12 +203,14 @@ impl Game<'_> {
                     .and_then(|a| a.vehicle)
             })
             .or_else(|| {
-                self.interactions
+                self.client
+                    .interactions
                     .get(&(entity as i32))
                     .and_then(|i| i.vehicle)
             })
             .or_else(|| {
-                self.text_displays
+                self.client
+                    .text_displays
                     .get(&(entity as i32))
                     .and_then(|d| d.vehicle)
             })

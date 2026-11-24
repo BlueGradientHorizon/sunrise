@@ -116,7 +116,7 @@ impl Game<'_> {
             })
             .collect();
         let (arena, hook_cell) = {
-            let lent = self.lent_mobs.borrow();
+            let lent = self.server.lent_mobs.borrow();
             (lent.pending.clone(), lent.hook.clone())
         };
         let run = catch_unwind(AssertUnwindSafe(|| {
@@ -206,8 +206,8 @@ impl Game<'_> {
         } = child;
         let fresh = mob.id == 0;
         if fresh {
-            self.next_entity += 1;
-            mob.id = self.next_entity;
+            self.server.next_entity += 1;
+            mob.id = self.server.next_entity;
         }
         if let Some(uuid) = uuid {
             self.persist.uuids.insert(mob.id, uuid);
@@ -236,8 +236,13 @@ impl Game<'_> {
         }
         if !mod_api::__private::listened(mod_api::HookId::MobSplit) {
             for i in 0..drawn {
-                self.next_entity += 1;
-                let mut child = Mob::new(self.next_entity, dying.kind.clone(), dying.position, 0.0);
+                self.server.next_entity += 1;
+                let mut child = Mob::new(
+                    self.server.next_entity,
+                    dying.kind.clone(),
+                    dying.position,
+                    0.0,
+                );
                 sunrise_client::mobs::cube::split_child(dying, &mut child, i);
                 self.mobs.push(child);
                 self.native_mobs_joined(self.mobs.len() - 1, false);
@@ -246,7 +251,7 @@ impl Game<'_> {
         }
         // The numbers are issued when the children join, so a listener's own spawns cannot
         // collide; the constructor still seeds from the number the child would have.
-        let first = self.next_entity + 1;
+        let first = self.server.next_entity + 1;
         let children = (0..drawn)
             .map(|i| {
                 let mut child = Mob::new(first + i, dying.kind.clone(), dying.position, 0.0);

@@ -461,7 +461,10 @@ impl Game<'_> {
         if self.player.is_none() {
             return Err("the player has not spawned yet; try wait-ready".into());
         }
-        if self.screen != Screen::Playing || self.book.is_some() || self.sign_edit.is_some() {
+        if self.client.screen != Screen::Playing
+            || self.client.book.is_some()
+            || self.client.sign_edit.is_some()
+        {
             return Err(format!(
                 "the {} screen is open; close it first (close, or click-button)",
                 self.screen_label()
@@ -477,13 +480,13 @@ impl Game<'_> {
         if self.title.is_some() {
             return "title";
         }
-        if self.book.is_some() {
+        if self.client.book.is_some() {
             return "book";
         }
-        if self.sign_edit.is_some() {
+        if self.client.sign_edit.is_some() {
             return "sign";
         }
-        match self.screen {
+        match self.client.screen {
             Screen::Playing => "playing",
             Screen::GameModeSwitcher => "gamemode-switcher",
             Screen::Paused => "paused",
@@ -563,7 +566,7 @@ impl Game<'_> {
                 "fall_flying": p.fall_flying,
                 "sneaking": self.held_mapping(Action::Sneak),
                 "sprinting": p.sprinting,
-                "fov_modifier": self.view.fov_modifier,
+                "fov_modifier": self.client.view.fov_modifier,
                 "health": p.health.health(),
                 "absorption": p.health.absorption(),
                 // The hurt animation's ticks left (the camera's hurt tilt).
@@ -572,10 +575,10 @@ impl Game<'_> {
                 "death_time": self.death_time(),
                 "air": p.air,
                 // LocalPlayer.portalEffectIntensity: the Nether portal overlay.
-                "portal_effect": self.screen_fx.portal,
+                "portal_effect": self.client.screen_fx.portal,
                 "food": p.health.food.food,
                 "saturation": p.health.food.saturation,
-                "shield_cooldown": self.shield_cooldown,
+                "shield_cooldown": self.server.shield_cooldown,
                 // ItemCooldowns.getCooldownPercent of the shield: what this window's hotbar draws
                 // over it (on a server's client, only what the server's Cooldown packets told it).
                 "shield_cooldown_shown": self.cooldowns.percent("minecraft:shield", 0.0),
@@ -606,7 +609,7 @@ impl Game<'_> {
             "paused": self.pause,
             // Mouse movement turns the camera (`apply_mouse_look`): the real
             // pointer is grabbed, or an agent's `mouse-move` stands in for it.
-            "pointer_grabbed": self.captured || self.agent_pointer,
+            "pointer_grabbed": self.client.captured || self.client.agent_pointer,
             "player": player,
             "selected": self.selected + 1,
             "held": self.held().map(|s| self.stack_value(s)),
@@ -856,7 +859,7 @@ impl Game<'_> {
         if self.title.is_some() {
             v["menu"] = self.title_value();
         }
-        if self.screen == Screen::Inventory && self.title.is_none() {
+        if self.client.screen == Screen::Inventory && self.title.is_none() {
             let mut slots = Vec::new();
             for i in self.slots() {
                 let stack = if i == 200 {
@@ -903,7 +906,7 @@ impl Game<'_> {
     }
 
     fn messages_value(&self, n: usize) -> Value {
-        let titles = &self.titles;
+        let titles = &self.client.titles;
         json!({
             "chat": self.remote_chat(n).unwrap_or_else(|| self.ui.chat.recent_lines(n)),
             "order": "newest first",
@@ -1825,7 +1828,7 @@ impl Game<'_> {
                 ok(command_reply(self.ui.chat.recent_lines(5), outcome))
             }
             "respawn" if self.remote.is_none() => {
-                if self.screen != Screen::Dead {
+                if self.client.screen != Screen::Dead {
                     return Err("respawn needs the death screen".into());
                 }
                 let key = if self.level.hardcore {
@@ -1933,7 +1936,7 @@ impl Game<'_> {
             started: now,
             over,
             picks: self.client_picks(),
-            fed_frame: self.frames,
+            fed_frame: self.client.frames,
             deadline: now + over + Duration::from_secs(10),
             reply: reply.clone(),
             aim,
@@ -1978,15 +1981,15 @@ impl Game<'_> {
         let due = (g.total.0 * f, g.total.1 * f);
         let step = (due.0 - g.fed.0, due.1 - g.fed.1);
         if step != (0.0, 0.0) {
-            self.mouse.add_motion(step.0, step.1);
-            self.agent_pointer = true;
+            self.client.mouse.add_motion(step.0, step.1);
+            self.client.agent_pointer = true;
             g.fed = due;
-            g.fed_frame = self.frames;
+            g.fed_frame = self.client.frames;
         }
         let turned = if g.total == (0.0, 0.0) {
             self.client_picks() > g.picks
         } else {
-            self.frames > g.fed_frame
+            self.client.frames > g.fed_frame
         };
         if t >= 1.0 && turned {
             let extra = match g.aim {
@@ -2096,7 +2099,7 @@ impl Game<'_> {
         // Leaving the world (death, a screen, the title) ends movement tasks.
         let interrupted = if self.title.is_some() || self.player.is_none() {
             Some("the world closed")
-        } else if self.screen == Screen::Dead {
+        } else if self.client.screen == Screen::Dead {
             Some("the player died")
         } else {
             None
@@ -2148,7 +2151,7 @@ impl Game<'_> {
                 if let Some(why) = interrupted {
                     return Some(json!({ "error": why, "position": self.position() }));
                 }
-                if self.screen != Screen::Playing {
+                if self.client.screen != Screen::Playing {
                     return Some(
                         json!({ "error": format!("the {} screen opened", self.screen_label()), "position": self.position() }),
                     );
@@ -2218,7 +2221,7 @@ impl Game<'_> {
                     && pos.is_some()
                     && !changed
                     && self.remote.is_some()
-                    && self.screen == Screen::Playing
+                    && self.client.screen == Screen::Playing
                     && *inventory == self.inventory_counts()
                     && self.ticks < *report_tick + 20
                     && !timed_out
@@ -2464,7 +2467,7 @@ impl Game<'_> {
                     "block": self.state_string(state), "ticks": self.ticks - b.started_tick,
                     "held": self.held().map(|s| self.stack_value(s)),
                 }));
-            } else if self.screen != Screen::Playing {
+            } else if self.client.screen != Screen::Playing {
                 return Some(
                     json!({ "error": format!("the {} screen opened", self.screen_label()), "pos": b.pos }),
                 );

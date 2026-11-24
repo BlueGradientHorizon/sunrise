@@ -19,7 +19,7 @@ impl Game<'_> {
         };
         // Baked models live at stable addresses until the pack is replaced.
         // Keep multipart order and duplicates: both affect the emitted vertices.
-        let mut cache = self.falling_vertices.borrow_mut();
+        let mut cache = self.client.falling_vertices.borrow_mut();
         let entries = cache.entry(state).or_default();
         let index = entries.iter().position(|(ptrs, _)| {
             ptrs.iter()
@@ -115,7 +115,7 @@ impl Game<'_> {
                 }
                 return Ok(());
             }
-            if game.ordered.defer_landings {
+            if game.server.ordered.defer_landings {
                 if let Some(mut kept) = game.finish_falling_step(step, f) {
                     // Entity.scale(getAirDrag()) ends the tick of a block that stays.
                     kept.velocity = sunrise_client::entity_rules::scale_air_drag(kept.velocity);
@@ -133,7 +133,7 @@ impl Game<'_> {
                 // Only other falling blocks run before compaction, and their
                 // collision search excludes falling blocks. Finish this entity
                 // now so subsequent falls see its placed block.
-                game.ordered.landed.insert(join);
+                game.server.ordered.landed.insert(join);
                 return Ok(());
             }
             // Only terminal owners leave storage. Carry the original lifetime
@@ -172,7 +172,7 @@ impl Game<'_> {
             FallStep::Landed(pos) => {
                 let sample = sunrise_client::spans::SpanTotal::start();
                 let kept = self.finish_falling_block(owner, pos);
-                self.ordered.landing_time.add(sample);
+                self.server.ordered.landing_time.add(sample);
                 kept
             }
             FallStep::Falling => unreachable!(),

@@ -212,7 +212,10 @@ impl Game<'_> {
         self.remove_mob_now(id, false);
         // ItemUtils.createFilledResult.
         self.filled_result(filled);
-        if let (Some(player), Some(name)) = (self.lan_acting_uuid, self.lan_acting_name.clone()) {
+        if let (Some(player), Some(name)) = (
+            self.server.lan_acting_uuid,
+            self.server.lan_acting_name.clone(),
+        ) {
             self.native_player_bucket_entity(player, &name, id as i32, "minecraft:sulfur_cube");
         }
     }

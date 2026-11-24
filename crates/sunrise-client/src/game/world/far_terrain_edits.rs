@@ -6,7 +6,7 @@ impl Game<'_> {
     pub(super) fn observe_light_edits(&mut self) {
         if self.lod.is_some() {
             for &((x, _, z), _, _) in &self.world.light_edits {
-                self.lod_observe.insert((x >> 4, z >> 4));
+                self.client.lod_observe.insert((x >> 4, z >> 4));
             }
         }
     }

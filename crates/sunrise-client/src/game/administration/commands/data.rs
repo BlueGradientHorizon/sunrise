@@ -113,7 +113,8 @@ impl Game<'_> {
     /// The acting player's own UUID: a guest's turn (the window's player on
     /// the server thread) keeps the world owner's in `level`.
     fn saved_player_uuid(&self) -> Option<[i32; 4]> {
-        self.lan_acting_uuid
+        self.server
+            .lan_acting_uuid
             .map(sunrise_client::lan::playerdata::uuid_ints)
             .or(self.level.player_uuid)
     }
@@ -1151,8 +1152,9 @@ impl Game<'_> {
         let name_changed = self.load_block_name(key, &new, &tag);
         let cooldown_changed = if name == "minecraft:hopper" {
             let state = super::super::machines::HopperState::load(&tag);
-            let changed = self.hoppers.get(&key).map_or(-1, |s| s.cooldown) != state.cooldown;
-            self.hoppers.insert(key, state);
+            let changed =
+                self.server.hoppers.get(&key).map_or(-1, |s| s.cooldown) != state.cooldown;
+            self.server.hoppers.insert(key, state);
             changed
         } else {
             false
@@ -1483,7 +1485,8 @@ impl Game<'_> {
                 if let Some((_, mut new)) = self.decode_block_entity_at(key, &tag) {
                     let was_auto = self.command_block_auto(key);
                     if self.data_block_name(*p) == "minecraft:hopper" {
-                        self.hoppers
+                        self.server
+                            .hoppers
                             .insert(key, super::super::machines::HopperState::load(&tag));
                     }
                     self.take_loot_table(key, &tag, &mut new);
@@ -1967,14 +1970,14 @@ impl Game<'_> {
         // (PersistentEntitySectionManager.processPendingLoads), and must not
         // take the ids counted as this stack's.
         let mut waiting = std::mem::take(&mut self.world.loaded_entities);
-        let before = self.next_entity;
+        let before = self.server.next_entity;
         let mut tag = tag;
         crate::game::persist::mark_fresh(&mut tag);
         self.world.queue_entity_nbt(key, vec![tag]);
         self.spawn_loaded_entities();
         waiting.append(&mut self.world.loaded_entities);
         self.world.loaded_entities = waiting;
-        if self.next_entity == before {
+        if self.server.next_entity == before {
             return None;
         }
         // The root of the stack is the first entity spawned.
@@ -2853,7 +2856,7 @@ mod modern_literal_tests {
         game.build_registries();
         game.set_allow_commands(true);
         let run = |g: &mut Game<'_>, line: &str| {
-            g.exec = ExecState::default();
+            g.server.exec = ExecState::default();
             let source = g.player_source();
             g.execute_line(line, source)
         };
@@ -3121,7 +3124,7 @@ mod falling_live_adoption_tests {
             let before = game.falling[index].clone();
             assert!(before.join.is_joined());
             assert_eq!((before.age, before.drop_item), (5, true));
-            let next_id = game.next_entity;
+            let next_id = game.server.next_entity;
             let clock = game.world.game_time;
             assert!(!game.run_command(&format!("data merge entity {uuid} {{Time:5}}")));
             assert!(
@@ -3176,7 +3179,7 @@ mod falling_live_adoption_tests {
             );
             assert_eq!(saved.get("Silent"), Some(&Tag::Byte(1)));
             assert_eq!(game.falling.len(), 1);
-            assert_eq!(game.next_entity, next_id);
+            assert_eq!(game.server.next_entity, next_id);
             assert_eq!(game.world.game_time, clock);
         });
     }

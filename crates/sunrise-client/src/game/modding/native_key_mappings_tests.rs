@@ -119,9 +119,9 @@ fn a_control_socket_key_counts_as_a_window_key() {
         // An overlay too.
         line(game, "key z tap");
         game.open_screen_overlay("link_prompt", |game| {
-            game.link_prompt = Some("https://example.com".into());
+            game.client.link_prompt = Some("https://example.com".into());
         });
-        game.link_prompt = None;
+        game.client.link_prompt = None;
         assert!(!zoom.consume_click(game).unwrap());
 
         // Reading is_down / consume_click while a screen is open observes live KeyMapping state
@@ -129,14 +129,14 @@ fn a_control_socket_key_counts_as_a_window_key() {
         // Opening a screen releases mappings at the transition, while a subsequent unchanged
         // build_screen/observe_screen leaves live mappings intact.
         game.set_screen(Screen::Inventory);
-        game.mod_keys.input(
+        game.client.mod_keys.input(
             "key.keyboard.z",
             sunrise_client::keymapping::KeyAction::Press,
             false,
             false,
             0,
         );
-        game.mod_keys.input(
+        game.client.mod_keys.input(
             "key.mouse.left",
             sunrise_client::keymapping::KeyAction::Press,
             true,
@@ -151,7 +151,7 @@ fn a_control_socket_key_counts_as_a_window_key() {
         assert!(zoom.is_down(game).unwrap());
         assert!(grab.consume_click(game).unwrap());
         assert!(!grab.consume_click(game).unwrap());
-        game.mod_keys.release_all();
+        game.client.mod_keys.release_all();
         game.set_screen(Screen::Playing);
 
         // Shift + Z counts only with shift held; Z alone counts with it too.
@@ -214,7 +214,7 @@ fn a_window_losing_focus_lets_go_of_a_mod_mapping() {
             ));
             let z = Some("key.keyboard.z");
             game.key_input(z, z, raw, KeyAction::Press, 0);
-            game.mod_keys.input(
+            game.client.mod_keys.input(
                 "key.mouse.left",
                 sunrise_client::keymapping::KeyAction::Press,
                 true,
@@ -364,7 +364,7 @@ fn a_mod_rebinds_and_resets_its_own_mapping() {
                     zoom.binding(game),
                     Ok(("key.keyboard.x", ClientModifiers::default()))
                 );
-                game.mod_keys.input(
+                game.client.mod_keys.input(
                     "key.keyboard.x",
                     sunrise_client::keymapping::KeyAction::Press,
                     false,
@@ -372,7 +372,7 @@ fn a_mod_rebinds_and_resets_its_own_mapping() {
                     0,
                 );
                 assert_eq!(zoom.is_down(game), Ok(true));
-                game.mod_keys.input(
+                game.client.mod_keys.input(
                     "key.keyboard.x",
                     sunrise_client::keymapping::KeyAction::Release,
                     false,
@@ -419,13 +419,15 @@ fn a_mod_rebinds_and_resets_its_own_mapping() {
             assert_eq!(saved("grab"), ("key.keyboard.unknown".to_owned(), 0));
 
             // A registry replacement can reuse an index, but not the authority of its old handle.
-            game.mod_keys.bind([sunrise_client::keymapping::ModBinding {
-                owner: "keys",
-                id: "replacement",
-                input: "key.keyboard.n".into(),
-                modifiers: 0,
-                context: sunrise_client::keymapping::MappingContext::InGame,
-            }]);
+            game.client
+                .mod_keys
+                .bind([sunrise_client::keymapping::ModBinding {
+                    owner: "keys",
+                    id: "replacement",
+                    input: "key.keyboard.n".into(),
+                    modifiers: 0,
+                    context: sunrise_client::keymapping::MappingContext::InGame,
+                }]);
             let replacement =
                 ClientInputClientHost::mod_key_mapping(game, "keys", "replacement").unwrap();
             line(game, "key n tap");

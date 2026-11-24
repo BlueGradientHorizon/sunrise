@@ -86,7 +86,7 @@ fn scene<'a>(
     guest.inventory[0] = Some(ItemStack::new("minecraft:lead", 1));
     g.lan.as_mut().unwrap().hub.guests.push(guest);
     g.sync_tick_chunks();
-    g.ticked_entities_through = g.next_entity;
+    g.server.ticked_entities_through = g.server.next_entity;
     (g, rx)
 }
 #[derive(Debug, PartialEq)]

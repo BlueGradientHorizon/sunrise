@@ -284,7 +284,7 @@ impl Game<'_> {
     /// owner. False, and nothing changes, when the projectile refuses.
     fn turn_projectile(&mut self, i: usize) -> bool {
         let (pitch, yaw) = (self.pitch, self.yaw);
-        let (guest, owner_uuid) = (self.lan_acting, Some(self.acting_player_uuid()));
+        let (guest, owner_uuid) = (self.server.lan_acting, Some(self.acting_player_uuid()));
         self.creatures
             .projectiles
             .update(i, |p| attack_deflect(p, pitch, yaw, owner_uuid, guest))

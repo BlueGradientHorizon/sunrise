@@ -132,7 +132,7 @@ impl Game<'_> {
     /// `ActiveTextCollector` over the page: the style of the character
     /// under the cursor, for its click and hover events.
     fn book_style_at(&self, page: &Text, left: f32) -> Option<sunrise_client::text::Style> {
-        let (mx, my) = self.cursor;
+        let (mx, my) = self.client.cursor;
         let row = ((my - 32.0) / 9.0).floor();
         if row < 0.0 || row >= LINES as f32 {
             return None;
@@ -163,7 +163,7 @@ impl Game<'_> {
         match link {
             ClickEvent::ChangePage(target) => {
                 let target = (target - 1).clamp(0, count.saturating_sub(1) as i32);
-                let Some(BookScreen::View { page, .. }) = self.book.as_mut() else {
+                let Some(BookScreen::View { page, .. }) = self.client.book.as_mut() else {
                     return;
                 };
                 if let Some(key) = lectern {
@@ -182,7 +182,7 @@ impl Game<'_> {
             // a confirmation returns to.
             ClickEvent::RunCommand(command) => {
                 let book = if lectern.is_none() {
-                    self.book.take()
+                    self.client.book.take()
                 } else {
                     None
                 };
@@ -233,10 +233,11 @@ impl Game<'_> {
         } else {
             stack
         };
-        if self.lan_acting.is_some() {
+        if self.server.lan_acting.is_some() {
             if written {
                 let hand = i32::from(self.hand == Hand::Off);
-                self.guest_packets
+                self.server
+                    .guest_packets
                     .push(C::OpenBook(play::OpenBook { hand }));
             }
         } else if let Some(screen) = self.book_screen(stack) {
@@ -351,7 +352,7 @@ impl Game<'_> {
     /// Opens `screen` (through `open_screen_overlay`: a mod may keep it shut).
     pub(super) fn open_book(&mut self, screen: BookScreen) {
         self.open_screen_overlay(screen.id(), |game| {
-            game.book = Some(screen);
+            game.client.book = Some(screen);
             game.clear_device_keys();
             game.set_mapping_held("key.use", false);
             game.capture(false);
@@ -362,7 +363,7 @@ impl Game<'_> {
     fn set_book_signing(&mut self, on: bool) {
         let id = if on { "book_sign" } else { "book_edit" };
         self.open_screen_overlay(id, |game| {
-            if let Some(book @ BookScreen::Edit { .. }) = game.book.as_mut() {
+            if let Some(book @ BookScreen::Edit { .. }) = game.client.book.as_mut() {
                 if on {
                     book.begin_signing();
                 } else if let BookScreen::Edit { signing, .. } = book {
@@ -374,7 +375,7 @@ impl Game<'_> {
     pub(super) fn close_book(&mut self) {
         // A server's lectern: LecternScreen's menu closes (closeContainer).
         if matches!(
-            self.book,
+            self.client.book,
             Some(BookScreen::View {
                 lectern: Some(_),
                 ..
@@ -383,10 +384,10 @@ impl Game<'_> {
         {
             self.remote_close_container();
         }
-        if self.book.take().is_some() {
+        if self.client.book.take().is_some() {
             self.refresh_screen_widgets();
         }
-        self.capture(self.screen == super::Screen::Playing && !self.screen_over_playing());
+        self.capture(self.client.screen == super::Screen::Playing && !self.screen_over_playing());
     }
     /// `BookEditScreen.saveChanges` and `BookSignScreen`'s Sign and Close:
     /// trailing empty pages dropped, the book in hand updated here and, on a
@@ -394,7 +395,7 @@ impl Game<'_> {
     pub(super) fn save_book(&mut self, sign: bool) {
         let Some(BookScreen::Edit {
             slot, pages, title, ..
-        }) = self.book.take()
+        }) = self.client.book.take()
         else {
             return;
         };
@@ -418,6 +419,7 @@ impl Game<'_> {
     /// the written book its writer signed.
     fn write_book(&mut self, slot: usize, pages: Vec<String>, title: Option<String>) {
         let author = self
+            .server
             .lan_acting_name
             .clone()
             .unwrap_or_else(|| super::chat::PLAYER_NAME.to_owned());
@@ -475,7 +477,8 @@ impl Game<'_> {
                 .stack_in(p.slot as usize)
                 .is_some_and(|stack| &*stack.item == "minecraft:writable_book");
             if writable
-                && let (Some(player), Some(name)) = (g.lan_acting_uuid, g.lan_acting_name.clone())
+                && let (Some(player), Some(name)) =
+                    (g.server.lan_acting_uuid, g.server.lan_acting_name.clone())
             {
                 g.native_player_edit_book(
                     player,
@@ -508,7 +511,7 @@ impl Game<'_> {
         shortcut: Option<sunrise_client::clipboard::EditShortcut>,
     ) -> bool {
         if let Some(shortcut) = shortcut
-            && matches!(self.book, Some(BookScreen::Edit { .. }))
+            && matches!(self.client.book, Some(BookScreen::Edit { .. }))
         {
             self.book_shortcut(shortcut);
             return true;
@@ -518,7 +521,7 @@ impl Game<'_> {
     /// A key and the text it typed in the open book (the keyboard, or a
     /// controller's on-screen keyboard).
     pub(super) fn book_input(&mut self, key: Option<KeyCode>, text: Option<&str>) -> bool {
-        match self.book.as_mut() {
+        match self.client.book.as_mut() {
             Some(BookScreen::View { .. }) => match key {
                 Some(KeyCode::Escape) => {
                     self.close_book();
@@ -545,7 +548,7 @@ impl Game<'_> {
                 // `BookSignScreen.keyPressed` signs whenever the title box is
                 // not empty, blank or not, and trims the title on send.
                 Some(KeyCode::Enter | KeyCode::NumpadEnter) => {
-                    let empty = self.book.as_ref().is_some_and(
+                    let empty = self.client.book.as_ref().is_some_and(
                         |b| matches!(b, BookScreen::Edit { title, .. } if title.is_empty()),
                     );
                     if !empty {
@@ -613,7 +616,7 @@ impl Game<'_> {
     /// Typing for `sunrise-ctl type` (`\n` is a line break).
     pub(super) fn book_type(&mut self, text: &str) {
         let text = text.replace("\\n", "\n");
-        match self.book.as_mut() {
+        match self.client.book.as_mut() {
             Some(BookScreen::Edit { signing: true, .. }) => self.book_title_insert(&text),
             Some(BookScreen::Edit { .. }) => self.page_insert(&text),
             _ => {}
@@ -624,7 +627,7 @@ impl Game<'_> {
         let (ctrl, shift) = (self.has_control_down(), self.has_shift_down());
         let Some(BookScreen::Edit {
             title, title_edit, ..
-        }) = self.book.as_mut()
+        }) = self.client.book.as_mut()
         else {
             return false;
         };
@@ -637,7 +640,7 @@ impl Game<'_> {
     fn book_title_insert(&mut self, text: &str) {
         let Some(BookScreen::Edit {
             title, title_edit, ..
-        }) = self.book.as_mut()
+        }) = self.client.book.as_mut()
         else {
             return;
         };
@@ -647,7 +650,7 @@ impl Game<'_> {
     /// `BookEditScreen.keyPressed` on the page, apart from the line moves.
     fn book_page_key(&mut self, key: KeyCode) -> bool {
         let (ctrl, shift) = (self.has_control_down(), self.has_shift_down());
-        let before = match self.book.as_ref() {
+        let before = match self.client.book.as_ref() {
             Some(BookScreen::Edit { page_edit, .. }) => Some((
                 page_edit.value.clone(),
                 page_edit.cursor,
@@ -655,7 +658,7 @@ impl Game<'_> {
             )),
             _ => return false,
         };
-        let handled = if let Some(BookScreen::Edit { page_edit, .. }) = self.book.as_mut() {
+        let handled = if let Some(BookScreen::Edit { page_edit, .. }) = self.client.book.as_mut() {
             page_edit.key(key, ctrl, shift)
         } else {
             false
@@ -673,18 +676,21 @@ impl Game<'_> {
     }
     /// Ctrl+A/C/V/X: the title box while signing, else the page.
     pub(super) fn book_shortcut(&mut self, shortcut: sunrise_client::clipboard::EditShortcut) {
-        let signing = matches!(self.book, Some(BookScreen::Edit { signing: true, .. }));
+        let signing = matches!(
+            self.client.book,
+            Some(BookScreen::Edit { signing: true, .. })
+        );
         if signing {
             if let Some(BookScreen::Edit {
                 title, title_edit, ..
-            }) = self.book.as_mut()
+            }) = self.client.book.as_mut()
             {
                 title_edit.shortcut(shortcut, &mut self.clipboard);
                 title.clone_from(&title_edit.value);
             }
             return;
         }
-        let before = match self.book.as_ref() {
+        let before = match self.client.book.as_ref() {
             Some(BookScreen::Edit { page_edit, .. }) => Some((
                 page_edit.value.clone(),
                 page_edit.cursor,
@@ -692,14 +698,14 @@ impl Game<'_> {
             )),
             _ => None,
         };
-        if let Some(BookScreen::Edit { page_edit, .. }) = self.book.as_mut() {
+        if let Some(BookScreen::Edit { page_edit, .. }) = self.client.book.as_mut() {
             page_edit.shortcut(shortcut, &mut self.clipboard);
         }
         self.page_keep(before);
     }
     /// Edit the page box, then keep it only within 14 lines and 1024 characters.
     fn page_change(&mut self, f: impl FnOnce(&mut ui::EditBox)) -> bool {
-        let before = match self.book.as_ref() {
+        let before = match self.client.book.as_ref() {
             Some(BookScreen::Edit { page_edit, .. }) => Some((
                 page_edit.value.clone(),
                 page_edit.cursor,
@@ -707,7 +713,7 @@ impl Game<'_> {
             )),
             _ => return false,
         };
-        let ran = if let Some(BookScreen::Edit { page_edit, .. }) = self.book.as_mut() {
+        let ran = if let Some(BookScreen::Edit { page_edit, .. }) = self.client.book.as_mut() {
             f(page_edit);
             true
         } else {
@@ -717,7 +723,7 @@ impl Game<'_> {
     }
     /// Write the page, or put the previous text back when it no longer fits.
     fn page_keep(&mut self, before: Option<(String, usize, usize)>) -> bool {
-        let next = match self.book.as_ref() {
+        let next = match self.client.book.as_ref() {
             Some(BookScreen::Edit { page_edit, .. }) => page_edit.value.clone(),
             _ => return false,
         };
@@ -727,7 +733,7 @@ impl Game<'_> {
             page,
             page_edit,
             ..
-        }) = self.book.as_mut()
+        }) = self.client.book.as_mut()
         else {
             return false;
         };
@@ -743,7 +749,7 @@ impl Game<'_> {
     /// ArrowUp and ArrowDown move a visual line, keeping the column.
     fn book_move_line(&mut self, dir: isize) {
         let shift = self.has_shift_down();
-        let (text, cursor) = match self.book.as_ref() {
+        let (text, cursor) = match self.client.book.as_ref() {
             Some(BookScreen::Edit {
                 pages,
                 page,
@@ -760,7 +766,7 @@ impl Game<'_> {
         let slice: String = chars[start..end].iter().collect();
         // MultilineTextField.LINE_SEEK_PIXEL_BIAS: vanilla biases this seek, not the drawn caret.
         let pos = start + self.gui.atlas.font.fit(&slice, x + 2.0);
-        if let Some(BookScreen::Edit { page_edit, .. }) = self.book.as_mut() {
+        if let Some(BookScreen::Edit { page_edit, .. }) = self.client.book.as_mut() {
             page_edit.set_cursor(pos, shift);
         }
     }
@@ -768,7 +774,7 @@ impl Game<'_> {
     /// (`getCursorLineView`'s beginIndex and endIndex).
     fn book_line_edge(&mut self, end: bool) {
         let shift = self.has_shift_down();
-        let (text, cursor) = match self.book.as_ref() {
+        let (text, cursor) = match self.client.book.as_ref() {
             Some(BookScreen::Edit {
                 pages,
                 page,
@@ -780,7 +786,7 @@ impl Game<'_> {
         let rows = self.page_rows(&text);
         let (_, line) = self.caret_on(&text, &rows, cursor);
         let (start, stop) = rows[line];
-        if let Some(BookScreen::Edit { page_edit, .. }) = self.book.as_mut() {
+        if let Some(BookScreen::Edit { page_edit, .. }) = self.client.book.as_mut() {
             page_edit.set_cursor(if end { stop } else { start }, shift);
         }
     }
@@ -855,7 +861,7 @@ impl Game<'_> {
         let shift = self.has_shift_down();
         let Some(BookScreen::Edit {
             title, title_edit, ..
-        }) = self.book.as_mut()
+        }) = self.client.book.as_mut()
         else {
             return;
         };
@@ -868,25 +874,25 @@ impl Game<'_> {
     /// selects the word before the cursor and leaves the cursor where it is.
     fn book_page_click(&mut self, origin_x: f32, origin_y: f32, mx: f32, my: f32, double: bool) {
         if double {
-            if let Some(BookScreen::Edit { page_edit, .. }) = self.book.as_mut() {
+            if let Some(BookScreen::Edit { page_edit, .. }) = self.client.book.as_mut() {
                 page_edit.select_word_at_cursor();
             }
             return;
         }
         let shift = self.has_shift_down();
-        let text = match self.book.as_ref() {
+        let text = match self.client.book.as_ref() {
             Some(BookScreen::Edit { pages, page, .. }) => pages[*page].clone(),
             _ => return,
         };
         let pos = self.page_index_at(&text, mx - origin_x, my - origin_y);
-        if let Some(BookScreen::Edit { page_edit, .. }) = self.book.as_mut() {
+        if let Some(BookScreen::Edit { page_edit, .. }) = self.client.book.as_mut() {
             page_edit.set_cursor(pos, shift);
         }
     }
     /// The page buttons (`pageForward` adds a page while editing).
     fn turn_page(&mut self, forward: bool) {
         let mut lectern_page = None;
-        match self.book.as_mut() {
+        match self.client.book.as_mut() {
             Some(BookScreen::Edit {
                 pages,
                 page,
@@ -973,13 +979,13 @@ impl Game<'_> {
     pub(super) fn tick_lecterns(&mut self) {
         self.follow_lectern();
         let mut done = Vec::new();
-        for (key, left) in &mut self.lectern_pulses {
+        for (key, left) in &mut self.server.lectern_pulses {
             *left -= 1;
             if *left <= 0 {
                 done.push(*key);
             }
         }
-        self.lectern_pulses.retain(|(_, left)| *left > 0);
+        self.server.lectern_pulses.retain(|(_, left)| *left > 0);
         for key in done {
             self.set_lectern_powered(key, false);
         }
@@ -1031,7 +1037,10 @@ impl Game<'_> {
         self.audio
             .play("minecraft:item.book.put", Some(at), 1.0, 1.0);
         self.container_changed(key);
-        if let (Some(player), Some(name)) = (self.lan_acting_uuid, self.lan_acting_name.clone()) {
+        if let (Some(player), Some(name)) = (
+            self.server.lan_acting_uuid,
+            self.server.lan_acting_name.clone(),
+        ) {
             self.native_player_insert_lectern_book(player, &name, pos, &book.item);
         }
         true
@@ -1098,14 +1107,14 @@ impl Game<'_> {
                 matches!(self.world.block_entities.get(&key),
                 Some(BlockEntity::Lectern(l)) if l.book.is_none())
             }),
-            self.lan_acting_uuid,
-            self.lan_acting_name.clone(),
+            self.server.lan_acting_uuid,
+            self.server.lan_acting_name.clone(),
         ) {
             self.native_player_take_lectern_book(player, &name, [key.0, key.1, key.2], &book.item);
         }
         if self.may_build()
             && matches!(
-                self.book,
+                self.client.book,
                 Some(BookScreen::View {
                     lectern: Some(_),
                     ..
@@ -1121,7 +1130,7 @@ impl Game<'_> {
         &mut self,
         action: Option<&str>,
     ) -> sunrise_client::Result<serde_json::Value> {
-        let lectern = match &self.book {
+        let lectern = match &self.client.book {
             Some(BookScreen::View { lectern, .. }) => *lectern,
             Some(BookScreen::Edit { .. }) => None,
             None => return Err("no book is open".into()),
@@ -1136,7 +1145,7 @@ impl Game<'_> {
             },
             // The book and quill's buttons: Sign, then Sign and Close; Done
             // (which saves), then Cancel.
-            Some("sign") => match self.book.as_mut() {
+            Some("sign") => match self.client.book.as_mut() {
                 Some(BookScreen::Edit {
                     signing: true,
                     title,
@@ -1145,7 +1154,7 @@ impl Game<'_> {
                 Some(BookScreen::Edit { .. }) => self.set_book_signing(true),
                 _ => return Err("not a book and quill".into()),
             },
-            Some("done") => match self.book.as_mut() {
+            Some("done") => match self.client.book.as_mut() {
                 Some(BookScreen::Edit { signing: true, .. }) => {
                     self.set_book_signing(false);
                 }
@@ -1154,7 +1163,7 @@ impl Game<'_> {
             },
             Some(other) => return Err(format!("unknown book button {other}").into()),
         }
-        Ok(match &self.book {
+        Ok(match &self.client.book {
             Some(BookScreen::View {
                 pages,
                 page,
@@ -1183,7 +1192,7 @@ impl Game<'_> {
             lectern: Some(_),
             pages,
             page,
-        }) = self.book.as_mut()
+        }) = self.client.book.as_mut()
         {
             *pages = view_pages(book.as_ref().and_then(ItemStack::data));
             *page = (*page).min(pages.len().saturating_sub(1));
@@ -1195,7 +1204,7 @@ impl Game<'_> {
             lectern: Some(_),
             pages,
             page,
-        }) = self.book.as_mut()
+        }) = self.client.book.as_mut()
         {
             *page = (value.max(0) as usize).min(pages.len().saturating_sub(1));
         }
@@ -1228,11 +1237,13 @@ impl Game<'_> {
             self.container_changed(key);
         } else if menu.data[0] != before {
             self.set_lectern_powered(key, true);
-            self.lectern_pulses.push((key, 2));
+            self.server.lectern_pulses.push((key, 2));
             self.level_event_at(1043, [key.0, key.1, key.2], 0);
             self.container_changed(key);
-            if let (Some(player), Some(name)) = (self.lan_acting_uuid, self.lan_acting_name.clone())
-            {
+            if let (Some(player), Some(name)) = (
+                self.server.lan_acting_uuid,
+                self.server.lan_acting_name.clone(),
+            ) {
                 self.native_player_lectern_page_change(
                     player,
                     &name,
@@ -1248,7 +1259,7 @@ impl Game<'_> {
     pub(super) fn follow_lectern(&mut self) {
         let Some(BookScreen::View {
             lectern: Some(key), ..
-        }) = self.book.as_ref()
+        }) = self.client.book.as_ref()
         else {
             return;
         };
@@ -1274,7 +1285,7 @@ impl Game<'_> {
             self.close_book();
             return;
         }
-        let Some(BookScreen::View { page, pages, .. }) = self.book.as_mut() else {
+        let Some(BookScreen::View { page, pages, .. }) = self.client.book.as_mut() else {
             return;
         };
         if let Some(BlockEntity::Lectern(l)) = self.world.block_entities.get(&key) {
@@ -1284,20 +1295,21 @@ impl Game<'_> {
     pub(super) fn book_click(&mut self, size: [u32; 2]) -> bool {
         let b = HudBatch::new(size, self.settings.gui_scale_inputs());
         let (w, left) = (b.width, ((b.width - 192.0) / 2.0).floor());
-        let (mx, my) = self.cursor;
+        let (mx, my) = self.client.cursor;
         // MouseHandler: a click within 250 ms of the last one on this screen is a double click.
         let now = std::time::Instant::now();
         let double = self
+            .client
             .book_last_click
             .is_some_and(|at| now.duration_since(at).as_millis() < 250);
-        self.book_last_click = Some(now);
+        self.client.book_last_click = Some(now);
         let inside =
             |x: f32, y: f32, bw: f32, bh: f32| mx >= x && my >= y && mx < x + bw && my < y + bh;
         let click = |game: &mut Self| {
             game.audio
                 .play("minecraft:ui.button.click", None, 0.25, 1.0)
         };
-        match &self.book {
+        match &self.client.book {
             Some(BookScreen::Edit {
                 signing: true,
                 title,
@@ -1376,10 +1388,12 @@ impl Game<'_> {
     }
     pub(super) fn draw_book(&mut self, batch: &mut HudBatch) {
         let mut hovered = None;
-        let Some(book) = &self.book else { return };
+        let Some(book) = &self.client.book else {
+            return;
+        };
         let atlas = &self.gui.atlas;
         let w = batch.width;
-        let (mx, my) = self.cursor;
+        let (mx, my) = self.client.cursor;
         let hover =
             |x: f32, y: f32, bw: f32, bh: f32| mx >= x && my >= y && mx < x + bw && my < y + bh;
         self.render_transparent_background("book", batch);
@@ -1728,7 +1742,7 @@ impl Game<'_> {
                 hovered = pages.get(*page).and_then(|t| self.book_style_at(t, left));
             }
         }
-        if let Some(book_id) = self.book.as_ref().map(BookScreen::id) {
+        if let Some(book_id) = self.client.book.as_ref().map(BookScreen::id) {
             self.draw_overlay_mounted_widgets(batch, book_id);
         }
         if let Some(style) = hovered {
@@ -1785,10 +1799,10 @@ mod lectern_books_tag_tests {
             r#"{"enabled":["file/books"],"disabled":[]}"#,
         )
         .unwrap();
-        game.world_root = dir;
+        game.server.world_root = dir;
         let stack = game.reload_datapacks(false, &[]).unwrap();
         let root = game.options.resources.clone();
-        game.world_tables = game
+        game.server.world_tables = game
             .stage_world_tables(&stack, false, &root)
             .unwrap()
             .tables;
@@ -2104,15 +2118,15 @@ mod lectern_reach_tests {
             }),
         );
         assert!(game.open_lectern([8, 64, 8]));
-        assert!(game.book.is_some(), "the lectern screen opened");
+        assert!(game.client.book.is_some(), "the lectern screen opened");
 
         game.tick_lecterns();
-        assert!(game.book.is_some(), "the player is within reach");
+        assert!(game.client.book.is_some(), "the player is within reach");
 
         game.player.as_mut().unwrap().position = Vec3::new(30.0, 64.0, 10.5);
         game.tick_lecterns();
         assert!(
-            game.book.is_none(),
+            game.client.book.is_none(),
             "the lectern screen stayed open out of reach"
         );
     }

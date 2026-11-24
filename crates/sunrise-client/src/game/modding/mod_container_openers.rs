@@ -57,25 +57,27 @@ impl Game<'_> {
         }
         let key = (self.dim.id(), pos);
         if self
+            .server
             .mod_container_viewers
             .get(&key)
             .is_some_and(|c| c.generation != generation)
         {
-            self.mod_container_viewers.remove(&key);
+            self.server.mod_container_viewers.remove(&key);
         }
         let counter = if open {
-            let counter = self
-                .mod_container_viewers
-                .entry(key)
-                .or_insert(ModContainerOpeners {
-                    count: 0,
-                    generation,
-                    recheck: self.world.game_time + 5,
-                    range,
-                });
+            let counter =
+                self.server
+                    .mod_container_viewers
+                    .entry(key)
+                    .or_insert(ModContainerOpeners {
+                        count: 0,
+                        generation,
+                        recheck: self.world.game_time + 5,
+                        range,
+                    });
             counter.range = counter.range.max(range);
             counter
-        } else if let Some(counter) = self.mod_container_viewers.get_mut(&key) {
+        } else if let Some(counter) = self.server.mod_container_viewers.get_mut(&key) {
             counter
         } else {
             return;
@@ -116,6 +118,7 @@ impl Game<'_> {
         let dim = self.dim.id();
         let time = self.world.game_time;
         let due: Vec<_> = self
+            .server
             .mod_container_viewers
             .iter()
             .filter(|((d, _), c)| *d == dim && c.recheck <= time)
@@ -126,6 +129,7 @@ impl Game<'_> {
             // A scheduled recheck belongs to the block entity that opened, not its replacement.
             // An earlier recheck callback may also have already changed this counter.
             let Some(counter) = self
+                .server
                 .mod_container_viewers
                 .get(&key)
                 .filter(|c| c.generation == generation && c.recheck <= time)
@@ -133,7 +137,7 @@ impl Game<'_> {
                 continue;
             };
             if self.mod_container_generation(pos) != Some(generation) {
-                self.mod_container_viewers.remove(&key);
+                self.server.mod_container_viewers.remove(&key);
                 continue;
             }
             let previous = counter.count;
@@ -201,8 +205,8 @@ impl Game<'_> {
                 next_range = next_range.max(3.0);
             }
             if count == 0 {
-                self.mod_container_viewers.remove(&key);
-            } else if let Some(counter) = self.mod_container_viewers.get_mut(&key) {
+                self.server.mod_container_viewers.remove(&key);
+            } else if let Some(counter) = self.server.mod_container_viewers.get_mut(&key) {
                 counter.count = count;
                 counter.range = next_range;
                 counter.recheck = time + 5;
