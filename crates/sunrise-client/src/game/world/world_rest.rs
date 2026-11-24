@@ -43,49 +43,7 @@ pub(super) fn load_world_rest(
             Items::load(root, registry, facts, overlay, resources.item_defaults())
         })?;
         items.bind_component_damage_catalog(&resources.motion().health.damage);
-        items.bind_enchantment_tags(root, overlay)?;
-        items.bind_registry_tags(
-            root,
-            overlay,
-            sunrise_client::items::TagRegistry::Biome,
-            "worldgen/biome",
-            |id| biomes.contains(id),
-        )?;
-        let mut structures: std::collections::HashSet<String> = items
-            .component_registry
-            .ids("minecraft:worldgen/structure")
-            .iter()
-            .cloned()
-            .collect();
-        for (id, _) in overlay.kind("worldgen/structure") {
-            structures.insert(id.to_owned());
-        }
-        items.bind_registry_tags(
-            root,
-            overlay,
-            sunrise_client::items::TagRegistry::Structure,
-            "worldgen/structure",
-            |id| structures.contains(id),
-        )?;
-        let mut clocks: std::collections::HashSet<String> = items
-            .component_registry
-            .ids("minecraft:world_clock")
-            .iter()
-            .cloned()
-            .collect();
-        for id in mod_api::__private::world_clock_declarations() {
-            clocks.insert(id.to_owned());
-        }
-        for (id, _) in overlay.kind("world_clock") {
-            clocks.insert(id.to_owned());
-        }
-        items.bind_registry_tags(
-            root,
-            overlay,
-            sunrise_client::items::TagRegistry::WorldClock,
-            "world_clock",
-            |id| clocks.contains(id),
-        )?;
+        world_entry::bind_world_registry_tags(&mut items, root, overlay, overlay, biomes)?;
         api_values::resolve_item_registry(&items)?;
         log::info!("load items: {:.2}s", started.elapsed().as_secs_f32());
         progress.set(7);
