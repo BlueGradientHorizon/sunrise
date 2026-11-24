@@ -131,6 +131,12 @@ impl Renderer {
                 _ => None,
             };
             post.set_weather(weather);
+            if let Some(format) = post.stage_color_format()
+                && pack_mod_stage.is_some()
+            {
+                self.world_primitives
+                    .ensure_pack_pipelines(&self.device, format);
+            }
             let flat = self.flat.as_ref().filter(|_| flat_frame);
             self.pack_pages.clear();
             // The pack's terrain programs read their pages: flat, or per section where vertex
@@ -220,12 +226,6 @@ impl Renderer {
                 indices: self.indices.clone(),
                 quads: cloud_quads,
             }));
-            if let Some(format) = post.stage_color_format()
-                && pack_mod_stage.is_some()
-            {
-                self.world_primitives
-                    .ensure_pack_pipelines(&self.device, format);
-            }
             let world_primitives = &self.world_primitives;
             let mut stage_cursor = pack_mod_stage.unwrap_or(world_primitives::STAGES);
             let mut stage_draw = |rp: &mut wgpu::RenderPass<'_>, stage: usize| {

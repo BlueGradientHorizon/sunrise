@@ -873,7 +873,7 @@ impl PackPost {
         // RenderLevelStage::AfterLevel (stage 4), matching Iris's `MixinLevelRenderer`:
         // draws onto the pack's final colour picture (before any window upscale) against the
         // exported reversed-Z `world_depth`.
-        if let Some(draw) = stages.as_deref_mut()
+        if let Some(draw) = stages
             && let Some(after_color) = final_view
                 .as_ref()
                 .or_else(|| (size == window).then_some(screen))
