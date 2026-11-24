@@ -1086,3 +1086,55 @@ fn slot_source_and_extended_registry_tag_empty_conditions() {
     );
     assert!(!loot.slot_sources().contains_key("boiler:when_mod_absent"));
 }
+
+/// An unknown `neoforge:conditions` id in a `villager_trade` or `trade_set` file omits
+/// the entry and records its file path and condition id for `conditions.check_errors()`.
+#[test]
+fn trade_files_with_unknown_load_condition_report_errors() {
+    let scratch = tempfile::tempdir().unwrap();
+    let root = scratch.path();
+    let trade_dir = root.join("data/boiler/villager_trade");
+    let set_dir = root.join("data/boiler/trade_set");
+    std::fs::create_dir_all(&trade_dir).unwrap();
+    std::fs::create_dir_all(&set_dir).unwrap();
+    std::fs::write(
+        trade_dir.join("bad_trade.json"),
+        json!({
+            "neoforge:conditions": [{"type": "unknown:bogus_trade"}],
+            "wants": {"id": "minecraft:emerald", "count": 1},
+            "gives": {"id": "minecraft:stone", "count": 1}
+        })
+        .to_string(),
+    )
+    .unwrap();
+    std::fs::write(
+        set_dir.join("bad_set.json"),
+        json!({
+            "neoforge:conditions": [{"type": "unknown:bogus_set"}],
+            "trades": "#boiler:empty"
+        })
+        .to_string(),
+    )
+    .unwrap();
+
+    let conditions = sunrise_world::conditions::LoadConditions::new(["chemlib"]);
+    let overlay = sunrise_world::loot::PackOverlay {
+        conditions: &conditions,
+        ..sunrise_world::loot::PackOverlay::default()
+    };
+    let loaded = sunrise_client::merchant::Trades::load(root, &overlay);
+    assert!(!loaded.trades.contains_key("boiler:bad_trade"));
+    assert!(!loaded.sets.contains_key("boiler:bad_set"));
+    let err = conditions
+        .check_errors()
+        .expect_err("unknown condition in trade files must be reported");
+    assert!(
+        err.contains("data/boiler/villager_trade/bad_trade.json")
+            && err.contains("unknown:bogus_trade"),
+        "expected trade file path and unknown condition id, got: {err}"
+    );
+    assert!(
+        err.contains("data/boiler/trade_set/bad_set.json") && err.contains("unknown:bogus_set"),
+        "expected trade_set file path and unknown condition id, got: {err}"
+    );
+}

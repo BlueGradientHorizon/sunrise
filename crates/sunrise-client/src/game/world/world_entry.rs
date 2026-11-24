@@ -739,6 +739,9 @@ impl Game<'_> {
                 biomes.table.registered_keys().iter().cloned(),
             ));
         drop(registries);
+        // Check again after `StationData::from_sources` (`Trades::load`) and other late
+        // condition readers, before live state (`resolve_enchantment_registry`) changes.
+        conditions.check_errors()?;
         // The API's key order is live state as well: do not change it for a
         // candidate refused by the condition readers.
         api_values::resolve_enchantment_registry(&items)?;
