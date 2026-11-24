@@ -9,6 +9,7 @@ use crate::{ChunkLoadError, ChunkSnapshot, LevelRef};
 /// (`ChunkLevel.FULL_CHUNK_LEVEL`) ticket before completion, or match it against
 /// [`CompletedChunkRequest::request`] returned by `LevelRef::drain_chunk_requests`.
 // exhaustive: opaque handle with crate-private fields; constructed only by the engine.
+// no wire: process-local request handle bound to a running server level, not a network payload.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct ChunkRequestRef {
     pub(crate) level: LevelRef,
@@ -31,6 +32,7 @@ impl ChunkRequestRef {
 }
 
 /// One finished or failed non-blocking chunk request returned by `LevelRef::drain_chunk_requests`.
+// no wire: holds an engine-backed `ChunkSnapshot` and process-local request handle.
 #[non_exhaustive]
 #[derive(Clone, Debug)]
 pub struct CompletedChunkRequest {

@@ -147,5 +147,6 @@ pub trait LevelChunksBackendMut {
     /// Side: server.
     /// Cancels a pending (or undrained) request owned by the calling mod and releases its
     /// level-33 ticket immediately. Returns `true` if the request was still active.
+    #[manual_handle]
     fn chunk_request_cancel(&mut self, request: ChunkRequestRef) -> bool;
 }
