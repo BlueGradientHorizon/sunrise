@@ -7903,6 +7903,7 @@ impl Game<'_> {
         };
         let credit_plan =
             self.prepare_knockback_credit(self.mobs[index].id as i32, Some(Who::Player), &feeder);
+        let removes_armor = self.held_shears(ability::SHEARS_REMOVE_ARMOR);
         let m = &mut self.mobs[index];
         if !m.alive() {
             return Ok(false);
@@ -8018,7 +8019,7 @@ impl Game<'_> {
             }
             // Entity.interact: shears take a tamed wolf's armor off for its owner.
             Species::Wolf
-                if item == "minecraft:shears"
+                if removes_armor
                     && m.extra.tame
                     && m.extra.owner == Some(acting)
                     && m.extra.body_id().is_some()

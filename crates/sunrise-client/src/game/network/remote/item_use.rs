@@ -23,10 +23,14 @@ impl Game<'_> {
         // effects and item consumption to the server.
         let sneaking = self.remote_shift_down();
         let hands_full = self.stack_in(self.selected).is_some() || self.offhand.is_some();
-        if !(sneaking && hands_full) && &*name == "minecraft:tnt" {
+        let starter = super::super::item_abilities::ability::FIRESTARTER_LIGHT;
+        if !(sneaking && hands_full)
+            && &*name == "minecraft:tnt"
+            && self.stack_can_perform(stack, starter, true)
+        {
             return true;
         }
-        if let Ok(Some(lit_state)) = self.fire_starter_lit(hit, stack) {
+        if let Ok(Some(lit_state)) = self.with_hand(hand, |g| g.fire_starter_lit(hit, stack)) {
             let pos = sunrise_core::position::BlockPos::new(hit.pos[0], hit.pos[1], hit.pos[2]);
             self.predict_blocks(&[(pos, lit_state)], seq);
             let at = [
