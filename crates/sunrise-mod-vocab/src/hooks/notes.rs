@@ -2340,8 +2340,6 @@ registration path.
 
 - `ClientHost::window_size()`, the window's width and height in framebuffer pixels (`Window.getWidth`, `getHeight`), independent of GUI scale: the size `window_resize` reports. It returns no size on a server or when no window exists.
 
-- `ClientHost::shader_pack_active()`, whether a shader pack is currently loaded and active (Iris's `IrisApi.isShaderPackInUse()`). It returns `false` on a server, when no renderer exists, or while no shader pack is running.
-
 
 - A player changing dimension: `player_changed_dimension(player, name, from, to)` is heard once after a cross-dimension portal or command teleport lands, with `from` and `to` as dimension ids and the player's state swapped in. It is server-only. Same-level moves and replacement by `PlayerList.respawn` are not heard; use `player_respawned` for death or the return after the End credits.
 
