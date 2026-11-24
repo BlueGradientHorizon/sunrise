@@ -99,8 +99,10 @@ may come from a mod that loads later.
 
 A registered dimension is the level stem and dimension type a data pack would give, below every
 data pack: a pack with `data/mymod/dimension/pocket.json` or `data/mymod/dimension_type/pocket.json`
-replaces that half of it, in the worlds that have the pack.
-
+replaces that half of it, in the worlds that have the pack. A `minecraft:flat` stem uses the
+resolved dimension's build range and the world pack's biome registry. Its `features`, `lakes` and
+`structure_overrides` use the same generator as a flat Overworld. Invalid layer heights fail
+world loading with the dimension id in the error.
 
 ## Sending a player to a dimension
 
@@ -272,6 +274,42 @@ Inside a hook, use `level.request_save(host)`, not a synchronous `save-all` comm
 While an entity pass or held-out row is borrowed, synchronous saving refuses with vanilla's
 `commands.save.failed` feedback and a failed command result, without writing a partial snapshot.
 Requested saves wait for a settled start-of-tick boundary.
+
+## Resolve an entity by UUID
+
+In a server hook, wrap a saved `u128` in `EntityUuid` and ask the level that
+should hold the entity with `LevelRef::entity_by_uuid`. The level may be the one
+in place or a parked one; the lookup returns `None` if the entity is unloaded or
+in another level. To search every level, do as vanilla's
+`ServerLevel.getEntityInAnyDimension` does: ask the hook's own level first, then
+each other level `host.levels()` lists.
+
+```rust,ignore
+use mod_api::prelude::*;
+use mod_api::{EntityRef, EntityUuid, LevelRef, ServerHost};
+
+fn find_saved_entity(host: &dyn ServerHost, level: LevelRef, saved_uuid: u128) -> Option<EntityRef> {
+    level.entity_by_uuid(host, EntityUuid(saved_uuid))
+}
+
+fn find_in_any_level(host: &dyn ServerHost, own: LevelRef, saved_uuid: u128) -> Option<EntityRef> {
+    let uuid = EntityUuid(saved_uuid);
+    own.entity_by_uuid(host, uuid).or_else(|| {
+        let levels = host.levels().list_levels();
+        levels
+            .into_iter()
+            .filter(|level| *level != own)
+            .find_map(|level| level.entity_by_uuid(host, uuid))
+    })
+}
+
+fn entity_identity(host: &mut dyn ServerHost, entity: EntityRef) -> Option<EntityUuid> {
+    entity.uuid(host).map(EntityUuid)
+}
+```
+
+`EntityRef::uuid` returns the raw `u128`. Use `EntityUuid(raw_uuid)` to pass
+that value back into the lookup.
 
 ## Chunk generators
 

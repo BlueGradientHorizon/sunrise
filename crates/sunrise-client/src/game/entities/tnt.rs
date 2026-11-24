@@ -763,10 +763,16 @@ impl Game<'_> {
         }
         self.mob_by_uuid(uuid).map(|m| (Who::Mob(m), None))
     }
-    /// `TntBlock.useItemOn`: flint and steel or a fire charge primes TNT.
+    /// `TntBlock.useItemOn`: a fire starter (`firestarter_light`: flint and steel or a fire
+    /// charge) primes TNT.
     pub(super) fn ignite_tnt(&mut self, stack: &ItemStack) -> Result<bool> {
         let item = &*stack.item;
-        if item != "minecraft:flint_and_steel" && item != "minecraft:fire_charge" {
+        let starter = matches!(item, "minecraft:flint_and_steel" | "minecraft:fire_charge");
+        if !self.stack_can_perform(
+            stack,
+            super::item_abilities::ability::FIRESTARTER_LIGHT,
+            starter,
+        ) {
             return Ok(false);
         }
         let Some(hit) = self.pick() else {
