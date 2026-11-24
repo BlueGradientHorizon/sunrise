@@ -70,6 +70,22 @@ impl Game<'_> {
             master_volume: self.settings.master_volume as f32,
         }
     }
+    /// Whether a shader pack is currently loaded and active (`IrisApi.isShaderPackInUse()`).
+    /// Returns `false` on the title screen even if a loaded pack remains cached from an earlier
+    /// world, matching `draw_frame.rs`'s title-screen suppression.
+    pub(in crate::game) fn shader_pack_active(&self) -> bool {
+        shader_pack_in_use(
+            self.title.is_some(),
+            self.renderer.as_ref().and_then(|r| r.shader_pack_kind()),
+        )
+    }
+}
+
+/// Pure lifecycle rule for [`Game::shader_pack_active`]: a loaded pack is inactive while the
+/// title screen is showing (the renderer suppresses it via `!frame.title` rather than dropping
+/// it when leaving a world).
+fn shader_pack_in_use(on_title_screen: bool, loaded_pack: Option<&str>) -> bool {
+    !on_title_screen && loaded_pack.is_some()
 }
 
 /// Convert live client settings into the API-owned GUI snapshot.
@@ -158,5 +174,13 @@ mod tests {
     fn gui_scale_needs_a_window() {
         assert_eq!(resolved_gui_scale(None, 0, false), None);
         assert_eq!(resolved_gui_scale(None, 4, true), None);
+    }
+
+    #[test]
+    fn shader_pack_active_is_false_on_title_screen_even_when_pack_remains_loaded() {
+        assert!(!shader_pack_in_use(false, None));
+        assert!(!shader_pack_in_use(true, None));
+        assert!(!shader_pack_in_use(true, Some("iris")));
+        assert!(shader_pack_in_use(false, Some("iris")));
     }
 }
