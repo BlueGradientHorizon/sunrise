@@ -62,10 +62,11 @@ class WorldInputCaptureTests(unittest.TestCase):
         tick = (remote_dir / "tick.rs").read_text(encoding="utf-8")
         level_tick = (remote_dir / "client_level_tick.rs").read_text(encoding="utf-8")
         spawn = method(game, "spawn_player")
-        self.assertIn("self.spawn_player_client(", spawn)
-        spawn_client = method(game, "spawn_player_client")
-        self.assertLess(spawn_client.index("self.player = Some(player)"),
-                        spawn_client.index("self.capture_loaded_world()"))
+        # The client half is a separate method: check the order across both bodies.
+        call = spawn.index("self.spawn_player_client(")
+        spawn = spawn[:call] + method(game, "spawn_player_client") + spawn[call:]
+        self.assertLess(spawn.index("self.player = Some(player)"),
+                        spawn.index("self.capture_loaded_world()"))
         # ClientPacketListener.tick: the level load tracker ends the loading screen,
         # the server hears PlayerLoaded, the mouse is captured, then the player moves.
         ready = method(tick, "tick_client_load")
