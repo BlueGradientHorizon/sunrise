@@ -211,6 +211,10 @@ def main():
                         help='write the validated Java reference records with a version header and meta.json to this path (default under .local/witness/) and stop')
     parser.add_argument('--record-stand-living-witness', type=Path,
                         help='write a versioned JSON witness from the Java reference run (with --reference-only)')
+    parser.add_argument('--record-fangs-ticking-witness', nargs='?',
+                        const=lab.LOCAL / 'witness' / lab.VERSION / 'fangs_ticking_gate' / 'fangs_ominous_spawner_ticking_gate.json',
+                        type=Path,
+                        help='record the 26.3 vanilla ticking-gate witness JSON into .local (Java only)')
     args = parser.parse_args()
     if args.record_eye_item_witness:
         args.reference_only = True
@@ -548,6 +552,12 @@ def main():
     if args.record_shulker_motion:
         groups = [('setup', corpus_module.group_setup()),
                   (corpus_module.SHULKER_MOTION_GROUP, corpus_module.shulker_motion_and_yaw())]
+    if args.record_fangs_ticking_witness:
+        witness_cases = corpus_module.fangs_ominous_spawner_ticking_witness_cases()
+        pause_spec = corpus_module.fangs_spawner_scheduled_ticket_pause_witness_spec()
+        groups = [('setup', corpus_module.group_setup()),
+                  ('fangs and ominous spawner ticking witness',
+                   corpus_module.fangs_ominous_spawner_ticking_witness_script(witness_cases, pause_spec))]
     script = assemble(groups, args.unsynced_randoms)
     # docs/parity-workflow.md "Randoms that repeat": both engines' unseeded randoms repeat for a script that syncs them.
     synced = any(op['op'] == 'sync_randoms' for op in script)
@@ -597,8 +607,48 @@ def main():
         java_options.append('-Dsunrise.functionAdmissionFixture=true')
     if synced:
         java_options.append(seed_agent.java_option(build, lock['minecraft']['java_major']))
-    run(['java', '-Xmx3G', '-Duser.timezone=UTC', *(['-Dsunrise.loadedFixture=true'] if args.loaded_fixture else []), *java_options, '-cp', os.pathsep.join([str(classes), str(jars['server']), dependency_path]),
-         'dev.sunriselab.parity.VanillaCommandExecOracle', vanilla_dir / 'universe', script_path, build / 'vanilla.jsonl', SEED], 'java', cwd=vanilla_dir)
+    if args.record_fangs_ticking_witness:
+        (build / 'vanilla.jsonl').unlink(missing_ok=True)
+    java_cmd = [
+        'java', '-Xmx3G', '-Duser.timezone=UTC',
+        *(['-Dsunrise.loadedFixture=true'] if args.loaded_fixture or args.record_fangs_ticking_witness else []),
+        *java_options, '-cp', os.pathsep.join([str(classes), str(jars['server']), dependency_path]),
+        'dev.sunriselab.parity.VanillaCommandExecOracle', vanilla_dir / 'universe', script_path, build / 'vanilla.jsonl', SEED,
+    ]
+    run(java_cmd, 'java', cwd=vanilla_dir)
+
+    if args.record_fangs_ticking_witness:
+        witness_path = args.record_fangs_ticking_witness.resolve()
+        write_fangs_ticking_witness(
+            witness_path,
+            lock['minecraft']['version'],
+            witness_cases,
+            pause_spec,
+            [json.loads(line) for line in (build / 'vanilla.jsonl').read_text(encoding='utf-8').splitlines()],
+        )
+        java_ver_proc = subprocess.run(['java', '-version'], capture_output=True, text=True, check=True)
+        java_ver = (java_ver_proc.stderr or java_ver_proc.stdout).strip().splitlines()[0]
+        lab.write_json(witness_path.with_name('meta.json'), {
+            'game_version': lock['minecraft']['version'],
+            'java_major': lock['minecraft']['java_major'],
+            'java_version': java_ver,
+            'harness': 'tools/test_fangs_ticking_gate_parity.py',
+            'witness_env': 'SUNRISE_FANGS_TICKING_GATE_WITNESS',
+            'oracle': oracle.relative_to(lab.ROOT).as_posix(),
+            'command': [str(part) for part in java_cmd],
+            'input_hashes': {
+                'research-lock.json': lab.digest(lab.LOCK, 'sha256'),
+                'server.jar': lab.digest(jars['server'], 'sha256'),
+                oracle.relative_to(lab.ROOT).as_posix(): lab.digest(oracle, 'sha256'),
+                'tools/command_exec_corpus.py': lab.digest(lab.ROOT / 'tools/command_exec_corpus.py', 'sha256'),
+                'script.jsonl': lab.digest(script_path, 'sha256'),
+            },
+            'outputs': {
+                witness_path.name: {'sha256': lab.digest(witness_path, 'sha256'), 'bytes': witness_path.stat().st_size},
+            },
+        })
+        print(f'Recorded {lock["minecraft"]["version"]} fangs/spawner ticking witness: {witness_path}')
+        return
 
     if any(op['op'] == 'raid_state' for op in script):
         from raid_village_corpus import validate_java_inputs
@@ -1104,6 +1154,84 @@ def write_shulker_motion_witness(path, reference, lock, server_jar, script_path=
             },
         },
     })
+
+
+def write_fangs_ticking_witness(path, game_version, cases, pause_spec, records):
+    """Write the real-run vanilla ticking-gate witness JSON from VanillaCommandExecOracle output."""
+    pause_records = sum(9 if s['action'] == 'schedule_remove_and_tick' else 8 for s in pause_spec['stages'])
+    expected_total = 1 + 2 * len(cases) + pause_records
+    if len(records) != expected_total:
+        sys.exit(f'unexpected record count for ticking witness: got {len(records)}, expected {expected_total}')
+    distances = records[0].get('results', [])
+    if len(distances) != 2 or not all(r[0] is True for r in distances):
+        sys.exit(f'unexpected server_distances record: {records[0]}')
+    view_distance, simulation_distance = distances[0][1], distances[1][1]
+
+    def parse_warmup(rec):
+        text = ''.join(span[0] for msg in rec['messages'] for span in msg)
+        match = re.search(r'has the following entity data: (-?\d+)$', text)
+        if not match:
+            sys.exit(f'could not parse Warmup from vanilla output: {rec}')
+        warmup = int(match.group(1))
+        if rec['results'] != [[True, warmup]]:
+            sys.exit(f'Warmup callback disagreed with message: {rec}')
+        return warmup
+
+    def parse_count(rec):
+        return rec['results'][0][1] if rec['results'] and rec['results'][0][0] else 0
+
+    def parse_flag(rec):
+        return bool(rec['results'] and rec['results'][0][0] and rec['results'][0][1] > 0)
+
+    out_cases = []
+    for index, case in enumerate(cases):
+        present_rec = records[1 + 2 * index]
+        detail_rec = records[2 + 2 * index]
+        present = parse_flag(present_rec)
+        entry = dict(case)
+        entry['expected_present'] = present
+        if case['kind'] == 'evoker_fangs':
+            entry['expected_warmup'] = parse_warmup(detail_rec) if present else None
+        else:
+            entry['expected_spawned_items'] = parse_count(detail_rec)
+        out_cases.append(entry)
+
+    cursor = 1 + 2 * len(cases)
+    out_stages = []
+    for stage in pause_spec['stages']:
+        entry = dict(stage)
+        if stage['action'] == 'schedule_remove_and_tick':
+            cb_rec = records[cursor]
+            cursor += 1
+            entry['expected_command_block_success'] = parse_count(cb_rec)
+        else:
+            entry['expected_command_block_success'] = None
+        t_loaded, c_loaded, t_warmup, t_spawner, t_items, c_warmup, c_spawner, c_items = records[cursor:cursor + 8]
+        cursor += 8
+        entry['expected_target_loaded'] = parse_flag(t_loaded)
+        entry['expected_control_loaded'] = parse_flag(c_loaded)
+        entry['expected_target_warmup'] = parse_warmup(t_warmup)
+        entry['expected_target_spawner_present'] = parse_flag(t_spawner)
+        entry['expected_target_items'] = parse_count(t_items)
+        entry['expected_control_warmup'] = parse_warmup(c_warmup)
+        entry['expected_control_spawner_present'] = parse_flag(c_spawner)
+        entry['expected_control_items'] = parse_count(c_items)
+        out_stages.append(entry)
+
+    pause_out = dict(pause_spec)
+    pause_out['stages'] = out_stages
+    payload = {
+        'game_version': game_version,
+        'oracle': 'VanillaCommandExecOracle',
+        'command': 'python3 tools/test_fangs_ticking_gate_parity.py --record',
+        'player_pos': [8.5, 230.0, 8.5],
+        'view_distance': view_distance,
+        'simulation_distance': simulation_distance,
+        'cases': out_cases,
+        'scheduled_ticket_pause': pause_out,
+    }
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, indent=2) + '\n', encoding='utf-8')
 
 
 def render(record):

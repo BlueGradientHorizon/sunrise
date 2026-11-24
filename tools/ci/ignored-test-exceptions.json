@@ -1374,5 +1374,21 @@
     "path": "crates/sunrise-client/src/game/network/remote/client_read_tests.rs",
     "reason": "run by tools/test_mob_turn_parity.py",
     "rationale": "Parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_mob_turn_parity.py records the vanilla 26.3 mob-turn witnesses into .local and runs this test against them through SUNRISE_MOB_TURN_WITNESS_DIR, so no recorded vanilla data is committed."
+  },
+  {
+    "package": "sunrise-client",
+    "target": "lib",
+    "test": "game::fangs::ticking_tests::fangs_and_an_ominous_item_spawner_outside_the_ticking_chunks_do_not_tick",
+    "path": "crates/sunrise-client/src/game/mobs/fangs/ticking_tests.rs",
+    "reason": "run by tools/test_fangs_ticking_gate_parity.py",
+    "rationale": "Parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_fangs_ticking_gate_parity.py records the vanilla 26.3 fangs/spawner ticking-gate witness into .local and runs this test against it through SUNRISE_FANGS_TICKING_GATE_WITNESS, so no recorded vanilla data is committed."
+  },
+  {
+    "package": "sunrise-client",
+    "target": "lib",
+    "test": "game::fangs::ticking_tests::fangs_and_an_ominous_item_spawner_pause_on_scheduled_ticket_removal_and_resume_26_3",
+    "path": "crates/sunrise-client/src/game/mobs/fangs/ticking_tests.rs",
+    "reason": "run by tools/test_fangs_ticking_gate_parity.py",
+    "rationale": "Parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_fangs_ticking_gate_parity.py records the vanilla 26.3 fangs/spawner ticking-gate witness into .local and runs this test against it through SUNRISE_FANGS_TICKING_GATE_WITNESS, so no recorded vanilla data is committed."
   }
 ]
