@@ -198,6 +198,7 @@ pub(in crate::game) fn run_a_cloud_in_water_resets_its_fall_distance_and_a_dry_o
             at: [1.5, 64.0, 20.5],
             motion: [0.05, 0.0, -0.02],
             fall_distance: 20.0,
+            fire_ticks: 0,
             first_tick: true,
             radius: 0.4,
             age: 0,

@@ -4974,7 +4974,7 @@ impl Game<'_> {
         let mut hits = Vec::new();
         let mut arrow_events = Vec::new();
         let mut shoot_events = Vec::new();
-        let mut lava_hurt_bullets = Vec::new();
+        let mut bullet_hurts = Vec::new();
         let mut trails = Vec::new();
         let mut bubble_tops = Vec::new();
         let mut water_splashes = Vec::new();
@@ -5137,8 +5137,14 @@ impl Game<'_> {
                         shoot_events.push((p.owner, p.guest, [at.x, at.y, at.z]));
                     }
                     water_splashes.append(&mut p.water_splashes);
-                    if p.take_lava_hurt() {
-                        lava_hurt_bullets.push(p.position.components());
+                    if let Some((hurt_at, is_lava)) = p.take_bullet_hurt() {
+                        let silent = self.entity_silent(p.id);
+                        let ctx = sunrise_client::sculk::Context {
+                            owner: p.owner,
+                            owner_uuid: p.owner_uuid,
+                            ..self.entity_event_context(p.id, None)
+                        };
+                        bullet_hurts.push((hurt_at.components(), is_lava, silent, ctx));
                     }
                     // AbstractHurtingProjectile.tick ends with createParticleTrail.
                     if super::remote_projectiles::has_smoke_trail(&p.kind) {
@@ -5298,10 +5304,13 @@ impl Game<'_> {
                 game.projectile_shoot_event(owner, guest, at);
             });
         }
-        // ShulkerBullet.hurtServer's sound and crits, then Entity.lavaHurt's burn.
-        for at in lava_hurt_bullets {
-            game.shulker_bullet_hurt(at);
-            game.lava_hurt_sound(at);
+        // ShulkerBullet.hurtServer: hurt sound (unless silent) and crits, discard, ENTITY_DAMAGE, then burn sound if lava.
+        for (at, is_lava, silent, ctx) in bullet_hurts {
+            game.shulker_bullet_hurt(at, silent);
+            game.post_game_event("minecraft:entity_damage", at, ctx);
+            if is_lava && !silent {
+                game.lava_hurt_sound(at);
+            }
         }
         game.smoke_trails(trails);
         game.dragon_breath_trails();
@@ -5472,10 +5481,22 @@ impl Game<'_> {
             for splash in p.water_splashes.drain(..) {
                 self.apply_item_splash(splash);
             }
-            if p.take_lava_hurt() {
-                let at = p.position.components();
-                self.shulker_bullet_hurt(at);
-                self.lava_hurt_sound(at);
+            if let Some((hurt_at, is_lava)) = p.take_bullet_hurt() {
+                let at = hurt_at.components();
+                let silent = self.entity_silent(pid);
+                let ctx = sunrise_client::sculk::Context {
+                    owner: p.owner,
+                    owner_uuid: p.owner_uuid,
+                    ..self.entity_event_context(pid, None)
+                };
+                self.shulker_bullet_hurt(at, silent);
+                self.creatures.projectiles.retire_extracted(pid, join);
+                drop(_save_lease);
+                self.post_game_event("minecraft:entity_damage", at, ctx);
+                if is_lava && !silent {
+                    self.lava_hurt_sound(at);
+                }
+                continue;
             }
             if super::remote_projectiles::has_smoke_trail(&p.kind) {
                 self.smoke_trails(vec![p.position]);

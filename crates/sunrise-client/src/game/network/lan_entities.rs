@@ -604,6 +604,9 @@ impl Game<'_> {
                 0.0,
                 false,
             );
+            if o.synced_fire {
+                e.meta.push((0, serializer::BYTE, Value::Byte(1)));
+            }
             e.meta.push((
                 8,
                 serializer::ITEM_STACK,
@@ -620,6 +623,9 @@ impl Game<'_> {
             let e = add_state(out, o.id, &o.kind, [p.x, p.y, p.z], o.yaw, false);
             e.pitch = o.pitch;
             e.head_yaw = o.yaw;
+            if o.eye.as_ref().is_some_and(|eye| eye.synced_fire) {
+                e.meta.push((0, serializer::BYTE, Value::Byte(1)));
+            }
             if let Some(tag) = self.persist.raw.get(&o.id)
                 && let Some(item) = self.lan_display_data_kept(o.id, tag, e)
                 && let Some((_, _, Value::Item(stack))) =
@@ -884,7 +890,10 @@ impl Game<'_> {
         };
         let at = |p: sunrise_core::geometry::Vec3| [p.x, p.y, p.z];
         for f in self.fangs.list.iter().filter(|f| f.id > after) {
-            add_state(out, f.id, "minecraft:evoker_fangs", f.pos, f.yaw, false);
+            let e = add_state(out, f.id, "minecraft:evoker_fangs", f.pos, f.yaw, false);
+            if f.synced_fire {
+                e.meta.push((0, serializer::BYTE, Value::Byte(1)));
+            }
         }
         // LightningBolt: each client draws and flashes its own.
         for b in self.bolts.iter().filter(|b| b.id > after) {

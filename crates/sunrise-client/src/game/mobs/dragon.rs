@@ -2651,6 +2651,7 @@ impl Game<'_> {
                         at: [x, y.floor() + 1.0, z],
                         motion: [0.0; 3],
                         fall_distance: 0.0,
+                        fire_ticks: 0,
                         first_tick: true,
                         radius: 5.0,
                         age: 0,
@@ -3228,6 +3229,7 @@ impl Game<'_> {
             at,
             motion: [0.0; 3],
             fall_distance: 0.0,
+            fire_ticks: 0,
             first_tick: true,
             radius: 3.0,
             age: 0,
@@ -3599,6 +3601,9 @@ pub(super) struct Breath {
     pub(super) motion: [f64; 3],
     /// `Entity.fallDistance`: as loaded, until water resets or lava halves it.
     pub(super) fall_distance: f64,
+    /// `Entity.remainingFireTicks`: a cloud is fire immune, so its first tick
+    /// clears a burning one to 0.
+    pub(super) fire_ticks: i32,
     /// `Entity.firstTick`: true until the first base tick finishes, gating `isInLava()`.
     pub(super) first_tick: bool,
     pub(super) radius: f32,

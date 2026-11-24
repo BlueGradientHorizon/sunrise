@@ -168,6 +168,7 @@ pub(super) fn potion_cloud_from_nbt(tag: &Tag) -> Option<(Vec3, Breath)> {
             at: [at.x, at.y, at.z],
             motion: [motion.x, motion.y, motion.z],
             fall_distance: sunrise_client::entity_nbt::ground_from_nbt(tag).1,
+            fire_ticks: sunrise_client::entity_nbt::fire_ticks_from_nbt(tag),
             first_tick: true,
             radius: real("Radius", 3.0).clamp(0.0, 32.0),
             age: int("Age", 0),
@@ -256,6 +257,7 @@ pub(super) fn potion_cloud_to_nbt(c: &Breath, uuid: [i32; 4], raw: Option<&Tag>)
             c.fall_distance.to_bits()
         }),
     );
+    map.insert("Fire".into(), Tag::Short(c.fire_ticks as i16));
     map.insert("Age".into(), Tag::Int(c.age));
     map.insert("Duration".into(), Tag::Int(c.duration));
     map.insert("Radius".into(), Tag::Float(c.radius.to_bits()));
@@ -1962,7 +1964,7 @@ impl Game<'_> {
     }
     /// The authoritative `AreaEffectCloud.serverTick` for lingering potions' clouds.
     /// The logical client draws particles from tracked cloud data.
-    fn tick_potion_clouds(&mut self) {
+    pub(super) fn tick_potion_clouds(&mut self) {
         if self.breath_clouds.iter().all(|c| c.potion.is_none()) {
             return;
         }
@@ -1980,6 +1982,8 @@ impl Game<'_> {
             let keep =
                 c.potion.is_none() || !ticking(c.at[0].floor() as i32, c.at[2].floor() as i32) || {
                     self.cloud_fluid_step(c);
+                    // Entity.baseTick: `fireImmune()` clears the fire.
+                    c.fire_ticks = c.fire_ticks.min(0);
                     self.tick_potion_cloud(c, &players)
                 };
             if !keep {
@@ -2139,6 +2143,7 @@ impl Game<'_> {
             at,
             motion: [0.0; 3],
             fall_distance: 0.0,
+            fire_ticks: 0,
             first_tick: true,
             radius: 2.5,
             age: 0,
@@ -2549,6 +2554,7 @@ impl Game<'_> {
                 at: [at.x, at.y, at.z],
                 motion: [0.0; 3],
                 fall_distance: 0.0,
+                fire_ticks: 0,
                 first_tick: true,
                 radius: 3.0,
                 age: 0,
@@ -3151,6 +3157,7 @@ pub(super) mod tests {
                     at: [0.0, 80.0, 0.0],
                     motion: [0.0; 3],
                     fall_distance: 0.0,
+                    fire_ticks: 0,
                     first_tick: true,
                     radius: 3.0,
                     age,
@@ -3731,6 +3738,7 @@ pub(super) mod tests {
             at: [1.5, 64.0, -2.5],
             motion: [0.6, 0.0, 0.0],
             fall_distance: 0.0,
+            fire_ticks: 0,
             first_tick: true,
             radius: 3.5,
             age: 12,
@@ -3941,6 +3949,7 @@ pub(super) mod tests {
             at: [1.0, 64.0, 0.0],
             motion: [0.0; 3],
             fall_distance: 0.0,
+            fire_ticks: 0,
             first_tick: true,
             radius: 5.0,
             age: 0,
@@ -3970,6 +3979,7 @@ pub(super) mod tests {
             at: [0.0, 64.0, 0.0],
             motion: [0.0; 3],
             fall_distance: 0.0,
+            fire_ticks: 0,
             first_tick: true,
             radius: 3.0,
             age: 0,
@@ -3991,6 +4001,7 @@ pub(super) mod tests {
             at: [0.0, 64.0, 0.0],
             motion: [0.0; 3],
             fall_distance: 0.0,
+            fire_ticks: 0,
             first_tick: true,
             radius: 3.0,
             age: 0,
@@ -4025,6 +4036,7 @@ pub(super) mod tests {
             at: [0.0, 64.0, 0.0],
             motion: [0.0; 3],
             fall_distance: 0.0,
+            fire_ticks: 0,
             first_tick: true,
             radius: 5.0,
             age: 219,
@@ -4046,6 +4058,7 @@ pub(super) mod tests {
             at: [0.0, 64.0, 0.0],
             motion: [0.0; 3],
             fall_distance: 0.0,
+            fire_ticks: 0,
             first_tick: true,
             radius: 5.0,
             age: 220,
@@ -4068,6 +4081,7 @@ pub(super) mod tests {
             at: [10.0, 64.0, 0.0],
             motion: [0.0; 3],
             fall_distance: 0.0,
+            fire_ticks: 0,
             first_tick: true,
             radius: 1.0,
             age: 0,
@@ -4091,6 +4105,7 @@ pub(super) mod tests {
             at: [0.0, 64.0, 0.0],
             motion: [0.0; 3],
             fall_distance: 0.0,
+            fire_ticks: 0,
             first_tick: true,
             radius: 1.0,
             age: 0,

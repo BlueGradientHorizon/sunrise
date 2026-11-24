@@ -411,6 +411,7 @@ impl Game<'_> {
                         c.fall_distance.to_bits()
                     }),
                 );
+                set_key(&mut tag, "Fire", Tag::Short(c.fire_ticks as i16));
                 set_key(&mut tag, "Age", Tag::Int(c.age));
                 set_key(&mut tag, "Duration", Tag::Int(c.duration));
                 set_key(&mut tag, "Radius", Tag::Float(c.radius.to_bits()));
@@ -466,6 +467,7 @@ impl Game<'_> {
                     &s.item,
                     sunrise_core::geometry::Vec3::new(x, y, z),
                     s.spawn_item_after,
+                    s.fire_ticks,
                     s.uuid,
                     s.raw.as_deref(),
                     self.res.items(),
@@ -695,6 +697,8 @@ impl Game<'_> {
                     self.fangs.list.update(i, |f| {
                         f.pos = [at.x, at.y, at.z];
                         f.motion = entity_nbt::loaded_motion(&tag);
+                        f.fire_ticks = entity_nbt::fire_ticks_from_nbt(&tag);
+                        f.has_visual_fire = entity_nbt::flag(&tag, "HasVisualFire");
                         f.yaw = entity_nbt::rotation(&tag)[0];
                         f.warmup =
                             sunrise_client::save::number(tag.get("Warmup")).unwrap_or(0) as i32;
@@ -947,6 +951,13 @@ impl Game<'_> {
                 {
                     self.load_resident_arrow(index, spectral, &tag)
                         .ok_or_else(stale)?;
+                    self.creatures.projectiles.update(index, |p| {
+                        p.fire_ticks = entity_nbt::fire_ticks_from_nbt(&tag);
+                        p.has_visual_fire = entity_nbt::flag(&tag, "HasVisualFire");
+                        if let Some(a) = p.arrow.as_mut() {
+                            a.fire_ticks = p.fire_ticks;
+                        }
+                    });
                 } else {
                     let thrown_item = self.creatures.projectiles[index]
                         .kind
@@ -963,6 +974,8 @@ impl Game<'_> {
                         p.pitch = pitch;
                         p.no_gravity = entity_nbt::flag(&tag, "NoGravity");
                         p.ground.on_ground = entity_nbt::flag(&tag, "OnGround");
+                        p.fire_ticks = entity_nbt::fire_ticks_from_nbt(&tag);
+                        p.has_visual_fire = entity_nbt::flag(&tag, "HasVisualFire");
                         if let Some(item) = thrown_item {
                             p.set_thrown_item(item);
                         }
@@ -2638,6 +2651,10 @@ pub(in crate::game) mod stand_living_tests;
 
 #[cfg(test)]
 mod mod_block_entity_tests;
+
+#[cfg(test)]
+#[path = "data/fire_tests.rs"]
+pub(in crate::game) mod fire_tests;
 
 #[cfg(test)]
 mod residency_tests;

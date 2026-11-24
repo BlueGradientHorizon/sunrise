@@ -395,6 +395,9 @@ pub struct Projectile {
     /// A shulker bullet lava hurt this tick (`ShulkerBullet.hurtServer` from
     /// `Entity.lavaHurt`): gone, its hurt and burn left for the game to play.
     lava_hurt: bool,
+    /// A shulker bullet hurt this tick (`(position, is_lava)`), from base `onFire`,
+    /// `lavaHurt`, or swept fire/lava contact.
+    bullet_hurt: Option<(Vec3, bool)>,
     /// Lava's `lavaHurt` reached `Projectile.hurtServer` this tick, which marks
     /// the projectile hurt unless it is invulnerable to lava: the game decides
     /// (`Game::lava_mark_hurt`).
@@ -428,7 +431,8 @@ pub struct Projectile {
     /// `updateFluidInteraction` found around the box after the move, read by
     /// the next tick's inertia (false until the first tick has moved it).
     pub touching_water: bool,
-    /// `Entity.firstTick`: true until the first tick completes `Entity.baseTick`.
+    /// `Entity.firstTick`: true until the first tick completes `Entity.baseTick`,
+    /// gating `isInLava()` and water-entry splash effects.
     pub first_tick: bool,
     /// `Entity.noGravity` (`NoGravity` in its save): `getGravity` is 0.
     pub no_gravity: bool,
@@ -597,6 +601,10 @@ pub trait ProjectileWorld {
     /// `Entity.isInWater` as `updateFluidInteraction` sets it: some water
     /// block's surface reaches the bottom of the box (deflated by 0.001).
     fn in_water(&self, bounds: Aabb) -> bool;
+    /// `Entity.fluidHeight(LAVA) > 0.0` as `updateFluidInteraction` sets it.
+    fn in_lava_box(&self, _bounds: Aabb) -> bool {
+        false
+    }
     /// `velocity` after the currents of the water and the lava the box
     /// touches (`EntityFluidInteraction.applyCurrentTo`): a projectile is
     /// pushed by fluids like any entity (`Entity.isPushedByFluid`).
@@ -858,6 +866,7 @@ impl Projectile {
             has_been_shot: false,
             shoot_event: None,
             lava_hurt: false,
+            bullet_hurt: None,
             lava_marked: false,
             bonus: Default::default(),
             acceleration,
@@ -1032,10 +1041,12 @@ impl Projectile {
                 | ProjectileKind::Thrown(_)
         )
     }
-    /// `Entity.isOnFire`. `WitherSkull.isOnFire` always returns false.
+    /// `Entity.isOnFire`. `WitherSkull.isOnFire` and `ShulkerBullet.isOnFire` always return false.
     pub fn on_fire(&self) -> bool {
-        !matches!(self.kind, ProjectileKind::WitherSkull { .. })
-            && (self.fire_ticks > 0 || self.synced_fire)
+        !matches!(
+            self.kind,
+            ProjectileKind::WitherSkull { .. } | ProjectileKind::ShulkerBullet { .. }
+        ) && (self.fire_ticks > 0 || self.synced_fire)
     }
     /// `Entity.igniteForTicks`: the longer fire wins.
     pub fn ignite_for_ticks(&mut self, ticks: i32) {
@@ -1058,15 +1069,6 @@ impl Projectile {
     /// `Entity.baseTick` counts down active fire after block effects. The two
     /// item fireballs then renew their own flame in `AbstractHurtingProjectile.tick`.
     fn fire_tick(&mut self, w: &impl ProjectileWorld, client_side: bool, from: Vec3) {
-        if matches!(self.kind, ProjectileKind::ShulkerBullet { .. }) {
-            // LavaFluid.entityInside: lavaIgnite, then lavaHurt, whose
-            // hurtServer destroys the bullet on the server.
-            if self.in_lava(w, from) {
-                self.ignite_for_ticks(300);
-                self.lava_hurt = !client_side;
-            }
-            return;
-        }
         if !(self.is_thrown()
             || self.kind == ProjectileKind::ExperienceBottle
             || self.is_fireball()
@@ -1131,6 +1133,54 @@ impl Projectile {
             |at| self.bounds_at(at),
             |p| w.lava_height(p),
         ) > 0
+    }
+    /// `Entity.checkInsideBlocks` over its move from `from`: whether any block
+    /// swept by the deflated box ignites the entity (`BaseFireBlock.entityInside`).
+    fn in_fire_sweep(&self, w: &impl ProjectileWorld, from: Vec3) -> bool {
+        if self.in_fire(w) {
+            return true;
+        }
+        let to = self.position;
+        let eps = f64::from(1.0e-5_f32);
+        let deflated = self.bounds().deflate(Vec3::new(eps, eps, eps));
+        let mut hit = false;
+        let mut used = 0;
+        let _ = sunrise_core::geometry::sweep_intersected_blocks(
+            from,
+            to,
+            deflated,
+            1_000_000,
+            |p, step| {
+                if step >= 16 {
+                    return false;
+                }
+                used = step;
+                if w.ignites([p.x, p.y, p.z]) {
+                    hit = true;
+                    return false;
+                }
+                true
+            },
+        );
+        if !hit && used + 1 >= 16 {
+            let _ = sunrise_core::geometry::sweep_intersected_blocks(
+                to,
+                to,
+                deflated,
+                1_000_000,
+                |p, step| {
+                    if step >= 1 {
+                        return false;
+                    }
+                    if w.ignites([p.x, p.y, p.z]) {
+                        hit = true;
+                        return false;
+                    }
+                    true
+                },
+            );
+        }
+        hit
     }
     /// `Entity.checkInsideBlocks`: the blocks under the box, deflated by 1e-7
     /// so a box sitting exactly on a block boundary is not inside it.
@@ -1677,7 +1727,12 @@ impl Projectile {
         }
     }
     /// `ShulkerBullet.tick`.
-    fn tick_bullet(&mut self, w: &impl ProjectileWorld, impact: bool) -> (bool, Hit) {
+    fn tick_bullet(
+        &mut self,
+        w: &impl ProjectileWorld,
+        impact: bool,
+        client_side: bool,
+    ) -> (bool, Hit) {
         // Projectile.tick runs before ShulkerBullet's motion and collision sweep.
         if !self.left_owner {
             let swept = self
@@ -1688,6 +1743,34 @@ impl Projectile {
                 .collision_owner()
                 .is_none_or(|o| w.outside_owner_collision_range(o, swept));
         }
+        // Entity.baseTick: fluid refresh, onFire hurt/countdown, lavaHurt, shared fire bit.
+        let from = self.position;
+        let pre_bounds = self.bounds();
+        let pre_in_water = w.in_water(pre_bounds);
+        let pre_in_lava = !self.first_tick && w.in_lava_box(pre_bounds);
+        self.touching_water = pre_in_water;
+        if pre_in_water {
+            self.fall_distance = 0.0;
+        }
+        self.velocity = w.pushed_by_currents(pre_bounds, self.velocity);
+        if !client_side {
+            if self.fire_ticks > 0 {
+                if self.fire_ticks % 20 == 0 && !pre_in_lava {
+                    self.bullet_hurt = Some((from, false));
+                }
+                self.fire_ticks -= 1;
+            }
+            if pre_in_lava {
+                if self.bullet_hurt.is_none() {
+                    self.bullet_hurt = Some((from, true));
+                    self.lava_hurt = true;
+                }
+                self.fall_distance *= 0.5;
+            }
+            self.synced_fire = self.fire_ticks > 0 || self.has_visual_fire;
+        }
+        self.first_tick = false;
+
         let target = self.target_box(w);
         let ProjectileKind::ShulkerBullet { delta, .. } = &mut self.kind else {
             return (false, Hit::None);
@@ -1707,7 +1790,6 @@ impl Projectile {
             // `Entity.applyGravity`: `getGravity` is 0 under NoGravity.
             self.velocity.y -= crate::entity_rules::EntityRules::get_gravity(self);
         }
-        let from = self.position;
         let to = from.add_vector(self.velocity);
         let block = w.clip(from, to);
         let end = block.map_or(to, |b| b.0);
@@ -1726,15 +1808,55 @@ impl Projectile {
             nearest.consider(c, search_area, from, end, margin);
         });
         let best = nearest.finish();
-        if impact && let Some((who, at)) = best {
-            self.position = at;
-            return (false, Hit::Entity { who, at });
-        }
-        if impact && let Some((at, pos, face)) = block {
-            self.position = at;
-            return (false, Hit::Block { pos, at, face });
-        }
         self.position = to;
+
+        // Entity.applyEffectsFromBlocks runs after setPos and before impact, only while alive.
+        if self.bullet_hurt.is_none() {
+            self.bubble_columns_along(w, from);
+            if !client_side {
+                let before_sweep = self.fire_ticks;
+                if self.in_fire_sweep(w, from) {
+                    if self.fire_ticks < 0 {
+                        self.fire_ticks += 1;
+                    }
+                    if self.fire_ticks >= 0 {
+                        self.ignite_for_ticks(160);
+                    }
+                    self.bullet_hurt = Some((self.position, false));
+                }
+                if self.bullet_hurt.is_none() && self.in_lava(w, from) {
+                    self.ignite_for_ticks(300);
+                    self.bullet_hurt = Some((self.position, true));
+                    self.lava_hurt = true;
+                }
+                if self.bullet_hurt.is_none() {
+                    if w.in_water(self.bounds()) {
+                        self.clear_fire();
+                    }
+                    // ShulkerBullet.isOnFire() is always false, so absent new ignition
+                    // applyEffectsFromBlocks resets remainingFireTicks to 0.
+                    if self.fire_ticks <= before_sweep {
+                        self.fire_ticks = 0;
+                    }
+                }
+            }
+            if self.bullet_hurt.is_none() {
+                self.stuck_tick(w, from);
+            }
+        }
+
+        // Impact is gated on survival after baseTick and swept block effects.
+        if impact && self.bullet_hurt.is_none() {
+            if let Some((who, at)) = best {
+                self.position = at;
+                return (false, Hit::Entity { who, at });
+            }
+            if let Some((at, pos, face)) = block {
+                self.position = at;
+                return (false, Hit::Block { pos, at, face });
+            }
+        }
+        // Unguarded tick tail: runs even when discarded by fire or lava, including RNG draws.
         self.turn_bullet();
         if let Some(b) = target {
             let (dir, steps) = match self.kind {
@@ -1771,7 +1893,10 @@ impl Projectile {
                 }
             }
         }
-        (self.position.y >= w.below_world_y(), Hit::None)
+        (
+            self.bullet_hurt.is_none() && self.position.y >= w.below_world_y(),
+            Hit::None,
+        )
     }
     /// AbstractHurtingProjectile.applyInertia, on both server and client.
     pub fn apply_hurting_inertia(&mut self, water: bool) {
@@ -1955,19 +2080,19 @@ impl Projectile {
             self.first_tick_bubble_column(w);
         }
         let from = self.position;
-        let mut result = self.tick_inner(w, impact, defer_spit_motion);
-        if matches!(self.kind, ProjectileKind::ShulkerBullet { .. }) {
-            self.bubble_columns_along(w, from);
+        let is_bullet = matches!(self.kind, ProjectileKind::ShulkerBullet { .. });
+        let mut result = self.tick_inner(w, impact, client_side, defer_spit_motion);
+        if !is_bullet {
+            // The block sweep runs at the batch that ticks the projectile
+            // (Game::sweep_projectile_inside), where the level host for a part's
+            // contact is: this tick's world view is read-only.
+            self.fire_tick(w, client_side, from);
+            if self.lava_hurt {
+                // `isAlive()` fails: a bullet lava destroyed hits nothing.
+                result = (false, Hit::None);
+            }
+            self.stuck_tick(w, from);
         }
-        // The block sweep runs at the batch that ticks the projectile
-        // (Game::sweep_projectile_inside), where the level host for a part's
-        // contact is: this tick's world view is read-only.
-        self.fire_tick(w, client_side, from);
-        if self.lava_hurt {
-            // `isAlive()` fails: a bullet lava destroyed hits nothing.
-            result = (false, Hit::None);
-        }
-        self.stuck_tick(w, from);
         if !base_first {
             self.tick_shoot_event();
         }
@@ -2055,7 +2180,19 @@ impl Projectile {
     }
     /// Whether lava destroyed this shulker bullet in its last tick, once.
     pub fn take_lava_hurt(&mut self) -> bool {
-        std::mem::take(&mut self.lava_hurt)
+        let lava = std::mem::take(&mut self.lava_hurt);
+        if lava {
+            self.bullet_hurt = None;
+        }
+        lava
+    }
+    /// Whether fire or lava destroyed this shulker bullet in its last tick: `(at, is_lava)`, once.
+    pub fn take_bullet_hurt(&mut self) -> Option<(Vec3, bool)> {
+        let hurt = self.bullet_hurt.take();
+        if hurt.is_some() {
+            self.lava_hurt = false;
+        }
+        hurt
     }
     /// Whether lava's hurt reached `Projectile.hurtServer` in its last tick, once.
     pub fn take_lava_marked(&mut self) -> bool {
@@ -2085,6 +2222,7 @@ impl Projectile {
         &mut self,
         w: &impl ProjectileWorld,
         impact: bool,
+        client_side: bool,
         defer_spit_motion: bool,
     ) -> (bool, Hit) {
         // `Entity.setOldPosAndRot` (the previous position and rotation the
@@ -2093,7 +2231,7 @@ impl Projectile {
         self.set_old_pos_and_rot();
         self.age += 1;
         if matches!(self.kind, ProjectileKind::ShulkerBullet { .. }) {
-            return self.tick_bullet(w, impact);
+            return self.tick_bullet(w, impact, client_side);
         }
         // ThrowableProjectile and AbstractHurtingProjectile.applyInertia read
         // `isInWater` before their move and `Projectile.tick`'s base tick;

@@ -894,7 +894,13 @@ impl Game<'_> {
                     );
                     let last = self.fangs.list.len() - 1;
                     let motion = entity_nbt::loaded_motion(&tag);
-                    self.fangs.list.update(last, |f| f.motion = motion);
+                    let fire = entity_nbt::fire_ticks_from_nbt(&tag);
+                    let has_visual_fire = entity_nbt::flag(&tag, "HasVisualFire");
+                    self.fangs.list.update(last, |f| {
+                        f.motion = motion;
+                        f.fire_ticks = fire;
+                        f.has_visual_fire = has_visual_fire;
+                    });
                     let uuid = with_constructor_uuid(uuid);
                     self.remember(id, uuid, tag);
                 }
@@ -1547,7 +1553,7 @@ impl Game<'_> {
                 "Motion".into(),
                 sunrise_client::save::doubles(&[m.x, m.y, m.z]),
             );
-            c.entry("Fire".into()).or_insert(Tag::Short(0));
+            c.insert("Fire".into(), Tag::Short(eye.fire_ticks as i16));
         }
         // LeashFenceKnotEntity and EyeOfEnder still use the common fields
         // of Entity.saveWithoutId, which their own saves leave out.
@@ -2067,6 +2073,7 @@ impl Game<'_> {
                     &s.item,
                     at,
                     s.spawn_item_after,
+                    s.fire_ticks,
                     self.persist.uuids.get(&s.id).copied().unwrap_or(s.uuid),
                     s.raw.as_deref(),
                     self.res.items(),
@@ -2505,12 +2512,18 @@ impl Game<'_> {
                 .or_else(|| {
                     entity_nbt::spit_or_bullet_to_nbt(p, uuid, owner, target, raw.as_ref())
                 })?;
-        // HasBeenShot is modeled for these projectiles. The generic raw
-        // overlay also serves entity types whose shot flag is still opaque.
+        // HasBeenShot and Fire are modeled for these projectiles. The generic raw
+        // overlay also serves entity types whose fields are still opaque.
         let shot = tag.get("HasBeenShot").cloned();
+        let fire = tag.get("Fire").cloned();
         let mut tag = with_raw(tag, self.persist.raw.get(&p.id));
-        if let (Some(shot), Tag::Compound(map)) = (shot, &mut tag) {
-            map.insert("HasBeenShot".into(), shot);
+        if let Tag::Compound(map) = &mut tag {
+            if let Some(shot) = shot {
+                map.insert("HasBeenShot".into(), shot);
+            }
+            if let Some(fire) = fire {
+                map.insert("Fire".into(), fire);
+            }
         }
         self.save_projectile_portal_cooldown(p, &mut tag);
         Some((chunk_of(p.position), tag))

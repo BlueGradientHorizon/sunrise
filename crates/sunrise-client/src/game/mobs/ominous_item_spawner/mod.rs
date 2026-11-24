@@ -32,6 +32,12 @@ pub(super) struct OminousItemSpawner {
     pub(super) position: [f64; 3],
     pub(super) spawn_item_after: i64,
     tick_count: i64,
+    /// `Entity.remainingFireTicks`, counted down by `baseTick`.
+    pub(super) fire_ticks: i32,
+    /// `Entity.DATA_SHARED_FLAGS_ID` on-fire bit, set after `baseTick` fire processing.
+    pub(super) synced_fire: bool,
+    /// `Entity.hasVisualFire` (`HasVisualFire` in NBT).
+    pub(super) has_visual_fire: bool,
     /// Its UUID, and the compound it was loaded from (fields Sunrise doesn't
     /// model survive a save).
     pub(super) uuid: [i32; 4],
@@ -83,6 +89,9 @@ impl Game<'_> {
             position,
             spawn_item_after: i64::from(delay),
             tick_count: 0,
+            fire_ticks: 0,
+            synced_fire: false,
+            has_visual_fire: false,
             uuid: sunrise_client::save::random_uuid(),
             raw: None,
         });
@@ -116,6 +125,8 @@ impl Game<'_> {
             map.insert("Rotation".into(), sunrise_client::save::floats(&rotation));
         }
         let uuid = self.uuid_for(id);
+        let fire_ticks = sunrise_client::entity_nbt::fire_ticks_from_nbt(&tag);
+        let has_visual_fire = sunrise_client::entity_nbt::flag(&tag, "HasVisualFire");
         self.ominous_spawners.push(OminousItemSpawner {
             attachment_lifetime: Default::default(),
             join: Default::default(),
@@ -124,6 +135,9 @@ impl Game<'_> {
             position: [at.x, at.y, at.z],
             spawn_item_after,
             tick_count: 0,
+            fire_ticks,
+            synced_fire: false,
+            has_visual_fire,
             uuid,
             raw: Some(Box::new(tag)),
         });
@@ -132,15 +146,23 @@ impl Game<'_> {
     /// warning sound, then the item) and `tickClient` (particles every 5
     /// game ticks).
     pub(super) fn tick_ominous_item_spawners(&mut self) {
+        // ServerLevel.tick: only entities in entity-ticking chunks that joined before the pass tick.
+        let ticking = self.entity_ticking_area();
+        let through = self.ticked_entities_through;
         let mut spawners = self.ominous_spawners.lift();
         #[cfg(test)]
         super::entity::taken_pass_tests::after_take(self);
-        // ServerLevel.tick: only entities in entity-ticking chunks tick.
-        let ticking = self.entity_ticking_area();
         spawners.retain_mut(|s| {
-            if !ticking(s.position[0].floor() as i32, s.position[2].floor() as i32) {
+            if s.id > through
+                || !ticking(s.position[0].floor() as i32, s.position[2].floor() as i32)
+            {
                 return true;
             }
+            // Entity.baseTick: the spawner burns down; its hurt does nothing.
+            if s.fire_ticks > 0 {
+                s.fire_ticks -= 1;
+            }
+            s.synced_fire = s.fire_ticks > 0 || s.has_visual_fire;
             s.tick_count += 1;
             let at = block(s.position);
             let center = at.map(|v| f64::from(v) + 0.5);
@@ -178,6 +200,9 @@ impl Game<'_> {
             position,
             spawn_item_after: 0,
             tick_count: 0,
+            fire_ticks: 0,
+            synced_fire: false,
+            has_visual_fire: false,
             uuid: [0; 4],
             raw: None,
         });
