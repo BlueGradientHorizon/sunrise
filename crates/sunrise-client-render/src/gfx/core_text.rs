@@ -108,6 +108,12 @@ impl super::Renderer {
         Ok(())
     }
 
+    /// Whether a pack's `core/text` draws the world's text (`TEXT`, `TEXT_POLYGON_OFFSET`): its
+    /// pipelines were made for this renderer.
+    pub fn draws_pack_world_text(&self) -> bool {
+        self.core_text.as_ref().is_some_and(|c| c.world.is_some())
+    }
+
     /// The vanilla `Globals` block a pack's core shaders read this frame.
     pub(super) fn pack_globals(&self, frame: &super::Frame) -> [u8; 48] {
         let globals = crate::post_chain::Globals {
@@ -616,13 +622,14 @@ impl CoreText {
     }
 
     /// Vanilla's blocks (`data`, as `core_lines::uniforms` lays them out) once into the shared
-    /// buffer, then HDR tier windows, then each pipeline's Polytone blocks.
+    /// buffer, then HDR tier windows, then each pipeline's Polytone blocks; the Improved
+    /// Transparency stages' only when the frame draws them (`improved_transparency`).
     pub(super) fn prepare(
         &self,
         uploads: &mut super::upload::Uploads,
         encoder: &mut wgpu::CommandEncoder,
         data: &[u8; 1024],
-        hdr_windows: [[f32; 4]; 2],
+        (hdr_windows, improved_transparency): ([[f32; 4]; 2], bool),
     ) {
         uploads.buffer(encoder, &self.uniform, 0, data);
         uploads.buffer(
@@ -637,7 +644,7 @@ impl CoreText {
         if let Some(see_through) = &self.see_through {
             see_through.extra.upload(uploads, encoder, &self.uniform);
         }
-        if let Some(oit) = &self.oit {
+        if let Some(oit) = self.oit.as_ref().filter(|_| improved_transparency) {
             oit.prepare(uploads, encoder, data);
         }
     }

@@ -102,7 +102,12 @@ pub(super) fn draw(
     });
     let mut uploads = super::super::upload::Uploads::new(device);
     let mut encoder = device.create_command_encoder(&Default::default());
-    text.prepare(&mut uploads, &mut encoder, &[0u8; 1024], [[0.0; 4]; 2]);
+    text.prepare(
+        &mut uploads,
+        &mut encoder,
+        &[0u8; 1024],
+        ([[0.0; 4]; 2], false),
+    );
     {
         let color_view = color.create_view(&Default::default());
         let depth_view = depth.create_view(&Default::default());
@@ -398,7 +403,12 @@ fn pack_world_text_shades_both_normal_and_polygon_offset_depth_modes() {
     });
     let mut uploads = super::super::upload::Uploads::new(&device);
     let mut encoder = device.create_command_encoder(&Default::default());
-    text.prepare(&mut uploads, &mut encoder, &[0u8; 1024], [[0.0; 4]; 2]);
+    text.prepare(
+        &mut uploads,
+        &mut encoder,
+        &[0u8; 1024],
+        ([[0.0; 4]; 2], false),
+    );
     {
         let cv = color.create_view(&Default::default());
         let dv = depth.create_view(&Default::default());
@@ -563,7 +573,7 @@ fn pack_world_text_hdr_mark_marks_only_drawn_fragments() {
         let mut uploads = super::super::upload::Uploads::new(&device);
         let mut encoder = device.create_command_encoder(&Default::default());
         let windows = [[0.0, 0.0, 0.0, 0.0], [1.0, 1.0, 1.0, 1.0]];
-        text.prepare(&mut uploads, &mut encoder, &[0u8; 1024], windows);
+        text.prepare(&mut uploads, &mut encoder, &[0u8; 1024], (windows, false));
         {
             let cv = color.create_view(&Default::default());
             let dv = depth.create_view(&Default::default());

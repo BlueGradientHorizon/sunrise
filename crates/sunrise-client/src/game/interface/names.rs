@@ -659,6 +659,7 @@ impl Game<'_> {
         layouts.begin_frame(&self.gui.atlas);
         let background = self.settings.text_background(0.25);
         let faded = self.settings.faded_text_alpha(0.25);
+        let pack_text = (self.renderer.as_ref()).is_some_and(|r| r.draws_pack_world_text());
         for tag in self.collect_name_tags(
             camera,
             alpha,
@@ -676,7 +677,7 @@ impl Game<'_> {
                     &tag.lines,
                     faded,
                     background,
-                    name_tag_layer(faded, background),
+                    name_tag_layer(pack_text, faded, background),
                     light,
                     NAME_TAG_UNIT,
                     out,
@@ -693,7 +694,7 @@ impl Game<'_> {
                 &tag.lines,
                 0xFF,
                 0,
-                name_tag_layer(0xFF, 0),
+                name_tag_layer(pack_text, 0xFF, 0),
                 light,
                 NAME_TAG_UNIT,
                 out,
@@ -832,13 +833,16 @@ impl Game<'_> {
     }
 }
 
-/// The layer of a name tag's `Font.DisplayMode.NORMAL` copy (`RenderTypes.text`, a pack's
-/// `core/text`): `SubmitNodeCollection.submitNameTagPart` puts it in the solid phase when
-/// `canRenderAsSolid` (its text's alpha 255 and its background's 0, in a level), else with the
-/// translucent text (`OIT_TEXT` under Improved Transparency). `text_alpha` is 0 to 255,
-/// `background` ARGB.
-pub(super) fn name_tag_layer(text_alpha: u32, background: u32) -> u32 {
-    if text_alpha == 0xFF && background >> 24 == 0 {
+/// The layer of a name tag's `Font.DisplayMode.NORMAL` copy when a pack's `core/text` draws the
+/// world's text (`pack_text`; `RenderTypes.text`): `SubmitNodeCollection.submitNameTagPart` puts
+/// it in the solid phase when `canRenderAsSolid` (its text's alpha 255 and its background's 0, in
+/// a level), else with the translucent text (`OIT_TEXT` under Improved Transparency). Without
+/// one, the native entity layer (0), which world views and a shader pack's shadow pass also
+/// draw. `text_alpha` is 0 to 255, `background` ARGB.
+pub(super) fn name_tag_layer(pack_text: bool, text_alpha: u32, background: u32) -> u32 {
+    if !pack_text {
+        0
+    } else if text_alpha == 0xFF && background >> 24 == 0 {
         sunrise_client::gfx::TEXT_NORMAL_SOLID_OVERLAY
     } else {
         sunrise_client::gfx::TEXT_NORMAL_OVERLAY

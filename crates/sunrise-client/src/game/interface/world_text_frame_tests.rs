@@ -18,15 +18,18 @@ const CASE: &str = "SUNRISE_WORLD_TEXT_FRAME_CASE";
 /// picks its corner), nearer than the empty world: translucent text nearer (depth 0.75, reversed)
 /// than opaque text (0.25), so a frame shows which program drew the nearest. The
 /// world text paints opaque text green (0, 255, 0) and translucent text, backgrounds included,
-/// red (255, 0, 0); under Improved Transparency it goes through vanilla's `oit.glsl`, opaque, and
-/// accumulates magenta (255, 0, 255). The GUI's and the see-through text draw nothing.
+/// red with the vertex's green and blue (a black background red, white glyphs white), except a
+/// pure blue background: half-transparent blue, and nearer still (depth 0.9). Under Improved
+/// Transparency it goes through vanilla's `oit.glsl`, opaque, and accumulates magenta
+/// (255, 0, 255). The GUI's and the see-through text draw nothing.
 const TEXT: [(&str, &str); 2] = [
     (
         "assets/minecraft/shaders/core/text.vsh",
         "#version 330\nlayout(location = 0) in vec3 Position;\nlayout(location = 1) in vec4 Color;\n\
          layout(location = 0) flat out vec4 vertexColor;\nvoid main() {\n    \
          int corner = gl_VertexID % 3;\n    vec2 uv = vec2((corner << 1) & 2, corner & 2);\n    \
-         float depth = Color.a > 0.99 ? 0.25 : 0.75;\n    \
+         bool blue = Color.b > 0.99 && Color.g < 0.01;\n    \
+         float depth = Color.a > 0.99 ? 0.25 : blue ? 0.9 : 0.75;\n    \
          gl_Position = vec4(uv * 2.0 - 1.0 + 0.0 * Position.xy, depth, 1.0);\n    \
          vertexColor = Color;\n}\n",
     ),
@@ -40,13 +43,15 @@ const TEXT: [(&str, &str); 2] = [
          #elif defined(OIT_ACCUMULATE)\n    \
          fragColor = sampleColorForAccumulation(vec4(1.0, 0.0, 1.0, 1.0));\n\
          #else\n    fragColor = vertexColor.a > 0.99 ? vec4(0.0, 1.0, 0.0, 1.0) \
-         : vec4(1.0, 0.0, 0.0, 1.0);\n#endif\n}\n",
+         : vertexColor.b > 0.99 && vertexColor.g < 0.01 ? vec4(0.0, 0.0, 1.0, 0.5) \
+         : vec4(1.0, vertexColor.gb, 1.0);\n#endif\n}\n",
     ),
 ];
 
 const GREEN: [u8; 3] = [0, 255, 0];
 const RED: [u8; 3] = [255, 0, 0];
 const MAGENTA: [u8; 3] = [255, 0, 255];
+const WHITE: [u8; 3] = [255, 255, 255];
 
 /// With Improved Transparency off and on, one session with the pack's text:
 /// - a text display's text (opaque, the solid phase) and its default background (translucent):
@@ -56,7 +61,13 @@ const MAGENTA: [u8; 3] = [255, 0, 255];
 /// - named, its name tag's depth-tested copy is opaque text: green in either mode (the solid
 ///   phase, as `canRenderAsSolid` puts it);
 /// - crouching (`isDiscrete`), the tag is drawn once, faded on its background: translucent text,
-///   red outside Improved Transparency, magenta under it.
+///   its white glyphs last outside Improved Transparency, magenta under it;
+/// - that tag behind the display's own blue background (its text back), outside Improved
+///   Transparency: the
+///   background blends over the tag (`FeatureRenderDispatcher.PreparedFrame.executeTranslucent`
+///   runs `nameTags` before `texts`), so the frame is neither the tag's white nor the background
+///   alone over the sky. Drawn the other way round, the nearer background's depth would hide the
+///   tag.
 #[test]
 #[ignore = "daily"]
 fn a_packs_text_draws_world_text_with_and_without_improved_transparency() {
@@ -127,19 +138,43 @@ fn a_packs_text_draws_world_text_with_and_without_improved_transparency() {
         let display = game.text_displays.get_mut(&1).unwrap();
         display.metadata(&[(0, 0, Value::Byte(0x02))]);
         game.tick_text_displays(game.clock.runs_normally());
-        assert_eq!(corner(game, frame), translucent, "a discrete name tag");
+        let discrete = if improved { MAGENTA } else { WHITE };
+        assert_eq!(corner(game, frame), discrete, "a discrete name tag");
+
+        if !improved {
+            let display = game.text_displays.get_mut(&1).unwrap();
+            display.metadata(&[
+                (23, 0, Value::Text(Tag::String("W".into()))),
+                (25, 1, Value::Int(0x8000_00FFu32 as i32)),
+            ]);
+            game.tick_text_displays(game.clock.runs_normally());
+            let over_the_tag = corner(game, frame);
+            let display = game.text_displays.get_mut(&1).unwrap();
+            display.metadata(&[(2, 0, Value::OptText(None))]);
+            game.tick_text_displays(game.clock.runs_normally());
+            let alone = corner(game, frame);
+            assert_ne!(over_the_tag, WHITE, "the background draws over the tag");
+            assert_ne!(over_the_tag, alone, "name tags before texts");
+        }
     });
 }
 
-/// `SubmitNodeCollection.canRenderAsSolid`: a name tag's `NORMAL` copy is solid only when its
-/// text is opaque and its background has no alpha, whatever the background's colour.
+/// `SubmitNodeCollection.canRenderAsSolid`: with a pack's text, a name tag's `NORMAL` copy is
+/// solid only when its text is opaque and its background has no alpha, whatever the background's
+/// colour; without one, it stays the native entity layer.
 #[test]
 fn a_name_tag_copy_is_solid_only_when_opaque_on_no_background() {
     use super::names::name_tag_layer;
     use sunrise_client::gfx::{TEXT_NORMAL_OVERLAY, TEXT_NORMAL_SOLID_OVERLAY};
-    assert_eq!(name_tag_layer(0xFF, 0), TEXT_NORMAL_SOLID_OVERLAY);
-    assert_eq!(name_tag_layer(0xFF, 0x00FF_FFFF), TEXT_NORMAL_SOLID_OVERLAY);
-    assert_eq!(name_tag_layer(0xFF, 0x4000_0000), TEXT_NORMAL_OVERLAY);
-    assert_eq!(name_tag_layer(0xFE, 0), TEXT_NORMAL_OVERLAY);
-    assert_eq!(name_tag_layer(0x20, 0x4000_0000), TEXT_NORMAL_OVERLAY);
+    assert_eq!(name_tag_layer(true, 0xFF, 0), TEXT_NORMAL_SOLID_OVERLAY);
+    assert_eq!(
+        name_tag_layer(true, 0xFF, 0x00FF_FFFF),
+        TEXT_NORMAL_SOLID_OVERLAY
+    );
+    assert_eq!(name_tag_layer(true, 0xFF, 0x4000_0000), TEXT_NORMAL_OVERLAY);
+    assert_eq!(name_tag_layer(true, 0xFE, 0), TEXT_NORMAL_OVERLAY);
+    assert_eq!(name_tag_layer(true, 0x20, 0x4000_0000), TEXT_NORMAL_OVERLAY);
+    // Without a pack's text, both copies stay the native entity layer.
+    assert_eq!(name_tag_layer(false, 0xFF, 0), 0);
+    assert_eq!(name_tag_layer(false, 0x20, 0x4000_0000), 0);
 }

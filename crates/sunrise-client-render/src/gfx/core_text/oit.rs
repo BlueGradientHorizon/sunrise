@@ -38,8 +38,9 @@ pub(crate) struct OitPart {
     pub(super) groups: Option<(u64, [wgpu::BindGroup; 3])>,
 }
 
-/// Where vanilla's blocks end in the buffer and the first stage's Polytone blocks begin.
-const VANILLA_BYTES: u64 = 1024;
+/// Where vanilla's four blocks end in the buffer (the last one's offset and its slot,
+/// `expression_blocks::VANILLA_OFFSETS`), and the first stage's Polytone blocks begin.
+const VANILLA_BYTES: u64 = expression_blocks::VANILLA_OFFSETS[3] + expression_blocks::VANILLA_SLOT;
 
 impl OitPart {
     /// `programs` (each stage's, with its expression uniforms) made into their pipelines: none
@@ -302,3 +303,7 @@ impl OitStage {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "oit_tests.rs"]
+mod tests;

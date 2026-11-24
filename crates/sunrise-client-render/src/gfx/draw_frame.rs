@@ -1251,15 +1251,6 @@ impl Renderer {
                 core_lines::uniforms(pack.globals, view, pose, jitter, 1.0, fog_color, pack.fog)
             })
         };
-        // The pack's world text: vanilla's blocks, HDR tier windows, then its expression uniforms.
-        if let Some(core) = &self.core_text {
-            core.prepare(
-                &mut self.uploads,
-                &mut encoder,
-                &vanilla_blocks(),
-                globals.hdr_windows,
-            );
-        }
         let outline_edges = frame.outline.len().min(MAX_OUTLINE_EDGES as usize);
         if outline_edges > 0 {
             // The same per-line colour and pixel width layout as the gizmo lines. A high
@@ -1375,6 +1366,16 @@ impl Renderer {
             && self.pack_post.as_ref().is_none_or(|p| p.1.is_none())
             && self.native.is_none()
             && oit::supported(&self.device);
+        // The pack's world text: vanilla's blocks, HDR tier windows, then its expression uniforms;
+        // its Improved Transparency stages' only on a frame that draws them.
+        if let Some(core) = &self.core_text {
+            core.prepare(
+                &mut self.uploads,
+                &mut encoder,
+                &vanilla_blocks(),
+                (globals.hdr_windows, oit_on),
+            );
+        }
         let [
             entity_quads,
             text_quads,
@@ -2972,23 +2973,25 @@ impl Renderer {
                 }
                 pass.set_bind_group(0, &self.group, &[]);
             }
-            // The translucent world text: `TEXT_POLYGON_OFFSET`'s (text displays) and `TEXT`'s
-            // (discrete name tags). Under Improved Transparency their `OIT_*` stages draw it.
+            // The translucent world text, as `FeatureRenderDispatcher.PreparedFrame
+            // .executeTranslucent` runs its phases: `nameTags` (`TEXT`, discrete name tags) before
+            // `texts` (`TEXT_POLYGON_OFFSET`, text displays). Under Improved Transparency their
+            // `OIT_*` stages draw it.
             if text_quads + text_normal_quads > 0 && !oit_on {
                 pass.stage(self.own_timing.as_mut(), "entity text");
                 pass.set_vertex_buffer(0, self.entity_buffer.slice(..));
                 for (mode, pipeline, count, first) in [
                     (
-                        core_text::WorldTextMode::PolygonOffset,
-                        &self.text_polygon_offset_pipeline,
-                        text_quads,
-                        entity_quads,
-                    ),
-                    (
                         core_text::WorldTextMode::Normal,
                         &self.world_text_pipeline,
                         text_normal_quads,
                         text_end,
+                    ),
+                    (
+                        core_text::WorldTextMode::PolygonOffset,
+                        &self.text_polygon_offset_pipeline,
+                        text_quads,
+                        entity_quads,
                     ),
                 ] {
                     if count > 0 {
