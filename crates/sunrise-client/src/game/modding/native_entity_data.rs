@@ -118,6 +118,43 @@ impl Game<'_> {
         }
         Some(self.target_name(t).plain())
     }
+    /// `Entity.getCustomName`: the name `setCustomName` gave the entity, as stored (no click
+    /// events removed), or None. A mob's and an armor stand's live with them, a frame's and a
+    /// falling block's with their saved data, the other kinds' in their saved `CustomName`.
+    pub(super) fn entity_custom_name(&self, entity: EntityRef) -> Option<Text> {
+        let decode = sunrise_client::entity_nbt::decode_custom_name_text;
+        match self.native_entity_read_target(entity)? {
+            Target::Player | Target::Guest(_) => None,
+            Target::Mob(id) => self
+                .mobs
+                .iter()
+                .find(|m| m.id == id)?
+                .custom_name_text
+                .clone(),
+            Target::Stand(id) => self
+                .armor_stands
+                .iter()
+                .find(|a| a.id == id)?
+                .custom_name
+                .clone(),
+            Target::Frame(id) => decode(
+                self.item_frames
+                    .iter()
+                    .find(|f| f.id == id)?
+                    .custom_name
+                    .as_ref()?,
+            ),
+            Target::Falling(id) => self
+                .falling
+                .iter()
+                .find(|f| f.id == id)
+                .and_then(|f| f.saved.as_ref())
+                .and_then(|saved| saved.1.get("CustomName"))
+                .or_else(|| self.persist_raw(id)?.get("CustomName"))
+                .and_then(decode),
+            t => decode(self.persist_raw(named_id(t)?)?.get("CustomName")?),
+        }
+    }
     /// Names the entity (`Entity.setCustomName`), or takes its name away
     /// with `None`: its name, its saved `CustomName` and, for a mob or an
     /// armor stand, what the players tracking it are sent. False for a
@@ -317,6 +354,42 @@ mod tests {
 
             assert!(mob.discard(game));
             assert!(mob.tags(game).is_none());
+        });
+    }
+
+    /// `Entity.getCustomName` (#5380): None until a name is set, then the name as set, style
+    /// included, for a mob, an armor stand and a kind whose name lives in its saved data (a
+    /// dropped item); None again once taken away, and for the player.
+    #[test]
+    #[ignore = "daily"]
+    fn custom_name_reads_the_styled_name_or_none() {
+        with_game(|game| {
+            let mob = push_mob(game, 15, "minecraft:zombie");
+            assert_eq!(mob.custom_name(game).unwrap(), None);
+            let name: mod_api::Text = Text::colored("Grumbles", 0xFF5555).try_into_api().unwrap();
+            assert!(mob.set_custom_name(game, Some(name.clone())).unwrap());
+            assert_eq!(mob.custom_name(game).unwrap(), Some(name.clone()));
+            assert!(mob.set_custom_name(game, None).unwrap());
+            assert_eq!(mob.custom_name(game).unwrap(), None);
+
+            game.armor_stands.push(ArmorStand::new(16, Vec3::ZERO, 0.0));
+            let stand = game.entity(16).unwrap();
+            assert_eq!(stand.custom_name(game).unwrap(), None);
+            assert!(stand.set_custom_name(game, Some(name.clone())).unwrap());
+            assert_eq!(stand.custom_name(game).unwrap(), Some(name.clone()));
+
+            let stone = sunrise_client::items::ItemStack::new("minecraft:stone", 1);
+            game.spawn_item(stone, [0.5, 70.0, 0.5], [0.0; 3], 0);
+            let item = game.entity(game.dropped.last().unwrap().id).unwrap();
+            assert_eq!(item.custom_name(game).unwrap(), None);
+            assert!(item.set_custom_name(game, Some(name.clone())).unwrap());
+            assert_eq!(item.custom_name(game).unwrap(), Some(name));
+
+            game.player =
+                Some(sunrise_client::motion::PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
+            super::super::native_entity_refs::tests::bind_local_player(game, 20, 123);
+            let player = game.entity(20).unwrap();
+            assert_eq!(player.custom_name(game).unwrap(), None);
         });
     }
 
