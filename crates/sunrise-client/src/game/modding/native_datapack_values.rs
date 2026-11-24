@@ -636,6 +636,54 @@ impl PlacementContext for DatapackReadWorld<'_, '_> {
     }
 }
 
+fn valid_resource_segment(s: &str, allow_slash: bool) -> bool {
+    !s.is_empty()
+        && !s.starts_with('/')
+        && !s.ends_with('/')
+        && !s.contains("//")
+        && s.split('/')
+            .all(|part| !part.is_empty() && part != "." && part != "..")
+        && s.bytes().all(|b| {
+            b.is_ascii_lowercase()
+                || b.is_ascii_digit()
+                || matches!(b, b'_' | b'-' | b'.')
+                || (allow_slash && b == b'/')
+        })
+}
+
+fn read_builtin_state_provider(
+    resources: &std::path::Path,
+    name: &str,
+    bundle: &mut Option<Option<serde_json::Map<String, serde_json::Value>>>,
+) -> Option<String> {
+    let (ns, path) = name.split_once(':').unwrap_or(("minecraft", name));
+    if !valid_resource_segment(ns, false) || !valid_resource_segment(path, true) {
+        return None;
+    }
+    let file = resources
+        .join("data")
+        .join(ns)
+        .join("worldgen/block_state_provider")
+        .join(format!("{path}.json"));
+    if let Ok(text) = std::fs::read_to_string(&file) {
+        return Some(text);
+    }
+    if ns == "minecraft" {
+        let map = bundle
+            .get_or_insert_with(|| {
+                let bytes = std::fs::read(resources.join("worldgen/state_providers.json")).ok()?;
+                serde_json::from_slice::<serde_json::Value>(&bytes)
+                    .ok()
+                    .and_then(|v| v.as_object().cloned())
+            })
+            .as_ref()?;
+        if let Some(value) = map.get(name).or_else(|| map.get(path)) {
+            return Some(value.to_string());
+        }
+    }
+    None
+}
+
 impl<'g> Game<'g> {
     /// Active decoded vanilla-value table for this side (server or client).
     fn active_datapack_vanilla_values(&self) -> Option<&DatapackVanillaValues> {
@@ -659,10 +707,7 @@ impl<'g> Game<'g> {
     )> {
         let declarations = mod_api::__private::datapack_registry_declarations();
         let (block_tags, fluid_tags, biome_tags) = self.client_datapack_tags();
-        let live_features = self.res.behaviours().live_features();
-        let catalog = live_features
-            .as_ref()
-            .and_then(|features| features.state_provider_catalog());
+        let catalog = self.client_state_provider_catalog()?;
         let biomes = self
             .world_biomes
             .as_deref()
@@ -675,7 +720,7 @@ impl<'g> Game<'g> {
             &fluid_tags,
             &biome_names,
             &biome_tags,
-            catalog,
+            catalog.as_ref(),
         )
         .map_err(|e| format!("client datapack vanilla values: {e}"))?;
         let bound = mod_api::__private::rebind_datapack_vanilla_values(
@@ -724,6 +769,52 @@ impl<'g> Game<'g> {
             remote.datapack_vanilla_values = None;
         }
         Ok(())
+    }
+
+    /// Build a `StateProviderCatalog` from the remote server's synced
+    /// `minecraft:worldgen/block_state_provider` registry (converting `Some(tag)` via `tag_to_json`
+    /// and falling back to the client's built-in `worldgen/block_state_provider` JSON when `data`
+    /// is `None` from the known-pack optimization). Never falls back to a local world's
+    /// `live_features()`.
+    fn client_state_provider_catalog(
+        &self,
+    ) -> sunrise_client::Result<Option<StateProviderCatalog>> {
+        let Some(entries) = self
+            .remote
+            .as_ref()
+            .and_then(|r| {
+                r.registries
+                    .registries
+                    .get("minecraft:worldgen/block_state_provider")
+            })
+            .filter(|entries| !entries.is_empty())
+        else {
+            return Ok(None);
+        };
+        let mut resources = BTreeMap::new();
+        let mut builtin_bundle: Option<Option<serde_json::Map<String, serde_json::Value>>> = None;
+        for (name, data) in entries {
+            if let Some(tag) = data {
+                resources.insert(
+                    name.clone(),
+                    sunrise_client::scoreboard::tag_to_json(tag).to_string(),
+                );
+                continue;
+            }
+            if let Some(json) =
+                read_builtin_state_provider(&self.options.resources, name, &mut builtin_bundle)
+            {
+                resources.insert(name.clone(), json);
+            }
+        }
+        if resources.is_empty() {
+            return Ok(None);
+        }
+        StateProviderCatalog::from_resources(&resources)
+            .map(Some)
+            .map_err(|error| {
+                format!("client worldgen/block_state_provider catalog: {error}").into()
+            })
     }
 
     fn client_datapack_tags(
@@ -1954,6 +2045,141 @@ mod tests {
                     assert!(
                         game.remote.is_none(),
                         "invalid Joined datapack vanilla value must disconnect the client"
+                    );
+                    // 10. Client-side named BlockStateProvider holders come from synced
+                    //     remote.registries["minecraft:worldgen/block_state_provider"] (both
+                    //     inline NBT tags and known-pack None fallback to built-in JSON).
+                    let _server3 = logged_client(game);
+                    game.enter_remote_dimension(
+                        &sunrise_protocol::packets::play::SpawnInfo {
+                            dimension_type: 0,
+                            dimension: "minecraft:overworld".into(),
+                            seed: 0,
+                            game_type: 1,
+                            previous_game_type: None,
+                            debug: false,
+                            flat: true,
+                            last_death: None,
+                            portal_cooldown: 0,
+                            sea_level: 63,
+                        },
+                        RemoteDimensionEntry::Login,
+                        sunrise_client::level_loading::Reason::Other,
+                    );
+                    let synced_tag = sunrise_client::lan::data::json_to_nbt(&serde_json::json!({
+                        "type": "minecraft:simple_state_provider",
+                        "state": { "Name": "minecraft:emerald_block" }
+                    }));
+                    // Pick a real built-in provider name from the prepared resources if present.
+                    let builtin_provider_name =
+                        std::fs::read(game.options.resources.join("worldgen/state_providers.json"))
+                            .ok()
+                            .and_then(|bytes| {
+                                serde_json::from_slice::<serde_json::Value>(&bytes).ok()
+                            })
+                            .and_then(|value| {
+                                value.as_object().and_then(|map| map.keys().next().cloned())
+                            })
+                            .map(|key| {
+                                if key.contains(':') {
+                                    key
+                                } else {
+                                    format!("minecraft:{key}")
+                                }
+                            });
+                    {
+                        let remote = game.remote.as_mut().unwrap();
+                        let dyn_reg = Arc::make_mut(&mut remote.registries);
+                        let mut provider_entries =
+                            vec![("ubm_test:synced_emerald".to_owned(), Some(synced_tag))];
+                        if let Some(ref builtin_name) = builtin_provider_name {
+                            provider_entries.push((builtin_name.clone(), None));
+                        }
+                        dyn_reg.registries.insert(
+                            "minecraft:worldgen/block_state_provider".into(),
+                            provider_entries,
+                        );
+                    }
+                    let ground_json = builtin_provider_name
+                        .as_deref()
+                        .map(|name| format!(r#""{name}""#))
+                        .unwrap_or_else(|| r#"{"id":"minecraft:stone"}"#.to_owned());
+                    let named_files = vec![(
+                        "data/ubm_test/ubm_test/bone_meal_rule/named.json".to_owned(),
+                        vec![(
+                            "synced".to_owned(),
+                            format!(
+                                r##"{{
+                                    "blocks_to_grow": 1,
+                                    "increase": 1,
+                                    "vegetation": "ubm_test:synced_emerald",
+                                    "ground_state": {ground_json},
+                                    "predicate": {{"type":"minecraft:true"}},
+                                    "spread_sources": "minecraft:stone",
+                                    "tag_targets": "minecraft:stone",
+                                    "single_target": "minecraft:stone",
+                                    "variant": {{"type":"ubm_test:random_tick"}}
+                                }}"##
+                            )
+                            .into_bytes(),
+                        )],
+                    )];
+                    let named_candidate =
+                        mod_api::__private::build_datapack_candidate_with_decoder(
+                            declarations,
+                            &named_files,
+                            &mut AcceptAllVanilla,
+                        )
+                        .unwrap();
+                    let named_set = mod_api::DatapackRegistrySet::from_candidate(named_candidate);
+                    let named_bytes = named_set
+                        .snapshot_for(declarations, &offered)
+                        .unwrap()
+                        .encode()
+                        .unwrap();
+                    for chunk in datapack_net::chunks(&named_bytes).unwrap() {
+                        game.apply_packet(
+                            sunrise_protocol::packets::play::Clientbound::CustomPayload(
+                                sunrise_protocol::packets::configuration::CustomPayload {
+                                    channel: datapack_net::CHANNEL.into(),
+                                    data: chunk,
+                                },
+                            ),
+                        )
+                        .unwrap();
+                    }
+                    let named_level = game.level("minecraft:overworld").unwrap();
+                    let mut synced_veg = None;
+                    let mut synced_ground = None;
+                    named_level
+                        .datapack_read(
+                            game,
+                            "ubm_test:bone_meal_rule",
+                            "ubm_test:named",
+                            &mut |entry| {
+                                synced_veg = entry
+                                    .get("vegetation")
+                                    .and_then(DatapackValue::as_block_state_provider);
+                                synced_ground = entry
+                                    .get("ground_state")
+                                    .and_then(DatapackValue::as_block_state_provider);
+                            },
+                        )
+                        .unwrap();
+                    let emerald = synced_veg
+                        .unwrap()
+                        .state(game, named_level, &mut rng, [0, 64, 0])
+                        .unwrap();
+                    assert_eq!(
+                        <dyn mod_api::Host>::block_state_string(game, emerald).as_deref(),
+                        Some("minecraft:emerald_block")
+                    );
+                    assert!(
+                        synced_ground
+                            .unwrap()
+                            .state(game, named_level, &mut rng, [0, 64, 0])
+                            .is_ok(),
+                        "known-pack None built-in provider holder must resolve on client"
                     );
                 });
             },
