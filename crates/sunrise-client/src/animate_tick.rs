@@ -629,7 +629,7 @@ fn add(engine: &mut ParticleEngine, ty: T, p: [f64; 3], v: [f64; 3]) {
 }
 /// `Level.addAlwaysVisibleParticle`: still shown under the Minimal option now and then.
 fn add_visible(engine: &mut ParticleEngine, ty: T, p: [f64; 3], v: [f64; 3]) {
-    engine.add_with(&ParticleOptions::simple(ty), p, v, false, true);
+    engine.add_with(None, &ParticleOptions::simple(ty), p, v, false, true);
 }
 fn sound(engine: &mut ParticleEngine, name: &'static str, p: [f64; 3], volume: f32, pitch: f32) {
     engine.sounds.push((name, p, volume, pitch, false));
@@ -732,7 +732,8 @@ struct AmbientEmissions {
 impl AmbientEmissions {
     /// Resume after each game-resolved particle so its limiter/provider draws happen
     /// before testing the next entry's spawn chance.
-    fn emit(&mut self, engine: &mut ParticleEngine, world: &World) -> Option<AnimateStep> {
+    fn emit(&mut self, engine: &mut ParticleEngine, ctx: &AnimateContext) -> Option<AnimateStep> {
+        let level = crate::particles::ParticleLevel::new(ctx.world, ctx.facts, ctx.collision);
         while let Some(entry) = self.entries.get(self.next) {
             self.next += 1;
             let random = engine.level_random();
@@ -745,7 +746,7 @@ impl AmbientEmissions {
                     z + random.next_double(),
                 ];
                 if let Some(options) = ParticleOptions::from_persistent(&entry.particle) {
-                    engine.add_with_world(Some(world), &options, at, [0.0; 3], false, false);
+                    engine.add_with(Some(&level), &options, at, [0.0; 3], false, false);
                 } else {
                     return Some(AnimateStep::Ambient(Arc::clone(&entry.particle), at));
                 }
@@ -803,7 +804,7 @@ impl AnimateSampling {
                 continue;
             }
             if let Some(ambient) = self.ambient.as_mut()
-                && let Some(step) = ambient.emit(engine, ctx.world)
+                && let Some(step) = ambient.emit(engine, ctx)
             {
                 return Some(step);
             }
@@ -888,7 +889,7 @@ fn do_animate_tick(
 ) {
     let pos = pick(engine, center, r);
     if let Some(mut ambient) = animate_at(tables, engine, ctx, pos, center, level) {
-        assert!(ambient.emit(engine, ctx.world).is_none());
+        assert!(ambient.emit(engine, ctx).is_none());
     }
 }
 
@@ -2076,11 +2077,10 @@ fn block_animate_tick(
         }
     }
 }
-/// `AmbientLeavesBlockSoundPlayer.playAmbientLeavesSounds` for the poplar leaves:
-/// one log and three leaves of the same kind around the block.
 /// `EnchantingTableBlock.animateTick`'s glyphs: for each scanned offset
 /// (`BOOKSHELF_OFFSETS`, then the mods'), in its order, a `nextInt(16)` draw, and only when it
-/// is 0 `isValidBookShelf` (`valid`), then the glyph flying from that shelf to the table.
+/// is 0 `isValidBookShelf` (`valid`), then three `nextFloat`s for the glyph flying from that shelf
+/// to the table.
 fn enchanting_table_particles(
     engine: &mut ParticleEngine,
     table: [i32; 3],
@@ -2100,13 +2100,15 @@ fn enchant_glyph(engine: &mut ParticleEngine, table: [i32; 3], offset: [i32; 3])
     let [ox, oy, oz] = offset;
     let r = engine.random();
     let v = [
-        f64::from(ox as f32 + r.next_float() - 0.5),
+        f64::from(ox as f32 + r.next_float()) - 0.5,
         f64::from(oy as f32 - r.next_float() - 1.0),
-        f64::from(oz as f32 + r.next_float() - 0.5),
+        f64::from(oz as f32 + r.next_float()) - 0.5,
     ];
     add(engine, T::Enchant, [fx + 0.5, fy + 2.0, fz + 0.5], v);
 }
 
+/// `AmbientLeavesBlockSoundPlayer.playAmbientLeavesSounds` for the poplar leaves:
+/// one log and three leaves of the same kind around the block.
 fn leaves_ambient_sound(
     tables: &AnimateTables,
     engine: &mut ParticleEngine,
@@ -2369,6 +2371,7 @@ pub fn make_campfire_smoke(
         T::CampfireCosySmoke
     };
     engine.add_with(
+        None,
         &ParticleOptions::simple(ty),
         [x, y, z],
         [0.0, 0.07, 0.0],
