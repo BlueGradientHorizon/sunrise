@@ -863,7 +863,7 @@ impl Game<'_> {
 
     pub(super) fn cmd_particle(&mut self, ctx: &Context) -> R<i32> {
         use sunrise_client::particles::{ParticleLevel, ParticleOptions, ParticleType};
-        let (name, options, block_state) = match ctx.get("name") {
+        let (name, options, block_state, drawable) = match ctx.get("name") {
             Some(Arg::Particle(opts)) => {
                 use crate::game::api_values::TryIntoEngine;
                 let options = opts
@@ -874,7 +874,7 @@ impl Game<'_> {
                     .as_deref()
                     .unwrap_or(options.ty.name())
                     .to_owned();
-                (name, options, None)
+                (name, options, None, true)
             }
             Some(Arg::Str(spec)) => {
                 // ParticleArgument: `id` then optional SNBT options (`dust{color:[1,0,0],scale:2}`).
@@ -895,6 +895,8 @@ impl Game<'_> {
                 };
                 // The block state of a block particle, for its packet.
                 let mut block_state = None;
+                // False when the window's own provider keeps no particle for the options.
+                let mut drawable = true;
                 let options = match ty {
                     // ItemParticleOption: an item id, or a stack {id, ...}.
                     ParticleType::Item => {
@@ -958,10 +960,14 @@ impl Game<'_> {
                                     .position_arg(ctx, "pos")
                                     .unwrap_or_else(|| self.source_position())
                                     .map(|c| c.floor() as i32);
-                                let (sprite, tint) = self
-                                    .particle_sprite(state, at)
-                                    .unwrap_or_else(|| ("block/stone".into(), 0xFFFFFF));
-                                ParticleOptions::block(ty, sprite, tint)
+                                // `BlockParticleOption`'s providers: the window draws what a
+                                // client would (none for air crumbs), while the viewers a
+                                // server serves are still sent the particle.
+                                self.block_provider_options(ty, state, at)
+                                    .unwrap_or_else(|| {
+                                        drawable = false;
+                                        ParticleOptions::simple(ty)
+                                    })
                             }
                             _ => ParticleOptions::simple(ty),
                         }
@@ -974,7 +980,7 @@ impl Game<'_> {
                         .and_then(|c| crate::game::potions::particle_options(ty, c))
                         .unwrap_or_else(|| ParticleOptions::simple(ty)),
                 };
-                (name.to_owned(), options, block_state)
+                (name.to_owned(), options, block_state, drawable)
             }
             _ => return Ok(0),
         };
@@ -1084,6 +1090,7 @@ impl Game<'_> {
             return Err(err("commands.particle.failed", &[]));
         }
         let level = ParticleLevel::new(&self.world, self.res.facts(), self.collision);
+        let local = local && drawable;
         if local && count <= 0 {
             // handleParticleEvent, count 0: one particle, the speed times
             // the delta as velocity (both sent as floats, multiplied as floats).
