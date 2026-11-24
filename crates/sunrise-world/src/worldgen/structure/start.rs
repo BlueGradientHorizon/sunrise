@@ -318,10 +318,11 @@ fn pair(value: Option<&Value>, a: &str, b: &str, default: i32, missing_b: i32) -
         _ => [default; 2],
     }
 }
-/// `JigsawStructure`'s `size` (its depth) and `max_distance_from_center`.
-fn jigsaw_depth_and_reach(v: &Value) -> (i32, [i32; 2]) {
+/// `JigsawStructure`'s `size` (its depth; a required field, so `None` when
+/// missing) and `max_distance_from_center`.
+fn jigsaw_depth_and_reach(v: &Value) -> (Option<i64>, [i32; 2]) {
     (
-        v["size"].as_i64().unwrap_or(0) as i32,
+        v["size"].as_i64(),
         pair(
             v.get("max_distance_from_center"),
             "horizontal",
@@ -332,12 +333,28 @@ fn jigsaw_depth_and_reach(v: &Value) -> (i32, [i32; 2]) {
         ),
     )
 }
-/// The bounds `JigsawStructure`'s codec puts on those two: `size` is
-/// `Codec.intRange(0, 20)` and `MaxDistance` is `horizontal`
+/// The bounds `JigsawStructure`'s codec puts on those two: `size` is a
+/// required `Codec.intRange(0, 20)` and `MaxDistance` is `horizontal`
 /// `Codec.intRange(1, 128)` beside `vertical`
-/// `ExtraCodecs.intRange(1, DimensionType.Y_SIZE)`.
-fn jigsaw_reach_in_range(depth: i32, [horizontal, vertical]: [i32; 2]) -> bool {
-    (0..=20).contains(&depth) && (1..=128).contains(&horizontal) && (1..=4064).contains(&vertical)
+/// `ExtraCodecs.intRange(1, DimensionType.Y_SIZE)`; then
+/// `JigsawStructure.verifyRange` keeps `horizontal` plus the edge `terrain`
+/// needs (`MAX_TOTAL_STRUCTURE_RANGE`, 128) in range.
+fn jigsaw_reach_in_range(
+    depth: Option<i64>,
+    [horizontal, vertical]: [i32; 2],
+    terrain: TerrainAdjustment,
+) -> bool {
+    let edge = match terrain {
+        TerrainAdjustment::None => 0,
+        TerrainAdjustment::Bury
+        | TerrainAdjustment::BeardThin
+        | TerrainAdjustment::BeardBox
+        | TerrainAdjustment::Encapsulate => 12,
+    };
+    depth.is_some_and(|depth| (0..=20).contains(&depth))
+        && (1..=128).contains(&horizontal)
+        && (1..=4064).contains(&vertical)
+        && horizontal + edge <= 128
 }
 
 /// All structures and structure sets of a resource bundle, in registry
@@ -366,13 +383,14 @@ impl StructureRegistry {
         let mut defs = Vec::new();
         for (name, json) in structures {
             let v: Value = serde_json::from_str(json)?;
+            let terrain = terrain(v["terrain_adaptation"].as_str());
             let kind = match v["type"].as_str().unwrap_or_default() {
                 "minecraft:jigsaw" => {
                     let (depth, max_distance) = jigsaw_depth_and_reach(&v);
                     let def = JigsawDef {
                         start_pool: v["start_pool"].as_str().unwrap_or_default().to_owned(),
                         start_jigsaw: v["start_jigsaw_name"].as_str().map(str::to_owned),
-                        max_depth: depth,
+                        max_depth: depth.unwrap_or(0) as i32,
                         start_height: HeightProvider::from_json(&v["start_height"].to_string())?,
                         use_expansion_hack: v["use_expansion_hack"].as_bool().unwrap_or(false),
                         project_to: v["project_start_to_heightmap"].as_str().and_then(heightmap),
@@ -392,12 +410,13 @@ impl StructureRegistry {
                             .get("sunrise:piece_limited")
                             .map(super::piece_limited::Config::decode),
                     };
-                    // JigsawStructure's codec bounds `size` and
-                    // `max_distance_from_center`: vanilla registers no
-                    // structure carrying others, so one that does places
-                    // nothing here either rather than reaching past what the
-                    // generator allows.
-                    if jigsaw_reach_in_range(depth, max_distance) {
+                    // JigsawStructure's codec requires and bounds `size` and
+                    // bounds `max_distance_from_center`, and verifyRange
+                    // bounds the reach with its terrain edge: vanilla
+                    // registers no structure carrying others, so one that
+                    // does places nothing here either rather than reaching
+                    // past what the generator allows.
+                    if jigsaw_reach_in_range(depth, max_distance, terrain) {
                         StructureKind::Jigsaw(def)
                     } else {
                         StructureKind::Unsupported("minecraft:jigsaw".into())
@@ -462,7 +481,7 @@ impl StructureRegistry {
                     .iter()
                     .position(|s| Some(*s) == v["step"].as_str())
                     .unwrap_or(4),
-                terrain: terrain(v["terrain_adaptation"].as_str()),
+                terrain,
                 enhanced_terrain: v
                     .get("sunrise:enhanced_terrain_adaptation")
                     .map(super::enhanced_terrain::StructureAdaptation::decode)
