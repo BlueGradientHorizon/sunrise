@@ -130,11 +130,12 @@ fn native(overlay: u32, sprite: f32) -> [Vertex; 4] {
     }; 4]
 }
 
-/// A block entity's native terrain quads (a mod's fluids and terrain models) go to the block
-/// program when the block atlas holds their sprite, the translucent ones to the translucent block
-/// program; split from the model's quads in vertex order. Those it lacks stay Sunrise's.
+/// A block entity's or an entity's native terrain quads (a mod's fluids and terrain models) go to
+/// the run's program when the block atlas holds their sprite, the translucent ones to its
+/// translucent program; split from the model's quads in vertex order. Those it lacks stay
+/// Sunrise's.
 #[test]
-fn native_terrain_quads_take_the_block_program_where_the_block_atlas_holds_them() {
+fn native_terrain_quads_take_the_runs_program_where_the_block_atlas_holds_them() {
     let model = [Vertex {
         layer: 3 << 16,
         ..bytemuck::Zeroable::zeroed()
@@ -220,17 +221,36 @@ fn native_terrain_quads_take_the_block_program_where_the_block_atlas_holds_them(
         ],
         "no block atlas: all Sunrise's"
     );
-    // Outside a block entity's run they stay Sunrise's (`prepare` takes them out of the run).
+    // In an entity's run (spec 2.3: `gbuffers_entities`), the same, with the translucent kinds
+    // the translucent entity program's; Sunrise's when the pack has no program for them.
     let entity = [EntitySpan {
         stage: render_stage("ENTITIES"),
         id: 72,
         ..Default::default()
     }];
+    let entity_runs = |drawn| {
+        material_runs(&vertices[..28], &entity, drawn, Some(&atlas))
+            .map(|r| (r.range, r.program, r.block_atlas, r.sorted))
+            .collect::<Vec<_>>()
+    };
     assert_eq!(
-        material_runs(&vertices[..8], &entity, [true; PROGRAMS], Some(&atlas))
-            .map(|r| (r.range, r.program, r.block_atlas))
-            .collect::<Vec<_>>(),
-        [(0..8, Some(ENTITY), false)]
+        entity_runs([true; PROGRAMS]),
+        [
+            (0..4, Some(ENTITY), false, false),
+            (4..16, Some(ENTITY), true, false),
+            (16..24, Some(TRANSLUCENT), true, true),
+            (24..28, None, false, false),
+        ]
+    );
+    let mut no_entity = [true; PROGRAMS];
+    no_entity[ENTITY] = false;
+    no_entity[TRANSLUCENT] = false;
+    assert_eq!(
+        entity_runs(no_entity),
+        [
+            (0..4, Some(ENTITY), false, false),
+            (4..28, None, false, false)
+        ]
     );
 }
 

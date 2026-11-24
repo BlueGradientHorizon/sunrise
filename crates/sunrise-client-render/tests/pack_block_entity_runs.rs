@@ -1,9 +1,9 @@
-//! A block entity's native terrain quads (a mod's still fluids and terrain models, drawn natively
-//! from the terrain's sprite arrays) under a `shaders/` pack, through the real `Renderer` (#5090):
-//! the pack's `gbuffers_block` (solid, cutout and cutout-mipped models) and
-//! `gbuffers_block_translucent` (fluids, translucent models) draw them from the pack's block
-//! atlas into the buffer their `/* DRAWBUFFERS:1 */` names, which `final` shows (spec 2.3,
-//! 6.1.4); the pack's `shadow` draws them into `shadowcolor0`. With flat section draws on (a
+//! A block entity's and an entity's native terrain quads (a mod's still fluids and terrain models,
+//! drawn natively from the terrain's sprite arrays) under a `shaders/` pack, through the real
+//! `Renderer` (#5090): the pack's `gbuffers_block` and `gbuffers_entities` (solid, cutout and
+//! cutout-mipped models) and their translucent programs (fluids, translucent models) draw them
+//! from the pack's block atlas into the buffer their `/* DRAWBUFFERS:1 */` names, which `final`
+//! shows (spec 2.3, 6.1.4); the pack's `shadow` draws the ones they cast into `shadowcolor0`. With flat section draws on (a
 //! stitched block atlas) and off (a grid). Original fixture, no pack assets. Run with throwaway
 //! SUNRISE_HOME, SUNRISE_LAUNCHER_HOME, XDG_DATA_HOME and XDG_CONFIG_HOME (AGENTS.md):
 //! `cargo test -p sunrise-client-render --test pack_block_entity_runs -- --ignored`
@@ -33,10 +33,24 @@ fn pack_block_entity_runs() {
 /// that colour's channel or 0, exactly.
 const SPRITES: [[u8; 4]; 2] = [[255, 255, 0, 255], [0, 255, 255, 255]];
 
-/// Writes a pack whose block programs write the atlas texel times the vertex colour into
-/// colortex1 (`/* DRAWBUFFERS:1 */`), the translucent one with its channels reversed (so the
-/// program that drew shows), and whose `final` shows colortex1; with `shadow`, a `shadow`
-/// program writing the same into shadowcolor0 and a `final` showing shadowcolor0's middle.
+/// Each program's output channels (`PROGRAMS`), so the program that drew shows.
+const BLOCK: [usize; 3] = [0, 1, 2];
+const BLOCK_TRANSLUCENT: [usize; 3] = [2, 1, 0];
+const ENTITIES: [usize; 3] = [1, 2, 0];
+const ENTITIES_TRANSLUCENT: [usize; 3] = [2, 0, 1];
+
+/// The programs and the swizzle each writes its colour with.
+const PROGRAMS: [(&str, &str); 4] = [
+    ("gbuffers_block", "rgb"),
+    ("gbuffers_block_translucent", "bgr"),
+    ("gbuffers_entities", "gbr"),
+    ("gbuffers_entities_translucent", "brg"),
+];
+
+/// Writes a pack whose block and entity programs write the atlas texel times the vertex colour
+/// into colortex1 (`/* DRAWBUFFERS:1 */`), each with its channels in an order of its own
+/// (`PROGRAMS`), and whose `final` shows colortex1; with `shadow`, a `shadow` program writing the
+/// same, unswizzled, into shadowcolor0 and a `final` showing shadowcolor0's middle.
 fn pack(renderer: &mut Renderer, folder: &Path, shadow: bool) {
     let shaders = folder.join("shaders");
     std::fs::create_dir_all(&shaders).unwrap();
@@ -48,10 +62,7 @@ fn pack(renderer: &mut Renderer, folder: &Path, shadow: bool) {
              void main() {{ gl_FragData[0] = vec4((texture2D(gtexture, uv) * c).{swizzle}, 1.0); }}\n"
         )
     };
-    for (program, swizzle) in [
-        ("gbuffers_block", "rgb"),
-        ("gbuffers_block_translucent", "bgr"),
-    ] {
+    for (program, swizzle) in PROGRAMS {
         std::fs::write(shaders.join(format!("{program}.vsh")), vertex).unwrap();
         std::fs::write(
             shaders.join(format!("{program}.fsh")),
@@ -131,15 +142,11 @@ fn quad(
     })
 }
 
-/// A texel of `sprite` times `color`, its channels reversed when `reversed`, opaque.
-fn shaded(sprite: u32, color: [u8; 4], reversed: bool) -> [u8; 4] {
+/// A texel of `sprite` times `color`, its channels in `order`, opaque.
+fn shaded(sprite: u32, color: [u8; 4], order: [usize; 3]) -> [u8; 4] {
     let s = SPRITES[sprite as usize];
     let c: [u8; 3] = std::array::from_fn(|i| if s[i] == 255 { color[i] } else { 0 });
-    if reversed {
-        [c[2], c[1], c[0], 255]
-    } else {
-        [c[0], c[1], c[2], 255]
-    }
+    [c[order[0]], c[order[1]], c[order[2]], 255]
 }
 
 fn shoot(renderer: &mut Renderer, frame: &Frame<'_>, path: &Path) -> [u8; 4] {
@@ -167,10 +174,10 @@ fn shoot(renderer: &mut Renderer, frame: &Frame<'_>, path: &Path) -> [u8; 4] {
     bytes[at..at + 4].try_into().unwrap()
 }
 
-/// The block-entity span every case draws in.
-fn span(hidden: bool) -> [EntitySpan; 1] {
+/// The span a case draws in: a block entity's or an entity's (`stage`).
+fn span(stage: &str, hidden: bool) -> [EntitySpan; 1] {
     [EntitySpan {
-        stage: sunrise_shaders::render_stage("BLOCK_ENTITIES"),
+        stage: sunrise_shaders::render_stage(stage),
         id: 41,
         hidden,
         ..Default::default()
@@ -221,7 +228,7 @@ fn fixture(window: Arc<Window>, out: &Path) -> Result<(), Box<dyn std::error::Er
     renderer.resize(320, 180);
     let hud = HudBatch::scratch([320, 180]);
     let mut result = serde_json::Map::new();
-    // (overlay, sprite layer, vertex colour, drawn by the translucent block program).
+    // (overlay, sprite layer, vertex colour, drawn by the run's translucent program).
     let cases = [
         (TERRAIN_MODEL_SOLID_OVERLAY, 1, [200, 100, 50, 255], false),
         (TERRAIN_MODEL_CUTOUT_OVERLAY, 0, [60, 180, 220, 255], false),
@@ -245,26 +252,38 @@ fn fixture(window: Arc<Window>, out: &Path) -> Result<(), Box<dyn std::error::Er
         // The camera's view: each case's quad 5 blocks ahead (yaw 0 looks along +z), across the
         // middle of the screen, in colortex1.
         pack(&mut renderer, &out.join(format!("pack-{draws}")), false);
-        for (overlay, sprite, color, translucent) in cases {
-            let quad = quad(2, 5.0, [-2.0, 2.0, -2.0, 2.0], overlay, sprite, color);
-            let spans = span(false);
-            let mut frame = fixture_frame(&hud);
-            frame.entities = &quad;
-            frame.entity_spans = &spans;
-            let name = format!("{draws}-{overlay}");
-            let pixel = shoot(&mut renderer, &frame, &out.join(format!("{name}.png")));
-            assert_eq!(
-                pixel,
-                shaded(sprite, color, translucent),
-                "{name}: the quad as the block program draws it in colortex1"
-            );
-            result.insert(name, format!("{pixel:?}").into());
+        // A block entity's run (`gbuffers_block`) and an entity's (`gbuffers_entities`).
+        for (stage, opaque, translucent) in [
+            ("BLOCK_ENTITIES", BLOCK, BLOCK_TRANSLUCENT),
+            ("ENTITIES", ENTITIES, ENTITIES_TRANSLUCENT),
+        ] {
+            for (overlay, sprite, color, is_translucent) in cases {
+                let quad = quad(2, 5.0, [-2.0, 2.0, -2.0, 2.0], overlay, sprite, color);
+                let spans = span(stage, false);
+                let mut frame = fixture_frame(&hud);
+                frame.entities = &quad;
+                frame.entity_spans = &spans;
+                let name = format!("{draws}-{stage}-{overlay}");
+                let pixel = shoot(&mut renderer, &frame, &out.join(format!("{name}.png")));
+                let order = if is_translucent { translucent } else { opaque };
+                assert_eq!(
+                    pixel,
+                    shaded(sprite, color, order),
+                    "{name}: the quad as its program draws it in colortex1"
+                );
+                result.insert(name, format!("{pixel:?}").into());
+            }
         }
         // The pack's shadow pass: a box of the quads around the camera, hidden from it (it only
         // casts), so whichever way the light falls the middle of the shadow map sees one of
-        // its faces. Both shadow-drawn kinds: a solid model and a fluid.
+        // its faces. Both kinds a block entity casts, a solid model and a fluid, and an entity's
+        // solid model (its translucent parts cast nothing).
         pack(&mut renderer, &out.join(format!("shadow-{draws}")), true);
-        for (overlay, sprite, color, _) in [cases[0], cases[3]] {
+        for (stage, (overlay, sprite, color, _)) in [
+            ("BLOCK_ENTITIES", cases[0]),
+            ("BLOCK_ENTITIES", cases[3]),
+            ("ENTITIES", cases[0]),
+        ] {
             let cube: Vec<Vertex> = (0..3)
                 .flat_map(|axis| {
                     [-6.0, 6.0]
@@ -272,15 +291,15 @@ fn fixture(window: Arc<Window>, out: &Path) -> Result<(), Box<dyn std::error::Er
                 })
                 .flatten()
                 .collect();
-            let spans = span(true);
+            let spans = span(stage, true);
             let mut frame = fixture_frame(&hud);
             frame.entities = &cube;
             frame.entity_spans = &spans;
-            let name = format!("{draws}-shadow-{overlay}");
+            let name = format!("{draws}-shadow-{stage}-{overlay}");
             let pixel = shoot(&mut renderer, &frame, &out.join(format!("{name}.png")));
             assert_eq!(
                 pixel,
-                shaded(sprite, color, false),
+                shaded(sprite, color, BLOCK),
                 "{name}: the box as the shadow program draws it in shadowcolor0"
             );
             result.insert(name, format!("{pixel:?}").into());

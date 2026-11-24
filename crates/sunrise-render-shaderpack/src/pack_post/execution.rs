@@ -1496,7 +1496,7 @@ impl PackPost {
         Some(group)
     }
 
-    /// A block entity's native terrain quads (`Draw::block_atlas`) bind the block atlas, the one
+    /// Native terrain quads (`Draw::block_atlas`) bind the block atlas, the one
     /// the pack's terrain samples, as the atlas. The program reads its `normals` and `specular`
     /// as paged maps of the shared atlas (`Pass::paged`), whose pages say nothing of the block
     /// atlas: these draws get the stand-ins a program reads with no map bound. `None` when no such

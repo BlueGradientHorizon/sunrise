@@ -2341,8 +2341,8 @@ impl PackPost {
             .any(Option::is_some)
             .then(|| {
                 let mut entities = PackEntities::new(device, &draws.layout);
-                // A block entity's native terrain quads are placed in the block atlas, the one
-                // the pack's terrain samples (`pack_entities::BlockAtlas`).
+                // Native terrain quads of block entities and entities are placed in the block
+                // atlas, the one the pack's terrain samples (`pack_entities::BlockAtlas`).
                 entities.set_block_atlas(world.atlas.as_ref().and_then(|(_, size)| {
                     crate::pack_entities::BlockAtlas::new(world.sprite_rects, *size)
                 }));
