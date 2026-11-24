@@ -112,4 +112,41 @@ pub trait LevelChunksBackendMut {
     /// vanilla's block reads and writes stop, `Level.isInValidBounds`, and vanilla's future is
     /// `ChunkHolder.UNLOADED_CHUNK`), and while the level's generation is paused or stopped.
     fn level_load_chunk(&mut self, level: LevelRef, pos: [i32; 2]) -> Result<(), ChunkLoadError>;
+    /// Side: server.
+    /// Enqueues a non-blocking load/generation request for chunk `pos` (`[x, z]`, in chunks) to
+    /// reach `ChunkLevel.FULL_CHUNK_LEVEL` (level 33 — accessible, not ticking: no entity ticks,
+    /// no random ticks, no block or block-entity ticks, no natural spawning), using the level's
+    /// existing chunk streaming worker pool.
+    ///
+    /// - No request count cap (matching vanilla `ServerChunkCache.getChunkFuture`).
+    /// - Does not block the server tick; player view and `/forceload` chunks always sort ahead of
+    ///   mod async requests.
+    /// - Completions are captured on the tick thread during spare tick time (`server_has_time()`),
+    ///   so large batches cannot stall a tick.
+    /// - Once the chunk is captured into a [`ChunkSnapshot`] (or cancelled), its transient
+    ///   level-33 ticket is released and the chunk unloads and saves through vanilla's ordinary
+    ///   unload/save path.
+    /// - Pending and undrained requests owned by a mod are dropped (and their tickets released)
+    ///   automatically if that mod is disabled or the level closes.
+    ///
+    /// Returns `Err(ChunkLoadError::Unloaded)` for a stale handle, client, closed or paused
+    /// level, outside a mod callback, or out-of-bounds `pos` (`!ChunkPos.isValid`), or
+    /// `Err(ChunkLoadError::Failed)` if generation previously failed at `pos`.
+    fn level_request_chunk(
+        &mut self,
+        level: LevelRef,
+        pos: [i32; 2],
+    ) -> Result<ChunkRequestRef, ChunkLoadError>;
+    /// Side: server.
+    /// Drains every chunk request owned by the calling mod on this level that has completed or
+    /// failed since the previous drain call. Never blocks; returns `Some(Vec::new())` when no
+    /// requests have completed yet, or `None` if the level handle is stale, closed, on a client,
+    /// or called outside a mod callback.
+    fn level_drain_chunk_requests(&mut self, level: LevelRef)
+    -> Option<Vec<CompletedChunkRequest>>;
+    /// Side: server.
+    /// Cancels a pending (or undrained) request owned by the calling mod and releases its
+    /// level-33 ticket immediately. Returns `true` if the request was still active.
+    #[manual_handle]
+    fn chunk_request_cancel(&mut self, request: ChunkRequestRef) -> bool;
 }
