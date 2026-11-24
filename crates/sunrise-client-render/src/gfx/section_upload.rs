@@ -1061,6 +1061,9 @@ impl Renderer {
         self.sections_dropped |=
             self.sections.len() > 0 || !self.lods.is_empty() || self.lod_pending.is_some();
         self.clear_sections(self.layout);
+        // Flat draws read the new arena's quad sources as they did the old one's
+        // (`keep_pack_sources`).
+        let sources_read = self.arena.sources_read();
         self.arena = arena::Arena::new(
             &self.device,
             std::mem::size_of::<TerrainVertex>() as u64,
@@ -1068,6 +1071,9 @@ impl Renderer {
             storage,
         )
         .with_normals(normals);
+        if sources_read {
+            self.arena.read_sources(true);
+        }
         self.arena_storage = storage;
         if normals_changed && self.translucent_arena.is_some() {
             (self.sorted_indices, self.translucent_arena) = arena::Arena::translucent_arenas(
