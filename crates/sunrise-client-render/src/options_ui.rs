@@ -5681,7 +5681,8 @@ mod tests {
     #[test]
     fn a_native_toggle_shows_its_tooltip_like_a_slider() {
         use crate::mod_list::{NativeSetting, NativeSettingValue as V};
-        let key = "sunrise.pvp.preset.tooltip";
+        let key = "native.setting.tooltip";
+        let text = "Shows a mod setting's tooltip.";
         let mut s = Settings::default();
         let setting = |name: &str, value| NativeSetting {
             key: name.into(),
@@ -5713,10 +5714,10 @@ mod tests {
         });
         let mut ui = OptionsUi::default();
         ui.show(Page::NativeMod(0));
-        let ((tips, expected), _) = lang::scoped(lang::Language::load(&[], "en_us"), || {
-            assert!(lang::has(key));
+        let language = lang::Language::of("en_us", [(key.into(), text.into())]);
+        let (tips, _) = lang::scoped(language, || {
             let (widgets, ..) = ui.layout(&s, 480.0, 240.0);
-            let tips: Vec<_> = widgets
+            widgets
                 .iter()
                 .filter(|w| {
                     matches!(
@@ -5731,10 +5732,9 @@ mod tests {
                     )
                 })
                 .map(|w| tooltip_text(&s, w).map(|t| t.plain()))
-                .collect();
-            (tips, Some(lang::get(key)))
+                .collect::<Vec<_>>()
         });
-        assert_eq!(tips, [expected.clone(), expected]);
+        assert_eq!(tips, [Some(text.to_owned()), Some(text.to_owned())]);
     }
 
     /// Typing goes to the Mods search box once a click focuses it; the one match is selected,
