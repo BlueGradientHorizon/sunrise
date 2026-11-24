@@ -318,7 +318,7 @@ impl Game<'_> {
                         cursor += 1;
                         // A discard in the equipment event ended a tick that had already started.
                         let mob = &snapshot[slot];
-                        if equipment_finished && round.alone_mob_post(&mob.kind) {
+                        if equipment_finished && round.post() {
                             tell_post = Some((mob.id, std::sync::Arc::clone(&mob.kind)));
                             break;
                         }
@@ -507,8 +507,8 @@ impl Game<'_> {
                                 })
                         })
                         .flatten();
-                    // A mob of a type a mod named: its own Pre, right before its tick.
-                    if !checked && round.alone_mob_pre(&m.kind) {
+                    // Its own Pre, right before its tick.
+                    if !checked && round.pre() {
                         tell_pre = Some((m.id, std::sync::Arc::clone(&m.kind), i));
                         break;
                     }
@@ -954,7 +954,7 @@ impl Game<'_> {
                     keep[slot] = kept;
                     gone_rows |= !kept;
                     // Its own Post, right after its tick, also when it died or went in it.
-                    if round.alone_mob_post(&m.kind) {
+                    if round.post() {
                         tell_post = Some((m.id, std::sync::Arc::clone(&m.kind)));
                     }
                     // ServerLevel ticks entities one after another: the ones

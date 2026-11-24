@@ -87,9 +87,6 @@ impl Observe {
 
 #[mod_api::__subscriptions]
 impl mod_api::Hooks for Observe {
-    fn register(&self, registrar: &mut dyn mod_api::Registrar, _: &mod_api::RegistrationContext) {
-        registrar.entity_tick_each("minecraft:player");
-    }
     fn entity_tick_pre(&self, host: HostSide<'_>, event: &mut mod_api::EntityTickPreEvent<'_>) {
         let HostSide::Server(host) = host else { return };
         for &id in event.entities {
@@ -373,15 +370,15 @@ fn player_tick_hooks_observe_advanced_dig_progress_and_skipped_body_still_ticks_
                     *heard.lock().unwrap(),
                     [
                         EntityPre(20, Some(8)),
-                        EntityPre(22, Some(8)),
                         Dig(123, 0),
                         EntityPost(20),
+                        EntityPre(22, Some(8)),
                         EntityPost(22),
                         LevelPost("minecraft:overworld"),
                         EntityPre(21, Some(8)),
-                        EntityPre(23, Some(8)),
                         Dig(124, 0),
                         EntityPost(21),
+                        EntityPre(23, Some(8)),
                         LevelPost("minecraft:the_nether"),
                         PlayerPre(123, "minecraft:overworld", Some(7), Some(4)),
                         PlayerPost(123),

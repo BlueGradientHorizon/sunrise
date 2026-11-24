@@ -248,10 +248,7 @@ impl<T> Drop for RemainingActions<'_, T> {
 #[derive(Default)]
 pub(super) struct Creatures {
     pub projectiles: sunrise_client::join_seq::JoinList<Projectile, false>,
-    /// The entities a family tells the mods ticked, kept between ticks
-    /// (game/modding/native_ticks.rs).
-    pub tick_buffer: Vec<(u32, super::native_ticks::TickKind)>,
-    /// What a family's Pre and Post are told from, kept between ticks
+    /// Reusable kind-name buffer for `native_other_tick_alone`
     /// (game/modding/native_ticks.rs).
     pub tick_hooks: super::native_ticks::TickBuffers,
     /// The guests (by connection) whose `ServerPlayer.tick` a mod's Pre canceled this tick:
@@ -1484,41 +1481,21 @@ impl Game<'_> {
         self.combat.charged_exploders.clear();
         self.combat.exploded.clear();
         self.combat.exploded_kinds.clear();
-        // EntityTickEvent.Pre for the mobs about to tick, before the loop holds them: once for
-        // the family, then each mob it let through checks its sleep. A mob of a type a mod
-        // named hears its Pre alone, inside the loop, right before its own tick
-        // (borrowed_tick.rs).
+        // EntityTickEvent.Pre and .Post bracket each mob individually inside `borrowed_tick.rs`.
+        // When only `CanContinueSleeping` is subscribed (or only Post without Pre), check sleep
+        // here without a Pre yield; when Pre is subscribed, each mob checks sleep right after its
+        // own Pre.
         let mut round = self.native_tick_round();
         let sleeping = mod_api::__private::listened(mod_api::HookId::CanContinueSleeping);
-        if round.listening() || sleeping {
+        if !round.pre() && sleeping {
             let ticking = self.entity_ticking_area();
             let mut i = 0;
             while let Some(m) = self.mobs.get(i) {
                 let (x, z) = (m.position.x.floor() as i32, m.position.z.floor() as i32);
                 if !blocked.contains(&m.id) && self.world.loaded(x, z) && ticking(x, z) {
-                    // A mob told alone is told, and checks its sleep, at its own turn; when
-                    // only Post is subscribed, its sleep still runs here without a Pre yield.
-                    if !round.alone_mob(&m.kind) {
-                        if round.listening() {
-                            let kind = super::native_ticks::TickKind::Mob(m.kind.clone());
-                            round.add(m.id, kind);
-                        } else {
-                            self.sync_sleeping_mob(i);
-                        }
-                    } else if !round.pre() && sleeping {
-                        self.sync_sleeping_mob(i);
-                    }
+                    self.sync_sleeping_mob(i);
                 }
                 i += 1;
-            }
-            self.native_tick_pre_batch(&mut round);
-            let (mut n, mut from) = (0, 0);
-            while sleeping && let Some(id) = round.let_through(n) {
-                if let Some(i) = super::native_ticks::place(&self.mobs, from, |m| m.id == id) {
-                    self.sync_sleeping_mob(i);
-                    from = i + 1;
-                }
-                n += 1;
             }
         }
         self.init_sulfur_attribute_maps();
@@ -1693,7 +1670,6 @@ impl Game<'_> {
             std::panic::resume_unwind(payload);
         }
         stand_result?;
-        self.native_tick_post_batch(round);
         self.tick_armor_stands_before(sunrise_client::join_seq::JoinSeq::MAX)?;
         // ... and entity event 60 goes out as it is: the poof.
         // 🤖 Agent: the split follows the poof, as `LivingEntity.tickDeath`
@@ -5267,24 +5243,10 @@ impl Game<'_> {
         // tick's entity pass (a mob's shot) first ticks on the next one; a
         // player's or a dispenser's, which join before the pass, tick now.
         let through = self.ticked_entities_through;
-        // EntityTickEvent.Pre for the projectiles about to tick, once for the family before the
-        // loop holds them, and the Post once the hits of their ticks have landed. A projectile
-        // of a type a mod named is told alone, right before and right after its own tick.
+        // EntityTickEvent.Pre and .Post bracket each ticking projectile individually when
+        // subscribed; with no tick or impact subscriber, `tick_projectiles_live` runs directly.
         let mut round = self.native_tick_round();
-        let mut alone_any = false;
-        if round.listening() {
-            for p in self.creatures.projectiles.iter() {
-                let at = p.position;
-                if p.id <= through && ticking(at.x.floor() as i32, at.z.floor() as i32) {
-                    if round.alone_kind(p.entity_type()) {
-                        alone_any = true;
-                    } else {
-                        round.add(p.id, super::native_ticks::TickKind::Fixed(p.entity_type()));
-                    }
-                }
-            }
-            self.native_tick_pre_batch(&mut round);
-        }
+        let told = round.told_listening();
         // The impacts the mods may cancel (`native_projectile_impact`), on a server.
         let mut hear = self.native_hears_impacts();
         // ThrownEnderpearl.tick: a dead player's pearl is discarded in
@@ -5293,8 +5255,8 @@ impl Game<'_> {
             .ui
             .rules
             .bool_at(sunrise_client::gamerules::vanilla::ENDER_PEARLS_VANISH_ON_DEATH);
-        if !hear && !alone_any {
-            return self.tick_projectiles_live(through, ticking, vanish, round);
+        if !hear && !told {
+            return self.tick_projectiles_live(through, ticking, vanish);
         }
         let mut projectiles = self.creatures.projectiles.lift();
         // The tick's own projectiles: what joins during it (a hook's spawn) ticks from the next.
@@ -5312,10 +5274,9 @@ impl Game<'_> {
         let mut scratch = std::mem::take(&mut self.creatures.arrow_hit_scratch);
         let mut impacts: Vec<Impact> = Vec::new();
         let mut vehicle_winds = self.vehicle_winds();
-        // A projectile told alone hands the list back for its hooks, so their handles read the
-        // live rows. What that needs is made only when a mod named a projectile type this tick
-        // (`ProjectileHandBack`): with none, the loop is the family's own.
-        let mut hand_back = alone_any.then(|| ProjectileHandBack::new(&projectiles));
+        // When entity tick hooks are subscribed, hand the list back around each projectile's
+        // Pre and Post so hook handles read live rows.
+        let mut hand_back = told.then(|| ProjectileHandBack::new(&projectiles));
         for slot in 0..projectiles.len() {
             let i = match hand_back.as_deref() {
                 None => slot,
@@ -5336,14 +5297,11 @@ impl Game<'_> {
                 projectiles.update(i, |p| p.previous = at);
                 continue;
             }
-            // Of a type a mod named: its own Pre, with the list handed back.
             let i = match hand_back.as_deref_mut() {
                 None => i,
                 Some(back) => {
                     let (id, kind) = (projectiles[i].id, projectiles[i].entity_type());
-                    if !round.alone_kind(kind) {
-                        i
-                    } else if !round.pre() {
+                    if !round.pre() {
                         if round.post() {
                             back.told = Some((id, kind));
                         }
@@ -5673,18 +5631,15 @@ impl Game<'_> {
         self.creatures.bounced_followers.clear();
         result?;
         self.flush_lan_explosions();
-        let flushed = self.flush_wind_bursts();
-        self.native_tick_post_batch(round);
-        flushed
+        self.flush_wind_bursts()
     }
 
-    /// Single-projectile live vanilla tick loop (when no impact/alone hook requires batching).
+    /// Single-projectile live vanilla tick loop (when no impact or entity tick hook is subscribed).
     fn tick_projectiles_live(
         &mut self,
         through: u32,
         ticking: impl Fn(i32, i32) -> bool,
         vanish: bool,
-        round: super::native_ticks::TickRound,
     ) -> Result<()> {
         let cohort: Vec<JoinSeq> = self
             .creatures
@@ -5697,9 +5652,6 @@ impl Game<'_> {
             let Some(pos) = self.creatures.projectiles.locate(join) else {
                 continue;
             };
-            if round.canceled(self.creatures.projectiles[pos].id) {
-                continue;
-            }
             let at = self.creatures.projectiles[pos].position;
             if !ticking(at.x.floor() as i32, at.z.floor() as i32) {
                 self.creatures.projectiles.update(pos, |p| p.previous = at);
@@ -5903,9 +5855,7 @@ impl Game<'_> {
         }
         self.dragon_breath_trails();
         self.flush_lan_explosions();
-        let flushed = self.flush_wind_bursts();
-        self.native_tick_post_batch(round);
-        flushed
+        self.flush_wind_bursts()
     }
 
     fn apply_projectile_hits(

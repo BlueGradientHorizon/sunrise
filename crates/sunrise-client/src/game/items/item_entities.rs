@@ -38,7 +38,6 @@ impl Game<'_> {
         self.tick_dropped_items(&mut round);
         sunrise_threads::work::clear_work();
         self.drain_entity_inside();
-        self.native_tick_post_batch(round);
     }
     /// An item that joined during this tick's entity pass: it first ticks on
     /// the next one.
@@ -46,8 +45,8 @@ impl Game<'_> {
         id > self.ticked_entities_through || self.contact_drops.contains(&id)
     }
     pub(super) fn tick_dropped_items(&mut self, round: &mut native_ticks::TickRound) {
-        // The family-wide Pre and item update hooks can discard a drop before the pass starts.
-        self.native_item_removals_flush(|item| round.not_ticked(item.id));
+        // Item update hooks can discard a drop before the pass starts.
+        self.native_item_removals_flush(|_| {});
         let mut items = self.dropped.lift();
         // ServerLevel.tick: only entities in entity-ticking chunks tick.
         let ticking = self.entity_ticking_area();
@@ -77,12 +76,12 @@ impl Game<'_> {
         // where it lay, for adding to the level once its own tick is done.
         let mut destroyed: Vec<(ItemStack, Vec3)> = Vec::new();
         let item_type = sunrise_threads::work::entity_id(native_ticks::ITEM);
-        // Items a mod named (`entity_tick_each`) hear their Pre right before their own tick and
-        // their Post right after it, each alone, with the list given back for the call; their
-        // part (`on_entity_item_update`) follows their Pre.
-        let alone = round.alone_kind(native_ticks::ITEM);
-        let alone_pre = round.alone_kind_pre(native_ticks::ITEM);
-        let alone_post = round.alone_kind_post(native_ticks::ITEM);
+        // When entity tick hooks are subscribed, each item hears its Pre right before its own
+        // tick (followed by `on_entity_item_update`) and its Post right after it, with the list
+        // given back for the call.
+        let told = round.told_listening();
+        let tell_pre = round.pre();
+        let tell_post = round.post();
         let update_hook =
             merging && mod_api::__private::has_part_hook(mod_api::HookId::OnEntityItemUpdate);
         let leave_hook = merging && mod_api::__private::listened(mod_api::HookId::EntityLeaveLevel);
@@ -92,8 +91,6 @@ impl Game<'_> {
             next += 1;
             sunrise_threads::work::set_entity(item_type);
             if pass.removed[i] {
-                // Merged into an earlier item before its own tick: it never ticked.
-                round.not_ticked(items[i].id);
                 continue;
             }
             // `addFreshEntity` during the entity pass: the item ticks from the
@@ -107,16 +104,29 @@ impl Game<'_> {
             ) {
                 continue;
             }
-            if alone_pre || (alone && update_hook) {
+            if tell_pre || (told && update_hook) {
                 let id = items[i].id;
                 let given = self.give_items_back(items, &mut pass, i, round, |game, round| {
                     if native_ticks::place(&game.dropped, i, |item| item.id == id).is_some()
-                        && (!alone_pre || game.native_tick_pre_one(round, id, native_ticks::ITEM))
-                        && update_hook
-                        && let Some(k) = native_ticks::place(&game.dropped, i, |item| item.id == id)
-                        && game.item_update_halts(k)
+                        && (!tell_pre || game.native_tick_pre_one(round, id, native_ticks::ITEM))
                     {
-                        round.halt(id);
+                        if tell_pre {
+                            game.native_item_removals_flush(|_| {});
+                        }
+                        if update_hook
+                            && let Some(k) =
+                                native_ticks::place(&game.dropped, i, |item| item.id == id)
+                        {
+                            if game.item_update_halts(k) {
+                                round.halt(id);
+                            }
+                            if tell_post {
+                                game.native_item_removals_flush(|_| {});
+                                if !game.dropped.iter().any(|item| item.id == id) {
+                                    game.native_tick_post_one(round, id, native_ticks::ITEM);
+                                }
+                            }
+                        }
                     }
                 });
                 (items, next) = (given.items, given.next);
@@ -245,7 +255,7 @@ impl Game<'_> {
                     let lifespan = items[i].lifespan;
                     let mut extra_life = 0;
                     if mod_api::__private::listened(mod_api::HookId::ItemExpire) {
-                        let (id, join) = (items[i].id, items[i].join);
+                        let id = items[i].id;
                         let given =
                             self.give_items_back(items, &mut pass, i, round, |game, round| {
                                 if let Some(at) =
@@ -254,12 +264,8 @@ impl Game<'_> {
                                     let stack = game.dropped[at].stack.clone();
                                     game.native_item_expire(id, &stack, &mut extra_life);
                                 }
-                                if alone {
-                                    game.native_item_removals_flush(|item| {
-                                        if item.join > join {
-                                            round.not_ticked(item.id);
-                                        }
-                                    });
+                                if tell_post {
+                                    game.native_item_removals_flush(|_| {});
                                     if !game.dropped.iter().any(|item| item.id == id) {
                                         game.native_tick_post_one(round, id, native_ticks::ITEM);
                                     }
@@ -377,10 +383,10 @@ impl Game<'_> {
             }
             // `Entity.discard` calls `ServerLevel.EntityCallbacks.onTrackingEnd` within
             // this turn. Restore surviving drops for the leave hook even without a Post.
-            if alone_post || (expiry_discarded && leave_hook && !self.persist.live.is_empty()) {
+            if tell_post || (expiry_discarded && leave_hook && !self.persist.live.is_empty()) {
                 let id = items[i].id;
                 let given = self.give_items_back(items, &mut pass, i, round, |game, round| {
-                    if alone_post {
+                    if tell_post {
                         game.native_tick_post_one(round, id, native_ticks::ITEM);
                     }
                 });
@@ -464,32 +470,19 @@ impl Game<'_> {
         };
         if pass.gone {
             let mut mask = pass.removed.iter();
-            items.retain(|item| {
-                let removed = mask.next().copied().unwrap_or(false);
-                if removed && item.join > join {
-                    round.not_ticked(item.id);
-                }
-                !removed
-            });
+            items.retain(|_| !mask.next().copied().unwrap_or(false));
             pass.gone = false;
         }
         self.put_back_dropped(items);
         let restored = self.dropped.stamp();
-        let flush_discards = |game: &mut Self, round: &mut native_ticks::TickRound| {
-            game.native_item_removals_flush(|item| {
-                if item.join > join {
-                    round.not_ticked(item.id);
-                }
-            });
-        };
         if !left.is_empty() {
             for left_id in left {
                 self.native_entity_left(left_id);
             }
-            flush_discards(self, round);
+            self.native_item_removals_flush(|_| {});
         }
         call(self, round);
-        flush_discards(self, round);
+        self.native_item_removals_flush(|_| {});
         let unchanged = same_rows && self.dropped.stamp() == restored;
         let items = self.dropped.lift();
         if unchanged {
@@ -1246,8 +1239,7 @@ mod expire_tests {
     use crate::game::{Dim, Game};
     use mod_api::{
         Compound, EntityLeaveLevelEvent, EntityTickPostEvent, EntityTickPreEvent, HostSide,
-        HostTransaction, ItemExpireEvent, ModEntry, Registrar, RegistrationContext, ServerHost,
-        Tag,
+        HostTransaction, ItemExpireEvent, ModEntry, ServerHost, Tag,
     };
     use std::sync::{
         Arc, Mutex,
@@ -1613,10 +1605,6 @@ mod expire_tests {
 
     #[mod_api::__subscriptions]
     impl mod_api::Hooks for AloneDiscardListener {
-        fn register(&self, r: &mut dyn Registrar, _: &RegistrationContext) {
-            r.entity_tick_each("minecraft:item");
-        }
-
         fn entity_tick_pre(&self, _: HostSide<'_>, event: &mut EntityTickPreEvent<'_>) {
             let mut log = self.0.lock().unwrap();
             for &id in event.entities {

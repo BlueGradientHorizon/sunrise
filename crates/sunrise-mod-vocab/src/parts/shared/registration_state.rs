@@ -19,7 +19,6 @@ pub(crate) struct Installed {
     pub(crate) attachment_types: HashMap<String, HashMap<String, AttachmentTypeDeclaration>>,
     pub(crate) custom_stats: Vec<String>,
     pub(crate) custom_stat_owners: Vec<&'static str>,
-    pub(crate) entity_tick_each: crate::parts::EntityTickEach,
     pub(crate) game_rule_slots: Vec<u32>,
     pub(crate) keys: Parts,
     pub(crate) tags: TagParts,

@@ -9,11 +9,11 @@ pub trait Hooks {
     /// keeps without simulating them (displays, markers, interactions), whose tick is only told
     /// (not a player's own boat or cart, which ticks with the player); and on a client for the
     /// mobs, other players, projectiles, tridents and displays it ticks; `host` says which side.
-    /// Minecarts, boats and general rows are each told alone. Eligible types named at
-    /// registration with `entity_tick_each` (or requested through `entity_tick_each_entity`)
-    /// are also told alone. Other observed entities are told once per family. On the server,
-    /// player Pre runs before the observed parts of `ServerPlayer.tick`, not the connection
-    /// body's `player_tick_pre`. The local client player is not yet observed here.
+    /// Minecarts, boats, general rows, mobs, players, item entities, projectiles, tridents, and
+    /// displays are each bracketed individually (`Pre(A)`, tick `A`, `Post(A)`, `Pre(B)`, ...),
+    /// matching NeoForge's `EntityTickEvent.Pre` / `.Post` timing. On the server, player Pre runs
+    /// before the observed parts of `ServerPlayer.tick`, not the connection body's
+    /// `player_tick_pre`. The local client player is not yet observed here.
     /// Push an ID from `entities` onto `canceled` to skip that entity's observed tick work and
     /// suppress its Post. IDs outside this call are ignored; repeated IDs count once.
     /// Removing a general entity during its own Pre skips its tick and Post and dismounts its
@@ -21,7 +21,8 @@ pub trait Hooks {
     /// root in this pass if it has not ticked and its join-order slot is still ahead. An
     /// already-passed slot is not revisited.
     /// Version 4 fires whenever a mod subscribes to `entity_tick_pre` directly (the separate
-    /// `entity_tick_listened` opt-in poll hook is removed).
+    /// `entity_tick_listened` opt-in poll hook and `entity_tick_each` / `entity_tick_each_entity`
+    /// registrar flags are removed).
     #[hook(
         target = "sunrise_client::game::native_hooks::base::Game<'_>::native_entity_tick_pre",
         dispatch = "flat",

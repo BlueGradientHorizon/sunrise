@@ -4,6 +4,8 @@ ids = [
     "method:Hooks::entity_tick_listened",
     "type:EntityTickListenedEvent",
     "type:EntityTickListenedEvent.listened",
+    "method:EntitiesRegistrar::entity_tick_each",
+    "method:EntitiesRegistrar::entity_tick_each_entity",
     "hook:living_equipment_listened",
     "hook:living_equipment_listened.listened",
     "method:Hooks::living_equipment_listened",
@@ -22,11 +24,11 @@ ids = [
 why = """Remove the three opt-in poll hooks (`entity_tick_listened`, `living_equipment_listened`, `hears_projectile_impacts`) so subscribing to the event itself drives preparation and dispatch directly, with zero preparation on the unsubscribed path.
 
 Matches NeoForge 26.3 and vanilla 26.3 directly (none of which have separate opt-in poll events):
-- `entity_tick_pre` (v4) and `entity_tick_post` (v4) follow NeoForge `EntityTickEvent.Pre` / `EntityTickEvent.Post` and vanilla `ServerLevel.tickNonPassenger`: `Told::from_subscriptions()` checks `enabled_listened(HookId::EntityTickPre)` and `enabled_listened(HookId::EntityTickPost)` directly, keeping Pre-only and Post-only preparation and per-entity list handbacks/yields independent on both logical sides and doing zero preparation when neither is subscribed.
+- `entity_tick_pre` (v4) and `entity_tick_post` (v4) follow NeoForge `EntityTickEvent.Pre` / `EntityTickEvent.Post` and vanilla `ServerLevel.tickNonPassenger`: `Told::from_subscriptions()` checks `enabled_listened(HookId::EntityTickPre)` and `enabled_listened(HookId::EntityTickPost)` directly, bracketing every observed entity individually (`Pre(A)`, tick `A`, `Post(A)`, `Pre(B)`, ...) across all families on both logical sides while keeping Pre-only and Post-only preparation independent and doing zero preparation when neither is subscribed. Family batching and `EntitiesRegistrar::entity_tick_each` / `entity_tick_each_entity` are removed.
 - `living_equipment_change` (v3) follows NeoForge `LivingEquipmentChangeEvent` and vanilla `LivingEntity.tick -> detectEquipmentUpdates -> collectEquipmentChanges`: mob equipment change detection runs inside the mob's own tick after the despawn check, base tick and item use and before `aiStep` and `entity_tick_post` (never for a canceled tick), and mob, player, and armor-stand paths check `enabled_listened(HookId::LivingEquipmentChange)` directly on the server side while keeping vanilla equipment bookkeeping intact and skipping event preparation when unsubscribed.
 - `projectile_impact` (v3) follows NeoForge `ProjectileImpactEvent` and vanilla `Projectile.hitTargetOrDeflectSelf` / `FireworkRocketEntity.tick`: `native_hears_impacts` checks `enabled_listened(HookId::ProjectileImpact)` directly on the server side at each impact moment (including inside `rocket_impact` without caching before `tick_rockets`) so flying projectile copies and impact dispatch are skipped when unsubscribed."""
 migrate = """
-- Delete `Hooks::entity_tick_listened`, `EntityTickListenedEvent` and writes to `EntityTickListenedEvent.listened`. Implement `Hooks::entity_tick_pre` (version 4), `Hooks::entity_tick_post` (version 4), or both, according to which phases you need.
+- Delete `Hooks::entity_tick_listened`, `EntityTickListenedEvent`, writes to `EntityTickListenedEvent.listened`, and registration calls to `entity_tick_each` / `entity_tick_each_entity`. Implement `Hooks::entity_tick_pre` (version 4), `Hooks::entity_tick_post` (version 4), or both, according to which phases you need; every observed entity is now bracketed individually around its own tick.
 - Delete `Hooks::living_equipment_listened`, `LivingEquipmentListenedEvent` and writes to `LivingEquipmentListenedEvent.listened`. Implement `Hooks::living_equipment_change` (version 3) directly, with `LivingRef`, `EquipmentSlot` and the borrowed `Option<ItemStackView<'_>>` fields introduced in version 2. Read `from` as the preceding body tick's observed value, not the value last delivered to your mod.
 - Delete `Hooks::hears_projectile_impacts`, `HearsProjectileImpactsEvent` and writes to `HearsProjectileImpactsEvent.hears`. Implement `Hooks::projectile_impact` (version 3) directly.
 - Rebuild against the new SDK to record the new hook versions in the package's `uses` list.

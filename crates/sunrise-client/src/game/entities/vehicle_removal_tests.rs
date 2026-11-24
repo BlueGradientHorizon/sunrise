@@ -167,10 +167,6 @@ struct Observe(Arc<Observation>);
 
 #[mod_api::__subscriptions]
 impl Hooks for Observe {
-    fn register(&self, registrar: &mut dyn mod_api::Registrar, _: &mod_api::RegistrationContext) {
-        registrar.entity_tick_each("minecraft:pig");
-    }
-
     fn entity_mount(
         &self,
         host: &mut dyn ServerHost,

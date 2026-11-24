@@ -632,32 +632,11 @@ impl Game<'_> {
         );
         // Projectiles tick on the client too and fly on between the tracker's
         // updates (10 to 20 ticks apart); a block stops them there, and only
-        // the server decides what they hit. EntityTickEvent.Pre for them and
-        // the tridents, once for the family before the loop holds them, and
-        // the Post after; a canceled one keeps its state for the tick. One of a type a mod named
-        // is told alone, right before and right after its own tick.
+        // the server decides what they hit. EntityTickEvent.Pre and .Post bracket each remote
+        // projectile and trident individually when subscribed; when unsubscribed, the fast loop
+        // runs with zero hand-backs.
         let mut round = self.native_tick_round();
-        let mut alone_any = false;
-        if round.listening() {
-            for p in self.creatures.projectiles.iter() {
-                if round.alone_kind(p.entity_type()) {
-                    alone_any = true;
-                } else {
-                    round.add(
-                        p.id,
-                        crate::game::native_ticks::TickKind::Fixed(p.entity_type()),
-                    );
-                }
-            }
-            if round.alone_kind(TRIDENT) {
-                alone_any |= !self.tridents.is_empty();
-            } else {
-                for t in self.tridents.iter() {
-                    round.add(t.id, crate::game::native_ticks::TickKind::Fixed(TRIDENT));
-                }
-            }
-            self.native_tick_pre_batch(&mut round);
-        }
+        let told = round.told_listening();
         let mut projectiles = self.creatures.projectiles.lift();
         #[cfg(test)]
         nested_spawn_tests::after_lift(self, nested_spawn_tests::Point::Projectile);
@@ -669,7 +648,7 @@ impl Game<'_> {
         #[cfg(test)]
         nested_spawn_tests::after_lift(self, nested_spawn_tests::Point::Trident);
         let mut arrow_events = Vec::new();
-        if alone_any {
+        if told {
             (projectiles, tridents) = self.tick_remote_projectiles_told(
                 projectiles,
                 tridents,
@@ -689,24 +668,14 @@ impl Game<'_> {
                     border: Some(self.border.bounds()),
                 };
                 projectiles.for_each_mut(|p| {
-                    let ticks = !round.canceled(p.id);
-                    if ticks || self.client_passenger(p.id) {
-                        visited.push(p.id);
-                    }
-                    if ticks {
-                        remote_projectile_step(p, &arrow_scene, &world, &mut arrow_events);
-                        self.pick_section_move(p.id, p.position.components());
-                    }
+                    visited.push(p.id);
+                    remote_projectile_step(p, &arrow_scene, &world, &mut arrow_events);
+                    self.pick_section_move(p.id, p.position.components());
                 });
                 for t in &mut tridents {
-                    let ticks = !round.canceled(t.id);
-                    if ticks || self.client_passenger(t.id) {
-                        visited.push(t.id);
-                    }
-                    if ticks {
-                        super::trident::remote_tick(t, &world, self.remote_eye(t.owner));
-                        self.pick_section_move(t.id, t.position.components());
-                    }
+                    visited.push(t.id);
+                    super::trident::remote_tick(t, &world, self.remote_eye(t.owner));
+                    self.pick_section_move(t.id, t.position.components());
                 }
             }
             for id in visited {
@@ -724,7 +693,6 @@ impl Game<'_> {
         for (at, event) in arrow_events {
             self.arrow_event(at, event);
         }
-        self.native_tick_post_batch(round);
         self.arrow_effect_particles();
         let trails: Vec<Vec3> = self
             .creatures
@@ -877,11 +845,9 @@ impl Game<'_> {
     }
 
     /// The client's projectiles and tridents when a mod named a type of them
-    /// (`entity_tick_each`): each of a named type is told alone, right before
-    /// and right after its own tick, with both lists handed back so the hooks'
-    /// handles read the live rows; the others tick between, in the same order
-    /// and through the same steps as the family's loop, with the views built
-    /// again only after a hand-back. A canceled one keeps its state.
+    /// Subscribed path for remote projectiles and tridents: each entity is bracketed
+    /// individually right before and right after its own tick, with both lists handed back so
+    /// hook handles read the live rows. A canceled one keeps its state.
     fn tick_remote_projectiles_told(
         &mut self,
         mut projectiles: JoinList<Projectile, false>,
@@ -894,52 +860,10 @@ impl Game<'_> {
     ) {
         let slots: Vec<u32> = projectiles.iter().map(|p| p.id).collect();
         let mut places = None;
-        let mut slot = 0;
-        let mut visited = Vec::new();
-        while slot < slots.len() {
-            // The projectiles up to the next one told alone, through one set of views.
-            {
-                let rain = self.arrow_rain();
-                let scene = self.arrow_scene(&rain);
-                let w = self.mob_world_base(&[]);
-                let world = super::creatures::ProjWorld {
-                    w: &w,
-                    targets: &[],
-                    border: Some(self.border.bounds()),
-                };
-                while slot < slots.len() {
-                    let Some(i) = slot_place(&places, &slots, slot) else {
-                        slot += 1;
-                        continue;
-                    };
-                    if round.alone_kind(projectiles[i].entity_type()) {
-                        break;
-                    }
-                    let id = projectiles[i].id;
-                    let ticks = !round.canceled(id);
-                    if ticks || self.client_passenger(id) {
-                        visited.push(id);
-                    }
-                    if ticks {
-                        projectiles.update(i, |p| {
-                            remote_projectile_step(p, &scene, &world, arrow_events);
-                            self.pick_section_move(p.id, p.position.components());
-                        });
-                    }
-                    slot += 1;
-                }
-            }
-            // Their visits, counted before the next one told alone hears its Pre.
-            for id in visited.drain(..) {
-                self.count_client_tick(id);
-            }
-            let Some(mut i) = slots
-                .get(slot)
-                .and_then(|_| slot_place(&places, &slots, slot))
-            else {
-                break;
+        for slot in 0..slots.len() {
+            let Some(mut i) = slot_place(&places, &slots, slot) else {
+                continue;
             };
-            slot += 1;
             let (id, kind) = (projectiles[i].id, projectiles[i].entity_type());
             if round.pre() {
                 let mut ticks = true;
@@ -954,12 +878,12 @@ impl Game<'_> {
                 if changed.0 {
                     places = Some(places_of(projectiles.iter().map(|p| p.id)));
                 }
-                let Some(at) = slot_place(&places, &slots, slot - 1).filter(|_| ticks) else {
+                let Some(at) = slot_place(&places, &slots, slot).filter(|_| ticks) else {
                     continue;
                 };
                 i = at;
             } else {
-                // Told its Post alone: no Pre can cancel its tick, so its visit counts here.
+                // Only Post is subscribed: no Pre can cancel its tick, so its visit counts here.
                 self.count_client_tick(id);
             }
             {
@@ -987,35 +911,7 @@ impl Game<'_> {
                 }
             }
         }
-        // The tridents, all of one type: each alone when it is named, else as before.
-        let alone = round.alone_kind(TRIDENT);
-        let slots: Vec<u32> = if alone {
-            tridents.iter().map(|t| t.id).collect()
-        } else {
-            Vec::new()
-        };
-        if !alone {
-            let w = self.mob_world_base(&[]);
-            let world = super::creatures::ProjWorld {
-                w: &w,
-                targets: &[],
-                border: Some(self.border.bounds()),
-            };
-            let mut visited = Vec::new();
-            for t in &mut tridents {
-                let ticks = !round.canceled(t.id);
-                if ticks || self.client_passenger(t.id) {
-                    visited.push(t.id);
-                }
-                if ticks {
-                    super::trident::remote_tick(t, &world, self.remote_eye(t.owner));
-                    self.pick_section_move(t.id, t.position.components());
-                }
-            }
-            for id in visited {
-                self.count_client_tick(id);
-            }
-        }
+        let slots: Vec<u32> = tridents.iter().map(|t| t.id).collect();
         let mut places = None;
         for slot in 0..slots.len() {
             let id = slots[slot];
@@ -1040,7 +936,7 @@ impl Game<'_> {
                 };
                 i = at;
             } else {
-                // Told its Post alone: no Pre can cancel its tick, so its visit counts here.
+                // Only Post is subscribed: no Pre can cancel its tick, so its visit counts here.
                 self.count_client_tick(id);
             }
             {
@@ -1635,7 +1531,7 @@ mod entity_tick_tests {
         }
     }
 
-    /// The same listener, naming arrows to `entity_tick_each`.
+    /// Listener recording each entity's Pre and Post calls.
     struct Named(Heard);
 
     #[mod_api::__subscriptions]
@@ -1653,9 +1549,6 @@ mod entity_tick_tests {
             event: &mut mod_api::EntityTickPostEvent<'_>,
         ) {
             Listener(self.0.clone()).record(&host, "post", event.entities, event.kinds);
-        }
-        fn register(&self, r: &mut dyn mod_api::Registrar, _: &mod_api::RegistrationContext) {
-            r.entity_tick_each("minecraft:arrow");
         }
     }
 
@@ -1770,10 +1663,6 @@ mod entity_tick_tests {
             ) {
                 Listener(self.0.clone()).record(&host, "pre", event.entities, event.kinds);
             }
-            fn register(&self, r: &mut dyn mod_api::Registrar, _: &mod_api::RegistrationContext) {
-                r.entity_tick_each("minecraft:arrow");
-                r.entity_tick_each("minecraft:trident");
-            }
         }
 
         struct PostOnly(Heard);
@@ -1785,10 +1674,6 @@ mod entity_tick_tests {
                 event: &mut mod_api::EntityTickPostEvent<'_>,
             ) {
                 Listener(self.0.clone()).record(&host, "post", event.entities, event.kinds);
-            }
-            fn register(&self, r: &mut dyn mod_api::Registrar, _: &mod_api::RegistrationContext) {
-                r.entity_tick_each("minecraft:arrow");
-                r.entity_tick_each("minecraft:trident");
             }
         }
 

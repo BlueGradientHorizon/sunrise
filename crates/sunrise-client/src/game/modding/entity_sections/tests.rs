@@ -802,16 +802,14 @@ fn a_server_mobs_own_move_is_not_reconstructed_after_its_post() {
                 )
                 .unwrap();
             let kind = game.mobs.iter().find(|m| m.id == id).unwrap().kind.clone();
-            // The mobs' round: Pre, the tick (its own move over z = 16), then the Post.
+            // The mob's round: Pre, the tick (its own move over z = 16), then the Post.
             let mut round = game.native_tick_round();
-            round.add(id, crate::game::native_ticks::TickKind::Mob(kind));
-            game.native_tick_pre_batch(&mut round);
-            assert_eq!(round.let_through(0), Some(id));
+            assert!(game.native_tick_pre_one(&mut round, id, &kind.id));
             let i = game.mobs.iter().position(|m| m.id == id).unwrap();
             game.mobs
                 .update(i, |m| m.position = Vec3::new(1.0, 70.0, 17.0));
             assert!(calls.lock().unwrap().is_empty());
-            game.native_tick_post_batch(round);
+            game.native_tick_post_one(&round, id, &kind.id);
             // A raw field edit is not a position-write boundary. The Post hook must not
             // synthesize a crossing after the fact; real ticks record their writes before Post.
             assert!(calls.lock().unwrap().is_empty());

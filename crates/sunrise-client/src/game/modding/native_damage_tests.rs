@@ -1136,10 +1136,6 @@ fn active_poison(host: &dyn mod_api::ServerHost, victim: mod_api::LivingRef) -> 
 
 #[mod_api::__subscriptions]
 impl Hooks for PufferfishProbe {
-    fn register(&self, r: &mut dyn mod_api::Registrar, _: &mod_api::RegistrationContext) {
-        r.entity_tick_each("minecraft:pufferfish");
-    }
-
     fn living_incoming_damage(
         &self,
         _: &mut dyn HitHost,
