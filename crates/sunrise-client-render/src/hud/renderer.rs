@@ -331,7 +331,8 @@ impl HudRenderer {
         });
     }
     /// Draw the GUI's text with `shader` (`HudAtlas::text_shaders`' `gui`, with the Polytone
-    /// expression uniforms its stages read, `shader_modifiers`), or natively.
+    /// expression uniforms its stages read, `shader_modifiers`), or natively; or the device's
+    /// refusal of `GUI_TEXT`, a pipeline vanilla requires, which fails the pack reload.
     pub fn set_text_shader(
         &mut self,
         device: &wgpu::Device,
@@ -339,10 +340,12 @@ impl HudRenderer {
             &crate::core_shader::CoreProgram,
             &[crate::polytone_post::ExpressionUniform],
         )>,
-    ) {
-        self.pack_text = shader.and_then(|shader| {
+    ) -> std::result::Result<(), String> {
+        let made = shader.map(|shader| {
             pack_text::PackText::new(device, self.format, &self.atlas_view, shader, self.coverage)
         });
+        self.pack_text = made.transpose()?.flatten();
+        Ok(())
     }
     /// The GUI text's Polytone blocks, when a pack's text shader draws it.
     pub(crate) fn text_expression_blocks(

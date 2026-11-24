@@ -1,8 +1,8 @@
-//! A resource pack's `core/text` on world text, as vanilla 26.3's `TEXT_POLYGON_OFFSET` and
-//! `TEXT_SEE_THROUGH` draw text displays, name tags and their backgrounds. Only these two
+//! A resource pack's `core/text` on world text, as vanilla 26.3's `TEXT`, `TEXT_POLYGON_OFFSET`
+//! and `TEXT_SEE_THROUGH` draw signs, text displays, name tags and their backgrounds. Only these
 //! paths and the GUI's text take the pack's shader; the other world text paths, Improved
-//! Transparency's depth-tested text and the native world text with its polygon-offset outline
-//! among them, draw with the native shaders.
+//! Transparency's depth-tested text among them, draw with the native shaders. Every pipeline
+//! vanilla requires of the shader is checked when the packs load (`hud::pack_text::TEXT`).
 
 use crate::core_shader::{CoreProgram, Glue};
 use std::sync::Arc;
@@ -62,7 +62,10 @@ pub(super) struct PackBlocks {
 }
 
 impl super::Renderer {
-    pub fn set_world_text_shaders(&mut self, shaders: &TextShaders) {
+    /// The packs' world and see-through text programs (`HudAtlas::text_shaders`), or the native
+    /// world text; or the device's refusal of a pipeline vanilla requires, which fails the pack
+    /// reload.
+    pub fn set_world_text_shaders(&mut self, shaders: &TextShaders) -> Result<(), String> {
         let expressions = &shaders.expressions;
         self.core_text = CoreText::new(
             &self.device,
@@ -71,7 +74,8 @@ impl super::Renderer {
             (shaders.see_through.as_deref()).map(|p| (p, &expressions.see_through[..])),
             &self.entity_atlas,
             (&self.lightmap_view, &self.lightmap_sampler),
-        );
+        )?;
+        Ok(())
     }
 
     /// The vanilla `Globals` block a pack's core shaders read this frame.
@@ -202,9 +206,9 @@ impl CoreText {
         see_through: Option<(&CoreProgram, &[crate::polytone_post::ExpressionUniform])>,
         atlas: &wgpu::TextureView,
         lightmap: (&wgpu::TextureView, &wgpu::Sampler),
-    ) -> Option<Self> {
+    ) -> Result<Option<Self>, String> {
         if world.is_none() && see_through.is_none() {
-            return None;
+            return Ok(None);
         }
         let depth = |write, compare, bias| wgpu::DepthStencilState {
             format: wgpu::TextureFormat::Depth32Float,
@@ -266,70 +270,74 @@ impl CoreText {
             ..Default::default()
         });
         let textures = [(4, atlas, &glyphs), (8, lightmap.0, lightmap.1)];
-        let world_part = if let (Some((program, _)), Some(extra)) = (world, world_extra) {
-            let validation = device.push_error_scope(wgpu::ErrorFilter::Validation);
-            let internal = device.push_error_scope(wgpu::ErrorFilter::Internal);
-            let part = Self::world_part(
-                device,
-                format,
-                program,
-                extra,
-                (
-                    depth(
-                        true,
-                        wgpu::CompareFunction::GreaterEqual,
-                        Default::default(),
-                    ),
-                    depth(true, wgpu::CompareFunction::GreaterEqual, offset),
-                ),
-                (
-                    depth(false, wgpu::CompareFunction::Equal, Default::default()),
-                    depth(false, wgpu::CompareFunction::Equal, offset),
-                ),
-                (&uniform, &textures),
-                &hdr_mark_layout,
-            );
-            let internal = pollster::block_on(internal.pop());
-            match internal.or(pollster::block_on(validation.pop())) {
-                Some(e) => {
-                    log::warn!("the resource pack's world text shader is not used: {e}");
-                    None
-                }
-                None => Some(part),
+        let text = &crate::hud::pack_text::TEXT;
+        // `TEXT` and `TEXT_POLYGON_OFFSET` are one program, named by the first: a program past
+        // the device's limits draws natively (`core_shader::PastDeviceLimit`), and the device
+        // refusing a pipeline fails the load, named by it.
+        let world_pipeline = text[crate::hud::pack_text::TEXT_WORLD].pipeline;
+        let world = world.filter(|(program, _)| {
+            crate::core_shader::within_device_limits(device, program, world_pipeline, &[format])
+        });
+        let world_part = match (world, world_extra) {
+            (Some((program, _)), Some(extra)) => {
+                let part = crate::core_shader::scoped(device, world_pipeline, || {
+                    Self::world_part(
+                        device,
+                        format,
+                        program,
+                        extra,
+                        (
+                            depth(
+                                true,
+                                wgpu::CompareFunction::GreaterEqual,
+                                Default::default(),
+                            ),
+                            depth(true, wgpu::CompareFunction::GreaterEqual, offset),
+                        ),
+                        (
+                            depth(false, wgpu::CompareFunction::Equal, Default::default()),
+                            depth(false, wgpu::CompareFunction::Equal, offset),
+                        ),
+                        (&uniform, &textures),
+                        &hdr_mark_layout,
+                    )
+                })?;
+                Some(part)
             }
-        } else {
-            None
+            _ => None,
         };
-        let see_through_part =
-            if let (Some((program, _)), Some(extra)) = (see_through, see_through_extra) {
-                let validation = device.push_error_scope(wgpu::ErrorFilter::Validation);
-                let internal = device.push_error_scope(wgpu::ErrorFilter::Internal);
-                let part = Self::part(
-                    device,
-                    format,
-                    "Resource pack see-through text",
-                    program,
-                    extra,
-                    depth(false, wgpu::CompareFunction::Always, Default::default()),
-                    (&uniform, &textures),
-                );
-                let internal = pollster::block_on(internal.pop());
-                match internal.or(pollster::block_on(validation.pop())) {
-                    Some(e) => {
-                        log::warn!("the resource pack's see-through text shader is not used: {e}");
-                        None
-                    }
-                    None => Some(part),
-                }
-            } else {
-                None
-            };
-        (world_part.is_some() || see_through_part.is_some()).then_some(Self {
+        let see_through_pipeline = text[crate::hud::pack_text::TEXT_SEE_THROUGH].pipeline;
+        let see_through = see_through.filter(|(program, _)| {
+            crate::core_shader::within_device_limits(
+                device,
+                program,
+                see_through_pipeline,
+                &[format],
+            )
+        });
+        let see_through_part = match (see_through, see_through_extra) {
+            (Some((program, _)), Some(extra)) => {
+                let part = crate::core_shader::scoped(device, see_through_pipeline, || {
+                    Self::part(
+                        device,
+                        format,
+                        "Resource pack see-through text",
+                        program,
+                        extra,
+                        depth(false, wgpu::CompareFunction::Always, Default::default()),
+                        (&uniform, &textures),
+                    )
+                })?;
+                Some(part)
+            }
+            _ => None,
+        };
+        Ok(Some(Self {
             world: world_part,
             see_through: see_through_part,
             uniform,
             hdr_mark_group,
-        })
+        }))
     }
 
     fn bind_group(

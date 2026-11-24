@@ -183,11 +183,12 @@ fn a_clouds_program_any_pipeline_refuses_fails_the_load() {
     assert_eq!(refused.pipeline, "minecraft:pipeline/oit_accumulate_clouds");
 }
 
-/// What the device would refuse when it makes a pipeline fails the load too, as vanilla's
-/// compile failure does: reading `Sampler0`, which no clouds pass binds; writing the colour
-/// target with integers.
+/// Reading `Sampler0`, which no clouds pass binds, fails the load, as vanilla's builder refuses a
+/// descriptor missing from the pipeline's layout. Writing the colour target with integers, which
+/// vanilla's builder doesn't check, loads: the device doesn't take it, so the native clouds draw
+/// (`core_clouds::clouds_for_frame`), with the note naming the target.
 #[test]
-fn a_clouds_program_its_pipeline_cant_bind_or_target_fails_the_load() {
+fn a_clouds_program_reading_a_sampler_no_pass_binds_fails_the_load() {
     let sampler = fragment(
         "uniform sampler2D Sampler0;\nlayout(location = 0) out vec4 fragColor;",
         "fragColor = vertexColor * texture(Sampler0, vec2(0.5));",
@@ -199,9 +200,19 @@ fn a_clouds_program_its_pipeline_cant_bind_or_target_fails_the_load() {
         "layout(location = 0) out ivec4 fragColor;",
         "fragColor = ivec4(vertexColor * 255.0);",
     );
-    let refused = clouds(&integers).unwrap_err();
-    assert_eq!(refused.pipeline, "minecraft:pipeline/clouds");
-    assert!(refused.why.contains("colour target 0"), "{refused}");
+    let programs = clouds(&integers).unwrap().expect("the pack's clouds");
+    let target = wgpu::TextureFormat::Rgba8Unorm;
+    assert_eq!(
+        programs
+            .classic
+            .past_device_limit(&wgpu::Limits::default(), &[target]),
+        Some(crate::core_shader::PastDeviceLimit::ColourOutput {
+            location: 0,
+            kind: Some(naga::ScalarKind::Sint),
+            components: 4,
+            target
+        })
+    );
 }
 
 /// A pack replacing only an include the clouds' stages use changes them: the stages are
@@ -304,4 +315,23 @@ fn only_an_active_include_override_selects_or_refuses_clouds() {
             assert!(load_clouds(&root, &defaults).unwrap().is_some());
         }
     }
+}
+
+/// A `DynamicTransforms` larger than its slot (26.3's 160 bytes and an 8-member array, 288) in
+/// the clouds' fragment stage: the native clouds draw and the pack stays, as before this change;
+/// one within its slot loads.
+#[test]
+fn a_clouds_vanilla_block_past_its_slot_draws_natively() {
+    let fsh = |extra: &str| {
+        fragment(
+            &format!(
+                "layout(std140) uniform DynamicTransforms {{\n    mat4 ModelViewMat;\n    \
+                 mat4 TextureMat;\n    vec4 ColorModulator;\n    vec3 ModelOffset;\n{extra}}};\n\
+                 layout(location = 0) out vec4 fragColor;"
+            ),
+            "    fragColor = vertexColor * ColorModulator;",
+        )
+    };
+    assert!(clouds(&fsh("    vec4 More;\n")).unwrap().is_some());
+    assert!(clouds(&fsh("    vec4 More[8];\n")).unwrap().is_none());
 }

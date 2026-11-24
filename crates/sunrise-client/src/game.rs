@@ -10318,7 +10318,7 @@ impl Game<'_> {
         let (screenshot, screenshot_result) = (old.screenshot.take(), old.screenshot_result.take());
         let display = old.display_reading();
         drop(old);
-        let (mut renderer, clouds) = build_renderer(
+        let (mut renderer, required) = build_renderer(
             window,
             self.options.offscreen,
             &self.pack,
@@ -10333,7 +10333,7 @@ impl Game<'_> {
             display,
             self.settings.texture_atlas_settings(),
         )?;
-        clouds?;
+        required?;
         (renderer.screenshot, renderer.screenshot_result) = (screenshot, screenshot_result);
         self.adopt_renderer(renderer);
         log::info!("Sunrise: graphics device recovered; rebuilding world meshes");
