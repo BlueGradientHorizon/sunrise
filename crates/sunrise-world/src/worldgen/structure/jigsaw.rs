@@ -1301,7 +1301,7 @@ pub fn attach<C: JigsawContext>(
                 .iter()
                 .map(|tj| {
                     let st = step(tj.front);
-                    if !hack_box.is_inside(std::array::from_fn(|i| tj.pos[i] + st[i])) {
+                    if !hack_box.is_inside(std::array::from_fn(|i| tj.pos[i].wrapping_add(st[i]))) {
                         return 0;
                     }
                     let child = pool(&tj.pool);
