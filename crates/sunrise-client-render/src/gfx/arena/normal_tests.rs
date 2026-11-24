@@ -124,3 +124,80 @@ fn normal_stream_grows_and_moves_with_its_pages() {
         "the quad past the first chunk"
     );
 }
+
+/// The budgets that keep a frame's copies small count the normal stream: compaction's and a
+/// shrink's moves (`move_off_page`), which copy a range's entries with its vertices, and the
+/// emptying a fragmented arena starts at (`sparsest`), whose free ranges hold entries too. With
+/// 32 bytes a vertex (24 of the vertex, 8 of its entry), two meshes of 256 vertices are 16384
+/// bytes: a budget one byte short moves one of them, where 24 bytes a vertex would move both.
+#[test]
+#[ignore = "daily"]
+fn normal_stream_counts_in_the_move_budgets() {
+    use super::super::{Part, SectionGpu, move_off_page};
+    let _gpu = crate::gfx::test_gpu::lock();
+    let adapter = crate::gfx::test_gpu::adapter().expect("the arena's normal stream needs a GPU");
+    eprintln!("ARENA_NORMALS_ADAPTER {:?}", adapter.get_info());
+    let (device, _queue) = pollster::block_on(adapter.request_device(&Default::default())).unwrap();
+    let mut arena = Arena::translucent(&device, 24, 4 * GRAIN).with_normals(true);
+    assert_eq!(arena.vertex_bytes(), 32);
+    let mut encoder = device.create_command_encoder(&Default::default());
+    let mesh = |at: (u32, u64)| SectionGpu {
+        page: 0,
+        start: 0,
+        translucent_at: at,
+        solid: 0,
+        solid_slots: 0,
+        packed: false,
+        packed_far: false,
+        sides: crate::mesher::Sides::unsorted(0),
+        translucent: 64,
+        sort: super::super::translucency::SortState::new(Vec::new()),
+        sorted_indices: Some((7, 7)),
+        flat_id: None,
+        gpu_id: None,
+        gpu_fading: false,
+        fading: None,
+        leaving: None,
+        animated_layers: Box::new([]),
+    };
+    let mut meshes: Vec<SectionGpu> = (0..3)
+        .map(|_| mesh(arena.alloc(&device, &mut encoder, GRAIN).unwrap()))
+        .collect();
+    assert!(meshes.iter().all(|s| s.translucent_at.0 == 0));
+    assert!(arena.open_page(&device, 4 * GRAIN));
+    arena.close(0);
+    let mut budget = 2 * GRAIN * 32 - 1;
+    assert!(move_off_page(
+        &mut arena,
+        &mut encoder,
+        None,
+        None,
+        None,
+        meshes.iter_mut().map(|s| (s, None)),
+        0,
+        Part::Translucent,
+        &mut budget,
+    ));
+    let moved = meshes.iter().filter(|s| s.translucent_at.0 == 1).count();
+    assert_eq!(
+        moved, 1,
+        "one mesh of 8192 bytes, then 8191 left for the next"
+    );
+    assert_eq!(budget, GRAIN * 32 - 1);
+
+    // A fragmented arena: one range of 256 vertices in use on page 0 and two on page 1, of
+    // four each; the five free ranges hold 1280 vertices, 40960 bytes with their entries.
+    let mut arena = Arena::new(&device, 24, GRAIN, false).with_normals(true);
+    arena.page_limit = 4 * GRAIN;
+    let ranges: Vec<(u32, u64)> = (0..8)
+        .map(|_| arena.alloc(&device, &mut encoder, GRAIN).unwrap())
+        .collect();
+    let first = ranges[0].0;
+    for (i, &(page, start)) in ranges.iter().enumerate() {
+        if ![0, 6, 7].contains(&i) {
+            arena.release(page, start, GRAIN);
+        }
+    }
+    assert_eq!(arena.sparsest_from(5 * GRAIN * 32), Some(first));
+    assert_eq!(arena.sparsest_from(5 * GRAIN * 32 + 1), None);
+}

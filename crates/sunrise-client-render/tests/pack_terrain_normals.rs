@@ -63,7 +63,30 @@ fn pack_terrain_normals_stream_from_start() {
             ("SUNRISE_FLAT_DRAWS", "0"),
             ("SUNRISE_SHADER_PACK_WITHOUT", "vertex-storage"),
         ],
-        fixture_stream_from_start,
+        fixture_pending,
+    );
+}
+
+#[test]
+#[ignore = "daily"]
+fn pack_terrain_normals_pages_from_start() {
+    run_daily(
+        "pack_terrain_normals_pages_from_start",
+        &[("SUNRISE_FLAT_DRAWS", "0")],
+        fixture_pending,
+    );
+}
+
+#[test]
+#[ignore = "daily"]
+fn pack_terrain_normals_stream_in_the_shadow_pass() {
+    run_daily(
+        "pack_terrain_normals_stream_in_the_shadow_pass",
+        &[
+            ("SUNRISE_FLAT_DRAWS", "0"),
+            ("SUNRISE_SHADER_PACK_WITHOUT", "vertex-storage"),
+        ],
+        fixture_shadow,
     );
 }
 
@@ -126,17 +149,22 @@ fn pack(renderer: &mut Renderer, folder: &Path, input: &str) {
         .unwrap();
     }
     std::fs::write(shaders.join("shaders.properties"), "shadow.enabled=false\n").unwrap();
-    let pack = sunrise_shaders::Pack::open(folder).unwrap();
-    let mut macros = sunrise_shaders::Macros::standard();
-    renderer.define_pack_macros(&mut macros);
-    let (properties, _) = sunrise_shaders::read_properties(&pack, &mut macros);
-    let post = sunrise_shaders::load_post(&pack, "", &properties, &macros, &renderer.pack_inputs());
+    let post = read_pack(renderer, folder);
     assert!(post.terrain.is_some(), "gbuffers_terrain loads");
     assert!(post.water.is_some(), "gbuffers_water loads");
     renderer
         .set_shader_pack(0, Some(post), &[])
         .unwrap()
         .expect("the pack runs");
+}
+
+/// The pack in `folder`, read as the game reads it for this renderer (`pack_inputs`).
+fn read_pack(renderer: &mut Renderer, folder: &Path) -> sunrise_shaders::Post {
+    let pack = sunrise_shaders::Pack::open(folder).unwrap();
+    let mut macros = sunrise_shaders::Macros::standard();
+    renderer.define_pack_macros(&mut macros);
+    let (properties, _) = sunrise_shaders::read_properties(&pack, &mut macros);
+    sunrise_shaders::load_post(&pack, "", &properties, &macros, &renderer.pack_inputs())
 }
 
 /// The quad facing `normal` (an axis, `axis`, and its sign) from the side of the box opposite
@@ -385,7 +413,6 @@ fn fixture_without_flat(window: Arc<Window>, out: &Path) -> Result<(), Box<dyn s
     // Past any device's storage buffers: the terrain programs read no pages.
     renderer.set_pack_terrain_bindings(client::gfx::pack_atlas::TerrainBindings {
         buffer_objects: u32::MAX,
-        geometry: false,
     });
     pack(&mut renderer, &out.join("pack-crowded"), "gl_Normal");
     for translucent in [false, true] {
@@ -410,10 +437,15 @@ const FIRST_PAGE: u64 = 25_165_824;
 const FIRST_PAGE_WITH_NORMALS: u64 = 33_554_432;
 
 /// Uploads the solid box on a settled frame, for the arenas' bytes.
-fn upload_box(renderer: &mut Renderer, hud: &HudBatch, out: &Path, name: &str) {
+/// The bytes the upload copied (`Renderer::uploaded_bytes`, which counts toward the section
+/// copies' submission threshold as it goes): the box's 24 vertices of 24 bytes, and 8 bytes of
+/// normal stream each where the arena keeps one.
+fn upload_box(renderer: &mut Renderer, hud: &HudBatch, out: &Path, name: &str) -> u64 {
     shoot(renderer, hud, 0.0, 0.0, &out.join(format!("{name}.png")));
     renderer.take_dropped_sections();
+    let before = renderer.uploaded_bytes;
     renderer.upload(SECTION, &mesh(false));
+    renderer.uploaded_bytes - before
 }
 
 /// Without flat draws (`SUNRISE_FLAT_DRAWS=0`), on a device taken to read no storage in vertex
@@ -433,7 +465,7 @@ fn fixture_without_vertex_storage(
     let mut result = serde_json::Map::new();
     // No pack: vertex buffers alone, pages of 256 MiB of 24-byte vertices in whole blocks of
     // 256 or the device's buffers, as before the stream.
-    upload_box(&mut renderer, &hud, out, "start");
+    assert_eq!(upload_box(&mut renderer, &hud, out, "start"), 576);
     let limits = renderer.device.limits();
     let page_vertices = (limits.max_buffer_size.min(256 << 20) / 24) / 256 * 256;
     assert_eq!(renderer.section_arena_pages(), (false, page_vertices));
@@ -462,13 +494,13 @@ fn fixture_without_vertex_storage(
         assert!(section && translucent, "the pack reads the stream");
         assert_eq!(renderer.section_arena_pages(), (false, page_vertices));
     }
-    upload_box(&mut renderer, &hud, out, "loaded");
+    assert_eq!(upload_box(&mut renderer, &hud, out, "loaded"), 768);
     assert_eq!(
         renderer.section_arena_normals(),
         (true, true, FIRST_PAGE_WITH_NORMALS)
     );
     renderer.set_shader_pack(0, None, &[]).unwrap();
-    upload_box(&mut renderer, &hud, out, "unloaded");
+    assert_eq!(upload_box(&mut renderer, &hud, out, "unloaded"), 576);
     assert_eq!(
         renderer.section_arena_normals(),
         (false, false, FIRST_PAGE),
@@ -497,10 +529,8 @@ fn fixture_pages_dont_fit(
         ("room", room, normal as fn(_, _) -> _, true),
         ("full", room + 1, constant, false),
     ] {
-        renderer.set_pack_terrain_bindings(client::gfx::pack_atlas::TerrainBindings {
-            buffer_objects,
-            geometry: false,
-        });
+        renderer
+            .set_pack_terrain_bindings(client::gfx::pack_atlas::TerrainBindings { buffer_objects });
         pack(
             &mut renderer,
             &out.join(format!("pack-{name}")),
@@ -541,29 +571,84 @@ fn room_for_the_stream(renderer: &Renderer) -> u32 {
     buffers - 5
 }
 
-/// Without flat draws, on a device taken to read no storage in vertex shaders, a renderer made
-/// with a `shaders/` pack picked (`Renderer::new`'s `pack_starts_wide`) starts with the normal
-/// stream in both arenas, so the pack's loading keeps the sections uploaded before it: none is
-/// dropped, and both lists draw with the stream at once.
-fn fixture_stream_from_start(
-    window: Arc<Window>,
-    out: &Path,
-) -> Result<(), Box<dyn std::error::Error>> {
+/// Without flat draws, a renderer made with a `shaders/` pack picked (`Renderer::new`'s
+/// `pack_starts_wide`) starts in the layout that pack's per-section terrain draws in: with the
+/// normal stream in both arenas on a device taken to read no storage in vertex shaders
+/// (`SUNRISE_SHADER_PACK_WITHOUT=vertex-storage`), with the section arena's pages storage where
+/// vertex shaders read it. The game loads the pack on a thread of its own (`load_shader_pack`)
+/// and draws without it until `poll_shader_pack` runs it: the frames drawn meanwhile keep that
+/// layout, so no section is dropped, neither then nor once the pack runs, and both lists draw
+/// with the pack at once.
+fn fixture_pending(window: Arc<Window>, out: &Path) -> Result<(), Box<dyn std::error::Error>> {
     std::fs::create_dir_all(out)?;
     let mut renderer = renderer(window, (true, true))?;
     assert!(!renderer.flat_draws(), "SUNRISE_FLAT_DRAWS=0");
+    let stream = std::env::var("SUNRISE_SHADER_PACK_WITHOUT").as_deref() == Ok("vertex-storage");
     let hud = HudBatch::scratch([320, 180]);
     let mut result = serde_json::Map::new();
-    assert_eq!(
-        renderer.section_arena_normals(),
-        (true, true, 0),
-        "a pack picked: both arenas start with the stream"
+    let layout = |renderer: &Renderer| {
+        let (normals, translucent, _) = renderer.section_arena_normals();
+        (renderer.section_arena_pages(), normals, translucent)
+    };
+    let start = layout(&renderer);
+    // Storage pages where per-section terrain reads them, else the stream in both arenas.
+    assert_eq!((start.0.0, start.1, start.2), (!stream, stream, stream));
+    renderer.upload(SECTION, &mesh(false));
+    // The pack, written as `pack` writes it, then loaded as the game loads it.
+    let folder = out.join("pack-normal");
+    let shaders = folder.join("shaders");
+    std::fs::create_dir_all(&shaders)?;
+    for name in ["gbuffers_terrain", "gbuffers_water"] {
+        std::fs::write(
+            shaders.join(format!("{name}.vsh")),
+            "#version 120\nvarying vec3 n;\nvoid main() { gl_Position = ftransform(); n = gl_Normal; }\n",
+        )?;
+        std::fs::write(
+            shaders.join(format!("{name}.fsh")),
+            "#version 120\nvarying vec3 n;\nvoid main() { gl_FragData[0] = vec4(n * 0.4 + 0.6, 1.0); }\n",
+        )?;
+    }
+    std::fs::write(shaders.join("shaders.properties"), "shadow.enabled=false\n")?;
+    let post = read_pack(&mut renderer, &folder);
+    renderer.load_shader_pack(
+        0,
+        post,
+        Vec::new(),
+        "normal".into(),
+        std::time::Instant::now(),
     );
-    pack(&mut renderer, &out.join("pack-normal"), "gl_Normal");
+    // Frames while it builds, before the game polls it.
+    for frame in 0..3 {
+        shoot(
+            &mut renderer,
+            &hud,
+            0.0,
+            0.0,
+            &out.join(format!("pending-{frame}.png")),
+        );
+        assert!(
+            !renderer.take_dropped_sections(),
+            "pending frame {frame}: the sections stay"
+        );
+        assert_eq!(
+            layout(&renderer),
+            start,
+            "pending frame {frame}: the layout stays"
+        );
+    }
+    let report = loop {
+        if let Some((_, _, _, report)) = renderer.poll_shader_pack() {
+            break report;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    };
+    report.unwrap().expect("the pack runs");
     let south = [channel(0), channel(0), channel(-1), 255];
     for translucent in [false, true] {
         let name = if translucent { "translucent" } else { "solid" };
-        renderer.upload(SECTION, &mesh(translucent));
+        if translucent {
+            renderer.upload(SECTION, &mesh(true));
+        }
         let pixel = shoot(
             &mut renderer,
             &hud,
@@ -577,7 +662,87 @@ fn fixture_stream_from_start(
         );
         assert!(
             !renderer.take_dropped_sections(),
-            "{name}: the pack's loading kept the sections"
+            "{name}: running the pack kept the sections"
+        );
+        assert_eq!(layout(&renderer), start, "{name}: the layout stays");
+        result.insert(name.into(), format!("{pixel:?}").into());
+    }
+    finish(out, result)
+}
+
+/// The shadow pass of a pack whose per-section terrain reads the normal stream (vertex storage
+/// taken away, flat draws off) reads it too: a shadow program that writes the normal into
+/// `shadowcolor0` over the whole shadow map (each quad drawn from its UVs, 0 to 1 across the
+/// block atlas's one sprite), and a `final` program that shows the map's middle. A single quad
+/// facing east (+x) writes (255, 153, 153); the constant normal would write (153, 255, 153).
+/// Solid, then translucent (the shadow pass's two lists).
+fn fixture_shadow(window: Arc<Window>, out: &Path) -> Result<(), Box<dyn std::error::Error>> {
+    std::fs::create_dir_all(out)?;
+    let mut renderer = renderer(window, (false, false))?;
+    assert!(!renderer.flat_draws(), "SUNRISE_FLAT_DRAWS=0");
+    let hud = HudBatch::scratch([320, 180]);
+    let mut result = serde_json::Map::new();
+    let folder = out.join("pack-shadow");
+    let shaders = folder.join("shaders");
+    std::fs::create_dir_all(&shaders)?;
+    std::fs::write(
+        shaders.join("shadow.vsh"),
+        "#version 120\nvarying vec3 n;\n\
+         void main() { n = gl_Normal; gl_Position = vec4(gl_MultiTexCoord0.xy * 2.0 - 1.0, 0.5, 1.0); }\n",
+    )?;
+    std::fs::write(
+        shaders.join("shadow.fsh"),
+        "#version 120\nvarying vec3 n;\nvoid main() { gl_FragData[0] = vec4(n * 0.4 + 0.6, 1.0); }\n",
+    )?;
+    std::fs::write(
+        shaders.join("final.vsh"),
+        "#version 120\nvoid main() { gl_Position = ftransform(); }\n",
+    )?;
+    std::fs::write(
+        shaders.join("final.fsh"),
+        "#version 120\nconst int shadowMapResolution = 16;\nuniform sampler2D shadowcolor0;\n\
+         void main() { gl_FragColor = texture2D(shadowcolor0, vec2(0.5)); }\n",
+    )?;
+    let post = read_pack(&mut renderer, &folder);
+    assert!(post.shadow.is_some(), "the shadow program loads");
+    renderer
+        .set_shader_pack(0, Some(post), &[])
+        .unwrap()
+        .expect("the pack runs");
+    let east = [channel(1), channel(0), channel(0), 255];
+    for translucent in [false, true] {
+        let name = if translucent { "translucent" } else { "solid" };
+        shoot(
+            &mut renderer,
+            &hud,
+            0.0,
+            0.0,
+            &out.join(format!("settle-{name}.png")),
+        );
+        renderer.take_dropped_sections();
+        let mut quad = SectionMesh::default();
+        let uvs = [[0., 1.], [1., 1.], [1., 0.], [0., 0.]];
+        let vertices = face(0, 1)
+            .into_iter()
+            .zip(uvs)
+            .map(|(p, uv)| TerrainVertex::new(p, uv, 0, u32::MAX, 0xf0f0));
+        if translucent {
+            quad.translucent.extend(vertices);
+        } else {
+            quad.solid.extend(vertices);
+        }
+        quad.sort_solid();
+        renderer.upload(SECTION, &quad);
+        let pixel = shoot(
+            &mut renderer,
+            &hud,
+            0.0,
+            0.0,
+            &out.join(format!("{name}.png")),
+        );
+        assert_eq!(
+            pixel, east,
+            "{name}: the shadow map holds the east face's normal"
         );
         result.insert(name.into(), format!("{pixel:?}").into());
     }
@@ -604,7 +769,6 @@ fn fixture_stream_after_flat(
         renderer.set_flat_draws(flat)?;
         renderer.set_pack_terrain_bindings(client::gfx::pack_atlas::TerrainBindings {
             buffer_objects: room,
-            geometry: false,
         });
         let draws = if flat { "flat" } else { "stream" };
         pack(

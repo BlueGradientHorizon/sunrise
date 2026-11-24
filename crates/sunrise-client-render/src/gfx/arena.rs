@@ -553,16 +553,16 @@ impl Arena {
         }
     }
     /// The normal stream of `vertices`, written at `start` of `page` (`terrain_normals::stream`),
-    /// where the arena keeps one (`with_normals`).
+    /// where the arena keeps one (`with_normals`): the bytes it wrote.
     pub fn write_normals(
         &mut self,
         encoder: &mut wgpu::CommandEncoder,
         uploads: &mut super::upload::Uploads,
         (page, start): (u32, u64),
         vertices: &[crate::mesher::TerrainVertex],
-    ) {
+    ) -> u64 {
         if !self.normals || vertices.is_empty() {
-            return;
+            return 0;
         }
         let p = self.pages[page as usize].as_ref().expect("live arena page");
         let buffer = p.normals.as_ref().expect("every page has a normal stream");
@@ -581,10 +581,12 @@ impl Arena {
                 bytemuck::cast_slice(entries),
             );
         }
+        vertices.len() as u64 * NORMAL_BYTES
     }
-    /// Bytes of one vertex (or index).
-    pub fn stride(&self) -> u64 {
-        self.stride
+    /// Bytes a vertex (or index) takes in the arena's pages: its own (`stride`) and, where the arena keeps
+    /// a normal stream, its entry there. What moving or uploading a vertex copies.
+    pub fn vertex_bytes(&self) -> u64 {
+        self.stride + if self.normals { NORMAL_BYTES } else { 0 }
     }
     /// Vertices in `page`'s ranges in use (as `span` rounds them).
     pub fn used(&self, page: u32) -> u64 {
@@ -706,7 +708,7 @@ impl Arena {
         };
         let free: u64 = pages().map(|(_, p)| p.free_vertices()).sum();
         let capacity: u64 = pages().map(|(_, p)| p.capacity).sum();
-        if free * self.stride < min_free || free * 2 < capacity {
+        if free * self.vertex_bytes() < min_free || free * 2 < capacity {
             return None;
         }
         // Moves only go to video-memory pages (`alloc_moved`).

@@ -324,12 +324,15 @@ impl Renderer {
         // The normal stream beside the vertices, where the pack's per-section draws read one.
         // Never beside compact records: no per-section pack draw reads them
         // (`follow_packed_layout`).
+        let mut normal_bytes = 0;
         if !packed {
             let uploads = &mut self.section_uploads;
-            self.arena
+            normal_bytes += self
+                .arena
                 .write_normals(encoder, uploads, (page, start), &mesh.solid);
         }
-        self.translucent_arena
+        normal_bytes += self
+            .translucent_arena
             .as_mut()
             .unwrap_or(&mut self.arena)
             .write_normals(
@@ -338,6 +341,9 @@ impl Renderer {
                 translucent_at,
                 &mesh.translucent,
             );
+        // The stream's bytes count toward the submission threshold as the vertices' do.
+        self.uploaded_bytes += normal_bytes;
+        self.section_copy_bytes += normal_bytes;
         let translucent_arena = self.translucent_arena.as_ref().unwrap_or(&self.arena);
         let solid_bytes: &[u8] = if packed {
             bytemuck::cast_slice(&mesh.packed)
@@ -961,7 +967,9 @@ impl Renderer {
             self.translucent_batching,
             self.flat.is_some() && self.flat_on,
             self.pack_reads_pages(),
-            pack.is_some_and(|p| p.has_terrain()),
+            // A pack still building (`pack_pending`) is taken to draw terrain, as
+            // `Renderer::new` takes a picked one.
+            self.pack_pending() || pack.is_some_and(|p| p.has_terrain()),
             // One of Sunrise's own packs with `[shadow]` draws from the same lists (`shadow_view`).
             pack.is_some_and(|p| p.has_shadow()) || self.native_shadow(),
         );
@@ -994,19 +1002,30 @@ impl Renderer {
             self.graveyard.add(released);
         }
     }
+    /// Whether a `shaders/` pack's programs are being built (`load_shader_pack`) and not yet
+    /// run (`poll_shader_pack`). The layouts the sections are in (`follow_arena_layout`,
+    /// `follow_translucent_layout`, `follow_packed_layout`) take such a pack to draw terrain
+    /// and its terrain to be drawn as `pack_terrain_inputs` decided for it, as `Renderer::new`
+    /// takes a picked pack: the frames drawn meanwhile keep the layout it will draw in rather
+    /// than drop the sections for the frames without it and again once it runs.
+    pub(super) fn pack_pending(&self) -> bool {
+        self.pack_loading.is_some()
+    }
+    /// Whether a `shaders/` pack, running or being built (`pack_pending`), draws terrain or a
+    /// shadow pass from the game's sections.
+    fn pack_draws_sections(&self) -> bool {
+        let pack = self.pack_post.as_ref().and_then(|p| p.1.as_ref());
+        self.pack_pending() || pack.is_some_and(|p| p.has_terrain() || p.has_shadow())
+    }
     /// Whether a `shaders/` pack's terrain or shadow programs read the section arena's pages in
     /// per-section draws (`pack_atlas::TerrainDraws::Pages`).
     pub(super) fn pack_reads_pages(&self) -> bool {
-        let pack = self.pack_post.as_ref().and_then(|p| p.1.as_ref());
-        self.pack_terrain_draws() == pack_atlas::TerrainDraws::Pages
-            && pack.is_some_and(|p| p.has_terrain() || p.has_shadow())
+        self.pack_terrain_draws() == pack_atlas::TerrainDraws::Pages && self.pack_draws_sections()
     }
     /// Whether a `shaders/` pack's terrain or shadow programs read the normal stream in
     /// per-section draws (`pack_atlas::TerrainDraws::Normals`).
     pub(super) fn pack_reads_normals(&self) -> bool {
-        let pack = self.pack_post.as_ref().and_then(|p| p.1.as_ref());
-        self.pack_terrain_draws() == pack_atlas::TerrainDraws::Normals
-            && pack.is_some_and(|p| p.has_terrain() || p.has_shadow())
+        self.pack_terrain_draws() == pack_atlas::TerrainDraws::Normals && self.pack_draws_sections()
     }
     /// Makes the section arena's pages storage, or not, as `arena_storage` says for the shader
     /// pack that runs, and gives its pages and the translucent arena's a normal stream while
@@ -1049,7 +1068,8 @@ impl Renderer {
     /// programs outside flat draws (flat ones unpack the records, `pack_atlas::PULL_FLAT`).
     /// Leaving it drops every section and far tile for the game to mesh again.
     pub(super) fn follow_packed_layout(&mut self) {
-        let pack = self.pack_post.as_ref().and_then(|p| p.1.as_ref()).is_some();
+        let pack =
+            self.pack_pending() || self.pack_post.as_ref().and_then(|p| p.1.as_ref()).is_some();
         let want = self.flat.is_some() && (!pack || self.pack_terrain_flat) && self.packed_on;
         if want == self.packed_quads {
             return;
