@@ -406,11 +406,11 @@ fn publish(game: &mut crate::game::Game<'_>) {
 
 #[test]
 #[ignore = "daily"]
-fn position_sensitive_part_connects_at_built_height_in_both_assemblers() {
+fn position_sensitive_part_connects_at_built_height() {
     // The Part table and the published worldgen hooks are process-wide: another test's
     // install in the shared process would swap this connector's Part mid-assembly.
     if crate::game::native_entity_refs::tests::run_fresh_cases(
-        "game::native_rotate::jigsaw_tests::position_sensitive_part_connects_at_built_height_in_both_assemblers",
+        "game::native_rotate::jigsaw_tests::position_sensitive_part_connects_at_built_height",
         "SUNRISE_JIGSAW_POSITION_SENSITIVE_CHILD",
         &["position-sensitive"],
     ) {
