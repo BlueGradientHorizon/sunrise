@@ -2625,7 +2625,7 @@ pub(super) fn mod_particles_ok(
     options: &ParticleOptions,
     state: Option<BlockStateId>,
     state_ok: impl Fn(BlockStateId) -> bool,
-    at: [f64; 3],
+    positions: &[[f64; 3]],
     spread: [f64; 3],
     speed: f64,
 ) -> bool {
@@ -2651,7 +2651,7 @@ pub(super) fn mod_particles_ok(
         _ => true,
     };
     supported
-        && at.into_iter().all(f64::is_finite)
+        && positions.iter().flatten().all(|v| v.is_finite())
         && spread
             .into_iter()
             .all(|v| v.is_finite() && v.abs() <= f32::MAX as f64)
