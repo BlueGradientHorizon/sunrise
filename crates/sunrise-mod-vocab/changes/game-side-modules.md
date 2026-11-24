@@ -26,7 +26,7 @@ For the full modding-book guide, see [`docs/modding/src/concepts/native-route/8-
 ## How to repin a native mod
 
 1. Pin the new game build with `cargo sunrise-mod pin <build>` (`pin` refreshes hashes for declarations that still resolve and leaves missing declarations in place).
-2. Update affected `[[native.mixin]]`, `[[native.bridge]]`, `[[native.module]]` (state files), and explicit `[[internals]]` declarations using the stable release's `moved-mixin-targets.tsv` asset or by generating the selectable rename map between two builds' `functions.json` indexes:
+2. Generate the selectable rename map from the prior and target builds' `functions.json` indexes with the script below, then update affected `[[native.mixin]]`, `[[native.bridge]]`, `[[native.module]]` (state files), and explicit `[[internals]]` declarations:
 
 ```sh
 python3 tools/game_module_sides.py --renames <before-functions.json> <after-functions.json> --out moved-mixin-targets.tsv

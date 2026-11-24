@@ -589,46 +589,6 @@ class StableModApiTests(unittest.TestCase):
         self.assertIn(f"- Added: `{target}`", listing.read_text())
         self.assertIn(f"/releases/download/26.3-0.1.11/{listing.name}", self.notes.read_text())
 
-    def test_side_module_rename_map_is_written_linked_and_attached(self):
-        # Releases not crossing the side-module move emit no rename map.
-        nightly.append_mixin_notes(
-            self.notes,
-            "26.3-0.1.11",
-            PREVIOUS,
-            {"sunrise_client::game::shared::f": ("s", "b", None)},
-            {"sunrise_client::game::shared::f": ("s", "b", None)},
-        )
-        self.assertFalse(self.notes.with_name("moved-mixin-targets.tsv").exists())
-
-        # Releases crossing the move write selectable rows to moved-mixin-targets.tsv and link it + the guide.
-        self.notes.write_text("Notes.\n")
-        old = {
-            "sunrise_client::game::advancements_screen::Game::draw": ("s", "b", None),
-            "sunrise_client::game::server_state::ServerState::new": ("s", "b", None),
-            "sunrise_client::game::lan::Game::dropped": ("s", "b", None),
-        }
-        new = {
-            "sunrise_client::game::client_side::advancements_screen::Game::draw": ("s", "b", None),
-            "sunrise_client::game::server_side::ServerState::new": ("s", "b", None),
-        }
-        nightly.append_mixin_notes(self.notes, "26.3-0.2.0", PREVIOUS, old, new)
-        rename_map = self.notes.with_name("moved-mixin-targets.tsv")
-        self.assertTrue(rename_map.is_file())
-        rows = rename_map.read_text().splitlines()
-        self.assertEqual(
-            rows,
-            [
-                "old_target\tnew_target\tside",
-                "sunrise_client::game::advancements_screen::Game::draw\tsunrise_client::game::client_side::advancements_screen::Game::draw\tclient",
-                "sunrise_client::game::server_state::ServerState::new\tsunrise_client::game::server_side::ServerState::new\tserver",
-            ],
-        )
-        notes_text = self.notes.read_text()
-        self.assertIn("/releases/download/26.3-0.2.0/moved-mixin-targets.tsv", notes_text)
-        self.assertIn(nightly.SIDE_MODULES_GUIDE_URL, notes_text)
-        wf = (nightly.REPOSITORY / ".github/workflows/nightly-build.yml").read_text(encoding="utf-8")
-        self.assertIn("if [[ -f dist/moved-mixin-targets.tsv ]]; then files+=(dist/moved-mixin-targets.tsv); fi", wf)
-
 
 class JudgeBuildTests(unittest.TestCase):
     def test_the_parents_stage_is_built_from_its_tree_alone(self):

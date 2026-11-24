@@ -28,7 +28,7 @@ The authoritative module placement table is [`tools/game_module_sides.tsv`](http
 ## How to repin a native mod
 
 1. **Pin the target build:** run `cargo sunrise-mod pin <build>`. `pin` refreshes hashes for declarations that still resolve and leaves missing declarations in place, so renamed paths must be updated explicitly.
-2. **Rewrite moved declarations:** use the `moved-mixin-targets.tsv` file linked from the stable release's `Changed mixin targets` section, or generate the selectable rename map between two signed SDK `functions.json` catalogs:
+2. **Rewrite moved declarations:** generate the selectable rename map from the prior and target builds' signed SDK `functions.json` catalogs:
 
 ```sh
 python3 tools/game_module_sides.py --renames <before-functions.json> <after-functions.json> --out moved-mixin-targets.tsv
