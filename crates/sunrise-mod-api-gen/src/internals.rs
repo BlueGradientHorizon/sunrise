@@ -1129,9 +1129,6 @@ impl Pass {
                     self.shadowed = outer_shadowed;
                 }
             }
-            // A lower crate's import under one of its own Cargo features: the patch crate is built
-            // with the game's features, so its mirror reaches the binding the prebuilt crate chose
-            // through the module's glob, which needs the import public.
             // A game module's restricted import, such as `pub(super) use lower::Item;` left where
             // an item moved to a lower crate: the game's code reaches the item through it, and so
             // do a mixin's copy of that code and the patch crate's repeated imports, so it is
@@ -1146,6 +1143,9 @@ impl Pass {
             {
                 self.sources[file].public(&value.vis, value.use_token.span(), "use");
             }
+            // A lower crate's import under one of its own Cargo features: the patch crate is built
+            // with the game's features, so its mirror reaches the binding the prebuilt crate chose
+            // through the module's glob, which needs the import public.
             Item::Use(value)
                 if !test_only(&value.attrs)
                     && module.split("::").next() != Some("sunrise_client")
