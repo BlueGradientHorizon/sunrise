@@ -4161,6 +4161,9 @@ struct Game<'a> {
     native_net: native_net::NativeNet,
     /// The mod whose own screen is open (`Screen::Mod`).
     native_mod_screen: Option<String>,
+    /// The open mod screen came from the Mods screen's Config (`IConfigScreenFactory`'s
+    /// `parent`): closing it returns to Options > Mods.
+    native_mod_screen_parent: bool,
     /// Meshed sections waiting for an upload budget (Sunrise settings).
     pending_uploads: Vec<sunrise_client::streaming::MeshUpload>,
     /// Empty between updates. Reuses storage for merging two sorted runs.
@@ -14365,6 +14368,7 @@ impl<'a> Game<'a> {
             native_configs: Default::default(),
             native_net: Default::default(),
             native_mod_screen: None,
+            native_mod_screen_parent: false,
             sky_darken_memo: Default::default(),
             water_plane_memo: Default::default(),
             water_plane_scan: Default::default(),

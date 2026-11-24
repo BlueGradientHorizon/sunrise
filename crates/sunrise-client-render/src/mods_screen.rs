@@ -338,7 +338,7 @@ impl ModsScreen {
                 config: installed
                     .native
                     .as_ref()
-                    .is_some_and(|page| !page.settings.is_empty()),
+                    .is_some_and(|page| page.own_screen || !page.settings.is_empty()),
                 status,
                 note,
             });
