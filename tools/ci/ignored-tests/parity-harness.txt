@@ -108,3 +108,4 @@ sunrise-client game::creatures::projectile_batch_tests::continuing_wind_charge_k
 sunrise-client game::persist::thrown_item_tests::a_moved_thrown_item_projectile_saves_its_loaded_item tools/test_thrown_item_save_parity.py harness
 sunrise-client game::commands::summon_item_orb_tests::summon_replies_with_the_custom_name_of_every_kind tools/test_summon_custom_name_parity.py harness
 sunrise-client-lib projectiles::tests::a_fireball_turns_on_the_tick_it_hits tools/test_fireball_hit_turn_parity.py harness
+sunrise-client game::potions::cloud_water_tests::a_cloud_in_water_resets_its_fall_distance_and_a_dry_one_keeps_it tools/test_cloud_water_parity.py harness

@@ -2650,6 +2650,8 @@ impl Game<'_> {
                         id,
                         at: [x, y.floor() + 1.0, z],
                         motion: [0.0; 3],
+                        fall_distance: 0.0,
+                        first_tick: true,
                         radius: 5.0,
                         age: 0,
                         duration: 200,
@@ -3225,6 +3227,8 @@ impl Game<'_> {
             id,
             at,
             motion: [0.0; 3],
+            fall_distance: 0.0,
+            first_tick: true,
             radius: 3.0,
             age: 0,
             duration: 600,
@@ -3288,6 +3292,7 @@ impl Game<'_> {
         self.end_dragon_flame();
         let mut harmed_mobs: Vec<(u32, i32, [f64; 3])> = Vec::new();
         let ticking = self.entity_ticking_area();
+        let through = self.ticked_entities_through;
         let mut clouds = self.breath_clouds.lift();
         #[cfg(test)]
         super::entity::taken_pass_tests::after_take(self);
@@ -3296,9 +3301,10 @@ impl Game<'_> {
             if c.potion.is_some() {
                 return true;
             }
-            if !ticking(c.at[0].floor() as i32, c.at[2].floor() as i32) {
+            if c.id > through || !ticking(c.at[0].floor() as i32, c.at[2].floor() as i32) {
                 return true;
             }
+            self.cloud_fluid_step(c);
             c.age += 1;
             if breath_expired(c.age, c.duration) {
                 return self.forget_expired_cloud(c.id);
@@ -3591,6 +3597,10 @@ pub(super) struct Breath {
     pub(super) id: u32,
     pub(super) at: [f64; 3],
     pub(super) motion: [f64; 3],
+    /// `Entity.fallDistance`: as loaded, until water resets or lava halves it.
+    pub(super) fall_distance: f64,
+    /// `Entity.firstTick`: true until the first base tick finishes, gating `isInLava()`.
+    pub(super) first_tick: bool,
     pub(super) radius: f32,
     pub(super) age: i32,
     pub(super) duration: i32,

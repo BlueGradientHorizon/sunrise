@@ -392,6 +392,25 @@ impl Game<'_> {
                 );
                 // Entity.saveWithoutId's common fields, also for a cloud never saved.
                 crate::game::persist::write_static_entity_fields(&mut tag);
+                set_key(
+                    &mut tag,
+                    "Motion",
+                    Tag::List(
+                        c.motion
+                            .into_iter()
+                            .map(|v| Tag::Double(if v == 0.0 { 0 } else { v.to_bits() }))
+                            .collect(),
+                    ),
+                );
+                set_key(
+                    &mut tag,
+                    "fall_distance",
+                    Tag::Double(if c.fall_distance == 0.0 {
+                        0
+                    } else {
+                        c.fall_distance.to_bits()
+                    }),
+                );
                 set_key(&mut tag, "Age", Tag::Int(c.age));
                 set_key(&mut tag, "Duration", Tag::Int(c.duration));
                 set_key(&mut tag, "Radius", Tag::Float(c.radius.to_bits()));
