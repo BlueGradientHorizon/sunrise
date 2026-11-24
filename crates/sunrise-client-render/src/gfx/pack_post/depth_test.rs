@@ -13,10 +13,15 @@ pub(super) struct Gpu {
 }
 impl Gpu {
     pub(super) fn new() -> Option<Self> {
+        Self::with_features(wgpu::Features::empty())
+    }
+    /// [`Self::new`], also turning on those of `features` the adapter has, as the game's device
+    /// does.
+    pub(super) fn with_features(features: wgpu::Features) -> Option<Self> {
         let adapter = crate::gfx::test_gpu::adapter()?;
         let (device, queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
             required_limits: adapter.limits(),
-            required_features: adapter.features() & wgpu::Features::FLOAT32_FILTERABLE,
+            required_features: adapter.features() & (wgpu::Features::FLOAT32_FILTERABLE | features),
             ..Default::default()
         }))
         .expect("GPU device required: setup failure is not a contract pass");
@@ -158,6 +163,8 @@ impl Gpu {
             SIZE,
             &[],
             terrain,
+            Default::default(),
+            |_, _| false,
             &std::sync::atomic::AtomicBool::new(false),
             super::super::in_flight::poll_live,
         )
@@ -344,6 +351,7 @@ fn check(sampler: &str, stage: Stage, scene: Scene, expected: [u8; 4]) {
                 material_maps: false,
                 ids: None,
                 cull: false,
+                pages: false,
             }),
             block_ids: &[],
             sprite_rects: &[],
@@ -612,15 +620,18 @@ pub(super) fn fixture_frame(hud: &HudBatch) -> Frame<'_> {
         yaw: 0.0,
         pitch: 0.0,
         fov_degrees: 90.0,
+        cull_fov_degrees: 90.0,
         bob: glam::Mat4::IDENTITY,
         spin: glam::Mat4::IDENTITY,
         sky: crate::environment::Sky::default(),
         distance: 12.0,
         detail_distance: 12.0,
+        shadow_distance: None,
         depth_far: 1000.0,
         underwater: false,
         cave_culling: false,
         title: true,
+        sky_pass: false,
         sky_blocked: false,
         skybox: false,
         end_sky: false,
@@ -789,6 +800,7 @@ fn shadow_depth_map_reads(
                 atlas: None,
                 ids: None,
                 cull: false,
+                pages: false,
                 material_maps: false,
             }),
             block_ids: &[],

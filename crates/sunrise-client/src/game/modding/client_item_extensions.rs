@@ -4,17 +4,26 @@ use mod_api::{
     __private::game::discard_registration, ArmorModelRef, ArmorTextureRef, ClientItemExtensions,
     ClientItemExtensionsRegistrar, HookId, ItemKey, ModelPart,
 };
-use std::sync::{
-    Arc,
-    atomic::{AtomicBool, AtomicU64, Ordering},
+use std::{
+    borrow::Cow,
+    sync::{
+        Arc, LazyLock,
+        atomic::{AtomicBool, AtomicU64, Ordering},
+    },
 };
 use sunrise_client::{
     fast_hash::FxHashMap,
     mobs::{Part, Polygon},
 };
 
+pub(super) static DEFAULT_TOOLTIP_FONT_ID: LazyLock<mod_api::Identifier> = LazyLock::new(|| {
+    mod_api::Identifier::from_parts("minecraft", "default")
+        .expect("minecraft:default is a valid identifier")
+});
+
 pub(super) struct ItemExtensionsPart {
     pub attached: mod_api::Attached<dyn ClientItemExtensions>,
+    pub callback_owner: mod_api::__private::game::CallbackOwner,
     pub failed: AtomicBool,
     pub reported_stale: AtomicBool,
 }
@@ -202,10 +211,13 @@ impl ClientItemExtensionsRegistrar for Registration<'_> {
                     previous.attached.mod_id()
                 ));
             }
+            let callback_owner =
+                mod_api::__private::game::CallbackOwner::for_mod(attached.mod_id());
             self.state.items.insert(
                 item,
                 ItemExtensionsPart {
                     attached,
+                    callback_owner,
                     failed: AtomicBool::new(false),
                     reported_stale: AtomicBool::new(false),
                 },
@@ -320,6 +332,70 @@ fn hide_other_slots(part: &mut Part, slot: super::equipment_piece::ArmorSlot) {
 }
 
 impl Game<'_> {
+    /// Item-owned tooltip font (`ClientHooks.getTooltipFont` -> `IClientItemExtensions.getFont`).
+    ///
+    /// Returns `minecraft:default` when no extension is registered, the provider returns `None`,
+    /// the stack cannot cross the API boundary, or the provider panics.
+    pub(super) fn item_tooltip_font(
+        &self,
+        stack: &sunrise_client::items::ItemStack,
+    ) -> Cow<'static, mod_api::Identifier> {
+        use super::api_values::TryIntoApi;
+        let default = Cow::Borrowed(&*DEFAULT_TOOLTIP_FONT_ID);
+        let state = &self.armor_stand_assets.extensions;
+        if state.items.is_empty() {
+            return default;
+        }
+        let Some(item) = mod_api::__private::item_key(&stack.item) else {
+            return default;
+        };
+        let Some(part) = state.items.get(&item) else {
+            return default;
+        };
+        if !part.attached.enabled() || part.failed.load(Ordering::Relaxed) {
+            return default;
+        }
+        let Ok(api_stack) = stack.try_into_api() else {
+            return default;
+        };
+        let provider = &**part.attached.part();
+        part.callback_owner
+            .call("client_item_extensions", "tooltip_font", || {
+                provider.tooltip_font(self, &api_stack)
+            })
+            .ok()
+            .flatten()
+            .map_or(default, Cow::Owned)
+    }
+
+    /// Whether a dropped stack bobs and whether its copies spread
+    /// (`IClientItemExtensions.shouldBobAsEntity` and `shouldSpreadAsEntity`).
+    ///
+    /// Both are `true` when no extension is registered, the stack cannot cross the API boundary,
+    /// or the provider panics.
+    pub(super) fn dropped_stack_motion(
+        &self,
+        stack: &sunrise_client::items::ItemStack,
+    ) -> DroppedStackMotion {
+        use super::api_values::TryIntoApi;
+        let state = &self.armor_stand_assets.extensions;
+        if state.items.is_empty() {
+            return DroppedStackMotion::VANILLA;
+        }
+        let Some(part) =
+            mod_api::__private::item_key(&stack.item).and_then(|item| state.items.get(&item))
+        else {
+            return DroppedStackMotion::VANILLA;
+        };
+        if !part.attached.enabled() || part.failed.load(Ordering::Relaxed) {
+            return DroppedStackMotion::VANILLA;
+        }
+        let Ok(api_stack) = stack.try_into_api() else {
+            return DroppedStackMotion::VANILLA;
+        };
+        dispatch_dropped_stack_motion(self, part, &api_stack)
+    }
+
     pub(super) fn extended_equipment_materials<'a>(
         &'a self,
         piece: &super::equipment_piece::EquipmentPiece<'_>,
@@ -376,6 +452,47 @@ impl Game<'_> {
         );
         // A refusal discards the whole piece and selects the vanilla draw this frame.
         (!part.failed.load(Ordering::Relaxed)).then_some(materials)
+    }
+}
+
+/// How a dropped stack moves and spreads, as its item's client extensions answer.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) struct DroppedStackMotion {
+    /// `shouldBobAsEntity`: the stack bobs up and down as it spins.
+    pub bob: bool,
+    /// `shouldSpreadAsEntity`: a stack's copies are drawn apart.
+    pub spread: bool,
+}
+impl DroppedStackMotion {
+    /// Vanilla's dropped stack: it bobs and its copies spread.
+    pub const VANILLA: Self = Self {
+        bob: true,
+        spread: true,
+    };
+}
+
+type MotionAnswer =
+    fn(&dyn ClientItemExtensions, &dyn mod_api::ClientHost, &mod_api::ItemStack) -> bool;
+fn dispatch_dropped_stack_motion(
+    host: &dyn mod_api::ClientHost,
+    part: &ItemExtensionsPart,
+    stack: &mod_api::ItemStack,
+) -> DroppedStackMotion {
+    let provider = &**part.attached.part();
+    let ask = |operation, answer: MotionAnswer| {
+        part.callback_owner
+            .call("client_item_extensions", operation, || {
+                answer(provider, host, stack)
+            })
+            .unwrap_or(true)
+    };
+    DroppedStackMotion {
+        bob: ask("should_bob_as_entity", |p, host, stack| {
+            p.should_bob_as_entity(host, stack)
+        }),
+        spread: ask("should_spread_as_entity", |p, host, stack| {
+            p.should_spread_as_entity(host, stack)
+        }),
     }
 }
 
@@ -1118,6 +1235,95 @@ mod tests {
                         assert_eq!(calls.load(Ordering::Relaxed), (reload + 1) * 2);
                     }
                 }
+            },
+        );
+    }
+    #[test]
+    fn dropped_stack_motion_takes_the_item_answers_and_vanilla_after_a_panic() {
+        mod_platform::testing::with_mods(
+            vec![mod_api::ModEntry::new("flat_test", Box::new(Empty))].into(),
+            || {
+                use mod_api::prelude::ItemsHost;
+                struct Flat;
+                impl ClientItemExtensions for Flat {
+                    fn should_bob_as_entity(
+                        &self,
+                        _: &dyn ClientHost,
+                        _: &mod_api::ItemStack,
+                    ) -> bool {
+                        false
+                    }
+                    fn should_spread_as_entity(
+                        &self,
+                        _: &dyn ClientHost,
+                        _: &mod_api::ItemStack,
+                    ) -> bool {
+                        false
+                    }
+                }
+                struct Spreads;
+                impl ClientItemExtensions for Spreads {
+                    fn should_bob_as_entity(
+                        &self,
+                        _: &dyn ClientHost,
+                        _: &mod_api::ItemStack,
+                    ) -> bool {
+                        false
+                    }
+                }
+                struct Panics;
+                impl ClientItemExtensions for Panics {
+                    fn should_bob_as_entity(
+                        &self,
+                        _: &dyn ClientHost,
+                        _: &mod_api::ItemStack,
+                    ) -> bool {
+                        panic!("bob refused")
+                    }
+                    fn should_spread_as_entity(
+                        &self,
+                        _: &dyn ClientHost,
+                        _: &mod_api::ItemStack,
+                    ) -> bool {
+                        panic!("spread refused")
+                    }
+                }
+                let mut host = mod_api::testing::FakeHost::new();
+                let ids = ["flat_test:picture", "flat_test:spread", "flat_test:panics"]
+                    .map(|id| mod_api::Identifier::parse(id).unwrap());
+                host.registries.resolve_items(ids.clone()).unwrap();
+                let [flat, spread, panics] = ids.map(|id| host.item_key(&id).unwrap());
+                let mut registry = Registration::new(&|_| true);
+                let _owner = owner("flat_test");
+                registry
+                    .client_item_extensions(flat, Arc::new(Flat))
+                    .unwrap();
+                registry
+                    .client_item_extensions(spread, Arc::new(Spreads))
+                    .unwrap();
+                registry
+                    .client_item_extensions(panics, Arc::new(Panics))
+                    .unwrap();
+                let motion = |item| {
+                    let stack = mod_api::ItemStack::of(item);
+                    dispatch_dropped_stack_motion(&host, &registry.state.items[&item], &stack)
+                };
+                assert_eq!(
+                    motion(flat),
+                    DroppedStackMotion {
+                        bob: false,
+                        spread: false
+                    }
+                );
+                assert_eq!(
+                    motion(spread),
+                    DroppedStackMotion {
+                        bob: false,
+                        spread: true
+                    }
+                );
+                assert_eq!(motion(panics), DroppedStackMotion::VANILLA);
+                let _ = mod_api::__private::take_hook_panics();
             },
         );
     }

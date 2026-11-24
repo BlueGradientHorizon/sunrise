@@ -291,6 +291,9 @@ pub struct Gpu {
     pub fragment_storage: bool,
     /// Storage read and written by vertex shaders (a geometry stage).
     pub vertex_storage: bool,
+    /// Storage read by vertex shaders: per-section terrain reading its arena page
+    /// (`pack_atlas::TerrainDraws::Pages`).
+    pub vertex_reads: bool,
     /// `clear_texture`; without it images are cleared by copying zeros.
     pub clear: bool,
     pub adapter_formats: bool,
@@ -305,6 +308,7 @@ impl Gpu {
             fragment_storage: flags.contains(D::FRAGMENT_WRITABLE_STORAGE),
             vertex_storage: flags.contains(D::VERTEX_STORAGE)
                 && features.contains(wgpu::Features::VERTEX_WRITABLE_STORAGE),
+            vertex_reads: flags.contains(D::VERTEX_STORAGE),
             clear: features.contains(wgpu::Features::CLEAR_TEXTURE),
             adapter_formats: features
                 .contains(wgpu::Features::TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES),
@@ -316,7 +320,7 @@ impl Gpu {
             match w.trim() {
                 "compute" => gpu.compute = false,
                 "fragment-storage" => gpu.fragment_storage = false,
-                "vertex-storage" => gpu.vertex_storage = false,
+                "vertex-storage" => (gpu.vertex_storage, gpu.vertex_reads) = (false, false),
                 "clear" => gpu.clear = false,
                 _ => {}
             }
@@ -381,6 +385,9 @@ pub struct Pass {
     /// The entity program without colour writes, for the boats' water patches
     /// (`RenderTypes.waterMask`: depth only, so no water shows inside a hull).
     pub water_mask: Option<Slot<wgpu::RenderPipeline>>,
+    /// A block program with its depth biased as vanilla's `RenderPipelines.TEXT_POLYGON_OFFSET`,
+    /// for sign text in `POLYGON_OFFSET` mode (`Draw::polygon_offset`).
+    pub polygon_offset: Option<Slot<wgpu::RenderPipeline>>,
     pub layout: wgpu::BindGroupLayout,
     pub ubo: wgpu::Buffer,
     pub block: Vec<u8>,
@@ -418,6 +425,9 @@ pub struct Pass {
     pub groups: HashMap<u64, wgpu::BindGroup>,
     /// The same for End portal draws, with `end_portal.png` bound as the atlas.
     pub portal_groups: HashMap<u64, wgpu::BindGroup>,
+    /// The same for native terrain quads (`Draw::block_atlas`), with the block atlas bound as
+    /// the atlas (`PackPost::block_atlas_group`).
+    pub block_atlas_groups: HashMap<u64, wgpu::BindGroup>,
     /// (binding, target) of each image: for a buffer, the side its sampler reads.
     pub images: Vec<(u32, Image)>,
     /// Binds the pack's storage buffers in set 4.
@@ -447,11 +457,18 @@ impl Pass {
     /// Back to the uniform values the pass was made with, and no bind groups.
     pub fn reset_history(&mut self) {
         self.block.clone_from(&self.initial_block);
-        self.groups.clear();
-        self.portal_groups.clear();
+        self.forget_groups();
         for compute in &mut self.compute {
             compute.reset_history();
         }
+    }
+
+    /// Drops every cached bind group of the pass: the plain ones, the End portal ones and the
+    /// block atlas ones, which all name the same buffers.
+    pub fn forget_groups(&mut self) {
+        self.groups.clear();
+        self.portal_groups.clear();
+        self.block_atlas_groups.clear();
     }
 
     pub fn render(&self) -> &wgpu::RenderPipeline {
@@ -505,8 +522,9 @@ pub struct Targets {
 pub struct World<'a> {
     /// The block atlas and its size.
     pub atlas: Option<(wgpu::TextureView, [u32; 2])>,
-    /// Of a stitched block atlas, each sprite layer's place (`PackAtlas::rects_table`); empty
-    /// for a grid.
+    /// Each sprite layer's place in the block atlas (`PackAtlas::rects_table`), stitched or a
+    /// grid: flat terrain reads it, and native terrain quads are placed by it
+    /// (`pack_entities::BlockAtlas`).
     pub sprite_rects: &'a [u32],
     pub material_maps: Option<[wgpu::TextureView; 2]>,
     pub lightmap: wgpu::TextureView,

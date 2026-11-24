@@ -2,7 +2,7 @@
 //! armour and chests, mounting, the rider's control and jump bar
 //! (`LocalPlayer.aiStep`'s riding jump), positioning, dismounting, and the
 //! mount's health and jump bar on the HUD.
-use super::Game;
+use super::{Game, item_abilities::ability};
 use sunrise_client::actions::Action;
 use sunrise_client::{
     blocks::Fluid,
@@ -123,7 +123,7 @@ impl Game<'_> {
     /// / `Mob.shearItem`: the saddle of a `#can_equip_saddle` mob comes off
     /// before its mobInteract can ride it, with the saddle's shearing sound.
     /// An occupied mount is not sheared: its mobInteract runs instead.
-    pub(super) fn shear_saddle(&mut self, index: usize, item: &str) -> Option<bool> {
+    pub(super) fn shear_saddle(&mut self, index: usize) -> Option<bool> {
         let m = &self.mobs[index];
         // EntityTypeTags.CAN_EQUIP_SADDLE.
         let saddleable = matches!(
@@ -140,7 +140,11 @@ impl Game<'_> {
                 | Species::Nautilus
                 | Species::ZombieNautilus
         );
-        if item != "minecraft:shears" || !saddleable || m.is_baby() || !m.alive() {
+        if !self.held_shears(ability::SHEARS_REMOVE_ARMOR)
+            || !saddleable
+            || m.is_baby()
+            || !m.alive()
+        {
             return None;
         }
         let id = m.id;
@@ -1021,11 +1025,23 @@ impl Game<'_> {
     fn jumps(species: Species) -> bool {
         equine::is_equine(species) || sunrise_client::mobs::nautilus::is_nautilus(species)
     }
-    /// `Player.jumpableVehicle`: a saddled mount that jumps (not a pig or a
-    /// strider, which a saddle only steers).
-    pub(super) fn jumpable_mount(&self) -> bool {
-        self.mount_index()
-            .is_some_and(|i| self.mobs[i].extra.saddled() && Self::jumps(self.mobs[i].species()))
+    /// `LocalPlayer.jumpableVehicle`: the vehicle the player controls (`getControlledVehicle`:
+    /// the player is its first passenger and it is saddled, `AbstractHorse` and
+    /// `AbstractNautilus.getControllingPassenger`) when it can jump now
+    /// (`PlayerRideableJumping.canJump`: saddled, and a camel neither sitting nor getting up or
+    /// down; a pig or a strider never jumps), by its entity id. Unlike the ridden movement's
+    /// `drives`, it does not ask whether the mount is alive: vanilla doesn't. The HUD's jump
+    /// bar and `ClientViewClientHost::jumpable_vehicle` both read this decision.
+    pub(super) fn jumpable_mount(&self) -> Option<u32> {
+        if !self.remote.as_ref().is_some_and(|r| r.first_passenger) {
+            return None;
+        }
+        let mount = &self.mobs[self.mount_index()?];
+        let can_jump = Self::jumps(mount.species())
+            && mount.extra.saddled()
+            && !(matches!(mount.species(), Species::Camel | Species::CamelHusk)
+                && sunrise_client::mobs::camel::refuse_to_move(mount));
+        can_jump.then_some(mount.id)
     }
     /// `willPrioritizeJumpInfo`: charging a jump or recharging.
     pub(super) fn mount_jumping(&self) -> bool {
@@ -2233,7 +2249,7 @@ mod strider_lava_boarding_tests;
 
 #[cfg(test)]
 #[path = "tests/steerable_boarding_tests.rs"]
-mod steerable_boarding_tests;
+pub(in crate::game) mod steerable_boarding_tests;
 
 #[cfg(test)]
 #[path = "tests/ride_dismount_tests.rs"]

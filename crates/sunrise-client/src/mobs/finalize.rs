@@ -31,15 +31,11 @@ use std::{borrow::Cow, fs, path::Path, sync::Arc};
 use sunrise_core::{equipment_slot::EquipmentSlot, geometry::Aabb, random::RandomSource};
 use sunrise_world::attributes::{AttributeError, Instance, Observer, Operation};
 
-/// What a level's finalizeSpawn event decided for a mob another mob's
-/// finalizeSpawn created: the rider is dropped, added without its own rolls,
-/// or finalized. Vanilla fires the event for every `finalizeSpawn` call,
-/// riders included.
-#[derive(Debug, PartialEq)]
-pub enum SpawnEvent {
-    Cancelled,
-    Skip,
-    Finalize,
+/// The two independent decisions of NeoForge's `FinalizeSpawnEvent`.
+#[derive(Debug, Default, PartialEq, Eq)]
+pub struct SpawnEvent {
+    pub skip_initialization: bool,
+    pub veto_admission: bool,
 }
 
 /// The level as finalizeSpawn reads it.
@@ -78,7 +74,7 @@ pub trait FinalizeLevel {
     /// finalizeSpawn creates (`ZombieHorse`'s zombie, a chicken jockey).
     /// The default finalizes: a level without the event keeps vanilla's flow.
     fn spawn_event(&mut self, _: &mut Mob, _: Reason) -> SpawnEvent {
-        SpawnEvent::Finalize
+        SpawnEvent::default()
     }
     /// What finalizeSpawn needs besides the level: the variant registries,
     /// enchantments and items the level owns.
@@ -522,6 +518,8 @@ pub struct Attributes {
     pub name_tag_distance: Option<f64>,
     /// `BELOW_NAME_DISTANCE` from a server attribute update.
     pub below_name_distance: Option<f64>,
+    /// `CAMERA_DISTANCE` from a server attribute update; never saved.
+    pub camera_distance: Option<f64>,
     /// The transient minecraft:baby speed modifier was taken away
     /// (`/attribute ... modifier remove`) until the next setBaby. Not
     /// saved: a load runs setBaby again.
@@ -1564,17 +1562,26 @@ pub fn stored_stack(m: &Mob, slot: usize) -> Option<ItemStack> {
     let base = m.extra.slot_stack(slot)?;
     Some(stored_equipment(m, slot, base)?.project().into_owned())
 }
-/// What a mob has in `slot` as a stack: the one it kept, else one item with
-/// its enchantments.
+/// What a mob has in `slot` as a stack, including its count, enchantments and trim.
 pub fn item_stack(m: &Mob, slot: usize) -> Option<crate::items::ItemStack> {
-    stored_stack(m, slot).or_else(|| {
-        let mut stack = crate::items::ItemStack::new(&item(m, slot)?, 1);
-        stack.set_crafting_enchantments(slot_enchantments(m, slot));
-        if let Some(trim) = gear::gear(m).and_then(|g| g.trims[gear_slot(slot)].clone()) {
-            stack.data_mut().trim = Some(trim);
-        }
-        Some(stack)
-    })
+    if !matches!(slot, MAINHAND..=HEAD | SADDLE) {
+        return None;
+    }
+    let base = m.extra.slot_stack(slot)?;
+    if let Some(stored) = stored_equipment(m, slot, base) {
+        return Some(stored.project().into_owned());
+    }
+    let mut stack = ItemStack {
+        item: base.item.clone(),
+        count: base.count,
+        damage: 0,
+        extra: None,
+    };
+    stack.set_crafting_enchantments(slot_enchantments(m, slot));
+    if let Some(trim) = gear::gear(m).and_then(|g| g.trims[gear_slot(slot)].clone()) {
+        stack.data_mut().trim = Some(trim);
+    }
+    Some(stack)
 }
 /// `LivingEntity.getItemBySlot` from the stacks a mob keeps: the hands and
 /// armour from `item_stack` (`EquipmentSlot` ordinals match these slots), the
@@ -1950,14 +1957,11 @@ impl<L: FinalizeLevel + ?Sized, R: RandomSource> Ctx<'_, L, R> {
     /// `false` drops it, otherwise it is finalized unless the level said the
     /// listener already did (`Mob.finalizeSpawn` fires for riders too).
     fn rider_kept(&mut self, j: &mut Mob, reason: Reason, group: Option<Group>) -> bool {
-        match self.level.spawn_event(j, reason) {
-            SpawnEvent::Cancelled => false,
-            SpawnEvent::Skip => true,
-            SpawnEvent::Finalize => {
-                self.finalize(j, reason, group);
-                true
-            }
+        let event = self.level.spawn_event(j, reason);
+        if !event.skip_initialization {
+            self.finalize(j, reason, group);
         }
+        !event.veto_admission
     }
     /// `startRiding`: the rider leaves the vehicle it was on.
     fn ride(&mut self, rider: &mut Mob, vehicle: &mut Mob) {

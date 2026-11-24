@@ -138,6 +138,21 @@ correction carries the live server position and velocity. The server compares
 the vectors bit for bit, except that inputs within vanilla's movement dead zone
 are equivalent. The client never calls this hook.
 
+## Turning hanging entities
+
+On the server, use these `EntityRef` methods with `&mut dyn ServerHost`:
+
+- `set_hanging_direction(host, direction)` changes a painting or frame's facing as
+  `HangingEntity.setDirection` does, updating yaw, pitch and bounds. Frames accept all six
+  directions; paintings accept only the four horizontal directions and return `false`
+  without changing for up or down. The next survival check decides whether it can hang there.
+- `set_item_frame_rotation(host, rotation)` turns the item in an item frame or glow item
+  frame as `ItemFrame.setRotation` does: eighths of a turn, wrapping modulo 8.
+  Comparators update afterwards.
+
+Both methods return `false` for a stale handle or the wrong entity type. Entity
+synchronization shows the change to players, including a painting or frame turned south.
+
 ## Swimming eligibility
 
 `Hooks::can_start_swimming` asks for a Boolean from the local player and the
@@ -212,6 +227,20 @@ The neighbouring events differ: canceling Start prevents the use beginning,
 but duration zero does begin it. Canceling Stop skips only release-using, not
 clearing the use. Finish is not cancellable; its result stack can be replaced.
 
+## Entity size on both sides
+
+`entity_size` resolves dimensions through a read-only `Host`, on each side that
+refreshes an entity's size. A client asks for its copy of a server entity when the
+copy is added, when the server sends a new pose (even one with the same size), and
+when `minecraft:scale` or another synched value from the server changes its vanilla
+size; the copy's box, picking and hitbox outline then use the answer.
+The server asks for its own entity separately: a mob before and after its tick,
+and every other entity (items, minecarts, boats, projectiles, armor stands, displays,
+interactions and the rest) at the same points, the first time once it exists. Its
+collisions, block contacts and picking then use the answer. Answer from the event
+(the entity's type, the pose and the sizes) the same way on both sides, or the
+client's box and the server's disagree.
+
 ## Player size and pose fit
 
 `entity_size` resolves dimensions through a read-only `Host`.
@@ -225,3 +254,74 @@ Cached answers are keyed by pose and vanilla dimensions. A scale change after
 resolution or a replay with another key uses vanilla for that fit decision until
 the next pre-motion resolution. Uncached fall-flying, sleeping and spin-attack
 candidates also use vanilla dimensions.
+
+## Living knockback entry
+
+`living_knockback` fires once per full-entry call, before resistance and motion changes.
+The read-only `entry` is `KnockbackEntry::Short` when the short overload delegated the push,
+otherwise `KnockbackEntry::Full`. To model doubling strength at both entries, double it
+once, then double it again only on `Short`: an input of 0.4 becomes 1.6 for `Short`
+and 0.8 for `Full`. There is no second hook dispatch. Two non-commuting listeners run
+in dispatch order, each completing its rewrites before the next; this does not simulate
+two separate passes over the listener list. Cancellation still leaves motion unchanged.
+
+On the server, `living.knockback(host, strength, [x, z])` enters the short overload. The
+entity moves away from `[x, z]`, and a player's own client gets the resulting velocity.
+It returns `false` if the handle is unavailable, the input isn't finite, the hook cancels,
+or no push remains after resistance. This call deals no damage and adds no kill credit:
+its source is unattributed `minecraft:generic`, so any attacker fallback and kill credit
+come only from the victim's existing hurt memory.
+
+`kill_credit` identifies who receives kill credit for the pushed living entity, and `kill_credit_main`
+is that credited entity's current main-hand stack (if any), both read after accepted-hit memories are
+committed and before the push. A remembered player takes precedence over the last hurting mob,
+including a tame wolf's owner. An unresolved remembered player yields 0 and no stack, not a fallback
+to the mob. After the remembered player expires, the recent mob may receive credit. This context is
+distinct from `attacker` and its captured source weapon, and the credited entity can differ from both
+the victim and the immediate attacker. NeoForge's `LivingKnockBackEvent` doesn't carry either field.
+
+## Living death
+
+`living_death` (see its rustdoc and [Hook notes](../../reference/hook-notes.md)) supplies
+the accepted killing source and its captured weapon stack. Cancellation keeps the
+health a listener leaves, suppresses loot, experience and death messages, and does
+not heal the body. An unhealed cancelled body is removed at tick 20 without loot
+or another death dispatch.
+
+`LivingRef::kill_credit` can still resolve a mob's remembered player after the
+lethal hit while the mob remains in the level. As in `LivingEntity.baseTick`,
+the player reference survives the tick that decrements its timer to zero and
+expires on the next tick. Death loot and experience still use the positive timer
+to determine whether a player hit the mob recently.
+
+### Last attacker and last hurt target
+
+On the server, `LivingRef::last_attacker(host)` reads who last hurt the entity,
+within its recent-attacker window. `LivingRef::last_hurt_mob(host)` instead
+reads the living target the entity last attacked, as `(EntityRef, i32)`. The
+number is the holder's `tick_count` at the hit, not level time. Melee records
+a successful hit; arrow and wind-charge impacts record the target before
+damage, even if damage is refused. There is no expiry window on this read.
+It returns `None` for a stale holder, an empty record, or a dead or gone target.
+
+## Item pickup notices
+
+Listen to the server hook `item_picked_up_post` (NeoForge's `ItemEntityPickupEvent.Post`) to track
+items a player receives from the ground. It fires once per pickup that put anything into the
+inventory: when the whole stack went in, and when only part of it did and the rest stayed on the
+ground, as when 8 apples lie there and only 5 fit.
+
+It does not fire when `item_picked_up` refused the pickup or the inventory took nothing. A creative
+player always takes the whole stack.
+
+It carries the player's UUID, the item entity, `original`, a copy of the stack as it lay, and
+`remaining`, the item entity's live remainder: `None` after a whole pickup, the part that did not
+fit after a partial one. When the notice arrives, the amount the inventory took is `original`'s
+count less `remaining`'s. Set `remaining` to change what stays on the ground, or `None` to empty the
+entity; that changes the ground, not what went into the inventory, so read the amount before editing
+`remaining`. Removing the entity in the listener keeps it removed, for the host's player and LAN
+guests alike: there is no take animation, the stat and criterion run.
+
+For a quest counter or custom pickup sound, count the amount as it stood when the notice arrived:
+after any listener edits `remaining`, `original` less `remaining` need not equal what the inventory
+took.

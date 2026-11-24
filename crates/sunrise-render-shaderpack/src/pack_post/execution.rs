@@ -14,11 +14,55 @@ use sunrise_shaders::{BUFFERS, Group, SHADOW_COLORS};
 
 use super::construction::*;
 use crate::PollLive;
+use crate::pack_entities::{
+    BEAM, BLOCK, BLOCK_TRANSLUCENT, DESTROY, ENTITY, PARTICLE, PARTICLE_TRANSLUCENT, TRANSLUCENT,
+};
 use crate::pack_hand;
 use crate::pack_images;
 use crate::pack_sky::SkyFrame;
 use crate::pack_textures;
 use crate::pack_uniforms::{self, PackInputs};
+
+/// Which engine render boundaries this frame's classic pack owns.
+#[derive(Clone, Copy, Default)]
+pub struct WorldBoundaries {
+    pub sky: bool,
+    pub opaque_blocks: bool,
+    pub features: bool,
+    pub translucent_blocks: bool,
+    pub weather: bool,
+    pub custom_geometry: bool,
+}
+
+/// Render boundaries reached within the classic pack's world pass.
+pub enum WorldBoundary<'a> {
+    AfterSky,
+    AfterOpaqueBlocks {
+        color: &'a wgpu::TextureView,
+        depth: &'a wgpu::TextureView,
+    },
+    Features {
+        translucent: bool,
+        color: &'a wgpu::TextureView,
+        depth: &'a wgpu::TextureView,
+    },
+    AfterTranslucentBlocks {
+        color: &'a wgpu::TextureView,
+        depth: &'a wgpu::TextureView,
+    },
+    AfterWeather {
+        color: &'a wgpu::TextureView,
+        depth: &'a wgpu::TextureView,
+    },
+    CustomGeometry {
+        color: &'a wgpu::TextureView,
+        depth: &'a wgpu::TextureView,
+    },
+    AfterLevel,
+}
+
+const OPAQUE_FEATURES: [usize; 3] = [ENTITY, BLOCK, PARTICLE];
+const TRANSLUCENT_FEATURES: [usize; 4] = [TRANSLUCENT, DESTROY, BEAM, BLOCK_TRANSLUCENT];
 
 /// The frame's sky inputs, decoupled from the client's `Frame`: what `draw_sky` needs to build a
 /// `SkyFrame` (`view` gives the sun, colours and fog).
@@ -71,6 +115,7 @@ impl PackPost {
         self.custom.forget_world();
         self.center_depth = None;
         self.targets = None;
+        self.export_depth_group = None;
         self.main = 0;
         self.mips_valid = 0;
         self.rgb_unset = true;
@@ -158,6 +203,52 @@ impl PackPost {
         self.entities.is_some()
     }
 
+    /// Whether the pack takes over either feature boundary, excluding shadow-only programs.
+    pub fn owns_feature_stages(&self) -> bool {
+        self.entities.as_ref().is_some_and(|entities| {
+            OPAQUE_FEATURES
+                .iter()
+                .any(|&i| entities.passes[i].is_some() && !entities.late[i])
+                || TRANSLUCENT_FEATURES
+                    .iter()
+                    .any(|&i| entities.passes[i].is_some())
+        })
+    }
+
+    fn has_late_features(&self) -> bool {
+        self.entities.as_ref().is_some_and(|entities| {
+            TRANSLUCENT_FEATURES
+                .iter()
+                .any(|&i| entities.passes[i].is_some() && entities.late[i])
+        })
+    }
+
+    fn target_boundary(
+        &mut self,
+        encoder: &mut wgpu::CommandEncoder,
+        boundary: &mut impl FnMut(&mut wgpu::CommandEncoder, WorldBoundary<'_>) -> bool,
+        make: impl for<'a> FnOnce(&'a wgpu::TextureView, &'a wgpu::TextureView) -> WorldBoundary<'a>,
+    ) {
+        let targets = self.targets.as_ref().expect("resized");
+        let color = &targets.color[0].as_ref().expect("colortex0")[usize::from(self.main & 1 != 0)];
+        if boundary(encoder, make(color, &targets.depth)) {
+            self.mips_valid &= !1;
+        }
+    }
+
+    fn feature_boundary(
+        &mut self,
+        encoder: &mut wgpu::CommandEncoder,
+        translucent: bool,
+        boundary: &mut impl FnMut(&mut wgpu::CommandEncoder, WorldBoundary<'_>) -> bool,
+    ) {
+        self.target_boundary(encoder, boundary, |color, depth| WorldBoundary::Features {
+            translucent,
+            color,
+            depth,
+        });
+    }
+
     /// Whether the pack draws the block outline itself.
     pub fn has_lines(&self) -> bool {
         self.lines.is_some()
@@ -237,7 +328,10 @@ impl PackPost {
     }
 
     /// Runs the pack over the world drawn into `world` (colour) and `world_depth`, then draws
-    /// the result onto `screen`.
+    /// the result onto `screen`. Notifies after the sky if the frame assigned the stage to this
+    /// pack, and after the last pack world pass, before composition. A pack's hand is still part
+    /// of its world passes for the depth snapshots.
+    #[allow(clippy::too_many_arguments)]
     pub fn run_frame(
         &mut self,
         device: &wgpu::Device,
@@ -258,6 +352,8 @@ impl PackPost {
         shadow_scene_revision: (u64, u64),
         ticks: u64,
         day_time: i64,
+        boundaries: WorldBoundaries,
+        mut boundary: impl FnMut(&mut wgpu::CommandEncoder, WorldBoundary<'_>) -> bool,
         lost: &std::sync::atomic::AtomicBool,
         poll: PollLive,
     ) -> Result<(), String> {
@@ -554,8 +650,12 @@ impl PackPost {
         let mut passes = std::mem::take(&mut self.passes);
         let mut seen = (false, false);
         let mut shown = false;
-        // A water-only pack still needs the opaque phase to populate requested snapshots.
-        let mut terrain_drawn = self.terrain.is_none()
+        // The opaque phase owns the sky/block/feature boundaries even without geometry, and a
+        // water-only pack still needs it to populate requested snapshots.
+        let mut terrain_drawn = !boundaries.sky
+            && !boundaries.opaque_blocks
+            && !boundaries.features
+            && self.terrain.is_none()
             && self.terrain_cutout.is_none()
             && self.sky.is_none()
             && !self.entities.as_ref().is_some_and(Entities::drawn)
@@ -570,8 +670,14 @@ impl PackPost {
                 .zip(e.late)
                 .any(|(p, late)| p.is_some() && late)
         });
-        let mut water_drawn = self.water.is_none() && self.weather.is_none() && !late_entities;
+        let mut water_drawn = !boundaries.translucent_blocks
+            && !boundaries.weather
+            && !boundaries.custom_geometry
+            && self.water.is_none()
+            && self.weather.is_none()
+            && !late_entities;
         let mut shadow_drawn = false;
+        let mut world_finished = false;
         for pass in &mut passes {
             if pass.group == Group::Setup && !self.setup_pending {
                 continue;
@@ -593,15 +699,38 @@ impl PackPost {
             }
             if !terrain_drawn && !early && pass.group != Group::Prepare {
                 terrain_drawn = true;
-                self.draw_opaque(device, queue, encoder, size, frame_view, sky, hand, terrain);
+                self.draw_opaque(
+                    device,
+                    queue,
+                    encoder,
+                    size,
+                    frame_view,
+                    sky,
+                    hand,
+                    terrain,
+                    boundaries,
+                    &mut boundary,
+                );
             }
             // As if the pack didn't have it: no compute stages, flips or stage changes.
             if self.sizes_differ(pass) {
                 continue;
             }
-            if !water_drawn && matches!(pass.group, Group::Composite | Group::Final) {
-                water_drawn = true;
-                self.draw_translucent(device, queue, encoder, size, terrain);
+            if !world_finished && matches!(pass.group, Group::Composite | Group::Final) {
+                if !water_drawn {
+                    water_drawn = true;
+                    self.draw_translucent(
+                        device,
+                        queue,
+                        encoder,
+                        size,
+                        terrain,
+                        boundaries,
+                        &mut boundary,
+                    );
+                }
+                boundary(encoder, WorldBoundary::AfterLevel);
+                world_finished = true;
             }
             if pass.group == Group::Deferred && !seen.0 {
                 seen.0 = true;
@@ -704,15 +833,73 @@ impl PackPost {
             );
         }
         if !terrain_drawn {
-            self.draw_opaque(device, queue, encoder, size, frame_view, sky, hand, terrain);
+            self.draw_opaque(
+                device,
+                queue,
+                encoder,
+                size,
+                frame_view,
+                sky,
+                hand,
+                terrain,
+                boundaries,
+                &mut boundary,
+            );
         }
         if !water_drawn {
-            self.draw_translucent(device, queue, encoder, size, terrain);
+            self.draw_translucent(
+                device,
+                queue,
+                encoder,
+                size,
+                terrain,
+                boundaries,
+                &mut boundary,
+            );
+        }
+        if !world_finished {
+            boundary(encoder, WorldBoundary::AfterLevel);
         }
         let targets = self.targets.as_ref().expect("resized");
         // depthtex0 as the frame leaves it, for next frames' `centerDepthSmooth`.
         if let Some(center) = &mut self.center_depth {
             center.copy(device, encoder, &targets.depth_texture);
+        }
+        // Export the pack's final GL depth (`targets.depth`) back to Sunrise's screen-rows,
+        // reversed-Z `world_depth` whenever the pack wrote depth, so post-pack consumers
+        // (`world_drawn`, overlays, secondary views) depth-test against pack-drawn geometry.
+        if self.draws_depth {
+            if self
+                .export_depth_group
+                .as_ref()
+                .is_none_or(|g| g.0 != targets.depth)
+            {
+                let group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+                    label: Some("Shader pack depth export"),
+                    layout: &self.export_depth.1,
+                    entries: &[wgpu::BindGroupEntry {
+                        binding: 1,
+                        resource: wgpu::BindingResource::TextureView(&targets.depth),
+                    }],
+                });
+                self.export_depth_group = Some((targets.depth.clone(), group));
+            }
+            let mut rp = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("Shader pack depth export"),
+                color_attachments: &[],
+                depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                    view: world_depth,
+                    depth_ops: Some(wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(0.0),
+                        store: wgpu::StoreOp::Store,
+                    }),
+                    stencil_ops: None,
+                }),
+                ..Default::default()
+            });
+            rp.set_pipeline(&self.export_depth.0);
+            rp.set_bind_group(0, self.export_depth_group.as_ref().map(|g| &g.1), &[]);
+            rp.draw(0..3, 0..1);
         }
         let view = |m: u16, i: usize, alt: bool| {
             targets.color[i]
@@ -851,6 +1038,14 @@ impl PackPost {
         if !pass.block.is_empty() {
             queue.write_buffer(&pass.ubo, 0, &pass.block);
         }
+        self.cached_group(device, pass)
+    }
+
+    /// `pass`'s bind group for the frame's state, from its cache (`Pass::groups`) or made and
+    /// cached: what `bind` gives once its copies and uniform upload are done. A second group of
+    /// the same pass (another atlas, `portal_group`, `block_atlas_group`) takes it from here
+    /// rather than from `bind`, so those run once a pass.
+    fn cached_group(&self, device: &wgpu::Device, pass: &mut Pass) -> wgpu::BindGroup {
         let targets = self.targets.as_ref().expect("resized");
         let shadow = self.shadow_targets.as_ref();
         let shadow_main = shadow.map_or(0, |s| s.main);
@@ -1334,23 +1529,26 @@ impl PackPost {
         self.sky = Some(sky_parts);
     }
 
-    /// Entities, block entities, translucent entity parts and particles with the pack's
-    /// programs, those drawn before deferred or (`late`) after: each run `prepare_entities` kept
-    /// is one draw with its own `entityId` or `blockEntityId` and `entityColor`.
-    pub fn draw_entities(
+    /// Draw one group of entity programs before deferred or (`late`) afterwards. Each run that
+    /// `prepare_entities` kept has its own `entityId` or `blockEntityId` and `entityColor`.
+    fn draw_entities(
         &mut self,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
         encoder: &mut wgpu::CommandEncoder,
         size: [u32; 2],
         late: bool,
+        programs: &[usize],
     ) {
         let Some(mut entities) = self.entities.take() else {
             return;
         };
         let geometry = &entities.geometry;
-        for (program, pass) in entities.passes.iter_mut().enumerate() {
-            let Some(pass) = pass.as_mut().filter(|_| entities.late[program] == late) else {
+        for &program in programs {
+            let Some(pass) = entities.passes[program]
+                .as_mut()
+                .filter(|_| entities.late[program] == late)
+            else {
                 continue;
             };
             let mut draws = geometry
@@ -1367,14 +1565,17 @@ impl PackPost {
             let group = self.bind(device, queue, encoder, pass, size);
             let portal_group = self.portal_group(
                 device,
-                queue,
                 encoder,
                 pass,
-                size,
                 geometry
                     .draws
                     .iter()
                     .any(|d| d.pack && d.program == program && d.portal),
+            );
+            let block_group = self.block_atlas_group(
+                device,
+                pass,
+                (geometry.draws.iter()).any(|d| d.pack && d.program == program && d.block_atlas),
             );
             {
                 let mut rp = self.begin(encoder, pass);
@@ -1388,13 +1589,23 @@ impl PackPost {
                 rp.set_bind_group(1, &geometry.table_group, &[]);
                 rp.set_vertex_buffer(0, geometry.vertices());
                 rp.set_index_buffer(geometry.indices.slice(..), wgpu::IndexFormat::Uint32);
-                let mut on_portal = false;
+                let groups = [Some(&group), portal_group.as_ref(), block_group.as_ref()];
+                let mut bound = 0;
+                // Polygon-offset sign text takes the pass's biased pipeline, in its place among
+                // the run's draws (`Draw::polygon_offset`).
+                let offset = pass.polygon_offset.as_ref().and_then(|p| p.get());
+                let mut on_offset = false;
                 for d in draws {
-                    if let Some(portal) = &portal_group
-                        && d.portal != on_portal
+                    bind_atlas(&mut rp, d, groups, &mut bound);
+                    if let Some(offset) = offset
+                        && d.polygon_offset != on_offset
                     {
-                        rp.set_bind_group(0, if d.portal { portal } else { &group }, &[]);
-                        on_portal = d.portal;
+                        rp.set_pipeline(if d.polygon_offset {
+                            offset
+                        } else {
+                            pass.render()
+                        });
+                        on_offset = d.polygon_offset;
                     }
                     if pass.draw {
                         rp.set_bind_group(2, &geometry.group, &[geometry.offset(d.slot)]);
@@ -1442,10 +1653,8 @@ impl PackPost {
     pub fn portal_group(
         &mut self,
         device: &wgpu::Device,
-        queue: &wgpu::Queue,
         encoder: &mut wgpu::CommandEncoder,
         pass: &mut Pass,
-        size: [u32; 2],
         wanted: bool,
     ) -> Option<wgpu::BindGroup> {
         let atlas = pass.atlas.clone().or_else(|| self.atlas.clone())?;
@@ -1471,9 +1680,38 @@ impl PackPost {
         let view = self.portal_texture.as_ref().map(|p| p.1.clone());
         let saved = std::mem::replace(&mut pass.atlas, view);
         let groups = std::mem::replace(&mut pass.groups, std::mem::take(&mut pass.portal_groups));
-        let group = self.bind(device, queue, encoder, pass, size);
+        let group = self.cached_group(device, pass);
         pass.portal_groups = std::mem::replace(&mut pass.groups, groups);
         pass.atlas = saved;
+        Some(group)
+    }
+
+    /// Native terrain quads (`Draw::block_atlas`) bind the block atlas, the one
+    /// the pack's terrain samples, as the atlas. The program reads its `normals` and `specular`
+    /// as paged maps of the shared atlas (`Pass::paged`), whose pages say nothing of the block
+    /// atlas: these draws get the stand-ins a program reads with no map bound. `None` when no such
+    /// draw is in this pass, or the pack has no block atlas.
+    pub fn block_atlas_group(
+        &self,
+        device: &wgpu::Device,
+        pass: &mut Pass,
+        wanted: bool,
+    ) -> Option<wgpu::BindGroup> {
+        let atlas = self.atlas.clone().filter(|_| wanted)?;
+        // `bind` caches groups by a key without the atlas: these are kept in a cache of their
+        // own, swapped in with the atlas.
+        let saved = (
+            pass.atlas.replace(atlas),
+            std::mem::replace(&mut pass.paged, false),
+            std::mem::replace(&mut pass.material_maps, false),
+        );
+        let groups = std::mem::replace(
+            &mut pass.groups,
+            std::mem::take(&mut pass.block_atlas_groups),
+        );
+        let group = self.cached_group(device, pass);
+        pass.block_atlas_groups = std::mem::replace(&mut pass.groups, groups);
+        (pass.atlas, pass.paged, pass.material_maps) = saved;
         Some(group)
     }
 
@@ -1503,17 +1741,25 @@ impl PackPost {
             let group = self.bind(device, queue, encoder, pass, size);
             let portal_group = self.portal_group(
                 device,
-                queue,
                 encoder,
                 pass,
-                size,
                 (geometry.draws.iter()).any(|d| {
                     d.shadow
                         && crate::pack_entities::shadow_program(d.program) == program
                         && d.portal
                 }),
             );
-            let mut on_portal = false;
+            let block_group = self.block_atlas_group(
+                device,
+                pass,
+                (geometry.draws.iter()).any(|d| {
+                    d.shadow
+                        && crate::pack_entities::shadow_program(d.program) == program
+                        && d.block_atlas
+                }),
+            );
+            let groups = [Some(&group), portal_group.as_ref(), block_group.as_ref()];
+            let mut bound = 0;
             let mut rp = self.begin(encoder, pass);
             rp.set_pipeline(pass.render());
             rp.set_bind_group(0, &group, &[]);
@@ -1526,12 +1772,7 @@ impl PackPost {
             rp.set_vertex_buffer(0, geometry.vertices());
             rp.set_index_buffer(geometry.indices.slice(..), wgpu::IndexFormat::Uint32);
             for d in draws {
-                if let Some(portal) = &portal_group
-                    && d.portal != on_portal
-                {
-                    rp.set_bind_group(0, if d.portal { portal } else { &group }, &[]);
-                    on_portal = d.portal;
-                }
+                bind_atlas(&mut rp, d, groups, &mut bound);
                 if pass.draw {
                     rp.set_bind_group(2, &geometry.group, &[geometry.offset(d.slot)]);
                 }
@@ -1550,6 +1791,7 @@ impl PackPost {
     }
 
     /// The sky, when it shows, then terrain, entities and block entities.
+    #[allow(clippy::too_many_arguments)]
     pub fn draw_opaque(
         &mut self,
         device: &wgpu::Device,
@@ -1560,12 +1802,29 @@ impl PackPost {
         sky: &SkyInputs<'_>,
         hand: &HandInputs<'_>,
         terrain: &mut TerrainDraw<'_>,
+        boundaries: WorldBoundaries,
+        boundary: &mut impl FnMut(&mut wgpu::CommandEncoder, WorldBoundary<'_>) -> bool,
     ) {
         if sky.visible || sky.end_fog_sky {
             self.draw_sky(device, queue, encoder, size, view, sky);
         }
+        if boundaries.sky {
+            boundary(encoder, WorldBoundary::AfterSky);
+        }
         self.draw_terrain(device, queue, encoder, size, TerrainList::Solid, terrain);
-        self.draw_entities(device, queue, encoder, size, false);
+        if boundaries.opaque_blocks {
+            self.target_boundary(encoder, boundary, |color, depth| {
+                WorldBoundary::AfterOpaqueBlocks { color, depth }
+            });
+        }
+        self.draw_entities(device, queue, encoder, size, false, &OPAQUE_FEATURES);
+        if boundaries.features {
+            self.feature_boundary(encoder, false, boundary);
+        }
+        self.draw_entities(device, queue, encoder, size, false, &TRANSLUCENT_FEATURES);
+        if boundaries.features && !self.has_late_features() {
+            self.feature_boundary(encoder, true, boundary);
+        }
         self.draw_lines(device, queue, encoder, size);
         self.draw_clouds(device, queue, encoder, size);
         // Only depth2 excludes the opaque first-person hand.
@@ -1732,13 +1991,16 @@ impl PackPost {
     }
 
     /// Translucent terrain, then the entity parts drawn after deferred.
-    pub fn draw_translucent(
+    #[allow(clippy::too_many_arguments)]
+    fn draw_translucent(
         &mut self,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
         encoder: &mut wgpu::CommandEncoder,
         size: [u32; 2],
         terrain: &mut TerrainDraw<'_>,
+        boundaries: WorldBoundaries,
+        boundary: &mut impl FnMut(&mut wgpu::CommandEncoder, WorldBoundary<'_>) -> bool,
     ) {
         self.draw_terrain(
             device,
@@ -1748,9 +2010,35 @@ impl PackPost {
             TerrainList::Translucent,
             terrain,
         );
-        self.draw_entities(device, queue, encoder, size, true);
+        if boundaries.translucent_blocks {
+            self.target_boundary(encoder, boundary, |color, depth| {
+                WorldBoundary::AfterTranslucentBlocks { color, depth }
+            });
+        }
+        self.draw_entities(device, queue, encoder, size, true, &TRANSLUCENT_FEATURES);
+        if boundaries.features && self.has_late_features() {
+            self.feature_boundary(encoder, true, boundary);
+        }
+        self.draw_entities(
+            device,
+            queue,
+            encoder,
+            size,
+            true,
+            &[PARTICLE, PARTICLE_TRANSLUCENT],
+        );
         self.draw_hand_water(device, queue, encoder, size);
         self.draw_weather(device, queue, encoder, size);
+        if boundaries.weather {
+            self.target_boundary(encoder, boundary, |color, depth| {
+                WorldBoundary::AfterWeather { color, depth }
+            });
+        }
+        if boundaries.custom_geometry {
+            self.target_boundary(encoder, boundary, |color, depth| {
+                WorldBoundary::CustomGeometry { color, depth }
+            });
+        }
     }
 
     /// The hand's translucent quads (uploaded by `draw_hand` this frame), with
@@ -1891,9 +2179,21 @@ impl PackPost {
         !pass.group.shadow() && pass.group != Group::Final && sizes.any(|s| Some(s) != first)
     }
 
+    /// Whether `colortex0` is float-blendable on `device`, so standard world-primitive
+    /// pipelines can draw into the pack's color target.
+    pub fn colortex0_blendable(&self, device: &wgpu::Device) -> bool {
+        let format = self.formats[0];
+        holds_floats(format)
+            && format
+                .guaranteed_format_features(device.features())
+                .flags
+                .contains(wgpu::TextureFormatFeatureFlags::BLENDABLE)
+    }
+
     /// Drops every pass's cached bind groups, compute stages included: they name views that
     /// were made again.
     pub fn forget_groups(&mut self) {
+        self.export_depth_group = None;
         let sky = self
             .sky
             .iter_mut()
@@ -1919,7 +2219,7 @@ impl PackPost {
             .chain(&mut self.shadow_water)
             .chain(&mut self.shadow_comp);
         for pass in passes {
-            pass.groups.clear();
+            pass.forget_groups();
             for c in &mut pass.compute {
                 c.groups.clear();
             }
@@ -2377,5 +2677,30 @@ impl PackPost {
             }
         }
         hasher.finish()
+    }
+}
+
+/// Set 0 for draw `d` of an entity pass: of `groups` (plain, End portal, block atlas), the one
+/// of the atlas it samples (`Draw::portal`, `Draw::block_atlas`), the plain one when that atlas's
+/// is missing. `bound`: the index of the group set now.
+fn bind_atlas(
+    rp: &mut wgpu::RenderPass<'_>,
+    d: &crate::pack_entities::Draw,
+    groups: [Option<&wgpu::BindGroup>; 3],
+    bound: &mut usize,
+) {
+    let wanted = if d.portal {
+        1
+    } else if d.block_atlas {
+        2
+    } else {
+        0
+    };
+    let wanted = if groups[wanted].is_some() { wanted } else { 0 };
+    if wanted != *bound
+        && let Some(group) = groups[wanted]
+    {
+        rp.set_bind_group(0, group, &[]);
+        *bound = wanted;
     }
 }

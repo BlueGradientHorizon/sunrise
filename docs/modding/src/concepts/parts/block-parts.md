@@ -6,6 +6,9 @@ level, position, block state, and `include_data`, true when a creative player pi
 player reads such as `event.player.food(host).map(|food| food.level)`. The request does not include
 a client hit face. Return `None` to keep the game's item.
 
+A server mod reads the same answer, with that player acting, through `PlayerRef::clone_item_stack`
+(see its documentation in the [API reference](../../reference/api.md)).
+
 ## Breaking-crack display
 
 `BlockPart::break_progress_positions(host, event)` supplies extra positions for a
@@ -187,10 +190,10 @@ can still hurt dropped items.
 Use `bounds` to test overlap with a surface that is smaller than the block. `event.request(LandingWrite::…)`
 queues a write at `pos`. The `fall_on` drain applies the ordered block writes after the entity batch,
 only if the block still holds the contacted state. An invalid state or non-finite movement or damage
-refuses that Part's outputs. Other Parts' accepted writes and movement edits remain. This replaces `Hooks::block_step_on`, the former server-only notice.
+refuses that Part's outputs. Other Parts' accepted writes and movement edits remain.
 
-Boats and minecarts ([#4177](https://github.com/sunrise-org/sunrise/issues/4177)), armor stands and
-projectiles ignore `EntityWrite::Hurt` from both callbacks. Experience orbs accept it only from `step_on`.
+Boats, minecarts, armor stands and projectiles ignore `EntityWrite::Hurt` from both `step_on`
+and `fall_on`. Experience orbs accept it only from `step_on`.
 
 ## Landing writes
 
@@ -211,7 +214,7 @@ state and vanilla's movement-affecting position (which can differ from the legac
 `event.fall_distance` is the distance stored after fall handling, so a body that has just landed can report zero.
 
 `BlockPart::fall_on` runs at vanilla's landing moment on a read-only level random host.
-Hook version 2 exposes writable `event.distance` and `event.damage_multiplier`, not calculated
+The event exposes writable `event.distance` and `event.damage_multiplier`, not calculated
 damage. Vanilla blocks supply their own pair: hay uses 0.2, beds 0.5, slime 0,
 and pointed dripstone adds 2.5 to distance and uses 2.0. Other blocks start at 1.0.
 The engine applies `floor((distance + 1e-6 - safe_fall_distance) * damage_multiplier * fall_damage_multiplier_attribute)`.
@@ -230,16 +233,29 @@ preserves the requested resource-drop flag.
 
 ## Inside-block effects
 
-`BlockPart::entity_inside` runs on the server as the entity's sweep reaches the block.
-Use `event.run_before` or `event.run_after` to schedule an `EntityWrite` around an
-`InsideEffect`. Both `entity_inside` and `step_on` accept
-`EntityWrite::Hurt { damage_type, amount }`. Request the key once in `register`,
-for example `r.damage_type_key("minecraft:hot_floor")`. The level supplies the
-registered damage type, including data-pack types and tags, without a causing
-or direct entity. If the type is absent in that world, the hurt does not apply.
-Players, mobs and dropped items accept hurt from both callbacks. Experience
-orbs accept hurt from `step_on` only. Neither callback adds a hurt path for
-armor stands, projectiles or vehicles.
+`BlockPart::entity_inside` (version 4) runs on the server as the entity's sweep reaches the block.
+Use `event.run_before` or `event.run_after` to queue an owned closure around an `InsideEffect` slot.
+The closure receives a short-lived `&mut InsideEntityView` when the sweep flushes, even if no
+`event.apply` was requested for that slot. Built-in effects use the same ordered slots, and
+later callbacks stop when the entity dies. A dropped item sweeps once, after `step_on`.
+
+```rust,ignore
+event.run_after(InsideEffect::FireIgnite, |entity| {
+    entity.hurt("minecraft:hot_floor", 1.0);
+});
+```
+
+When migrating a v2 `EntityWrite::Hurt`, use the same registered damage-type ID you used for
+`r.damage_type_key`. `hurt_with_source` can additionally take typed handles for the direct
+entity and the causing entity (for example, a projectile and its shooter). An absent damage
+type or stale source handle makes that hurt return `false`. Players, mobs and dropped items
+use their live hurt path; a projectile's hurt path can mark it hurt for sync and still return
+`false`.
+
+`BlockPart::step_on` still queues `EntityWrite`, not closures. Its `EntityWrite::Hurt` still
+takes a `DamageTypeKey` requested in `register`, and has no direct or causing entity.
+Experience orbs accept hurt from `step_on` only. Neither callback adds a hurt path for armor
+stands or vehicles.
 
 ## Storage changes
 
@@ -265,12 +281,12 @@ state, never saved. Unloading the source does not cancel watches of its position
 
 The backing contents are already written, before dirty/comparator updates. The default `ITEMS`
 and item `STORAGE` handlers coalesce their implicit notice per backing block at root commit,
-for vanilla containers and engine-managed mod slots. In contract version 5, notices committed
-inside `menu_quick_move` wait until that hook's accepted source remainder is in place (or until
-it finishes without one). If the original backing container was removed or replaced, neither
-its replacement nor watchers receive that notice. Explicit `BlockEntityRef::set_changed`
-notifies immediately, even inside a transaction and for unchanged contents; abort does not
-retract it. Each Part runs in its own transaction. Keep using `host.transaction` for additional writes:
+for vanilla containers and engine-managed mod slots. During `menu_quick_move`, implicit notices
+publish only after a committed move settles its source slot (including when the source is
+emptied), and never after an unhandled or refused move. If the original backing container was
+removed or replaced, neither its replacement nor watchers receive that notice. Explicit
+`BlockEntityRef::set_changed` notifies immediately, even inside a transaction and for
+unchanged contents; abort does not retract it. Each Part runs in its own transaction. Keep using `host.transaction` for additional writes:
 a successful nested transaction merges into the Part's frame, but a panic in that Part discards
 its writes without undoing the backing change that raised the notice. The next Part can still
 run, and only the panicking callback is disabled for the session.

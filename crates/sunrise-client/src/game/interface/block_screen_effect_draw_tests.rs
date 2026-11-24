@@ -776,12 +776,15 @@ fn pack_assembly_reports_a_missing_water_default() {
         .unwrap();
         let Err(error) = PackResources::assemble(
             &root,
-            Arc::new(assets),
-            pack.render.clone(),
-            pack.context.tables.clone(),
-            items,
-            pack.context.biomes.clone(),
-            pack.context.light.clone(),
+            super::resource_tables::PackParts {
+                assets: Arc::new(assets),
+                render: pack.render.clone(),
+                tables: pack.context.tables.clone(),
+                item_renderer: items,
+                biomes: pack.context.biomes.clone(),
+                light: pack.context.light.clone(),
+            },
+            true,
         ) else {
             panic!("a registry without water cannot supply the overlay");
         };
@@ -915,7 +918,7 @@ fn drawn_frame(game: &mut Game<'_>) -> (Vec<u8>, usize) {
         scaled: false,
         background: false,
     });
-    game.render_with(|renderer, frame| renderer.render(frame))
+    game.render_with(|renderer, frame| renderer.render(frame, None))
         .unwrap();
     let result = game.renderer.as_mut().unwrap().screenshot_result.take();
     let mut pending = result.unwrap().unwrap();

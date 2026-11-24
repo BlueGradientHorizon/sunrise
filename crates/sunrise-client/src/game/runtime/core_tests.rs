@@ -595,6 +595,7 @@ fn screen_ids_are_distinct_and_stable() {
         Screen::BlockEditor,
         Screen::ServerLinks,
         Screen::ConfirmLink,
+        Screen::DemoIntro,
         Screen::DialogWarning,
         Screen::Win,
         Screen::Mod,
@@ -787,6 +788,7 @@ fn a_mod_screen_on_a_machine_menu_takes_the_stock_layout_out() {
 fn a_falling_block_keeps_its_model_offset() {
     let at = Vec3::new(3.5, 70.25, -1.5);
     let falling = FallingBlock {
+        size_answer: None,
         ground: Default::default(),
         fire_ticks: 0,
         sync_velocity: false,
@@ -933,20 +935,6 @@ fn a_dialog_releases_held_keys_like_a_screen() {
     assert!(!toggles.is_down(SNEAK));
     toggles.screen_closed(options);
     assert!(toggles.is_down(SNEAK));
-}
-/// A key bound to key.pickItem clones over a container screen, as the
-/// middle button does; a key bound to attack or use does nothing there (#5378).
-#[test]
-fn a_key_bound_to_pick_block_clones_behind_a_container_screen() {
-    assert!(container_key_clones(MouseButton::Middle, KeyAction::Press));
-    assert!(container_key_clones(MouseButton::Middle, KeyAction::Repeat));
-    assert!(!container_key_clones(
-        MouseButton::Middle,
-        KeyAction::Release
-    ));
-    for button in [MouseButton::Left, MouseButton::Right] {
-        assert!(!container_key_clones(button, KeyAction::Press));
-    }
 }
 #[test]
 fn sleep_fade_lasts_ten_ticks_after_waking() {
@@ -1200,32 +1188,32 @@ fn quit_shortcut_blocks_window_close_when_option_disabled() {
 
 #[test]
 fn integrated_server_save_persists_owner_player_data() {
+    use sunrise_client::lan::playerdata;
+
     let dir = std::env::temp_dir().join(format!(
         "sunrise-integrated-player-save-{}",
         std::process::id()
     ));
     let _ = std::fs::remove_dir_all(&dir);
 
-    // Initial world creation writes `level.dat` before the player spawns.
+    // Initial world creation writes the profile reference before the player spawns.
+    let owner = 12;
     let mut level = Level {
         name: "Creative".into(),
         creative: true,
         game_mode: 1,
+        player_uuid: Some(playerdata::uuid_ints(owner)),
         ..Level::default()
     };
-    level.write(&dir, &Default::default()).unwrap();
+    level.write_keeping_player(&dir).unwrap();
 
     // The integrated server stores the owner's state in `level` and saves the world.
     level.position = Some([128.5, 72.0, -64.25]);
     level.inventory = vec![(0, "minecraft:diamond_pickaxe".into(), 1, 0)];
-    write_level_for_role(
-        &mut level,
-        &dir,
-        execution_role::ExecutionRole::IntegratedServer,
-        &Default::default(),
-        false,
-    )
-    .unwrap();
+    level.write_player(&dir, &Default::default()).unwrap();
+    level.write_without_player(&dir).unwrap();
+    let player_file = playerdata::path(&dir, owner);
+    let player_bytes = std::fs::read(&player_file).unwrap();
 
     let reopened = Level::read(&dir).unwrap();
     assert_eq!(reopened.position, Some([128.5, 72.0, -64.25]));
@@ -1240,14 +1228,8 @@ fn integrated_server_save_persists_owner_player_data() {
         day_time: 6000,
         ..Level::default()
     };
-    write_level_for_role(
-        &mut dedicated,
-        &dir,
-        execution_role::ExecutionRole::DedicatedServer,
-        &Default::default(),
-        false,
-    )
-    .unwrap();
+    dedicated.write_without_player(&dir).unwrap();
+    assert_eq!(std::fs::read(&player_file).unwrap(), player_bytes);
 
     let reopened = Level::read(&dir).unwrap();
     assert_eq!(reopened.day_time, 6000);

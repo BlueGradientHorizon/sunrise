@@ -258,6 +258,7 @@ impl GoalCx<'_, '_> {
         match self.resolve(entity)? {
             Resolved::Own if !self.m.removed => Some(self.m.body_yaw),
             Resolved::Live(mob) => Some(mob.body_yaw),
+            Resolved::Player | Resolved::Dragon(_) => entity.body_yaw(self.host),
             _ => None,
         }
     }
@@ -712,6 +713,10 @@ impl mobs::part_goals::GoalHost for Game<'_> {
     fn mob_in_other_level(&self, entity: EntityRef) -> bool {
         self.native_lifecycle.epoch() == Some(entity.epoch())
             && Game::mob_in_other_level(self, entity.id()).is_some()
+    }
+
+    fn living_last_hurt_record(&self, living: LivingRef) -> Option<(u32, i32)> {
+        Game::living_last_hurt_record(self, living)
     }
 
     fn mob_player_credit(&self, mob: &Mob) -> Option<Option<u32>> {

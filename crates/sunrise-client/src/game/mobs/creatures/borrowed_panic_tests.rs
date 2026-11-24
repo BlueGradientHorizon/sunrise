@@ -65,6 +65,7 @@ enum OutputNotice {
 
 struct Probe {
     family: Family,
+    retained: Mutex<Option<mod_api::AttachmentKey<i32>>>,
     calls: AtomicUsize,
     posts: Mutex<Vec<u32>>,
     first_proposal: Mutex<Option<Proposal>>,
@@ -92,7 +93,9 @@ impl Probe {
 
     fn progress(&self, host: &mut dyn mod_api::LevelRandomHost) {
         *self.draw.lock().unwrap() = host.with_random(|random| random.next_long());
-        let _ = VALUE.set(host.attachments(), Holder::Level, 314);
+        if let Some(retained) = self.retained.lock().unwrap().as_ref() {
+            let _ = retained.set_in(host, Holder::Level, 314);
+        }
     }
 }
 
@@ -270,8 +273,13 @@ impl mod_api::Hooks for Hooks {
         if !self.panics {
             return;
         }
-        r.register_attachment_type("borrowed-panic:retained", false)
+        let retained = r
+            .register_attachment_type(mod_api::AttachmentDescriptor::new(
+                "borrowed-panic:retained",
+                || 0i32,
+            ))
             .unwrap();
+        *self.probe.retained.lock().unwrap() = Some(retained);
         if self.probe.family.is_goal() {
             r.entity_part("minecraft:zombie", GoalPart(self.probe.clone()));
         }
@@ -373,7 +381,7 @@ const VALUE: AttachmentType<i32> = AttachmentType {
     default: || 0,
     codec: None,
     copy_on_death: false,
-    sync: false,
+    sync_codec: None,
 };
 struct Scratch(std::path::PathBuf);
 impl Drop for Scratch {
@@ -568,6 +576,7 @@ fn run_fixture(family: Family, output: Output, dim: Dim) {
         .map(|token| token as *const PanicToken as usize);
     let probe = Arc::new(Probe {
         family,
+        retained: Mutex::default(),
         calls: AtomicUsize::new(0),
         posts: Mutex::default(),
         first_proposal: Mutex::default(),
@@ -657,7 +666,7 @@ fn run_fixture(family: Family, output: Output, dim: Dim) {
                     .batches
                     .push_back(MobOutputBatch {
                         normal: NormalMobActions::default(),
-                        guests: vec![(12, 71, MobEvent::AttackPlayer(2.0, [1.0, 80.0, 0.5]))],
+                        guests: vec![(12, 71, MobEvent::AttackPlayer(2.0, [1.0, 80.0, 0.5], None))],
                     });
             }
             game.last_hurt_by_player

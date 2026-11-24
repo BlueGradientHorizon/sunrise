@@ -25,7 +25,7 @@ pub use visibility_plan::{
 };
 #[cfg(test)]
 #[path = "mesher/source_tests.rs"]
-mod source_tests;
+pub(crate) mod source_tests;
 use crate::connected::{FaceNeighbours, Overlay, Pick, TileLayer};
 use crate::{
     assets::{Assets, RenderAssets},
@@ -537,6 +537,11 @@ impl SectionMesh {
     /// leave out those facing away from the eye (`sides`).
     /// Then lays them out compactly (`packed`) while the renderer reads that.
     pub fn sort_solid(&mut self) {
+        self.sort_solid_as(packed::packing());
+    }
+
+    /// `sort_solid`, then the compact layout only when `compact`.
+    pub(crate) fn sort_solid_as(&mut self, compact: bool) {
         let quads = self.solid.len() / 4;
         if !self.solid_tints.is_empty() {
             self.solid_tints.resize(quads, packed::UNKNOWN_TINT);
@@ -549,7 +554,7 @@ impl SectionMesh {
         self.bounds = self.compute_bounds();
         self.packed.clear();
         self.packed_far = false;
-        if packed::packing() && quads > 0 && self.solid_tints.len() == quads {
+        if compact && quads > 0 && self.solid_tints.len() == quads {
             packed::layout_into(&self.solid, &self.solid_tints, &mut self.packed);
         }
         self.solid_tints.clear();
@@ -1106,6 +1111,23 @@ impl MeshTables {
                 cover,
             });
         }
+        let [
+            water_still,
+            water_flow,
+            water_overlay,
+            lava_still,
+            lava_flow,
+        ] = if layers == 0 {
+            [0; 5]
+        } else {
+            [
+                layer("minecraft:block/water_still")?,
+                layer("minecraft:block/water_flow")?,
+                layer("minecraft:block/water_overlay")?,
+                layer("minecraft:block/lava_still")?,
+                layer("minecraft:block/lava_flow")?,
+            ]
+        };
         let mut tables = Self {
             solid: info.iter().map(|i| i.solid).collect(),
             full_faces: info
@@ -1114,11 +1136,11 @@ impl MeshTables {
                 .collect(),
             info,
             visibility,
-            water_still: layer("minecraft:block/water_still")?,
-            water_flow: layer("minecraft:block/water_flow")?,
-            water_overlay: layer("minecraft:block/water_overlay")?,
-            lava_still: layer("minecraft:block/lava_still")?,
-            lava_flow: layer("minecraft:block/lava_flow")?,
+            water_still,
+            water_flow,
+            water_overlay,
+            lava_still,
+            lava_flow,
             mod_fluids,
             animated_layers,
             colormaps: Vec::new(),

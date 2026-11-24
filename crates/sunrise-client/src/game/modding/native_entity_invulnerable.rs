@@ -244,9 +244,10 @@ impl Game<'_> {
             invulnerable: flag || window > 0,
             creative_source,
             fire_immune: false,
-            fall_immune: world_items!(self)
-                .enchantments
-                .entity_in_tag(entity_type, "minecraft:fall_damage_immune"),
+            fall_immune: world_items!(self).entity_type_tags.has_flag(
+                entity_type,
+                sunrise_client::items::EntityTypeTags::FALL_DAMAGE_IMMUNE,
+            ),
             source_has_tag: |tag| self.health_resources.damage.immunity_tag(source, tag),
         }
         .vanilla()
@@ -324,7 +325,14 @@ impl Game<'_> {
         // `DamageSource(type, cause, at)`: the source position the knockback
         // pushes away from is the direct entity's.
         let from = direct.and_then(|t| self.target_position(t));
-        Some(self.hurt_target(target, amount, damage_type, direct, causing, from))
+        Some(self.hurt_target(
+            target,
+            amount,
+            damage_type,
+            direct,
+            causing.or(direct),
+            from,
+        ))
     }
 
     /// `Entity.isInvulnerableTo` for a source of `damage_type`: #842's own

@@ -16,6 +16,9 @@ pub trait ServicesServerHost {
     /// The players service.
     #[service]
     fn players(&self) -> &dyn Players;
+    /// The profiles service.
+    #[service]
+    fn profiles(&self) -> &dyn Profiles;
     /// The runtime_levels service.
     #[service]
     fn runtime_levels(&mut self) -> &mut dyn RuntimeLevels;
@@ -29,6 +32,14 @@ pub trait ServicesClientHost {
     /// such as the client-side `entity_entering_section` callback, or after a task from
     /// the calling mod panicked in this client session.
     fn client_executor(&self) -> Option<ClientExecutor>;
+    /// Ask the local client to quit, even from the title screen without a world open.
+    /// The client uses the normal Quit Game path after the calling hook returns,
+    /// disconnecting from any server and waiting for an integrated server to save
+    /// and release its world lock before exiting. This is not a server operation.
+    /// Returns `true` if the request was recorded, not if shutdown succeeded;
+    /// returns `false` if there is no live client or a quit is pending or underway.
+    #[decline_unavailable]
+    fn request_client_quit(&self) -> bool;
     /// Persistent model groups.
     #[service]
     fn instance_groups(&self) -> &dyn InstanceGroups;
@@ -93,12 +104,44 @@ pub trait Commands {
         unimplemented!("Commands::refresh_commands")
     }
     /// Side: server.
-    /// An executor can send success feedback to the command's originating source, using
-    /// vanilla's silence, send-command-feedback and block/cart track-output rules.
-    /// This sends a message; the executor's return value determines the command result.
+    /// An executor's success line, as vanilla's `CommandSourceStack.sendSuccess(line,
+    /// broadcast_to_admins)`. A silent source (`execute` run quietly, a function, a mod's
+    /// suppressed run) sends nothing at all. Otherwise the line goes to the originating
+    /// source when it takes success feedback: a player while `send_command_feedback` is on,
+    /// the console and RCON always, a command block or minecart that tracks output while
+    /// `send_command_feedback` is on; never to the `execute as` entity.
+    ///
+    /// With `broadcast_to_admins`, and when the origin informs operators (a player always,
+    /// a block or minecart that tracks output while `command_block_output` is on, the
+    /// console and RCON per `broadcast-console-to-ops` / `broadcast-rcon-to-ops`), the line
+    /// is also wrapped as `[name: line]` (`chat.type.admin`, gray and italic, with the
+    /// display name of the `execute as` entity, else the block's, minecart's or server's).
+    /// That line goes to every operator (`PlayerList.isOp`, a level-0 operator too) but
+    /// the source player while `send_command_feedback` is on, and to the server log while
+    /// `log_admin_commands` is on unless the console is the source; neither rule gates
+    /// the other. Pass `false` for a query or list, as vanilla does.
+    ///
+    /// The text is converted once. Delivering to no one is still `Ok(())`, and the
+    /// executor's return value alone determines the command result.
     /// Refuses text deeper than 512 component nodes before applying any changes.
-    fn feedback(&mut self, line: Text) -> Result<(), TextFormError> {
+    fn feedback(&mut self, line: Text, broadcast_to_admins: bool) -> Result<(), TextFormError> {
         unimplemented!("Commands::feedback")
+    }
+    /// Side: server.
+    /// An executor can send a failure line to the command's originating source, as vanilla's
+    /// `CommandSourceStack.sendFailure` (the same call a NeoForge command registered in
+    /// `RegisterCommandsEvent` makes on its source): the line in red, shown unless the source is
+    /// silent or does not accept failures (a command block or minecart with track output off),
+    /// and independent of `sendCommandFeedback`. A command block or minecart keeps it as its last
+    /// output. It changes nothing else: the executor still returns the command's result, so
+    /// Java's `source.sendFailure(text); return 0;` is `failure(text)` then `Ok(0)`: `execute
+    /// store result` reads 0, without the `Err` path of a failed command (`execute store success`
+    /// reads 1 and a command block counts a success, as for any vanilla command that returns 0).
+    /// Refuses text deeper than 512 component nodes before
+    /// applying any changes; a line whose red formatting no longer fits a packet or a saved
+    /// command block is replaced by `command.failed`, as a returned failure is.
+    fn failure(&mut self, line: Text) -> Result<(), TextFormError> {
+        unimplemented!("Commands::failure")
     }
     /// Side: server.
     /// Runs `line` (no slash) as the server's console does: permission
@@ -136,7 +179,9 @@ pub trait Commands {
 /// The levels service, reached through its host.
 pub trait Levels {
     /// Side: server.
-    /// Loaded server levels, in vanilla dimension order. Empty without a server world.
+    /// Loaded server levels, in creation order: the Overworld first, then the
+    /// other configured levels in registry traversal, then later opens.
+    /// This is the order used for full saves and shutdown. Empty without a server world.
     fn list_levels(&self) -> Vec<LevelRef> {
         unimplemented!("Levels::list_levels")
     }
@@ -171,6 +216,39 @@ pub trait Players {
     /// hook.
     fn acting_player(&self) -> Option<PlayerRef> {
         unimplemented!("Players::acting_player")
+    }
+    /// Side: server.
+    /// `MinecraftServer.getSingleplayerProfile`: the profile an integrated server was created
+    /// with, its owner's name, UUID and login properties, borrowed from the host. Fixed when
+    /// the server is created, so every read returns the same profile, from the
+    /// `server_about_to_start` and `server_starting` hooks on, before the owner joins and
+    /// after they leave. None on a dedicated server and on a client.
+    /// [`PlayerRef::is_singleplayer_owner`] matches a player to it by name.
+    fn singleplayer_profile(&self) -> Option<GameProfile<'_>> {
+        unimplemented!("Players::singleplayer_profile")
+    }
+}
+/// The profiles service, reached through its host: account profiles by name or UUID through
+/// the server's `ProfileResolver.Cached`, the one `/fetchprofile` and dynamic player heads use,
+/// also on an offline-mode server. Each name and each UUID is kept 10 minutes after its last
+/// lookup, at most 256 of each, so polling a lookup keeps its answer. A lookup that failed
+/// or found no account is kept the same way, as `Done(None)`; a new request is sent only
+/// once it has expired.
+pub trait Profiles {
+    /// Side: server.
+    /// The profile of the account named `name`, any case (`ProfileResolver.fetchByName`):
+    /// its UUID from the name lookup, then the session service's signed profile. A name
+    /// `StringUtil.isValidPlayerName` refuses (over 16 UTF-16 units, or anything but printable
+    /// ASCII other than a space) answers `Done(None)` without a request. `Done(None)` off a
+    /// server.
+    fn resolve_name(&self, name: &str) -> ProfileResolution {
+        unimplemented!("Profiles::resolve_name")
+    }
+    /// Side: server.
+    /// The session service's signed profile of the account `uuid`
+    /// (`ProfileResolver.fetchById`). `Done(None)` off a server.
+    fn resolve_id(&self, uuid: u128) -> ProfileResolution {
+        unimplemented!("Profiles::resolve_id")
     }
 }
 /// The runtime_levels service, reached through its host.
@@ -239,11 +317,12 @@ pub trait RenderAssets {
     }
     /// Side: client.
     /// Published asset/data read: available in Setup, Reloading and World.
-    /// Resolve a pipeline registered in `register_render_pipelines` once in `client_setup` and
-    /// again in `client_resources_reloaded`, not each frame. `Unknown` for an id no mod
-    /// registered, `Invalid` for one whose shader the current resources don't give or that
+    /// Resolve the handle of a registered render pipeline by ID once in `client_setup` and
+    /// again in `client_resources_reloaded`, not each frame. `Unknown` for an ID
+    /// no mod registered, `Invalid` for one whose shader the current resources don't give or that
     /// didn't compile. Nothing is read or compiled here.
     fn render_pipeline(&self, id: &Identifier) -> Result<RenderPipelineRef, RenderPipelineError> {
+        let _ = id;
         unimplemented!("RenderAssets::render_pipeline")
     }
     /// Side: client.
@@ -296,9 +375,7 @@ pub trait RenderAssets {
 
 /// Client-side persistent copies of resolved models.
 pub trait InstanceGroups {
-    /// Allocate up to 16,384 copies, initially length zero. Each mod may reserve 65,536
-    /// copies total (an empty group reserves one slot). Only visible copies in the drawn
-    /// length, not capacity, consume the view budget. At most 16,384 groups per view.
+    /// Allocate storage for `capacity` copies, initially length zero.
     /// Create at setup/reload, not each frame. Visible GPU-routed copies upload each drawn frame.
     /// Reload, world close, disabling the owning mod, or explicit destroy retires the group.
     /// Re-enabling a mod never revives its old handles; recreate groups after publication.

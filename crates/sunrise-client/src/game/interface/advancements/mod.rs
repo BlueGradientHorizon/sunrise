@@ -9,10 +9,11 @@ mod icons;
 mod inventory_changed_tests;
 use mod_api::{GameMode, ProgressType};
 use serde_json::Value;
+#[cfg(test)]
+use std::time::Instant;
 use std::{
-    collections::{BTreeMap, BTreeSet, VecDeque},
+    collections::{BTreeMap, BTreeSet},
     sync::Arc,
-    time::Instant,
 };
 use sunrise_client::actions::Action;
 use sunrise_client::{
@@ -58,9 +59,6 @@ pub(super) struct Toast {
     title: Text,
     description: Option<Text>,
     slide: Slide,
-    /// `ToastInstance.firstSlotIndex`: the 32-pixel slot it stacks in once it
-    /// leaves the queue.
-    slot: Option<usize>,
     /// A `RecipeToast`: the crafting station and result of each display
     /// unlocked while it lasts (`recipeItems`); empty for an advancement.
     recipes: Vec<(String, ItemStack)>,
@@ -77,7 +75,6 @@ impl Toast {
             title: Text::translate("recipe.toast.title", &[]),
             description: Some(Text::translate("recipe.toast.description", &[])),
             slide: Slide::default(),
-            slot: None,
             recipes: items,
             changed: true,
             last_changed: 0,
@@ -90,6 +87,15 @@ impl Toast {
     pub(super) fn add_recipes(&mut self, items: Vec<(String, ItemStack)>) {
         self.recipes.extend(items);
         self.changed = true;
+    }
+    pub(super) fn is_challenge(&self) -> bool {
+        !self.is_recipe() && self.frame == Frame::Challenge
+    }
+    pub(super) fn update(&mut self, multiplier: f64) -> (Option<bool>, bool) {
+        let mut slide = std::mem::take(&mut self.slide);
+        let result = slide.update_now(|fully| self.wants_show(fully, multiplier));
+        self.slide = slide;
+        result
     }
     /// `Toast.update` with `fullyVisibleForMs`: whether it wants to be shown.
     fn wants_show(&mut self, fully_for: i64, multiplier: f64) -> bool {
@@ -133,12 +139,12 @@ pub(super) struct TravelMarks {
 #[derive(Default)]
 pub(super) struct AdvState {
     pub(super) tree: Arc<Tree>,
-    /// `ClientAdvancements`: a server's tree carries each advancement's
-    /// place on its tab (`DisplayInfo` x, y), in tree order.
-    pub(super) positions: Option<Vec<(f32, f32)>>,
+    pub(super) remote_tree: Option<RemoteTree>,
+    /// `ClientAdvancements.selectedTab`: the connection remembers the root
+    /// independently of the open screen's tabs and the current tree.
+    pub(super) selected_tab: Option<String>,
     pub(super) progress: Progress,
     pub(super) loaded: bool,
-    pub(super) toasts: VecDeque<Toast>,
     /// Awards skip the toast (`/advancement grant ... everything`).
     pub(super) quiet: bool,
     /// The inventory last seen by `inventory_changed`.
@@ -162,6 +168,96 @@ impl AdvState {
         self.inventory_index = None;
     }
 }
+/// The packet tree's insertion-time links. The current ID table in `Tree`
+/// can replace a node without replacing the node its parent or children know.
+#[derive(Default)]
+pub(super) struct RemoteTree {
+    pub(super) positions: Vec<(f32, f32)>,
+    /// Node identity for each ID in `Tree::list` order.
+    current: Vec<usize>,
+    nodes: Vec<RemoteNode>,
+}
+
+struct RemoteNode {
+    id: String,
+    parent: Option<usize>,
+    children: Vec<usize>,
+    displayed: bool,
+}
+
+impl RemoteTree {
+    /// Root and nearest displayed parent of each current node, resolved by
+    /// ID only after walking the actual insertion-time ancestors.
+    pub(super) fn widget_links<'a>(
+        &'a self,
+        tree: &'a Tree,
+    ) -> impl Iterator<Item = (Option<usize>, Option<usize>)> + 'a {
+        // Every parent precedes its child in the arena, including after compaction.
+        let mut ancestry: Vec<(usize, Option<usize>)> = Vec::with_capacity(self.nodes.len());
+        for (i, node) in self.nodes.iter().enumerate() {
+            let links = node.parent.map_or((i, None), |parent| {
+                let (root, ancestor) = ancestry[parent];
+                (
+                    root,
+                    if self.nodes[parent].displayed {
+                        Some(parent)
+                    } else {
+                        ancestor
+                    },
+                )
+            });
+            ancestry.push(links);
+        }
+        let current_index = move |i: usize| tree.by_id.get(&self.nodes[i].id).copied();
+        self.current.iter().map(move |&node| {
+            let (root, displayed_parent) = ancestry[node];
+            (
+                current_index(root),
+                displayed_parent.and_then(current_index),
+            )
+        })
+    }
+
+    /// Release identities no current node can reach in either direction.
+    /// A removed or overwritten node remains as long as its links still matter.
+    fn prune_unreachable(&mut self) {
+        if self.nodes.len() == self.current.len() {
+            return;
+        }
+        let mut live = vec![false; self.nodes.len()];
+        let mut stack = self.current.clone();
+        while let Some(i) = stack.pop() {
+            if !std::mem::replace(&mut live[i], true) {
+                stack.extend(self.nodes[i].parent);
+                stack.extend(self.nodes[i].children.iter().copied());
+            }
+        }
+        if live.iter().all(|&yes| yes) {
+            return;
+        }
+        let mut new_indices = vec![0; live.len()];
+        let (mut i, mut next) = (0, 0);
+        self.nodes.retain(|_| {
+            let keep = live[i];
+            if keep {
+                new_indices[i] = next;
+                next += 1;
+            }
+            i += 1;
+            keep
+        });
+        for node in &mut self.nodes {
+            node.parent = node.parent.map(|i| new_indices[i]);
+            for child in &mut node.children {
+                *child = new_indices[*child];
+            }
+        }
+        for node in &mut self.current {
+            *node = new_indices[*node];
+        }
+    }
+}
+
 /// The live parts of a player's entity predicate view, wherever the turn keeps them.
 struct PlayerEntityState<'a> {
     body: &'a PlayerMotion,
@@ -399,9 +495,9 @@ impl Game<'_> {
     pub(super) fn no_player_here(&self) -> bool {
         self.options.dedicated.is_some() && self.lan_acting.is_none()
     }
-    /// The advancement tree, loaded once.
+    /// Load the local tree once; an empty server tree is still authoritative.
     pub(super) fn advancement_tree(&mut self) -> Arc<Tree> {
-        if self.adv.tree.list.is_empty() {
+        if self.adv.remote_tree.is_none() && self.adv.tree.list.is_empty() {
             let overlay = self.pack_files();
             self.adv.tree = Tree::shared(&self.options.resources.join("data"), &overlay);
             self.inventory_index();
@@ -1292,7 +1388,6 @@ impl Game<'_> {
                     title: Text::translate(toast_label(d.frame).0, &[]),
                     description: Some(text_of(&d.title)),
                     slide: Slide::default(),
-                    slot: None,
                     recipes: Vec::new(),
                     changed: false,
                     last_changed: 0,
@@ -2551,94 +2646,27 @@ impl Game<'_> {
                 && c["to"].as_str().is_none_or(|t| adv::full(t) == to_id)
         });
     }
-    /// `ToastManager.SLOT_COUNT`.
-    pub(super) const TOAST_SLOTS: usize = 5;
-    /// `ToastManager.update` and `extractRenderState` for the `AdvancementToast`s and
-    /// `RecipeToast`s: up to five stack in 32-pixel slots, the rest queue. `hidden` (F1)
-    /// keeps them timing out without drawing them.
-    pub(super) fn draw_toasts(&mut self, batch: &mut HudBatch, hidden: bool) {
-        let multiplier = self.settings.notification_display_time;
-        let mut sound_played = false;
-        let mut i = 0;
-        while i < self.adv.toasts.len() {
-            let t = &mut self.adv.toasts[i];
-            if t.slot.is_none() {
-                i += 1;
-                continue;
-            }
-            let origin = *t.slide.origin.get_or_insert_with(Instant::now);
-            let now = origin.elapsed().as_millis() as i64;
-            let mut slide = std::mem::take(&mut t.slide);
-            let (sound, finished) = slide.update(now, |fully| t.wants_show(fully, multiplier));
-            t.slide = slide;
-            if finished {
-                self.adv.toasts.remove(i);
-                continue;
-            }
-            // Only the first visibility change of an update plays its sound.
-            if let Some(show) = sound
-                && !std::mem::replace(&mut sound_played, true)
-            {
-                let event = if show { "ui.toast.in" } else { "ui.toast.out" };
-                self.audio
-                    .play(&format!("minecraft:{event}"), None, 1.0, 1.0);
-            }
-            i += 1;
-        }
-        // The queued toasts take the free slots in order; a challenge's own sound
-        // plays once as it leaves the queue.
-        let mut used = self.toast_slots_used();
-        let mut challenge_sound = false;
-        for t in &mut self.adv.toasts {
-            if t.slot.is_some() {
-                continue;
-            }
-            let Some(slot) = (0..Self::TOAST_SLOTS).find(|s| used & (1 << s) == 0) else {
-                break;
-            };
-            used |= 1 << slot;
-            t.slot = Some(slot);
-            challenge_sound |= !t.is_recipe() && t.frame == Frame::Challenge;
-        }
-        if challenge_sound {
-            self.audio
-                .play("minecraft:ui.toast.challenge_complete", None, 1.0, 1.0);
-        }
-        if hidden {
-            return;
-        }
-        for i in 0..self.adv.toasts.len() {
-            if let Some(slot) = self.adv.toasts[i].slot {
-                self.draw_toast(batch, i, 32.0 * slot as f32, multiplier);
-            }
-        }
-    }
-    /// The slots held by shown advancement, recipe, pack and narrator toasts,
-    /// as bits.
-    pub(super) fn toast_slots_used(&self) -> u32 {
-        let packs = self.server_packs.toast_slots();
-        self.adv
-            .toasts
-            .iter()
-            .filter_map(|t| t.slot)
-            .chain(packs)
-            .chain(self.narrator_toast.as_ref().and_then(|t| t.slot))
-            .fold(self.tutorial_toast_slots(), |used, slot| used | 1 << slot)
-    }
     pub(super) fn add_advancement_toast(&mut self, mut toast: Toast) {
         let kind = if toast.is_recipe() {
             mod_api::ToastKind::Recipe
         } else {
             mod_api::ToastKind::Advancement
         };
-        if self.add_toast(kind, &mut toast.title, &mut toast.description) {
-            self.adv.toasts.push_back(toast);
+        if self.admit_toast(kind, &mut toast.title, &mut toast.description) {
+            self.toast_manager
+                .queued
+                .push_back(super::toast_manager::Toast::Advancement(toast));
         }
     }
 
-    /// The `AdvancementToast` or `RecipeToast` at `index` in its slot at `y`.
-    fn draw_toast(&self, batch: &mut HudBatch, index: usize, y: f32, multiplier: f64) {
-        let t = &self.adv.toasts[index];
+    /// The `AdvancementToast` or `RecipeToast` in its slot at `y`.
+    pub(super) fn draw_advancement_toast(
+        &self,
+        batch: &mut HudBatch,
+        t: &Toast,
+        y: f32,
+        multiplier: f64,
+    ) {
         let x = batch.width - 160.0 * t.slide.portion;
         let fully_for = t.slide.fully_for;
         let (title, frame, icon) = (&t.title, t.frame, &t.icon);
@@ -2655,9 +2683,9 @@ impl Game<'_> {
             batch.text_styled(atlas, title, x + 30.0, y + 7.0, 0xFF50_0050, false);
             batch.text_styled(atlas, description, x + 30.0, y + 18.0, 0xFF00_0000, false);
             let start = batch.vertices.len();
-            self.draw_item_model(batch, &ItemStack::new(station, 1), x + 3.0, y + 3.0);
+            self.draw_item_model(batch, &ItemStack::new(station, 1), x + 3.0, y + 3.0, 0);
             batch.scale_since(start, x, y, 0.6, 0.6);
-            self.draw_item_model(batch, item, x + 8.0, y + 8.0);
+            self.draw_item_model(batch, item, x + 8.0, y + 8.0, 0);
             return;
         }
         let atlas = &self.gui.atlas;
@@ -2809,87 +2837,31 @@ impl Game<'_> {
     }
 }
 impl Game<'_> {
-    /// `ClientAdvancements.update` (ClientboundUpdateAdvancementsPacket):
-    /// the server's advancements replace or join the tree, each changed one
-    /// takes the progress sent, and one just done shows its toast.
+    /// `ClientAdvancements.update`: update the tree before applying progress.
+    /// Incremental removals forget nodes, not the progress stored by id.
     pub(super) fn remote_advancements(
         &mut self,
         p: sunrise_protocol::packets::play::UpdateAdvancements,
     ) {
-        use sunrise_client::scoreboard::tag_to_json;
-        let mut list: Vec<adv::Advancement> = Vec::new();
-        let mut positions: Vec<(f32, f32)> = Vec::new();
-        if !p.reset {
-            let old = self.adv.positions.take().unwrap_or_default();
-            for (i, a) in self.adv.tree.list.iter().enumerate() {
-                if !p.removed.contains(&a.id) {
-                    list.push(a.clone());
-                    positions.push(old.get(i).copied().unwrap_or((0.0, 0.0)));
-                }
-            }
-        } else {
+        if p.reset {
             self.adv.progress = Progress::default();
         }
-        for id in &p.removed {
-            self.adv.progress.criteria.remove(id);
+        if self.adv.remote_tree.is_none() || p.reset || !p.removed.is_empty() || !p.added.is_empty()
+        {
+            self.update_remote_advancement_tree(p.reset, &p.removed, p.added);
         }
-        for a in p.added {
-            list.retain(|o| o.id != a.id);
-            let display = a.display.map(|d| adv::Display {
-                icon: self.remote_advancement_icon(d.icon),
-                title: tag_to_json(&d.title),
-                description: tag_to_json(&d.description),
-                frame: match d.frame {
-                    1 => Frame::Challenge,
-                    2 => Frame::Goal,
-                    _ => Frame::Task,
-                },
-                background: d.background,
-                show_toast: d.show_toast,
-                announce: false,
-                hidden: d.hidden,
-            });
-            let mut criteria: Vec<adv::Criterion> = Vec::new();
-            for name in a.requirements.iter().flatten() {
-                if !criteria.iter().any(|c| &c.name == name) {
-                    criteria.push(adv::Criterion {
-                        name: name.clone(),
-                        trigger: String::new(),
-                        conditions: Value::Null.into(),
-                    });
-                }
-            }
-            list.push(adv::Advancement {
-                id: a.id,
-                parent: a.parent,
-                display,
-                criteria,
-                requirements: a.requirements,
-                rewards: Default::default(),
-            });
-            positions.push((a.x, a.y));
-        }
-        let mut tree = Tree::default();
-        tree.list = list;
-        for (i, a) in tree.list.iter().enumerate() {
-            tree.by_id.insert(a.id.clone(), i);
-        }
-        self.ui.registries.advancements = tree.list.iter().map(|a| a.id.clone()).collect();
-        self.adv.tree = Arc::new(tree);
-        self.adv.positions = Some(positions);
         let tree = self.adv.tree.clone();
         for (id, criteria) in p.progress {
-            let Some(&i) = tree.by_id.get(&id) else {
+            let Some(a) = tree.get(&id) else {
+                log::warn!("Server sent progress for unknown advancement {id}");
                 continue;
             };
-            // The client only shows whether a criterion is obtained, not when.
-            let obtained: BTreeMap<String, String> = criteria
-                .into_iter()
-                .filter(|(_, at)| at.is_some())
-                .map(|(name, _)| (name, String::new()))
-                .collect();
-            self.adv.progress.criteria.insert(id, obtained);
-            let a = &tree.list[i];
+            self.adv.progress.set_remote(
+                a,
+                criteria
+                    .into_iter()
+                    .filter_map(|(name, at)| at.map(|_| name)),
+            );
             if !p.reset
                 && p.show
                 && self.adv.progress.done(a)
@@ -2901,12 +2873,156 @@ impl Game<'_> {
                     title: Text::translate(toast_label(d.frame).0, &[]),
                     description: Some(text_of(&d.title)),
                     slide: Slide::default(),
-                    slot: None,
                     recipes: Vec::new(),
                     changed: false,
                     last_changed: 0,
                 });
             }
+        }
+        self.remote_advancement_tabs_updated(p.reset);
+    }
+
+    /// `AdvancementTree.remove` and `AdvancementTree.addAll`: prune whole
+    /// subtrees, then admit additions in the order their parents become available.
+    fn update_remote_advancement_tree(
+        &mut self,
+        reset: bool,
+        removed: &[String],
+        added: Vec<sunrise_protocol::packets::play::Advancement>,
+    ) {
+        let mut tree = Tree::default();
+        let mut remote = RemoteTree::default();
+        if !reset && let Some(old_remote) = self.adv.remote_tree.take() {
+            let old = &self.adv.tree;
+            remote.nodes = old_remote.nodes;
+            let mut deleted = vec![false; old.list.len()];
+            let mut stack = Vec::new();
+            for id in removed {
+                if let Some(&i) = old.by_id.get(id)
+                    && !deleted[i]
+                {
+                    stack.push(old_remote.current[i]);
+                    while let Some(node) = stack.pop() {
+                        let node = &remote.nodes[node];
+                        if let Some(&i) = old.by_id.get(&node.id) {
+                            deleted[i] = true;
+                        }
+                        // Even if this ID is gone, this particular node can
+                        // still point to descendants with live IDs.
+                        stack.extend(node.children.iter().copied());
+                    }
+                } else {
+                    log::warn!("Server removed unknown advancement {id}");
+                }
+            }
+            for (i, a) in old.list.iter().enumerate() {
+                if !deleted[i] {
+                    tree.by_id.insert(a.id.clone(), tree.list.len());
+                    tree.list.push(a.clone());
+                    remote.current.push(old_remote.current[i]);
+                    remote.positions.push(old_remote.positions[i]);
+                }
+            }
+        } else {
+            for id in removed {
+                log::warn!("Server removed unknown advancement {id}");
+            }
+        }
+
+        let locations: Vec<_> = added.iter().map(|a| (a.id.clone(), (a.x, a.y))).collect();
+        let mut pending = added;
+        let mut unresolved = Vec::new();
+        while !pending.is_empty() {
+            let before = pending.len();
+            for a in pending.drain(..) {
+                let parent = if let Some(id) = &a.parent {
+                    let Some(&i) = tree.by_id.get(id) else {
+                        unresolved.push(a);
+                        continue;
+                    };
+                    Some(remote.current[i])
+                } else {
+                    None
+                };
+                let a = self.remote_advancement(a);
+                let node = remote.nodes.len();
+                if let Some(parent) = parent {
+                    remote.nodes[parent].children.push(node);
+                }
+                remote.nodes.push(RemoteNode {
+                    id: a.id.clone(),
+                    parent,
+                    children: Vec::new(),
+                    displayed: a.display.is_some(),
+                });
+                let i = *tree.by_id.entry(a.id.clone()).or_insert(tree.list.len());
+                if i == tree.list.len() {
+                    tree.list.push(a);
+                    remote.current.push(node);
+                    remote.positions.push((0.0, 0.0));
+                } else {
+                    tree.list[i] = a;
+                    remote.current[i] = node;
+                }
+            }
+            if unresolved.len() == before {
+                let ids: Vec<_> = unresolved.iter().map(|a| &a.id).collect();
+                log::error!("Couldn't load advancements: {ids:?}");
+                break;
+            }
+            std::mem::swap(&mut pending, &mut unresolved);
+        }
+        // ClientAdvancements.update applies all locations in packet order,
+        // even if the definition at that position could not be admitted.
+        for (id, position) in locations {
+            if let Some(&i) = tree.by_id.get(&id) {
+                remote.positions[i] = position;
+            }
+        }
+        remote.prune_unreachable();
+        self.ui.registries.advancements = tree.list.iter().map(|a| a.id.clone()).collect();
+        self.adv.tree = Arc::new(tree);
+        self.adv.remote_tree = Some(remote);
+    }
+
+    /// Convert the admitted packet's network icon, components and requirements
+    /// into the definition used by the screen and toast.
+    fn remote_advancement(
+        &self,
+        a: sunrise_protocol::packets::play::Advancement,
+    ) -> adv::Advancement {
+        use sunrise_client::scoreboard::tag_to_json;
+        let display = a.display.map(|d| adv::Display {
+            icon: self.remote_advancement_icon(d.icon),
+            title: tag_to_json(&d.title),
+            description: tag_to_json(&d.description),
+            frame: match d.frame {
+                1 => Frame::Challenge,
+                2 => Frame::Goal,
+                _ => Frame::Task,
+            },
+            background: d.background,
+            show_toast: d.show_toast,
+            announce: false,
+            hidden: d.hidden,
+        });
+        let mut criteria: Vec<adv::Criterion> = Vec::new();
+        for name in a.requirements.iter().flatten() {
+            if !criteria.iter().any(|c| &c.name == name) {
+                criteria.push(adv::Criterion {
+                    name: name.clone(),
+                    trigger: String::new(),
+                    conditions: Value::Null.into(),
+                });
+            }
+        }
+        adv::Advancement {
+            id: a.id,
+            parent: a.parent,
+            display,
+            criteria,
+            requirements: a.requirements,
+            rewards: Default::default(),
         }
     }
 }
@@ -2965,90 +3081,171 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn toast_admission_cancels_edits_and_preserves_queue_behavior() {
-        use mod_api::{ClientHost, Flow, Hooks, ModEntry, ToastAddEvent, ToastKind};
-        struct Listener;
-        #[mod_api::__subscriptions]
-        impl Hooks for Listener {
-            fn toast_add(&self, _: &dyn ClientHost, event: &mut ToastAddEvent<'_>) -> Flow {
-                match event.description.as_ref().map(|text| &text.content) {
-                    Some(mod_api::text::TextContent::Literal(value)) if value == "cancel" => {
-                        Flow::Cancel
+        crate::game::in_own_process(
+            "game::advancements::tests::toast_admission_cancels_edits_and_preserves_queue_behavior",
+            || {
+                use crate::game::toast_manager::{SystemToastId, Toast as QueuedToast};
+                use mod_api::{ClientHost, Flow, Hooks, ModEntry, ToastAddEvent, ToastKind};
+                use std::time::Duration;
+                use sunrise_client::toasts::SystemToast;
+                struct Listener;
+                #[mod_api::__subscriptions]
+                impl Hooks for Listener {
+                    fn toast_add(&self, _: &dyn ClientHost, event: &mut ToastAddEvent<'_>) -> Flow {
+                        match event.description.as_ref().map(|text| &text.content) {
+                            Some(mod_api::text::TextContent::Literal(value))
+                                if value == "cancel" =>
+                            {
+                                Flow::Cancel
+                            }
+                            Some(mod_api::text::TextContent::Literal(value)) if value == "edit" => {
+                                *event.title = mod_api::Text::literal("replacement");
+                                event.title.style.color = Some("#123456".into());
+                                *event.description = Some(mod_api::Text::literal("changed"));
+                                Flow::Continue
+                            }
+                            _ => Flow::Continue,
+                        }
                     }
-                    Some(mod_api::text::TextContent::Literal(value)) if value == "edit" => {
-                        *event.title = mod_api::Text::literal("replacement");
-                        event.title.style.color = Some("#123456".into());
-                        *event.description = Some(mod_api::Text::literal("changed"));
-                        Flow::Continue
-                    }
-                    _ => Flow::Continue,
                 }
-            }
-        }
-        let mods: mod_api::Mods = vec![ModEntry::new("toasts", Box::new(Listener))].into();
-        mod_platform::testing::with_mods(mods, || {
-            super::super::native_entity_refs::tests::with_game(|game| {
-                game.options.execution_role = super::super::execution_role::ExecutionRole::Client;
-                game.adv.toasts.clear();
-                let advancement = |name: &str| Toast {
-                    icon: ItemStack::new("minecraft:stone", 1),
-                    frame: Frame::Challenge,
-                    title: Text::translate("advancements.toast.challenge", &[]),
-                    description: Some(Text::literal(name)),
-                    slide: Slide::default(),
-                    slot: None,
-                    recipes: vec![],
-                    changed: false,
-                    last_changed: 0,
-                };
-                game.add_advancement_toast(advancement("cancel"));
-                assert!(game.adv.toasts.is_empty());
-                game.add_advancement_toast(advancement("untouched"));
-                let original = &game.adv.toasts[0];
-                assert_eq!(
-                    original.title.component(),
-                    serde_json::json!({"translate": "advancements.toast.challenge"})
-                );
-                assert_eq!(original.description.as_ref().unwrap().plain(), "untouched");
-                assert_eq!(original.icon, ItemStack::new("minecraft:stone", 1));
-                assert!(original.slot.is_none());
-                assert!(
-                    original.slide.origin.is_none(),
-                    "not animated before admission"
-                );
-                game.add_advancement_toast(advancement("edit"));
-                let edited = &game.adv.toasts[1];
-                assert_eq!(edited.title.plain(), "replacement");
-                assert_eq!(edited.title.component()["color"], "#123456");
-                assert_eq!(edited.description.as_ref().unwrap().plain(), "changed");
-                assert_eq!(edited.frame, Frame::Challenge);
-                for kind in [
-                    ToastKind::Recipe,
-                    ToastKind::Tutorial,
-                    ToastKind::System,
-                    ToastKind::Other,
-                ] {
-                    let mut title = Text::literal("title");
-                    let mut description = Some(Text::literal("cancel"));
-                    assert!(!game.add_toast(kind, &mut title, &mut description));
-                }
-                let mut system = sunrise_client::toasts::SystemToast::new("system".into(), None);
-                system.message = Some(Text::literal("edit"));
-                let system = game.add_system_toast(system).unwrap();
-                assert_eq!(system.title.plain(), "replacement");
-                assert_eq!(system.message.unwrap().plain(), "changed");
-                for role in [
-                    super::super::execution_role::ExecutionRole::IntegratedServer,
-                    super::super::execution_role::ExecutionRole::DedicatedServer,
-                ] {
-                    game.options.execution_role = role;
-                    let mut title = Text::literal("server");
-                    let mut description = Some(Text::literal("edit"));
-                    assert!(!game.add_toast(ToastKind::Advancement, &mut title, &mut description));
-                    assert_eq!(title.plain(), "server", "server must not invoke listener");
-                    assert_eq!(description.unwrap().plain(), "edit");
-                }
-            });
-        });
+                let mods: mod_api::Mods = vec![ModEntry::new("toasts", Box::new(Listener))].into();
+                mod_platform::testing::with_mods(mods, || {
+                    super::super::native_entity_refs::tests::with_game(|game| {
+                        game.options.execution_role =
+                            super::super::execution_role::ExecutionRole::Client;
+                        let advancement = |name: &str| Toast {
+                            icon: ItemStack::new("minecraft:stone", 1),
+                            frame: Frame::Challenge,
+                            title: Text::translate("advancements.toast.challenge", &[]),
+                            description: Some(Text::literal(name)),
+                            slide: Slide::default(),
+                            recipes: vec![],
+                            changed: false,
+                            last_changed: 0,
+                        };
+                        game.add_advancement_toast(advancement("cancel"));
+                        assert!(game.toast_manager.queued.is_empty());
+                        game.add_advancement_toast(advancement("untouched"));
+                        let QueuedToast::Advancement(original) = &game.toast_manager.queued[0]
+                        else {
+                            panic!("expected advancement toast")
+                        };
+                        assert_eq!(
+                            original.title.component(),
+                            serde_json::json!({"translate": "advancements.toast.challenge"})
+                        );
+                        assert_eq!(original.description.as_ref().unwrap().plain(), "untouched");
+                        assert_eq!(original.icon, ItemStack::new("minecraft:stone", 1));
+                        assert!(
+                            original.slide.origin.is_none(),
+                            "not animated before admission"
+                        );
+                        game.add_advancement_toast(advancement("edit"));
+                        let QueuedToast::Advancement(edited) = &game.toast_manager.queued[1] else {
+                            panic!("expected advancement toast")
+                        };
+                        assert_eq!(edited.title.plain(), "replacement");
+                        assert_eq!(edited.title.component()["color"], "#123456");
+                        assert_eq!(edited.description.as_ref().unwrap().plain(), "changed");
+                        assert_eq!(edited.frame, Frame::Challenge);
+                        for kind in [
+                            ToastKind::Recipe,
+                            ToastKind::Tutorial,
+                            ToastKind::System,
+                            ToastKind::Other,
+                        ] {
+                            let mut title = Text::literal("title");
+                            let mut description = Some(Text::literal("cancel"));
+                            assert!(!game.admit_toast(kind, &mut title, &mut description));
+                        }
+                        let mut system =
+                            sunrise_client::toasts::SystemToast::new("system".into(), None);
+                        system.message = Some(Text::literal("edit"));
+                        assert!(game.add_system_toast(None, system));
+                        let Some(QueuedToast::System(_, system)) = game.toast_manager.queued.back()
+                        else {
+                            panic!("expected system toast")
+                        };
+                        assert_eq!(system.title.plain(), "replacement");
+                        assert_eq!(system.message.as_ref().unwrap().plain(), "changed");
+                        for id in [SystemToastId::PackLoadFailure, SystemToastId::Narrator] {
+                            assert!(game.add_system_toast(
+                                Some(id),
+                                SystemToast::new("Other notice".into(), None)
+                            ));
+                        }
+                        assert_eq!(
+                            game.toast_manager.update(1.0),
+                            (None, true),
+                            "both challenges share a promotion sound"
+                        );
+                        assert_eq!(game.toast_manager.visible.len(), 5);
+                        assert_eq!(game.toast_manager.update(1.0), (Some(true), false));
+
+                        game.add_toast(mod_api::ModToast::new(mod_api::Text::literal(
+                            "Older mod toast",
+                        )))
+                        .unwrap();
+                        game.admit_mod_toasts();
+                        game.add_advancement_toast(advancement("newer advancement"));
+                        let fading = game
+                            .toast_manager
+                            .system_mut(SystemToastId::PackLoadFailure)
+                            .unwrap();
+                        fading.slide.origin = Some(Instant::now() - Duration::from_secs(1));
+                        fading.force_hide();
+                        assert_eq!(game.toast_manager.update(1.0), (Some(false), false));
+                        assert_eq!(
+                            game.toast_manager.queued.len(),
+                            2,
+                            "a sliding-out toast still owns its slot"
+                        );
+                        game.toast_manager
+                            .system_mut(SystemToastId::PackLoadFailure)
+                            .unwrap()
+                            .slide
+                            .origin = Some(Instant::now() - Duration::from_secs(2));
+                        assert_eq!(game.toast_manager.update(1.0), (None, false));
+                        assert!(matches!(
+                            game.toast_manager.visible.last().map(|entry| &entry.toast),
+                            Some(QueuedToast::Mod(_))
+                        ));
+                        assert!(matches!(
+                            game.toast_manager.queued.front(),
+                            Some(QueuedToast::Advancement(_))
+                        ));
+
+                        let narrator = game
+                            .toast_manager
+                            .system_mut(SystemToastId::Narrator)
+                            .unwrap();
+                        narrator.slide.origin = Some(Instant::now() - Duration::from_secs(1));
+                        narrator.force_hide();
+                        assert_eq!(
+                            game.toast_manager.update(1.0),
+                            (Some(false), false),
+                            "the first visibility change wins, even while another family slides in"
+                        );
+
+                        for role in [
+                            super::super::execution_role::ExecutionRole::IntegratedServer,
+                            super::super::execution_role::ExecutionRole::DedicatedServer,
+                        ] {
+                            game.options.execution_role = role;
+                            let mut title = Text::literal("server");
+                            let mut description = Some(Text::literal("edit"));
+                            assert!(!game.admit_toast(
+                                ToastKind::Advancement,
+                                &mut title,
+                                &mut description
+                            ));
+                            assert_eq!(title.plain(), "server", "server must not invoke listener");
+                            assert_eq!(description.unwrap().plain(), "edit");
+                        }
+                    });
+                });
+            },
+        );
     }
 
     #[test]

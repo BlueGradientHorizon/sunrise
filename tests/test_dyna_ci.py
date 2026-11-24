@@ -1,7 +1,9 @@
 """Dyna's switch routes only supported, same-repository events to its pool."""
+import ast
 import hashlib
 import json
 import os
+import re
 from pathlib import Path
 import shutil
 import subprocess
@@ -318,7 +320,6 @@ class DynaRoutingTests(unittest.TestCase):
         self.assertNotIn("cargo test", static)
         self.assertNotIn("Swatinem/rust-cache", static)
         self.assertNotIn("runner-packages.txt", static)
-        self.assertIn("python3 tools/ci/ignored_shards.py --prepare sunrise-mod-package $JOBS", runtime)
         self.assertIn("cc -shared -fPIC -O2 -Wall -Wextra -Werror tools/ci/network_guard.c -o target/network_guard.so", runtime)
         self.assertIn("python3 tools/ci/run_test_binaries.py --jobs 3 --time-limits 2,5 --network-guard target/network_guard.so --no-data-skips -- cargo test $JOBS --profile test --workspace --lib --bins --tests", runtime)
         self.assertIn("cargo test $JOBS --no-fail-fast --profile test --workspace --doc", runtime)
@@ -408,7 +409,7 @@ class DynaRoutingTests(unittest.TestCase):
         self.assertLess(runtime.index("- name: Use persistent verify build artifacts"),
                         runtime.index("- name: Restore unchanged source timestamps"))
         self.assertLess(runtime.index("- name: Restore unchanged source timestamps"),
-                        runtime.index("- name: Build the runtime holder test actor"))
+                        runtime.index("- name: Build Rust core test binaries"))
         for case in ("absent", "correct-link", "directory", "file", "wrong-link", "dangling-link"):
             with self.subTest(case=case), tempfile.TemporaryDirectory() as temporary:
                 root = Path(temporary)
@@ -618,6 +619,19 @@ class DynaRoutingTests(unittest.TestCase):
         self.assertIn("persist-credentials: false", parity)
         self.assertIn("ref: ${{ inputs.commit }}", parity)
 
+    def test_no_parity_harness_builds_the_client_lib_test(self):
+        # Its one rustc outgrew the 16 GiB parity runner (#4896): a harness runs a sunrise-client fixture from
+        # lab.parity_fixtures() instead.
+        def builds_client_lib_test(path):
+            # Any command list holding cargo, test and sunrise-client, whatever its flags and their order.
+            return any(isinstance(node, ast.List)
+                       and {"cargo", "test", "sunrise-client"} <= {item.value for item in node.elts
+                                                                   if isinstance(item, ast.Constant)}
+                       for node in ast.walk(ast.parse(path.read_text())))
+
+        self.assertEqual([path.name for path in sorted((ROOT / "tools").glob("test_*_parity.py"))
+                          if builds_client_lib_test(path)], [])
+
     def test_daily_harnesses_client_lib_tests_are_built_before_the_harnesses(self):
         from test_ci_runners import jobs
         parity = dict(jobs(PARITY.read_text()))["vanilla-parity"]
@@ -636,6 +650,10 @@ class DynaRoutingTests(unittest.TestCase):
                 'run(["cargo", "test", "--locked", "-p", "sunrise-client-lib", "--lib", "x"])\n')
             (tree / "tools" / "test_game_parity.py").write_text(
                 "run(['cargo', 'test', '-p', 'sunrise-client', '--lib', 'y'])\n")
+            # sunrise-client's fixtures: their own binary, in each variant a harness asks lab for.
+            (tree / "tools" / "test_fixture_parity.py").write_text("run([lab.parity_fixtures(), 'v'])\n")
+            (tree / "tools" / "test_vanilla_fixture_parity.py").write_text(
+                "run([lab.parity_fixtures(default_features=False), 'u'])\n")
             (tree / "tools" / "test_fast_parity.py").write_text(
                 'run(["cargo", "test", "--profile", "fast", "-p", "sunrise-world", "--lib", "z"])\n')
             # A package beside the client's, as dragon_contacts runs sunrise-gameplay's lib tests.
@@ -644,9 +662,13 @@ class DynaRoutingTests(unittest.TestCase):
             env = {**os.environ, "PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}",
                    "PARITY_LOG_DIR": temporary, "RUNNER_TEMP": temporary, "BUCKET": "1"}
             subprocess.run(["bash", "-e", "-c", script], cwd=tree, env=env, check=True)
-            self.assertEqual(calls.read_text().splitlines(), ["test --locked --no-run -p sunrise-client --lib",
-                                                             "test --locked --no-run -p sunrise-client-lib --lib",
-                                                             "test --locked --no-run -p sunrise-gameplay --lib"])
+            fixtures = "build --locked --profile test -p sunrise-parity-fixtures"
+            self.assertEqual(calls.read_text().splitlines(), [
+                "test --locked --no-run -p sunrise-client --lib",
+                "test --locked --no-run -p sunrise-client-lib --lib",
+                "test --locked --no-run -p sunrise-gameplay --lib",
+                f"{fixtures} --features fixtures,client-defaults --bin sunrise-parity-fixtures",
+                f"{fixtures} --features fixtures --bin sunrise-parity-fixtures"])
             # A share builds only for the harnesses its plan gives it (a shard named NAME#N), and nothing for none.
             calls.unlink()
             (Path(temporary, "plan")).mkdir()
@@ -687,6 +709,66 @@ class PersistentTargetTests(unittest.TestCase):
                 with self.subTest(workflow=path.name, job=name):
                     self.assertTrue(any("tools/ci/source_mtimes.py" in run for run in steps[:first]))
         self.assertGreater(checked, 8)
+
+
+class IgnoredTestsKeepTests(unittest.TestCase):
+    STEP = "Keep a failed run's full output beyond this slot"
+
+    def setUp(self):
+        from test_ci_concurrency import yaml
+        steps = yaml.load((ROOT / ".github/workflows/ignored-tests.yml").read_text(),
+                          Loader=yaml.BaseLoader)["jobs"]["ignored-tests-shards"]["steps"]
+        self.steps = {step.get("name"): step for step in steps}
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        self.root = Path(temporary.name)
+        self.keep = self.root / "keep"
+        self.private = self.root / "private"
+        self.env = {**os.environ, "DYNA_CI_KEEP": str(self.keep), "PRIVATE_LOGS": str(self.private),
+                    "NAME": "77-2-3"}
+
+    def keep_step(self):
+        return subprocess.run(["bash", "-e", "-c", self.steps[self.STEP]["run"]], cwd=self.root, env=self.env,
+                              capture_output=True, text=True)
+
+    def test_the_run_step_writes_where_the_keep_step_reads(self):
+        run = self.steps["Run the ignored tests that need prepared data"]["env"]
+        step = self.steps[self.STEP]
+        self.assertEqual(step["if"], "always()")
+        self.assertEqual(run["IGNORED_TESTS_PRIVATE_LOGS"], step["env"]["PRIVATE_LOGS"])
+        self.assertEqual(step["env"]["NAME"],
+                         "${{ github.run_id }}-${{ github.run_attempt }}-${{ strategy.job-index }}")
+
+    def test_a_failed_runs_output_is_kept_under_its_run_attempt_and_job(self):
+        self.private.mkdir()
+        (self.private / "sunrise-client#1of2.test.log").write_text("synthetic private payload")
+        result = self.keep_step()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        kept = self.keep / "ignored-tests-failed-logs/77-2-3"
+        self.assertEqual([path.name for path in kept.iterdir()], ["sunrise-client#1of2.test.log"])
+        self.assertEqual((kept / "sunrise-client#1of2.test.log").read_text(), "synthetic private payload")
+        self.assertIn("ignored-tests-failed-logs/77-2-3", result.stdout)
+        self.assertNotIn("synthetic private payload", result.stdout + result.stderr)
+
+    def test_expired_entries_are_pruned_and_a_clean_run_adds_none(self):
+        root = self.keep / "ignored-tests-failed-logs"
+        stale, fresh = root / "70-1-0", root / "76-1-0"
+        for path in (stale, fresh):
+            path.mkdir(parents=True)
+        os.utime(stale, (0, 0))
+        # Nothing captured (a clean run, or no private directory at all).
+        result = self.keep_step()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual([path.name for path in root.iterdir()], ["76-1-0"])
+        self.private.mkdir()
+        result = self.keep_step()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual([path.name for path in root.iterdir()], ["76-1-0"])
+        # A host with no keep variable is left alone.
+        result = subprocess.run(["bash", "-e", "-c", self.steps[self.STEP]["run"]], cwd=self.root,
+                                env={key: value for key, value in self.env.items() if key != "DYNA_CI_KEEP"},
+                                capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
 
 
 class ParityWorkflowTests(unittest.TestCase):

@@ -887,7 +887,7 @@ impl Game<'_> {
     /// A general row's own compound with its attachments, before its passengers.
     pub(super) fn general_own_nbt(&mut self, id: u32, transferring: bool) -> Option<Tag> {
         let mut tag = self.general_row_record(id, transferring)?.to_tag();
-        crate::game::persist::write_attachments(&mut tag, id, &self.entity_attachments);
+        self.write_entity_attachments(&mut tag, id);
         Some(tag)
     }
 
@@ -1294,6 +1294,7 @@ fn general_tree_uuid_admission_refused(game: &Game<'_>, record: &GeneralEntityRe
 }
 
 impl Entity for GeneralRow {
+    const SERIALIZES_ATTACHMENTS: bool = true;
     fn id(&self) -> u32 {
         self.id
     }
@@ -1311,6 +1312,9 @@ impl Entity for GeneralRow {
     }
     fn velocity_mut(&mut self) -> &mut Vec3 {
         &mut self.velocity
+    }
+    fn fall_distance(&self) -> f64 {
+        self.fall_distance
     }
     fn reset_fall_distance(&mut self) {
         self.fall_distance = 0.0;
@@ -1332,6 +1336,9 @@ impl Entity for GeneralRow {
     }
     fn bounds(&self) -> Aabb {
         general_type_catalog().bounds(self.type_slot, self.position)
+    }
+    fn is_pickable(&self) -> bool {
+        general_type_catalog().pickable(self.type_slot)
     }
     fn selector_target(&self) -> Option<Target> {
         Some(Target::General(self.id))

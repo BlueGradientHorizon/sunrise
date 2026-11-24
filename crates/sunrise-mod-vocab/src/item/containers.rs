@@ -179,12 +179,16 @@ impl ModContainerInsertRule {
 /// from (`canTakeItemThroughFace`); and the vanilla menu that shows its
 /// slots when the block is used, if any (`MOD_MENUS`).
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-// exhaustive: the game builds it with a literal; mods only read it
+// exhaustive: mods construct the declaration when calling Registrar::block_container
 #[derive(sunrise_mod_api_macros::Wire)]
 pub struct ModContainer {
+    /// Number of persisted slots. Registration refuses counts over 256: vanilla's
+    /// `ItemStackWithSlot.CODEC` stores slot indices in an unsigned byte.
     pub slots: usize,
     pub faces: [Vec<usize>; 6],
     pub inputs: Vec<usize>,
+    /// The slots items may leave through a side (`canTakeItemThroughFace`); a
+    /// `BlockEntityPart::can_take_item_through_face` answer replaces this per query.
     pub outputs: Vec<usize>,
     /// The admission rule for each slot, by slot index. Missing entries mean [`Any`](ModContainerInsertRule::Any).
     pub insert_rules: Vec<ModContainerInsertRule>,

@@ -72,16 +72,13 @@ pub fn refusal(projects: &[api::Project<'_>]) -> Option<Refusal> {
 
 /// Why `project` alone can't build against the prebuilt game, or `None` when it can.
 pub fn project_refusal(project: &api::Project<'_>) -> Option<Refusal> {
-    refusal_with_script(project, project.bundle.dir.join("build.rs").is_file())
-}
-
-fn refusal_with_script(project: &api::Project<'_>, build_script: bool) -> Option<Refusal> {
     let mod_id = || project.bundle.manifest.id.clone();
     let cargo = &project.cargo;
     let package = cargo.get("package");
     let build = package.and_then(|p| p.get("build"));
     let has_script = build.is_some_and(|value| value.as_bool() != Some(false))
-        || (build.and_then(toml::Value::as_bool) != Some(false) && build_script)
+        || (build.and_then(toml::Value::as_bool) != Some(false)
+            && project.bundle.dir.join("build.rs").is_file())
         || cargo
             .get("build-dependencies")
             .and_then(toml::Value::as_table)
@@ -119,51 +116,6 @@ fn refusal_with_script(project: &api::Project<'_>, build_script: bool) -> Option
         }
     }
     None
-}
-
-/// A signed source package can accompany an independently built release library only if
-/// it can also use the API route on its own. This inspects the package; it never invokes Cargo.
-pub fn release_source(source: &sunrise_mod_package::index::native::Bundle) -> Result<(), String> {
-    let bundle = super::Bundle {
-        manifest: source.manifest.clone(),
-        dir: PathBuf::new(),
-    };
-    let cargo = source.files.get("Cargo.toml").ok_or("no Cargo.toml")?;
-    let cargo = std::str::from_utf8(cargo).map_err(|e| format!("Cargo.toml: {e}"))?;
-    let project = api::Project::parse(&bundle, cargo).map_err(|e| e.to_string())?;
-    require_release_api(&project, source.files.contains_key("build.rs"))?;
-    let lock = source
-        .files
-        .get("Cargo.lock")
-        .ok_or("the source package must carry Cargo.lock")?;
-    check_release_lock(lock)
-}
-
-/// Preflight a release build with the same inputs the source package's verifier uses.
-pub fn release_project(project: &api::Project<'_>) -> Result<(), String> {
-    require_release_api(project, project.bundle.dir.join("build.rs").is_file())
-}
-
-fn require_release_api(project: &api::Project<'_>, build_script: bool) -> Result<(), String> {
-    if let Some(refusal) = refusal_with_script(project, build_script) {
-        return Err(refusal.to_string());
-    }
-    if !matches!(Route::of(std::slice::from_ref(project)), Route::Api)
-        || !project.bundle.manifest.dependencies.is_empty()
-    {
-        return Err(
-            "a release library requires a standalone prebuilt-api mod without mod dependencies"
-                .into(),
-        );
-    }
-    Ok(())
-}
-
-pub fn check_release_lock(lock: &[u8]) -> Result<(), String> {
-    super::registry_lock::RegistryLock::parse(
-        std::str::from_utf8(lock).map_err(|e| format!("Cargo.lock: {e}"))?,
-    )?;
-    Ok(())
 }
 
 /// `name`'s sum in a `sha256sum` listing.
@@ -459,7 +411,7 @@ pub fn library(deps: &Path, krate: &str) -> Result<PathBuf, String> {
     match candidates.as_slice() {
         [path] => Ok(path.clone()),
         [] => Err(trf(
-            "The prebuilt game has no {crate}, a library this tool needs: the SDK it comes from is older than the tool. Pin a current build (`cargo sunrise-mod update --sunrise nightly`), or build with the tool in that SDK's own release (`sdk-<build>/tool-<target>.tar.xz`).",
+            "The prebuilt game has no {crate}, a library this tool needs: the SDK it comes from is older than the tool. Pin a current build (`cargo sunrise-mod pin nightly`), or build with the tool in that SDK's own release (`sdk-<build>/tool-<target>.tar.xz`).",
             &[("crate", krate)],
         )),
         _ => Err(facade_refused(krate)),
@@ -750,6 +702,7 @@ pub fn compile(
     libraries.insert("mod_vocab", library(&deps, "mod_vocab")?);
     let mut rlibs: std::collections::HashMap<&str, PathBuf> = std::collections::HashMap::new();
     let mut crate_names: std::collections::HashMap<&str, String> = std::collections::HashMap::new();
+    let mut identities = super::library_record::Identities::default();
     for (n, &index) in resolution.order.iter().enumerate() {
         let project = &projects[index];
         let id = project.bundle.manifest.id.as_str();
@@ -788,6 +741,17 @@ pub fn compile(
             )?;
             facades.insert(id, rlib);
         }
+        let source =
+            super::source_digest(project.bundle).ok_or(tr("Could not hash native mod inputs"))?;
+        let identity = identities.next(
+            sdk.commit(),
+            id,
+            &project.bundle.manifest.version.to_string(),
+            &source,
+            declared[index]
+                .iter()
+                .map(|dependency| dependency.id.as_str()),
+        );
         let (rlib, krate) = compile_mod(
             project,
             &declared[index],
@@ -801,12 +765,11 @@ pub fn compile(
             &library_entry(
                 &api::template(&game.join(super::api_route::TEMPLATE))?,
                 &[&project.bundle.manifest],
-                sdk.commit(),
-                id,
-                &project.bundle.manifest.version.to_string(),
+                &identity,
                 &[],
             ),
-            sdk.commit(),
+            &identities,
+            &source,
             check_only,
         )?;
         rlibs.insert(id, rlib);
@@ -835,14 +798,14 @@ pub fn compile(
     if let Some(patch) = patch {
         let source = out.join("sunrise_patch.rs");
         let template = api::template(&game.join(super::api_route::TEMPLATE))?;
-        let mut entry = library_entry(
-            &template,
-            &[],
+        let identity = identities.next(
             sdk.commit(),
             "sunrise_patch",
             "0",
-            &patch.installs,
+            "none",
+            patch.mods.iter().map(String::as_str),
         );
+        let mut entry = library_entry(&template, &[], &identity, &patch.installs);
         entry.push_str(PATCH_HOST_LINK);
         fs::write(&source, &entry).map_err(|e| e.to_string())?;
         let library = out.join(dylib_name("sunrise_patch"));
@@ -871,7 +834,12 @@ pub fn compile(
             fs::write(saved, fingerprint).map_err(|e| e.to_string())?;
         }
         super::library_record::validate_exports(&library, "sunrise_patch")?;
-        super::library_record::stamp(&library, sdk.commit(), "sunrise_patch", "0", true)?;
+        super::library_record::stamp(
+            &library,
+            "sunrise_patch",
+            identities.recorded("sunrise_patch"),
+            true,
+        )?;
         installed.push(library);
     }
     Ok(Some((
@@ -902,20 +870,20 @@ pub fn dylib_name(krate: &str) -> String {
     )
 }
 
+/// Where a library's entry template takes the library's identity.
+pub(super) const IDENTITY_MARKER: &str = "/* NATIVE_BUILD */";
+
+/// The library's entry module, exporting `identity` (as [`super::library_record::Identities::next`]
+/// makes it) followed by the panic strategy the library is compiled with.
 pub fn library_entry(
     template: &str,
     mods: &[&sunrise_mod_package::Manifest],
-    build: &str,
-    id: &str,
-    version: &str,
+    identity: &str,
     installs: &[String],
 ) -> String {
     api::main_rs(template, mods)
         .replace("mod_0::", "crate::")
-        .replace(
-            "/* NATIVE_BUILD */",
-            &format!("{build} {id} {version} {}", crate::rust::VERSION),
-        )
+        .replace(IDENTITY_MARKER, identity)
         .replace(
             "/* MOD_REDIRECTS */",
             &installs
@@ -966,8 +934,9 @@ pub(super) fn stage_entry(
     Ok(relative)
 }
 
-/// Builds `project` against the route's SDK libraries and the compiled mod dependencies.
-/// A check emits only Rust metadata; a build emits a dylib. Returns the artifact and crate name.
+/// Builds `project` against the route's SDK libraries and the compiled mod dependencies, from the
+/// files `files` digests, stamping the identity `identities` recorded for it. A check emits only
+/// Rust metadata; a build emits a dylib. Returns the artifact and crate name.
 #[allow(clippy::too_many_arguments)]
 pub fn compile_mod<'a>(
     project: &api::Project<'_>,
@@ -977,7 +946,8 @@ pub fn compile_mod<'a>(
     library: impl Fn(&str) -> &'a PathBuf,
     rlibs: &std::collections::HashMap<&str, PathBuf>,
     entry: &str,
-    build: &str,
+    identities: &super::library_record::Identities,
+    files: &str,
     check_only: bool,
 ) -> Result<(PathBuf, String), String> {
     let id = project.bundle.manifest.id.as_str();
@@ -1007,8 +977,9 @@ pub fn compile_mod<'a>(
         "--crate-name",
         &krate,
     ])
+    // Two builds of one mod from different files never share mangled symbols or a `TypeId`.
     .arg("-C")
-    .arg(format!("metadata={id}"));
+    .arg(format!("metadata={id}-{}", &files[..16]));
     for name in ["mod_api", "mod_vocab"] {
         refuse_closure_rlib(id, name, library(name))?;
         cmd.arg("--extern")
@@ -1037,12 +1008,9 @@ pub fn compile_mod<'a>(
     } else {
         out.join(dylib_name(&krate))
     };
+    // The entry holds the identity: the build, the mod's files and its dependencies' identities.
     let mut hash = Sha256::new();
-    hash.update(build);
     hash.update(entry);
-    hash.update(
-        super::source_digest(project.bundle).ok_or(tr("Could not hash native mod inputs"))?,
-    );
     for dependency in declared {
         if let Some(path) = rlibs.get(dependency.id.as_str()) {
             hash.update(fs::read(path).map_err(|e| e.to_string())?);
@@ -1071,13 +1039,7 @@ pub fn compile_mod<'a>(
     }
     if !check_only {
         super::library_record::validate_exports(&library, id)?;
-        super::library_record::stamp(
-            &library,
-            build,
-            id,
-            &project.bundle.manifest.version.to_string(),
-            false,
-        )?;
+        super::library_record::stamp(&library, id, identities.recorded(id), false)?;
     }
     fs::write(saved, fingerprint).map_err(|e| e.to_string())?;
     Ok((library, krate))

@@ -46,16 +46,23 @@ MOD_API_GEN = [
 ]
 READERS = {
     "cargo-sunrise-mod": [
-        "Cargo.lock", "crates/sunrise-mod-api", "crates/sunrise-mod-package/src/sdk/fixture.tar.xz",
-        "crates/sunrise-mod-package/tests/index", "docs/modding/src/how-to/native-mods.md", "tools/ci/rust-version",
+        "Cargo.lock", "crates/sunrise-attestation/tests/fixtures", "crates/sunrise-mod-api",
+        "crates/sunrise-mod-package/src/sdk/fixture.tar.xz",
+        # The page checks read the package crate's screenshot fixtures.
+        "crates/sunrise-mod-package/tests/fixtures",
+        "crates/sunrise-mod-package/tests/index", "crates/sunrise-mod-vocab/changes/debt-re-wl-re-wl.toml",
+        "docs/modding/src/how-to/native-mods.md", "tools/ci/rust-version",
         # The installed-client daily builds and installs the fn-replace-check `lower` fixture.
         "tools/ci/fn-replace-check/lower",
     ],
     # The pinned Rust, and the mods library's template its tests render.
     "sunrise-native-build": ["crates/sunrise-client/src/native_mod_entry.rs.template", "tools/ci/rust-version"],
+    # The pipeline bench example links the bench mod's source in.
+    "sunrise-mod-host": ["tools/fixtures/mod-pipeline-bench"],
     "sunrise-client": SUNRISE_CLIENT,
     # Shares sunrise-client's sources, so its unit tests run the same reads.
     "sunrise-client-lib": SUNRISE_CLIENT,
+    "sunrise-parity-fixtures": SUNRISE_CLIENT,
     # lang.rs embeds the bundled language files.
     "sunrise-client-core": ["crates/sunrise-client/assets/sunrise/lang"],
     "sunrise-client-render": [
@@ -109,12 +116,15 @@ SCANNED = {"sunrise-client-core": ["crates"]}
 # Literals the scan takes for a walk up to crates/ that are not one (a ".." among path-traversal checks).
 # "machines/.." in a test's sample paths, "mods/" in an instance's file names: no read either.
 NOT_READS = {
-    "sunrise-client": {"crates"}, "sunrise-client-lib": {"crates"}, "sunrise-mod-package": {"crates"},
+    "sunrise-client": {"crates"}, "sunrise-client-lib": {"crates"}, "sunrise-parity-fixtures": {"crates"},
+    "sunrise-mod-package": {"crates"},
     "sunrise-mod-vocab": {"."}, "sunrise-port-pack": {"mods"}, "sunrise-prepare": {"crates"},
     # A package's source-file names (`package::source_file`), never this checkout's lock.
     "sunrise-mod-source": {"Cargo.lock"},
     # shader_fuzz's `..` path parts, in the packs it writes and reads, beside its own seed pack.
     "sunrise-render-shaderpack": {"crates"},
+    # Server init uses the filename as a checkout-root sentinel; only sunrise-prepare reads its contents.
+    "sunrise-server": {"research-lock.json"},
     # Paths inside a staged game source or a test's scratch folder, never this checkout's files.
     "sunrise-native-build": {
         "Cargo.lock", "crates/sunrise-client/Cargo.toml", "crates/sunrise-client/build.rs", "crates/sunrise-client/src",

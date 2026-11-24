@@ -16,6 +16,15 @@ pub trait ClientViewClientHost {
     /// including on the title screen, independently of server tick freeze. Wraps as a Java int.
     fn gui_ticks(&self) -> i32;
     /// Side: client.
+    /// How far above the bottom edge the HUD's status rows reach, left and right in GUI pixels
+    /// (NeoForge's `Hud.leftHeight` and `rightHeight`), as they stand when the current HUD layer
+    /// starts: both are 39 (the hotbar and experience bar) before `minecraft:player_health`,
+    /// and each vanilla row adds its height as it draws (health and armour on the left, food,
+    /// a vehicle's hearts and air on the right). A layer placed `Below` a vanilla row sees the
+    /// height that row draws at, and one placed `Above` it the height after it. A vanilla row
+    /// that is hidden, canceled or replaced adds nothing. None outside the HUD layer pass.
+    fn gui_status_heights(&self) -> Option<[i32; 2]>;
+    /// Side: client.
     /// Read effective HUD visibility independently of first-person hands.
     fn hud_mode(&self) -> HudMode;
     /// Side: client.
@@ -23,6 +32,17 @@ pub trait ClientViewClientHost {
     /// Other first-person hand restrictions and render cancellation still apply.
     /// This does not change the player's F1 preference for mandatory mod-error diagnostics.
     fn set_hud_mode(&mut self, mode: HudMode);
+    /// Side: client.
+    /// Shows `line` over this window's hotbar (the action bar), as `Hud.setOverlayMessage`
+    /// does: it replaces the current line, empty text included, and restarts the stock
+    /// overlay timer and fade (`Hud.tick`, `Hud.extractOverlayMessage`). `animate_color`
+    /// cycles the colour as a jukebox's "Now Playing" line does. One slot: a server's
+    /// action-bar packet or a jukebox message replaces a mod's line, and a mod's line
+    /// replaces theirs. Nothing joins chat or its history, no chat event fires, nothing is
+    /// narrated and nothing is sent. Text the boundary refuses is an error and the previous
+    /// line stays.
+    fn set_overlay_message(&mut self, line: Text, animate_color: bool)
+    -> Result<(), TextFormError>;
     /// Side: client.
     /// The window's camera type (`Options.getCameraType`), including its latest pending request.
     fn camera_type(&self) -> CameraType;
@@ -109,4 +129,18 @@ pub trait ClientViewClientHost {
     /// or on a miss. Consumption never recasts or rechecks target liveness;
     /// a block broken earlier in a tick remains that tick's use target.
     fn crosshair_target(&self) -> Option<CrosshairTarget>;
+    /// Side: client.
+    /// The vehicle the local player controls that can jump now (`LocalPlayer.jumpableVehicle`):
+    /// the player is its controlling passenger (`getControlledVehicle`: the first one, on its
+    /// saddle) and it can jump (`PlayerRideableJumping.canJump`): a saddled horse, donkey,
+    /// mule, nautilus or camel, the camel neither sitting nor getting up or down; a pig or a
+    /// strider never jumps. The HUD's jump bar makes the same decision. None when the player
+    /// controls no such vehicle (a second passenger included), or outside a client world.
+    fn jumpable_vehicle(&self) -> Option<EntityRef>;
+    /// Side: client.
+    /// Whether the server tracks any waypoint for this client
+    /// (`ClientWaypointManager.hasWaypoints`), the waypoints the locator bar draws. The HUD's
+    /// contextual bar reads the same fact. Which bar the HUD shows is not exposed: vanilla's
+    /// `Hud.nextContextualInfoState` is private.
+    fn has_waypoints(&self) -> bool;
 }

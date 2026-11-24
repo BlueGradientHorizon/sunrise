@@ -188,6 +188,35 @@ impl<'b> RaycastBlockCache<'b> {
     }
 }
 
+/// What `Level.precipitationAt` reads of the mobs' level.
+impl sunrise_world::level::weather::PrecipitationReads for MobWorld<'_> {
+    fn is_raining(&self) -> bool {
+        self.raining
+    }
+    fn can_see_sky(&self, pos: BlockPos) -> bool {
+        MobWorld::can_see_sky(self, pos.x, pos.y, pos.z)
+    }
+    fn motion_blocking_y(&self, pos: BlockPos) -> i32 {
+        self.motion_blocking_height(pos.x, pos.z)
+    }
+    /// `Biome.getPrecipitationAt`: none in a column not loaded or a biome without
+    /// precipitation, else snow below 0.15.
+    fn biome_precipitation(&self, pos: BlockPos) -> sunrise_world::level::PrecipitationKind {
+        use sunrise_world::level::PrecipitationKind;
+        let Some(chunk) = self.world.chunks.get(&(pos.x >> 4, pos.z >> 4)) else {
+            return PrecipitationKind::None;
+        };
+        let biome = self.biomes.get(chunk.biome(pos.x, pos.y, pos.z));
+        if !biome.precipitation {
+            PrecipitationKind::None
+        } else if biome.temperature_at(pos, self.sea_level) >= 0.15 {
+            PrecipitationKind::Rain
+        } else {
+            PrecipitationKind::Snow
+        }
+    }
+}
+
 impl MobWorld<'_> {
     /// `Level.getEntity(uuid)`: the entity a UUID a mob stored names, while it
     /// is in the level. Nothing when this world keeps no entity UUIDs, or when
@@ -302,7 +331,7 @@ impl MobWorld<'_> {
     }
     /// Membership in a prebound gameplay tag, indexed by the mob type's registry slot.
     #[inline]
-    pub fn entity_tag_bit(&self, kind: &super::MobType, bit: u8) -> bool {
+    pub fn entity_tag_bit(&self, kind: &super::MobType, bit: u32) -> bool {
         self.items.is_some_and(|items| {
             items
                 .entity_type_tags
@@ -605,19 +634,16 @@ impl MobWorld<'_> {
         }
         self.world.light(x, y, z) >> 4 == 15
     }
-    /// Level.precipitationAt: raining, open to the sky, nothing motion
-    /// blocking above, then the biome's precipitation at the position:
-    /// `Some(true)` rain, `Some(false)` snow, `None` nothing.
+    /// Level.precipitationAt (`sunrise_world::level::weather::precipitation_at`): raining, open
+    /// to the sky, nothing motion blocking above, then the biome's precipitation at the
+    /// position: `Some(true)` rain, `Some(false)` snow, `None` nothing.
     pub fn precipitation_at(&self, x: i32, y: i32, z: i32) -> Option<bool> {
-        if !self.raining || !self.can_see_sky(x, y, z) || self.motion_blocking_height(x, z) > y {
-            return None;
+        use sunrise_world::level::PrecipitationKind;
+        match sunrise_world::level::weather::precipitation_at(self, BlockPos::new(x, y, z)) {
+            PrecipitationKind::Rain => Some(true),
+            PrecipitationKind::Snow => Some(false),
+            PrecipitationKind::None => None,
         }
-        let chunk = self.world.chunks.get(&(x >> 4, z >> 4))?;
-        let biome = self.biomes.get(chunk.biome(x, y, z));
-        if !biome.precipitation {
-            return None;
-        }
-        Some(biome.temperature_at(BlockPos::new(x, y, z), self.sea_level) >= 0.15)
     }
     /// `Entity.isInClouds`: a dimension whose `visual/cloud_color` is
     /// transparent has no clouds, else the cloud band is the four blocks from
@@ -951,7 +977,7 @@ impl TestResources {
         let facts = BlockFacts::load(root, registry).unwrap();
         let motion = crate::motion::MotionResources::load(root, &assets).unwrap();
         let source = sunrise_assets::resource_source::ResourceRoot::directory(root.to_path_buf());
-        let data = super::MobData::load(&source, &facts);
+        let data = super::MobData::load(&source, facts.states.len(), false).unwrap();
         let types = super::MobTypes::load(root).unwrap();
         let biomes = crate::biome::Biomes::load(&source).unwrap();
         let defaults = sunrise_world::item_defaults::read(root).unwrap();
@@ -1095,6 +1121,7 @@ fn run_test_world(
         biomes,
         mob_griefing,
         universal_anger: false,
+        pvp: false,
         mob_drops,
         max_entity_cramming: 24,
         difficulty: super::spawning::LocalDifficulty::new(2, 18000, 0, 0.0),

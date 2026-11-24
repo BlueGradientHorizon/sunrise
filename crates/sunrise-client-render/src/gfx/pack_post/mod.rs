@@ -46,7 +46,9 @@ pub trait PackPostExt: Sized {
         motion: (&[(u32, u64)], &[u32]),
     );
     /// Runs the pack over the world drawn into `world` (colour) and `world_depth`, then draws
-    /// the result onto `screen`. Fails once the device is lost (`lost`).
+    /// the result onto `screen`. Notifies after the sky if the frame assigned the stage to this
+    /// pack, and after the last pack world pass, before composition. Fails once the device is lost (`lost`).
+    #[allow(clippy::too_many_arguments)]
     fn run(
         &mut self,
         device: &wgpu::Device,
@@ -61,6 +63,8 @@ pub trait PackPostExt: Sized {
         window: [u32; 2],
         pages: &[TerrainPage],
         terrain: &mut TerrainDraw<'_>,
+        boundaries: WorldBoundaries,
+        boundary: impl FnMut(&mut wgpu::CommandEncoder, WorldBoundary<'_>) -> bool,
         lost: &std::sync::atomic::AtomicBool,
         poll: sunrise_render_shaderpack::PollLive,
     ) -> Result<(), String>;
@@ -172,6 +176,7 @@ impl PackPostExt for PackPost {
 
     /// Runs the pack over the world drawn into `world` (colour) and `world_depth`, then draws
     /// the result onto `screen`.
+    #[allow(clippy::too_many_arguments)]
     fn run(
         &mut self,
         device: &wgpu::Device,
@@ -186,6 +191,8 @@ impl PackPostExt for PackPost {
         window: [u32; 2],
         pages: &[TerrainPage],
         terrain: &mut TerrainDraw<'_>,
+        boundaries: WorldBoundaries,
+        boundary: impl FnMut(&mut wgpu::CommandEncoder, WorldBoundary<'_>) -> bool,
         lost: &std::sync::atomic::AtomicBool,
         poll: sunrise_render_shaderpack::PollLive,
     ) -> Result<(), String> {
@@ -236,6 +243,8 @@ impl PackPostExt for PackPost {
             frame.shadow_scene_revision,
             frame.ticks,
             frame.pack.day_time,
+            boundaries,
+            boundary,
             lost,
             poll,
         )
@@ -298,6 +307,9 @@ mod shadow_faces_tests;
 mod r11f_image_tests;
 
 #[cfg(test)]
+mod normalized_image_tests;
+
+#[cfg(test)]
 mod work_group_fold_tests;
 
 #[cfg(test)]
@@ -335,6 +347,9 @@ mod player_boolean_tests;
 
 #[cfg(test)]
 mod snorm_tests;
+
+#[cfg(test)]
+mod far_location_tests;
 
 #[cfg(test)]
 mod terrain_parts_tests;
@@ -397,3 +412,11 @@ mod colortex_mip_blend_tests;
 
 #[cfg(test)]
 mod material_route_tests;
+
+#[cfg(test)]
+mod sign_text_target_tests;
+
+#[cfg(test)]
+mod block_atlas_group_tests;
+#[cfg(test)]
+mod mod_stage_tests;

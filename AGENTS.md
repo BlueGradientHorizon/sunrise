@@ -49,6 +49,7 @@ Feature → files → harness for the most-changed areas: [docs/architecture.md]
 - **Docs say where and how, not how many.** Point to where a thing lives and the command that lists or measures it.
   Don't write counts, growing lists, timings or current status into a doc: they go stale, and the next agent
   spends a turn fixing them.
+- **Contract details go in rustdoc, not concept pages.** A PR that adds or changes a hook, method or edge case updates its `///` doc comment or `#[notes]`, not a concept page in `docs/modding/src/concepts/`; runnable Rust snippets belong in `docs/modding/examples/` via `{{#include}}`.
 
 ## Mod API: the clean break
 
@@ -212,6 +213,9 @@ python3 tools/lang_coverage.py --summary --show-keys   # the same, then the keys
   + a Rust probe: a module `crates/<crate>/examples/probe/<name>.rs` of that crate's probe binary (`ls crates/*/examples/probe`),
   or the game binary with a fixture env var (`game/interface/dispense_fixture.rs`, `game/blocks/sculk_fixture.rs`,
   `game/administration/command_harness.rs`, `game/network/net_harness.rs`). Copy a nearby harness for a new one.
+  A sunrise-client fixture (a `#[test]` under `game` whose body is one call to `run_<test>()`) runs from the
+  `sunrise-parity-fixtures` program (`crates/sunrise-parity-fixtures`, `lab.parity_fixtures()`, [docs/parity-workflow.md](docs/parity-workflow.md#sunrise-client-fixtures));
+  a harness never builds the `sunrise-client` lib test.
 - Native mods compile against a pinned prebuilt SDK; `[[native.mixin]]` rows compile into a function-replacement patch library.
   Use `native-build --trust-native-code`; the launcher never rebuilds the game for a mod.
 - Probes build into `.local/parity-target/`; harnesses find binaries via `lab.cargo_target()`, never `target/`.
@@ -322,5 +326,5 @@ python3 tools/parity.py dedicated_server server_entities server_player_damage
 [docs/parity-workflow.md](docs/parity-workflow.md) (runner, gate, shards, scopes) ·
 [docs/native-client.md](docs/native-client.md) (options, controls, sunrise-ctl) ·
 [docs/server-levels.md](docs/server-levels.md) (levels per dimension) ·
-[docs/rust-parity.md](docs/rust-parity.md) (what is ported) · [docs/known-issues.md](docs/known-issues.md) ·
+[docs/status.md](docs/status.md) (what is ported) · [docs/known-issues.md](docs/known-issues.md) ·
 [docs/release-flow.md](docs/release-flow.md) · [docs/README.md](docs/README.md) (index).

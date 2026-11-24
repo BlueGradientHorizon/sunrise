@@ -80,7 +80,6 @@ pub(super) struct BorrowedMobTick<'a> {
     pub(super) restocks: &'a mut Vec<sunrise_client::mobs::villager_brain::RestockNotice>,
     pub(super) pushes: &'a mut sunrise_client::mobs::PendingPushes,
     pub(super) dead: &'a mut Vec<Mob>,
-    pub(super) corpses: &'a mut Vec<Mob>,
     pub(super) died: &'a mut sunrise_client::fast_hash::FxHashSet<u32>,
     pub(super) ticked: &'a mut sunrise_client::fast_hash::FxHashSet<u32>,
     pub(super) guests: &'a mut super::super::lan_mobs::GuestViews,
@@ -91,12 +90,13 @@ pub(super) struct BorrowedMobTick<'a> {
     pub(super) player_credit:
         &'a mut std::collections::HashMap<u32, super::super::combat::PlayerCredit>,
     pub(super) path_writes: &'a mut Vec<((i32, i32, i32), u32, u32)>,
-    pub(super) gone: &'a mut Vec<(u32, Vec3, f64, f64, Option<Mob>)>,
+    pub(super) gone: &'a mut Vec<(u32, Vec3, f64, f64)>,
     pub(super) lent: sunrise_client::health::LentLevel,
     pub(super) laps: &'a mut sunrise_client::spans::Laps,
     pub(super) uuid: Option<[i32; 4]>,
     pub(super) level_id: &'static str,
     pub(super) round: &'a mut super::super::native_ticks::TickRound,
+    pub(super) stand_result: &'a mut Result<()>,
 }
 impl Game<'_> {
     pub(super) fn tick_borrowed_creatures(
@@ -112,10 +112,18 @@ impl Game<'_> {
         let mut snapshot = std::mem::take(state.snapshot);
         let mut events = std::mem::take(state.events);
         let mut dead = std::mem::take(state.dead);
-        let mut corpses = std::mem::take(state.corpses);
         let mut died = std::mem::take(state.died);
         let mut ticked = std::mem::take(state.ticked);
         let mut guests = std::mem::take(state.guests);
+        let guest_indices = |guests: &super::super::lan_mobs::GuestViews| {
+            guests
+                .iter()
+                .enumerate()
+                .map(|(slot, (conn, _))| (*conn, slot))
+                .collect()
+        };
+        let mut guest_slots: sunrise_client::fast_hash::FxHashMap<u32, usize> =
+            guest_indices(&guests);
         let mut spare = state.spare.take();
         let mut bindings = std::mem::take(state.bindings);
         let mut guest_ids = std::mem::take(state.guest_ids);
@@ -155,6 +163,15 @@ impl Game<'_> {
         let mut dispatch_panic = None;
         let mut pushes = std::mem::take(state.pushes);
         let original_len = snapshot.len();
+        // A restored list can put new joins first. Keep its storage and view
+        // slots intact, but walk its turns in join order when interleaving stands.
+        let turn_order = (!self.ordered.armor_stands.is_empty()
+            && !mobs.is_sorted_by_key(|mob| mob.join))
+        .then(|| {
+            let mut order: Vec<_> = (0..original_len).collect();
+            order.sort_unstable_by_key(|&slot| mobs[slot].join);
+            order
+        });
         let mut keep = vec![true; original_len];
         let mut grid =
             sunrise_client::mobs::seen_grid::SeenGrid::new(snapshot.iter().map(|s| s.bounds));
@@ -193,8 +210,8 @@ impl Game<'_> {
         let mut resume_from = 0;
         let mut resume_sampled = None;
         let mut resume_guest = None;
-        // The slot of the mob whose own Pre was just told (a type a mod named): it resumes there
-        // with its checks done.
+        // The turn of the mob whose own Pre was just told (a type a mod named): it resumes
+        // there with its checks done.
         let mut told_at: Option<usize> = None;
         // Whether a mob still in the lifted list has left the pass (`keep` false) since the list
         // was last given back: a told-alone yield then takes it out before the call.
@@ -212,6 +229,10 @@ impl Game<'_> {
             let mut air_answer = None;
             let mut retry_rider = None;
             let mut removing_vehicle = None;
+            let mut removal = None;
+            let mut stand_cut = None;
+            let mut lid_push = None;
+            let mut paused_hurt = None;
             // A mob told alone hears its Pre right before its tick and its Post right after:
             // stop there, restore the list, tell it while the live rows are readable, and resume.
             let mut tell_pre: Option<(u32, std::sync::Arc<sunrise_client::mobs::MobType>, usize)> =
@@ -232,6 +253,9 @@ impl Game<'_> {
                 // reusable base empty lets its reference fields remain copyable between rows.
                 base.section_writer = None;
                 base.passenger_objects = passenger_objects;
+                // The owning game completes live births at the goal/behaviour site even
+                // without a listener. Hostless probes still emit an ordinary breed event.
+                base.asks_baby_spawn = true;
                 let mut level = sunrise_client::health::DamageLevel::lent(
                     &self.world,
                     self.pack.assets.registry,
@@ -240,6 +264,7 @@ impl Game<'_> {
                     Some(&self.pack.block_registries),
                     &self.damage_hooks,
                 )
+                .with_mob_hurt_handoff(&mut paused_hurt)
                 .with_mob_uuids(&self.persist.uuids)
                 .with_player_resolver(
                     crate::game::entity::player_resolver!(self),
@@ -249,7 +274,8 @@ impl Game<'_> {
                     self,
                     None,
                     in hit_sounds
-                ));
+                ))
+                .with_reads(crate::game::entity::hit_reads_of!(self));
                 let path_changes = sunrise_client::mobs::collision_changes(&base, &path_writes);
                 laps.lap("creature_prepare");
                 let mut cached_difficulty: Option<((i32, i32), spawning::LocalDifficulty)> = None;
@@ -271,7 +297,7 @@ impl Game<'_> {
                     && tell_post.is_none()
                     && cursor < original_len
                 {
-                    let slot = cursor;
+                    let slot = turn_order.as_ref().map_or(cursor, |order| order[cursor]);
                     let i = match &positions {
                         None => slot,
                         Some(positions) => {
@@ -292,10 +318,19 @@ impl Game<'_> {
                         }
                     };
                     let m = &mut mobs[i];
+                    if self
+                        .ordered
+                        .armor_stands
+                        .front()
+                        .is_some_and(|&join| join < m.join)
+                    {
+                        stand_cut = Some(m.join);
+                        break;
+                    }
                     let retried = retried_rider.take() == Some(m.id);
                     // Its checks ran before its Pre was told: they don't run again.
                     let resuming = resume.is_some();
-                    let checked = resuming || told_at == Some(slot);
+                    let checked = resuming || told_at == Some(cursor);
                     if blocked.contains(&m.id) || resuming && resume_entity != Some((m.id, m.join))
                     {
                         cursor += 1;
@@ -515,7 +550,7 @@ impl Game<'_> {
                     // guest's slot straight after. Its identity is captured with
                     // it, once: the player a goal resolves is the one the tick
                     // sees — a guest on a server, the game's own otherwise (#1077).
-                    let lent = seen_guest.and_then(|conn| guests.iter().position(|g| g.0 == conn));
+                    let lent = seen_guest.and_then(|conn| guest_slots.get(&conn).copied());
                     let active_player = match (seen_guest, lent) {
                         (None, _) => base.player.take(),
                         (Some(_), Some(k)) => spare
@@ -530,7 +565,8 @@ impl Game<'_> {
                     // A listener can redirect to any real player in this level. Keep
                     // immutable views during the borrow so changing selection
                     // never invalidates a view a goal already holds. No allocation
-                    // is made when nobody listens for target changes.
+                    // is made when nobody listens for target changes and no pet
+                    // needs a player other than the one it sees.
                     let selection = if resuming {
                         let mut selection = resume_selection.take();
                         if matches!(resume, Some(Pause::AfterDamage(_)))
@@ -541,7 +577,7 @@ impl Game<'_> {
                                     (active_player.as_ref(), active_identity)
                                 } else if let Some(conn) = player.connection {
                                     (
-                                        guests.iter().find(|g| g.0 == conn).map(|g| &g.1),
+                                        guest_slots.get(&conn).map(|&slot| &guests[slot].1),
                                         self.guest_identity(conn),
                                     )
                                 } else {
@@ -554,7 +590,26 @@ impl Game<'_> {
                             });
                         }
                         selection
-                    } else if mod_api::__private::listened(mod_api::HookId::LivingChangeTarget) {
+                    } else if mod_api::__private::listened(mod_api::HookId::LivingChangeTarget)
+                        || sunrise_client::mobs::tame::reads_another_player(
+                            m,
+                            active_player.as_ref(),
+                            seen_guest.and(base.player.as_ref()).into_iter().chain(
+                                guests
+                                    .iter()
+                                    .enumerate()
+                                    .filter(|(k, _)| Some(*k) != lent)
+                                    .map(|(_, (_, view))| view),
+                            ),
+                            |id| {
+                                base.player_identity.is_some_and(|(_, own)| own == id)
+                                    || guests.iter().any(|(conn, _)| {
+                                        self.guest_identity(*conn)
+                                            .is_some_and(|(_, guest)| guest == id)
+                                    })
+                            },
+                        )
+                    {
                         let mut players = Vec::new();
                         if let (Some(view), Some((_, entity_id))) =
                             (&active_player, active_identity)
@@ -644,6 +699,17 @@ impl Game<'_> {
                                 &mut movement,
                             )
                         }
+                        Some(Pause::Breeding { resume, .. }) => {
+                            sunrise_client::mobs::riders::resume_after_birth(
+                                &mut mobs,
+                                i,
+                                &w,
+                                &mut level,
+                                resume,
+                                &mut events,
+                                &mut movement,
+                            )
+                        }
                         Some(Pause::Trample(_) | Pause::FallToPassengers(_)) => {
                             sunrise_client::mobs::riders::resume_movement(
                                 &mut mobs,
@@ -654,13 +720,22 @@ impl Game<'_> {
                                 &mut events,
                             )
                         }
-                        Some(Pause::Consumption { was_on_fire, .. }) => {
+                        Some(Pause::InsideEffects(paused)) => {
+                            sunrise_client::mobs::riders::resume_after_inside_effects(
+                                &mut mobs,
+                                i,
+                                &w,
+                                &mut level,
+                                paused,
+                                &mut events,
+                            )
+                        }
+                        Some(Pause::Consumption { .. }) => {
                             sunrise_client::mobs::riders::resume_after_consumption(
                                 &mut mobs,
                                 i,
                                 &w,
                                 &mut level,
-                                was_on_fire,
                                 &mut events,
                                 &mut movement,
                             )
@@ -715,6 +790,17 @@ impl Game<'_> {
                             kept
                         }
                         sunrise_client::mobs::ai::TickProgress::Paused(paused) => {
+                            if matches!(paused, Pause::Breeding { .. }) {
+                                // In particular AnimalMakeLove's earlier lock-gaze is already
+                                // visible to the partner when spawnChildFromBreeding runs.
+                                sunrise_client::mobs::apply_brain_events(
+                                    &mut mobs,
+                                    &mut level,
+                                    &mut events,
+                                    from,
+                                    &base.teams,
+                                );
+                            }
                             // Return every player loan before ending the world borrow.
                             if seen_guest.is_none() {
                                 base.player = w.player;
@@ -733,6 +819,20 @@ impl Game<'_> {
                             break;
                         }
                     };
+                    // Shulker.onPeekAmountChange shoves with the shulker's new
+                    // bounds, before the next stand or mob starts its own tick.
+                    if mobs[i].species() == Species::Shulker
+                        && let Some(offset) = events[from..]
+                            .iter()
+                            .position(|event| matches!(event, MobEvent::LidPush { .. }))
+                        && let MobEvent::LidPush {
+                            shulker,
+                            area,
+                            delta,
+                        } = events.remove(from + offset)
+                    {
+                        lid_push = Some((shulker, area, delta));
+                    }
                     super::super::tick_profile::end_mob(level_id, sampled);
                     let m = &mut mobs[i];
                     // Its `xo` (`previous`) is where its tick began, unless a teleport in the
@@ -773,7 +873,7 @@ impl Game<'_> {
                                         [write.to.x, write.to.y, write.to.z],
                                     )
                                 {
-                                    section_entered.push(write.id);
+                                    section_entered.push((write.id, write.to.components()));
                                 }
                             }
                         }
@@ -794,30 +894,24 @@ impl Game<'_> {
                     } else if let Some(k) = lent {
                         spare = w.player.map(|v| std::mem::replace(&mut guests[k].1, v));
                     }
-                    // A killed mob's body is removed: its effects that act on
-                    // death run (`LivingEntity.remove` with KILLED).
-                    if !kept && !m.alive() && !m.removed && !m.extra.effects.is_empty() {
-                        corpses.push(m.clone());
-                    }
                     sunrise_client::mobs::take_mob_pushes(&mut events, from, &mut pushes);
-                    // LivingEntity.tickDeath: after twenty ticks the body is removed.
-                    if !kept && !m.removed && !m.alive() && m.death_time >= 20 {
-                        let (width, height) = (f64::from(m.width()), f64::from(m.height()));
-                        // 🤖 Agent: `AbstractCubeMob.remove` splits a grown cube into
-                        // its smaller halves when it is removed, twenty ticks after
-                        // the death. The parent leaves the list before the split
-                        // runs, so its size, position, kind and persistence are
-                        // captured here, as they are at the removal.
-                        let split = if matches!(
-                            m.species(),
-                            Species::Slime | Species::MagmaCube | Species::SulfurCube
-                        ) && m.extra.size > 1
-                        {
-                            Some(m.clone())
-                        } else {
-                            None
-                        };
-                        gone.push((m.id, m.position, width, height, split));
+                    if !kept && !m.removed && !m.alive() {
+                        // LivingEntity.tickDeath: after twenty ticks the body is removed.
+                        let split = m.death_time >= 20
+                            && m.extra.size > 1
+                            && matches!(
+                                m.species(),
+                                Species::Slime | Species::MagmaCube | Species::SulfurCube
+                            );
+                        if m.death_time >= 20 {
+                            let (width, height) = (f64::from(m.width()), f64::from(m.height()));
+                            gone.push((m.id, m.position, width, height));
+                        }
+                        // AbstractCubeMob.remove splits before LivingEntity.remove runs
+                        // removal effects. Finish both while the dying parent still resolves.
+                        if split || !m.extra.effects.is_empty() {
+                            removal = Some((m.join, split));
+                        }
                     }
                     route_player_events(
                         &mut events,
@@ -865,7 +959,12 @@ impl Game<'_> {
                         removing_vehicle = Some(id);
                         break;
                     }
-                    if sting.is_some() || section_yield || tell_post.is_some() {
+                    if sting.is_some()
+                        || section_yield
+                        || tell_post.is_some()
+                        || removal.is_some()
+                        || lid_push.is_some()
+                    {
                         break;
                     }
                 }
@@ -880,9 +979,12 @@ impl Game<'_> {
                 && !stinging
                 && retry_rider.is_none()
                 && removing_vehicle.is_none()
+                && stand_cut.is_none()
+                && lid_push.is_none()
                 && !section_yield
                 && tell_pre.is_none()
                 && tell_post.is_none()
+                && removal.is_none()
             {
                 break;
             }
@@ -894,7 +996,15 @@ impl Game<'_> {
             // can read or replace another actor's velocity. A section-only
             // or a told-alone yield must not change the normal end-of-pass
             // push ordering.
-            if pause.is_some() || stinging || retry_rider.is_some() || removing_vehicle.is_some() {
+            let applied_pushes = !pushes.is_empty()
+                && (pause.is_some()
+                    || stinging
+                    || retry_rider.is_some()
+                    || removing_vehicle.is_some()
+                    || removal.is_some()
+                    || stand_cut.is_some()
+                    || lid_push.is_some());
+            if applied_pushes {
                 for m in &mut mobs {
                     sunrise_client::mobs::apply_mob_pushes(m, &mut pushes);
                 }
@@ -908,13 +1018,15 @@ impl Game<'_> {
                 && !stinging
                 && retry_rider.is_none()
                 && removing_vehicle.is_none()
+                && removal.is_none()
                 && !section_yield;
             let same_rows = told_only && !gone_rows;
             if !same_rows {
                 retain_mob_rows(&mut mobs, &mut player_credit, |m| {
-                    // Give the departing vehicle back for its pre-removal effects
-                    // and for marking it removed before the dismount hooks.
+                    // Give the departing vehicle or cube/effect removal back for its pre-removal
+                    // effects, splitting and marking it removed before dismount hooks.
                     removing_vehicle == Some(m.id)
+                        || removal.is_some_and(|(join, _)| join == m.join)
                         || index
                             .get(&m.id)
                             .and_then(|&slot| keep.get(slot as usize))
@@ -934,22 +1046,28 @@ impl Game<'_> {
             if let Some(host) = self.lan.as_mut() {
                 std::mem::swap(&mut host.mob_players, &mut bindings);
             }
-            // Lifts and hurt listeners can write positions from the owning game.
+            // Lifts, births, removals, hurt listeners and inside-block flushes can write
+            // positions and join entities through the owning game. Give them the live section
+            // table and take it back even on unwind.
             let trampling = matches!(pause, Some(Pause::Trample(_)));
+            let breeding = matches!(pause, Some(Pause::Breeding { .. }));
             let live_sections = section_table.as_ref().filter(|_| {
                 trampling
                     || stinging
+                    || breeding
+                    || removal.is_some()
+                    || stand_cut.is_some()
+                    || lid_push.is_some()
                     || matches!(
                         pause,
-                        Some(Pause::AfterDamage(_) | Pause::FallToPassengers(_))
+                        Some(
+                            Pause::AfterDamage(_)
+                                | Pause::FallToPassengers(_)
+                                | Pause::InsideEffects(_)
+                        )
                     )
             });
-            if let Some(sections) = live_sections {
-                std::mem::swap(
-                    &mut self.native_lifecycle.entity_sections,
-                    &mut sections.borrow_mut(),
-                );
-            }
+            let mut swapped_sections = None;
             // A work step's restock reaches the screen before any callback can edit it.
             let callback_panic = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                 for restock in state.restocks.drain(..) {
@@ -961,13 +1079,49 @@ impl Game<'_> {
                         &mut section_moves,
                     );
                 }
-                if let Some(sting) = sting {
+                if let Some(sections) = live_sections {
+                    // The just-finished mob wrote through the lifted table. Stand turns,
+                    // removals, births and forced moves that follow write through the owning
+                    // game instead.
+                    std::mem::swap(
+                        &mut self.native_lifecycle.entity_sections,
+                        &mut sections.borrow_mut(),
+                    );
+                    swapped_sections = Some(sections);
+                }
+                if removal.is_some() || breeding {
+                    // Consume completed removals before calling a listener which can unwind.
+                    self.emit_death_poofs(gone.drain(..));
+                }
+                let mut vehicle_split = false;
+                if let Some((join, split)) = removal {
+                    if removing_vehicle.is_some_and(|id| {
+                        self.mob_index
+                            .find(&self.mobs, id)
+                            .is_some_and(|i| self.mobs[i].join == join)
+                    }) {
+                        vehicle_split = split;
+                    } else {
+                        self.complete_mob_removal(join, split);
+                    }
+                }
+                if let Some(mut sting) = sting {
                     let before_hurt = events.drain(brain_from..sting.at).collect();
                     let _ = self.handle_mob_events(before_hurt);
                     if let Some(i) = self.mob_index.find(&self.mobs, sting.target)
                         && sting.same_target(&self.mobs[i])
                     {
-                        self.finish_mob_damage_at(i);
+                        if let Some(hit) = paused_hurt.take() {
+                            self.paused_mob_hurt = Some(hit);
+                            if let Some((i, hurt)) = self.complete_mob_hurt(i, false) {
+                                sting.resolved_hit(hurt);
+                                self.finish_mob_damage_at(i);
+                            } else {
+                                sting.resolved_hit(false);
+                            }
+                        } else {
+                            self.finish_mob_damage_at(i);
+                        }
                         self.settle_creaking_hurt(sting.target);
                     }
                     if self
@@ -992,7 +1146,7 @@ impl Game<'_> {
                     }
                 } else if let Some(id) = retry_rider {
                     self.dismount_mob(id);
-                } else if let Some((paused, (id, join))) = pause.as_ref().zip(resume_entity)
+                } else if let Some((paused, (id, join))) = pause.as_mut().zip(resume_entity)
                     && let Some(i) = self.mob_index.find(&self.mobs, id)
                     && self.mobs[i].join == join
                     && !self.mobs[i].removed
@@ -1004,6 +1158,11 @@ impl Game<'_> {
                         Pause::Breathing { air, .. } => {
                             air_answer = self.ask_mob_breath(air);
                         }
+                        Pause::Breeding { event, .. } => {
+                            if let Some(event) = event.take() {
+                                self.deliver_breed(*event, true);
+                            }
+                        }
                         Pause::AfterDamage(_) => {
                             if sunrise_client::mobs::creaking::has_pending_hurt(&self.mobs[i]) {
                                 // The earlier emissions (e.g. drowning bubbles) precede this hurt.
@@ -1014,6 +1173,7 @@ impl Game<'_> {
                                 && self.mobs[i].join == join
                                 && !self.mobs[i].removed
                             {
+                                self.paused_mob_hurt = paused_hurt.take();
                                 self.finish_mob_damage_at(i);
                                 self.settle_creaking_hurt(id);
                             }
@@ -1024,18 +1184,26 @@ impl Game<'_> {
                         Pause::FallToPassengers(fall) => {
                             self.fall_to_passengers(id, fall.distance, fall.modifier);
                         }
+                        Pause::InsideEffects(inside) => {
+                            let effects = std::mem::take(&mut inside.effects);
+                            self.flush_mob_inside_live(inside.mob, inside.join, effects);
+                        }
                     }
                 }
                 if let Some(id) = removing_vehicle {
                     // LivingEntity.tickDeath broadcasts event 60 before remove;
                     // cube splitting and the killed effects also precede setRemoved.
                     let animation = gone.pop_if(|death| death.0 == id);
+                    let killed_effects = removal.is_some();
                     let animate = |game: &mut Self| {
-                        if let Some((_, at, width, height, split)) = animation {
-                            game.finish_mob_death_animation(id, at, width, height, split);
+                        if let Some((id, at, width, height)) = animation {
+                            game.emit_death_poofs([(id, at, width, height)]);
+                        }
+                        if vehicle_split && let Some(i) = game.mob_index.find(&game.mobs, id) {
+                            let mut dying = game.mobs[i].clone();
+                            game.split_cube_children(&mut dying);
                         }
                     };
-                    let killed_effects = corpses.pop_if(|mob| mob.id == id).is_some();
                     if self.mob_object(id).is_some_and(|mob| mob.removed) {
                         animate(self);
                         self.finish_mob_removal(id);
@@ -1045,6 +1213,12 @@ impl Game<'_> {
                     if let Some(index) = self.mobs.iter().position(|mob| mob.id == id) {
                         self.mobs.remove(index);
                     }
+                }
+                if let Some((shulker, area, delta)) = lid_push {
+                    self.apply_shulker_lid_push(shulker, area, delta);
+                }
+                if let Some(cut) = stand_cut {
+                    *state.stand_result = self.tick_armor_stands_before(cut);
                 }
                 if !stinging && let Some((id, kind)) = &tell_post {
                     self.native_tick_post_one(round, *id, &kind.id);
@@ -1060,7 +1234,7 @@ impl Game<'_> {
                 }
             }))
             .err();
-            if let Some(sections) = live_sections {
+            if let Some(sections) = swapped_sections {
                 std::mem::swap(
                     &mut self.native_lifecycle.entity_sections,
                     &mut sections.borrow_mut(),
@@ -1082,12 +1256,13 @@ impl Game<'_> {
             if let Some(host) = self.lan.as_mut() {
                 std::mem::swap(&mut host.mob_players, &mut bindings);
             }
-            if callback_panic.is_some() {
+            if callback_panic.is_some() || state.stand_result.is_err() {
                 lent = sunrise_client::health::LentLevel::take(&mut self.world);
                 dispatch_panic = callback_panic;
                 break;
             }
             guests = self.lan_guest_views();
+            guest_slots = guest_indices(&guests);
             guest_ids = self
                 .lan
                 .as_ref()
@@ -1100,9 +1275,9 @@ impl Game<'_> {
                 })
                 .unwrap_or_default();
             spare = guests.first().map(|g| g.1.clone());
-            // A trample can lift other mobs without changing their slots. Rebuild
-            // their views before the rest of this pass can read their old bounds.
-            if !unchanged || trampling || pause.is_some() || stinging {
+            // A trample or a flushed push can change other mobs without moving
+            // their slots. Rebuild the views before later turns read old state.
+            if !unchanged || applied_pushes || trampling || pause.is_some() || stinging {
                 let current: sunrise_client::fast_hash::FxHashMap<u32, usize> =
                     mobs.iter().enumerate().map(|(i, m)| (m.id, i)).collect();
                 for (slot, s) in snapshot.iter_mut().enumerate() {
@@ -1146,7 +1321,7 @@ impl Game<'_> {
             retried_rider = retry_rider;
         }
         laps.lap("creature_loop");
-        if dispatch_panic.is_none() {
+        if dispatch_panic.is_none() && state.stand_result.is_ok() {
             if positions.is_none() {
                 let mut flags = keep.into_iter();
                 retain_mob_rows(&mut mobs, &mut player_credit, |_| {
@@ -1179,8 +1354,8 @@ impl Game<'_> {
         }
         // `Callback.onMove`, in the order of the writes.
         let table = self.resident_entities.table.get_mut();
-        for id in section_entered.drain(..) {
-            table.entered_section(id);
+        for (id, to) in section_entered.drain(..) {
+            table.entered_section(id, to);
         }
         self.native_lifecycle.entity_sections.entered = section_entered;
         *state.pushes = pushes;
@@ -1188,7 +1363,6 @@ impl Game<'_> {
         *state.snapshot = snapshot;
         *state.events = events;
         *state.dead = dead;
-        *state.corpses = corpses;
         *state.died = died;
         *state.ticked = ticked;
         *state.guests = guests;
@@ -1226,6 +1400,55 @@ impl Game<'_> {
 }
 
 impl Game<'_> {
+    fn mob_can_freeze(&self, m: &Mob) -> bool {
+        if m.species() == Species::Skeleton {
+            return false;
+        }
+        if m.species() == Species::SulfurCube && sunrise_client::mobs::sulfur_cube::has_body(m) {
+            return false;
+        }
+        if world_items!(self)
+            .entity_type_tags
+            .contains("minecraft:freeze_immune_entity_types", &m.kind.id)
+        {
+            return false;
+        }
+        let immune = world_items!(self)
+            .item_tags
+            .get("minecraft:freeze_immune_wearables");
+        ![
+            m.extra.body_id(),
+            m.extra.head_id(),
+            m.extra.slot_id(sunrise_items::equipment::CHEST),
+            m.extra.slot_id(sunrise_items::equipment::LEGS),
+            m.extra.slot_id(sunrise_items::equipment::FEET),
+        ]
+        .into_iter()
+        .flatten()
+        .any(|item| immune.is_some_and(|t| t.contains(item)))
+    }
+
+    pub(in crate::game) fn flush_mob_inside_live(
+        &mut self,
+        mob_id: u32,
+        join: sunrise_client::join_seq::JoinSeq,
+        mut effects: mod_api::InsideEffects,
+    ) {
+        if effects.is_empty() {
+            return;
+        }
+        let Some(slot) = self.mob_index.find(&self.mobs, mob_id) else {
+            return;
+        };
+        let mut access = GameMobInsideAccess {
+            game: self,
+            mob_id,
+            join,
+            slot,
+        };
+        effects.apply_and_clear(&mut access);
+    }
+
     pub(super) fn retained_passenger_snapshot(&self, uuid: Option<[i32; 4]>) -> Vec<Seen> {
         if self.persist.off_level.is_empty() {
             Vec::new()
@@ -1236,6 +1459,300 @@ impl Game<'_> {
                 .filter_map(crate::game::persist::OffLevel::as_mob)
                 .map(|m| seen(m, uuid, self.items()))
                 .collect()
+        }
+    }
+}
+
+struct GameMobInsideAccess<'a, 'g> {
+    game: &'a mut Game<'g>,
+    mob_id: u32,
+    join: sunrise_client::join_seq::JoinSeq,
+    slot: usize,
+}
+
+impl GameMobInsideAccess<'_, '_> {
+    fn slot(&self) -> Option<usize> {
+        super::super::native_ticks::place(&self.game.mobs, self.slot, |m| {
+            m.id == self.mob_id && m.join == self.join && !m.removed
+        })
+    }
+
+    fn mob(&self) -> Option<&Mob> {
+        Some(&self.game.mobs[self.slot()?])
+    }
+
+    fn mob_mut(&mut self) -> Option<&mut Mob> {
+        self.slot = self.slot()?;
+        Some(&mut self.game.mobs[self.slot])
+    }
+}
+
+impl mod_api::InsideEntityAccess for GameMobInsideAccess<'_, '_> {
+    fn id(&self) -> u32 {
+        self.mob_id
+    }
+
+    fn kind(&self) -> &str {
+        self.mob().map_or("", |m| m.kind.id.as_str())
+    }
+
+    fn is_alive(&self) -> bool {
+        self.mob().is_some_and(Mob::alive)
+    }
+
+    fn position(&self) -> [f64; 3] {
+        self.mob()
+            .map_or([0.0; 3], |m| [m.position.x, m.position.y, m.position.z])
+    }
+
+    fn velocity(&self) -> [f64; 3] {
+        self.mob()
+            .map_or([0.0; 3], |m| [m.velocity.x, m.velocity.y, m.velocity.z])
+    }
+
+    fn fire_ticks(&self) -> i32 {
+        self.mob().map_or(0, |m| m.fire_ticks)
+    }
+
+    fn is_on_fire(&self) -> bool {
+        self.mob().is_some_and(Mob::is_on_fire)
+    }
+
+    fn fall_distance(&self) -> f64 {
+        self.mob().map_or(0.0, |m| m.fall_distance)
+    }
+
+    fn block_state(&self, pos: [i32; 3]) -> Option<mod_api::BlockState> {
+        use crate::game::api_values::TryIntoApi as _;
+        let level = self.game.level(self.game.dim.id())?;
+        self.game
+            .level_block_state(level, pos)
+            .and_then(|id| id.try_into_api().ok())
+    }
+
+    fn push(&mut self, delta: [f64; 3]) -> bool {
+        if !delta.iter().all(|v| v.is_finite()) {
+            return false;
+        }
+        let Some(m) = self.mob_mut() else {
+            return false;
+        };
+        m.velocity = m
+            .velocity
+            .add_vector(Vec3::new(delta[0], delta[1], delta[2]));
+        true
+    }
+
+    fn set_velocity(&mut self, velocity: [f64; 3]) -> bool {
+        if !velocity.iter().all(|v| v.is_finite()) {
+            return false;
+        }
+        let Some(m) = self.mob_mut() else {
+            return false;
+        };
+        m.velocity = Vec3::new(velocity[0], velocity[1], velocity[2]);
+        true
+    }
+
+    fn make_stuck_in_block(&mut self, speed_multiplier: [f64; 3]) -> bool {
+        if !speed_multiplier.iter().all(|v| v.is_finite()) {
+            return false;
+        }
+        let Some(m) = self.mob_mut() else {
+            return false;
+        };
+        m.fall_distance = 0.0;
+        m.stuck_multiplier = Vec3::new(
+            speed_multiplier[0],
+            speed_multiplier[1],
+            speed_multiplier[2],
+        );
+        true
+    }
+
+    fn reset_fall_distance(&mut self) {
+        if let Some(m) = self.mob_mut() {
+            m.fall_distance = 0.0;
+        }
+    }
+
+    fn set_remaining_fire_ticks(&mut self, ticks: i32) {
+        if let Some(m) = self.mob_mut() {
+            m.fire_ticks = ticks;
+        }
+    }
+
+    fn add_effect(&mut self, effect: mod_api::EffectKey, duration: i32, amplifier: u8) -> bool {
+        let Some(def) = mod_api::__private::effect_index(effect)
+            .and_then(sunrise_client_core::potions::effect_by_index)
+        else {
+            return false;
+        };
+        let Some(m) = self.mob() else {
+            return false;
+        };
+        if m.species() == Species::Wither {
+            return false;
+        }
+        let kind = m.kind.id.clone();
+        let name = sunrise_client_core::potions::namespaced(def.id);
+        let new = !m
+            .extra
+            .effects
+            .iter()
+            .any(|e| e.registry_index == Some(def.index));
+        if !self
+            .game
+            .can_be_affected_resolved(Some(self.mob_id as i32), &kind, name, Some(effect))
+        {
+            return false;
+        }
+        let instance =
+            sunrise_client::effects::EffectInstance::from_def(def, duration, i32::from(amplifier));
+        let Some(changed) = self
+            .game
+            .mutate_mob_effects(self.mob_id, Some(name), |mob| {
+                mob.add_effect_instance(name, instance)
+            })
+        else {
+            return false;
+        };
+        self.game.mod_effect_added_resolved(
+            effect,
+            Some(self.mob_id as i32),
+            i32::from(amplifier),
+            new,
+        );
+        changed
+    }
+
+    fn hurt_with_source(
+        &mut self,
+        damage_type: &str,
+        amount: f32,
+        direct: Option<mod_api::EntityRef>,
+        causing: Option<mod_api::EntityRef>,
+    ) -> bool {
+        let Some(m) = self.mob() else {
+            return false;
+        };
+        let subject_pos = [m.position.x, m.position.y, m.position.z];
+        let Some((direct, causing, from)) = self.game.resolve_inside_damage_sources(
+            self.mob_id,
+            crate::game::commands::Target::Mob(self.mob_id),
+            subject_pos,
+            direct,
+            causing,
+            None,
+        ) else {
+            return false;
+        };
+        self.game.hurt_target(
+            crate::game::commands::Target::Mob(self.mob_id),
+            amount,
+            damage_type,
+            direct,
+            causing,
+            from,
+        )
+    }
+
+    fn set_block(&mut self, pos: [i32; 3], state: mod_api::BlockState) -> bool {
+        use crate::game::api_values::TryIntoEngine as _;
+        let Some(level) = self.game.level(self.game.dim.id()) else {
+            return false;
+        };
+        let Ok(id) = state.try_into_engine(&*self.game) else {
+            return false;
+        };
+        let flags = mod_api::BlockUpdateFlags::NEIGHBORS | mod_api::BlockUpdateFlags::CLIENTS;
+        self.game
+            .level_set_block(level, pos, id, flags)
+            .unwrap_or(false)
+    }
+
+    fn destroy_block(&mut self, pos: [i32; 3], drop: bool) -> bool {
+        let Some(level) = self.game.level(self.game.dim.id()) else {
+            return false;
+        };
+        self.game
+            .level_destroy_block(level, pos, drop, None, false)
+            .is_some()
+    }
+
+    fn apply_effect(&mut self, effect: mod_api::InsideEffect) {
+        match effect {
+            mod_api::InsideEffect::Freeze => {
+                let can_freeze = self.mob().is_some_and(|m| self.game.mob_can_freeze(m));
+                if let Some(m) = self.mob_mut() {
+                    m.in_powder_snow = true;
+                    if can_freeze {
+                        m.ticks_frozen = (m.ticks_frozen + 1)
+                            .min(sunrise_client::motion::PlayerMotion::TICKS_REQUIRED_TO_FREEZE);
+                    }
+                }
+            }
+            mod_api::InsideEffect::ClearFreeze => {
+                if let Some(m) = self.mob_mut() {
+                    m.ticks_frozen = 0;
+                }
+            }
+            mod_api::InsideEffect::FireIgnite => {
+                if let Some(m) = self.mob_mut() {
+                    m.fire_ignite_contact();
+                }
+            }
+            mod_api::InsideEffect::LavaIgnite => {
+                if let Some(m) = self.mob_mut()
+                    && !m.fire_immune()
+                {
+                    m.ignite_for_ticks(300);
+                }
+            }
+            mod_api::InsideEffect::Extinguish => {
+                if let Some(m) = self.mob_mut() {
+                    m.fire_ticks = m.fire_ticks.min(0);
+                }
+            }
+        }
+    }
+
+    fn apply_builtin(&mut self, action: mod_api::__private::BuiltinInsideAction) {
+        match action {
+            mod_api::__private::BuiltinInsideAction::PowderSnowMelt(pos) => {
+                if self.mob().is_some_and(Mob::is_on_fire)
+                    && self.game.can_entity_grief(Some(self.mob_id))
+                    && let Some(level) = self.game.level(self.game.dim.id())
+                {
+                    let _ = self
+                        .game
+                        .level_destroy_block(level, pos, false, None, false);
+                }
+            }
+            mod_api::__private::BuiltinInsideAction::LayeredCauldronExtinguish { pos, state } => {
+                if self.mob().is_some_and(Mob::is_on_fire) {
+                    let [x, y, z] = pos;
+                    self.game.cauldron_extinguish_at(
+                        sunrise_core::position::BlockPos::new(x, y, z),
+                        sunrise_world::registry::BlockStateId(state),
+                    );
+                }
+            }
+            mod_api::__private::BuiltinInsideAction::FireHurt(damage) => {
+                self.hurt_with_source("minecraft:in_fire", damage, None, None);
+            }
+            mod_api::__private::BuiltinInsideAction::LavaHurt => {
+                if self.mob().is_some_and(|m| !m.fire_immune())
+                    && self.hurt_with_source("minecraft:lava", 4.0, None, None)
+                    && let Some(m) = self.mob_mut().filter(|m| !m.silent)
+                {
+                    let at = m.position.components();
+                    let pitch = 2.0 + m.random.next_float() * 0.4;
+                    self.game
+                        .audio
+                        .play("minecraft:entity.generic.burn", Some(at), 0.4, pitch);
+                }
+            }
         }
     }
 }

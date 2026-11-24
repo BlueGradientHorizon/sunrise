@@ -16,6 +16,35 @@ impl super::commands::OtherEntity {
     pub(in crate::game) fn display_marker_or_interaction_bounds(
         &self,
     ) -> Option<sunrise_core::geometry::Aabb> {
+        let dimensions = self.vanilla_dimensions()?;
+        let vanilla = if let Some(settings) = self.interaction {
+            let mut interaction = super::interactions::RemoteInteraction::new([
+                self.position.x,
+                self.position.y,
+                self.position.z,
+            ]);
+            interaction.width = settings.width;
+            interaction.height = settings.height;
+            interaction.response = settings.response;
+            interaction.bounds()
+        } else {
+            // Display and Marker have zero-sized physical dimensions.
+            sunrise_core::geometry::Aabb::new(self.position, self.position)
+        };
+        Some(sunrise_client::pose::SizeAnswer::sized_box(
+            self.size_answer,
+            dimensions,
+            self.position,
+            vanilla,
+        ))
+    }
+
+    /// `Entity.getDimensions(pose)` of a display, a marker or an interaction this list holds,
+    /// the kinds whose box follows their size here: an interaction's
+    /// `EntityDimensions.scalable(width, height)`, none for a display or a marker. None for
+    /// every other kind the list keeps without simulating it (a leash knot, an eye of ender),
+    /// which isn't asked.
+    pub(in crate::game) fn vanilla_dimensions(&self) -> Option<[f32; 3]> {
         if !matches!(
             self.kind.as_str(),
             "minecraft:block_display"
@@ -26,18 +55,9 @@ impl super::commands::OtherEntity {
         ) {
             return None;
         }
-        Some(if let Some(settings) = self.interaction {
-            super::interactions::RemoteInteraction {
-                position: self.position,
-                width: settings.width,
-                height: settings.height,
-                response: settings.response,
-                vehicle: None,
-            }
-            .bounds()
-        } else {
-            // Display and Marker have zero-sized physical dimensions.
-            sunrise_core::geometry::Aabb::new(self.position, self.position)
+        Some(match self.interaction {
+            Some(settings) => [settings.width, settings.height, settings.height * 0.85],
+            None => [0.0; 3],
         })
     }
 }
@@ -84,6 +104,7 @@ pub(super) fn target_id(t: Target) -> Option<u32> {
         | Target::Trident(id)
         | Target::Spawner(id)
         | Target::Cloud(id)
+        | Target::Bolt(id)
         | Target::Hook(id)
         | Target::Knot(id)
         | Target::General(id) => Some(id),
@@ -273,29 +294,47 @@ impl Game<'_> {
             let kind = kind.into_owned();
             let mut canceled = false;
             let dimension = self.dim.id();
-            self.construct_joining(id, &kind);
-            self.native_entity_join_level(
-                dimension,
-                id,
-                &kind,
-                [at.x, at.y, at.z],
-                loaded_from_disk,
-                &mut canceled,
-            );
+            let admission = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                self.construct_joining(id, &kind);
+                self.native_entity_join_level(
+                    dimension,
+                    id,
+                    &kind,
+                    [at.x, at.y, at.z],
+                    loaded_from_disk,
+                    &mut canceled,
+                );
+                #[cfg(test)]
+                {
+                    use super::pending_births::escaping_fault::{self, At};
+                    escaping_fault::reach(At::Admission, id);
+                }
+            }));
             let spawn = self
                 .native_lifecycle
                 .pending_item_spawns
                 .iter()
                 .position(|entry| entry.0 == id)
                 .map(|index| self.native_lifecycle.pending_item_spawns.remove(index));
-            if canceled {
-                self.persist.joins_canceled += 1;
+            if canceled || admission.is_err() {
+                // A listener may have written other rows before unwinding. Retire this
+                // admission only, and do not use an index that may now name another row.
+                if let Some(slot) = self.refresh_join_slot(id, slot) {
+                    let retained = admission.is_ok()
+                        && matches!(slot, Slot::Walk(super::entity::EntityHandle::Mob(index))
+                            if self.detach_natural_candidate(id, index));
+                    if !retained {
+                        self.discard_slot(slot);
+                    }
+                }
                 self.forget_entity(id);
-                // Handles are indexes: the entity is taken out before any
-                // other change to its list.
-                self.discard_slot(slot);
+                if let Err(payload) = admission {
+                    std::panic::resume_unwind(payload);
+                }
+                self.persist.joins_canceled += 1;
                 kept &= id != watch;
-            } else {
+            } else if self.refresh_join_slot(id, slot).is_some() {
+                // A teleported candidate already went through admission in its destination.
                 self.remember_join(id, kind);
                 // `addEntity` files it under its section, untold.
                 self.entity_section_joined(id, [at.x, at.y, at.z]);
@@ -449,6 +488,42 @@ impl Game<'_> {
                 self.dragon.as_ref().map_or(Vec3::ZERO, |d| d.position),
             ),
         }
+    }
+    fn refresh_join_slot(&self, id: u32, slot: Slot) -> Option<Slot> {
+        let apart = match slot {
+            Slot::Walk(handle) => return self.refresh_entity_handle(id, handle).map(Slot::Walk),
+            Slot::Apart(Apart::Crystal(_)) => self
+                .crystals
+                .iter()
+                .position(|e| e.id == id)
+                .map(Apart::Crystal),
+            Slot::Apart(Apart::Cushion(_)) => self
+                .cushions
+                .iter()
+                .position(|e| e.id == id)
+                .map(Apart::Cushion),
+            Slot::Apart(Apart::Painting(_)) => self
+                .paintings
+                .iter()
+                .position(|e| e.id == id)
+                .map(Apart::Painting),
+            Slot::Apart(Apart::Frame(_)) => self
+                .item_frames
+                .iter()
+                .position(|e| e.id == id)
+                .map(Apart::Frame),
+            Slot::Apart(Apart::Other(_)) => self
+                .others
+                .iter()
+                .position(|e| e.id == id)
+                .map(Apart::Other),
+            Slot::Apart(Apart::Dragon) => self
+                .dragon
+                .as_ref()
+                .filter(|e| e.id == id)
+                .map(|_| Apart::Dragon),
+        };
+        apart.map(Slot::Apart)
     }
     /// Takes the entity out of the level, before it ever ticked.
     fn discard_slot(&mut self, slot: Slot) {
@@ -670,7 +745,7 @@ mod tests {
                 );
                 // A quarantined missing-mod record shares storage, not level membership.
                 game.next_entity += 1;
-                let record = Tag::compound([(
+                let mut record = Tag::compound([(
                     "Pos",
                     Tag::List(
                         [5.0_f64, 64.0, 5.0]
@@ -679,7 +754,7 @@ mod tests {
                     ),
                 )]);
                 let opaque =
-                    Game::other_from_nbt(&record, game.next_entity, "missing:object").unwrap();
+                    Game::other_from_nbt(&mut record, game.next_entity, "missing:object").unwrap();
                 game.others.push(opaque);
                 game.native_joins_flush(true, 0);
                 assert_eq!(
@@ -887,7 +962,7 @@ mod tests {
             default: || 0,
             codec: None,
             copy_on_death: false,
-            sync: false,
+            sync_codec: None,
         };
         for (kind, nbt) in [
             (
@@ -1007,17 +1082,12 @@ mod tests {
                     Some(&(base + 3, "minecraft:sheep".into(), true))
                 );
 
-                game.crystals.push(super::super::dragon::Crystal {
-                    fall: Default::default(),
-                    attachment_lifetime: Default::default(),
-                    join: Default::default(),
-                    id: base + 4,
-                    position: Vec3::ZERO,
-                    show_bottom: true,
-                    time: 0,
-                    beam: None,
-                    invulnerable: false,
-                });
+                game.crystals.push(super::super::dragon::Crystal::new(
+                    base + 4,
+                    Vec3::ZERO,
+                    true,
+                    0,
+                ));
                 game.cushions.push(sunrise_client::entities::Cushion {
                     attachment_lifetime: Default::default(),
                     join: Default::default(),
@@ -1036,6 +1106,7 @@ mod tests {
                     pos: [0; 3],
                     facing: 0,
                     variant: "minecraft:kebab".into(),
+                    asset: None,
                     width: 1,
                     height: 1,
                     check_interval: 0,
@@ -1078,6 +1149,7 @@ mod tests {
                 );
                 drop(seen);
                 game.tnts.push(super::super::tnt::PrimedTnt {
+                    size_answer: None,
                     attachment_lifetime: Default::default(),
                     rotation: [0.0, 0.0],
                     join: Default::default(),

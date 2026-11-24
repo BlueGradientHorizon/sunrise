@@ -48,6 +48,7 @@ impl Game<'_> {
             } => self.open_world(&folder, Some(&name), seed, creative, Some(&options))?,
             Action::Connect {
                 address,
+                name,
                 lan,
                 realm,
             } => self.connect_server_with_options(
@@ -56,6 +57,7 @@ impl Game<'_> {
                 None,
                 lan,
                 realm,
+                name.as_deref(),
             )?,
             Action::DataPacks { dir, selected } => {
                 self.clear_device_keys();
@@ -268,7 +270,7 @@ impl Game<'_> {
         self.repro_world_closed();
         self.clear_waypoints();
         self.post_effects.clear();
-        self.spectated_post_effect = None;
+        self.clear_spectated_entity_post_effect();
         // Mod screens' living scenes go with the world their entities were copied from.
         self.live_scenes.get_mut().clear();
         if self.external_server() {

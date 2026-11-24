@@ -70,6 +70,12 @@ pub trait LivingBackend {
     /// an armor stand or the dragon.
     fn living_is_jumping(&self, living: LivingRef) -> Option<bool>;
     /// Side: both.
+    /// The ticks before a held jump can jump again (`LivingEntity.noJumpDelay`: 10 after a
+    /// ground jump, counting down each tick): the player in place or a mob on a server, the
+    /// local player's own prediction on a client. None for a server's guests (their clients
+    /// keep their jump), other entities on a client, armor stands, the dragon and stale handles.
+    fn living_no_jump_delay(&self, living: LivingRef) -> Option<i32>;
+    /// Side: both.
     /// Whether the entity is on a climbable block this tick
     /// (`LivingEntity.onClimbable`; Paper's `LivingEntity#isClimbing`), by
     /// the block at its feet: a ladder, a vine, a scaffold or an open
@@ -123,6 +129,13 @@ pub trait LivingBackend {
     /// has passed, an attacker that is gone, an armor stand, the dragon or a
     /// client.
     fn living_last_attacker(&self, living: LivingRef) -> Option<EntityRef>;
+    /// Side: server.
+    /// The last living target recorded by `LivingEntity.setLastHurtMob`, with
+    /// the holder's `tickCount` at that moment (the same clock as `EntityRef::tick_count`).
+    /// There is no age cutoff. None for a stale holder, no remembered target,
+    /// or a target that is dead or gone.
+    #[goal_view]
+    fn living_last_hurt_mob(&self, living: LivingRef) -> Option<(EntityRef, i32)>;
     /// Side: server.
     /// `LivingEntity.hasLineOfSight(Entity)`: whether nothing that collides
     /// (`ClipContext.Block.COLLIDER`, fluids ignored) lies between the
@@ -304,6 +317,13 @@ pub trait LivingClientBackend {
 #[sunrise_mod_api_macros::host_area]
 pub trait LivingBackendMut {
     /// Side: server.
+    /// Pushes the living entity away from `direction` ([x, z]) using `LivingEntity.knockback`.
+    /// `living_knockback` can edit or cancel the push before knockback resistance is applied.
+    /// A successful push also sends the resulting motion to a player's own client.
+    /// False for an unavailable body, a non-finite input, a canceled push, or a strength
+    /// that is zero or less after resistance. This does not deal damage or assign credit.
+    fn living_knockback(&mut self, living: LivingRef, strength: f64, direction: [f64; 2]) -> bool;
+    /// Side: server.
     /// Apply one loaded consumable effect without consuming the item.
     /// Mod-defined kinds enter the normal consume_effect hook: Some(true) means
     /// dispatch was entered, not that a listener changed game state. Reapplying
@@ -344,6 +364,13 @@ pub trait LivingBackendMut {
     /// them. False when the entity has none, or for an armor stand, the
     /// dragon, a stale handle or a client.
     fn living_remove_all_effects(&mut self, living: LivingRef) -> bool;
+    /// Side: server.
+    /// `LivingEntity.startFallFlying`: sets the glide flag, so the next tick glides,
+    /// wears the glider and the players around learn it with the entity's next flag
+    /// sync. This is the raw flag write, not `tryToStartFallFlying`: it does not check
+    /// the glider, the ground, levitation, a liquid or a vehicle. True for a player, a
+    /// guest or a mob; false for an armor stand, the dragon, a stale handle or a client.
+    fn living_start_gliding(&mut self, living: LivingRef) -> bool;
     /// Side: server.
     /// `LivingEntity.stopFallFlying`: clears the glide flag, so the glide's
     /// wear and sound stop and the next fall is a fall. The players around

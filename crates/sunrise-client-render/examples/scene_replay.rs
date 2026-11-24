@@ -361,11 +361,9 @@ fn replay(window: Arc<Window>) -> Result<(), Box<dyn std::error::Error>> {
             frame.detail_distance = frame.distance;
         }
         let draw = |renderer: &mut Renderer| -> sunrise_client_render::Result<Duration> {
-            if frame.cave_culling {
-                renderer.start_occlusion(frame.camera, frame.distance);
-            }
+            renderer.start_occlusion(frame.camera, frame.detail_distance, frame.cave_culling);
             let started = Instant::now();
-            renderer.render(&frame)?;
+            renderer.render(&frame, None)?;
             Ok(started.elapsed())
         };
         for _ in 0..o.warmup {

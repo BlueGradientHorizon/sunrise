@@ -422,7 +422,10 @@ fn controller<'a>(m: &Mob, w: &'a MobWorld) -> Option<&'a Seen> {
     m.extra
         .rider
         .and_then(|id| w.passenger_object(id))
-        .filter(|r| r.alive && !w.entity_has("minecraft:non_controlling_rider", &r.kind.id))
+        .filter(|r| {
+            r.alive
+                && !w.entity_tag_bit(&r.kind, crate::items::EntityTypeTags::NON_CONTROLLING_RIDER)
+        })
 }
 /// Vehicle goal flags are independent of whether the rider has a combat target.
 /// Ravager.updateControlFlags permits raiders, unlike Mob.updateControlFlags.
@@ -609,13 +612,11 @@ pub fn resume_after_consumption(
     index: usize,
     w: &MobWorld,
     level: &mut super::DamageLevel<'_>,
-    was_on_fire: bool,
     events: &mut Vec<super::MobEvent>,
     movement: &mut Option<super::ai::MobMovement>,
 ) -> super::ai::TickProgress {
     tick_with(mobs, index, w, level, events, |m, w, level, events| {
-        let progress =
-            super::ai::resume_after_consumption(m, w, level, was_on_fire, events, Some(movement));
+        let progress = super::ai::resume_after_consumption(m, w, level, events, Some(movement));
         if matches!(progress, super::ai::TickProgress::Complete(_)) {
             super::neutral_anger::after_tick(m, w.game_time);
         }
@@ -653,6 +654,25 @@ pub fn resume_after_breathing(
     })
 }
 
+/// Resume the breeding goal or brain with the current vehicle/navigation owner.
+pub fn resume_after_birth(
+    mobs: &mut JoinList<Mob>,
+    index: usize,
+    w: &MobWorld,
+    level: &mut super::DamageLevel<'_>,
+    resume: super::ai::BreedingResume,
+    events: &mut Vec<super::MobEvent>,
+    movement: &mut Option<super::ai::MobMovement>,
+) -> super::ai::TickProgress {
+    tick_with(mobs, index, w, level, events, |m, w, level, events| {
+        let progress = super::ai::resume_after_birth(m, w, level, events, resume, movement);
+        if matches!(progress, super::ai::TickProgress::Complete(_)) {
+            super::neutral_anger::after_tick(m, w.game_time);
+        }
+        progress
+    })
+}
+
 /// Resume the tick with its current navigation owner after settling a hit.
 pub fn resume_after_damage(
     mobs: &mut JoinList<Mob>,
@@ -683,6 +703,23 @@ pub fn resume_movement(
 ) -> super::ai::TickProgress {
     tick_with(mobs, index, w, level, events, |m, w, level, events| {
         let progress = super::ai::resume_movement(m, w, level, movement, events);
+        if matches!(progress, super::ai::TickProgress::Complete(_)) {
+            super::neutral_anger::after_tick(m, w.game_time);
+        }
+        progress
+    })
+}
+
+pub fn resume_after_inside_effects(
+    mobs: &mut JoinList<Mob>,
+    index: usize,
+    w: &MobWorld,
+    level: &mut super::DamageLevel<'_>,
+    paused: super::ai::InsidePause,
+    events: &mut Vec<super::MobEvent>,
+) -> super::ai::TickProgress {
+    tick_with(mobs, index, w, level, events, |m, w, level, events| {
+        let progress = super::ai::resume_after_inside_effects(m, w, level, events, paused);
         if matches!(progress, super::ai::TickProgress::Complete(_)) {
             super::neutral_anger::after_tick(m, w.game_time);
         }
@@ -899,7 +936,11 @@ mod tests {
         let mut rider = of(72, Species::Skeleton);
         rider.extra.mount = Some(vehicle.id);
         vehicle.extra.rider = Some(rider.id);
-        std::sync::Arc::make_mut(&mut rider.kind).id = "test:custom_rider".into();
+        let custom = std::sync::Arc::make_mut(&mut rider.kind);
+        custom.id = "test:custom_rider".into();
+        // Its place in the one-type registry the tags below bind, as a content type's is set
+        // at load; in the resource world's registry that slot is a type outside the tag.
+        custom.flags.entity_tag_slot = Some(0);
         let retained = [rider.seen(None, &crate::items::Items::empty())];
         let root = std::env::var_os("SUNRISE_TEST_RESOURCES").expect("prepared resources required");
         assert!(crate::mobs::world::with_resource_test_world(

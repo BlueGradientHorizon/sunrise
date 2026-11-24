@@ -150,8 +150,10 @@ impl Cost {
             per_level: per_level.unwrap_or(0),
         }
     }
+    /// `Enchantment.Cost.calculate`: arithmetic wraps like Java `int`.
     pub fn calculate(self, level: u32) -> i32 {
-        self.base + self.per_level * (level as i32 - 1)
+        self.base
+            .wrapping_add(self.per_level.wrapping_mul((level as i32).wrapping_sub(1)))
     }
 }
 #[derive(Clone, Debug)]
@@ -1059,6 +1061,12 @@ impl Enchantments {
     /// Whether loaded content contains any custom damage nodes.
     pub fn has_custom_damage_effects(&self) -> bool {
         !self.custom_damage.is_empty()
+    }
+    /// Whether any loaded enchantment has a `minecraft:post_attack` entry of a
+    /// mod's own kind: one check of each definition's cached payloads, so a
+    /// hit can skip the weapon when no mod adds one.
+    pub fn has_native_post_attack(&self) -> bool {
+        self.list.iter().any(|e| !e.native_post_attack.is_empty())
     }
     /// `EnchantmentHelper.has`: whether `stack` has any enchantment providing
     /// `component`. It reads the stack's own component.
@@ -2140,6 +2148,15 @@ pub mod tests {
             .calculate(5),
             45
         );
+    }
+
+    #[test]
+    fn enchantment_cost_wraps_like_java_int() {
+        let cost = Cost {
+            base: i32::MAX,
+            per_level: 1,
+        };
+        assert_eq!(cost.calculate(2), i32::MIN);
     }
 
     #[test]

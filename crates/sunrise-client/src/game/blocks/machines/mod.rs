@@ -4,11 +4,12 @@
 //! comparator signals (`AbstractContainerMenu.getRedstoneSignalFromContainer`).
 mod loot_access;
 use super::{Game, composter::is_composter, spill, storage::is_shulker_box};
-use mod_api::__private::game::*;
 use sunrise_core::nbt::Tag;
 
 #[cfg(test)]
 mod can_place_item_tests;
+#[cfg(test)]
+mod can_take_item_through_face_tests;
 pub(in crate::game) mod cauldron_contents;
 #[cfg(test)]
 mod contents_changed_tests;
@@ -219,7 +220,24 @@ pub(super) struct Containers<'a> {
 #[derive(Default)]
 struct PlacementAttempt {
     stack: Option<Option<mod_api::ItemStack>>,
-    entity: Option<PlacementEntity>,
+    entity: Option<EntitySnapshot>,
+}
+
+/// The API snapshots for one take transfer (a hopper's pull, one extract): the source
+/// entity, read again when a write changes its revision, and its block state, converted
+/// again only when the state changes. Each asked slot's own stack is converted per ask.
+#[derive(Default)]
+struct TakeAttempt {
+    entity: Option<EntitySnapshot>,
+    /// The engine state last converted, and its API form (None when it can't be represented).
+    state: Option<(BlockStateId, Option<mod_api::BlockState>)>,
+}
+
+/// A take query that may ask a mod container's part: the game hosting the query, and the
+/// snapshots of the transfer it belongs to.
+struct TakeAsk<'q, 'g> {
+    game: &'q Game<'g>,
+    attempt: &'q mut TakeAttempt,
 }
 
 enum PlacementQuery<'a> {
@@ -227,13 +245,15 @@ enum PlacementQuery<'a> {
     Planning,
 }
 
-struct PlacementEntity {
+/// One mod block entity's API snapshot for a part hook, kept while its position and revision
+/// stay.
+struct EntitySnapshot {
     pos: Pos,
     revision: sunrise_client::chunk::block_entity::ModRevision,
-    snapshot: PlacementSnapshot,
+    snapshot: PartSnapshot,
 }
 
-enum PlacementSnapshot {
+enum PartSnapshot {
     Unsubscribed,
     Unrepresentable,
     Ready(mod_api::ModBlockEntity),
@@ -271,39 +291,15 @@ impl PlacementAttempt {
         if stack.count == 0 || !mod_api::__private::has_part_hook(mod_api::HookId::CanPlaceItem) {
             return None;
         }
-        let revision = entity.revision();
-        if self
-            .entity
-            .as_ref()
-            .is_none_or(|seen| seen.pos != pos || seen.revision != revision)
-        {
-            let snapshot = if mod_api::__private::block_entity_type_listens(
-                mod_api::HookId::CanPlaceItem,
-                entity.id(),
-            ) {
-                match entity.try_into_api() {
-                    Ok(snapshot) => PlacementSnapshot::Ready(snapshot),
-                    Err(error) => {
-                        log::debug!(
-                            "Sunrise: can_place_item could not read {} at {pos:?}: {error:?}",
-                            entity.id()
-                        );
-                        PlacementSnapshot::Unrepresentable
-                    }
-                }
-            } else {
-                PlacementSnapshot::Unsubscribed
-            };
-            self.entity = Some(PlacementEntity {
-                pos,
-                revision,
-                snapshot,
-            });
-        }
-        let snapshot = match &self.entity.as_ref()?.snapshot {
-            PlacementSnapshot::Unsubscribed => return None,
-            PlacementSnapshot::Unrepresentable => return Some(false),
-            PlacementSnapshot::Ready(snapshot) => snapshot,
+        let snapshot = match EntitySnapshot::current(
+            &mut self.entity,
+            mod_api::HookId::CanPlaceItem,
+            pos,
+            entity,
+        ) {
+            PartSnapshot::Unsubscribed => return None,
+            PartSnapshot::Unrepresentable => return Some(false),
+            PartSnapshot::Ready(snapshot) => snapshot,
         };
         let Some(offered) = self.stack.get_or_insert_with(|| {
             stack
@@ -349,6 +345,106 @@ impl PlacementAttempt {
     }
 }
 
+impl EntitySnapshot {
+    /// The snapshot `cached` keeps of `entity` at `pos` for `hook`, read again when the
+    /// position or the entity's revision changed.
+    fn current<'s>(
+        cached: &'s mut Option<Self>,
+        hook: mod_api::HookId,
+        pos: Pos,
+        entity: &sunrise_client::containers::ModBlockEntity,
+    ) -> &'s PartSnapshot {
+        use super::api_values::TryIntoApi;
+
+        let revision = entity.revision();
+        let stale = cached
+            .as_ref()
+            .is_none_or(|seen| seen.pos != pos || seen.revision != revision);
+        let seen = if stale {
+            let snapshot = if mod_api::__private::block_entity_type_listens(hook, entity.id()) {
+                match entity.try_into_api() {
+                    Ok(snapshot) => PartSnapshot::Ready(snapshot),
+                    Err(error) => {
+                        log::debug!(
+                            "Sunrise: a part hook could not read {} at {pos:?}: {error:?}",
+                            entity.id()
+                        );
+                        PartSnapshot::Unrepresentable
+                    }
+                }
+            } else {
+                PartSnapshot::Unsubscribed
+            };
+            cached.insert(EntitySnapshot {
+                pos,
+                revision,
+                snapshot,
+            })
+        } else {
+            cached.as_mut().expect("a kept snapshot")
+        };
+        &seen.snapshot
+    }
+}
+
+impl TakeAttempt {
+    /// A mod container's `can_take_item_through_face` answer for `slot` of `entity` at
+    /// `pos`, when its type listens: `None` keeps the declared output slots, and an entity,
+    /// state or stack the API cannot represent refuses the take.
+    fn ask(
+        &mut self,
+        game: &Game<'_>,
+        pos: Pos,
+        entity: &sunrise_client::containers::ModBlockEntity,
+        slot: usize,
+        stack: &ItemStack,
+        face: Direction,
+    ) -> Option<bool> {
+        use super::api_values::TryIntoApi;
+
+        let snapshot = match EntitySnapshot::current(
+            &mut self.entity,
+            mod_api::HookId::CanTakeItemThroughFace,
+            pos,
+            entity,
+        ) {
+            PartSnapshot::Unsubscribed => return None,
+            PartSnapshot::Unrepresentable => return Some(false),
+            PartSnapshot::Ready(snapshot) => snapshot,
+        };
+        let (x, y, z) = pos;
+        let unreadable = |what: &dyn std::fmt::Debug| {
+            log::debug!("Sunrise: can_take_item_through_face could not read {what:?} at {pos:?}");
+        };
+        let block = game.world.block(x, y, z);
+        let state = match self.state {
+            Some((seen, state)) if seen == block => state,
+            _ => {
+                let state = block.try_into_api().inspect_err(|e| unreadable(e)).ok();
+                self.state = Some((block, state));
+                state
+            }
+        };
+        let Some(state) = state else {
+            return Some(false);
+        };
+        let Ok(offered) = stack.try_into_api().inspect_err(|e| unreadable(e)) else {
+            return Some(false);
+        };
+        let mut allowed = None;
+        game.native_can_take_item_through_face(
+            snapshot,
+            mod_api::BlockPos::new(x, y, z),
+            state,
+            slot,
+            &offered,
+            face,
+            &mut allowed,
+        );
+        allowed
+    }
+}
+
 impl Containers<'_> {
     fn prop(&self, state: BlockStateId, key: &str) -> Option<&str> {
         self.registry
@@ -360,18 +456,14 @@ impl Containers<'_> {
     fn name(&self, state: BlockStateId) -> &str {
         self.registry.state(state).map_or("", |s| s.name.as_str())
     }
-    /// `ItemStack.getMaxStackSize`: its component, else the item's.
+    /// `ItemInstance.getMaxStackSize`, using the effective component after patching.
     pub(super) fn max_stack(&self, stack: &ItemStack) -> u32 {
-        if let Some(sunrise_core::nbt::Tag::Int(n)) = stack
-            .data()
-            .and_then(|d| d.other("minecraft:max_stack_size"))
-        {
-            return (*n).clamp(1, 99) as u32;
+        let info = self.items.get(&stack.item);
+        match stack.effective_max_stack_size(info) {
+            Some(max) => max.clamp(1, 99) as u32,
+            // Only unchecked legacy stacks can have a malformed component here.
+            None => info.map_or(64, |i| i.max_stack).max(1),
         }
-        self.items
-            .get(&stack.item)
-            .map_or(64, |i| i.max_stack)
-            .max(1)
     }
     /// `Container.getMaxStackSize(stack)` of a container: the container's own
     /// limit, at most the item's. `ComposterBlock.InputContainer` (levels 0 to
@@ -699,6 +791,7 @@ impl Containers<'_> {
         stack: &ItemStack,
         face: Direction,
         target: &View,
+        ask: TakeAsk<'_, '_>,
     ) -> bool {
         if view.kind == Kind::Bookshelf {
             // `ChiseledBookShelfBlockEntity.canTakeItem`: the target must have
@@ -711,9 +804,16 @@ impl Containers<'_> {
                 }
             });
         }
-        self.can_take(view, slot, stack, face)
+        self.can_take(view, slot, stack, face, ask)
     }
-    fn can_take(&self, view: &View, slot: usize, stack: &ItemStack, face: Direction) -> bool {
+    fn can_take(
+        &self,
+        view: &View,
+        slot: usize,
+        stack: &ItemStack,
+        face: Direction,
+        ask: TakeAsk<'_, '_>,
+    ) -> bool {
         if let Kind::Composter(level) = view.kind {
             // OutputContainer.canTakeItemThroughFace.
             return level == 8 && face == Direction::Down && &*stack.item == "minecraft:bone_meal";
@@ -722,12 +822,33 @@ impl Containers<'_> {
             return slot != 3 || &*stack.item == "minecraft:glass_bottle";
         }
         if let Some(c) = &view.container {
-            return c.outputs.contains(&slot);
+            return self
+                .ask_take_through_face(view, slot, stack, face, ask)
+                .unwrap_or_else(|| c.outputs.contains(&slot));
         }
         view.kind != Kind::Furnace
             || face != Direction::Down
             || slot != 1
             || matches!(&*stack.item, "minecraft:water_bucket" | "minecraft:bucket")
+    }
+    /// A mod container's `can_take_item_through_face` answer for `slot` of `view`, asked
+    /// only when some part subscribes.
+    fn ask_take_through_face(
+        &self,
+        view: &View,
+        slot: usize,
+        stack: &ItemStack,
+        face: Direction,
+        ask: TakeAsk<'_, '_>,
+    ) -> Option<bool> {
+        if !mod_api::__private::has_part_hook(mod_api::HookId::CanTakeItemThroughFace) {
+            return None;
+        }
+        let (pos, index) = view.locate(slot)?;
+        let Some(BlockEntity::Mod(entity)) = self.world.block_entities.get(&pos) else {
+            return None;
+        };
+        ask.attempt.ask(ask.game, pos, entity, index, stack, face)
     }
     fn comparator_view(&self, pos: Pos) -> Option<View> {
         self.view(pos, true)
@@ -901,6 +1022,11 @@ impl Game<'_> {
             self.with_level(|b, level, ticks| {
                 b.container_changed(level, ticks, BlockPos::new(pos.0, pos.1, pos.2))
             });
+        }
+        // A write outside any transaction (a hopper, `/item replace`): committed writes are
+        // reported once at their root commit instead.
+        if self.transaction_lifecycle() == mod_api::TransactionLifecycle::None {
+            self.notify_block_menu_slot_changed(pos, |_| None);
         }
     }
     /// `HopperBlockEntity.tryMoveInItem`.
@@ -1497,7 +1623,7 @@ impl Game<'_> {
             return 0;
         };
         let resource = ItemResource::of(&snapshot);
-        mod_api::run_transaction(self, |game, tx| {
+        self.storage_transaction(|game, tx| {
             let host: &mut dyn mod_api::ServerHost = game;
             let went = part
                 .insert(host, tx, &resource, stack.count)
@@ -1528,7 +1654,7 @@ impl Game<'_> {
             return false;
         }
         let from = self.container_world_pos(hopper);
-        mod_api::run_transaction(self, |game, tx| {
+        self.storage_transaction(|game, tx| {
             use super::api_values::TryIntoApi;
             for slot in 0..hopper.len() {
                 let Some(snapshot) = game
@@ -1582,10 +1708,12 @@ impl Game<'_> {
             if part.amount(self, slot) == 0 || self.part_move_canceled(at, into, &one.item) {
                 continue;
             }
-            let moved = mod_api::run_transaction(self, |game, tx| {
+            let moved = self.storage_transaction(|game, tx| {
                 let host: &mut dyn mod_api::ServerHost = game;
-                let came = part.extract_at(host, tx, slot, &resource, 1);
-                if part.checked(came, 1, &at) != Some(1) {
+                let came = part
+                    .extract_at(host, tx, slot, &resource, 1)
+                    .map_err(|_| ())?;
+                if came != 1 {
                     return Err(());
                 }
                 let mut attempt = PlacementAttempt::default();
@@ -1834,6 +1962,7 @@ impl Game<'_> {
         hopper: &View,
     ) -> bool {
         let mut prepared = None;
+        let mut attempt = TakeAttempt::default();
         for slot in source.slots_for_face_iter(Some(Direction::Down)) {
             self.unpack_next_inventory_part(source, slot, &mut prepared);
             {
@@ -1841,7 +1970,11 @@ impl Game<'_> {
                 let Some(stack) = c.insertion_item(source, slot).map(Cow::into_owned) else {
                     continue;
                 };
-                if !c.can_take_into(source, slot, &stack, Direction::Down, hopper) {
+                let ask = TakeAsk {
+                    game: self,
+                    attempt: &mut attempt,
+                };
+                if !c.can_take_into(source, slot, &stack, Direction::Down, hopper, ask) {
                     continue;
                 }
             }
@@ -2195,8 +2328,9 @@ impl Game<'_> {
         let Some(stack) = self.containers().get(&view, slot).cloned() else {
             return Ok(());
         };
+        let holder = self.world.block_entities.identity(key);
         let target = offset(key, facing);
-        let remaining = if dropper {
+        let mut remaining = if dropper {
             let side = facing.opposite();
             let inserted = self.with_container_at(target, side, |game, into| match into {
                 ContainerTarget::View(into) => {
@@ -2228,12 +2362,33 @@ impl Game<'_> {
                 None => self.dispense_default_in_level(key, facing, stack),
             }
         } else {
-            self.dispense_item(key, facing, stack)?
+            let ControlFlow::Continue(remaining) = self.dispense_item(key, facing, stack)? else {
+                return Ok(());
+            };
+            remaining
         };
-        if let Some(entry) = self.slot_mut_at(&view, slot) {
-            *entry = remaining;
+        // DispenserBlock.dispenseFrom calls BaseContainerBlockEntity.setItem after the
+        // behaviour returns. Only this resident write limits the detached remainder's count.
+        if !dropper && let Some(stack) = &mut remaining {
+            stack.count = stack
+                .count
+                .min(self.containers().max_stack_in(&view, stack));
         }
-        self.container_changed(key);
+        // A listener can replace the block entity while the behaviour runs. Like the
+        // vanilla BlockSource, the action owns the original row, not its replacement.
+        if let Some(holder) = holder
+            && self.world.block_entities.identity(key) == Some(holder)
+        {
+            self.journal_block_entity_slot(key, slot);
+            if let Some(entry) = self.slot_mut_at(&view, slot) {
+                *entry = remaining;
+                if dropper {
+                    self.after_commit(super::transactions::After::Changed(key));
+                } else {
+                    self.after_holder_changed(holder);
+                }
+            }
+        }
         Ok(())
     }
 }
@@ -2355,7 +2510,7 @@ mod brewing_fuel_transfer_tests {
                 .unwrap();
                 let resource = mod_api::ItemResource::of(&stack);
                 host.transaction(|host, tx| {
-                    assert_eq!(items.insert_at(host, tx, 0, &resource, 1), 1);
+                    assert_eq!(items.insert_at(host, tx, 0, &resource, 1), Ok(1));
                     Ok::<_, ()>(())
                 })
                 .unwrap();
@@ -2630,6 +2785,7 @@ mod item_column_tests {
     fn item(id: u32, x: f64, y: f64, z: f64) -> ItemEntity {
         let at = Vec3::new(x, y, z);
         ItemEntity {
+            size_answer: None,
             attachment_lifetime: Default::default(),
             fall_distance: 0.0,
             random: sunrise_core::random::LegacyRandom::new(0),
@@ -3780,9 +3936,17 @@ mod can_take_tests {
         let shelf_view = game.containers().view(shelf_pos, false).expect("shelf");
         let full_hopper = game.containers().view(hopper_pos, false).expect("hopper");
         assert!(
-            !game
-                .containers()
-                .can_take_into(&shelf_view, 0, &book, Direction::Down, &full_hopper),
+            !game.containers().can_take_into(
+                &shelf_view,
+                0,
+                &book,
+                Direction::Down,
+                &full_hopper,
+                TakeAsk {
+                    game: &game,
+                    attempt: &mut TakeAttempt::default(),
+                },
+            ),
             "a full hopper takes no book"
         );
         game.world
@@ -3790,8 +3954,17 @@ mod can_take_tests {
             .insert(hopper_pos, BlockEntity::Chest(vec![None; 5]));
         let empty_hopper = game.containers().view(hopper_pos, false).expect("hopper");
         assert!(
-            game.containers()
-                .can_take_into(&shelf_view, 0, &book, Direction::Down, &empty_hopper),
+            game.containers().can_take_into(
+                &shelf_view,
+                0,
+                &book,
+                Direction::Down,
+                &empty_hopper,
+                TakeAsk {
+                    game: &game,
+                    attempt: &mut TakeAttempt::default(),
+                },
+            ),
             "an empty hopper takes the book"
         );
     }

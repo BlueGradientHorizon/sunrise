@@ -7,9 +7,9 @@ players.
 
 | Accessor | Operations |
 |---|---|
-| `host.commands()` | `run_command(line)` runs through the console command path with permission level 4. `feedback(text)` answers the command source. |
+| `host.commands()` | `run_command(line)` runs through the console command path with permission level 4. `feedback(text, broadcast_to_admins)` answers the command source and, broadcast, tells the other operators and the log (`sendSuccess(text, true)`). |
 | `host.messages()` | `broadcast(text)` fires the broadcast hook and writes to the server log. |
-| `host.players()` | `server_players()` returns `Vec<PlayerRef>` in join order. `acting_player()` returns the optional player whose state is active in the hook. `player_by_name(name)` finds a connected real player by case-insensitive account name, not nickname. |
+| `host.players()` | `server_players()` returns `Vec<PlayerRef>` in join order. `acting_player()` returns the optional player whose state is active in the hook. `player_by_name(name)` finds a connected real player by case-insensitive account name, not nickname. `singleplayer_profile()` is an integrated server's launch profile ([below](#identity-and-location)). |
 | `host.levels()` | `list_levels()` returns loaded server levels in vanilla dimension order, or an empty list before a server world opens. |
 
 The players list and name lookup include the single-player owner, even before
@@ -32,10 +32,12 @@ exceeding the boundary's size or nesting limits is refused before reaching the H
 ## Running a command as an entity
 
 `host.commands().run_command` runs as the console. To run a line as a player or another entity instead, at a level
-you choose, call `entity.run_command(host, line, PermissionLevel::Gamemasters)`: `@s` is that entity, `~` its
-position, and only a player is answered. It returns `false` for a line that fails, a stale or removed entity, and an
-entity outside the level in place (a player in another level included, since that level is parked while the hook
-runs). To run a command in another level, do it from a moment in that level or from a task scheduled there.
+you choose, call `entity.run_command(host, line, PermissionLevel::Gamemasters, false)`: `@s` is that entity and
+`~` its position. Pass `true` as the last argument to suppress the player's command feedback and operator
+notifications. Other entities already have a silent source. It returns `false` for a line that fails, a stale or
+removed entity, and an entity outside the level in place (a player in another level included, since that level is
+parked while the hook runs). To run a command in another level, do it from a moment in that level or from a task
+scheduled there.
 
 ## Identity and location
 
@@ -47,6 +49,16 @@ for comparisons, and use `.map(str::to_owned)` only to keep the text beyond the
 host borrow. A stale or unavailable player gives `None`; an acting player without
 a known connection gives `Some("")` for address and brand.
 
+`player.virtual_host(host)` returns `Option<&VirtualHost>` on the server. Its
+`host` and `port` are the destination sent in this connection's login handshake,
+not the peer IP, after any `player_handshake` listener's rewrite. The host keeps its original case and punctuation up to the
+first NUL; any suffix is discarded. A transfer uses the new login handshake.
+The value comes from the client, so it is not a verified name or necessarily
+what the player originally typed. Clone it only if you need it after the host
+borrow ends. The host may be empty. The window's own player on an integrated server
+reports its memory connection's handshake: the host `local`, standing for the local address, and port 0. It is `None`
+on a client, for stale or unavailable players, and for fake players.
+
 `player.announced_channels(host)` returns `Option<Arc<[String]>>` in announcement
 order. The snapshot includes `minecraft:register` minus `minecraft:unregister`
 from configuration and play. It can outlive the host borrow and does not change
@@ -55,14 +67,38 @@ you need that exact list later; call the method again to see new announcements.
 An acting player without a known connection gets an empty snapshot; a stale or
 unavailable player returns `None`.
 
+On an integrated (single player) server, `host.players().singleplayer_profile()` is the profile the
+server was created with (`MinecraftServer.getSingleplayerProfile`): the owner's name, UUID and login
+properties, borrowed from the host. It is fixed when the server is created, so it reads the same from
+`server_about_to_start` and `server_starting` on, before the owner joins and after they leave.
+`player.is_singleplayer_owner(host)` says whether a player is that owner, compared as
+`IntegratedServer.isSingleplayerOwner` does: by name, ignoring case, not by UUID. Cheats, opening to
+LAN, join order and permission level don't change the answer. Use `player.permission_level(host)` to
+check for an operator. A dedicated server has no owner: `None` and `false`, and a stale handle is
+`false` too. Neither read grants anything or changes who may log in.
+
 `player.latency(host)` reads the ping the Tab list shows, in milliseconds: the keep-alive round
 trips averaged three parts old to one part new. It is 0 until the first keep-alive answer, for a fake
 player and for an acting player without a known connection. It refuses with `PlayerWorldRefusal::Client`
 on a client and `PlayerWorldRefusal::Stale` for a stale handle.
 
+`player.send_ping(host, id)` queues a play-phase ping to that player's current
+connection from a mutable `ServerHost`. The ID is a signed `i32`, and a vanilla
+client echoes it without a mod. Success means the packet was queued (or staged
+in the current transaction), not delivered or answered. `PlayerPingRefusal`
+distinguishes a stale handle, no open play connection, and a send failure.
+
+Listen to `player_pong` to observe `event.player`, `event.name` (the profile
+name) and `event.id`. This non-cancellable notice runs on the server thread at
+the packet's turn, before later input from that connection is applied. Match
+pongs by player and ID if you need to correlate them, but the ID is client
+supplied and unauthenticated: unsolicited and duplicate pongs are still
+reported. Configuration, login, status, and the separate play latency request
+do not fire this hook. Neither API changes keep-alive latency.
+
 The online list includes connected players during nested player turns. Name,
-permission and address reads work for connected players whose bodies are displaced
-by another player's turn; stale handles are refused. Entity and living handles
+permission, address and virtual-host reads work for connected players whose bodies
+are displaced by another player's turn; stale handles are refused. Entity and living handles
 provide world-state reads, which require a resolvable body.
 
 In `player_stat_award`, find the recipient with
@@ -70,6 +106,22 @@ In `player_stat_award`, find the recipient with
 `player.stat(host, stat_type, key)` reads that player's count before the award,
 even if a nested turn has displaced them. This does not make displaced players
 available for statistic writes.
+
+On the server, `player.statistics(host)` takes `&dyn Host` and returns owned save
+JSON (`Option<String>`): namespaced statistic types and entries under `stats`,
+with the current `DataVersion`. An online player without counters has an empty
+map; a stale or unavailable player gives `None`, as does a client host.
+
+`player.set_statistics(host, snapshot)` takes `&mut dyn ServerHost` and borrowed
+JSON. It upgrades older saves, reports decode errors and keeps recoverable
+registered counters. An absent or empty `stats` map clears the counters. It
+returns `false` without changing the player for malformed JSON, a snapshot that
+cannot be decoded as a map, or a player unavailable for writes. A successful
+restore replaces rather than merges counters: omitted counters read as zero,
+and only changed statistic-criterion scores are updated. The next regular
+statistics request sends the changed counts, including zero for removals, and
+the normal player save persists the new map. Restoring does not fire
+`player_stat_award`.
 
 `player.level(host)` returns the authoritative `LevelRef`;
 `player.dimension(host)` returns its dimension `Identifier`, including registered
@@ -197,9 +249,16 @@ A translation's `fallback` and an `nbt` component's `interpret`, `plain` and
 key is `index` is refused, as in vanilla; Sunrise follows vanilla there. JSON
 escapes such as `\u0041` are decoded.
 
-`host.text_from_legacy("§cRed")` reads `§` formatting codes as
+`host.text_to_nbt(&text)` encodes the component as vanilla's `ComponentSerialization.CODEC`
+with `NbtOps`, without resolving translations or adding styles. It returns `Result<Tag, TextFormError>`.
+`host.text_from_nbt(&tag)` reads that form, returning `Result<Option<Text>, TextFormError>`.
+An unstyled literal without siblings encodes as an NBT string, and strings are read literally,
+including `§` codes. NBT flags are true for nonzero numeric tags, and custom click payloads
+keep their tag types. Both methods enforce vanilla's 512-container NBT depth limit.
+
+`host.text_from_legacy("§cRed")` instead reads `§` formatting codes as
 the font draws them; `&` codes are not read, so replace `&` with `§` first.
-Both work on either side.
+These conversions work on either side.
 
 ## Server clock, rules and distances
 
@@ -217,10 +276,27 @@ read the distances in chunks; `host.server_set_view_distance(d)` and
 dedicated server and return `false` otherwise. `server.properties` is not
 written.
 
+`host.server_is_published()` is `MinecraftServer.isPublished`: always true on a
+dedicated server, and on a single-player world's server only while the world is
+open to LAN, so it turns false again when the LAN closes (`/unpublish`). A rule
+meant for multiplayer only reads it when it applies, not once at start: no hook
+fires when a world is opened to LAN.
+
 `host.tick_rate_is_frozen()` is `TickRateManager.isFrozen` (`/tick freeze`): `Some(true)` while the server's
 ticking is frozen, `None` on a client. A frozen server still runs the ticks `/tick step` asks for, so
 `server_tick_start`'s `world_running` can be true while it is frozen; read this to tell a frozen server from a
 paused level.
+
+## Account profiles
+
+`host.profiles().resolve_name(name)` and `resolve_id(uuid)` look an account's profile up
+through the server's own resolver, the one `/fetchprofile` and dynamic player heads use, also on
+an offline-mode server. The first call starts the lookup and answers
+`ProfileResolution::Pending`; call again with the same name or UUID to poll it until it answers
+`Done`, with the `AccountProfile` (UUID, the account's own spelling of its name, and the signed
+properties such as `textures`) or `None`. As in vanilla, a failed request also answers `None`, and
+that answer is kept like any other: the same name or UUID answers `Done(None)` until the entry
+expires, ten minutes after its last lookup.
 
 ## Finding blocks in a chunk
 
@@ -231,6 +307,31 @@ palette keeps a state no block uses any more, and a section of more distinct sta
 named whenever the block exists. A mod that points at the nearest block of a kind asks it on `chunk_load` for
 blocks placed before it tracked them. `None` for a stale handle, on a client, or for a chunk that isn't
 loaded; it loads nothing.
+
+## Loading a chunk
+
+`level.load_chunk(host, [x, z])` is vanilla's `Level.getChunk(x, z)` (`ServerChunkCache.getChunk(x, z, FULL, true)`):
+it loads the chunk from the save, or generates it, to FULL, in any open server level, and returns `Ok(())` once it
+is there with its initial light done, so the level's block and light reads find it. To light it, the 8 chunks around
+it are loaded too (vanilla only generates them part of the way); they hold no ticket and unload with the next sweep. **It blocks the server tick until the chunk is loaded or
+generated**, as vanilla does, with no timeout; a chunk already full answers at once. Generating a new chunk takes
+long enough to be felt, so load ahead of time rather than many chunks in one tick. Like vanilla, the call leaves an
+`UNKNOWN` ticket on the chunk that keeps it loaded (not ticking) through the next ticket purge and expires at the one
+after, and the first purge can come in the same tick, depending on when the call runs; the chunk then unloads like
+any other. Loading a chunk of a parked level doesn't put the level in place: `set_block` and the other writes that
+need it in place still answer `LevelWriteError::Unavailable` there. To keep a chunk, force it (`chunk.set_forced`)
+or hold a ticket controller's
+ticket. The `chunk_load` listeners of each chunk the call brings in run during the call, while that chunk is loaded
+and before the call returns, as NeoForge's `ChunkEvent.Load` does inside `getChunk`. `Err(ChunkLoadError::Unloaded)`
+for a stale handle, a client, a level the server has not opened, a chunk past `ChunkPos.isValid`
+(`ChunkPyramid.MAX_CHUNK_COORDINATE_VALUE`, where vanilla's block reads and writes stop), and while the level's
+generation is paused or stopped; `Err(ChunkLoadError::Failed)` when a mod's chunk generator panicked for the chunk
+or one its generation needs, which the call reports instead of waiting forever.
+
+For bulk or background loads that must not block the server tick, use `level.request_chunk(host, [x, z])` to queue a
+non-blocking level-33 (`FULL`, non-ticking) load at priority below player views and `/forceload`, drain finished
+[`ChunkSnapshot`] results on subsequent ticks with `level.drain_chunk_requests(host)`, or release a queued ticket
+early with `request.cancel(host)`.
 
 ## World mutation: chunks, blocks shown and placed as a player
 
@@ -322,7 +423,9 @@ wait for the outermost commit.
 local player's supported open menu, or the inventory menu when none is open; every other
 player returns `None`. `MenuRef::slot_count`, `slot` and `carried` read the client's view:
 server slot updates plus local prediction, not server authority. A menu ref becomes stale
-when that menu closes or another opens. The server retains its supported-menu restrictions.
+when that menu closes or another opens. `MenuRef::kind` returns `Some(Some(id))` for a supported
+registry-backed menu, `Some(None)` for the player's inventory menu or a mount's inventory on the client,
+and `None` for a stale, foreign or unavailable handle. The server retains its supported-menu restrictions.
 
 ## Local player reads on a client
 
@@ -337,6 +440,12 @@ kept body:
 | `on_ground` | The local player's own predicted flag; for another kept entity, its client copy's flag. |
 | `is_in_water` | The local player's own fluid state, or a kept entity's last client update. |
 | `is_swimming` | The local player's swimming flag, not the pose (crawling can share that pose). `None` for other players and other entity kinds. |
+| `is_in_lava` | The local player's own fluid state, or a kept entity's last client update. |
+| `is_sprinting` | The local player's predicted sprinting flag, or a kept entity's synced flag. |
+| `pose` | The local player's predicted pose, or the `DATA_POSE` the server last sent for a kept entity. |
+| `is_crouching` | `LocalPlayer.isCrouching` for the local player: its own crouching flag, set before its input each tick, so it can differ from its pose for a tick. A kept entity's crouching pose otherwise. |
+| `LivingRef::no_jump_delay` | `LivingEntity.noJumpDelay` of the local player's prediction: 10 after a ground jump, counting down. `None` for other entities. |
+| `main_arm` | `LivingEntity.getMainArm` for every living entity the client tracks, as the server last sent it: another player's or a mannequin's main hand, a mob's left-handed flag; the local player's own Main Hand option. `None` for an entity that isn't living. |
 
 Client reads are views, not server authority. Inventory access here is read-only;
 inventory and movement writes still require a server host.
@@ -351,3 +460,31 @@ server, but the crash save writes nothing for that player: their `players/data/<
 advancements stay as last saved, so an item taken but not yet placed is never duplicated or lost in the player's
 files. The world save does not roll back what the turn already changed in the world, and a vehicle that player rides
 alone stays in the world. The log names the turn with a warning. A panic your code caught does not count: the record ends with the server tick.
+
+## Custom statistics
+
+Declare custom statistic identities in `Hooks::register`, using `Registrar`:
+
+```rust,ignore
+fn register(&self, registrar: &mut dyn Registrar, _: &RegistrationContext) {
+    registrar.register_custom_stat("steps").unwrap();
+}
+```
+
+For a mod named `rewrite`, this declares `rewrite:steps` in
+`minecraft:custom_stat`. An explicit `rewrite:steps`, another manifest-owned
+namespace, or a namespace delegated to the mod through `served_by` (see
+[Declare content in code](../content-mods.md#declare-content-in-code)) is also accepted; `minecraft`, foreign namespaces, malformed IDs and
+duplicates are refused. Ignoring the returned `Result<(), DeclarationError>` does not
+bypass installation failure. A mod's explicit registration refusal rolls back
+its declarations, and the installed inventory freezes before worlds open.
+
+These declarations populate the integrated command/statistic inventory and
+append after vanilla's IDs in LAN and client built-in registry reads, preserving
+vanilla IDs. Servers declaring custom statistics require Sunrise clients with
+the same ordered statistic inventory; configuration rejects mismatches before
+play. Register the target before rewriting an award to it; an arbitrary
+identifier alone does not register a statistic.
+
+`/scoreboard objectives add steps minecraft.custom:rewrite.steps` creates an
+objective for this registered counter.

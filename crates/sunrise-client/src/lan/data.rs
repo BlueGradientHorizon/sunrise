@@ -288,6 +288,18 @@ fn synchronized_entries(
     if enchantments || matches!(path, "instrument" | "jukebox_song") {
         mod_entries(resources, path, &mut entries);
     }
+    if key == "minecraft:world_clock" {
+        // The mods' clocks (`register_world_clock`), below the packs: a `WorldClock` has no field.
+        for id in mod_api::__private::world_clock_declarations() {
+            if let Some((ns, path)) = id.split_once(':') {
+                entries.push((
+                    (ns.to_owned(), path.to_owned()),
+                    Value::Object(<_>::default()),
+                    true,
+                ));
+            }
+        }
+    }
     if key == "minecraft:dimension_type" {
         mod_dimension_types(
             sunrise_world::worldgen::overrides::mod_dimensions(),
@@ -980,7 +992,7 @@ impl SyncData {
         let mut meta = vec![(
             10,
             entity_data::serializer::PARTICLES,
-            entity_data::Value::Particles(particles),
+            entity_data::Value::Particles(particles.into()),
         )];
         if all_ambient {
             meta.push((
