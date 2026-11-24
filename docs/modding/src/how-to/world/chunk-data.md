@@ -1,14 +1,14 @@
 # Loading and saving chunk attachments
 
-`chunk_data_load` and `chunk_data_save` run on the persistence worker thread, never with live
-world access. Both receive `&dyn ChunkDiskHost`, which supplies only the job identity
-(`host.job()` -> `&ChunkDiskContext`: world epoch, dimension, coordinates, full/proto kind and
-phase) and immutable resource reads. `registry(name)` lends `Option<&[String]>` in registry ID
-order from the worker's frozen generation (`None` means that generation has no such registry;
-copy it if it must outlive the callback). Neither metadata getter reads files;
-`ConfigHost::setting` returns an owned `Option<String>` from the same snapshot. The host has no
-live backend and is not a `ServerHost`. Typed values need a persistence codec, not `Wire`.
-Unknown bounded attachment entries are preserved opaquely.
+`chunk_data_load` runs on the chunk-decode worker thread and `chunk_data_save` runs on the
+persistence worker thread, never with live world access. Both receive `&dyn ChunkDiskHost`, which
+supplies only the job identity (`host.job()` -> `&ChunkDiskContext`: world epoch, dimension,
+coordinates, full/proto kind and phase) and immutable resource reads. `registry(name)` lends
+`Option<&[String]>` in registry ID order from the worker's frozen generation (`None` means that
+generation has no such registry; copy it if it must outlive the callback). Neither metadata getter
+reads files; `ConfigHost::setting` returns an owned `Option<String>` from the same snapshot. The
+host has no live backend and is not a `ServerHost`. Typed values need a persistence codec, not
+`Wire`. Unknown bounded attachment entries are preserved opaquely.
 
 For both hooks, codec errors, invalid or over-budget disk NBT, and panics refuse publication of
 the job's edits. Later listeners still see the last accepted envelopes; `event.data.failure()`
