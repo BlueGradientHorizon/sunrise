@@ -484,6 +484,7 @@ mod register_item_tint_sources;
 mod register_json_animation_types;
 mod register_layer_definitions;
 mod register_load_conditions;
+mod register_mob_parts;
 mod register_model_loaders;
 mod register_particle_groups;
 mod register_particle_providers;

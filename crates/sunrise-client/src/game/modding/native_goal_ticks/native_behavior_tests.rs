@@ -138,7 +138,11 @@ fn random_of(level: &mut DamageLevel<'_>) -> (u64, Option<f64>) {
 struct ZombieBehaviors;
 #[mod_api::sunrise_part]
 impl EntityPart for ZombieBehaviors {
-    fn register_behaviors(&self, event: &mut RegisterBehaviorsEvent<'_, '_>) {
+    fn register_behaviors(
+        &self,
+        _host: &mut dyn mod_api::ServerHost,
+        event: &mut RegisterBehaviorsEvent<'_, '_>,
+    ) {
         if let Err(e) = event
             .behaviors
             .add(Activity::Idle, 5, 40, 80, &[], Probe::still_for(1))
@@ -161,7 +165,11 @@ macro_rules! plan_part {
         struct $name;
         #[mod_api::sunrise_part]
         impl EntityPart for $name {
-            fn register_behaviors(&self, event: &mut RegisterBehaviorsEvent<'_, '_>) {
+            fn register_behaviors(
+                &self,
+                _host: &mut dyn mod_api::ServerHost,
+                event: &mut RegisterBehaviorsEvent<'_, '_>,
+            ) {
                 for (id, add) in ADDS.lock().unwrap().iter() {
                     if *id == $id {
                         add(event.behaviors);
@@ -370,7 +378,7 @@ fn with_game_states(
     states.unwrap()
 }
 
-/// A villager in the game's list, as `Mob::new` builds it.
+/// A villager in the game's list, as `Mob::new` builds it, with staged mod parts flushed.
 fn villager(game: &mut super::super::Game<'_>, id: u32, at: [f64; 3]) {
     use sunrise_core::geometry::Vec3;
     let kind = game
@@ -382,6 +390,8 @@ fn villager(game: &mut super::super::Game<'_>, id: u32, at: [f64; 3]) {
     let mut m = Mob::new(id, kind, Vec3::new(at[0], at[1], at[2]), 0.0);
     m.ground.on_ground = true;
     game.mobs.push(m);
+    let join = game.mobs.last().unwrap().join;
+    game.flush_resident_mob_parts(id, join);
 }
 
 /// One pass over the villager's own brain tick as `server_ai_step` reaches
@@ -409,7 +419,9 @@ fn with_villager_tick(
     let mut events = Vec::new();
     let index = mobs.iter().position(|m| m.id == id).unwrap();
     f(&mut mobs[index], &w, level, &mut events);
+    let join = mobs[index].join;
     game.mobs.restore(mobs, RestoreOrder::SurvivorsFirst);
+    game.flush_resident_mob_parts(id, join);
 }
 
 /// `villager_brain::tick` once at this time, on the caller's level random.
@@ -420,6 +432,11 @@ fn villager_tick(
     day_time: i64,
     level: &mut DamageLevel<'_>,
 ) {
+    if let Some(m) = game.mobs.iter_mut().find(|m| m.id == id) {
+        mobs::villager_brain::ensure_brain(m, game_time, day_time);
+        let join = m.join;
+        game.flush_resident_mob_parts(id, join);
+    }
     with_villager_tick(
         game,
         id,
@@ -708,13 +725,15 @@ fn a_villager_without_mod_behaviors_draws_what_a_parts_free_one_does() {
 
 // ---- The animal brain (the second wiring) --------------------------------
 
-/// A mob of `kind` in the game's list, as `Mob::new` builds it.
+/// A mob of `kind` in the game's list, as `Mob::new` builds it, with staged mod parts flushed.
 fn mob_of(game: &mut super::super::Game<'_>, kind: &str, id: u32, at: [f64; 3]) {
     use sunrise_core::geometry::Vec3;
     let kind = game.res.mob_types().get(kind).unwrap().clone();
     let mut m = Mob::new(id, kind, Vec3::new(at[0], at[1], at[2]), 0.0);
     m.ground.on_ground = true;
     game.mobs.push(m);
+    let join = game.mobs.last().unwrap().join;
+    game.flush_resident_mob_parts(id, join);
 }
 
 /// `animal_brain::tick` once at this time, on the caller's level random.
@@ -725,6 +744,11 @@ fn animal_tick(
     day_time: i64,
     level: &mut DamageLevel<'_>,
 ) {
+    if let Some(m) = game.mobs.iter_mut().find(|m| m.id == id) {
+        mobs::animal_brain::ensure_brain(m);
+        let join = m.join;
+        game.flush_resident_mob_parts(id, join);
+    }
     with_villager_tick(
         game,
         id,
@@ -899,6 +923,11 @@ fn monster_tick(
     day_time: i64,
     level: &mut DamageLevel<'_>,
 ) {
+    if let Some(m) = game.mobs.iter_mut().find(|m| m.id == id) {
+        mobs::monster_brain::ensure_brain(m);
+        let join = m.join;
+        game.flush_resident_mob_parts(id, join);
+    }
     with_villager_tick(
         game,
         id,
@@ -919,6 +948,10 @@ fn warden_tick(
     day_time: i64,
     level: &mut DamageLevel<'_>,
 ) {
+    if let Some(m) = game.mobs.iter().find(|m| m.id == id) {
+        let join = m.join;
+        game.flush_resident_mob_parts(id, join);
+    }
     with_villager_tick(
         game,
         id,

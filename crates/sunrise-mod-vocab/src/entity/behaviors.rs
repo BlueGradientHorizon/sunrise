@@ -8,7 +8,7 @@
 //! ```no_run
 //! # use mod_api::{
 //! #     Activity, Behavior, BehaviorCx, EntityPart, Hooks, RegisterBehaviorsEvent,
-//! #     Registrar, RegistrationContext,
+//! #     Registrar, RegistrationContext, ServerHost,
 //! # };
 //! #[derive(Default)]
 //! struct Mod;
@@ -16,7 +16,11 @@
 //! struct VillagerBehaviors;
 //! #[mod_api::sunrise_part]
 //! impl EntityPart for VillagerBehaviors {
-//!     fn register_behaviors(&self, event: &mut RegisterBehaviorsEvent<'_, '_>) {
+//!     fn register_behaviors(
+//!         &self,
+//!         _host: &mut dyn ServerHost,
+//!         event: &mut RegisterBehaviorsEvent<'_, '_>,
+//!     ) {
 //!         let _ = event.behaviors.add(Activity::Idle, 5, 40, 80, &[], Stroll::default());
 //!     }
 //! }
@@ -227,6 +231,12 @@ impl<'a> BehaviorRegistrar<'a> {
         self.mod_id = mod_id;
         self.part = part;
     }
+    pub(crate) fn checkpoint(&self) -> usize {
+        self.inner.checkpoint()
+    }
+    pub(crate) fn rollback(&mut self, checkpoint: usize) {
+        self.inner.rollback(checkpoint);
+    }
     /// Add `behavior` to the brain: it starts in `activity` lanes at
     /// `priority`, runs a duration drawn from the level random in
     /// `min_duration..=max_duration` (`Behavior.tryStart`'s draw), and starts
@@ -298,6 +308,10 @@ pub trait BehaviorRegistrarBackend {
     fn add_behavior(&mut self, registration: RegisteredBehavior) -> Result<(), BehaviorRefusal>;
     /// The entity type id of the mob being built.
     fn mob_id(&self) -> &str;
+    /// Checkpoint staged behavior count before a listener runs.
+    fn checkpoint(&self) -> usize;
+    /// Discard staged behaviors added since `checkpoint` when a listener aborts.
+    fn rollback(&mut self, checkpoint: usize);
 }
 
 /// A brain's `WALK_TARGET` memory as a behavior reads it.
@@ -411,6 +425,12 @@ mod tests {
         }
         fn mob_id(&self) -> &str {
             "minecraft:villager"
+        }
+        fn checkpoint(&self) -> usize {
+            self.added.len()
+        }
+        fn rollback(&mut self, checkpoint: usize) {
+            self.added.truncate(checkpoint);
         }
     }
 

@@ -775,6 +775,7 @@ impl Game<'_> {
         );
         // `EntityType.create`: the mob is constructed before `finalizeSpawn`.
         self.initialize_entity(mod_api::Holder::Entity(mob.id), &kind);
+        self.flush_unjoined_mob_parts(&mut mob);
         mob.persistent = persistent;
         match site {
             SpawnSite::Raw => return Some(mob),
@@ -1237,6 +1238,7 @@ impl Game<'_> {
         reason: SpawnReason,
         spawner: Option<mod_api::Spawner>,
     ) -> Finalized {
+        self.flush_unjoined_mob_parts(mob);
         let mut group = None;
         let (outcome, difficulty) = self.finalize_spawn_event(mob, reason, spawner, &mut group);
         if outcome == Finalized::Done {
@@ -1530,6 +1532,7 @@ impl Game<'_> {
                 super::living_attributes::collect_equipment(catalog, items, m);
             }
         }
+        self.flush_pending_mob_parts();
         let mut snapshot = std::mem::take(&mut self.creatures.seen_buf);
         snapshot.extend(self.mobs.iter().map(|m| seen(m, uuid, self.items())));
         let mut events = std::mem::take(&mut self.creatures.event_buf);

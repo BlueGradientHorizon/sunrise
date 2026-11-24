@@ -3083,6 +3083,7 @@ impl Game<'_> {
                 .uuids
                 .get_or_insert_with(mob.id, sunrise_client::save::random_uuid);
         }
+        self.flush_pending_mob_parts();
         self.join_spawn_tags(from);
         self.native_joins_flush(false, 0);
     }

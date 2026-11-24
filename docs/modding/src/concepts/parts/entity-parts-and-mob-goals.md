@@ -56,7 +56,11 @@ mob's two selectors beside the species' own, with the same priorities, flag lock
 struct ZombieGoals;
 #[mod_api::sunrise_part]
 impl EntityPart for ZombieGoals {
-    fn register_goals(&self, event: &mut RegisterGoalsEvent<'_, '_>) {
+    fn register_goals(
+        &self,
+        _host: &mut dyn ServerHost,
+        event: &mut RegisterGoalsEvent<'_, '_>,
+    ) {
         // event.goals.mob().id() is "minecraft:zombie": branch as per-species code does.
         event.goals.add_goal(7, Stare::default());
         event.goals.add_target_goal(3, Remember::default());

@@ -153,40 +153,49 @@ pub enum BehaviorOp {
     Stop,
 }
 
-/// Native catalog target for [`mod_api::EntityPart::register_goals`].
-#[inline(never)]
-pub fn native_register_goals(goals: &mut mod_api::GoalRegistrar<'_>) {
-    mod_api::dispatch_register_goals(goals);
-}
-
-/// Ask the installed entity parts for the mob's mod goals (#1077), right after
-/// the species' own `ai::register` — vanilla's `registerGoals` moment, which a
-/// mob loaded from a chunk passes through as a spawned one does.
-pub fn attach(m: &mut Mob) {
-    if !mod_api::__private::has_scoped_hook(mod_api::HookId::RegisterGoals) {
-        return;
-    }
-    let (id, mob_id) = (m.id, &m.kind.id);
-    let ai = &mut m.ai;
-    let mut registrar = RegistrarFor {
-        goals: &mut ai.goals,
-        targets: &mut ai.targets,
-        mob_id,
-        mob_entity: id,
-    };
-    let mut goals = mod_api::GoalRegistrar::new(&mut registrar);
-    native_register_goals(&mut goals);
-}
-
-/// The game's side of [`mod_api::GoalRegistrar`]: the mob's two selectors.
-struct RegistrarFor<'a> {
-    goals: &'a mut GoalSelector,
-    targets: &'a mut GoalSelector,
-    mob_id: &'a str,
+/// Staged `register_goals` additions collected at the owning `Game` boundary and
+/// applied to the mob's original two selectors inside the listener's transaction.
+pub struct StagedGoals {
     mob_entity: u32,
+    mob_id: String,
+    goals: Vec<(i32, ModGoal)>,
+    targets: Vec<(i32, ModGoal)>,
 }
 
-impl mod_api::GoalRegistrarBackend for RegistrarFor<'_> {
+impl StagedGoals {
+    /// Start an empty staged goal buffer for mob `mob_entity` of entity type `mob_id`.
+    pub fn new(mob_entity: u32, mob_id: String) -> Self {
+        Self {
+            mob_entity,
+            mob_id,
+            goals: Vec::new(),
+            targets: Vec::new(),
+        }
+    }
+
+    /// Apply every accepted staged goal to the mob's goal and target selectors.
+    pub fn apply_to(self, goals: &mut GoalSelector, targets: &mut GoalSelector) {
+        for (priority, goal) in self.goals {
+            goals.add_boxed(priority, Box::new(goal));
+        }
+        for (priority, goal) in self.targets {
+            targets.add_boxed(priority, Box::new(goal));
+        }
+    }
+
+    /// Discard all staged goals behind each registering mod's panic fence.
+    pub fn discard(self) {
+        for (_, goal) in self.goals.into_iter().chain(self.targets) {
+            mod_api::runtime::discard_registration(
+                (mod_api::HookId::RegisterGoals, "register_goals"),
+                Some(goal.mod_id),
+                goal,
+            );
+        }
+    }
+}
+
+impl mod_api::GoalRegistrarBackend for StagedGoals {
     fn add_goal(
         &mut self,
         mod_id: &'static str,
@@ -195,7 +204,7 @@ impl mod_api::GoalRegistrarBackend for RegistrarFor<'_> {
         goal: Box<dyn mod_api::Goal>,
     ) {
         let goal = ModGoal::new(self.mob_entity, mod_id, part, goal);
-        self.goals.add_boxed(priority, Box::new(goal));
+        self.goals.push((priority, goal));
     }
 
     fn add_target_goal(
@@ -206,11 +215,27 @@ impl mod_api::GoalRegistrarBackend for RegistrarFor<'_> {
         goal: Box<dyn mod_api::Goal>,
     ) {
         let goal = ModGoal::new(self.mob_entity, mod_id, part, goal);
-        self.targets.add_boxed(priority, Box::new(goal));
+        self.targets.push((priority, goal));
     }
 
     fn mob_id(&self) -> &str {
-        self.mob_id
+        &self.mob_id
+    }
+
+    fn checkpoint(&self) -> (usize, usize) {
+        (self.goals.len(), self.targets.len())
+    }
+
+    fn rollback(&mut self, (goals_len, targets_len): (usize, usize)) {
+        let discarded_goals = self.goals.split_off(goals_len);
+        let discarded_targets = self.targets.split_off(targets_len);
+        for (_, goal) in discarded_goals.into_iter().chain(discarded_targets) {
+            mod_api::runtime::discard_registration(
+                (mod_api::HookId::RegisterGoals, "register_goals"),
+                Some(goal.mod_id),
+                goal,
+            );
+        }
     }
 }
 
