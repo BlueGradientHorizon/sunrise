@@ -1746,6 +1746,11 @@ impl Game<'_> {
             match target {
                 Target::Player => self.stop_riding(),
                 Target::Mob(rider) => self.dismount_mob(rider),
+                Target::Bolt(rider) => {
+                    if let Some(i) = self.bolts.iter().position(|b| b.id == rider) {
+                        self.bolts.update(i, |b| b.mount = None);
+                    }
+                }
                 _ => {}
             }
             self.feedback(Text::translate(
@@ -1846,6 +1851,7 @@ impl Game<'_> {
             Target::Player => self.riding?,
             Target::Guest(conn) => self.command_guest(conn)?.vehicle?,
             Target::Mob(id) => self.mobs.iter().find(|m| m.id == id)?.extra.mount?,
+            Target::Bolt(id) => self.bolts.iter().find(|b| b.id == id)?.mount?,
             _ => return None,
         };
         Some(if self.boats.iter().any(|b| b.id == id) {

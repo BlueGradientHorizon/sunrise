@@ -4974,9 +4974,10 @@ impl Game<'_> {
         let mut hits = Vec::new();
         let mut arrow_events = Vec::new();
         let mut shoot_events = Vec::new();
-        let mut lava_hurt_bullets = Vec::new();
+        let mut bullet_hurts = Vec::new();
         let mut trails = Vec::new();
         let mut bubble_tops = Vec::new();
+        let mut water_splashes = Vec::new();
         let mut snow_contacts = Vec::new();
         let mut section_steps = section_steps::begin(self);
         let mut keep_flags = vec![true; projectiles.len()];
@@ -5135,8 +5136,15 @@ impl Game<'_> {
                     if let Some(at) = p.take_shoot_event() {
                         shoot_events.push((p.owner, p.guest, [at.x, at.y, at.z]));
                     }
-                    if p.take_lava_hurt() {
-                        lava_hurt_bullets.push(p.position.components());
+                    water_splashes.append(&mut p.water_splashes);
+                    if let Some((hurt_at, is_lava)) = p.take_bullet_hurt() {
+                        let silent = self.entity_silent(p.id);
+                        let ctx = sunrise_client::sculk::Context {
+                            owner: p.owner,
+                            owner_uuid: p.owner_uuid,
+                            ..self.entity_event_context(p.id, None)
+                        };
+                        bullet_hurts.push((hurt_at.components(), is_lava, silent, ctx));
                     }
                     // AbstractHurtingProjectile.tick ends with createParticleTrail.
                     if super::remote_projectiles::has_smoke_trail(&p.kind) {
@@ -5296,15 +5304,21 @@ impl Game<'_> {
                 game.projectile_shoot_event(owner, guest, at);
             });
         }
-        // ShulkerBullet.hurtServer's sound and crits, then Entity.lavaHurt's burn.
-        for at in lava_hurt_bullets {
-            game.shulker_bullet_hurt(at);
-            game.lava_hurt_sound(at);
+        // ShulkerBullet.hurtServer: hurt sound (unless silent) and crits, discard, ENTITY_DAMAGE, then burn sound if lava.
+        for (at, is_lava, silent, ctx) in bullet_hurts {
+            game.shulker_bullet_hurt(at, silent);
+            game.post_game_event("minecraft:entity_damage", at, ctx);
+            if is_lava && !silent {
+                game.lava_hurt_sound(at);
+            }
         }
         game.smoke_trails(trails);
         game.dragon_breath_trails();
         for pos in bubble_tops {
             game.bubble_column_particles(pos);
+        }
+        for splash in water_splashes {
+            game.apply_item_splash(splash);
         }
         for (id, at, event) in arrow_events {
             if !hears_impact
@@ -5464,10 +5478,25 @@ impl Game<'_> {
             if let Some(at) = p.take_shoot_event() {
                 self.projectile_shoot_event(p.owner, p.guest, [at.x, at.y, at.z]);
             }
-            if p.take_lava_hurt() {
-                let at = p.position.components();
-                self.shulker_bullet_hurt(at);
-                self.lava_hurt_sound(at);
+            for splash in p.water_splashes.drain(..) {
+                self.apply_item_splash(splash);
+            }
+            if let Some((hurt_at, is_lava)) = p.take_bullet_hurt() {
+                let at = hurt_at.components();
+                let silent = self.entity_silent(pid);
+                let ctx = sunrise_client::sculk::Context {
+                    owner: p.owner,
+                    owner_uuid: p.owner_uuid,
+                    ..self.entity_event_context(pid, None)
+                };
+                self.shulker_bullet_hurt(at, silent);
+                self.creatures.projectiles.retire_extracted(pid, join);
+                drop(_save_lease);
+                self.post_game_event("minecraft:entity_damage", at, ctx);
+                if is_lava && !silent {
+                    self.lava_hurt_sound(at);
+                }
+                continue;
             }
             if super::remote_projectiles::has_smoke_trail(&p.kind) {
                 self.smoke_trails(vec![p.position]);
@@ -5600,12 +5629,17 @@ impl Game<'_> {
                     .apply_captured_impact(p, hit, contact)
                     .map(|p| (p, hit)),
                 (None, Some(before)) if self.wind_vehicle_broken(hit) => {
-                    let (p, keep, hit) = self.broken_vehicle_retick(before);
+                    let from = before.position;
+                    let (mut p, keep, hit) = self.broken_vehicle_retick(before);
                     if keep {
                         if let Some(ceiling) = self.wind_ceiling_contact(&p) {
                             Some((p, ceiling))
                         } else {
-                            self.add_projectile(p);
+                            self.sweep_projectile_inside(&mut p);
+                            self.lava_mark_hurt(&mut p);
+                            let (pid, to) = (p.id, p.position);
+                            self.reinsert_continuing_projectile(p);
+                            self.entity_section_step(pid, from.components(), to.components());
                             None
                         }
                     } else {
@@ -6001,22 +6035,22 @@ impl Game<'_> {
         }
     }
 
-    /// Re-insert an arrow that remains alive after entity hit dispatch, preserving tick order.
-    fn reinsert_bounced_arrow(&mut self, arrow: Projectile) {
+    /// Re-insert a projectile that remains alive after entity hit dispatch, preserving tick order.
+    fn reinsert_continuing_projectile(&mut self, projectile: Projectile) {
         let followers = self
             .creatures
             .bounced_followers
             .iter()
-            .position(|(id, _)| *id == arrow.id)
+            .position(|(id, _)| *id == projectile.id)
             .map(|k| self.creatures.bounced_followers.swap_remove(k).1)
             .unwrap_or_default();
         let projectiles = &mut self.creatures.projectiles;
-        if let Some(existing) = projectiles.locate(arrow.join) {
-            projectiles.store_back(existing, arrow);
+        if let Some(existing) = projectiles.locate(projectile.join) {
+            projectiles.store_back(existing, projectile);
             return;
         }
         let index = bounced_place(projectiles, &followers);
-        projectiles.insert(index, arrow);
+        projectiles.insert(index, projectile);
     }
 
     /// The rest of the tick of an arrow that hit an entity (`arrows::finish_entity_hit`).
@@ -6027,7 +6061,7 @@ impl Game<'_> {
         };
         self.flush_arrow_events(&mut arrow);
         if keep {
-            self.reinsert_bounced_arrow(arrow);
+            self.reinsert_continuing_projectile(arrow);
         } else if self.creatures.projectiles.locate(arrow.join).is_none() {
             self.creatures
                 .projectiles
@@ -6367,6 +6401,9 @@ impl Game<'_> {
                 };
                 self.shot_post_attack(arrow, who, direct, "minecraft:arrow");
                 self.arrow_post_hurt_effects(arrow, who);
+                if who == Who::Player {
+                    self.arrow_hit_sound_to_shooter(arrow);
+                }
             }
             return Ok(EntityHit::Hurt);
         }
@@ -6592,7 +6629,7 @@ impl Game<'_> {
             self.sweep_projectile_inside(&mut arrow);
             self.lava_mark_hurt(&mut arrow);
             let (aid, from, to) = (arrow.id, arrow.previous, arrow.position);
-            self.reinsert_bounced_arrow(arrow);
+            self.reinsert_continuing_projectile(arrow);
             self.entity_section_step(aid, from.components(), to.components());
         } else if save_lease.is_some() && self.creatures.projectiles.locate(arrow.join).is_none() {
             self.creatures
@@ -6786,9 +6823,7 @@ impl Game<'_> {
                 .any(|m| m.id == id && m.alive() && m.species() == Species::Breeze)
         {
             let mut deflected = p.clone();
-            if deflected.last_deflected_by != Some(id) {
-                super::wind::reverse(&mut deflected);
-                deflected.last_deflected_by = Some(id);
+            if deflected.deflect_by(id, sunrise_client::projectiles::Turn::Reverse, [1.0; 3]) {
                 let sound = LevelSound::new(
                     "minecraft:entity.breeze.deflect",
                     [at.x, at.y, at.z],
@@ -6798,13 +6833,14 @@ impl Game<'_> {
                 .in_source(SoundSource::Hostile);
                 self.play_bound_sound(sound, id, None);
             }
+            deflected.turn_bullet();
             if deflected.arrow.is_some() {
                 self.finish_arrow_hit(deflected, EntityHit::Deflected);
             } else {
                 self.sweep_projectile_inside(&mut deflected);
                 self.lava_mark_hurt(&mut deflected);
                 let (pid, from, to) = (deflected.id, deflected.previous, deflected.position);
-                self.reinsert_bounced_arrow(deflected);
+                self.reinsert_continuing_projectile(deflected);
                 self.entity_section_step(pid, from.components(), to.components());
             }
             return Ok(());
@@ -9807,7 +9843,7 @@ mod shulker_arrow_tests;
 mod breeding_tests;
 
 #[cfg(test)]
-mod projectile_batch_tests;
+pub(in crate::game) mod projectile_batch_tests;
 
 #[cfg(test)]
 mod breeze_random_tests;

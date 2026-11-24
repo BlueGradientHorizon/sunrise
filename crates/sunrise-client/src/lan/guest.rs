@@ -1190,8 +1190,11 @@ impl Guest {
     pub fn is_sunrise(&self) -> bool {
         self.brand == "sunrise"
     }
-    /// `Player.getDesiredPose`: sleeping, gliding, then the body's own pose
-    /// (swimming, crawling, crouching) once its server tick has run.
+    /// The pose the server shows of this player: in bed or gliding as its
+    /// client announced, before the body's own tick has taken it; else the
+    /// body's own pose (`Entity.getPose`) once its server tick has run
+    /// (swimming, crawling, crouching); else crouching while the shift key is
+    /// held and it isn't flying.
     pub fn pose(&self) -> Pose {
         if self.sleeping {
             Pose::Sleeping
@@ -2188,7 +2191,7 @@ fn network_stack_projecting(
                 sunrise_protocol::item::component::WRITABLE_BOOK_CONTENT,
                 sunrise_protocol::item::Component::WritableBook {
                     pages: d.writable_pages.clone(),
-                    filtered: Vec::new(),
+                    filtered: d.writable_filtered.clone(),
                 },
             ));
         }
