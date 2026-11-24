@@ -151,8 +151,10 @@ way round. Nothing is added to chat, narrated or sent. Text the boundary refuses
 Push a `DebugEntry::text(id, group, lines)` in `Hooks::register_debug_entries` at client
 startup. Use any valid `<namespace>:<path>` ID (including custom `minecraft:<path>` IDs that do
 not collide with built-in vanilla entries); it identifies the entry in the debug options and
-saved profile. The group says which vanilla lines yours join; the closure receives the current
-client host and appends to the entry's lines.
+saved profile. The group says which vanilla lines yours join, or `DebugGroup::Named(id)` puts
+them in a group of your own that every entry naming the same ID shares (`minecraft:memory` is
+vanilla's memory group). The closure receives the current client host and appends to the
+entry's lines.
 
 ```rust,ignore
 use mod_api::{DebugEntry, DebugGroup, RegisterDebugEntriesEvent, RegistrationContext};
