@@ -542,6 +542,7 @@ dependencies = [
  "sha2 0.10.9",
  "sunrise-addresses",
  "sunrise-attestation",
+ "sunrise-jar-fetch",
  "sunrise-mod-api-gen",
  "sunrise-mod-package",
  "sunrise-mod-pipeline",
@@ -5003,6 +5004,15 @@ dependencies = [
  "sunrise-mod-package",
  "sunrise-mod-vocab",
  "sunrise-world",
+]
+
+[[package]]
+name = "sunrise-jar-fetch"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
 ]
 
 [[package]]

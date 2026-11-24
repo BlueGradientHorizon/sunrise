@@ -1454,8 +1454,8 @@ mod tests {
     }
 
     /// 3. A `[[jar]]` layer may supply what the files lack: without the jar cached, references
-    /// warn and missing blockstates are skipped; with the jar layer supplied, references resolve
-    /// against mod ∪ jar and missing files are reported.
+    ///    warn and missing blockstates are skipped; with the jar layer supplied, references
+    ///    resolve against mod ∪ jar and missing files are reported.
     #[test]
     fn a_jar_layer_may_supply_what_the_files_lack() {
         let manifest = format!("{MANIFEST}{}", jar());
