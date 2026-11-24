@@ -337,42 +337,20 @@ impl<W: Wires> Layouts<W> {
         let resolved = index.resolve_path(module, &segments);
         if let Ok(Found::Item(id)) = resolved {
             match index.item(id).clone() {
-                Item::Struct(item) => {
+                Item::Struct(syn::ItemStruct { generics, .. })
+                | Item::Enum(syn::ItemEnum { generics, .. })
+                | Item::Union(syn::ItemUnion { generics, .. }) => {
                     let key = self.key(index, id);
                     let args = self.named_args(
                         index,
-                        module,
+                        Scope {
+                            module,
+                            params,
+                            depth,
+                        },
                         &args,
-                        params,
-                        depth,
                         id.module,
-                        &item.generics,
-                    );
-                    return Shape::Named(key, args);
-                }
-                Item::Enum(item) => {
-                    let key = self.key(index, id);
-                    let args = self.named_args(
-                        index,
-                        module,
-                        &args,
-                        params,
-                        depth,
-                        id.module,
-                        &item.generics,
-                    );
-                    return Shape::Named(key, args);
-                }
-                Item::Union(item) => {
-                    let key = self.key(index, id);
-                    let args = self.named_args(
-                        index,
-                        module,
-                        &args,
-                        params,
-                        depth,
-                        id.module,
-                        &item.generics,
+                        &generics,
                     );
                     return Shape::Named(key, args);
                 }
@@ -447,27 +425,24 @@ impl<W: Wires> Layouts<W> {
         }
     }
 
-    #[allow(clippy::too_many_arguments)]
     fn named_args(
         &mut self,
         index: &mut Index<'_>,
-        module: usize,
+        scope: Scope<'_>,
         explicit: &[Type],
-        params: &[GenericName],
-        depth: usize,
         item_module: usize,
         generics: &syn::Generics,
     ) -> Vec<Shape> {
         let mut out: Vec<Shape> = explicit
             .iter()
-            .map(|a| self.shape(index, module, a, params, depth))
+            .map(|a| self.shape(index, scope.module, a, scope.params, scope.depth))
             .collect();
         let non_lifetimes: Vec<&syn::GenericParam> = generics
             .params
             .iter()
             .filter(|p| !matches!(p, syn::GenericParam::Lifetime(_)))
             .collect();
-        if out.len() < non_lifetimes.len() && depth < 16 {
+        if out.len() < non_lifetimes.len() && scope.depth < 16 {
             let names = param_names(generics);
             let mut filled: Vec<Type> = explicit.to_vec();
             for param in &non_lifetimes[out.len()..] {
@@ -483,12 +458,19 @@ impl<W: Wires> Layouts<W> {
                 };
                 substitute.visit_type_mut(&mut default);
                 let _ = substitute;
-                out.push(self.shape(index, item_module, &default, params, depth + 1));
+                out.push(self.shape(index, item_module, &default, scope.params, scope.depth + 1));
                 filled.push(default);
             }
         }
         out
     }
+}
+
+/// Caller context for resolving generic arguments of a referenced type.
+struct Scope<'a> {
+    module: usize,
+    params: &'a [GenericName],
+    depth: usize,
 }
 
 /// Replaces an alias's type parameters by its arguments.
