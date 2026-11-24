@@ -360,6 +360,38 @@ impl Game<'_> {
         let Some(mut queue) = self.async_chunk_requests.pending.remove(&dim) else {
             return;
         };
+        if self.streaming.is_aborted() {
+            let mut released_any = false;
+            while let Some(req) = queue.pop_front() {
+                let handle = mod_api::__private::game::chunk_request_ref(req.level, req.id);
+                if self
+                    .async_chunk_requests
+                    .pending_by_handle
+                    .remove(&(dim, handle))
+                    .is_none()
+                {
+                    continue;
+                }
+                self.async_chunk_requests.dec_active(dim);
+                if self.async_chunk_requests.release_holder(dim, req.pos) {
+                    self.streaming.remove_async_request(req.pos);
+                    released_any = true;
+                }
+                self.async_chunk_requests
+                    .completed
+                    .entry((req.mod_id, req.level))
+                    .or_default()
+                    .push(mod_api::__private::game::completed_chunk_request(
+                        handle,
+                        [req.pos.0, req.pos.1],
+                        Err(ChunkLoadError::Unloaded),
+                    ));
+            }
+            if released_any {
+                self.rebuild_chunk_tickets(false);
+            }
+            return;
+        }
         let total = queue.len();
         let mut processed = 0usize;
         let mut scanned = 0usize;

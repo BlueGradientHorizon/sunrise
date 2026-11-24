@@ -3438,19 +3438,25 @@ impl Streaming {
 
     /// Check whether a non-blocking mod chunk request at `chunk` can be admitted.
     pub fn check_async_request(&self, world: &World, chunk: (i32, i32)) -> FullColumn {
-        if !chunk_pos_is_valid(chunk) || self.remote {
+        if !chunk_pos_is_valid(chunk)
+            || self.remote
+            || self.paused
+            || self.shared.aborted.load(Ordering::Relaxed)
+        {
             return FullColumn::Refused;
         }
         if full_column_ready(world, chunk) {
             return FullColumn::Ready;
         }
-        if self.paused || self.shared.aborted.load(Ordering::Relaxed) {
-            return FullColumn::Refused;
-        }
         if self.full_column_failed(chunk) {
             return FullColumn::Failed;
         }
         FullColumn::Pending
+    }
+
+    /// Whether this level's streaming workers have been aborted/stopped.
+    pub fn is_aborted(&self) -> bool {
+        self.shared.aborted.load(Ordering::Relaxed)
     }
 
     /// Keep `chunk` loading/generating to `FULL` (level 33) at priority strictly below player
