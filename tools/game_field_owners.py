@@ -480,10 +480,21 @@ def load_field_owners(table_path: Path) -> dict[str, str]:
     """Load `field -> owner` (`game` | `server` | `client`) from the TSV table."""
     owners: dict[str, str] = {}
     with table_path.open(newline="", encoding="utf-8") as fp:
-        for row in csv.DictReader(fp, delimiter="\t"):
-            owner = row["owner"].strip()
-            if owner in ("game", "server", "client"):
-                owners[row["field"].strip()] = owner
+        reader = csv.DictReader(fp, delimiter="\t")
+        if not reader.fieldnames or not {"field", "owner"}.issubset(reader.fieldnames):
+            raise SystemExit(f"{table_path}: expected columns including field, owner")
+        for lineno, row in enumerate(reader, 2):
+            raw_f = row.get("field")
+            raw_o = row.get("owner")
+            if raw_f is None or raw_o is None:
+                raise SystemExit(f"{table_path}:{lineno}: truncated row")
+            fld = raw_f.strip()
+            owner = raw_o.strip()
+            if not fld or owner not in ("game", "server", "client"):
+                raise SystemExit(f"{table_path}:{lineno}: invalid row ({fld!r}, {owner!r})")
+            owners[fld] = owner
+    if not owners:
+        raise SystemExit(f"{table_path}: empty field-owner table (0 rows)")
     return owners
 
 
@@ -495,6 +506,8 @@ def load_field_wrappers(table_path: Path) -> dict[str, str]:
         if not reader.fieldnames or "wrapper" not in reader.fieldnames:
             return wrappers
         for lineno, row in enumerate(reader, 2):
+            if any(row.get(col) is None for col in ("field", "owner", "reason", "wrapper")):
+                raise SystemExit(f"{table_path}:{lineno}: truncated row")
             fld = row["field"].strip()
             owner = row["owner"].strip()
             reason = row["reason"].strip()
@@ -4243,6 +4256,14 @@ def plan_game_struct_and_ctor_edits(
         ("WrappedPrepInit", "wp", ("client_", "server_"), True),
     )
     helper_names = {spec[0] for spec in helper_specs}
+    helper_fn_names = {
+        "finish_construct",
+        "build_wrapped_client",
+        "build_wrapped_server",
+        "build_wrapped_renderer",
+        "wrap_prep_and_effects",
+        "assemble_game",
+    }
     helper_struct_bodies: dict[str, tuple[int, int]] = {}
     helper_lit_bodies: dict[str, tuple[int, int]] = {}
     i = 0
@@ -4259,10 +4280,15 @@ def plan_game_struct_and_ctor_edits(
             helper_struct_bodies[sname] = (i + 2, send)
             i = send
             continue
-        if tokens[i][0] == "IDENT" and tokens[i][1] == "fn" and i + 1 < n and tokens[i + 1][1] == "finish_construct":
+        if tokens[i][0] == "IDENT" and tokens[i][1] == "fn" and i + 1 < n and tokens[i + 1][1] in helper_fn_names:
             j = i + 2
             while j < n and tokens[j][1] != "{":
-                j += 1
+                if tokens[j][1] == "<":
+                    j = skip_angle_generics(tokens, j)
+                elif tokens[j][1] in ("(", "["):
+                    j = skip_balanced(tokens, j, tokens[j][1], ")" if tokens[j][1] == "(" else "]")
+                else:
+                    j += 1
             if j < n:
                 fn_end = skip_balanced(tokens, j, "{", "}")
                 k = j + 1
@@ -4290,12 +4316,19 @@ def plan_game_struct_and_ctor_edits(
                         helper_lit_bodies[sname] = (k + 1, lend)
                         k = lend
                         continue
-                    if tokens[k][0] == "IDENT" and tokens[k][1] == "Game" and tokens[k + 1][1] == "{":
+                    if (
+                        ctor_body is None
+                        and tokens[k][0] == "IDENT"
+                        and tokens[k][1] == "Game"
+                        and tokens[k + 1][1] == "{"
+                    ):
                         lit_end = skip_balanced(tokens, k + 1, "{", "}")
                         ctor_body = (k + 1, lit_end)
-                        break
+                        k = lit_end
+                        continue
                     k += 1
-                break
+                i = fn_end
+                continue
         i += 1
 
     if ctor_body is None:
@@ -4445,19 +4478,9 @@ def plan_game_struct_and_ctor_edits(
                 if not is_move:
                     rep_start, rep_end = expr_toks[0][2], expr_toks[-1][3]
                     old_expr = src[rep_start:rep_end]
-                    edits.append(
-                        Edit(
-                            rep_start,
-                            rep_end,
-                            expected_move,
-                            fname,
-                            "ctor-helper-move",
-                            f"{fname}: {old_expr}",
-                            f"{fname}: {expected_move}",
-                        )
-                    )
                     problems.append(
-                        f"crates/sunrise-client/src/game.rs: `finish_construct` `{fname}` must move `{expected_move}`"
+                        f"crates/sunrise-client/src/game.rs: `finish_construct` `{fname}` must move `{expected_move}`, "
+                        f"refusing to rewrite initialiser `{old_expr}`"
                     )
             else:
                 problems.append(
@@ -4509,12 +4532,15 @@ def plan_game_struct_and_ctor_edits(
     return edits, problems
 
 
-def check_side_wrapper_defs(side_path: Path, side: str) -> tuple[bool, list[str]]:
+def check_side_wrapper_defs(side_path: Path, side: str, *, src_override: str | None = None) -> tuple[bool, list[str]]:
     """Verify wrapper structs in `{client,server}_side.rs`. Returns `(needs_append, problems)`."""
     rel = side_path.as_posix()
-    if not side_path.is_file():
-        return False, [f"{rel}: side module file not found"]
-    src = side_path.read_text(encoding="utf-8")
+    if src_override is None:
+        if not side_path.is_file():
+            return False, [f"{rel}: side module file not found"]
+        src = side_path.read_text(encoding="utf-8")
+    else:
+        src = src_override
     tokens = tokenize_rust(src)
     n = len(tokens)
     smod = "client_side" if side == "client" else "server_side"
@@ -4727,24 +4753,24 @@ def main(argv: list[str] | None = None) -> int:
     total_ambiguous = 0
     structural_problems: list[str] = []
     files_changed = 0
-    changed_paths: list[Path] = []
+    planned_writes: dict[Path, str] = {}
     by_reason: dict[str, int] = {}
 
-    # Sync / check side wrapper definitions when scanning the real game tree with a wrapper table.
+    # Stage wrapper definitions and all file edits in memory so any refusal leaves the tree untouched.
     has_game_rs = any(rel == "crates/sunrise-client/src/game.rs" for _, rel in file_rels)
     if wrappers and has_game_rs:
         for side, fname in (("client", "client_side.rs"), ("server", "server_side.rs")):
             side_path = root_resolved / "crates/sunrise-client/src/game" / fname
             needs_append, probs = check_side_wrapper_defs(side_path, side)
             if args.fix and needs_append:
-                side_path.write_text(side_path.read_text(encoding="utf-8") + SIDE_WRAPPER_DEFS[side], encoding="utf-8")
-                changed_paths.append(side_path)
-                _, probs = check_side_wrapper_defs(side_path, side)
+                new_side = side_path.read_text(encoding="utf-8") + SIDE_WRAPPER_DEFS[side]
+                planned_writes[side_path] = new_side
+                _, probs = check_side_wrapper_defs(side_path, side, src_override=new_side)
             structural_problems.extend(probs)
 
     file_root_cache: dict[Path, frozenset[str]] = {}
     for path, rel_posix in file_rels:
-        src = path.read_text(encoding="utf-8")
+        src = planned_writes.get(path.resolve(), path.read_text(encoding="utf-8"))
         edits, ambig = scan_file(src, rel_posix, owners, index, file_root_cache, wrappers=wrappers)
         line_starts = compute_line_starts(src) if (ambig or (edits and (args.check or args.list))) else []
         for site in ambig:
@@ -4761,20 +4787,16 @@ def main(argv: list[str] | None = None) -> int:
             if args.fix:
                 src_after_access = apply_edits(src, edits) if edits else src
                 struct_edits, struct_probs = plan_game_struct_and_ctor_edits(src_after_access, owners, wrappers)
+                new_src = apply_edits(src_after_access, struct_edits) if struct_edits else src_after_access
                 if edits or struct_edits:
-                    new_src = apply_edits(src_after_access, struct_edits) if struct_edits else src_after_access
-                    path.write_text(new_src, encoding="utf-8")
-                    changed_paths.append(path)
+                    planned_writes[path.resolve()] = new_src
                     files_changed += 1
                 all_e = edits + struct_edits
                 total_edits += len(all_e)
                 for e in all_e:
                     by_reason[e.reason] = by_reason.get(e.reason, 0) + 1
-                # Re-verify structural problems after fix
                 if struct_edits:
-                    _, struct_probs = plan_game_struct_and_ctor_edits(
-                        path.read_text(encoding="utf-8"), owners, wrappers
-                    )
+                    _, struct_probs = plan_game_struct_and_ctor_edits(new_src, owners, wrappers)
                 structural_problems.extend(struct_probs)
                 continue
             else:
@@ -4790,8 +4812,7 @@ def main(argv: list[str] | None = None) -> int:
         for e in all_e:
             by_reason[e.reason] = by_reason.get(e.reason, 0) + 1
         if args.fix:
-            path.write_text(apply_edits(src, edits), encoding="utf-8")
-            changed_paths.append(path)
+            planned_writes[path.resolve()] = apply_edits(src, edits)
         elif args.list:
             if not line_starts:
                 line_starts = compute_line_starts(src)
@@ -4803,15 +4824,33 @@ def main(argv: list[str] | None = None) -> int:
                 lineno = offset_to_line(line_starts, e.start)
                 print(f"{rel_posix}:{lineno}: stale Game field `{e.old_expr}` -> `{e.new_expr}` ({e.reason})")
 
-    if args.fix and changed_paths and not args.no_fmt:
-        rustfmt = shutil.which("rustfmt")
-        if rustfmt:
-            batch = 100
-            for start in range(0, len(changed_paths), batch):
-                subprocess.run(
-                    [rustfmt, "--edition", "2024", *(str(p) for p in changed_paths[start : start + batch])],
-                    check=True,
-                )
+    for prob in structural_problems:
+        print(f"error: {prob}", file=sys.stderr)
+
+    if total_ambiguous > 0:
+        print(f"Reported {total_ambiguous} ambiguous site(s) for manual review.", file=sys.stderr)
+
+    if args.check and (total_edits > 0 or structural_problems):
+        print(f"Found {total_edits} stale sites across {files_changed} files.")
+        return 1
+    if args.fix and (structural_problems or (total_ambiguous > 0 and not args.allow_ambiguous)):
+        return 1
+    if total_ambiguous > 0 and not args.allow_ambiguous:
+        return 1
+
+    if args.fix and planned_writes:
+        changed_paths = sorted(planned_writes)
+        for p, content in planned_writes.items():
+            p.write_text(content, encoding="utf-8")
+        if not args.no_fmt:
+            rustfmt = shutil.which("rustfmt")
+            if rustfmt:
+                batch = 100
+                for start in range(0, len(changed_paths), batch):
+                    subprocess.run(
+                        [rustfmt, "--edition", "2024", "--config", "skip_children=true", *(str(p) for p in changed_paths[start : start + batch])],
+                        check=True,
+                    )
 
     if args.fix:
         print(f"Rewrote {total_edits} sites across {files_changed} files.")
@@ -4820,22 +4859,10 @@ def main(argv: list[str] | None = None) -> int:
     else:
         print(f"Found {total_edits} stale sites across {files_changed} files.")
 
-    for prob in structural_problems:
-        print(f"error: {prob}", file=sys.stderr)
-
-    if total_ambiguous > 0:
-        print(f"Reported {total_ambiguous} ambiguous site(s) for manual review.", file=sys.stderr)
-
     if args.stats and by_reason:
         for reason, count in sorted(by_reason.items()):
             print(f"  {reason}: {count}")
 
-    if args.check and (total_edits > 0 or structural_problems):
-        return 1
-    if args.fix and structural_problems:
-        return 1
-    if total_ambiguous > 0 and not args.allow_ambiguous:
-        return 1
     return 0
 
 

@@ -740,10 +740,10 @@ lan_actions::turns	impl Game<'_>	combat_player	-	server	touches only server-owne
 lan_actions::turns	impl Game<'_>	for_each_player	-	server	touches only server-owned fields
 lan_actions::turns	impl Game<'_>	guest_hurt_sound	-	client	touches only client-owned fields
 lan_actions::turns	impl Game<'_>	guest_turn	-	server	touches only server-owned fields
-lan_actions::turns	impl Game<'_>	guest_turn_client_enter_input	-	client	touches only client-owned fields
 lan_actions::turns	impl Game<'_>	guest_turn_client_enter_screens	-	client	touches only client-owned fields
 lan_actions::turns	impl Game<'_>	guest_turn_client_leave_input	-	client	touches only client-owned fields
 lan_actions::turns	impl Game<'_>	guest_turn_client_leave_screens	-	client	touches only client-owned fields
+lan_actions::turns	impl Game<'_>	guest_turn_client_take_input	-	client	touches only client-owned fields
 lan_actions::turns	impl Game<'_>	guest_turn_client_replace_message	-	client	touches only client-owned fields
 lan_actions::turns	impl Game<'_>	projectile_player_owner_id	-	server	touches only server-owned fields
 lan_actions::turns	impl Game<'_>	record_interrupted_turn	-	server	touches only server-owned fields

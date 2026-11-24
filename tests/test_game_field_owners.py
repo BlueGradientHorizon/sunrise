@@ -360,15 +360,14 @@ class GameFieldOwnersCliAmbiguousTests(unittest.TestCase):
                 self.assertIn("stale Game field `hoppers` -> `server.hoppers`", out_buf.getvalue())
                 self.assertIn("ambiguous receiver for Game field `screen`", err_buf.getvalue())
 
+                orig_src = target.read_text(encoding="utf-8")
                 out_buf, err_buf = io.StringIO(), io.StringIO()
                 with redirect_stdout(out_buf), redirect_stderr(err_buf):
                     rc_fix = gfo.main(["--fix", "--no-fmt", "--table", str(table), str(target)])
                 self.assertEqual(rc_fix, 1)
                 self.assertIn("ambiguous receiver for Game field `screen`", err_buf.getvalue())
-                rewritten = target.read_text(encoding="utf-8")
-                self.assertIn("mystery_macro!(game.screen);", rewritten)
-                self.assertIn("let _ = game.flight;", rewritten)
-                self.assertIn("let _ = game.server.hoppers;", rewritten)
+                # Atomic refusal: no writes occur when --fix exits nonzero.
+                self.assertEqual(target.read_text(encoding="utf-8"), orig_src)
 
                 out_buf, err_buf = io.StringIO(), io.StringIO()
                 with redirect_stdout(out_buf), redirect_stderr(err_buf):
@@ -376,6 +375,10 @@ class GameFieldOwnersCliAmbiguousTests(unittest.TestCase):
                         ["--fix", "--no-fmt", "--allow-ambiguous", "--table", str(table), str(target)]
                     )
                 self.assertEqual(rc_allow, 0)
+                rewritten = target.read_text(encoding="utf-8")
+                self.assertIn("mystery_macro!(game.screen);", rewritten)
+                self.assertIn("let _ = game.flight;", rewritten)
+                self.assertIn("let _ = game.server.hoppers;", rewritten)
             finally:
                 gfo.ROOT = old_root
 
@@ -1277,6 +1280,127 @@ class GameFieldOwnersWrapperTests(unittest.TestCase):
                 self.assertIn("WrappedRendererInit", err_buf.getvalue())
             finally:
                 gfo.ROOT = old_root
+
+    def test_r23_ctor_helper_side_effecting_init_refused_without_erasing(self):
+        import io
+        from contextlib import redirect_stderr, redirect_stdout
+
+        with tempfile.TemporaryDirectory() as td:
+            td_path = Path(td)
+            table = td_path / "owners.tsv"
+            table.write_text(
+                "field\ttype\towner\treason\tdeclaration_index\twrapper\n"
+                "audio\tAudio\tgame\tdrop-order (client)\t0\tclient_only\n"
+                "shared\ti32\tgame\tshared\t1\t-\n",
+                encoding="utf-8",
+            )
+            src_dir = td_path / "crates/sunrise-client/src"
+            game_dir = src_dir / "game"
+            game_dir.mkdir(parents=True)
+            game_rs = src_dir / "game.rs"
+            src_with_effect = (
+                "mod client_side;\n"
+                "mod server_side;\n"
+                "pub struct Game<'a> {\n"
+                "    audio: client_side::ClientOnly<Audio>,\n"
+                "    shared: i32,\n"
+                "    server: server_side::ServerState,\n"
+                "    client: client_side::ClientState,\n"
+                "}\n"
+                "struct WrappedClientInit {\n"
+                "    audio: client_side::ClientOnly<Audio>,\n"
+                "}\n"
+                "struct ConstructInit<const NO_SLOT: bool>;\n"
+                "impl<const NO_SLOT: bool> ConstructInit<NO_SLOT> {\n"
+                "    #[inline(never)]\n"
+                "    fn build_wrapped_client(audio: Audio) -> Box<WrappedClientInit> {\n"
+                "        Box::new(WrappedClientInit {\n"
+                "            audio: client_side::ClientOnly::new(audio),\n"
+                "        })\n"
+                "    }\n"
+                "    #[inline(never)]\n"
+                "    fn assemble_game(wc: Box<WrappedClientInit>, shared: i32) -> Game<'static> {\n"
+                "        Game {\n"
+                '            audio: { eprintln!("review side effect"); wc.audio },\n'
+                "            shared,\n"
+                "            server: server_side::ServerState::new(),\n"
+                "            client: client_side::ClientState::new(),\n"
+                "        }\n"
+                "    }\n"
+                "}\n"
+            )
+            game_rs.write_text(src_with_effect, encoding="utf-8")
+            (game_dir / "client_side.rs").write_text(
+                "pub(in crate::game) struct ClientState {}\n" + gfo.SIDE_WRAPPER_DEFS["client"],
+                encoding="utf-8",
+            )
+            (game_dir / "server_side.rs").write_text(
+                "pub(in crate::game) struct ServerState {}\n" + gfo.SIDE_WRAPPER_DEFS["server"],
+                encoding="utf-8",
+            )
+            old_root = gfo.ROOT
+            try:
+                gfo.ROOT = td_path
+                out_buf, err_buf = io.StringIO(), io.StringIO()
+                with redirect_stdout(out_buf), redirect_stderr(err_buf):
+                    rc_check = gfo.main(["--check", "--table", str(table), str(game_rs), str(game_dir)])
+                self.assertEqual(rc_check, 1)
+                self.assertIn("wc.audio", err_buf.getvalue())
+
+                out_buf, err_buf = io.StringIO(), io.StringIO()
+                with redirect_stdout(out_buf), redirect_stderr(err_buf):
+                    rc_fix = gfo.main(["--fix", "--no-fmt", "--table", str(table), str(game_rs), str(game_dir)])
+                self.assertEqual(rc_fix, 1)
+                self.assertIn("refusing", err_buf.getvalue().lower())
+                self.assertEqual(game_rs.read_text(encoding="utf-8"), src_with_effect)
+            finally:
+                gfo.ROOT = old_root
+
+    def test_r19_atomic_fix_refusal_leaves_earlier_files_untouched(self):
+        import io
+        from contextlib import redirect_stderr, redirect_stdout
+
+        with tempfile.TemporaryDirectory() as td:
+            td_path = Path(td)
+            table = td_path / "owners.tsv"
+            lines = ["field\ttype\towner\treason\tdeclaration_index"]
+            for i, (fname, owner) in enumerate(OWNERS.items()):
+                lines.append(f"{fname}\tT\t{owner}\ttest\t{i}")
+            table.write_text("\n".join(lines) + "\n", encoding="utf-8")
+            game_dir = td_path / "crates/sunrise-client/src/game"
+            game_dir.mkdir(parents=True)
+            a_ok = game_dir / "a_ok.rs"
+            z_bad = game_dir / "z_bad.rs"
+            a_src = "fn ok(game: &Game<'_>) { let _ = game.hoppers; }\n"
+            z_src = "fn bad(game: &Game<'_>) { let _ = mystery_macro!(game.screen); }\n"
+            a_ok.write_text(a_src, encoding="utf-8")
+            z_bad.write_text(z_src, encoding="utf-8")
+            old_root = gfo.ROOT
+            try:
+                gfo.ROOT = td_path
+                out_buf, err_buf = io.StringIO(), io.StringIO()
+                with redirect_stdout(out_buf), redirect_stderr(err_buf):
+                    rc = gfo.main(["--fix", "--no-fmt", "--table", str(table), str(a_ok), str(z_bad)])
+                self.assertEqual(rc, 1)
+                self.assertEqual(a_ok.read_text(encoding="utf-8"), a_src)
+                self.assertEqual(z_bad.read_text(encoding="utf-8"), z_src)
+            finally:
+                gfo.ROOT = old_root
+
+    def test_c16_c17_empty_and_truncated_tables_refused(self):
+        with tempfile.TemporaryDirectory() as td:
+            td_path = Path(td)
+            empty_t = td_path / "empty.tsv"
+            empty_t.write_text("field\ttype\towner\treason\tdeclaration_index\n", encoding="utf-8")
+            with self.assertRaises(SystemExit) as ctx:
+                gfo.load_field_owners(empty_t)
+            self.assertIn("empty", str(ctx.exception).lower())
+
+            trunc_t = td_path / "trunc.tsv"
+            trunc_t.write_text("field\ttype\towner\treason\tdeclaration_index\nscreen\ti32\n", encoding="utf-8")
+            with self.assertRaises(SystemExit) as ctx2:
+                gfo.load_field_owners(trunc_t)
+            self.assertIn("2", str(ctx2.exception))
 
 
 if __name__ == "__main__":

@@ -909,6 +909,10 @@ jobs:
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: python3 tools/game_module_sides.py --check ${BASE_SHA:+--against "$BASE_SHA" --pull-request-merge}
+      - name: Game function sides match the table
+        id: game_fn_sides_match_the_table
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
+        run: python3 tools/game_fn_sides.py --check
       # One file per topic in tools/ci/ignored-tests/: well-formed rows, each test in one file, nothing else in the
       # folder, no file at the retired single-list path.
       - name: Ignored-test policy files read cleanly

@@ -1349,6 +1349,7 @@ class GameModuleSidesTests(unittest.TestCase):
         wf = (ROOT / ".github/workflows/dyna-ci.yml").read_text(encoding="utf-8")
         self.assertIn("python3 tools/game_field_owners.py --check", wf)
         self.assertIn('python3 tools/game_module_sides.py --check ${BASE_SHA:+--against "$BASE_SHA" --pull-request-merge}', wf)
+        self.assertIn("python3 tools/game_fn_sides.py --check", wf)
 
         from tools import pr_ready
         import argparse
@@ -1364,6 +1365,7 @@ class GameModuleSidesTests(unittest.TestCase):
         by_name = {s.name: s for s in steps}
         self.assertEqual(by_name["Game field owners"].command, "python3 tools/game_field_owners.py --check")
         self.assertEqual(by_name["Game module sides"].command, "python3 tools/game_module_sides.py --check --against deadbeef")
+        self.assertEqual(by_name["Game function sides"].command, "python3 tools/game_fn_sides.py --check")
 
     def test_r3_01_daily_move_tsvs_rewritten_and_checked(self):
         with tempfile.TemporaryDirectory() as td:
@@ -1546,6 +1548,102 @@ class GameModuleSidesTests(unittest.TestCase):
             moved = (root / "crates/sunrise-client/src/game/moved.rs").read_text(encoding="utf-8")
             self.assertIn("pub(in crate::game) static TLS:", moved)
             self.assertEqual(run_cli("--check", "--root", str(root))[0], 0)
+
+    def test_review_c10_c16_c18_c19_c20_fail_closed(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            make_synthetic_tree(root)
+            (root / "tools/game_field_owners.tsv").write_text(
+                "field\ttype\towner\treason\tdeclaration_index\tvisibility\twrapper\n"
+                "private_flag\tbool\tclient\tclient\t0\tside\t-\n"
+                "wide_flag\tstd::cell::Cell<bool>\tclient\tclient\t1\tgame\t-\n"
+                "private_tick\tu64\tserver\tserver\t2\tside\t-\n"
+                "wide_tick\tu64\tserver\tserver\t3\tgame\t-\n"
+                "audio\tu32\tgame\tdrop-order (client)\t4\t-\tclient_only\n"
+                "levels\tu32\tgame\tdrop-order (server)\t5\t-\tserver_shared\n",
+                encoding="utf-8",
+            )
+            shared_rs = root / "crates/sunrise-client/src/game/world/shared.rs"
+            shared_orig = shared_rs.read_text(encoding="utf-8")
+            shared_rs.write_text(shared_orig + "\nfn touch_levels(g: &Game) -> u32 { g.levels.0 }\n", encoding="utf-8")
+            hud_rs = root / "crates/sunrise-client/src/game/ui/hud.rs"
+            hud_rs.write_text(hud_rs.read_text(encoding="utf-8") + "\nfn touch_audio(g: &Game) -> u32 { g.audio.0 }\n", encoding="utf-8")
+            self.assertEqual(run_cli("--fix", "--no-fmt", "--root", str(root))[0], 0)
+            self.assertEqual(run_cli("--check", "--root", str(root))[0], 0)
+
+            # C10: undeclared orphan mirror file under game/ fails --check.
+            orphan = root / "crates/sunrise-client/src/game/orphan_client.rs"
+            orphan.write_text("impl Game<'_> { fn stray(&self) {} }\n", encoding="utf-8")
+            rc, _, err = run_cli("--check", "--root", str(root))
+            self.assertEqual(rc, 1)
+            self.assertIn("orphan", err.lower())
+            orphan.unlink()
+
+            # C18 & C19: mirror raw-string include and duplicate second mirror arm fail --check.
+            cs = root / "crates/sunrise-client/src/game/client_side.rs"
+            cs_orig = cs.read_text(encoding="utf-8")
+            mir_file = root / "crates/sunrise-client/src/game/world/shared_client.rs"
+            untracked = root / "crates/sunrise-client/src/game/world/untracked.rs"
+            untracked.write_text("fn hidden() {}\n", encoding="utf-8")
+            mir_file.write_text('include!(r#"untracked.rs"#);\n', encoding="utf-8")
+            (root / "tools/game_fn_sides.tsv").write_text(
+                "module\timpl\tname\tcfg\tside\treason\nshared\t-\tdummy\t-\tclient\ttest\n",
+                encoding="utf-8",
+            )
+            cs.write_text(
+                cs_orig.replace(
+                    "pub(in crate::game) struct ClientState",
+                    '#[path = "world/shared_client.rs"]\npub(in crate::game) mod shared_client;\n\npub(in crate::game) struct ClientState',
+                ),
+                encoding="utf-8",
+            )
+            rc, _, err = run_cli("--check", "--root", str(root))
+            self.assertEqual(rc, 1)
+            self.assertIn("include!", err)
+
+            mir_file.write_text("// empty mirror\n", encoding="utf-8")
+            cs.write_text(
+                cs_orig.replace(
+                    "pub(in crate::game) struct ClientState",
+                    '#[cfg(any())]\n#[path = "world/extra_client.rs"]\npub(in crate::game) mod shared_client;\n'
+                    '#[path = "world/shared_client.rs"]\npub(in crate::game) mod shared_client;\n\n'
+                    "pub(in crate::game) struct ClientState",
+                ),
+                encoding="utf-8",
+            )
+            rc, _, err = run_cli("--check", "--root", str(root))
+            self.assertEqual(rc, 1)
+            self.assertIn("shared_client", err)
+            cs.write_text(cs_orig, encoding="utf-8")
+            mir_file.unlink()
+            untracked.unlink()
+            (root / "tools/game_fn_sides.tsv").unlink()
+
+            # C20: undeclared file or unrelated Foreign receiver cannot justify client_shared.
+            ftsv = root / "tools/game_field_owners.tsv"
+            ftsv_orig = ftsv.read_text(encoding="utf-8")
+            ftsv.write_text(ftsv_orig.replace("client_only", "client_shared"), encoding="utf-8")
+            unreach = root / "crates/sunrise-client/src/game/unreachable.rs"
+            unreach.write_text("fn fake(x: Foreign) -> u32 { x.audio.0 }\n", encoding="utf-8")
+            rc, _, err = run_cli("--check", "--root", str(root))
+            self.assertEqual(rc, 1)
+            self.assertIn("client_shared", err)
+            unreach.unlink()
+
+            shared_cur = shared_rs.read_text(encoding="utf-8")
+            shared_rs.write_text(shared_cur + "\nfn fake_foreign(x: Foreign) -> u32 { x.audio.0 }\n", encoding="utf-8")
+            rc, _, err = run_cli("--check", "--root", str(root))
+            self.assertEqual(rc, 1)
+            self.assertIn("client_shared", err)
+            shared_rs.write_text(shared_cur, encoding="utf-8")
+            ftsv.write_text(ftsv_orig, encoding="utf-8")
+
+            # C16: empty module-sides table is refused.
+            mtsv = root / "tools/game_module_sides.tsv"
+            mtsv.write_text("module\tside\treason\n", encoding="utf-8")
+            with self.assertRaises(SystemExit) as ctx:
+                run_cli("--check", "--root", str(root))
+            self.assertIn("empty", str(ctx.exception).lower())
 
 
 if __name__ == "__main__":

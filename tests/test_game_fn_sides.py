@@ -569,6 +569,433 @@ class GameFnSidesTests(unittest.TestCase):
             )
             self.assertEqual(len(lines), 5)
 
+    def test_row9_r19_atomic_fix_refusal_leaves_tree_byte_identical(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            make_synthetic_tree(root)
+            self.assertEqual(run_mod("--fix", "--no-fmt", "--root", str(root))[0], 0)
+            tsv = root / "tools/game_fn_sides.tsv"
+            tsv.write_text(
+                tsv.read_text(encoding="utf-8") + "reparented\timpl Game<'_>\tmissing_client\t-\tclient\ttest\n",
+                encoding="utf-8",
+            )
+            before = snapshot_tree(root)
+            rc, _, err = run_fn("--fix", "--no-fmt", "--root", str(root))
+            self.assertEqual(rc, 1)
+            self.assertIn("missing_client", err)
+            self.assertEqual(snapshot_tree(root), before)
+
+    def test_row10_r22_handwritten_mirror_content_fails_check_and_refuses_fix(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            make_synthetic_tree(root)
+            self.assertEqual(run_mod("--fix", "--no-fmt", "--root", str(root))[0], 0)
+            self.assertEqual(run_fn("--fix", "--no-fmt", "--root", str(root))[0], 0)
+
+            mc = root / "crates/sunrise-client/src/game/mixed/mod_client.rs"
+            orig_mc = mc.read_text(encoding="utf-8")
+            mutated = orig_mc.replace(
+                "self.client.c_only = true;",
+                "let _ = MANUAL;\n        self.client.c_only = true;",
+            ) + "\nconst MANUAL: u32 = 42;\n"
+            mc.write_text(mutated, encoding="utf-8")
+            snap = snapshot_tree(root)
+
+            rc_c, _, err_c = run_fn("--check", "--root", str(root))
+            self.assertEqual(rc_c, 1)
+            self.assertIn("MANUAL", err_c)
+
+            rc_f, _, err_f = run_fn("--fix", "--no-fmt", "--root", str(root))
+            self.assertEqual(rc_f, 1)
+            self.assertIn("MANUAL", err_f)
+            self.assertEqual(snapshot_tree(root), snap)
+
+            # Extra hand-written `use` and `#![allow(...)]` are also caught.
+            mc.write_text("#![allow(dead_code)]\nuse std::fs;\n" + orig_mc, encoding="utf-8")
+            rc_c2, _, err_c2 = run_fn("--check", "--root", str(root))
+            self.assertEqual(rc_c2, 1)
+            self.assertIn("#![...]", err_c2)
+            self.assertIn("use", err_c2)
+            rc_f2, _, _ = run_fn("--fix", "--no-fmt", "--root", str(root))
+            self.assertEqual(rc_f2, 1)
+
+    def test_row12_r4_r5_r17a_r20_attrs_and_cfg_handling(self):
+        # R4: non-cfg attrs on an impl block are preserved instead of merged/dropped.
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            make_synthetic_tree(root)
+            self.assertEqual(run_mod("--fix", "--no-fmt", "--root", str(root))[0], 0)
+            m = root / "crates/sunrise-client/src/game/mixed/mod.rs"
+            m.write_text(
+                m.read_text(encoding="utf-8") + "\n#[allow(dead_code)]\nimpl Game<'_> {\n    fn probe(&self) {}\n}\n",
+                encoding="utf-8",
+            )
+            tsv = root / "tools/game_fn_sides.tsv"
+            tsv.write_text(
+                tsv.read_text(encoding="utf-8") + "mixed\timpl Game<'_>\tprobe\t-\tclient\tr4\n",
+                encoding="utf-8",
+            )
+            rc, _, err = run_fn("--fix", "--no-fmt", "--root", str(root))
+            self.assertEqual(rc, 0, err)
+            mc_txt = (root / "crates/sunrise-client/src/game/mixed/mod_client.rs").read_text(encoding="utf-8")
+            self.assertIn("#[allow(dead_code)]\nimpl Game<'_>", mc_txt)
+            self.assertEqual(run_fn("--check", "--root", str(root))[0], 0)
+
+        # R5: cfg_attr-disjoint impls are refused atomically.
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            make_synthetic_tree(root)
+            self.assertEqual(run_mod("--fix", "--no-fmt", "--root", str(root))[0], 0)
+            m = root / "crates/sunrise-client/src/game/mixed/mod.rs"
+            m.write_text(
+                m.read_text(encoding="utf-8")
+                + "\n#[cfg_attr(not(test), cfg(any()))]\nimpl Game<'_> {\n    fn probe(&self) { let _ = 10; }\n}\n"
+                + "#[cfg_attr(test, cfg(any()))]\nimpl Game<'_> {\n    fn probe(&self) { let _ = 20; }\n}\n",
+                encoding="utf-8",
+            )
+            tsv = root / "tools/game_fn_sides.tsv"
+            tsv.write_text(
+                tsv.read_text(encoding="utf-8") + "mixed\timpl Game<'_>\tprobe\t-\tclient\tr5\n",
+                encoding="utf-8",
+            )
+            before = snapshot_tree(root)
+            rc, _, err = run_fn("--fix", "--no-fmt", "--root", str(root))
+            self.assertEqual(rc, 1)
+            self.assertIn("cfg_attr", err)
+            self.assertEqual(snapshot_tree(root), before)
+
+        # R17a: #[cfg(...)] on root include! is carried into key and mirror output.
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            make_synthetic_tree(root)
+            self.assertEqual(run_mod("--fix", "--no-fmt", "--root", str(root))[0], 0)
+            (root / "crates/sunrise-client/src/game/mixed/guarded.rs").write_text(
+                "impl Game<'_> {\n    fn probe(&self) {}\n}\n", encoding="utf-8"
+            )
+            m = root / "crates/sunrise-client/src/game/mixed/mod.rs"
+            m.write_text(
+                m.read_text(encoding="utf-8").replace(
+                    'include!("shared.rs");',
+                    'include!("shared.rs");\n#[cfg(any())]\ninclude!("guarded.rs");',
+                ),
+                encoding="utf-8",
+            )
+            tsv = root / "tools/game_fn_sides.tsv"
+            base_tsv = tsv.read_text(encoding="utf-8")
+            # Unconditional row must be refused atomically.
+            tsv.write_text(base_tsv + "mixed\timpl Game<'_>\tprobe\t-\tclient\tr17a\n", encoding="utf-8")
+            before = snapshot_tree(root)
+            rc, _, err = run_fn("--fix", "--no-fmt", "--root", str(root))
+            self.assertEqual(rc, 1)
+            self.assertIn("probe", err)
+            self.assertEqual(snapshot_tree(root), before)
+
+            # Matching cfg row carries #[cfg(any())] into the mirror and passes --check idempotently.
+            tsv.write_text(base_tsv + "mixed\timpl Game<'_>\tprobe\t#[cfg(any())]\tclient\tr17a\n", encoding="utf-8")
+            rc, _, err = run_fn("--fix", "--no-fmt", "--root", str(root))
+            self.assertEqual(rc, 0, err)
+            mc_txt = (root / "crates/sunrise-client/src/game/mixed/mod_client.rs").read_text(encoding="utf-8")
+            self.assertIn("#[cfg(any())]\nimpl Game<'_>", mc_txt)
+            self.assertEqual(run_fn("--check", "--root", str(root))[0], 0)
+            snap = snapshot_tree(root)
+            self.assertEqual(run_fn("--fix", "--no-fmt", "--root", str(root))[0], 0)
+            self.assertEqual(snapshot_tree(root), snap)
+
+        # R20: cfg_attr on a path-backed child mod is refused atomically.
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            make_synthetic_tree(root)
+            self.assertEqual(run_mod("--fix", "--no-fmt", "--root", str(root))[0], 0)
+            (root / "crates/sunrise-client/src/game/mixed/p.rs").write_text(
+                "impl super::super::Game<'_> {\n    fn probe(&self) {}\n}\n", encoding="utf-8"
+            )
+            m = root / "crates/sunrise-client/src/game/mixed/mod.rs"
+            m.write_text(
+                m.read_text(encoding="utf-8").replace(
+                    "mod sub;",
+                    'mod sub;\n#[cfg_attr(not(test), cfg(any()))]\n#[path = "p.rs"]\nmod p;',
+                ),
+                encoding="utf-8",
+            )
+            tsv = root / "tools/game_fn_sides.tsv"
+            tsv.write_text(
+                tsv.read_text(encoding="utf-8") + "mixed::p\timpl super::super::Game<'_>\tprobe\t-\tclient\tr20\n",
+                encoding="utf-8",
+            )
+            before = snapshot_tree(root)
+            rc, _, err = run_fn("--fix", "--no-fmt", "--root", str(root))
+            self.assertEqual(rc, 1)
+            self.assertIn("cfg_attr", err)
+            self.assertEqual(snapshot_tree(root), before)
+
+    def test_row13_r17b_r17c_relative_include_dir_change_refused(self):
+        # R17b: include!("local.rs") in a fragment from mixed/frags/ moving to mixed/mod_client.rs.
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            make_synthetic_tree(root)
+            self.assertEqual(run_mod("--fix", "--no-fmt", "--root", str(root))[0], 0)
+            write_tree(
+                root,
+                {
+                    "crates/sunrise-client/src/game/mixed/local.rs": "1u32\n",
+                    "crates/sunrise-client/src/game/mixed/frags/local.rs": "2u32\n",
+                    "crates/sunrise-client/src/game/mixed/frags/probe.rs": (
+                        'impl Game<\'_> {\n    fn probe(&self) -> u32 { include!("local.rs") }\n}\n'
+                    ),
+                },
+            )
+            m = root / "crates/sunrise-client/src/game/mixed/mod.rs"
+            m.write_text(
+                m.read_text(encoding="utf-8").replace(
+                    'include!("shared.rs");',
+                    'include!("shared.rs");\ninclude!("frags/probe.rs");',
+                ),
+                encoding="utf-8",
+            )
+            tsv = root / "tools/game_fn_sides.tsv"
+            tsv.write_text(
+                tsv.read_text(encoding="utf-8") + "mixed\timpl Game<'_>\tprobe\t-\tclient\tr17b\n",
+                encoding="utf-8",
+            )
+            before = snapshot_tree(root)
+            rc, _, err = run_fn("--fix", "--no-fmt", "--root", str(root))
+            self.assertEqual(rc, 1)
+            self.assertIn("changes directory", err)
+            self.assertEqual(snapshot_tree(root), before)
+
+        # R17c: include!("plugin.rs") in a moved game.rs method moving to game/game_client.rs.
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            make_synthetic_tree(root)
+            self.assertEqual(run_mod("--fix", "--no-fmt", "--root", str(root))[0], 0)
+            write_tree(
+                root,
+                {
+                    "crates/sunrise-client/src/plugin.rs": "1u32\n",
+                    "crates/sunrise-client/src/game/plugin.rs": "2u32\n",
+                },
+            )
+            g = root / "crates/sunrise-client/src/game.rs"
+            g.write_text(
+                g.read_text(encoding="utf-8").replace(
+                    "self.client.c_only = true;",
+                    'let _ = include!("plugin.rs");\n        self.client.c_only = true;',
+                ),
+                encoding="utf-8",
+            )
+            before = snapshot_tree(root)
+            rc, _, err = run_fn("--fix", "--no-fmt", "--root", str(root))
+            self.assertEqual(rc, 1)
+            self.assertIn("include!", err)
+            self.assertIn("changes directory", err)
+            self.assertEqual(snapshot_tree(root), before)
+
+    def test_row14_r12_location_macros_direct_and_local_refused(self):
+        for label, extra_items, body in [
+            ("direct_module_path", "", "let _ = (module_path!(), file!(), line!(), column!());"),
+            (
+                "local_macro",
+                "macro_rules! location { () => { module_path!() }; }\nmacro_rules! outer_loc { () => { location!() }; }\n",
+                "let _ = outer_loc!();",
+            ),
+        ]:
+            with tempfile.TemporaryDirectory() as td:
+                root = Path(td)
+                make_synthetic_tree(root)
+                self.assertEqual(run_mod("--fix", "--no-fmt", "--root", str(root))[0], 0)
+                m = root / "crates/sunrise-client/src/game/mixed/mod.rs"
+                m.write_text(
+                    m.read_text(encoding="utf-8")
+                    + f"\n{extra_items}impl Game<'_> {{\n    fn probe(&self) {{ {body} }}\n}}\n",
+                    encoding="utf-8",
+                )
+                tsv = root / "tools/game_fn_sides.tsv"
+                tsv.write_text(
+                    tsv.read_text(encoding="utf-8") + "mixed\timpl Game<'_>\tprobe\t-\tclient\tr12\n",
+                    encoding="utf-8",
+                )
+                before = snapshot_tree(root)
+                rc, _, err = run_fn("--fix", "--no-fmt", "--root", str(root))
+                self.assertEqual(rc, 1, label)
+                self.assertIn("location-sensitive macro", err, label)
+                self.assertEqual(snapshot_tree(root), before, label)
+
+    def test_row15_r8_r9_r2_lexer_parser_and_block_doc(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            make_synthetic_tree(root)
+            self.assertEqual(run_mod("--fix", "--no-fmt", "--root", str(root))[0], 0)
+            m = root / "crates/sunrise-client/src/game/mixed/mod.rs"
+            m.write_text(
+                m.read_text(encoding="utf-8")
+                + "\nstruct Wrapper<const N: usize>;\n"
+                + "impl Game<'_> {\n"
+                + "    fn r8_probe(&self) {\n"
+                + "        let _ = ('\\'','\"');\n"
+                + "        let _ = b'\\'';\n"
+                + "    }\n"
+                + "    fn r8_stays(&self) {}\n"
+                + "    fn r9_probe(&self) -> Wrapper<{ 1 }> {\n"
+                + "        Wrapper\n"
+                + "    }\n"
+                + "    fn r9_stays(&self) {}\n"
+                + "    /** probe doc /* nested */ */\n"
+                + "    fn r2_probe(&self) {}\n"
+                + "    fn r2_stays(&self) {}\n"
+                + "}\n",
+                encoding="utf-8",
+            )
+            tsv = root / "tools/game_fn_sides.tsv"
+            tsv.write_text(
+                tsv.read_text(encoding="utf-8")
+                + "mixed\timpl Game<'_>\tr8_probe\t-\tclient\tr8\n"
+                + "mixed\timpl Game<'_>\tr9_probe\t-\tclient\tr9\n"
+                + "mixed\timpl Game<'_>\tr2_probe\t-\tclient\tr2\n",
+                encoding="utf-8",
+            )
+            rc, _, err = run_fn("--fix", "--no-fmt", "--root", str(root))
+            self.assertEqual(rc, 0, err)
+            rc_c, _, err_c = run_fn("--check", "--root", str(root))
+            self.assertEqual(rc_c, 0, err_c)
+
+            orig_txt = m.read_text(encoding="utf-8")
+            mir_txt = (root / "crates/sunrise-client/src/game/mixed/mod_client.rs").read_text(encoding="utf-8")
+            self.assertIn("fn r8_stays", orig_txt)
+            self.assertNotIn("fn r8_stays", mir_txt)
+            self.assertIn("fn r8_probe", mir_txt)
+            self.assertIn("fn r9_stays", orig_txt)
+            self.assertNotIn("fn r9_stays", mir_txt)
+            self.assertIn("fn r9_probe(&self) -> Wrapper<{ 1 }>", mir_txt)
+            self.assertIn("/** probe doc /* nested */ */", mir_txt)
+            self.assertNotIn("/** probe doc /* nested */ */", orig_txt)
+            self.assertIn("fn r2_stays", orig_txt)
+
+    def test_row16_c16_c17_c6_c8_c9_c10_c18_c19_d4_fail_closed(self):
+        # C16 & C17: header-only table on pre-move tree and truncated TSV row refused cleanly.
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            make_synthetic_tree(root)
+            self.assertEqual(run_mod("--fix", "--no-fmt", "--root", str(root))[0], 0)
+            tsv = root / "tools/game_fn_sides.tsv"
+            orig_tsv = tsv.read_text(encoding="utf-8")
+
+            tsv.write_text("module\timpl\tname\tcfg\tside\treason\n", encoding="utf-8")
+            with self.assertRaises(SystemExit) as ctx_empty:
+                run_fn("--fix", "--no-fmt", "--root", str(root))
+            self.assertIn("empty", str(ctx_empty.exception).lower())
+            with self.assertRaises(SystemExit):
+                run_fn("--check", "--root", str(root))
+
+            tsv.write_text(orig_tsv + "mixed\t-\tx\n", encoding="utf-8")
+            with self.assertRaises(SystemExit) as ctx_trunc:
+                run_fn("--check", "--root", str(root))
+            self.assertIn("columns", str(ctx_trunc.exception).lower())
+
+        # C6, C8, C9, C10, C18, C19 on a split tree.
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            make_synthetic_tree(root)
+            self.assertEqual(run_mod("--fix", "--no-fmt", "--root", str(root))[0], 0)
+            self.assertEqual(run_fn("--fix", "--no-fmt", "--root", str(root))[0], 0)
+
+            mc = root / "crates/sunrise-client/src/game/mixed/mod_client.rs"
+            m = root / "crates/sunrise-client/src/game/mixed/mod.rs"
+            cs = root / "crates/sunrise-client/src/game/client_side.rs"
+            orig_mc, orig_m, orig_cs = mc.read_text(), m.read_text(), cs.read_text()
+
+            # C6: identical method key twice in client mirror.
+            mc.write_text(orig_mc + "\nimpl Game<'_> {\n    fn from_root_include(&self) {}\n}\n", encoding="utf-8")
+            rc, _, err = run_fn("--check", "--root", str(root))
+            self.assertEqual(rc, 1)
+            self.assertIn("duplicate function key", err)
+            mc.write_text(orig_mc, encoding="utf-8")
+
+            # C8: overlapping #[cfg(test)] variant in original impl.
+            m.write_text(orig_m + "\nimpl Game<'_> {\n    #[cfg(test)]\n    fn from_root_include(&self) {}\n}\n", encoding="utf-8")
+            rc, _, err = run_fn("--check", "--root", str(root))
+            self.assertEqual(rc, 1)
+            self.assertIn("overlapping function definitions", err)
+            m.write_text(orig_m, encoding="utf-8")
+
+            # C9: overlapping impl Game<'static> specialization in original module.
+            m.write_text(orig_m + "\nimpl Game<'static> {\n    fn from_root_include(&self) {}\n}\n", encoding="utf-8")
+            rc, _, err = run_fn("--check", "--root", str(root))
+            self.assertEqual(rc, 1)
+            self.assertIn("overlapping function definitions", err)
+            m.write_text(orig_m, encoding="utf-8")
+
+            # C10: undeclared orphan mirror file under game/.
+            orphan = root / "crates/sunrise-client/src/game/orphan_client.rs"
+            orphan.write_text("impl Game<'_> { fn stray(&self) {} }\n", encoding="utf-8")
+            rc, _, err = run_fn("--check", "--root", str(root))
+            self.assertEqual(rc, 1)
+            self.assertIn("orphan mirror file", err)
+            orphan.unlink()
+
+            # C18: undeclared member behind raw-string include in mirror.
+            untracked = root / "crates/sunrise-client/src/game/mixed/untracked.rs"
+            untracked.write_text("fn hidden() {}\n", encoding="utf-8")
+            mc.write_text(orig_mc + '\ninclude!(r#"untracked.rs"#);\n', encoding="utf-8")
+            rc, _, err = run_fn("--check", "--root", str(root))
+            self.assertEqual(rc, 1)
+            self.assertIn("hidden", err)
+            mc.write_text(orig_mc, encoding="utf-8")
+            untracked.unlink()
+
+            # C19: second top-level mirror arm before existing mixed_client.
+            cs.write_text(
+                orig_cs.replace(
+                    '#[path = "mixed/mod_client.rs"]\npub(in crate::game) mod mixed_client;',
+                    '#[cfg(any())]\n#[path = "mixed/extra_client.rs"]\npub(in crate::game) mod mixed_client;\n'
+                    '#[path = "mixed/mod_client.rs"]\npub(in crate::game) mod mixed_client;',
+                ),
+                encoding="utf-8",
+            )
+            rc, _, err = run_fn("--check", "--root", str(root))
+            self.assertEqual(rc, 1)
+            self.assertIn("duplicate top-level mirror module", err)
+            cs.write_text(orig_cs, encoding="utf-8")
+
+        # D4: split-side complementary cfg variants refuse deterministically regardless of TSV row order.
+        errs_by_order: list[str] = []
+        for row_pair in [
+            (
+                'mixed\timpl Game<\'_>\tcfg_split\t#[cfg(feature = "a")]\tclient\td4\n',
+                'mixed\timpl Game<\'_>\tcfg_split\t#[cfg(not(feature = "a"))]\tserver\td4\n',
+            ),
+            (
+                'mixed\timpl Game<\'_>\tcfg_split\t#[cfg(not(feature = "a"))]\tserver\td4\n',
+                'mixed\timpl Game<\'_>\tcfg_split\t#[cfg(feature = "a")]\tclient\td4\n',
+            ),
+        ]:
+            with tempfile.TemporaryDirectory() as td:
+                root = Path(td)
+                make_synthetic_tree(root)
+                self.assertEqual(run_mod("--fix", "--no-fmt", "--root", str(root))[0], 0)
+                m = root / "crates/sunrise-client/src/game/mixed/mod.rs"
+                m.write_text(
+                    m.read_text(encoding="utf-8")
+                    + '\nimpl Game<\'_> {\n'
+                    + '    #[cfg(feature = "a")]\n    fn cfg_split(&self) {}\n'
+                    + '    #[cfg(not(feature = "a"))]\n    fn cfg_split(&self) {}\n'
+                    + "}\n",
+                    encoding="utf-8",
+                )
+                fnr = root / "tools/ci/fn-replace-check/alpha/sunrise-mod.toml"
+                fnr.write_text(
+                    fnr.read_text(encoding="utf-8") + 'target = "sunrise_client::game::mixed::Game<\'_>::cfg_split"\n',
+                    encoding="utf-8",
+                )
+                tsv = root / "tools/game_fn_sides.tsv"
+                tsv.write_text(tsv.read_text(encoding="utf-8") + row_pair[0] + row_pair[1], encoding="utf-8")
+                before = snapshot_tree(root)
+                rc, _, err = run_fn("--fix", "--no-fmt", "--root", str(root))
+                self.assertEqual(rc, 1)
+                self.assertIn("conflicting", err)
+                self.assertEqual(snapshot_tree(root), before)
+                errs_by_order.append(err)
+        self.assertEqual(errs_by_order[0], errs_by_order[1])
+
 
 if __name__ == "__main__":
     unittest.main()

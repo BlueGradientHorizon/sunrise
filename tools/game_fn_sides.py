@@ -35,7 +35,7 @@ import re
 import shutil
 import subprocess
 import sys
-from collections import defaultdict
+from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -97,6 +97,7 @@ class ParsedItem:
     vis_end: int
     attrs: tuple[str, ...]
     cfg_attrs: tuple[str, ...]
+    norm_attrs: tuple[str, ...] = ()
     is_test_attr: bool = False
     is_trait_impl: bool = False
     impl_header: str = ""
@@ -123,30 +124,45 @@ class ModNode:
     inline_item: ParsedItem | None = None
     src: str = ""
     items: list[ParsedItem] = field(default_factory=list)
-    extra_files: list[tuple[Path, str, list[ParsedItem]]] = field(default_factory=list)
+    extra_files: list[tuple[Path, str, list[ParsedItem], tuple[str, ...]]] = field(default_factory=list)
+    mod_attrs: tuple[str, ...] = ()
 
 
 def load_fn_sides(table_path: Path) -> dict[FnKey, FnRow]:
-    """Load `tools/game_fn_sides.tsv` and fail closed on schema or key errors."""
+    """Load `tools/game_fn_sides.tsv` and fail closed on schema, truncation, emptiness, or key errors."""
     rows: dict[FnKey, FnRow] = {}
+    expected = ("module", "impl", "name", "cfg", "side", "reason")
     with table_path.open(newline="", encoding="utf-8") as fp:
-        reader = csv.DictReader(fp, delimiter="\t")
-        expected = {"module", "impl", "name", "cfg", "side", "reason"}
-        if not reader.fieldnames or not expected.issubset(reader.fieldnames):
-            raise SystemExit(f"{table_path}: expected columns {sorted(expected)}")
-        for lineno, r in enumerate(reader, 2):
-            mod = r["module"].strip()
-            impl = r["impl"].strip()
-            name = r["name"].strip()
-            cfg = r["cfg"].strip()
-            side = r["side"].strip()
-            reason = r["reason"].strip()
+        reader = csv.reader(fp, delimiter="\t")
+        header = next(reader, None)
+        if not header:
+            raise SystemExit(f"{table_path}: missing header; expected columns {list(expected)}")
+        norm_header = [h.strip() for h in header]
+        if any(col not in norm_header for col in expected):
+            raise SystemExit(f"{table_path}: expected columns {list(expected)}, got {norm_header}")
+        col_idx = {col: norm_header.index(col) for col in expected}
+        expected_len = len(norm_header)
+        for lineno, raw_row in enumerate(reader, 2):
+            if not any(cell.strip() for cell in raw_row):
+                continue
+            if len(raw_row) != expected_len:
+                raise SystemExit(
+                    f"{table_path}:{lineno}: expected {expected_len} tab-separated columns, got {len(raw_row)}"
+                )
+            mod = raw_row[col_idx["module"]].strip()
+            impl = raw_row[col_idx["impl"]].strip()
+            name = raw_row[col_idx["name"]].strip()
+            cfg = raw_row[col_idx["cfg"]].strip()
+            side = raw_row[col_idx["side"]].strip()
+            reason = raw_row[col_idx["reason"]].strip()
             if not mod or not impl or not name or not cfg or side not in ("client", "server", "game"):
                 raise SystemExit(f"{table_path}:{lineno}: invalid row ({mod!r}, {impl!r}, {name!r}, {side!r})")
             key = FnKey(module=mod, impl=impl, name=name, cfg=cfg)
             if key in rows:
                 raise SystemExit(f"{table_path}:{lineno}: duplicate function identity {key}")
             rows[key] = FnRow(key=key, side=side, reason=reason)
+    if not rows:
+        raise SystemExit(f"{table_path}: table is empty (0 rows)")
     return rows
 
 
@@ -175,8 +191,12 @@ def load_optional_module_sides(mod_table_path: Path) -> dict[str, str]:
     out: dict[str, str] = {}
     with mod_table_path.open(newline="", encoding="utf-8") as fp:
         reader = csv.DictReader(fp, delimiter="\t")
-        for r in reader:
-            out[r["module"].strip()] = r["side"].strip()
+        for lineno, r in enumerate(reader, 2):
+            mod = r.get("module")
+            side = r.get("side")
+            if mod is None or side is None:
+                raise SystemExit(f"{mod_table_path}:{lineno}: truncated module-sides row")
+            out[mod.strip()] = side.strip()
     return out
 
 
@@ -208,6 +228,7 @@ def lex_rust(src: str) -> list[Token]:
             i = n if end == -1 else end
             continue
         if c == "/" and i + 1 < n and src[i + 1] == "*":
+            start_line = line
             depth = 1
             i += 2
             while i < n and depth > 0:
@@ -221,6 +242,8 @@ def lex_rust(src: str) -> list[Token]:
                     if src[i] == "\n":
                         line += 1
                     i += 1
+            if depth > 0:
+                raise ValueError(f"line {start_line}: unclosed block comment")
             continue
         if c in ("r", "b", "c"):
             j = i + (1 if c in ("b", "c") and i + 1 < n and src[i + 1] == "r" else 0)
@@ -232,7 +255,9 @@ def lex_rust(src: str) -> list[Token]:
                     start, start_line = i, line
                     end_seq = '"' + ("#" * (k - (j + 1)))
                     end = src.find(end_seq, k + 1)
-                    end = n if end == -1 else end + len(end_seq)
+                    if end == -1:
+                        raise ValueError(f"line {start_line}: unclosed raw string literal")
+                    end += len(end_seq)
                     line += src[start:end].count("\n")
                     tokens.append(Token("str", src[start:end], start, end, start_line))
                     i = end
@@ -242,6 +267,7 @@ def lex_rust(src: str) -> list[Token]:
             if c != '"':
                 i += 1
             i += 1
+            closed = False
             while i < n:
                 ch = src[i]
                 if ch == "\\":
@@ -250,11 +276,14 @@ def lex_rust(src: str) -> list[Token]:
                     i += 2
                 elif ch == '"':
                     i += 1
+                    closed = True
                     break
                 else:
                     if ch == "\n":
                         line += 1
                     i += 1
+            if not closed:
+                raise ValueError(f"line {start_line}: unclosed string literal")
             tokens.append(Token("str", src[start:i], start, i, start_line))
             continue
         if c == "r" and i + 1 < n and src[i + 1] == "#" and i + 2 < n and (src[i + 2].isalpha() or src[i + 2] == "_"):
@@ -269,21 +298,26 @@ def lex_rust(src: str) -> list[Token]:
             start = i
             j = i + 2
             if j < n and src[j] == "\\":
-                end = src.find("'", j + 1)
-                j = end + 1 if end != -1 else j + 2
+                end = src.find("'", j + 2)
+                if end == -1 or end - start > 14 or "\n" in src[start:end]:
+                    raise ValueError(f"line {line}: unclosed byte char literal")
+                j = end + 1
+            elif j + 1 < n and src[j + 1] == "'" and src[j] not in ("\n", "'"):
+                j = j + 2
             else:
-                j = min(n, j + 2)
+                raise ValueError(f"line {line}: invalid byte char literal")
             tokens.append(Token("char", src[start:j], start, j, line))
             i = j
             continue
         if c == "'":
             start = i
             if i + 2 < n and src[i + 1] == "\\":
-                end = src.find("'", i + 2)
-                if end != -1 and end - i <= 12 and "\n" not in src[i:end]:
+                end = src.find("'", i + 3)
+                if end != -1 and end - i <= 14 and "\n" not in src[i:end]:
                     tokens.append(Token("char", src[start : end + 1], start, end + 1, line))
                     i = end + 1
                     continue
+                raise ValueError(f"line {line}: unclosed escaped char literal")
             if i + 2 < n and src[i + 2] == "'" and src[i + 1] not in ("\n", "'"):
                 tokens.append(Token("char", src[start : i + 3], start, i + 3, line))
                 i = i + 3
@@ -376,23 +410,123 @@ def offset_to_line(starts: list[int], off: int) -> int:
     return lo + 1
 
 
+def parse_rust_string_literal(tok_text: str) -> str | None:
+    """Decode a Rust string or raw-string literal token (`"..."`, `r"..."`, `r#"..."#`)."""
+    raw_m = re.fullmatch(r'r(#*)"(.*)"\1', tok_text, re.DOTALL)
+    if raw_m:
+        return raw_m.group(2)
+    if len(tok_text) >= 2 and tok_text[0] == '"' and tok_text[-1] == '"':
+        inner = tok_text[1:-1]
+        out: list[str] = []
+        i, n = 0, len(inner)
+        while i < n:
+            if inner[i] == "\\" and i + 1 < n:
+                nxt = inner[i + 1]
+                esc = {"n": "\n", "r": "\r", "t": "\t", "\\": "\\", '"': '"', "'": "'", "0": "\0"}
+                if nxt in esc:
+                    out.append(esc[nxt])
+                    i += 2
+                    continue
+                return None
+            out.append(inner[i])
+            i += 1
+        return "".join(out)
+    return None
+
+
+def check_balanced_tokens(tokens: list[Token], source_file: Path | None = None) -> None:
+    """Fail closed if `()`, `[]`, or `{}` delimiters are unbalanced."""
+    stack: list[tuple[str, int]] = []
+    match = {"(": ")", "[": "]", "{": "}"}
+    closes = {")", "]", "}"}
+    loc = str(source_file) if source_file is not None else "<input>"
+    for tok in tokens:
+        if tok.text in match:
+            stack.append((match[tok.text], tok.line))
+        elif tok.text in closes:
+            if not stack or stack[-1][0] != tok.text:
+                raise ValueError(f"{loc}:{tok.line}: unmatched closing delimiter `{tok.text}`")
+            stack.pop()
+    if stack:
+        exp, ln = stack[-1]
+        raise ValueError(f"{loc}:{ln}: unclosed delimiter (expected `{exp}`)")
+
+
+def _find_matching_block_comment_start(src: str, close_end: int, min_bound: int) -> int | None:
+    """Find opening `/*` matching `*/` at `src[close_end-2:close_end]`, handling nesting."""
+    if close_end - 2 < min_bound or src[close_end - 2 : close_end] != "*/":
+        return None
+    depth = 1
+    j = close_end - 2
+    while j >= min_bound + 2:
+        pair = src[j - 2 : j]
+        if pair == "*/":
+            depth += 1
+            j -= 2
+        elif pair == "/*":
+            depth -= 1
+            j -= 2
+            if depth == 0:
+                return j
+        else:
+            j -= 1
+    return None
+
+
 def leading_doc_start(src: str, attr_or_kw_start: int, min_bound: int) -> int:
-    """Walk backwards from `attr_or_kw_start` over contiguous outer doc/line comments (never `//!` or `/*!`)."""
+    """Walk backwards from `attr_or_kw_start` over contiguous outer line and block comments (never `//!` or `/*!`)."""
     line_start = src.rfind("\n", min_bound, attr_or_kw_start)
     cur_line_start = (line_start + 1) if line_start != -1 else min_bound
     best = cur_line_start
     pos = cur_line_start
+
+    same_line_prefix = src[cur_line_start:attr_or_kw_start].rstrip(" \t")
+    if same_line_prefix.endswith("*/"):
+        cursor = cur_line_start + len(same_line_prefix)
+        while cursor > min_bound:
+            open_pos = _find_matching_block_comment_start(src, cursor, min_bound)
+            if open_pos is None or src[open_pos : open_pos + 3] == "/*!":
+                break
+            open_nl = src.rfind("\n", min_bound, open_pos)
+            open_line_start = (open_nl + 1) if open_nl != -1 else min_bound
+            before_open = src[open_line_start:open_pos].rstrip(" \t")
+            if before_open == "":
+                best = open_line_start
+                pos = open_line_start
+                break
+            if before_open.endswith("*/"):
+                best = open_pos
+                cursor = open_line_start + len(before_open)
+                continue
+            best = open_pos
+            return best
+
     while pos > min_bound:
         prev_nl = src.rfind("\n", min_bound, pos - 1)
         prev_start = (prev_nl + 1) if prev_nl != -1 else min_bound
-        stripped = src[prev_start : pos - 1].strip()
+        line_txt = src[prev_start : pos - 1]
+        stripped = line_txt.strip()
+        if not stripped:
+            break
         if stripped.startswith("//!") or stripped.startswith("/*!"):
             break
         if stripped.startswith("///") or stripped.startswith("//"):
             best = prev_start
             pos = prev_start
-        else:
+            continue
+        if stripped.endswith("*/"):
+            close_end = prev_start + len(line_txt.rstrip(" \t\r"))
+            open_pos = _find_matching_block_comment_start(src, close_end, min_bound)
+            if open_pos is None or src[open_pos : open_pos + 3] == "/*!":
+                break
+            open_nl = src.rfind("\n", min_bound, open_pos)
+            open_line_start = (open_nl + 1) if open_nl != -1 else min_bound
+            if src[open_line_start:open_pos].strip() == "":
+                best = open_line_start
+                pos = open_line_start
+                continue
             break
+        break
     return best
 
 
@@ -405,9 +539,40 @@ def normalize_cfg_list(attrs: list[str] | tuple[str, ...]) -> tuple[str, ...]:
     return tuple(out)
 
 
+def normalize_attr_list(attrs: list[str] | tuple[str, ...]) -> tuple[str, ...]:
+    return tuple(re.sub(r"\s+", " ", a).strip() for a in attrs)
+
+
+def attr_head_name(attr: str) -> str:
+    m = re.match(r"^#\[\s*((?:[A-Za-z_][A-Za-z0-9_]*::)*[A-Za-z_][A-Za-z0-9_]*)", attr.strip())
+    return m.group(1) if m else ""
+
+
+def has_cfg_attr(attrs: list[str] | tuple[str, ...]) -> bool:
+    return any(attr_head_name(a) in ("cfg_attr", "core::cfg_attr", "std::cfg_attr") for a in attrs)
+
+
+def has_top_level_inner_attrs(src: str) -> list[int]:
+    """Return line numbers of any `#![...]` inner attributes at depth 0."""
+    tokens = lex_rust(src)
+    lines: list[int] = []
+    i, n = 0, len(tokens)
+    while i < n:
+        if tokens[i].text == "#" and i + 2 < n and tokens[i + 1].text == "!" and tokens[i + 2].text == "[":
+            lines.append(tokens[i].line)
+            i = skip_delim(tokens, i + 2, "[", "]")
+            continue
+        if tokens[i].text in ("(", "[", "{"):
+            i = skip_delim(tokens, i, tokens[i].text, {"(": ")", "[": "]", "{": "}"}[tokens[i].text])
+            continue
+        i += 1
+    return lines
+
+
 def parse_rust_items(src: str, source_file: Path | None = None) -> list[ParsedItem]:
     """Parse Rust items recursively with exact byte and line spans."""
     tokens = lex_rust(src)
+    check_balanced_tokens(tokens, source_file)
     lstarts = line_starts(src)
 
     def parse_range(start_i: int, end_i: int, min_byte: int, impl_hdr: str = "", is_trait: bool = False) -> list[ParsedItem]:
@@ -462,6 +627,7 @@ def parse_rust_items(src: str, source_file: Path | None = None) -> list[ParsedIt
             raw_first_byte = tokens[item_tok_start].start
             item_start = leading_doc_start(src, raw_first_byte, prev_end)
             cfg_attrs = normalize_cfg_list(attrs)
+            norm_attrs = normalize_attr_list(attrs)
             has_test_attr = any(
                 a.strip() == "#[test]" or re.search(r"::test\]$", a.strip()) for a in attrs
             )
@@ -483,7 +649,9 @@ def parse_rust_items(src: str, source_file: Path | None = None) -> list[ParsedIt
                 fn_name = tokens[i + 1].text
                 k = i + 2
                 while k < end_i and tokens[k].text not in ("{", ";"):
-                    if tokens[k].text in ("(", "["):
+                    if tokens[k].text == "<":
+                        k = skip_angle(tokens, k)
+                    elif tokens[k].text in ("(", "["):
                         k = skip_delim(tokens, k, tokens[k].text, ")" if tokens[k].text == "(" else "]")
                     else:
                         k += 1
@@ -504,6 +672,7 @@ def parse_rust_items(src: str, source_file: Path | None = None) -> list[ParsedIt
                             vis_end=vis_end,
                             attrs=tuple(attrs),
                             cfg_attrs=cfg_attrs,
+                            norm_attrs=norm_attrs,
                             is_test_attr=has_test_attr,
                             is_trait_impl=is_trait,
                             impl_header=impl_hdr,
@@ -552,6 +721,7 @@ def parse_rust_items(src: str, source_file: Path | None = None) -> list[ParsedIt
                             vis_end=vis_end,
                             attrs=tuple(attrs),
                             cfg_attrs=cfg_attrs,
+                            norm_attrs=norm_attrs,
                             is_trait_impl=trait_flag,
                             impl_header=hdr_text,
                             impl_open_brace=tokens[k].start,
@@ -583,6 +753,7 @@ def parse_rust_items(src: str, source_file: Path | None = None) -> list[ParsedIt
                             vis_end=vis_end,
                             attrs=tuple(attrs),
                             cfg_attrs=cfg_attrs,
+                            norm_attrs=norm_attrs,
                             path_attr=path_attr,
                             source_file=source_file,
                         )
@@ -593,9 +764,26 @@ def parse_rust_items(src: str, source_file: Path | None = None) -> list[ParsedIt
                 if i + 2 < end_i and tokens[i + 2].text == "{":
                     nxt = skip_delim(tokens, i + 2, "{", "}")
                     item_end = make_end(nxt - 1)
-                    inner_src = src[tokens[i + 2].end : tokens[nxt - 1].start]
-                    inc_m = re.match(r'\s*include!\s*\(\s*"([^"]+)"\s*\)\s*;\s*$', inner_src)
-                    if inc_m:
+                    inner_toks = tokens[i + 3 : nxt - 1]
+                    inc_rel_mod: str | None = None
+                    p_in = 0
+                    while p_in < len(inner_toks) and (inner_toks[p_in].kind == "ident" or inner_toks[p_in].text == "::"):
+                        p_in += 1
+                    mpath_in = "".join(t.text for t in inner_toks[:p_in])
+                    if (
+                        mpath_in in ("include", "std::include", "core::include")
+                        and p_in + 3 < len(inner_toks)
+                        and inner_toks[p_in].text == "!"
+                        and inner_toks[p_in + 1].text in ("(", "[", "{")
+                    ):
+                        cl = {"(": ")", "[": "]", "{": "}"}[inner_toks[p_in + 1].text]
+                        arg_end = skip_delim(inner_toks, p_in + 1, inner_toks[p_in + 1].text, cl)
+                        tail_toks = inner_toks[arg_end:]
+                        if (not tail_toks) or (len(tail_toks) == 1 and tail_toks[0].text == ";"):
+                            arg_toks = inner_toks[p_in + 2 : arg_end - 1]
+                            if len(arg_toks) == 1 and arg_toks[0].kind == "str":
+                                inc_rel_mod = parse_rust_string_literal(arg_toks[0].text)
+                    if inc_rel_mod is not None:
                         out.append(
                             ParsedItem(
                                 kind="mod_include",
@@ -610,7 +798,8 @@ def parse_rust_items(src: str, source_file: Path | None = None) -> list[ParsedIt
                                 vis_end=vis_end,
                                 attrs=tuple(attrs),
                                 cfg_attrs=cfg_attrs,
-                                include_rel=inc_m.group(1),
+                                norm_attrs=norm_attrs,
+                                include_rel=inc_rel_mod,
                                 impl_open_brace=tokens[i + 2].start,
                                 impl_close_brace=tokens[nxt - 1].start,
                                 source_file=source_file,
@@ -632,6 +821,7 @@ def parse_rust_items(src: str, source_file: Path | None = None) -> list[ParsedIt
                                 vis_end=vis_end,
                                 attrs=tuple(attrs),
                                 cfg_attrs=cfg_attrs,
+                                norm_attrs=norm_attrs,
                                 impl_open_brace=tokens[i + 2].start,
                                 impl_close_brace=tokens[nxt - 1].start,
                                 children=children,
@@ -667,6 +857,7 @@ def parse_rust_items(src: str, source_file: Path | None = None) -> list[ParsedIt
                             vis_end=vis_end,
                             attrs=tuple(attrs),
                             cfg_attrs=cfg_attrs,
+                            norm_attrs=norm_attrs,
                             source_file=source_file,
                         )
                     )
@@ -699,7 +890,9 @@ def parse_rust_items(src: str, source_file: Path | None = None) -> list[ParsedIt
                             k += 1
                     else:
                         while k < end_i and tokens[k].text not in ("{", ";"):
-                            if tokens[k].text in ("(", "["):
+                            if tokens[k].text == "<":
+                                k = skip_angle(tokens, k)
+                            elif tokens[k].text in ("(", "["):
                                 k = skip_delim(tokens, k, tokens[k].text, ")" if tokens[k].text == "(" else "]")
                             else:
                                 k += 1
@@ -710,12 +903,25 @@ def parse_rust_items(src: str, source_file: Path | None = None) -> list[ParsedIt
                             k = nxt
                         elif k < end_i and tokens[k].text == ";":
                             k += 1
+                elif kind in ("type", "const", "static"):
+                    while k < end_i:
+                        t = tokens[k].text
+                        if t == ";":
+                            k += 1
+                            break
+                        if t in ("(", "[", "{"):
+                            k = skip_delim(tokens, k, t, {"(": ")", "[": "]", "{": "}"}[t])
+                            continue
+                        k += 1
                 else:
                     while k < end_i:
                         t = tokens[k].text
                         if t == ";":
                             k += 1
                             break
+                        if t == "<":
+                            k = skip_angle(tokens, k)
+                            continue
                         if t == "{":
                             k = skip_delim(tokens, k, "{", "}")
                             break
@@ -739,6 +945,7 @@ def parse_rust_items(src: str, source_file: Path | None = None) -> list[ParsedIt
                         vis_end=vis_end,
                         attrs=tuple(attrs),
                         cfg_attrs=cfg_attrs,
+                        norm_attrs=norm_attrs,
                         struct_body_start=s_open,
                         struct_body_end=s_close,
                         is_tuple_struct=is_tuple,
@@ -766,16 +973,24 @@ def parse_rust_items(src: str, source_file: Path | None = None) -> list[ParsedIt
                         close = {"{": "}", "(": ")", "[": "]"}[tokens[k].text]
                         nxt = skip_delim(tokens, k, tokens[k].text, close)
                         body_txt = src[tokens[k].end : tokens[nxt - 1].start].strip()
+                        arg_toks = tokens[k + 1 : nxt - 1]
                         if nxt < end_i and tokens[nxt].text == ";":
                             nxt += 1
                         item_end = make_end(nxt - 1)
                         inc_rel = None
                         kind = "macro_rules" if is_mrules else "macro_invoc"
                         if mpath in ("include", "std::include", "core::include"):
-                            sm = re.fullmatch(r'"([^"]+)"', body_txt)
-                            if sm:
+                            decoded = (
+                                parse_rust_string_literal(arg_toks[0].text)
+                                if len(arg_toks) == 1 and arg_toks[0].kind == "str"
+                                else None
+                            )
+                            if decoded is not None:
                                 kind = "root_include"
-                                inc_rel = sm.group(1)
+                                inc_rel = decoded
+                            else:
+                                kind = "bad_include"
+                                inc_rel = body_txt
                         out.append(
                             ParsedItem(
                                 kind=kind,
@@ -790,6 +1005,7 @@ def parse_rust_items(src: str, source_file: Path | None = None) -> list[ParsedIt
                                 vis_end=vis_end,
                                 attrs=tuple(attrs),
                                 cfg_attrs=cfg_attrs,
+                                norm_attrs=norm_attrs,
                                 include_rel=inc_rel,
                                 source_file=source_file,
                             )
@@ -865,8 +1081,55 @@ def item_fn_key(
     return FnKey(module=mod_rel, impl="-", name=it.name, cfg="; ".join(cfgs) or "-")
 
 
+BENIGN_MOD_ATTRS = frozenset({"allow", "expect", "warn", "deny", "doc"})
+CARRY_MOD_ATTRS = frozenset({"allow", "expect", "warn", "deny"})
+LOCATION_MACROS = frozenset({"module_path", "file", "line", "column"})
+INCLUDE_MACROS = frozenset({"include", "include_str", "include_bytes"})
+
+
+def _rel_str(path: Path, root: Path | None) -> str:
+    if root is not None:
+        try:
+            return path.resolve().relative_to(root.resolve()).as_posix()
+        except ValueError:
+            pass
+    return path.as_posix()
+
+
+def effective_attrs(norm_attrs: tuple[str, ...], frag_cfgs: tuple[str, ...]) -> tuple[str, ...]:
+    """Combine enclosing `root_include` cfgs with item attrs canonically without duplication."""
+    extra = tuple(c for c in frag_cfgs if c not in norm_attrs)
+    return (*extra, *norm_attrs)
+
+
+def validate_mod_attrs(
+    attrs: tuple[str, ...], fpath: Path, line: int, mod_name: str, errors: list[str], root: Path | None = None
+) -> tuple[str, ...]:
+    """Validate attributes on a `mod` declaration; refuse `cfg_attr` and unsupported attrs, return benign carry attrs."""
+    carried: list[str] = []
+    rel = _rel_str(fpath, root)
+    for raw in attrs:
+        norm = re.sub(r"\s+", " ", raw).strip()
+        head = attr_head_name(norm)
+        short = head.rsplit("::", 1)[-1]
+        if short == "cfg_attr":
+            errors.append(f"{rel}:{line}: unsupported `#[cfg_attr(...)]` on module `{mod_name}`: `{norm}`")
+            continue
+        if short in ("cfg", "path", "doc"):
+            continue
+        if short in CARRY_MOD_ATTRS:
+            carried.append(norm)
+            continue
+        errors.append(f"{rel}:{line}: unsupported attribute `{norm}` on module `{mod_name}`")
+    return tuple(carried)
+
+
 def parse_top_mod_decls(
-    root: Path, regular_names: set[str] | frozenset[str] = frozenset()
+    root: Path,
+    regular_names: set[str] | frozenset[str] = frozenset(),
+    *,
+    errors: list[str] | None = None,
+    all_regular_entries: list[Path] | None = None,
 ) -> tuple[dict[str, tuple[str, Path, tuple[str, ...]]], dict[str, dict[str, tuple[Path, tuple[str, ...]]]]]:
     """Return `(regular_mods, mirror_mods)` across `game.rs`, `client_side.rs`, `server_side.rs`.
 
@@ -877,6 +1140,7 @@ def parse_top_mod_decls(
     game_dir = src_root / "game"
     regular: dict[str, tuple[str, Path, tuple[str, ...]]] = {}
     mirrors: dict[str, dict[str, tuple[Path, tuple[str, ...]]]] = {"client": {}, "server": {}}
+    errs = errors if errors is not None else []
 
     for parent_side, path in [
         ("game", src_root / "game.rs"),
@@ -885,7 +1149,11 @@ def parse_top_mod_decls(
     ]:
         if not path.is_file():
             continue
-        items = parse_rust_items(path.read_text(encoding="utf-8"), path)
+        try:
+            items = parse_rust_items(path.read_text(encoding="utf-8"), path)
+        except ValueError as exc:
+            errs.append(f"{_rel_str(path, root)}: parse error: {exc}")
+            continue
         for it in items:
             if it.kind != "mod_ext" or it.name in SIDE_CONTAINERS:
                 continue
@@ -895,31 +1163,71 @@ def parse_top_mod_decls(
                 else:
                     entry = ((game_dir / it.path_attr) if parent_side != "game" else (src_root / it.path_attr)).resolve()
                     if not entry.is_file():
-                        entry = (game_dir / it.path_attr).resolve()
+                        alt = (game_dir / it.path_attr).resolve()
+                        if alt.is_file():
+                            entry = alt
             else:
                 c1 = game_dir / f"{it.name}.rs"
                 c2 = game_dir / it.name / "mod.rs"
                 entry = (c1 if c1.is_file() else c2).resolve()
 
-            m = MIRROR_MOD_RE.match(it.name) if parent_side in ("client", "server") else None
-            if (
-                m
-                and m.group(2) == parent_side
+            m = MIRROR_MOD_RE.match(it.name)
+            is_mirror_name = (
+                m is not None
                 and it.name not in regular_names
-                and entry.name.endswith(f"_{parent_side}.rs")
-            ):
+                and (bool(regular_names) or entry.name.endswith(f"_{m.group(2)}.rs"))
+            )
+            if is_mirror_name and m is not None:
+                m_side = m.group(2)
+                rel_p = _rel_str(path, root)
+                if m_side != parent_side:
+                    errs.append(f"{rel_p}:{it.start_line}: mirror module `{it.name}` declared in `{path.name}` instead of `{SIDE_MOD_NAME[m_side]}.rs`")
+                    continue
+                validate_mod_attrs(it.attrs, path, it.start_line, it.name, errs, root)
+                if not entry.is_file():
+                    errs.append(f"{rel_p}:{it.start_line}: mirror module `{it.name}` target `{it.path_attr or entry.name}` does not exist")
+                if it.name in mirrors[parent_side]:
+                    errs.append(f"{rel_p}:{it.start_line}: duplicate top-level mirror module declaration `{it.name}`")
+                    continue
                 mirrors[parent_side][it.name] = (entry, it.cfg_attrs)
-            elif it.name not in regular:
-                regular[it.name] = (parent_side, entry, it.cfg_attrs)
+            else:
+                if has_cfg_attr(it.attrs):
+                    errs.append(f"{_rel_str(path, root)}:{it.start_line}: unsupported `#[cfg_attr(...)]` on top-level module `{it.name}`")
+                if all_regular_entries is not None and entry.is_file():
+                    all_regular_entries.append(entry)
+                if it.name not in regular:
+                    regular[it.name] = (parent_side, entry, it.cfg_attrs)
     return regular, mirrors
 
 
-def build_mod_tree(top_name: str, entry_file: Path, top_cfg: tuple[str, ...] = ()) -> ModNode:
+def build_mod_tree(
+    top_name: str,
+    entry_file: Path,
+    top_cfg: tuple[str, ...] = (),
+    *,
+    errors: list[str] | None = None,
+    root: Path | None = None,
+    is_mirror: bool = False,
+) -> ModNode:
     """Build complete module tree for `top_name`, including root-scope `include!` fragments."""
+    errs = errors if errors is not None else []
+    seen_includes: set[tuple[Path, Path]] = set()
 
-    def walk_file(rs_file: Path, mod_rel: str, decl_kind: str, name: str, cfg: tuple[str, ...], parent: ModNode | None) -> ModNode:
+    def walk_file(
+        rs_file: Path,
+        mod_rel: str,
+        decl_kind: str,
+        name: str,
+        cfg: tuple[str, ...],
+        parent: ModNode | None,
+        mod_attrs: tuple[str, ...] = (),
+    ) -> ModNode:
         src = rs_file.read_text(encoding="utf-8")
-        items = parse_rust_items(src, rs_file)
+        try:
+            items = parse_rust_items(src, rs_file)
+        except ValueError as exc:
+            errs.append(f"{_rel_str(rs_file, root)}: parse error: {exc}")
+            items = []
         node = ModNode(
             orig_mod=mod_rel,
             file_path=rs_file,
@@ -929,25 +1237,59 @@ def build_mod_tree(top_name: str, entry_file: Path, top_cfg: tuple[str, ...] = (
             parent=parent,
             src=src,
             items=items,
+            mod_attrs=mod_attrs,
         )
-        attach_children(node, items, rs_file, src, mod_rel)
+        attach_children(node, items, rs_file, src, mod_rel, ())
         return node
 
     def attach_children(
-        node: ModNode, items: list[ParsedItem], host_file: Path, host_src: str, host_mod: str
+        node: ModNode,
+        items: list[ParsedItem],
+        host_file: Path,
+        host_src: str,
+        host_mod: str,
+        frag_cfgs: tuple[str, ...],
     ) -> None:
         for it in items:
-            if it.kind == "root_include" and it.include_rel:
+            if it.kind == "bad_include":
+                norm_inc = re.sub(r"\s+", "", it.include_rel or "")
+                is_build_env_inc = (not is_mirror) and bool(
+                    re.fullmatch(r'concat!\(env!\("(?:OUT_DIR|CARGO_MANIFEST_DIR)"\),"[^"]+",?\)', norm_inc)
+                )
+                if not is_build_env_inc:
+                    errs.append(
+                        f"{_rel_str(host_file, root)}:{it.start_line}: unsupported non-literal `include!({it.include_rel})`"
+                    )
+            elif it.kind == "root_include" and it.include_rel:
+                if has_cfg_attr(it.attrs):
+                    errs.append(
+                        f"{_rel_str(host_file, root)}:{it.start_line}: unsupported `#[cfg_attr(...)]` on `include!({it.include_rel!r})`"
+                    )
                 inc_file = (host_file.parent / it.include_rel).resolve()
-                if inc_file.is_file():
-                    inc_src = inc_file.read_text(encoding="utf-8")
+                edge = (host_file.resolve(), inc_file)
+                if edge in seen_includes:
+                    errs.append(f"{_rel_str(host_file, root)}:{it.start_line}: cyclic `include!({it.include_rel!r})`")
+                    continue
+                if not inc_file.is_file():
+                    errs.append(
+                        f"{_rel_str(host_file, root)}:{it.start_line}: `include!({it.include_rel!r})` target does not exist"
+                    )
+                    continue
+                seen_includes.add(edge)
+                inc_src = inc_file.read_text(encoding="utf-8")
+                try:
                     inc_items = parse_rust_items(inc_src, inc_file)
-                    node.extra_files.append((inc_file, inc_src, inc_items))
-                    attach_children(node, inc_items, inc_file, inc_src, host_mod)
+                except ValueError as exc:
+                    errs.append(f"{_rel_str(inc_file, root)}: parse error: {exc}")
+                    inc_items = []
+                child_frag_cfgs = (*frag_cfgs, *it.cfg_attrs)
+                node.extra_files.append((inc_file, inc_src, inc_items, child_frag_cfgs))
+                attach_children(node, inc_items, inc_file, inc_src, host_mod, child_frag_cfgs)
             elif it.kind == "mod_ext":
                 # Out-of-line `mod` items in `game.rs` are independent top-level gameplay modules, not children of `game`.
                 if top_name == "game" and node.parent is None:
                     continue
+                m_attrs = validate_mod_attrs(it.attrs, host_file, it.start_line, it.name, errs, root)
                 if it.path_attr:
                     child_file = (host_file.parent / it.path_attr).resolve()
                 else:
@@ -957,52 +1299,96 @@ def build_mod_tree(top_name: str, entry_file: Path, top_cfg: tuple[str, ...] = (
                     c2 = base_dir / raw_name / "mod.rs"
                     child_file = c1 if c1.is_file() else c2
                 if child_file.is_file():
-                    child_node = walk_file(child_file, f"{host_mod}::{it.name}", "out_of_line", it.name, it.cfg_attrs, node)
+                    child_node = walk_file(
+                        child_file,
+                        f"{host_mod}::{it.name}",
+                        "out_of_line",
+                        it.name,
+                        (*frag_cfgs, *it.cfg_attrs),
+                        node,
+                        mod_attrs=m_attrs,
+                    )
                     node.children.append(child_node)
             elif it.kind == "mod_include" and it.include_rel:
+                m_attrs = validate_mod_attrs(it.attrs, host_file, it.start_line, it.name, errs, root)
                 inc_file = (host_file.parent / it.include_rel).resolve()
-                if inc_file.is_file():
-                    child_node = walk_file(inc_file, f"{host_mod}::{it.name}", "inline_include", it.name, it.cfg_attrs, node)
-                    node.children.append(child_node)
+                if not inc_file.is_file():
+                    errs.append(
+                        f"{_rel_str(host_file, root)}:{it.start_line}: `mod {it.name} {{ include!({it.include_rel!r}); }}` target does not exist"
+                    )
+                    continue
+                child_node = walk_file(
+                    inc_file,
+                    f"{host_mod}::{it.name}",
+                    "inline_include",
+                    it.name,
+                    (*frag_cfgs, *it.cfg_attrs),
+                    node,
+                    mod_attrs=m_attrs,
+                )
+                node.children.append(child_node)
             elif it.kind == "mod_inline":
+                m_attrs = validate_mod_attrs(it.attrs, host_file, it.start_line, it.name, errs, root)
                 sub = ModNode(
                     orig_mod=f"{host_mod}::{it.name}",
                     file_path=host_file,
                     decl_kind="inline",
                     name=it.name,
-                    cfg_attrs=it.cfg_attrs,
+                    cfg_attrs=(*frag_cfgs, *it.cfg_attrs),
                     parent=node,
                     inline_item=it,
                     src=host_src,
                     items=it.children,
+                    mod_attrs=m_attrs,
                 )
-                attach_children(sub, it.children, host_file, host_src, sub.orig_mod)
+                attach_children(sub, it.children, host_file, host_src, sub.orig_mod, ())
                 node.children.append(sub)
 
     return walk_file(entry_file, top_name, "root", top_name, top_cfg, None)
 
 
-def node_all_fragments(node: ModNode) -> list[tuple[Path, str, list[ParsedItem]]]:
-    """Return primary `(file_path, src, items)` followed by any root-scope `include!` fragments."""
-    return [(node.file_path, node.src, node.items), *node.extra_files]
+def node_all_fragments(node: ModNode) -> list[tuple[Path, str, list[ParsedItem], tuple[str, ...]]]:
+    """Return primary `(file_path, src, items, frag_cfgs)` followed by any root-scope `include!` fragments."""
+    return [(node.file_path, node.src, node.items, ()), *node.extra_files]
 
 
-def collect_tree_functions(root_node: ModNode) -> dict[FnKey, tuple[ModNode, Path, str, ParsedItem, ParsedItem | None]]:
-    """Map `FnKey -> (node, file_path, src, item, parent_impl)` across every node and fragment."""
-    found: dict[FnKey, tuple[ModNode, Path, str, ParsedItem, ParsedItem | None]] = {}
+def collect_tree_functions(
+    root_node: ModNode,
+    *,
+    dup_errors: list[str] | None = None,
+    root: Path | None = None,
+) -> dict[FnKey, tuple[ModNode, Path, str, ParsedItem, ParsedItem | None, tuple[str, ...]]]:
+    """Map `FnKey -> (node, file_path, src, item, parent_impl, frag_cfgs)` across every node and fragment."""
+    found: dict[FnKey, tuple[ModNode, Path, str, ParsedItem, ParsedItem | None, tuple[str, ...]]] = {}
+    dups = dup_errors if dup_errors is not None else []
+
+    def record(
+        k: FnKey,
+        entry: tuple[ModNode, Path, str, ParsedItem, ParsedItem | None, tuple[str, ...]],
+    ) -> None:
+        if k in found:
+            prev_fp, prev_it = found[k][1], found[k][3]
+            cur_fp, cur_it = entry[1], entry[3]
+            dups.append(
+                f"duplicate function key `{k.module}::{k.impl}::{k.name}` ({k.cfg}) at "
+                f"{_rel_str(prev_fp, root)}:{prev_it.start_line} and {_rel_str(cur_fp, root)}:{cur_it.start_line}"
+            )
+            return
+        found[k] = entry
 
     def walk(node: ModNode) -> None:
         ncfgs = node_cfg_chain(node)
-        for fpath, fsrc, fitems in node_all_fragments(node):
+        for fpath, fsrc, fitems, fcfgs in node_all_fragments(node):
+            eff_ncfgs = (*ncfgs, *fcfgs)
             for it in fitems:
                 if it.kind == "fn":
-                    k = item_fn_key(node.orig_mod, it, None, ncfgs)
-                    found[k] = (node, fpath, fsrc, it, None)
+                    k = item_fn_key(node.orig_mod, it, None, eff_ncfgs)
+                    record(k, (node, fpath, fsrc, it, None, fcfgs))
                 elif it.kind == "impl":
                     for ch in it.children:
                         if ch.kind == "method":
-                            k = item_fn_key(node.orig_mod, ch, it, ncfgs)
-                            found[k] = (node, fpath, fsrc, ch, it)
+                            k = item_fn_key(node.orig_mod, ch, it, eff_ncfgs)
+                            record(k, (node, fpath, fsrc, ch, it, fcfgs))
         for ch_node in node.children:
             walk(ch_node)
 
@@ -1011,13 +1397,532 @@ def collect_tree_functions(root_node: ModNode) -> dict[FnKey, tuple[ModNode, Pat
 
 
 def collect_mirror_tree_functions(
-    mirror_entry: Path, top_name: str, side: str, top_cfg: tuple[str, ...] = ()
-) -> dict[FnKey, tuple[ModNode, Path, str, ParsedItem, ParsedItem | None]]:
+    mirror_entry: Path,
+    top_name: str,
+    side: str,
+    top_cfg: tuple[str, ...] = (),
+    *,
+    errors: list[str] | None = None,
+    root: Path | None = None,
+) -> dict[FnKey, tuple[ModNode, Path, str, ParsedItem, ParsedItem | None, tuple[str, ...]]]:
     """Walk an existing mirror tree and index its functions using canonical (un-suffixed) `orig_mod` keys."""
     if not mirror_entry.is_file():
         return {}
-    mirror_root = build_mod_tree(top_name, mirror_entry, top_cfg)
-    return collect_tree_functions(mirror_root)
+    mirror_root = build_mod_tree(top_name, mirror_entry, top_cfg, errors=errors, root=root, is_mirror=True)
+    return collect_tree_functions(mirror_root, dup_errors=errors, root=root)
+
+
+def _strip_type_generics(type_str: str) -> str:
+    """Strip `<...>` generic arguments and outer path prefixes from a Rust type name."""
+    out: list[str] = []
+    depth = 0
+    for ch in type_str:
+        if ch == "<":
+            depth += 1
+        elif ch == ">":
+            depth = max(0, depth - 1)
+        elif depth == 0:
+            out.append(ch)
+    cleaned = re.sub(r"\s+", " ", "".join(out)).strip()
+    return cleaned.rsplit("::", 1)[-1].strip()
+
+
+def owner_overlap_group(impl_hdr: str, is_trait_impl: bool) -> str:
+    """Map an impl header to an overlap equivalence class (e.g. `impl Game<'_>` and `impl Game<'static>` share one)."""
+    if impl_hdr == "-":
+        return "-"
+    s = impl_hdr.strip()
+    if s.startswith("unsafe "):
+        s = s[7:].strip()
+    if not s.startswith("impl"):
+        return s
+    rest = s[4:].strip()
+    if rest.startswith("<"):
+        depth = 0
+        for idx, ch in enumerate(rest):
+            if ch == "<":
+                depth += 1
+            elif ch == ">":
+                depth -= 1
+                if depth == 0:
+                    rest = rest[idx + 1 :].strip()
+                    break
+    rest = re.split(r"\bwhere\b", rest, maxsplit=1)[0].strip()
+    if is_trait_impl:
+        m = re.match(r"^(.+?)\s+for\s+(.+)$", rest)
+        if m:
+            return f"trait:{_strip_type_generics(m.group(1))} for {_strip_type_generics(m.group(2))}"
+        return f"trait:{_strip_type_generics(rest)}"
+    return f"inherent:{_strip_type_generics(rest)}"
+
+
+def _split_top_level_commas(text: str) -> list[str]:
+    parts: list[str] = []
+    cur: list[str] = []
+    depth = 0
+    in_str = False
+    esc = False
+    for ch in text:
+        if in_str:
+            cur.append(ch)
+            if esc:
+                esc = False
+            elif ch == "\\":
+                esc = True
+            elif ch == '"':
+                in_str = False
+            continue
+        if ch == '"':
+            in_str = True
+            cur.append(ch)
+        elif ch in "([{<":
+            depth += 1
+            cur.append(ch)
+        elif ch in ")]}>":
+            depth = max(0, depth - 1)
+            cur.append(ch)
+        elif ch == "," and depth == 0:
+            part = "".join(cur).strip()
+            if part:
+                parts.append(part)
+            cur = []
+        else:
+            cur.append(ch)
+    tail = "".join(cur).strip()
+    if tail:
+        parts.append(tail)
+    return parts
+
+
+def _cfg_conjuncts(cfg_str: str) -> set[str]:
+    """Expand a `"; "`-joined `#[cfg(...)]` string into normalized conjunctive predicates."""
+    if not cfg_str or cfg_str == "-":
+        return set()
+    conjuncts: set[str] = set()
+
+    def add_pred(pred: str) -> None:
+        p = re.sub(r"\s+", " ", pred).strip()
+        if p.startswith("all(") and p.endswith(")"):
+            for sub in _split_top_level_commas(p[4:-1]):
+                add_pred(sub)
+        elif p:
+            conjuncts.add(p)
+
+    for raw in cfg_str.split(";"):
+        s = raw.strip()
+        if s.startswith("#[cfg(") and s.endswith(")]"):
+            add_pred(s[6:-2])
+    return conjuncts
+
+
+def cfgs_proven_disjoint(cfg_a: str, cfg_b: str) -> bool:
+    """Return True only when two conjunctive cfg expressions are syntactically mutually exclusive."""
+    ca = _cfg_conjuncts(cfg_a)
+    cb = _cfg_conjuncts(cfg_b)
+    if "any()" in ca or "any()" in cb:
+        return True
+    for p in ca:
+        if f"not({p})" in cb:
+            return True
+    for q in cb:
+        if f"not({q})" in ca:
+            return True
+    for key in ("target_os", "target_arch", "target_family", "target_env"):
+        pat = re.compile(rf'^{key}\s*=\s*"([^"]+)"$')
+        vals_a = {m.group(1) for p in ca for m in [pat.match(p)] if m}
+        vals_b = {m.group(1) for q in cb for m in [pat.match(q)] if m}
+        if vals_a and vals_b and vals_a.isdisjoint(vals_b):
+            return True
+    return False
+
+
+def validate_top_overlaps_and_cfg_attr(
+    top_rows: dict[FnKey, FnRow],
+    orig_fns: dict[FnKey, tuple[ModNode, Path, str, ParsedItem, ParsedItem | None, tuple[str, ...]]],
+    mirror_fns: dict[str, dict[FnKey, tuple[ModNode, Path, str, ParsedItem, ParsedItem | None, tuple[str, ...]]]],
+    errors: list[str],
+    root: Path | None = None,
+) -> None:
+    """Fail closed on `#[cfg_attr(...)]` on listed/mirrored/colliding items and on non-disjoint overlapping items."""
+    listed_names = {(k.module, k.name) for k in top_rows} | {
+        (k.module, k.name) for s in ("client", "server") for k in mirror_fns[s]
+    }
+    by_group: dict[tuple[str, str, str], list[tuple[FnKey, str, Path, ParsedItem, ParsedItem | None]]] = defaultdict(list)
+
+    for loc, fdict in [("orig", orig_fns), ("client", mirror_fns["client"]), ("server", mirror_fns["server"])]:
+        for k, (_node, fpath, _fsrc, it, pimpl, _fcfgs) in fdict.items():
+            is_relevant = k in top_rows or loc != "orig" or (k.module, k.name) in listed_names
+            if is_relevant:
+                if has_cfg_attr(it.attrs):
+                    errors.append(
+                        f"{_rel_str(fpath, root)}:{it.start_line}: unsupported `#[cfg_attr(...)]` on `{k.module}::{k.name}`"
+                    )
+                if pimpl is not None and has_cfg_attr(pimpl.attrs):
+                    errors.append(
+                        f"{_rel_str(fpath, root)}:{pimpl.start_line}: unsupported `#[cfg_attr(...)]` on impl `{pimpl.impl_header}` containing `{k.name}`"
+                    )
+            elif any(
+                re.search(r"#\[\s*(?:(?:core|std)::)?cfg_attr\s*\([^)]*\bcfg\s*\(", a)
+                for a in (*it.attrs, *(pimpl.attrs if pimpl is not None else ()))
+            ):
+                errors.append(
+                    f"{_rel_str(fpath, root)}:{it.start_line}: unsupported conditional `#[cfg_attr(..., cfg(...))]` on `{k.module}::{k.name}`"
+                )
+            is_trait = pimpl.is_trait_impl if pimpl is not None else False
+            grp = (k.module, owner_overlap_group(k.impl, is_trait), k.name)
+            by_group[grp].append((k, loc, fpath, it, pimpl))
+
+    for (_mod, _owner, _name), occs in sorted(by_group.items()):
+        if len(occs) < 2:
+            continue
+        if not any(k in top_rows or loc != "orig" for k, loc, _fp, _it, _pi in occs):
+            continue
+        for idx in range(len(occs)):
+            k1, loc1, fp1, it1, _ = occs[idx]
+            for jdx in range(idx + 1, len(occs)):
+                k2, loc2, fp2, it2, _ = occs[jdx]
+                if not cfgs_proven_disjoint(k1.cfg, k2.cfg):
+                    errors.append(
+                        f"overlapping function definitions for `{k1.module}::{k1.name}`: "
+                        f"`{k1.impl}` ({k1.cfg}) at {_rel_str(fp1, root)}:{it1.start_line} ({loc1}) and "
+                        f"`{k2.impl}` ({k2.cfg}) at {_rel_str(fp2, root)}:{it2.start_line} ({loc2})"
+                    )
+
+
+def check_orphan_mirror_files(
+    root: Path,
+    regular_mods: dict[str, tuple[str, Path, tuple[str, ...]]],
+    all_regular_entries: list[Path],
+    existing_mirrors: dict[str, dict[str, tuple[Path, tuple[str, ...]]]],
+    errors: list[str],
+) -> None:
+    """Fail closed if any `*_{client,server}.rs` file under `game/` is unreachable from declared modules/mirrors."""
+    src_root = root / "crates/sunrise-client/src"
+    game_dir = src_root / "game"
+    if not game_dir.is_dir():
+        return
+    reachable: set[Path] = set()
+
+    def collect_tree_paths(node: ModNode) -> None:
+        reachable.add(node.file_path.resolve())
+        for fp, _, _, _ in node.extra_files:
+            reachable.add(fp.resolve())
+        for ch in node.children:
+            collect_tree_paths(ch)
+
+    game_rs = src_root / "game.rs"
+    if game_rs.is_file():
+        collect_tree_paths(build_mod_tree("game", game_rs.resolve()))
+    for name, (_ps, entry, cfg) in regular_mods.items():
+        if entry.is_file():
+            collect_tree_paths(build_mod_tree(name, entry, cfg))
+    for entry in all_regular_entries:
+        if entry.is_file() and entry.resolve() not in reachable:
+            collect_tree_paths(build_mod_tree(entry.stem, entry))
+    for side in ("client", "server"):
+        for mname, (mentry, mcfg) in existing_mirrors[side].items():
+            if mentry.is_file():
+                collect_tree_paths(build_mod_tree(mname, mentry, mcfg))
+
+    for p in sorted(game_dir.rglob("*.rs")):
+        if not re.search(r"_(?:client|server)\.rs$", p.name):
+            continue
+        if p.resolve() not in reachable:
+            errors.append(
+                f"{_rel_str(p, root)}: orphan mirror file not declared in game/client_side/server_side module graph"
+            )
+
+
+def _scan_macro_calls(tokens: list[Token]) -> list[tuple[str, str, int]]:
+    """Return `[(full_path, short_name, line)]` for macro invocations, skipping `stringify!(...)` bodies."""
+    out: list[tuple[str, str, int]] = []
+    i, n = 0, len(tokens)
+    while i < n:
+        t = tokens[i]
+        if t.kind == "ident":
+            # Skip `foo.bar!` (not valid) and `macro_rules! name` definition head
+            if i > 0 and tokens[i - 1].text == ".":
+                i += 1
+                continue
+            p = i
+            while p < n and (tokens[p].kind == "ident" or tokens[p].text == "::"):
+                p += 1
+            if p < n and tokens[p].text == "!":
+                mpath = "".join(tok.text for tok in tokens[i:p])
+                short = mpath.rsplit("::", 1)[-1]
+                if mpath == "macro_rules":
+                    # Skip the defined macro name right after `macro_rules!`
+                    i = p + 2
+                    continue
+                if short == "stringify" and p + 1 < n and tokens[p + 1].text in ("(", "[", "{"):
+                    cl = {"(": ")", "[": "]", "{": "}"}[tokens[p + 1].text]
+                    i = skip_delim(tokens, p + 1, tokens[p + 1].text, cl)
+                    continue
+                out.append((mpath, short, t.line))
+                i = p + 1
+                continue
+        i += 1
+    return out
+
+
+def find_relative_includes_in_src(src: str) -> list[str]:
+    """Return any `include!`/`include_str!`/`include_bytes!` macro names invoked in `src`."""
+    try:
+        tokens = lex_rust(src)
+    except ValueError:
+        return []
+    hits: list[str] = []
+    for mpath, short, _ln in _scan_macro_calls(tokens):
+        if short in INCLUDE_MACROS and mpath in (short, f"std::{short}", f"core::{short}"):
+            if f"{mpath}!" not in hits:
+                hits.append(f"{mpath}!")
+    return hits
+
+
+def collect_location_sensitive_macros(trees: list[ModNode]) -> dict[str, str]:
+    """Compute fixed-point map of local `macro_rules!` names expanding to `module_path!`/`file!`/`line!`/`column!`."""
+    macro_bodies: dict[str, list[str]] = defaultdict(list)
+
+    def walk(node: ModNode) -> None:
+        for _fp, fsrc, fitems, _fcfgs in node_all_fragments(node):
+            for it in fitems:
+                if it.kind == "macro_rules":
+                    macro_bodies[it.name].append(fsrc[it.start : it.end])
+        for ch in node.children:
+            walk(ch)
+
+    for tr in trees:
+        walk(tr)
+
+    sensitive: dict[str, str] = {}
+    calls_by_macro: dict[str, list[tuple[str, str]]] = {}
+    for mname, bodies in macro_bodies.items():
+        calls: list[tuple[str, str]] = []
+        for b in bodies:
+            try:
+                toks = lex_rust(b)
+            except ValueError:
+                continue
+            for mpath, short, _ln in _scan_macro_calls(toks):
+                calls.append((mpath, short))
+                if short in LOCATION_MACROS and mpath in (short, f"std::{short}", f"core::{short}"):
+                    sensitive.setdefault(mname, f"{mname}! -> {short}!")
+        calls_by_macro[mname] = calls
+
+    changed = True
+    while changed:
+        changed = False
+        for mname, calls in calls_by_macro.items():
+            if mname in sensitive:
+                continue
+            for mpath, short in calls:
+                if mpath == short and short in sensitive:
+                    sensitive[mname] = f"{mname}! -> {sensitive[short]}"
+                    changed = True
+                    break
+    return sensitive
+
+
+def find_location_macro_uses(src: str, sensitive_local: dict[str, str]) -> list[str]:
+    """Return location-sensitive built-ins or local macros invoked in `src`."""
+    try:
+        tokens = lex_rust(src)
+    except ValueError:
+        return []
+    hits: list[str] = []
+    for mpath, short, _ln in _scan_macro_calls(tokens):
+        if short in LOCATION_MACROS and mpath in (short, f"std::{short}", f"core::{short}"):
+            label = f"{short}!"
+            if label not in hits:
+                hits.append(label)
+        elif mpath == short and short in sensitive_local:
+            label = sensitive_local[short]
+            if label not in hits:
+                hits.append(label)
+    return hits
+
+
+ALLOWED_MIRROR_ITEM_KINDS = frozenset({"use", "macro_rules", "mod_ext", "mod_include", "mod_inline", "fn", "impl"})
+
+
+def _canonicalize_use_tree_tokens(toks: list[str]) -> list[str]:
+    """Normalize braced `use` groups (`{b, a}` -> `{a, b}`, single `{a}` -> `a`, drop trailing commas)."""
+    out: list[str] = []
+    i, n = 0, len(toks)
+    while i < n:
+        if toks[i] == "{":
+            depth = 1
+            j = i + 1
+            while j < n and depth > 0:
+                if toks[j] == "{":
+                    depth += 1
+                elif toks[j] == "}":
+                    depth -= 1
+                j += 1
+            inner = toks[i + 1 : j - 1]
+            # Split inner at depth-0 commas
+            branches: list[list[str]] = []
+            cur: list[str] = []
+            bdepth = 0
+            for tk in inner:
+                if tk in ("{", "(", "["):
+                    bdepth += 1
+                    cur.append(tk)
+                elif tk in ("}", ")", "]"):
+                    bdepth -= 1
+                    cur.append(tk)
+                elif tk == "," and bdepth == 0:
+                    if cur:
+                        branches.append(_canonicalize_use_tree_tokens(cur))
+                        cur = []
+                else:
+                    cur.append(tk)
+            if cur:
+                branches.append(_canonicalize_use_tree_tokens(cur))
+            branches.sort()
+            if len(branches) == 1 and branches[0] != ["self"]:
+                out.extend(branches[0])
+            else:
+                out.append("{")
+                for idx, br in enumerate(branches):
+                    if idx > 0:
+                        out.append(",")
+                    out.extend(br)
+                out.append("}")
+            i = j
+            continue
+        out.append(toks[i])
+        i += 1
+    return out
+
+
+def _canonical_item_tokens(src: str, it: ParsedItem) -> tuple[str, ...]:
+    """Return formatting-invariant token sequence for a Rust item (ignoring whitespace & trailing commas)."""
+    raw_toks = [t.text for t in lex_rust(src[it.start : it.end])]
+    no_trail: list[str] = []
+    for idx, tk in enumerate(raw_toks):
+        if tk == "," and idx + 1 < len(raw_toks) and raw_toks[idx + 1] in (")", "]", "}"):
+            continue
+        no_trail.append(tk)
+    if it.kind == "use":
+        no_trail = _canonicalize_use_tree_tokens(no_trail)
+    return tuple(no_trail)
+
+
+def _canonical_mod_inline_header(src: str, it: ParsedItem) -> tuple[str, ...]:
+    raw_toks = [t.text for t in lex_rust(src[it.start : it.impl_open_brace])]
+    no_trail = [
+        tk for idx, tk in enumerate(raw_toks)
+        if not (tk == "," and idx + 1 < len(raw_toks) and raw_toks[idx + 1] in (")", "]", "}"))
+    ]
+    return tuple(no_trail)
+
+
+def _diff_mirror_items(
+    rel: str,
+    actual_items: list[ParsedItem],
+    actual_src: str,
+    expected_items: list[ParsedItem],
+    expected_src: str,
+    *,
+    allow_reorder_methods: bool = False,
+) -> list[str]:
+    errs: list[str] = []
+    for it in actual_items:
+        if it.kind not in ALLOWED_MIRROR_ITEM_KINDS:
+            errs.append(f"{rel}:{it.start_line}: unexpected hand-written `{it.kind}` item `{it.name}` in mirror file")
+
+    act_uses = Counter(_canonical_item_tokens(actual_src, it) for it in actual_items if it.kind == "use")
+    exp_uses = Counter(_canonical_item_tokens(expected_src, it) for it in expected_items if it.kind == "use")
+    if act_uses != exp_uses:
+        extra_u = act_uses - exp_uses
+        missing_u = exp_uses - act_uses
+        if extra_u:
+            sample = " ".join(next(iter(extra_u)))
+            errs.append(f"{rel}: unexpected `use` item in mirror file: `{sample[:100]}`")
+        if missing_u:
+            sample = " ".join(next(iter(missing_u)))
+            errs.append(f"{rel}: missing generated `use` item in mirror file: `{sample[:100]}`")
+
+    act_other = [it for it in actual_items if it.kind != "use" and it.kind in ALLOWED_MIRROR_ITEM_KINDS]
+    exp_other = [it for it in expected_items if it.kind != "use"]
+    if len(act_other) != len(exp_other):
+        act_desc = [(it.kind, it.name) for it in act_other]
+        exp_desc = [(it.kind, it.name) for it in exp_other]
+        errs.append(
+            f"{rel}: mirror file item count mismatch (actual {len(act_other)} vs generated {len(exp_other)}; "
+            f"extra={set(act_desc) - set(exp_desc)}, missing={set(exp_desc) - set(act_desc)})"
+        )
+        return errs
+
+    for a_it, e_it in zip(act_other, exp_other):
+        if a_it.kind != e_it.kind or a_it.name != e_it.name:
+            errs.append(
+                f"{rel}:{a_it.start_line}: mirror item `{a_it.kind} {a_it.name}` does not match generated `{e_it.kind} {e_it.name}`"
+            )
+            continue
+        if a_it.kind == "mod_inline":
+            if _canonical_mod_inline_header(actual_src, a_it) != _canonical_mod_inline_header(expected_src, e_it):
+                errs.append(f"{rel}:{a_it.start_line}: inline mirror mod `{a_it.name}` header differs from generated output")
+            inner_act_src = actual_src[a_it.impl_open_brace + 1 : a_it.impl_close_brace]
+            if has_top_level_inner_attrs(inner_act_src):
+                errs.append(f"{rel}:{a_it.start_line}: disallowed inner attribute `#![...]` inside mirror mod `{a_it.name}`")
+            errs.extend(
+                _diff_mirror_items(
+                    rel,
+                    a_it.children,
+                    actual_src,
+                    e_it.children,
+                    expected_src,
+                    allow_reorder_methods=allow_reorder_methods,
+                )
+            )
+        elif a_it.kind == "impl" and allow_reorder_methods and not a_it.is_trait_impl:
+            a_hdr = _canonical_mod_inline_header(actual_src, a_it)
+            e_hdr = _canonical_mod_inline_header(expected_src, e_it)
+            a_inner = actual_src[a_it.impl_open_brace + 1 : a_it.impl_close_brace]
+            a_ch_ok = all(ch.kind == "method" for ch in a_it.children) and not has_top_level_inner_attrs(a_inner)
+            a_methods = Counter(_canonical_item_tokens(actual_src, ch) for ch in a_it.children)
+            e_methods = Counter(_canonical_item_tokens(expected_src, ch) for ch in e_it.children)
+            if a_hdr != e_hdr or not a_ch_ok or a_methods != e_methods:
+                errs.append(
+                    f"{rel}:{a_it.start_line}: mirror item `{a_it.kind} {a_it.name}` differs from tool-generated output"
+                )
+        else:
+            if _canonical_item_tokens(actual_src, a_it) != _canonical_item_tokens(expected_src, e_it):
+                errs.append(
+                    f"{rel}:{a_it.start_line}: mirror item `{a_it.kind} {a_it.name}` differs from tool-generated output"
+                )
+    return errs
+
+
+def diff_mirror_file(
+    rel: str, actual_src: str, expected_src: str, *, allow_reorder_methods: bool = False
+) -> list[str]:
+    """Compare an existing mirror file on disk against the tool-generated output (formatting-invariant)."""
+    errs: list[str] = []
+    inner_attr_lines = has_top_level_inner_attrs(actual_src)
+    if inner_attr_lines:
+        errs.append(f"{rel}:{inner_attr_lines[0]}: disallowed inner attribute `#![...]` in mirror file")
+    try:
+        actual_items = parse_rust_items(actual_src)
+    except ValueError as exc:
+        return [f"{rel}: parse error: {exc}"]
+    try:
+        expected_items = parse_rust_items(expected_src)
+    except ValueError as exc:
+        return [f"{rel}: generated mirror parse error: {exc}"]
+    errs.extend(
+        _diff_mirror_items(
+            rel,
+            actual_items,
+            actual_src,
+            expected_items,
+            expected_src,
+            allow_reorder_methods=allow_reorder_methods,
+        )
+    )
+    return errs
 
 
 def rewrite_vis_to_game(vis: str) -> str | None:
@@ -1210,17 +2115,18 @@ def macro_side_exclusive(node: ModNode, macro_name: str, desired_side: dict[FnKe
 
     def scan_node(cur: ModNode) -> None:
         ncfgs = node_cfg_chain(cur)
-        for _fp, fsrc, fitems in node_all_fragments(cur):
+        for _fp, fsrc, fitems, fcfgs in node_all_fragments(cur):
+            eff_ncfgs = (*ncfgs, *fcfgs)
             for it in fitems:
                 if it.kind == "macro_rules":
                     continue
                 if it.kind == "fn":
                     if pat.search(fsrc[it.start : it.end]):
-                        used_sides.add(desired_side.get(item_fn_key(cur.orig_mod, it, None, ncfgs), "game"))
+                        used_sides.add(desired_side.get(item_fn_key(cur.orig_mod, it, None, eff_ncfgs), "game"))
                 elif it.kind == "impl":
                     for ch in it.children:
                         if ch.kind == "method" and pat.search(fsrc[ch.start : ch.end]):
-                            used_sides.add(desired_side.get(item_fn_key(cur.orig_mod, ch, it, ncfgs), "game"))
+                            used_sides.add(desired_side.get(item_fn_key(cur.orig_mod, ch, it, eff_ncfgs), "game"))
                 elif pat.search(fsrc[it.start : it.end]):
                     used_sides.add("game")
         for ch_n in cur.children:
@@ -1243,7 +2149,7 @@ def collect_mirror_files(mirror_entry: Path) -> set[Path]:
 
     def walk(n: ModNode) -> None:
         files.add(n.file_path.resolve())
-        for fp, _, _ in n.extra_files:
+        for fp, _, _, _ in n.extra_files:
             files.add(fp.resolve())
         for ch in n.children:
             walk(ch)
@@ -1252,20 +2158,20 @@ def collect_mirror_files(mirror_entry: Path) -> set[Path]:
     return files
 
 
-def sync_side_file_mirror_decls(
+def plan_side_file_mirror_decls(
     root: Path,
     side: str,
     expected_decls: dict[str, tuple[str, tuple[str, ...]]],
     regular_names: set[str] | frozenset[str] = frozenset(),
-) -> Path | None:
-    """Update `<m>_<side>` declarations in `{client,server}_side.rs` and return path if changed."""
+    errors: list[str] | None = None,
+) -> tuple[Path, str] | None:
+    """Compute updated `{client,server}_side.rs` content without writing to disk."""
     side_file = root / "crates/sunrise-client/src/game" / f"{SIDE_MOD_NAME[side]}.rs"
     if not side_file.is_file():
         return None
     old_txt = side_file.read_text(encoding="utf-8")
     items = parse_rust_items(old_txt, side_file)
 
-    # Remove all existing mirror mod declarations (excluding regular modules in game_module_sides.tsv)
     edits: list[tuple[int, int, str]] = []
     for it in items:
         if it.kind == "mod_ext" and it.name not in regular_names:
@@ -1274,10 +2180,8 @@ def sync_side_file_mirror_decls(
                 edits.append((it.start, it.end, ""))
     cleaned = apply_edits(old_txt, edits)
 
-    # Re-insert expected mirror declarations alphabetically right before `struct {Client,Server}State`
     if expected_decls:
         struct_kw = "struct ClientState" if side == "client" else "struct ServerState"
-        # Find the struct declaration start (including preceding attrs/docs)
         c_items = parse_rust_items(cleaned, side_file)
         insert_at = None
         for it in c_items:
@@ -1285,7 +2189,11 @@ def sync_side_file_mirror_decls(
                 insert_at = it.start
                 break
         if insert_at is None:
-            raise SystemExit(f"{side_file}: could not locate `{struct_kw}`")
+            msg = f"{side_file}: could not locate `{struct_kw}`"
+            if errors is not None:
+                errors.append(msg)
+                return None
+            raise SystemExit(msg)
         block_lines: list[str] = []
         for mod_name in sorted(expected_decls):
             rel_path, cfgs = expected_decls[mod_name]
@@ -1301,6 +2209,20 @@ def sync_side_file_mirror_decls(
         new_txt = re.sub(r"\n{3,}", "\n\n", cleaned)
 
     if new_txt != old_txt:
+        return (side_file.resolve(), new_txt)
+    return None
+
+
+def sync_side_file_mirror_decls(
+    root: Path,
+    side: str,
+    expected_decls: dict[str, tuple[str, tuple[str, ...]]],
+    regular_names: set[str] | frozenset[str] = frozenset(),
+) -> Path | None:
+    """Update `<m>_<side>` declarations in `{client,server}_side.rs` and return path if changed."""
+    planned = plan_side_file_mirror_decls(root, side, expected_decls, regular_names)
+    if planned is not None:
+        side_file, new_txt = planned
         side_file.write_text(new_txt, encoding="utf-8")
         return side_file
     return None
@@ -1338,19 +2260,30 @@ def rewrite_root_pub_super_check(text: str) -> tuple[int, list[int]]:
 
 
 def build_selector_maps(
-    rows: dict[FnKey, FnRow], mod_sides: dict[str, str]
+    rows: dict[FnKey, FnRow], mod_sides: dict[str, str], *, errors: list[str] | None = None
 ) -> tuple[dict[str, str], dict[str, str], dict[str, set[str]]]:
-    """Return `(test_path_map, fnr_target_map, mod_mirror_test_sides)`.
-
-    `test_path_map`: exact `game::...::<fn>` (canonical or pre-move) -> `game::<side>_side::<top>_<side>...::<fn>`
-    `fnr_target_map`: exact `sunrise_client::game::...::<fn>` -> new path (for fn-replace-check/docs)
-    `mod_mirror_test_sides`: `top_module -> set of sides ('client','server') that have moved free/test fns`
-    """
+    """Return `(test_path_map, fnr_target_map, mod_mirror_test_sides)`, failing closed on split-side cfg conflicts."""
     test_map: dict[str, str] = {}
     fnr_map: dict[str, str] = {}
     mod_test_sides: dict[str, set[str]] = defaultdict(set)
+    errs = errors if errors is not None else []
+    seen_conflicts: set[tuple[str, str, str]] = set()
 
-    for row in rows.values():
+    def set_checked(mapping: dict[str, str], src: str, dst: str, label: str) -> None:
+        prev = mapping.get(src)
+        if prev is not None and prev != dst:
+            key = (label, src, min(prev, dst) + " vs " + max(prev, dst))
+            if key not in seen_conflicts:
+                seen_conflicts.add(key)
+                errs.append(f"conflicting {label} selector for `{src}`: `{prev}` vs `{dst}` (cfg variants map to different sides)")
+            return
+        mapping[src] = dst
+
+    sorted_rows = sorted(
+        rows.values(),
+        key=lambda r: (r.key.module, r.key.impl, r.key.name, r.key.cfg, r.side),
+    )
+    for row in sorted_rows:
         k = row.key
         top = row.top_module
         mod_side = mod_sides.get(top, "game") if top != "game" else "game"
@@ -1363,33 +2296,52 @@ def build_selector_maps(
             if k.impl == "-":
                 mod_test_sides[top].add(row.side)
                 for ov in orig_variants:
-                    test_map[f"{ov}::{k.name}"] = f"{new_mod}::{k.name}"
-                    fnr_map[f"sunrise_client::{ov}::{k.name}"] = f"sunrise_client::{new_mod}::{k.name}"
-                # Also map reverse/other-side mirror path for idempotency when rows change
+                    set_checked(test_map, f"{ov}::{k.name}", f"{new_mod}::{k.name}", "test")
+                    set_checked(fnr_map, f"sunrise_client::{ov}::{k.name}", f"sunrise_client::{new_mod}::{k.name}", "fn-replace")
                 other = "server" if row.side == "client" else "client"
                 other_mod = f"game::{mirror_mod_rel(k.module, top, other)}"
-                test_map[f"{other_mod}::{k.name}"] = f"{new_mod}::{k.name}"
+                set_checked(test_map, f"{other_mod}::{k.name}", f"{new_mod}::{k.name}", "test")
             else:
-                # Extract owner type from impl header
                 owner = impl_owner_for_target(k.impl)
                 if owner:
                     for ov in orig_variants:
-                        fnr_map[f"sunrise_client::{ov}::{owner}::{k.name}"] = f"sunrise_client::{new_mod}::{owner}::{k.name}"
+                        set_checked(
+                            fnr_map,
+                            f"sunrise_client::{ov}::{owner}::{k.name}",
+                            f"sunrise_client::{new_mod}::{owner}::{k.name}",
+                            "fn-replace",
+                        )
         else:
-            # Row stays in `game` (or `mod_side`): map stale mirror paths back to canonical location
             canon_mod = f"game::{SIDE_MOD_NAME[mod_side]}::{k.module}" if mod_side in ("client", "server") else base_orig
             if k.impl == "-":
+                for ov in orig_variants:
+                    set_checked(test_map, f"{ov}::{k.name}", f"{canon_mod}::{k.name}", "test")
+                    set_checked(fnr_map, f"sunrise_client::{ov}::{k.name}", f"sunrise_client::{canon_mod}::{k.name}", "fn-replace")
                 for s in ("client", "server"):
                     stale_mod = f"game::{mirror_mod_rel(k.module, top, s)}"
-                    test_map[f"{stale_mod}::{k.name}"] = f"{canon_mod}::{k.name}"
-                    fnr_map[f"sunrise_client::{stale_mod}::{k.name}"] = f"sunrise_client::{canon_mod}::{k.name}"
+                    set_checked(test_map, f"{stale_mod}::{k.name}", f"{canon_mod}::{k.name}", "test")
+                    set_checked(fnr_map, f"sunrise_client::{stale_mod}::{k.name}", f"sunrise_client::{canon_mod}::{k.name}", "fn-replace")
             else:
                 owner = impl_owner_for_target(k.impl)
                 if owner:
+                    for ov in orig_variants:
+                        set_checked(
+                            fnr_map,
+                            f"sunrise_client::{ov}::{owner}::{k.name}",
+                            f"sunrise_client::{canon_mod}::{owner}::{k.name}",
+                            "fn-replace",
+                        )
                     for s in ("client", "server"):
                         stale_mod = f"game::{mirror_mod_rel(k.module, top, s)}"
-                        fnr_map[f"sunrise_client::{stale_mod}::{owner}::{k.name}"] = f"sunrise_client::{canon_mod}::{owner}::{k.name}"
+                        set_checked(
+                            fnr_map,
+                            f"sunrise_client::{stale_mod}::{owner}::{k.name}",
+                            f"sunrise_client::{canon_mod}::{owner}::{k.name}",
+                            "fn-replace",
+                        )
 
+    test_map = {k: v for k, v in test_map.items() if k != v}
+    fnr_map = {k: v for k, v in fnr_map.items() if k != v}
     return test_map, fnr_map, mod_test_sides
 
 
@@ -1463,15 +2415,28 @@ def rewrite_test_areas_for_mirrors(text: str, mod_test_sides: dict[str, set[str]
 
 
 def build_port_map_file_moves(
-    root: Path, rows: dict[FnKey, FnRow], mod_sides: dict[str, str]
+    root: Path, rows: dict[FnKey, FnRow], mod_sides: dict[str, str], *, errors: list[str] | None = None
 ) -> dict[tuple[str, str], str]:
-    """Return `(old_file_rel, fn_name) -> target_file_rel` for `tools/port_map/*.tsv` rows."""
+    """Return `(old_file_rel, fn_name) -> target_file_rel` for `tools/port_map/*.tsv` rows, failing closed on conflicts."""
     regular_mods, _ = parse_top_mod_decls(root, set(mod_sides))
     rows_by_top: dict[str, list[FnRow]] = defaultdict(list)
-    for row in rows.values():
+    for row in sorted(rows.values(), key=lambda r: (r.key.module, r.key.impl, r.key.name, r.key.cfg, r.side)):
         rows_by_top[row.top_module].append(row)
 
     moves: dict[tuple[str, str], str] = {}
+    errs = errors if errors is not None else []
+    seen_conflicts: set[tuple[str, str]] = set()
+
+    def set_move(src_rel: str, fn_name: str, dest: str) -> None:
+        key = (src_rel, fn_name)
+        prev = moves.get(key)
+        if prev is not None and prev != dest:
+            if key not in seen_conflicts:
+                seen_conflicts.add(key)
+                errs.append(f"conflicting port_map move for `{src_rel}::{fn_name}`: `{prev}` vs `{dest}`")
+            return
+        moves[key] = dest
+
     for top_name, top_rows in sorted(rows_by_top.items()):
         resolved = resolve_top_entry(root, top_name, regular_mods)
         if resolved is None:
@@ -1486,11 +2451,10 @@ def build_port_map_file_moves(
                 collect_nodes(ch)
 
         collect_nodes(tree)
-        # Collect staying fn names per file so we never rewrite a name that still exists in the original file.
         staying_by_file: dict[str, set[str]] = defaultdict(set)
         orig_fns = collect_tree_functions(tree)
         desired = {r.key: r.side for r in top_rows}
-        for k, (_n, fpath, _fsrc, _it, _pi) in orig_fns.items():
+        for k, (_n, fpath, _fsrc, _it, _pi, _fc) in orig_fns.items():
             if desired.get(k, "game") == "game":
                 staying_by_file[fpath.resolve().relative_to(root).as_posix()].add(k.name)
 
@@ -1500,7 +2464,7 @@ def build_port_map_file_moves(
                 continue
             for n in nodes:
                 orig_main_rel = n.file_path.resolve().relative_to(root).as_posix()
-                orig_all_rels = [orig_main_rel, *(fp.resolve().relative_to(root).as_posix() for fp, _, _ in n.extra_files)]
+                orig_all_rels = [orig_main_rel, *(fp.resolve().relative_to(root).as_posix() for fp, _, _, _ in n.extra_files)]
                 c_rel = mirror_file_path(n.file_path, "client").resolve().relative_to(root).as_posix()
                 s_rel = mirror_file_path(n.file_path, "server").resolve().relative_to(root).as_posix()
                 fn_name = row.key.name
@@ -1509,17 +2473,42 @@ def build_port_map_file_moves(
                     other = s_rel if row.side == "client" else c_rel
                     for src_rel in (*orig_all_rels, other):
                         if src_rel != dest and fn_name not in staying_by_file.get(src_rel, set()):
-                            moves[(src_rel, fn_name)] = dest
+                            set_move(src_rel, fn_name, dest)
                 else:
                     for stale_rel in (c_rel, s_rel):
                         if stale_rel != orig_main_rel:
-                            moves[(stale_rel, fn_name)] = orig_main_rel
+                            set_move(stale_rel, fn_name, orig_main_rel)
     return moves
 
 
-def selector_targets(root: Path, rows: dict[FnKey, FnRow], mod_sides: dict[str, str]) -> list[tuple[Path, str]]:
+def selector_targets(
+    root: Path,
+    rows: dict[FnKey, FnRow],
+    mod_sides: dict[str, str],
+    *,
+    planned_writes: dict[Path, str] | None = None,
+    planned_deletes: set[Path] | None = None,
+    errors: list[str] | None = None,
+) -> list[tuple[Path, str]]:
     """Return `[(path, expected_content)]` for every selector file that would change."""
-    test_map, fnr_map, mod_test_sides = build_selector_maps(rows, mod_sides)
+    pw = {p.resolve(): txt for p, txt in (planned_writes or {}).items()}
+    pd = {p.resolve() for p in (planned_deletes or set())}
+
+    def v_exists(p: Path) -> bool:
+        rp = p.resolve()
+        if rp in pw:
+            return True
+        if rp in pd:
+            return False
+        return rp.is_file()
+
+    def v_read(p: Path, *, replace_errors: bool = False) -> str:
+        rp = p.resolve()
+        if rp in pw:
+            return pw[rp]
+        return rp.read_text(encoding="utf-8", errors="replace" if replace_errors else "strict")
+
+    test_map, fnr_map, mod_test_sides = build_selector_maps(rows, mod_sides, errors=errors)
     test_pat = re.compile(r"(?<![A-Za-z0-9_:])game::[A-Za-z0-9_:]+")
     fnr_pat = re.compile(r"sunrise_client::game::[A-Za-z0-9_:<>', ]+::[A-Za-z0-9_]+")
     updates: list[tuple[Path, str]] = []
@@ -1527,7 +2516,7 @@ def selector_targets(root: Path, rows: dict[FnKey, FnRow], mod_sides: dict[str, 
     ignored_dir = root / "tools/ci/ignored-tests"
     if ignored_dir.is_dir():
         for p in sorted(ignored_dir.glob("*.txt")):
-            old = p.read_text(encoding="utf-8")
+            old = v_read(p)
             out_lines = []
             for ln in old.splitlines(keepends=True):
                 st = ln.lstrip()
@@ -1543,8 +2532,8 @@ def selector_targets(root: Path, rows: dict[FnKey, FnRow], mod_sides: dict[str, 
             if new != old:
                 updates.append((p, new))
         readme = ignored_dir / "README.md"
-        if readme.is_file():
-            old = readme.read_text(encoding="utf-8")
+        if v_exists(readme):
+            old = v_read(readme)
             if "game::" in old:
                 new = rewrite_exact_map(rewrite_exact_map(old, fnr_map, fnr_pat), test_map, test_pat)
                 if new != old:
@@ -1553,7 +2542,7 @@ def selector_targets(root: Path, rows: dict[FnKey, FnRow], mod_sides: dict[str, 
     ci_dir = root / "tools/ci"
     if ci_dir.is_dir():
         for p in sorted(ci_dir.glob("daily-move-*.tsv")):
-            old = p.read_text(encoding="utf-8")
+            old = v_read(p)
             out_lines = []
             for ln in old.splitlines(keepends=True):
                 st = ln.lstrip()
@@ -1573,8 +2562,8 @@ def selector_targets(root: Path, rows: dict[FnKey, FnRow], mod_sides: dict[str, 
                 updates.append((p, new))
 
     exc_path = root / "tools/ci/ignored-test-exceptions.json"
-    if exc_path.is_file():
-        old = exc_path.read_text(encoding="utf-8")
+    if v_exists(exc_path):
+        old = v_read(exc_path)
         data = json.loads(old)
         changed = False
         for entry in data:
@@ -1589,14 +2578,14 @@ def selector_targets(root: Path, rows: dict[FnKey, FnRow], mod_sides: dict[str, 
     tools_dir = root / "tools"
     if tools_dir.is_dir():
         for p in sorted(tools_dir.glob("test_*_parity.py")):
-            old = p.read_text(encoding="utf-8")
+            old = v_read(p)
             new = rewrite_exact_map(old, test_map, test_pat)
             if new != old:
                 updates.append((p, new))
 
     areas_path = root / "tools/test_areas.toml"
-    if areas_path.is_file():
-        old = areas_path.read_text(encoding="utf-8")
+    if v_exists(areas_path):
+        old = v_read(areas_path)
         new = rewrite_test_areas_for_mirrors(old, mod_test_sides, test_map)
         if new != old:
             updates.append((areas_path, new))
@@ -1604,14 +2593,14 @@ def selector_targets(root: Path, rows: dict[FnKey, FnRow], mod_sides: dict[str, 
     fnr_dir = root / "tools/ci/fn-replace-check"
     if fnr_dir.is_dir():
         for p in sorted(fnr_dir.rglob("sunrise-mod.toml")):
-            old = p.read_text(encoding="utf-8")
+            old = v_read(p)
             new = rewrite_exact_map(old, fnr_map, fnr_pat)
             if new != old:
                 updates.append((p, new))
 
     draw_test = root / "crates/cargo-sunrise-mod/tests/installed_client_draw.rs"
-    if draw_test.is_file():
-        old = draw_test.read_text(encoding="utf-8")
+    if v_exists(draw_test):
+        old = v_read(draw_test)
         new = rewrite_exact_map(old, fnr_map, fnr_pat)
         if new != old:
             updates.append((draw_test, new))
@@ -1621,7 +2610,7 @@ def selector_targets(root: Path, rows: dict[FnKey, FnRow], mod_sides: dict[str, 
         for p in sorted(docs_dir.rglob("*.md")):
             if p.relative_to(root).as_posix() == "docs/modding/src/how-to/native-mods/16-repinning-side-module-targets.md":
                 continue
-            old = p.read_text(encoding="utf-8", errors="replace")
+            old = v_read(p, replace_errors=True)
             if "game::" not in old:
                 continue
             new = rewrite_exact_map(rewrite_exact_map(old, fnr_map, fnr_pat), test_map, test_pat)
@@ -1632,17 +2621,17 @@ def selector_targets(root: Path, rows: dict[FnKey, FnRow], mod_sides: dict[str, 
     if port_map_dir.is_dir():
         known_stale: set[tuple[str, str, str]] = set()
         stale_file = root / "tools/ci/port_map_known_stale.txt"
-        if stale_file.is_file():
-            for ln in stale_file.read_text(encoding="utf-8").splitlines():
+        if v_exists(stale_file):
+            for ln in v_read(stale_file).splitlines():
                 if ln.strip() and not ln.lstrip().startswith("#"):
                     parts = ln.split("\t")
                     if len(parts) >= 3:
                         known_stale.add((parts[0], parts[1], parts[2]))
-        port_moves = build_port_map_file_moves(root, rows, mod_sides)
-        if port_moves:
+        port_moves = build_port_map_file_moves(root, rows, mod_sides, errors=errors)
+        if port_moves or pd:
             for p in sorted(port_map_dir.glob("*.tsv")):
                 rel_p = p.relative_to(root).as_posix()
-                old = p.read_text(encoding="utf-8")
+                old = v_read(p)
                 out_lines = []
                 for ln in old.splitlines(keepends=True):
                     st = ln.lstrip()
@@ -1660,9 +2649,9 @@ def selector_targets(root: Path, rows: dict[FnKey, FnRow], mod_sides: dict[str, 
                                 f_clean = file_.strip()
                                 fn_name = rest.rpartition("::")[2].strip()
                                 new_file = port_moves.get((f_clean, fn_name))
-                                if not new_file and not (root / f_clean).is_file():
+                                if not new_file and not v_exists(root / f_clean):
                                     base_f = re.sub(r"_(?:client|server)(?=\.rs$|/)", "", f_clean, count=1)
-                                    if base_f != f_clean and (root / base_f).is_file():
+                                    if base_f != f_clean and v_exists(root / base_f):
                                         new_file = base_f
                                 if new_file and new_file != f_clean:
                                     parts[2] = parts[2].replace(f"{file_}::", f"{new_file}::", 1)
@@ -1676,8 +2665,13 @@ def selector_targets(root: Path, rows: dict[FnKey, FnRow], mod_sides: dict[str, 
     game_dir = root / "crates/sunrise-client/src/game"
     if game_dir.is_dir() and test_map:
         lit_pat = re.compile(r'"(game::[A-Za-z0-9_:]+)"')
-        for p in sorted(game_dir.rglob("*.rs")):
-            old = p.read_text(encoding="utf-8")
+        rs_candidates = {p.resolve() for p in game_dir.rglob("*.rs")}
+        for p in pw:
+            if p.suffix == ".rs" and p.is_relative_to(game_dir.resolve()):
+                rs_candidates.add(p)
+        rs_candidates -= pd
+        for p in sorted(rs_candidates):
+            old = v_read(p)
             if '"game::' not in old:
                 continue
             new = lit_pat.sub(lambda m: f'"{test_map[m.group(1)]}"' if m.group(1) in test_map else m.group(0), old)
@@ -1699,45 +2693,379 @@ def run_rustfmt(paths: list[Path]) -> None:
         )
 
 
+def _collect_macros_for_placement(
+    orig_tree: ModNode,
+    mirror_trees: dict[str, ModNode | None],
+    placement: dict[FnKey, str],
+    fn_source_text: dict[FnKey, str],
+    *,
+    errors: list[str] | None = None,
+    root: Path | None = None,
+) -> tuple[
+    dict[tuple[str, tuple[str, ...], str], list[tuple[ParsedItem, str, Path]]],
+    dict[tuple[str, tuple[str, ...]], list[tuple[str, tuple[str, ...]]]],
+    dict[tuple[str, tuple[str, ...]], list[str]],
+]:
+    """Partition `macro_rules!` across `orig_tree` and `mirror_trees` for a given `placement`."""
+    moved_macros: dict[tuple[str, tuple[str, ...], str], list[tuple[ParsedItem, str, Path]]] = defaultdict(list)
+    staying_macros: dict[tuple[str, tuple[str, ...]], list[tuple[str, tuple[str, ...]]]] = defaultdict(list)
+    restored_macros: dict[tuple[str, tuple[str, ...]], list[str]] = defaultdict(list)
+
+    def collect_orig(node: ModNode) -> None:
+        nid = (node.orig_mod, node_cfg_chain(node))
+        if node.orig_mod != "game":
+            for fp, fsrc, fitems, fcfgs in node_all_fragments(node):
+                for it in fitems:
+                    if it.kind == "macro_rules":
+                        excl = macro_side_exclusive(node, it.name, placement)
+                        eff_cfgs = effective_attrs(it.cfg_attrs, fcfgs)
+                        if excl in ("client", "server"):
+                            extra_prefix = "".join(f"{c}\n" for c in fcfgs if c not in it.norm_attrs)
+                            moved_macros[(nid[0], nid[1], excl)].append((it, extra_prefix + fsrc[it.start : it.end], fp))
+                        else:
+                            staying_macros[nid].append((it.name, eff_cfgs))
+        for ch in node.children:
+            collect_orig(ch)
+
+    collect_orig(orig_tree)
+
+    def collect_mirror(mnode: ModNode, mside: str) -> None:
+        nid = (mnode.orig_mod, node_cfg_chain(mnode))
+        for fp, fsrc, fitems, fcfgs in node_all_fragments(mnode):
+            for it in fitems:
+                if it.kind == "macro_rules":
+                    pat = re.compile(rf"\b{re.escape(it.name)}\s*!")
+                    used_sides: set[str] = set()
+                    for kk, src_txt in fn_source_text.items():
+                        if kk.module == mnode.orig_mod or kk.module.startswith(mnode.orig_mod + "::"):
+                            if pat.search(src_txt):
+                                used_sides.add(placement.get(kk, "game"))
+                    eff_cfgs = effective_attrs(it.cfg_attrs, fcfgs)
+                    if used_sides == {"client"} or used_sides == {"server"}:
+                        target_s = next(iter(used_sides))
+                        extra_prefix = "".join(f"{c}\n" for c in fcfgs if c not in it.norm_attrs)
+                        moved_macros[(nid[0], nid[1], target_s)].append((it, extra_prefix + fsrc[it.start : it.end], fp))
+                    elif not used_sides:
+                        if errors is not None:
+                            errors.append(
+                                f"{_rel_str(fp, root)}:{it.start_line}: unused/hand-written `macro_rules! {it.name}` in mirror file"
+                            )
+                    else:
+                        restored_macros[nid].append(fsrc[it.start : it.end])
+                        staying_macros[nid].append((it.name, eff_cfgs))
+        for ch in mnode.children:
+            collect_mirror(ch, mside)
+
+    for mside in ("client", "server"):
+        if mirror_trees[mside] is not None:
+            collect_mirror(mirror_trees[mside], mside)  # type: ignore[arg-type]
+
+    return moved_macros, staying_macros, restored_macros
+
+
+def _render_mirror_tree(
+    orig_tree: ModNode,
+    side: str,
+    top_name: str,
+    parent_side: str,
+    regular_mods: dict[str, tuple[str, Path, tuple[str, ...]]],
+    placement: dict[FnKey, str],
+    orig_fns: dict[FnKey, tuple[ModNode, Path, str, ParsedItem, ParsedItem | None, tuple[str, ...]]],
+    mirror_fns: dict[str, dict[FnKey, tuple[ModNode, Path, str, ParsedItem, ParsedItem | None, tuple[str, ...]]]],
+    fn_source_text: dict[FnKey, str],
+    fn_node_id: dict[FnKey, tuple[str, tuple[str, ...]]],
+    trait_impl_source: dict[tuple[str, tuple[str, ...], str, tuple[str, ...]], tuple[str, str]],
+    impl_header_prefix: dict[tuple[str, tuple[str, ...], str, tuple[str, ...]], str],
+    moved_macros: dict[tuple[str, tuple[str, ...], str], list[tuple[ParsedItem, str, Path]]],
+    staying_macros: dict[tuple[str, tuple[str, ...]], list[tuple[str, tuple[str, ...]]]],
+    node_moved_fns: dict[tuple[str, tuple[str, ...], str], list[FnKey]],
+) -> dict[Path, str]:
+    """Render all mirror files for `(orig_tree, side)` in memory without writing to disk."""
+    rendered: dict[Path, str] = {}
+
+    def canon_orig_mod(orig_mod_rel: str) -> str:
+        if top_name == "game":
+            return f"crate::{orig_game_mod_path(orig_mod_rel)}"
+        if parent_side in ("client", "server"):
+            return f"crate::game::{SIDE_MOD_NAME[parent_side]}::{orig_mod_rel}"
+        return f"crate::game::{orig_mod_rel}"
+
+    def node_has_side(node: ModNode) -> bool:
+        nid = (node.orig_mod, node_cfg_chain(node))
+        if node_moved_fns.get((nid[0], nid[1], side)):
+            return True
+        return any(node_has_side(ch) for ch in node.children)
+
+    if not node_has_side(orig_tree):
+        return rendered
+
+    side_mod = SIDE_MOD_NAME[side]
+
+    def build_mirror(node: ModNode, anc_macros: list[tuple[str, str, tuple[str, ...]]]) -> str:
+        nid = (node.orig_mod, node_cfg_chain(node))
+        ncfgs = nid[1]
+        cmod = canon_orig_mod(node.orig_mod)
+        is_game_root = node.orig_mod == "game"
+        lines: list[str] = []
+        local_child_mods = {
+            it.name
+            for _fp, _fs, fitems, _fc in node_all_fragments(node)
+            for it in fitems
+            if it.kind in ("mod_ext", "mod_inline", "mod_include")
+        }
+        if is_game_root:
+            local_child_mods |= set(regular_mods) | SIDE_CONTAINERS
+        active_children = [ch for ch in node.children if node_has_side(ch)]
+
+        local_macro_names = {
+            it.name
+            for _fp, _fs, fitems, _fc in node_all_fragments(node)
+            for it in fitems
+            if it.kind == "macro_rules"
+        }
+        seen_uses: set[str] = set()
+        for _fp, fsrc, fitems, fcfgs in node_all_fragments(node):
+            frag_prefix = "".join(f"{c}\n" for c in fcfgs)
+            for it in fitems:
+                if it.kind == "use":
+                    if is_game_root and it.vis != "":
+                        continue
+                    norm_u = re.sub(r"\s+", "", it.name)
+                    if f"crate::game::{SIDE_MOD_NAME['client']}::{top_name}_client" in norm_u or f"crate::game::{SIDE_MOD_NAME['server']}::{top_name}_server" in norm_u:
+                        continue
+                    if norm_u in local_macro_names or (norm_u.startswith("self::") and norm_u[6:] in local_macro_names):
+                        continue
+                    rw_body = rewrite_use_stmt_for_mirror(
+                        fsrc[it.start : it.end], cmod, local_child_mods, side_mod, is_game_root=is_game_root
+                    ).rstrip() + "\n"
+                    extra_u_cfgs = "".join(f"{c}\n" for c in fcfgs if c not in it.cfg_attrs)
+                    rw = extra_u_cfgs + rw_body if extra_u_cfgs else rw_body
+                    if rw not in seen_uses:
+                        seen_uses.add(rw)
+                        lines.append(rw)
+            _ = frag_prefix
+
+        for mmod_canon, mname, mcfgs in anc_macros:
+            cfgs = "".join(f"{c}\n" for c in mcfgs)
+            lines.append(f"{cfgs}#[allow(unused_imports)]\npub(in crate::game::{side_mod}) use {mmod_canon}::{mname};\n")
+
+        lines.append(f"#[allow(unused_imports)]\npub(in crate::game::{side_mod}) use {cmod}::*;\n")
+
+        moved_macro_names = {
+            it.name
+            for s in ("client", "server")
+            for it, _txt, _fp in moved_macros.get((nid[0], nid[1], s), [])
+        }
+        moved_here_keys = set(node_moved_fns.get((nid[0], nid[1], side), []))
+        emitted_expl: set[tuple[str, tuple[str, ...]]] = set()
+        if not is_game_root:
+            for _fp, _fs, fitems, fcfgs in node_all_fragments(node):
+                eff_ncfgs = (*ncfgs, *fcfgs)
+                for it in fitems:
+                    eff_item_cfgs = effective_attrs(it.cfg_attrs, fcfgs)
+                    ekey = (it.name, eff_item_cfgs)
+                    if it.kind in ("struct", "enum", "type", "const", "static", "trait"):
+                        if ekey not in emitted_expl:
+                            emitted_expl.add(ekey)
+                            cfgs = "".join(f"{c}\n" for c in eff_item_cfgs)
+                            lines.append(f"{cfgs}#[allow(unused_imports)]\npub(in crate::game::{side_mod}) use {cmod}::{it.name};\n")
+                    elif it.kind == "macro_rules" and it.name not in moved_macro_names:
+                        if ekey not in emitted_expl:
+                            emitted_expl.add(ekey)
+                            cfgs = "".join(f"{c}\n" for c in eff_item_cfgs)
+                            lines.append(f"{cfgs}#[allow(unused_imports)]\npub(in crate::game::{side_mod}) use {cmod}::{it.name};\n")
+                    elif it.kind == "macro_invoc" and it.name == "thread_local":
+                        for sname, scfgs in thread_local_statics(_fs, it):
+                            eff_scfgs = effective_attrs(scfgs, fcfgs)
+                            skey = (sname, eff_scfgs)
+                            if skey not in emitted_expl:
+                                emitted_expl.add(skey)
+                                cfgs = "".join(f"{c}\n" for c in eff_scfgs)
+                                lines.append(f"{cfgs}#[allow(unused_imports)]\npub(in crate::game::{side_mod}) use {cmod}::{sname};\n")
+                    elif it.kind == "fn" and not it.is_test_attr:
+                        k = item_fn_key(node.orig_mod, it, None, eff_ncfgs)
+                        if k not in moved_here_keys and placement.get(k, "game") == "game" and ekey not in emitted_expl:
+                            emitted_expl.add(ekey)
+                            cfgs = "".join(f"{c}\n" for c in eff_item_cfgs)
+                            lines.append(f"{cfgs}#[allow(unused_imports)]\npub(in crate::game::{side_mod}) use {cmod}::{it.name};\n")
+
+        child_macros = list(anc_macros)
+        for mname, mcfgs in staying_macros.get(nid, []):
+            child_macros.append((cmod, mname, mcfgs))
+
+        for _mit, mtxt, _mfp in moved_macros.get((nid[0], nid[1], side), []):
+            lines.append("\n" + mtxt)
+
+        def emit_child_mod(ch: ModNode) -> None:
+            attr_prefix = "".join(f"{c}\n" for c in ch.cfg_attrs) + "".join(f"{a}\n" for a in ch.mod_attrs)
+            if ch.decl_kind == "out_of_line":
+                ch_file = mirror_file_path(ch.file_path, side)
+                ch_body = build_mirror(ch, child_macros)
+                rendered[ch_file.resolve()] = ch_body
+                rel_p = os.path.relpath(ch_file, mirror_file_path(node.file_path, side).parent).replace(os.sep, "/")
+                lines.append(f'\n{attr_prefix}#[path = "{rel_p}"]\npub(in crate::game) mod {ch.name};\n')
+            elif ch.decl_kind == "inline_include":
+                ch_file = mirror_file_path(ch.file_path, side)
+                ch_body = build_mirror(ch, child_macros)
+                rendered[ch_file.resolve()] = ch_body
+                rel_p = os.path.relpath(ch_file, mirror_file_path(node.file_path, side).parent).replace(os.sep, "/")
+                lines.append(f'\n{attr_prefix}pub(in crate::game) mod {ch.name} {{\n    include!("{rel_p}");\n}}\n')
+            elif ch.decl_kind == "inline":
+                ch_body = build_mirror(ch, child_macros)
+                lines.append(f"\n{attr_prefix}pub(in crate::game) mod {ch.name} {{\n{ch_body}}}\n")
+
+        for ch in active_children:
+            if not is_cfg_test_node(ch):
+                emit_child_mod(ch)
+
+        keys_here = sorted(moved_here_keys, key=lambda kk: (kk.impl, kk.name, kk.cfg))
+        free_keys = [kk for kk in keys_here if kk.impl == "-"]
+        methods_by_impl: dict[tuple[str, tuple[str, ...]], list[FnKey]] = defaultdict(list)
+        emitted_trait_impls: set[tuple[str, tuple[str, ...], str, tuple[str, ...]]] = set()
+
+        for kk in keys_here:
+            if kk.impl == "-":
+                continue
+            src_entry = orig_fns.get(kk) or mirror_fns["client"].get(kk) or mirror_fns["server"].get(kk)
+            assert src_entry is not None
+            pimpl = src_entry[4]
+            fcfgs = src_entry[5]
+            assert pimpl is not None
+            eff_iattrs = effective_attrs(pimpl.norm_attrs, fcfgs)
+            if pimpl.is_trait_impl:
+                tkey = (nid[0], nid[1], pimpl.impl_header, eff_iattrs)
+                if tkey not in emitted_trait_impls:
+                    emitted_trait_impls.add(tkey)
+                    lines.append("\n" + trait_impl_source[tkey][0])
+            else:
+                methods_by_impl[(pimpl.impl_header, eff_iattrs)].append(kk)
+
+        for kk in free_keys:
+            src_entry = orig_fns.get(kk) or mirror_fns["client"].get(kk) or mirror_fns["server"].get(kk)
+            assert src_entry is not None
+            it = src_entry[3]
+            lines.append(
+                "\n"
+                + rewrite_moved_fn_vis(
+                    fn_source_text[kk],
+                    is_trait_impl=False,
+                    is_test_fn=it.is_test_attr,
+                    is_game_root=is_game_root,
+                )
+            )
+
+        for (ihdr, iattrs), mkeys in sorted(methods_by_impl.items()):
+            ikey = (nid[0], nid[1], ihdr, iattrs)
+            prefix = impl_header_prefix[ikey]
+            lines.append("\n" + prefix + "\n")
+            for kk in mkeys:
+                src_entry = orig_fns.get(kk) or mirror_fns["client"].get(kk) or mirror_fns["server"].get(kk)
+                assert src_entry is not None
+                it = src_entry[3]
+                lines.append(
+                    rewrite_moved_fn_vis(
+                        fn_source_text[kk],
+                        is_trait_impl=False,
+                        is_test_fn=it.is_test_attr,
+                        is_game_root=is_game_root,
+                    )
+                )
+            lines.append("}\n")
+
+        for ch in active_children:
+            if is_cfg_test_node(ch):
+                emit_child_mod(ch)
+
+        return "".join(lines)
+
+    root_mirror_file = mirror_file_path(orig_tree.file_path, side)
+    rendered[root_mirror_file.resolve()] = build_mirror(orig_tree, [])
+    return rendered
+
+
+def _capture_fn_sources(
+    orig_fns: dict[FnKey, tuple[ModNode, Path, str, ParsedItem, ParsedItem | None, tuple[str, ...]]],
+    mirror_fns: dict[str, dict[FnKey, tuple[ModNode, Path, str, ParsedItem, ParsedItem | None, tuple[str, ...]]]],
+    placement: dict[FnKey, str],
+    errors: list[str],
+    *,
+    check_trait_consistency: bool = True,
+) -> tuple[
+    dict[FnKey, str],
+    dict[FnKey, tuple[str, tuple[str, ...]]],
+    dict[tuple[str, tuple[str, ...], str, tuple[str, ...]], tuple[str, str]],
+    dict[tuple[str, tuple[str, ...], str, tuple[str, ...]], str],
+]:
+    fn_source_text: dict[FnKey, str] = {}
+    fn_node_id: dict[FnKey, tuple[str, tuple[str, ...]]] = {}
+    trait_impl_source: dict[tuple[str, tuple[str, ...], str, tuple[str, ...]], tuple[str, str]] = {}
+    impl_header_prefix: dict[tuple[str, tuple[str, ...], str, tuple[str, ...]], str] = {}
+
+    for _loc, fdict in [("game", orig_fns), ("client", mirror_fns["client"]), ("server", mirror_fns["server"])]:
+        for k, (n, _fp, fsrc, it, pimpl, fcfgs) in fdict.items():
+            nid = (n.orig_mod, node_cfg_chain(n))
+            raw_fn = fsrc[it.start : it.end]
+            if pimpl is None and fcfgs:
+                extra_fn_cfgs = "".join(f"{c}\n" for c in fcfgs if c not in it.norm_attrs)
+                raw_fn = extra_fn_cfgs + raw_fn
+            fn_source_text[k] = raw_fn
+            fn_node_id[k] = nid
+            if pimpl is not None:
+                eff_iattrs = effective_attrs(pimpl.norm_attrs, fcfgs)
+                ikey = (nid[0], nid[1], pimpl.impl_header, eff_iattrs)
+                extra_impl_cfgs = "".join(f"{c}\n" for c in fcfgs if c not in pimpl.norm_attrs)
+                impl_header_prefix.setdefault(ikey, extra_impl_cfgs + fsrc[pimpl.start : pimpl.impl_open_brace + 1])
+                if pimpl.is_trait_impl:
+                    want = placement.get(k, "game")
+                    prev = trait_impl_source.get(ikey)
+                    if check_trait_consistency and prev is not None and prev[1] != want:
+                        errors.append(
+                            f"trait impl `{pimpl.impl_header}` in `{n.orig_mod}` has mixed sides ({prev[1]} vs {want})"
+                        )
+                    trait_impl_source[ikey] = (extra_impl_cfgs + fsrc[pimpl.start : pimpl.end], want)
+
+    return fn_source_text, fn_node_id, trait_impl_source, impl_header_prefix
+
+
 def run_fix(root: Path, rows: dict[FnKey, FnRow], mod_sides: dict[str, str], *, fmt: bool) -> int:
     game_dir = root / "crates/sunrise-client/src/game"
     regular_names = set(mod_sides)
-    regular_mods, existing_mirrors = parse_top_mod_decls(root, regular_names)
+    errors: list[str] = []
+    all_regular_entries: list[Path] = []
+    regular_mods, existing_mirrors = parse_top_mod_decls(
+        root, regular_names, errors=errors, all_regular_entries=all_regular_entries
+    )
+    check_orphan_mirror_files(root, regular_mods, all_regular_entries, existing_mirrors, errors)
+
+    game_rs_path = root / "crates/sunrise-client/src/game.rs"
+    game_root_tree = build_mod_tree("game", game_rs_path.resolve()) if game_rs_path.is_file() else None
 
     rows_by_top: dict[str, dict[FnKey, FnRow]] = defaultdict(dict)
     for k, r in rows.items():
         rows_by_top[r.top_module][k] = r
 
-    # Include any module that currently has a mirror declared even if its table rows moved back to `game`
     touched_tops = sorted(
         set(rows_by_top)
         | {m[: -len(f"_{s}")] for s in ("client", "server") for m in existing_mirrors[s]}
     )
 
-    changed_rs: list[Path] = []
+    planned_writes: dict[Path, str] = {}
+    planned_deletes: set[Path] = set()
     expected_side_decls: dict[str, dict[str, tuple[str, tuple[str, ...]]]] = {"client": {}, "server": {}}
     moved_counts = {"client": 0, "server": 0}
-    files_created = 0
-    files_deleted = 0
 
     for top_name in touched_tops:
         resolved = resolve_top_entry(root, top_name, regular_mods)
         if resolved is None:
-            print(f"error: top-level module `{top_name}` in game_fn_sides.tsv is not declared in game", file=sys.stderr)
-            return 1
+            errors.append(f"top-level module `{top_name}` in game_fn_sides.tsv is not declared in game")
+            continue
         parent_side, entry_file, top_cfg = resolved
-        orig_tree = build_mod_tree(top_name, entry_file, top_cfg)
-        orig_fns = collect_tree_functions(orig_tree)
-
-        def canon_orig_mod(orig_mod_rel: str) -> str:
-            if top_name == "game":
-                return f"crate::{orig_game_mod_path(orig_mod_rel)}"
-            if parent_side in ("client", "server"):
-                return f"crate::game::{SIDE_MOD_NAME[parent_side]}::{orig_mod_rel}"
-            return f"crate::game::{orig_mod_rel}"
+        top_errors_before = len(errors)
+        orig_tree = build_mod_tree(top_name, entry_file, top_cfg, errors=errors, root=root)
+        orig_fns = collect_tree_functions(orig_tree, dup_errors=errors, root=root)
 
         mirror_trees: dict[str, ModNode | None] = {"client": None, "server": None}
-        mirror_fns: dict[str, dict[FnKey, tuple[ModNode, Path, str, ParsedItem, ParsedItem | None]]] = {
+        mirror_fns: dict[str, dict[FnKey, tuple[ModNode, Path, str, ParsedItem, ParsedItem | None, tuple[str, ...]]]] = {
             "client": {},
             "server": {},
         }
@@ -1746,106 +3074,147 @@ def run_fix(root: Path, rows: dict[FnKey, FnRow], mod_sides: dict[str, str], *, 
             mname = f"{top_name}_{side}"
             if mname in existing_mirrors[side]:
                 mentry, mcfg = existing_mirrors[side][mname]
-                mtree = build_mod_tree(top_name, mentry, mcfg)
-                mirror_trees[side] = mtree
-                mirror_fns[side] = collect_tree_functions(mtree)
-                old_mirror_files[side] = collect_mirror_files(mentry)
+                if mentry.is_file():
+                    mtree = build_mod_tree(top_name, mentry, mcfg, errors=errors, root=root, is_mirror=True)
+                    mirror_trees[side] = mtree
+                    mirror_fns[side] = collect_tree_functions(mtree, dup_errors=errors, root=root)
+                    old_mirror_files[side] = collect_mirror_files(mentry)
 
         top_rows = rows_by_top.get(top_name, {})
         desired_side: dict[FnKey, str] = {k: r.side for k, r in top_rows.items()}
 
-        # Validate every table row exists somewhere, and no stray functions sit in existing mirrors
+        validate_top_overlaps_and_cfg_attr(top_rows, orig_fns, mirror_fns, errors, root=root)
+
         all_known_keys = set(orig_fns) | set(mirror_fns["client"]) | set(mirror_fns["server"])
-        for k, r in top_rows.items():
+        for k, _r in top_rows.items():
             if k not in all_known_keys:
-                print(f"error: table row `{k.module}::{k.impl}::{k.name}` ({k.cfg}) not found in `{top_name}`", file=sys.stderr)
-                return 1
+                errors.append(f"table row `{k.module}::{k.impl}::{k.name}` ({k.cfg}) not found in `{top_name}`")
         for side in ("client", "server"):
             if side == parent_side:
                 continue
-            for k in mirror_fns[side]:
+            for k in sorted(mirror_fns[side], key=lambda x: (x.module, x.impl, x.name, x.cfg)):
                 if k not in top_rows:
-                    print(f"error: unlisted function `{k.module}::{k.name}` in `{top_name}_{side}`", file=sys.stderr)
-                    return 1
+                    errors.append(f"unlisted function `{k.module}::{k.name}` in `{top_name}_{side}`")
 
-        # Capture source text of every function (from wherever it currently lives!) and trait impls
-        fn_source_text: dict[FnKey, str] = {}
-        fn_node_id: dict[FnKey, tuple[str, tuple[str, ...]]] = {}
-        trait_impl_source: dict[tuple[str, tuple[str, ...], str, tuple[str, ...]], tuple[str, str]] = {}
-        impl_header_prefix: dict[tuple[str, tuple[str, ...], str, tuple[str, ...]], str] = {}
+        # Validate existing mirror files contain only tool-generated content before modifying anything
+        if len(errors) == top_errors_before:
+            current_placement: dict[FnKey, str] = {}
+            for k in orig_fns:
+                current_placement[k] = "game"
+            for side in ("client", "server"):
+                for k in mirror_fns[side]:
+                    current_placement[k] = side
+            cur_fn_src, cur_fn_nid, cur_trait_src, cur_impl_pref = _capture_fn_sources(
+                orig_fns, mirror_fns, current_placement, errors, check_trait_consistency=False
+            )
+            cur_moved_macros, cur_staying_macros, _cur_restored = _collect_macros_for_placement(
+                orig_tree, mirror_trees, current_placement, cur_fn_src, errors=errors, root=root
+            )
+            cur_node_moved: dict[tuple[str, tuple[str, ...], str], list[FnKey]] = defaultdict(list)
+            for side in ("client", "server"):
+                for k in mirror_fns[side]:
+                    nid = cur_fn_nid[k]
+                    cur_node_moved[(nid[0], nid[1], side)].append(k)
+            for side in ("client", "server"):
+                if mirror_trees[side] is None:
+                    continue
+                expected_cur = _render_mirror_tree(
+                    orig_tree,
+                    side,
+                    top_name,
+                    parent_side,
+                    regular_mods,
+                    current_placement,
+                    orig_fns,
+                    mirror_fns,
+                    cur_fn_src,
+                    cur_fn_nid,
+                    cur_trait_src,
+                    cur_impl_pref,
+                    cur_moved_macros,
+                    cur_staying_macros,
+                    cur_node_moved,
+                )
+                for mf in sorted(old_mirror_files[side]):
+                    if mf not in expected_cur:
+                        errors.append(f"{_rel_str(mf, root)}: unexpected mirror file not generated by tool")
+                    else:
+                        errors.extend(
+                            diff_mirror_file(
+                                _rel_str(mf, root),
+                                mf.read_text(encoding="utf-8"),
+                                expected_cur[mf],
+                                allow_reorder_methods=True,
+                            )
+                        )
 
-        for _loc, fdict in [("game", orig_fns), ("client", mirror_fns["client"]), ("server", mirror_fns["server"])]:
-            for k, (n, _fp, fsrc, it, pimpl) in fdict.items():
-                nid = (n.orig_mod, node_cfg_chain(n))
-                fn_source_text[k] = fsrc[it.start : it.end]
-                fn_node_id[k] = nid
-                if pimpl is not None:
-                    ikey = (nid[0], nid[1], pimpl.impl_header, pimpl.cfg_attrs)
-                    impl_header_prefix.setdefault(ikey, fsrc[pimpl.start : pimpl.impl_open_brace + 1])
-                    if pimpl.is_trait_impl:
-                        want = desired_side.get(k, "game")
-                        prev = trait_impl_source.get(ikey)
-                        if prev is not None and prev[1] != want:
-                            print(f"error: trait impl `{pimpl.impl_header}` in `{n.orig_mod}` has mixed sides ({prev[1]} vs {want})", file=sys.stderr)
-                            return 1
-                        trait_impl_source[ikey] = (fsrc[pimpl.start : pimpl.end], want)
+        if len(errors) > top_errors_before:
+            continue
 
-        # Map each (orig_mod, node_cfg_chain) -> its moved functions per side
+        fn_source_text, fn_node_id, trait_impl_source, impl_header_prefix = _capture_fn_sources(
+            orig_fns, mirror_fns, desired_side, errors, check_trait_consistency=True
+        )
+        if len(errors) > top_errors_before:
+            continue
+
+        orig_node_by_nid: dict[tuple[str, tuple[str, ...]], ModNode] = {}
+
+        def index_orig_nodes(n: ModNode) -> None:
+            orig_node_by_nid[(n.orig_mod, node_cfg_chain(n))] = n
+            for ch in n.children:
+                index_orig_nodes(ch)
+
+        index_orig_nodes(orig_tree)
+
+        macro_trees = [orig_tree, *(t for t in mirror_trees.values() if t is not None)]
+        if game_root_tree is not None and top_name != "game":
+            macro_trees.append(game_root_tree)
+        sensitive_macros = collect_location_sensitive_macros(macro_trees)
+
         node_moved_fns: dict[tuple[str, tuple[str, ...], str], list[FnKey]] = defaultdict(list)
-        for k, r in top_rows.items():
+        for k, r in sorted(top_rows.items(), key=lambda kv: (kv[0].module, kv[0].impl, kv[0].name, kv[0].cfg)):
             if r.side in ("client", "server"):
                 nid = fn_node_id[k]
                 node_moved_fns[(nid[0], nid[1], r.side)].append(k)
                 moved_counts[r.side] += 1
+                src_entry = orig_fns.get(k) or mirror_fns["client"].get(k) or mirror_fns["server"].get(k)
+                assert src_entry is not None
+                src_fp, src_it, src_pimpl = src_entry[1], src_entry[3], src_entry[4]
+                check_txt = fn_source_text[k]
+                loc_hits = find_location_macro_uses(check_txt, sensitive_macros)
+                if loc_hits:
+                    errors.append(
+                        f"{_rel_str(src_fp, root)}:{src_it.start_line}: moved function `{k.module}::{k.name}` uses location-sensitive macro(s) {', '.join(loc_hits)}"
+                    )
+                orig_node = orig_node_by_nid.get(nid)
+                if orig_node is not None:
+                    dest_file = mirror_file_path(orig_node.file_path, r.side).resolve()
+                    if src_fp.resolve().parent != dest_file.parent:
+                        inc_hits = find_relative_includes_in_src(check_txt)
+                        if inc_hits:
+                            errors.append(
+                                f"{_rel_str(src_fp, root)}:{src_it.start_line}: moved function `{k.module}::{k.name}` uses {', '.join(inc_hits)} and moving to `{_rel_str(dest_file, root)}` changes directory"
+                            )
+                _ = src_pimpl
 
-        # Determine side-exclusive macro_rules! per node (checking both orig and existing mirrors)
-        moved_macros: dict[tuple[str, tuple[str, ...], str], list[tuple[ParsedItem, str]]] = defaultdict(list)
-        staying_macros: dict[tuple[str, tuple[str, ...]], list[tuple[str, tuple[str, ...]]]] = defaultdict(list)
-        restored_macros: dict[tuple[str, tuple[str, ...]], list[str]] = defaultdict(list)
+        moved_macros, staying_macros, restored_macros = _collect_macros_for_placement(
+            orig_tree, mirror_trees, desired_side, fn_source_text, errors=errors, root=root
+        )
+        for (m_mod, m_cfgs, m_side), mlist in moved_macros.items():
+            orig_node = orig_node_by_nid.get((m_mod, m_cfgs))
+            if orig_node is None:
+                continue
+            dest_file = mirror_file_path(orig_node.file_path, m_side).resolve()
+            for mit, mtxt, mfp in mlist:
+                if mfp.resolve().parent != dest_file.parent:
+                    inc_hits = find_relative_includes_in_src(mtxt)
+                    if inc_hits:
+                        errors.append(
+                            f"{_rel_str(mfp, root)}:{mit.start_line}: moved `macro_rules! {mit.name}` uses {', '.join(inc_hits)} and moving to `{_rel_str(dest_file, root)}` changes directory"
+                        )
 
-        def collect_macros(node: ModNode) -> None:
-            nid = (node.orig_mod, node_cfg_chain(node))
-            # Macros in `game.rs` stay in `game.rs` so the rest of the crate (including mirrors) sees them lexically.
-            if node.orig_mod != "game":
-                for _fp, fsrc, fitems in node_all_fragments(node):
-                    for it in fitems:
-                        if it.kind == "macro_rules":
-                            excl = macro_side_exclusive(node, it.name, desired_side)
-                            if excl in ("client", "server"):
-                                moved_macros[(nid[0], nid[1], excl)].append((it, fsrc[it.start : it.end]))
-                            else:
-                                staying_macros[nid].append((it.name, it.cfg_attrs))
-            for ch in node.children:
-                collect_macros(ch)
-
-        collect_macros(orig_tree)
-
-        def collect_mirror_macros(mnode: ModNode, mside: str) -> None:
-            nid = (mnode.orig_mod, node_cfg_chain(mnode))
-            for _fp, fsrc, fitems in node_all_fragments(mnode):
-                for it in fitems:
-                    if it.kind == "macro_rules":
-                        # Check whether all users are still exclusively on one side
-                        pat = re.compile(rf"\b{re.escape(it.name)}\s*!")
-                        used_sides: set[str] = set()
-                        for kk, src_txt in fn_source_text.items():
-                            if kk.module == mnode.orig_mod or kk.module.startswith(mnode.orig_mod + "::"):
-                                if pat.search(src_txt):
-                                    used_sides.add(desired_side.get(kk, "game"))
-                        if used_sides == {"client"} or used_sides == {"server"}:
-                            target_s = next(iter(used_sides))
-                            moved_macros[(nid[0], nid[1], target_s)].append((it, fsrc[it.start : it.end]))
-                        elif not used_sides:
-                            moved_macros[(nid[0], nid[1], mside)].append((it, fsrc[it.start : it.end]))
-                        else:
-                            restored_macros[nid].append(fsrc[it.start : it.end])
-                            staying_macros[nid].append((it.name, it.cfg_attrs))
-            for ch in mnode.children:
-                collect_mirror_macros(ch, mside)
-
-        for mside in ("client", "server"):
-            if mirror_trees[mside] is not None:
-                collect_mirror_macros(mirror_trees[mside], mside)  # type: ignore[arg-type]
+        if len(errors) > top_errors_before:
+            continue
 
         def node_has_side(node: ModNode, side: str) -> bool:
             nid = (node.orig_mod, node_cfg_chain(node))
@@ -1853,207 +3222,36 @@ def run_fix(root: Path, rows: dict[FnKey, FnRow], mod_sides: dict[str, str], *, 
                 return True
             return any(node_has_side(ch, side) for ch in node.children)
 
-        # 1. Generate mirror files for client and server
+        # 1. Stage mirror files for client and server
         for side in ("client", "server"):
-            new_files: set[Path] = set()
-            if node_has_side(orig_tree, side):
-                side_mod = SIDE_MOD_NAME[side]
-
-                def build_mirror(node: ModNode, anc_macros: list[tuple[str, str, tuple[str, ...]]]) -> str:
-                    nid = (node.orig_mod, node_cfg_chain(node))
-                    ncfgs = nid[1]
-                    cmod = canon_orig_mod(node.orig_mod)
-                    is_game_root = node.orig_mod == "game"
-                    lines: list[str] = []
-                    local_child_mods = {
-                        it.name
-                        for _fp, _fs, fitems in node_all_fragments(node)
-                        for it in fitems
-                        if it.kind in ("mod_ext", "mod_inline", "mod_include")
-                    }
-                    if is_game_root:
-                        # Re-exported child modules in `game.rs` (from `client_side`/`server_side`) also live in `crate::game`.
-                        local_child_mods |= set(regular_mods) | SIDE_CONTAINERS
-                    active_children = [ch for ch in node.children if node_has_side(ch, side)]
-
-                    # Copy `use` statements from orig node + root_include fragments
-                    local_macro_names = {
-                        it.name
-                        for _fp, _fs, fitems in node_all_fragments(node)
-                        for it in fitems
-                        if it.kind == "macro_rules"
-                    }
-                    seen_uses: set[str] = set()
-                    for _fp, fsrc, fitems in node_all_fragments(node):
-                        for it in fitems:
-                            if it.kind == "use":
-                                # In `game.rs`, `pub*` uses are already imported via `use crate::game::*;`.
-                                if is_game_root and it.vis != "":
-                                    continue
-                                norm_u = re.sub(r"\s+", "", it.name)
-                                if f"crate::game::{SIDE_MOD_NAME['client']}::{top_name}_client" in norm_u or f"crate::game::{SIDE_MOD_NAME['server']}::{top_name}_server" in norm_u:
-                                    continue
-                                if norm_u in local_macro_names or (norm_u.startswith("self::") and norm_u[6:] in local_macro_names):
-                                    continue
-                                rw = rewrite_use_stmt_for_mirror(
-                                    fsrc[it.start : it.end], cmod, local_child_mods, side_mod, is_game_root=is_game_root
-                                ).rstrip() + "\n"
-                                if rw not in seen_uses:
-                                    seen_uses.add(rw)
-                                    lines.append(rw)
-
-                    for mmod_canon, mname, mcfgs in anc_macros:
-                        cfgs = "".join(f"{c}\n" for c in mcfgs)
-                        lines.append(f"{cfgs}#[allow(unused_imports)]\npub(in crate::game::{side_mod}) use {mmod_canon}::{mname};\n")
-
-                    # Glob-import staying items from original module
-                    lines.append(f"#[allow(unused_imports)]\npub(in crate::game::{side_mod}) use {cmod}::*;\n")
-
-                    # Explicit imports for staying local items so they shadow `use super::*;` (not needed for `game.rs` root)
-                    moved_macro_names = {
-                        it.name
-                        for s in ("client", "server")
-                        for it, _ in moved_macros.get((nid[0], nid[1], s), [])
-                    }
-                    moved_here_keys = set(node_moved_fns.get((nid[0], nid[1], side), []))
-                    emitted_expl: set[tuple[str, tuple[str, ...]]] = set()
-                    if not is_game_root:
-                        for _fp, _fs, fitems in node_all_fragments(node):
-                            for it in fitems:
-                                ekey = (it.name, it.cfg_attrs)
-                                if it.kind in ("struct", "enum", "type", "const", "static", "trait"):
-                                    if ekey not in emitted_expl:
-                                        emitted_expl.add(ekey)
-                                        cfgs = "".join(f"{c}\n" for c in it.cfg_attrs)
-                                        lines.append(f"{cfgs}#[allow(unused_imports)]\npub(in crate::game::{side_mod}) use {cmod}::{it.name};\n")
-                                elif it.kind == "macro_rules" and it.name not in moved_macro_names:
-                                    if ekey not in emitted_expl:
-                                        emitted_expl.add(ekey)
-                                        cfgs = "".join(f"{c}\n" for c in it.cfg_attrs)
-                                        lines.append(f"{cfgs}#[allow(unused_imports)]\npub(in crate::game::{side_mod}) use {cmod}::{it.name};\n")
-                                elif it.kind == "macro_invoc" and it.name == "thread_local":
-                                    for sname, scfgs in thread_local_statics(_fs, it):
-                                        skey = (sname, scfgs)
-                                        if skey not in emitted_expl:
-                                            emitted_expl.add(skey)
-                                            cfgs = "".join(f"{c}\n" for c in scfgs)
-                                            lines.append(f"{cfgs}#[allow(unused_imports)]\npub(in crate::game::{side_mod}) use {cmod}::{sname};\n")
-                                elif it.kind == "fn" and not it.is_test_attr:
-                                    k = item_fn_key(node.orig_mod, it, None, ncfgs)
-                                    if k not in moved_here_keys and desired_side.get(k, "game") == "game" and ekey not in emitted_expl:
-                                        emitted_expl.add(ekey)
-                                        cfgs = "".join(f"{c}\n" for c in it.cfg_attrs)
-                                        lines.append(f"{cfgs}#[allow(unused_imports)]\npub(in crate::game::{side_mod}) use {cmod}::{it.name};\n")
-
-                    child_macros = list(anc_macros)
-                    for mname, mcfgs in staying_macros.get(nid, []):
-                        child_macros.append((cmod, mname, mcfgs))
-
-                    # Emit moved side-exclusive macro_rules!
-                    for _mit, mtxt in moved_macros.get((nid[0], nid[1], side), []):
-                        lines.append("\n" + mtxt)
-
-                    def emit_child_mod(ch: ModNode) -> None:
-                        cfgs = "".join(f"{c}\n" for c in ch.cfg_attrs)
-                        if ch.decl_kind == "out_of_line":
-                            ch_file = mirror_file_path(ch.file_path, side)
-                            ch_body = build_mirror(ch, child_macros)
-                            write_if_changed(ch_file, ch_body, changed_rs)
-                            new_files.add(ch_file.resolve())
-                            rel_p = os.path.relpath(ch_file, mirror_file_path(node.file_path, side).parent).replace(os.sep, "/")
-                            lines.append(f'\n{cfgs}#[path = "{rel_p}"]\npub(in crate::game) mod {ch.name};\n')
-                        elif ch.decl_kind == "inline_include":
-                            ch_file = mirror_file_path(ch.file_path, side)
-                            ch_body = build_mirror(ch, child_macros)
-                            write_if_changed(ch_file, ch_body, changed_rs)
-                            new_files.add(ch_file.resolve())
-                            rel_p = os.path.relpath(ch_file, mirror_file_path(node.file_path, side).parent).replace(os.sep, "/")
-                            lines.append(f'\n{cfgs}pub(in crate::game) mod {ch.name} {{\n    include!("{rel_p}");\n}}\n')
-                        elif ch.decl_kind == "inline":
-                            ch_body = build_mirror(ch, child_macros)
-                            lines.append(f"\n{cfgs}pub(in crate::game) mod {ch.name} {{\n{ch_body}}}\n")
-
-                    # 1. Non-test child mirror mods first
-                    for ch in active_children:
-                        if not is_cfg_test_node(ch):
-                            emit_child_mod(ch)
-
-                    # 2. Moved functions and impl blocks
-                    keys_here = sorted(moved_here_keys, key=lambda kk: (kk.impl, kk.name, kk.cfg))
-                    free_keys = [kk for kk in keys_here if kk.impl == "-"]
-                    methods_by_impl: dict[tuple[str, tuple[str, ...]], list[FnKey]] = defaultdict(list)
-                    emitted_trait_impls: set[tuple[str, tuple[str, ...], str, tuple[str, ...]]] = set()
-
-                    for kk in keys_here:
-                        if kk.impl == "-":
-                            continue
-                        src_entry = orig_fns.get(kk) or mirror_fns["client"].get(kk) or mirror_fns["server"].get(kk)
-                        assert src_entry is not None
-                        pimpl = src_entry[4]
-                        assert pimpl is not None
-                        if pimpl.is_trait_impl:
-                            tkey = (nid[0], nid[1], pimpl.impl_header, pimpl.cfg_attrs)
-                            if tkey not in emitted_trait_impls:
-                                emitted_trait_impls.add(tkey)
-                                lines.append("\n" + trait_impl_source[tkey][0])
-                        else:
-                            methods_by_impl[(pimpl.impl_header, pimpl.cfg_attrs)].append(kk)
-
-                    for kk in free_keys:
-                        src_entry = orig_fns.get(kk) or mirror_fns["client"].get(kk) or mirror_fns["server"].get(kk)
-                        assert src_entry is not None
-                        it = src_entry[3]
-                        lines.append(
-                            "\n"
-                            + rewrite_moved_fn_vis(
-                                fn_source_text[kk],
-                                is_trait_impl=False,
-                                is_test_fn=it.is_test_attr,
-                                is_game_root=is_game_root,
-                            )
-                        )
-
-                    for (ihdr, icfgs), mkeys in sorted(methods_by_impl.items()):
-                        ikey = (nid[0], nid[1], ihdr, icfgs)
-                        prefix = impl_header_prefix[ikey]
-                        lines.append("\n" + prefix + "\n")
-                        for kk in mkeys:
-                            src_entry = orig_fns.get(kk) or mirror_fns["client"].get(kk) or mirror_fns["server"].get(kk)
-                            assert src_entry is not None
-                            it = src_entry[3]
-                            lines.append(
-                                rewrite_moved_fn_vis(
-                                    fn_source_text[kk],
-                                    is_trait_impl=False,
-                                    is_test_fn=it.is_test_attr,
-                                    is_game_root=is_game_root,
-                                )
-                            )
-                        lines.append("}\n")
-
-                    # 3. #[cfg(test)] child mirror mods last (avoids clippy::items_after_test_module)
-                    for ch in active_children:
-                        if is_cfg_test_node(ch):
-                            emit_child_mod(ch)
-
-                    return "".join(lines)
-
+            rendered_files = _render_mirror_tree(
+                orig_tree,
+                side,
+                top_name,
+                parent_side,
+                regular_mods,
+                desired_side,
+                orig_fns,
+                mirror_fns,
+                fn_source_text,
+                fn_node_id,
+                trait_impl_source,
+                impl_header_prefix,
+                moved_macros,
+                staying_macros,
+                node_moved_fns,
+            )
+            new_files = set(rendered_files)
+            for mf_path, mf_body in rendered_files.items():
+                planned_writes[mf_path] = mf_body
+            if rendered_files:
                 root_mirror_file = mirror_file_path(orig_tree.file_path, side)
-                root_body = build_mirror(orig_tree, [])
-                if not root_mirror_file.is_file():
-                    files_created += 1
-                write_if_changed(root_mirror_file, root_body, changed_rs)
-                new_files.add(root_mirror_file.resolve())
                 rel_from_game = root_mirror_file.relative_to(game_dir).as_posix()
                 expected_side_decls[side][f"{top_name}_{side}"] = (rel_from_game, top_cfg)
-
-            # Delete obsolete mirror files from previous runs
             for stale in sorted(old_mirror_files[side] - new_files):
-                if stale.is_file():
-                    stale.unlink()
-                    files_deleted += 1
+                planned_deletes.add(stale.resolve())
 
-        # 2. Edit original tree (remove moved items, restore moved-back items, widen staying items)
+        # 2. Stage original tree edits
         edits_by_file: dict[Path, list[tuple[int, int, str]]] = defaultdict(list)
 
         def edit_orig_node(node: ModNode, parent_split: bool) -> None:
@@ -2063,34 +3261,36 @@ def run_fix(root: Path, rows: dict[FnKey, FnRow], mod_sides: dict[str, str], *, 
             node_split = node_has_side(node, "client") or node_has_side(node, "server")
             widen_super = (not is_game_root) and (node_split or parent_split)
 
-            # Functions moving back from mirror to this orig node
             restore_free: list[str] = []
             restore_methods: dict[tuple[str, tuple[str, ...]], list[str]] = defaultdict(list)
             restore_trait_impls: list[str] = []
             restored_tkeys: set[tuple[str, tuple[str, ...], str, tuple[str, ...]]] = set()
 
             for side in ("client", "server"):
-                for kk, (mn, _fp, _fsrc, it, pimpl) in mirror_fns[side].items():
+                for kk, (mn, _fp, _fsrc, it, pimpl, fcfgs) in mirror_fns[side].items():
                     if (mn.orig_mod, node_cfg_chain(mn)) != nid:
                         continue
                     if desired_side.get(kk, "game") == "game" and kk not in orig_fns:
                         if pimpl is None:
                             restore_free.append(fn_source_text[kk])
                         elif pimpl.is_trait_impl:
-                            tkey = (nid[0], nid[1], pimpl.impl_header, pimpl.cfg_attrs)
+                            eff_iattrs = effective_attrs(pimpl.norm_attrs, fcfgs)
+                            tkey = (nid[0], nid[1], pimpl.impl_header, eff_iattrs)
                             if tkey not in restored_tkeys:
                                 restored_tkeys.add(tkey)
                                 restore_trait_impls.append(trait_impl_source[tkey][0])
                         else:
-                            restore_methods[(pimpl.impl_header, pimpl.cfg_attrs)].append(fn_source_text[kk])
+                            eff_iattrs = effective_attrs(pimpl.norm_attrs, fcfgs)
+                            restore_methods[(pimpl.impl_header, eff_iattrs)].append(fn_source_text[kk])
 
             moved_macro_names_here = {
                 it.name
                 for s in ("client", "server")
-                for it, _ in moved_macros.get((nid[0], nid[1], s), [])
+                for it, _txt, _fp in moved_macros.get((nid[0], nid[1], s), [])
             }
 
-            for fpath, fsrc, fitems in node_all_fragments(node):
+            for fpath, fsrc, fitems, fcfgs in node_all_fragments(node):
+                eff_ncfgs = (*ncfgs, *fcfgs)
                 edits = edits_by_file[fpath]
                 existing_macro_uses = {
                     m.group(1)
@@ -2101,7 +3301,7 @@ def run_fix(root: Path, rows: dict[FnKey, FnRow], mod_sides: dict[str, str], *, 
                 }
                 for it in fitems:
                     if it.kind == "fn":
-                        kk = item_fn_key(node.orig_mod, it, None, ncfgs)
+                        kk = item_fn_key(node.orig_mod, it, None, eff_ncfgs)
                         want = desired_side.get(kk, "game")
                         if want in ("client", "server"):
                             if it.is_test_attr:
@@ -2127,11 +3327,11 @@ def run_fix(root: Path, rows: dict[FnKey, FnRow], mod_sides: dict[str, str], *, 
 
                     elif it.kind == "impl":
                         if it.is_trait_impl:
-                            sides = {desired_side.get(item_fn_key(node.orig_mod, ch, it, ncfgs), "game") for ch in it.children if ch.kind == "method"}
+                            sides = {desired_side.get(item_fn_key(node.orig_mod, ch, it, eff_ncfgs), "game") for ch in it.children if ch.kind == "method"}
                             if len(sides) == 1 and next(iter(sides)) in ("client", "server"):
                                 edits.append((it.start, it.end, ""))
                         else:
-                            moved_ch = [ch for ch in it.children if ch.kind == "method" and desired_side.get(item_fn_key(node.orig_mod, ch, it, ncfgs), "game") in ("client", "server")]
+                            moved_ch = [ch for ch in it.children if ch.kind == "method" and desired_side.get(item_fn_key(node.orig_mod, ch, it, eff_ncfgs), "game") in ("client", "server")]
                             stay_ch = [ch for ch in it.children if ch not in moved_ch]
                             if moved_ch and not stay_ch:
                                 edits.append((it.start, it.end, ""))
@@ -2225,7 +3425,6 @@ def run_fix(root: Path, rows: dict[FnKey, FnRow], mod_sides: dict[str, str], *, 
                             cfgs = "".join(f"{c}\n" for c in it.cfg_attrs)
                             edits.append((it.end, it.end, f"{cfgs}#[allow(unused_imports)]\npub(in crate::game) use {it.name};\n"))
 
-            # Append any functions or macros restored from mirror back to orig
             rest_macros_here = restored_macros.get(nid, [])
             if rest_macros_here or restore_free or restore_methods or restore_trait_impls:
                 chunks: list[str] = []
@@ -2233,8 +3432,8 @@ def run_fix(root: Path, rows: dict[FnKey, FnRow], mod_sides: dict[str, str], *, 
                     chunks.append("\n" + mtxt)
                 for txt in restore_free:
                     chunks.append("\n" + txt)
-                for (ihdr, icfgs), mlist in sorted(restore_methods.items()):
-                    prefix = impl_header_prefix[(nid[0], nid[1], ihdr, icfgs)]
+                for (ihdr, iattrs), mlist in sorted(restore_methods.items()):
+                    prefix = impl_header_prefix[(nid[0], nid[1], ihdr, iattrs)]
                     chunks.append("\n" + prefix + "\n" + "".join(mlist) + "}\n")
                 for txt in restore_trait_impls:
                     chunks.append("\n" + txt)
@@ -2255,24 +3454,48 @@ def run_fix(root: Path, rows: dict[FnKey, FnRow], mod_sides: dict[str, str], *, 
         for path, edits in sorted(edits_by_file.items()):
             if not edits:
                 continue
-            old = path.read_text(encoding="utf-8")
+            rp = path.resolve()
+            old = planned_writes.get(rp, rp.read_text(encoding="utf-8"))
             new = apply_edits(old, edits)
-            if new != old:
-                path.write_text(new, encoding="utf-8")
-                changed_rs.append(path)
+            if new != old or rp in planned_writes:
+                planned_writes[rp] = new
 
-    # 3. Sync mirror module declarations in client_side.rs and server_side.rs
+    # 3. Plan mirror module declarations in client_side.rs and server_side.rs
     for side in ("client", "server"):
-        changed = sync_side_file_mirror_decls(root, side, expected_side_decls[side], regular_names)
-        if changed is not None:
-            changed_rs.append(changed)
+        planned = plan_side_file_mirror_decls(root, side, expected_side_decls[side], regular_names, errors=errors)
+        if planned is not None:
+            planned_writes[planned[0]] = planned[1]
 
-    # 4. Rewrite test/parity/fn-replace/doc/Rust selectors
-    sel_updates = selector_targets(root, rows, mod_sides)
+    # 4. Plan test/parity/fn-replace/doc/Rust selector updates against the virtual post-edit tree
+    sel_updates = selector_targets(
+        root,
+        rows,
+        mod_sides,
+        planned_writes=planned_writes,
+        planned_deletes=planned_deletes,
+        errors=errors,
+    )
     for path, new_txt in sel_updates:
-        path.write_text(new_txt, encoding="utf-8")
-        if path.suffix == ".rs":
-            changed_rs.append(path)
+        planned_writes[path.resolve()] = new_txt
+
+    if errors:
+        for e in errors:
+            print(f"error: {e}", file=sys.stderr)
+        print(f"Refused --fix: {len(errors)} error(s); no files modified.", file=sys.stderr)
+        return 1
+
+    # Commit all deletes and writes only after every check passed
+    changed_rs: list[Path] = []
+    for stale in sorted(planned_deletes - set(planned_writes)):
+        if stale.is_file():
+            stale.unlink()
+
+    for path, content in sorted(planned_writes.items()):
+        if not path.is_file() or path.read_text(encoding="utf-8") != content:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(content, encoding="utf-8")
+            if path.suffix == ".rs":
+                changed_rs.append(path)
 
     if fmt and changed_rs:
         run_rustfmt(changed_rs)
@@ -2295,8 +3518,15 @@ def write_if_changed(path: Path, content: str, changed_rs: list[Path]) -> None:
 def run_check(root: Path, rows: dict[FnKey, FnRow], mod_sides: dict[str, str]) -> int:
     """Verify tree matches `tools/game_fn_sides.tsv` (fail closed)."""
     problems: list[str] = []
-    regular_mods, existing_mirrors = parse_top_mod_decls(root, set(mod_sides))
+    all_regular_entries: list[Path] = []
+    regular_mods, existing_mirrors = parse_top_mod_decls(
+        root, set(mod_sides), errors=problems, all_regular_entries=all_regular_entries
+    )
+    check_orphan_mirror_files(root, regular_mods, all_regular_entries, existing_mirrors, problems)
     expected_mirrors = mirror_modules_from_table(rows)
+
+    game_rs_path = root / "crates/sunrise-client/src/game.rs"
+    game_root_tree = build_mod_tree("game", game_rs_path.resolve()) if game_rs_path.is_file() else None
 
     for side in ("client", "server"):
         actual = set(existing_mirrors[side])
@@ -2320,23 +3550,36 @@ def run_check(root: Path, rows: dict[FnKey, FnRow], mod_sides: dict[str, str]) -
         if resolved is None:
             problems.append(f"top-level module `{top_name}` missing from game.rs / side files")
             continue
-        _ps, entry_file, top_cfg = resolved
-        orig_fns = collect_tree_functions(build_mod_tree(top_name, entry_file, top_cfg))
-        mirror_fns: dict[str, dict[FnKey, tuple]] = {"client": {}, "server": {}}
+        parent_side, entry_file, top_cfg = resolved
+        top_problems_before = len(problems)
+        orig_tree = build_mod_tree(top_name, entry_file, top_cfg, errors=problems, root=root)
+        orig_fns = collect_tree_functions(orig_tree, dup_errors=problems, root=root)
+        mirror_trees: dict[str, ModNode | None] = {"client": None, "server": None}
+        mirror_fns: dict[str, dict[FnKey, tuple[ModNode, Path, str, ParsedItem, ParsedItem | None, tuple[str, ...]]]] = {
+            "client": {},
+            "server": {},
+        }
+        mirror_file_sets: dict[str, set[Path]] = {"client": set(), "server": set()}
         for side in ("client", "server"):
             mname = f"{top_name}_{side}"
             if mname in existing_mirrors[side]:
                 mentry, mcfg = existing_mirrors[side][mname]
-                mirror_fns[side] = collect_mirror_tree_functions(mentry, top_name, side, mcfg)
-                # Check no root-scope pub(super) in mirror files
-                for mf in sorted(collect_mirror_files(mentry)):
-                    cnt, lns = rewrite_root_pub_super_check(mf.read_text(encoding="utf-8"))
-                    if cnt > 0:
-                        rel = mf.relative_to(root).as_posix()
-                        problems.append(f"{rel}: {cnt} root-scope `pub(super)` item(s) remain (line(s) {', '.join(str(x) for x in lns[:5])})")
+                if mentry.is_file():
+                    mtree = build_mod_tree(top_name, mentry, mcfg, errors=problems, root=root, is_mirror=True)
+                    mirror_trees[side] = mtree
+                    mirror_fns[side] = collect_tree_functions(mtree, dup_errors=problems, root=root)
+                    mirror_file_sets[side] = collect_mirror_files(mentry)
+                    for mf in sorted(mirror_file_sets[side]):
+                        mf_txt = mf.read_text(encoding="utf-8")
+                        cnt, lns = rewrite_root_pub_super_check(mf_txt)
+                        if cnt > 0:
+                            rel = mf.relative_to(root).as_posix()
+                            problems.append(f"{rel}: {cnt} root-scope `pub(super)` item(s) remain (line(s) {', '.join(str(x) for x in lns[:5])})")
 
         top_rows = rows_by_top.get(top_name, {})
-        # Fail closed on any unlisted function in mirror modules
+        desired_side: dict[FnKey, str] = {k: r.side for k, r in top_rows.items()}
+        validate_top_overlaps_and_cfg_attr(top_rows, orig_fns, mirror_fns, problems, root=root)
+
         for side in ("client", "server"):
             for k in sorted(mirror_fns[side], key=lambda x: (x.module, x.impl, x.name, x.cfg)):
                 if k not in top_rows:
@@ -2344,7 +3587,6 @@ def run_check(root: Path, rows: dict[FnKey, FnRow], mod_sides: dict[str, str]) -
                 elif top_rows[k].side != side:
                     problems.append(f"{SIDE_MOD_NAME[side]}::{top_name}_{side}: `{k.module}::{k.name}` has table side `{top_rows[k].side}`")
 
-        # Verify every row in table sits in its exact target location
         for k, r in sorted(top_rows.items(), key=lambda kv: (kv[0].module, kv[0].impl, kv[0].name, kv[0].cfg)):
             in_orig = k in orig_fns
             in_c = k in mirror_fns["client"]
@@ -2365,7 +3607,91 @@ def run_check(root: Path, rows: dict[FnKey, FnRow], mod_sides: dict[str, str]) -
                 if in_orig or in_c:
                     problems.append(f"`{k.module}::{k.name}` (side=server) duplicated in orig/client")
 
-    for path, _ in selector_targets(root, rows, mod_sides):
+        # Location-sensitive macro and directory-changed include checks on moved/mirrored functions
+        macro_trees = [orig_tree, *(t for t in mirror_trees.values() if t is not None)]
+        if game_root_tree is not None and top_name != "game":
+            macro_trees.append(game_root_tree)
+        sensitive_macros = collect_location_sensitive_macros(macro_trees)
+        orig_node_by_nid: dict[tuple[str, tuple[str, ...]], ModNode] = {}
+
+        def index_orig(n: ModNode) -> None:
+            orig_node_by_nid[(n.orig_mod, node_cfg_chain(n))] = n
+            for ch in n.children:
+                index_orig(ch)
+
+        index_orig(orig_tree)
+        for side in ("client", "server"):
+            for k, (mn, mfp, fsrc, mit, _mp, _mfc) in sorted(
+                mirror_fns[side].items(), key=lambda kv: (kv[0].module, kv[0].impl, kv[0].name, kv[0].cfg)
+            ):
+                fn_txt = fsrc[mit.start : mit.end]
+                loc_hits = find_location_macro_uses(fn_txt, sensitive_macros)
+                if loc_hits:
+                    problems.append(
+                        f"{_rel_str(mfp, root)}:{mit.start_line}: moved function `{k.module}::{k.name}` uses location-sensitive macro(s) {', '.join(loc_hits)}"
+                    )
+                onode = orig_node_by_nid.get((mn.orig_mod, node_cfg_chain(mn)))
+                if onode is not None and onode.file_path.resolve().parent != mfp.resolve().parent:
+                    inc_hits = find_relative_includes_in_src(fn_txt)
+                    if inc_hits:
+                        problems.append(
+                            f"{_rel_str(mfp, root)}:{mit.start_line}: moved function `{k.module}::{k.name}` uses {', '.join(inc_hits)} in changed directory"
+                        )
+
+        # Verify every existing mirror file contains ONLY what the tool generates
+        if len(problems) == top_problems_before:
+            fn_src, fn_nid, trait_src, impl_pref = _capture_fn_sources(
+                orig_fns, mirror_fns, desired_side, problems, check_trait_consistency=True
+            )
+            m_macros, s_macros, _r_macros = _collect_macros_for_placement(
+                orig_tree, mirror_trees, desired_side, fn_src, errors=problems, root=root
+            )
+            node_moved: dict[tuple[str, tuple[str, ...], str], list[FnKey]] = defaultdict(list)
+            for k, r in top_rows.items():
+                if r.side in ("client", "server") and k in fn_nid:
+                    nid = fn_nid[k]
+                    node_moved[(nid[0], nid[1], r.side)].append(k)
+            for side in ("client", "server"):
+                if mirror_trees[side] is None:
+                    continue
+                expected_files = _render_mirror_tree(
+                    orig_tree,
+                    side,
+                    top_name,
+                    parent_side,
+                    regular_mods,
+                    desired_side,
+                    orig_fns,
+                    mirror_fns,
+                    fn_src,
+                    fn_nid,
+                    trait_src,
+                    impl_pref,
+                    m_macros,
+                    s_macros,
+                    node_moved,
+                )
+                for mf in sorted(mirror_file_sets[side]):
+                    if mf not in expected_files:
+                        problems.append(f"{_rel_str(mf, root)}: unexpected mirror file not generated by tool")
+                    else:
+                        problems.extend(diff_mirror_file(_rel_str(mf, root), mf.read_text(encoding="utf-8"), expected_files[mf]))
+        else:
+            for side in ("client", "server"):
+                for mf in sorted(mirror_file_sets[side]):
+                    mf_txt = mf.read_text(encoding="utf-8")
+                    if has_top_level_inner_attrs(mf_txt):
+                        problems.append(f"{_rel_str(mf, root)}: disallowed inner attribute `#![...]` in mirror file")
+                    try:
+                        for it in parse_rust_items(mf_txt, mf):
+                            if it.kind not in ALLOWED_MIRROR_ITEM_KINDS:
+                                problems.append(
+                                    f"{_rel_str(mf, root)}:{it.start_line}: unexpected hand-written `{it.kind}` item `{it.name}` in mirror file"
+                                )
+                    except ValueError:
+                        pass
+
+    for path, _ in selector_targets(root, rows, mod_sides, errors=problems):
         rel = path.relative_to(root).as_posix()
         problems.append(f"{rel}: stale moved-function selector(s); run `python3 tools/game_fn_sides.py --fix`")
 
