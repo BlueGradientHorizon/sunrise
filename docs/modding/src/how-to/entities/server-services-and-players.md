@@ -145,6 +145,10 @@ identities.
 | `disconnect(host, reason)` | Disconnects the player with a `Text` reason, as `/kick` does, also inside their own hook or a payload handler (the connection closes after it). Answers `false` for a stale or unavailable handle, the single-player owner and a player already being disconnected (the first reason stands). A fake player's kick keeps the first reason and completes at the next hub poll through the shared leave path. Invalid reason text returns `TextFormError` before anything changes. |
 | `hide(host, permission)` | Hides the player from players below the supplied permission level, starting next tick; `None` restores visibility. Hidden players disappear from the world and Tab list, and their join and leave messages are suppressed for those viewers. |
 | `hidden(host)` | Reads the level `hide` set: `Ok(None)` when the player is shown. A player who rejoined hidden reads it too, and a level set before the world is opened to others reads as stored. Refuses with `PlayerWorldRefusal::Client` on a client and `Stale` for a handle of an earlier open of the world. |
+| `post_effects(host)` | Reads the ordered `Vec<Identifier>` of active server-driven post effects (`ServerPlayer.getPostEffects`), shared with `/posteffect` and persisted with playerdata. Refuses with `PlayerWorldRefusal::Client` on a client and `Stale` for a stale or offline player. |
+| `add_post_effect(host, effect)` | Appends `effect` if not already active (`ServerPlayer.addPostEffect`), marking the player dirty to send `ClientboundPostEffectsPacket` at the end of the tick, and returns `Ok(true)` (`Ok(false)` when already present). |
+| `remove_post_effect(host, effect)` | Removes `effect` if active (`ServerPlayer.removePostEffect`), marking dirty for client sync, and returns `Ok(true)` (`Ok(false)` when absent). |
+| `clear_post_effects(host)` | Clears all active post effects (`ServerPlayer.clearPostEffects`), marking dirty for client sync, and returns `Ok(true)` (`Ok(false)` when already empty). |
 
 Nickname and sleep settings require an online player. These settings survive
 reconnections until the server stops or you change them. Visibility is stored by
