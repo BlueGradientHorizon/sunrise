@@ -26,9 +26,10 @@ impl CriterionProgress {
 /// An owned, read-only snapshot of one advancement's complete progress.
 ///
 /// [`crate::PlayerAdvancementProgressEvent::progress`] captures this after the
-/// criterion changes and before completion rewards. Retaining or changing a
-/// clone does not change the player's progress. The same representation can
-/// describe progress outside an event without borrowing the game or a player.
+/// criterion changes and before completion rewards, and
+/// [`crate::PlayerRef::advancement_progress`] reads a server player's live
+/// progress on demand. Retaining or changing a clone does not change the
+/// player's progress.
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[non_exhaustive]
 #[derive(sunrise_mod_api_macros::Wire)]

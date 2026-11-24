@@ -11,6 +11,13 @@ Keep `event.progress.clone()` if it is needed later: the owned `AdvancementProgr
 cannot change the player's progress and is not updated by subsequent events. No-op grants and
 revokes do not fire.
 
+To read a server player's live progress on demand, call `player.advancement_progress(host, &id)`.
+It takes `&dyn Host` and returns the same `Option<AdvancementProgress>` snapshot, mirroring
+`ServerPlayer.getAdvancements().getOrStartProgress(holder)`: a loaded advancement the player has
+not touched returns all criteria with `obtained_at: None` and `done == false`, and reads inside
+`player_advancement_progress` or `player_advancement_done` observe the post-grant live state.
+Unknown ids, stale or offline players, and client hosts return `None`.
+
 ## Display icons
 
 An advancement's `display.icon` is an item stack, including its count, damage and
