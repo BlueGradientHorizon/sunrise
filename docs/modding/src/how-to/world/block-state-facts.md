@@ -22,7 +22,7 @@ known state reads as `Ok(None)`; unavailable metadata, invalid states and refuse
 | `replaceable(state) -> Option<bool>` | `BlockState.canBeReplaced()` |
 | `destroy_speed(state) -> Option<f32>` | `BlockBehaviour.Properties.destroyTime` (`getDestroySpeed`): stone 1.5, -1 unbreakable |
 | `requires_correct_tool(state) -> Option<bool>` | `BlockState.requiresCorrectToolForDrops()`: stone and ores true, dirt and logs false; which tool is correct for a state is `BlockStates::is_correct_tool_for_drops` |
-| `sound(state) -> Option<BlockSoundType>` | `BlockState.getSoundType()`: volume, pitch and the break, step, place, hit and fall events |
+| `sound(state) -> Option<BlockSoundType>` | `BlockState.getSoundType()`: sound type identity, base volume and pitch, and the validated break, step, place, hit and fall event keys |
 | `has_block_entity(state) -> Option<bool>` | `BlockState.hasBlockEntity()` |
 | `light_emission(state) -> Option<u8>` | `BlockState.getLightEmission()`: 0 to 15; a block with `dynamic_light` answers per cell through its parts, which this does not ask |
 | `friction(state) -> Option<f32>` | `BlockBehaviour.getFriction()` of the block: 0.6 usually, 0.98 ice, 0.8 slime |
@@ -75,16 +75,36 @@ A declared block's `spawn_rule` property (`default`, `always`, `never` or `ocelo
 `BlockBehaviour.Properties.isValidSpawn` does. The default rule asks for a sturdy top face and light emission below
 14 from the block's own light, which `light_emission` above reports without the cell's dynamic answer.
 
+## Block sounds
+
+The facts query does not run the block's parts or check loaded sound resources. Read an event by
+name with `sound.step.as_str()`, or borrow the key for a known action with `sound.event(cause)`.
+
+To change a contextual sound through `BlockPart::sound_type`, parse its event key once during
+registration with `SoundEventKey::parse("my_mod:block.machine.step")`, handle `None` as invalid
+syntax, and keep the key on the part. For example, on `BlockSoundCause::Step`, assign
+`event.sound.step = self.step.clone()`. Both `block.stone.step` and `:block.stone.step` resolve to
+`minecraft:block.stone.step`. The game reads the event for that action and applies its usual
+volume and pitch factors. A solid bucket uses the item's placement event with those same levels.
+Block break and placement play in the Blocks category even if their event is from another namespace.
+An event missing from the active sound resources plays nothing; it never causes the block to play
+its old sound instead.
+
+Changing an event key does not change `sound.identity`: a horse chooses its hoof sound from the
+sound type's identity, not from the step or placement events. When constructing a custom
+`BlockSoundType` literal, set `identity: BlockSoundTypeIdentity::Other`.
+
 ## Contextual friction
 
 `host.block_states().friction(state)` is the static coefficient. To ask the state's friction parts,
 use `level.friction(host, pos, state, entity)` on either side. Pass `None` if no entity is asking,
-or `Some((id, kind))` to forward the caller's entity. The queried state need not be the block at
+or `Some(entity)` with the caller's live `EntityRef`. The queried state need not be the block at
 `pos`. The read never loads chunks or writes blocks. It returns `Ok(None)` for a repeated active
 query or a query beyond the nesting bound, and a read error for a stale or unavailable level
-or an unknown state.
+or entity, or an unknown state.
 
-Inside `BlockPart::friction`, match `LevelSide` to borrow the read-only level. Use
+Inside `BlockPart::friction`, match `LevelSide` to borrow the read-only level. `view.entity_kind(entity)` reads the type
+key for the entity lent in `event.entity`, without looking up other entities. Use
 `view.block_entity(pos)` to get a resident block entity's handle, then
 `view.block_entity_data(handle)` to read its saved data without identity or position metadata.
 On the client this reads the local copy, not unsynced server data; synchronize any data that
