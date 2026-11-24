@@ -401,6 +401,7 @@ mod tests {
     #[ignore = "daily"]
     fn request_chunk_is_non_blocking_level_33_and_respects_spare_time_budget() {
         with_game(|game| {
+            game.streaming.paused = false;
             let level = game.level("minecraft:overworld").unwrap();
             let stone_key = mod_api::__private::block_key("minecraft:stone").unwrap();
 
@@ -484,6 +485,7 @@ mod tests {
     #[ignore = "daily"]
     fn cancel_isolation_mod_disable_and_level_close_release_tickets() {
         with_game(|game| {
+            game.streaming.paused = false;
             let level = game.level("minecraft:overworld").unwrap();
 
             // Per-mod isolation & overlapping chunk refcount: both mod_a and mod_b request [5, 5].
