@@ -476,6 +476,26 @@ impl SaveDir {
             .get_or_insert(error);
     }
 
+    /// Wait for every queued write batch to finish on the writer thread without
+    /// calling `sync_all` across all cached regions (used by idle chunk eviction;
+    /// full durability barriers use [`Self::flush`]).
+    pub(super) fn wait_for_writes(&self) -> Result<()> {
+        let mut count = self
+            .outstanding
+            .count
+            .lock()
+            .map_err(|_| "writer poisoned")?;
+        while *count > 0 {
+            count = self
+                .outstanding
+                .done
+                .wait(count)
+                .map_err(|_| "writer poisoned")?;
+        }
+        self.outstanding.write_result(true)?;
+        Ok(())
+    }
+
     fn flush_with(&self, mut force: impl FnMut(&RegionFile) -> std::io::Result<()>) -> Result<()> {
         let mut count = self
             .outstanding
@@ -912,5 +932,58 @@ mod tests {
             .recv_timeout(std::time::Duration::from_secs(1))
             .unwrap();
         waiter.join().unwrap();
+    }
+
+    #[test]
+    fn save_eviction_drains_writes_without_syncing_all_cached_regions() {
+        let dir = tempfile::tempdir().unwrap();
+        let (registry, biomes) = super::super::loot_tests::fixture();
+        let registry = Box::leak(Box::new(registry));
+        let biomes = Arc::new(biomes);
+        let save = SaveDir::new(dir.path().to_path_buf(), LevelShape::OVERWORLD, None);
+        let sync_data_calls = Arc::new(AtomicUsize::new(0));
+        let force_calls = Arc::new(AtomicUsize::new(0));
+        let sd = sync_data_calls.clone();
+        let fc = force_calls.clone();
+        *save.writer.lock().unwrap() = Some(save.start_writer(
+            move |file| {
+                sd.fetch_add(1, Ordering::Relaxed);
+                file.sync_data()
+            },
+            move |region| {
+                fc.fetch_add(1, Ordering::Relaxed);
+                region.sync_all()
+            },
+        ));
+        let record = NamedTag {
+            name: "".into(),
+            tag: Tag::compound([("marker", Tag::Int(7))]),
+        };
+        // Seed two unrelated cached regions.
+        save.write_records(
+            "region",
+            vec![((0, 0), Some(record.clone())), ((32, 0), Some(record))],
+            false,
+        )
+        .unwrap();
+        save.wait_for_writes().unwrap();
+        let before_sync_data = sync_data_calls.load(Ordering::Relaxed);
+        let before_force = force_calls.load(Ordering::Relaxed);
+
+        let chunk = Arc::new(Chunk::empty(64, 0));
+        let refused = save
+            .save_eviction(&[chunk], registry, &biomes, Vec::new())
+            .unwrap();
+        assert!(refused.is_empty());
+        assert_eq!(
+            force_calls.load(Ordering::Relaxed),
+            before_force,
+            "save_eviction must not call RegionFile::sync_all across cached regions"
+        );
+        // Only the evicted column's own region (not the two unrelated cached regions) synced.
+        assert_eq!(
+            sync_data_calls.load(Ordering::Relaxed) - before_sync_data,
+            1
+        );
     }
 }

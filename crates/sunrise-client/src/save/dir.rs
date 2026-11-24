@@ -691,9 +691,10 @@ impl SaveDir {
         self.enqueue_records(Folder::Poi, self.poi_records(chunks), eviction)
     }
 
-    /// Save the records required by an idle column eviction. A successful
-    /// barrier returns the columns whose own records were refused or skipped.
-    /// If the barrier fails, eviction cannot assume any column is durable.
+    /// Save the records required by an idle column eviction and wait for queued
+    /// writes to finish without forcing every cached region (`sync_all`).
+    /// Returns the columns whose own records were refused or skipped; if the
+    /// writer failed, eviction cannot assume any column was written.
     pub fn save_eviction(
         &self,
         chunks: &[Arc<Chunk>],
@@ -707,7 +708,7 @@ impl SaveDir {
         }
         let records = self.entity_records(entities, Some(&eviction));
         self.enqueue_records(Folder::Entities, records, Some(&eviction))?;
-        self.flush()?;
+        self.wait_for_writes()?;
         Ok(eviction.refused())
     }
 
