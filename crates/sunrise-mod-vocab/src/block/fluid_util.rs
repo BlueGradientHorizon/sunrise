@@ -119,7 +119,8 @@ pub fn interact_with_handler(
 /// [`fluid_empty_sound`](crate::prelude::TagsHost::fluid_empty_sound)). The sound plays under
 /// the block slider at full volume and pitch for every player near, the acting one included,
 /// since the server decides the move; the game event names `player` as its source when given.
-/// A fluid with no world form, a tank-only one, has no sound, and only its game event goes out.
+/// A fluid with no bucket sound, a tank-only one that names no bucket, has no sound, and only
+/// its game event goes out.
 pub fn trigger_sound_and_game_event(
     host: &mut dyn ServerHost,
     fluid: &FluidResource,

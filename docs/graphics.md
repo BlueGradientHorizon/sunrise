@@ -128,7 +128,7 @@ Upscaling (`upscaling` in `sunrise-graphics.txt`) renders the world smaller than
 
 Upscalers come in two kinds. AMD FSR is MIT-licensed, so it lives in this repository (Frame Generation below). NVIDIA
 DLSS and other NVIDIA-licensed technology never do: the project decided on 2026-11-09 that they go in an optional
-[native mod](native-mods.md) that downloads NVIDIA's libraries itself on the player's machine, so the repository and
+[native mod](modding/src/how-to/native-mods.md) that downloads NVIDIA's libraries itself on the player's machine, so the repository and
 Sunrise's downloads hold no NVIDIA binary, header or SDK file. The game's side, planned in
 [#12918](https://github.com/horizon-rust/horizon/issues/12918), is a vendor-neutral upscaler interface such a mod plugs into.
 

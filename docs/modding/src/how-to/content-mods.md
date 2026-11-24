@@ -215,9 +215,16 @@ NeoForge's `IClientFluidTypeExtensions`; the fluid needs no block, and a recipe 
 object makes it exist in the world: `{"world": {}}` adds the block `<id>:<path>`, a copy of `minecraft:water` that flows
 with vanilla's fluid simulation, and the bucket item `<id>:<path>_bucket`, which needs its model as any item does. `world`
 takes `tick_delay` (1 or more, default 5), `drop_off` (1 to 7, default 1), `slope_find_distance` (1 to 4, default 4),
-`source_conversion` (default false) and `bucket` (default true). Beside `world`, a fluid file may state NeoForge's
+`source_conversion` (default false), `bucket` (default true) and `flowing`, the flowing form's id in the fluid's
+namespace and not the fluid's own id (default `<id>:flowing_<path>`). Beside `world`, `bucket_item` names the item that
+holds a bucket of the fluid (`Fluid.getBucket`): the generated bucket's id, in the fluid's namespace, or, for a tank-only
+fluid or one with `"bucket": false`, an item the mod declares itself, which keeps the fluid through its own parts. An
+empty bucket fills to that item from any fluid handler, with the bucket's fill sound, and a generated bucket empties
+back into one. An item no item has, or the game's bucket of another fluid such as `minecraft:water_bucket`, is no
+bucket of it. A fluid file may also state NeoForge's
 `FluidType` numbers, which other mods read through `FluidTypeProperties`: `temperature` and `density` (any signed
-32-bit integer, defaults 300 and 1000) and `viscosity` (0 or more, default 1000). A file without `world` declares no
+32-bit integer, defaults 300 and 1000), `viscosity` (0 or more, default 1000) and `light_level` (0 to 15, default 0,
+whether or not the fluid has a block). A file without `world` declares no
 fluid by itself; its numbers describe the tank-only fluid a native mod declares in code with `declare_fluid`. The fluid is in no vanilla fluid tag, so entities don't
 swim in it or get pushed by it. In the world it draws its `sprite`, a block atlas texture such as `mymod:block/oil`, times
 its `tint`; with neither it looks like water, and a `tint` alone colours water's textures. A client mod's
@@ -1146,7 +1153,7 @@ A code mod declares a block entity's `ModContainer` with `Registrar::block_conta
 Registration refuses more than 256 slots because the saved `Items` list uses an unsigned byte for
 each slot index (vanilla's `ItemStackWithSlot.CODEC`). Content files can declare menu layouts, not
 saved block container storage. The container's `faces` say which slots each side reaches; `inputs`
-lists the slots insertion may use.
+lists the slots insertion may use, and `outputs` the slots items may leave through a side.
 Per-slot `insert_rules` provide static admission, with missing entries treated as `Any`.
 
 For state-dependent admission, implement `BlockEntityPart::can_place_item`
@@ -1163,7 +1170,16 @@ The default `STORAGE.space_for` does not ask the part: for subscribed slots it c
 physical room after face and input checks. An actual insert asks with its remaining offer
 before applying the stack limit.
 
-The query has no Host and may run for a slot that is never written. Seed a filter from the
+For state-dependent extraction, implement `BlockEntityPart::can_take_item_through_face`
+(vanilla's `WorldlyContainer.canTakeItemThroughFace`). Its `CanTakeItemThroughFaceEvent` gives the
+same entity, `pos` and `state`, the queried slot, the stack in it and the `face` it would leave
+through. Returning `Some(true)` or `Some(false)` replaces whether `outputs` lists the slot; `None`
+keeps it. The face's slots still bound which slots are asked. A hopper pulling from below and
+`ITEMS` and `STORAGE` extracts through a side use this query; an extract with no side skips the
+face rules, as NeoForge's unsided item handler does, and menus use `menu_slot_rules`.
+
+`can_place_item` has no Host; `can_take_item_through_face` gets a read-only one. Either query
+may run for a slot that is never written. Seed a filter from the
 accepted write, not from the query. Default `ITEMS` and `STORAGE` writes to these slots emit
 `contents_changed` once per backing block on commit. During a handled `menu_quick_move`, the notice
 waits for the clicked source to settle and only runs if the original backing container is still there.

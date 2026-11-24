@@ -162,8 +162,9 @@ any particular state. It returns `Result<(), FluidStateError>`: `UnknownProperty
 `type_properties(key)` returns a `FluidTypeProperties` record, or `None` without a loaded registry or for
 a key it doesn't hold; `host.fluid_key(name)` is `None` for an unknown name. The record is the same in every
 level: `description_id`, `light_level`, `fall_distance_modifier`, and whether the fluid can push entities, be
-swum in, drown, extinguish, hydrate and carry boats. Flowing forms answer as their source. The empty fluid and
-tank-only fluids emit no light, do nothing to an entity and have a fall modifier of 1. Anything that depends on
+swum in, drown, extinguish, hydrate and carry boats. Flowing forms answer as their source. `light_level` is 15 for
+lava, 0 for water and the empty fluid, and what a mod fluid's file states. The empty fluid and
+tank-only fluids do nothing to an entity and have a fall modifier of 1. Anything that depends on
 a level, such as lava's current or source conversion, isn't in the record.
 The record also carries three `Fluid` facts: `explosion_resistance` (100 for water, lava and a mod's
 world fluid, 0 for the empty or a tank-only fluid), `randomly_ticks` (lava only) and `drip_particle`

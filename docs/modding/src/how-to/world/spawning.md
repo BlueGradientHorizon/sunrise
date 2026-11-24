@@ -425,3 +425,13 @@ fn level_load(&self, host: &mut dyn mod_api::ServerHost, event: &mut mod_api::Le
 ```
 
 Only natural spawning reads the policy: spawners, trial spawners, patrols, sieges, phantoms, a new chunk's creatures and custom spawners keep their own rules. A change counts from the level's next spawn pass, and mobs already there stay. The policy is not saved. It survives parking and reopening a level within the same world session, but closing the world resets it. Set it in `level_load`. Reads work on any host and answer `None` on a client or for a stale handle; the writes need a `ServerHost` and return `false` there.
+
+## Raid handles
+
+Use `LevelRef::raid`, `raid_at` and `raids` to obtain raid handles. They resolve their
+own loaded server level even while another dimension is in place. Raid reads,
+omen-level writes and `stop` do not swap levels. Raider lists and living health
+come from that level's mobs; raid ids are local to a level. A closed level, an
+earlier world epoch or a client refuses the handle. Entity handles in a parked
+raid's member list keep their identity; their ordinary entity operations
+require the entity's level to be in place.

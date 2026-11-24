@@ -5043,6 +5043,7 @@ pub(in crate::game) mod tests {
                             sprite: None,
                             tint: None,
                             world: Some(Default::default()),
+                            bucket_item: None,
                             measures: Default::default(),
                         },
                     ]);
