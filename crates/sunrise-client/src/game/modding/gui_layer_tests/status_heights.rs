@@ -24,8 +24,14 @@ impl Hooks for Probe {
     fn register_gui_layers(&self, _: &RegistrationContext, event: &mut RegisterGuiLayersEvent<'_>) {
         use GuiLayerPlacement::*;
         for (id, placement) in [
-            ("heights:before_health", Below("minecraft:player_health".into())),
-            ("heights:after_health", Above("minecraft:player_health".into())),
+            (
+                "heights:before_health",
+                Below("minecraft:player_health".into()),
+            ),
+            (
+                "heights:after_health",
+                Above("minecraft:player_health".into()),
+            ),
             ("heights:after_armor", Above("minecraft:armor_level".into())),
             ("heights:after_food", Above("minecraft:food_level".into())),
             ("heights:after_air", Above("minecraft:air_level".into())),
@@ -34,9 +40,7 @@ impl Hooks for Probe {
                 id.into(),
                 placement,
                 Box::new(move |host: &dyn ClientHost, _| {
-                    SEEN.lock()
-                        .unwrap()
-                        .push((id, host.gui_status_heights()));
+                    SEEN.lock().unwrap().push((id, host.gui_status_heights()));
                 }),
             ));
         }
