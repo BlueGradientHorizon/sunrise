@@ -2137,7 +2137,7 @@ mod tests {
             let mod_key = (1, 64, 1);
             let mod_pos = [1, 64, 1];
             let stone = registry.default_state("minecraft:stone").unwrap();
-            game.world.set(1, 64, 1, stone);
+            game.world.set(1, 64, 1, stone).unwrap();
             let mut mod_be = ModBlockEntity::new(
                 "test:holder".into(),
                 ModBlockEntityFields {
@@ -2163,7 +2163,7 @@ mod tests {
             assert_eq!(mod_ref.remove(game), Err(BlockEntityError::Stale));
             assert_eq!(mod_ref.name(game), None);
             assert_eq!(mod_ref.lock(game), None);
-            assert!(game.world.block_names.get(&mod_key).is_none());
+            assert!(!game.world.block_names.contains_key(&mod_key));
             assert!(game.world.block_lock(mod_key).is_none());
             assert!(game.dropped.is_empty(), "preRemoveSideEffects must not run");
             assert!(
@@ -2176,7 +2176,7 @@ mod tests {
             let chest_key = (2, 64, 1);
             let chest_pos = [2, 64, 1];
             let chest_state = registry.default_state("minecraft:chest").unwrap();
-            game.world.set(2, 64, 1, chest_state);
+            game.world.set(2, 64, 1, chest_state).unwrap();
             let mut chest_slots = vec![None; 27];
             chest_slots[0] = Some(ItemStack::new("minecraft:diamond", 3));
             game.world
@@ -2213,7 +2213,7 @@ mod tests {
             // 3. Same-block property change followed by remove keeps the new property state
             //    while removing the kept block entity.
             let prop_pos = [3, 64, 1];
-            game.world.set(3, 64, 1, chest_state);
+            game.world.set(3, 64, 1, chest_state).unwrap();
             game.world
                 .block_entities
                 .insert((3, 64, 1), BlockEntity::Chest(vec![None; 27]));
@@ -2231,14 +2231,14 @@ mod tests {
             // 4. Jukebox setRemoved: posts jukebox_stop_play and emits level event 1011.
             let jukebox_pos = [4, 64, 1];
             let jukebox_state = registry.default_state("minecraft:jukebox").unwrap();
-            game.world.set(4, 64, 1, jukebox_state);
+            game.world.set(4, 64, 1, jukebox_state).unwrap();
             game.world.block_entities.insert(
                 (4, 64, 1),
                 BlockEntity::Jukebox(sunrise_client::containers::Jukebox::default()),
             );
             let jukebox_ref = game.block_entity(level, jukebox_pos).unwrap();
             game.audio.capture = Some(Vec::new());
-            game.lan_songs.clear();
+            game.lan_events.clear();
             crate::game::sculk::TEST_POSTED_EVENTS.with(|e| *e.borrow_mut() = Some(Vec::new()));
             assert_eq!(jukebox_ref.remove(game), Ok(()));
             let posted = crate::game::sculk::TEST_POSTED_EVENTS
@@ -2250,14 +2250,17 @@ mod tests {
                 "removing a jukebox must post jukebox_stop_play, got {posted:?}"
             );
             assert!(
-                game.lan_songs.contains(&(jukebox_pos, None)),
-                "removing a jukebox must emit level event 1011"
+                game.lan_events
+                    .iter()
+                    .any(|e| e.kind == 1011 && e.pos == jukebox_pos),
+                "removing a jukebox must emit level event 1011, got {:?}",
+                game.lan_events
             );
 
             // 5. Beacon setRemoved: plays block.beacon.deactivate sound.
             let beacon_pos = [5, 64, 1];
             let beacon_state = registry.default_state("minecraft:beacon").unwrap();
-            game.world.set(5, 64, 1, beacon_state);
+            game.world.set(5, 64, 1, beacon_state).unwrap();
             game.world
                 .block_entities
                 .insert((5, 64, 1), BlockEntity::Beacon(Default::default()));
@@ -2309,15 +2312,22 @@ mod tests {
 
         with_game(|game| {
             game.options.dedicated = Some(Vec::new());
+            game.build_registries();
+            game.set_allow_commands(true);
             game.world
                 .chunks
                 .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
+            game.block_ticks
+                .add_empty_chunk(sunrise_core::position::ChunkPos::new(0, 0))
+                .unwrap();
             let level = game.level("minecraft:overworld").unwrap();
 
             let active_pos = [4, 64, 4];
             let removed_pos = [8, 64, 4];
-            assert!(game.run_command("setblock 4 64 4 sculk_sensor"));
-            assert!(game.run_command("setblock 8 64 4 sculk_sensor"));
+            assert!(game.run_command("setblock 4 64 4 sculk_sensor strict"));
+            assert!(game.run_command("setblock 8 64 4 sculk_sensor strict"));
+            game.sculk_prepare();
+            game.sculk_sync_index();
 
             let removed_ref = game.block_entity(level, removed_pos).unwrap();
             assert_eq!(removed_ref.remove(game), Ok(()));
@@ -2328,7 +2338,7 @@ mod tests {
             game.post_block_game_event("minecraft:block_place", [6, 64, 4], None, None);
             let live_has_vibration = matches!(
                 game.world.block_entities.get(&(4, 64, 4)),
-                Some(BlockEntity::Sculk(s)) if s.vibration.current.is_some()
+                Some(BlockEntity::Sculk(s)) if s.vibration.selector.current.is_some()
             );
             assert!(
                 live_has_vibration,
@@ -2451,7 +2461,7 @@ mod tests {
             assert_eq!(abort_ref.set_lock(game, Some(Compound::new())), Ok(true));
 
             let beacon_pos = [2, 64, 1];
-            game.world.set(2, 64, 1, beacon);
+            game.world.set(2, 64, 1, beacon).unwrap();
             game.world
                 .block_entities
                 .insert((2, 64, 1), BlockEntity::Beacon(Default::default()));
@@ -2483,7 +2493,7 @@ mod tests {
 
             // 2. Transaction commit: remove followed by set_block(air) skips preRemoveSideEffects.
             let suppress_pos = [3, 64, 1];
-            game.world.set(3, 64, 1, chest);
+            game.world.set(3, 64, 1, chest).unwrap();
             let mut chest_slots = vec![None; 27];
             chest_slots[0] = Some(ItemStack::new("minecraft:emerald", 5));
             game.world
@@ -2512,7 +2522,7 @@ mod tests {
             // 3. Transaction commit: set_block(barrel) followed by barrel.remove() still replays
             //    the first block's (chest's) preRemoveSideEffects and leaves the barrel entity gone.
             let replay_pos = [4, 64, 1];
-            game.world.set(4, 64, 1, chest);
+            game.world.set(4, 64, 1, chest).unwrap();
             let mut replay_slots = vec![None; 27];
             replay_slots[0] = Some(ItemStack::new("minecraft:gold_ingot", 2));
             game.world

@@ -2992,6 +2992,11 @@ impl<'g> Game<'g> {
                         && level.removed_block_entities.contains_key(&pos);
                     let b = self.res.behaviours();
                     let net_keeps_group = b.keeps_block_entity(was, now);
+                    let surviving = if now != was && !net_keeps_group {
+                        take_replay_row(&mut self.world, pos)
+                    } else {
+                        None
+                    };
                     if (replay_removal || b.block(now) == b.block(was))
                         && let Some((entity, generation)) =
                             level.removed_block_entities.remove(&pos).flatten()
@@ -3015,13 +3020,19 @@ impl<'g> Game<'g> {
                         } else {
                             let _ = self.level_set_with_flags(pos, now, flags);
                         }
-                        // If the transaction ended with `BlockEntityRef::remove` at `pos`
-                        // after replacing the block (e.g. `set_block(barrel); barrel.remove()`),
-                        // the replay above replayed the first block's `preRemoveSideEffects`
-                        // and created a fresh entity for `now`; strip that recreated entity
-                        // while the final block state still matches `now`.
-                        if absent_after_writes && self.world.block(pos[0], pos[1], pos[2]) == now {
-                            self.world.block_entities.remove(&(pos[0], pos[1], pos[2]));
+                        if self.world.block(pos[0], pos[1], pos[2]) == now {
+                            let key = (pos[0], pos[1], pos[2]);
+                            if let Some((entity, generation)) = surviving {
+                                self.world.block_entities.remove(&key);
+                                self.restore_removed_block_entity(key, *entity, generation);
+                            } else if absent_after_writes {
+                                // If the transaction ended with `BlockEntityRef::remove` at `pos`
+                                // after replacing the block (e.g. `set_block(barrel); barrel.remove()`),
+                                // the replay above replayed the first block's `preRemoveSideEffects`
+                                // and created a fresh entity for `now`; strip that recreated entity
+                                // while the final block state still matches `now`.
+                                self.world.block_entities.remove(&key);
+                            }
                         }
                     } else if clear_connection_group {
                         // A round trip that preserves the block state can still end the
