@@ -122,9 +122,9 @@ at load. The processor runs inside vanilla and mod structures alike.
 
 | `StructureProcessor` method | Vanilla's `StructureProcessor` |
 |---|---|
-| `process_block` | `process`: inspect or alter one block (return `Ok(None)` to omit it) |
+| `process_block` | `processBlock`: inspect or alter one block (return `Ok(None)` to omit it) |
 | `finalize_processing` | `finalizeProcessing`: inspect the piece's processed block list and write neighbouring blocks in the chunk |
-| `evaluates_entire_piece` | `true` when `finalize_processing` needs every block of the template before clipping to the chunk box |
+| `evaluates_entire_piece_state` | `evaluatesEntirePieceState`: `true` when `finalize_processing` needs every block of the template before clipping to the chunk box |
 
 ## Placement modifier types
 
@@ -135,10 +135,11 @@ Register a `PlacementModifierType` with
 entry's config as NBT and a `PlacementModifierDecodeContext` for resolving block states and nested
 modifiers once at load.
 
-`PlacementModifier::get_positions(&self, context, random, origin)` matches vanilla's
-`PlacementModifier.getPositions`: return zero, one, or many positions for the next modifier in the
-chain. Both structure processors and placement modifiers run on worker threads and must be
-`Send + Sync`, stateless, and deterministic.
+`PlacementModifier::modify(&self, context, random, origin, output)` matches vanilla's
+`PlacementModifier.modify`: pass zero, one, or many positions to `output`, in order, for the next
+modifier in the chain, and return `output`'s error if it gives one (`output(pos)?`). Both
+structure processors and placement modifiers run on worker threads and must be `Send + Sync`,
+stateless, and deterministic.
 
 ## Placing pieces
 
