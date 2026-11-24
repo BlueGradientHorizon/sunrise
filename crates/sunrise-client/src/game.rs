@@ -1189,6 +1189,8 @@ mod native_datafix_tests;
 mod native_datapack_refs;
 #[path = "game/modding/native_death_weapon.rs"]
 mod native_death_weapon;
+#[path = "game/modding/native_detached_generation.rs"]
+mod native_detached_generation;
 #[path = "game/modding/native_dimensions.rs"]
 mod native_dimensions;
 #[path = "game/modding/native_disconnect.rs"]
@@ -4296,6 +4298,8 @@ struct Game<'a> {
     spawn_policies: HashMap<mod_api::DimensionKey, natural_spawning::SpawnPolicy>,
     /// The passages mods registered in each level, and a client's copy (`native_passages.rs`).
     passages: native_passages::Passages,
+    /// Open detached chunk generators handed out by `LevelRef::detached_generator`.
+    detached_generators: native_detached_generation::DetachedGenerators,
     /// PauseScreen.showPauseMenu (false after F3+Escape).
     pause_menu: bool,
     pause_focus: Option<u8>,
@@ -14383,6 +14387,7 @@ impl<'a> Game<'a> {
             spawn_counts: HashMap::new(),
             spawn_policies: HashMap::new(),
             passages: Default::default(),
+            detached_generators: Default::default(),
             pause_menu: true,
             pause_focus: None,
             death_focus: None,

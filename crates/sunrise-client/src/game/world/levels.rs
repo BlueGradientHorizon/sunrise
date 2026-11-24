@@ -1925,6 +1925,7 @@ impl Game<'_> {
         }
         self.attachment_indexes.remove(&dim);
         self.passages.retire_level(dim.key());
+        self.close_detached_generators_for_dim(dim);
     }
 
     /// `MinecraftServer.stopServer`'s `level.close()` loop: close every loaded
