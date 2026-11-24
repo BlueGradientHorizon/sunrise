@@ -110,6 +110,7 @@ impl Game<'_> {
                 if let Some(state) = transferred.take() {
                     self.adopt_transferred_entity_state(id, state);
                 }
+                let uuid = with_constructor_uuid(uuid);
                 self.remember_uuid(id, uuid, &tag);
                 self.bind_saved_entity_attachments(id, &mut orb.attachment_lifetime);
             }
@@ -226,10 +227,11 @@ impl Game<'_> {
 
     pub(in crate::game) fn load_falling_transferred(
         &mut self,
-        tag: Tag,
+        mut tag: Tag,
         uuid: Option<[i32; 4]>,
         transferred: Option<crate::game::entity_initialization::TransferredEntityState>,
     ) {
+        entity_nbt::sanitize_custom_name(&mut tag);
         if let Some((state, position, velocity, age, fall_distance)) =
             entity_nbt::falling_block_from_nbt(&tag)
             && let Some(state) =

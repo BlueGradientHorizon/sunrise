@@ -15,7 +15,7 @@ depend on world generation.
 ISOLATED_WOLF_ANGER = frozenset({'wolf anger live writes'})
 
 
-def cmd(command, record=True, expect_result=None, comparison=None):
+def cmd(command, record=True, expect_result=None, comparison=None, components=False):
     op = {'op': 'cmd', 'cmd': command}
     if not record:
         op['record'] = False
@@ -23,6 +23,8 @@ def cmd(command, record=True, expect_result=None, comparison=None):
         op['expect_result'] = expect_result
     if comparison is not None:
         op['comparison'] = comparison
+    if components:
+        op['components'] = True
     return op
 
 
@@ -782,6 +784,63 @@ def entities():
         {'op': 'tick', 'n': 25},
         cmd('/execute if entity @e[tag=h]'),
     ]
+
+
+def summon_custom_name_replies():
+    # SummonCommand replies with Entity.getDisplayName (team format, show_entity hover, UUID
+    # insertion, click_event stripped on name and siblings) and validates CustomName as a text
+    # component; /execute summon applies SummonCommand's spawn-bounds check (26.3, #2694).
+    ops = [
+        # Spawn-bounds check before creating the entity, then an in-bounds redirect to @s.
+        cmd('/execute positioned 4.5 20000000 4.5 summon evoker_fangs run tag @s add out_of_bounds', components=True),
+        cmd('/execute if entity @e[type=evoker_fangs]'),
+        cmd('/execute if entity @e[type=evoker_fangs,tag=out_of_bounds]'),
+        cmd('/execute positioned 4.5 200 4.5 summon evoker_fangs run tag @s add in_bounds'),
+        cmd('/execute if entity @e[type=evoker_fangs,tag=in_bounds]'),
+        # Team used to verify UUID-keyed team formatting vs plain selector name=.
+        cmd('/team add t2694'),
+        cmd('/team modify t2694 color red'),
+        cmd('/team modify t2694 prefix "[R] "'),
+        cmd('/team modify t2694 suffix "!"'),
+    ]
+    kinds = [
+        (1, 'evoker_fangs', 2.5, ''),
+        (2, 'experience_orb', 5.5, ''),
+        (3, 'area_effect_cloud', 8.5, ''),
+        (4, 'ender_dragon', 11.5, ''),
+        (5, 'pig', 14.5, 'NoAI:1b,NoGravity:1b,'),
+    ]
+    variants = [
+        (1, ''),
+        (2, 'CustomName:""'),
+        (3, 'CustomName:"fz"'),
+        (4, 'CustomName:{text:"fz",color:"gold",bold:true}'),
+        (5, 'CustomName:{text:"fz",color:"gold",click_event:{action:"run_command",command:"/say hi"},extra:[{text:"!",color:"aqua",click_event:{action:"suggest_command",command:"/help"}}]}'),
+        (6, 'CustomName:{text:"fz",hover_event:{action:"show_text",value:"old"},insertion:"old"}'),
+        (7, 'CustomName:42'),
+        (8, 'CustomName:{}'),
+        (9, 'CustomName:{text:42}'),
+        (10, 'CustomName:[]'),
+    ]
+    for kind_id, kind, x, extra in kinds:
+        for case_id, name_nbt in variants:
+            uuid_arr = f'[I;2694,0,{kind_id},{case_id}]'
+            uuid_str = f'00000a86-0000-0000-0000-{kind_id:04x}{case_id:08x}'
+            fields = f'{extra}UUID:{uuid_arr}' + (f',{name_nbt}' if name_nbt else '')
+            z = 4.5 + (case_id % 5) * 2.0
+            ops.append(cmd(f'/summon {kind} {x} 200 {z} {{{fields}}}', components=True))
+            if kind == 'ender_dragon':
+                ops.append(cmd(f'/kill {uuid_str}', components=True))
+        # Team-formatted reply by UUID, while selector name= stays free of team prefix/suffix.
+        team_uuid_arr = f'[I;2694,1,{kind_id},1]'
+        team_uuid_str = f'00000a86-0000-0001-0000-{kind_id:04x}00000001'
+        team_fields = f'{extra}UUID:{team_uuid_arr},CustomName:"fz",Team:"t2694",Tags:["t2694_team"]'
+        ops.append(cmd(f'/summon {kind} {x} 200 14.5 {{{team_fields}}}', components=True))
+        ops.append(cmd(f'/execute if entity @e[type={kind},tag=t2694_team,name=fz]'))
+        ops.append(cmd(f'/execute if entity @e[type={kind},tag=t2694_team,name="[R] fz!"]'))
+        if kind == 'ender_dragon':
+            ops.append(cmd(f'/kill {team_uuid_str}', components=True))
+    return ops
 
 
 def wither_spawn():
@@ -9441,6 +9500,7 @@ def groups():
         ('vehicle saved ground and fall', vehicle_saved_ground_and_fall()),
         ('ravager saved movement speed', ravager_saved_movement_speed()),
         (STAND_LIVING_GROUP, armor_stand_living_counters()),
+        ('summon custom name replies', summon_custom_name_replies()),
         # Last: it leaves the player in other food than it found.
         (player_food.GROUP, player_food.cases(cmd, setup)),
     ]

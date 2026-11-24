@@ -804,6 +804,23 @@ impl Game<'_> {
                 let Some(Arg::Resource(kind)) = c.get("entity").cloned() else {
                     return Ok(vec![s]);
                 };
+                // ExecuteCommand.spawnEntityAndRedirect calls SummonCommand.createEntity.
+                if matches!(
+                    kind.as_str(),
+                    "minecraft:player" | "minecraft:fishing_bobber"
+                ) {
+                    return Err(err("entity.not_summonable", &[&kind]));
+                }
+                Self::check_summon_bounds(s.pos)?;
+                if self.difficulty_id() == 0
+                    && self
+                        .res
+                        .mob_types()
+                        .get(&kind)
+                        .is_some_and(|t| !t.allowed_in_peaceful())
+                {
+                    return Err(err("commands.summon.failed.peaceful", &[]));
+                }
                 let target = self.summon_with_nbt(&kind, s.pos, "{}")?;
                 let Some(t) = target else {
                     return Err(err("commands.summon.failed", &[]));

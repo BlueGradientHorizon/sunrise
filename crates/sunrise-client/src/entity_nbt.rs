@@ -1868,13 +1868,33 @@ fn put_sulfur_attributes(map: &mut EntityTagWriter, m: &Mob) {
 /// `Brain.Packed`: the memories finalizeSpawn set, over the saved ones.
 /// `CustomName`: a text component saved as a string or a `{text: ..}` compound.
 pub(crate) fn custom_name(tag: &Tag) -> Option<String> {
-    match tag.get("CustomName")? {
-        Tag::String(s) => Some(s.to_string_lossy()),
-        t @ Tag::Compound(_) => match t.get("text") {
-            Some(Tag::String(s)) => Some(s.to_string_lossy()),
-            _ => None,
-        },
-        _ => None,
+    tag.get("CustomName")
+        .and_then(decode_custom_name_text)
+        .map(|text| text.plain())
+}
+/// `Entity.load`'s `CustomName` validation (`ComponentSerialization.CODEC`):
+/// an empty string is still a custom name, whereas non-components decode to none.
+pub fn valid_custom_name_tag(tag: &Tag) -> bool {
+    crate::command::component::decode(tag).is_ok()
+}
+/// Decode an entity's `CustomName` tag with vanilla's component rules,
+/// returning `None` when it fails `ComponentSerialization.CODEC`.
+pub fn decode_custom_name_text(tag: &Tag) -> Option<crate::text::Text> {
+    if !valid_custom_name_tag(tag) {
+        return None;
+    }
+    Some(crate::scoreboard::text_from_canonical_component(
+        crate::scoreboard::canonical_component(&crate::scoreboard::tag_to_json(tag)),
+    ))
+}
+/// Drop an invalid `CustomName` from an entity compound at the NBT boundary
+/// (`Entity.load`: `input.read("CustomName", ComponentSerialization.CODEC).orElse(null)`).
+pub fn sanitize_custom_name(tag: &mut Tag) {
+    if let Tag::Compound(map) = tag
+        && let Some(raw) = map.get(&"CustomName".into())
+        && !valid_custom_name_tag(raw)
+    {
+        map.remove(&"CustomName".into());
     }
 }
 pub use sunrise_client_core::component::name_text;
@@ -2180,8 +2200,9 @@ fn mob_from_nbt_at(
         .get("CanPickUpLoot")
         .and_then(int_value)
         .map_or(piglin, |value| value as i8 != 0);
-    m.custom_name = custom_name(tag);
-    m.custom_name_text = tag.get("CustomName").map(name_text);
+    let decoded_name = tag.get("CustomName").and_then(decode_custom_name_text);
+    m.custom_name = decoded_name.as_ref().map(crate::text::Text::plain);
+    m.custom_name_text = decoded_name;
     m.extra.left_handed = flag(tag, "LeftHanded");
     if let Some(Tag::Compound(c)) = tag.get("drop_chances") {
         let mut chances = [crate::mobs::drops::DEFAULT_DROP_CHANCE; 8];

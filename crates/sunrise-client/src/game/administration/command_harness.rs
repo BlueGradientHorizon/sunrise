@@ -19,6 +19,11 @@ use std::{
 };
 use sunrise_client::{Result, text::Text};
 
+/// A message's structured component as `ComponentSerialization.CODEC` writes it.
+pub(super) fn canonical_component(text: &Text) -> Value {
+    sunrise_client::scoreboard::canonical_component(&text.component())
+}
+
 /// A message as `[text, style]` runs with adjacent equal styles merged; the
 /// style lists colour, bold, italic, underlined, strikethrough, obfuscated
 /// and the suggested command.
@@ -307,11 +312,15 @@ impl Game<'_> {
                     let results = self.cmds.results.take().unwrap_or_default();
                     if op["record"].as_bool() != Some(false) || op["trace"].as_bool() == Some(true)
                     {
-                        let record = json!({
+                        let mut record = json!({
                             "cmd": command,
                             "messages": messages.iter().map(spans).collect::<Vec<_>>(),
                             "results": results.iter().map(|(s, v)| json!([s, v])).collect::<Vec<_>>(),
                         });
+                        if op["components"].as_bool() == Some(true) {
+                            record["components"] =
+                                Value::Array(messages.iter().map(canonical_component).collect());
+                        }
                         if op["trace"].as_bool() == Some(true) {
                             eprintln!("command trace: {record}");
                         }

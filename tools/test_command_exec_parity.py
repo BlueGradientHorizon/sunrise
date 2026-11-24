@@ -141,6 +141,7 @@ def main():
     parser.add_argument("--boat-item-hit-fixture", action="store_true")
     parser.add_argument("--stand-entity-collision-fixture", action="store_true")
     parser.add_argument("--reference-only", action="store_true")
+    parser.add_argument("--record-summon-name-witness", type=Path, help="write the Java reference records as a version-tagged JSON witness")
     parser.add_argument("--boat-leash-view-fixture", action="store_true")
     parser.add_argument("--boat-motion-diagnostic", action="store_true")
     parser.add_argument('--reinforcement-original-diagnostic', action='store_true', help='replay the original unisolated174/108 fixture, retaining its terrain prerequisite failure')
@@ -662,8 +663,8 @@ def main():
                 any(len(r.get('bits', [])) != 3 or
                     any(re.fullmatch(r'[0-9a-f]{1,16}', b) is None for b in r['bits']) for r in direct)):
             sys.exit('Java direct underwater reference prerequisite failed')
-    if args.reference_only or args.record_shulker_motion or args.record_moving_piston_witness:
-        reference = [json.loads(line) for line in (build / 'vanilla.jsonl').read_text().splitlines()]
+    if args.reference_only or args.record_shulker_motion or args.record_moving_piston_witness or args.record_summon_name_witness:
+        reference = [json.loads(line) for line in (build / 'vanilla.jsonl').read_text(encoding='utf-8').splitlines()]
         recorded = [op for op in script if op['op'] in ('player_state', 'player_loop', 'map_state', 'frame_map_state', 'mob_anger', 'projectile_saved_type', 'raid_state', 'menu_state', 'craft_menu_state', 'map_files', 'merchant_state', 'merchant_saved_stats') or
                     (op['op'] == 'cmd' and op.get('record', True)) or
                     (op['op'] == 'tick' and op.get('record'))]
@@ -735,6 +736,16 @@ def main():
                 },
             })
             print(f'Recorded witness ({len(reference)} records): {target}')
+        if args.record_summon_name_witness:
+            payload = {
+                'minecraft': lock['minecraft']['version'],
+                'oracle': 'dev.sunriselab.parity.VanillaCommandExecOracle',
+                'groups': [name for name, _ in groups if name != 'setup'],
+                'records': reference,
+            }
+            args.record_summon_name_witness.parent.mkdir(parents=True, exist_ok=True)
+            args.record_summon_name_witness.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+            print(f'Recorded {len(reference)} vanilla {lock["minecraft"]["version"]} witness records to {args.record_summon_name_witness}')
         print(f'Java reference: {len(reference)} records, fixture guards passed')
         return
 
@@ -1057,6 +1068,8 @@ def compare(v, r, comparison=None):
         return "state"
     if masked(v) != masked(r):
         return 'messages'
+    if v.get('components') != r.get('components'):
+        return 'components'
     if v['results'] != r['results']:
         if v['cmd'].startswith('/debug stop'):
             return None

@@ -1090,6 +1090,7 @@ impl Game<'_> {
             if let Some(state) = transferred {
                 self.adopt_transferred_entity_state(d.id, state);
             }
+            let uuid = with_constructor_uuid(uuid);
             self.remember_tags(d.id, &tag);
             self.remember_uuid(d.id, uuid, &tag);
             d.join = sunrise_client::join_seq::JoinSeq::next();
@@ -1868,7 +1869,9 @@ impl Game<'_> {
             "CustomName",
             "CustomNameVisible",
         ] {
-            if let Some(v) = tag.get(key) {
+            if let Some(v) = tag.get(key)
+                && (key != "CustomName" || entity_nbt::valid_custom_name_tag(v))
+            {
                 map.insert(key.into(), v.clone());
             }
         }
@@ -1902,6 +1905,7 @@ impl Game<'_> {
         if let Tag::Compound(c) = &mut tag {
             c.remove(&"Team".into());
         }
+        entity_nbt::sanitize_custom_name(&mut tag);
         self.persist.raw.insert(id, tag);
     }
     /// The UUID entity `id` was loaded with, and the attachments `tag` saved under it.
@@ -2250,6 +2254,15 @@ impl Game<'_> {
             && let Some(uuid) = self.persist.uuids.get(&id)
         {
             self.score.board.entity_removed(&uuid_text(*uuid));
+        }
+    }
+    /// `ServerLevel.EntityCallbacks.onDestroyed` → `Scoreboard.entityRemoved`
+    /// for a non-player entity removed immediately (such as `Entity.kill`),
+    /// using its captured UUID so paths that call `forget_entity` still clear
+    /// its scores and team.
+    pub(super) fn score_destroyed_entity_once(&mut self, id: u32, uuid: [i32; 4]) {
+        if self.persist.score_destroyed.insert(id) {
+            self.score.board.entity_removed(&uuid_text(uuid));
         }
     }
 
