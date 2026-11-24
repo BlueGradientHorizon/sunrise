@@ -455,6 +455,7 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn saved_chunk_reader_respects_nether_level_shape_and_rejects_malformed_nbt() {
+        use crate::game::Dim;
         with_game(|game| {
             let world_root = temp_world_dir("shape_and_malformed");
             let nether_root = dimension_dir(&world_root, "minecraft:the_nether");
