@@ -9,14 +9,23 @@ pub use world::datapack_registry::{
 };
 pub use world::datapack_registry_set::{
     DatapackCandidate, DatapackLoadError, DatapackLoadReason, DatapackReadError,
-    DatapackRegistrySet, MAX_DATAPACK_ENTRY_BYTES,
+    DatapackRegistrySet,
 };
 pub use world::datapack_snapshot::{
     DatapackNegotiationError, DatapackSnapshot, DatapackSnapshotEntry, DatapackSnapshotError,
-    DatapackSnapshotRegistry, MAX_SNAPSHOT_BYTES, MAX_SNAPSHOT_ENTRIES, MAX_SNAPSHOT_REGISTRIES,
+    DatapackSnapshotRegistry, MAX_SNAPSHOT_BYTES,
 };
 
 mod __private {
+    mod game {
+        pub use crate::world::datapack_registry::{
+            datapack_registry_directory, decode_datapack_entry, decode_datapack_entry_with_decoder,
+            valid_namespaced,
+        };
+        pub use crate::world::datapack_registry_set::{
+            DatapackCandidateBuilder, datapack_entry_id, datapack_tag_members,
+        };
+    }
     pub use crate::world::datapack_registry::VanillaValueDecoder;
     pub use crate::world::datapack_registry_set::{
         build_datapack_candidate_with_decoder, declarations_use_vanilla_values,
