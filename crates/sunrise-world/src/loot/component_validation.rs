@@ -127,6 +127,23 @@ pub fn validate_loot_condition(value: &Value) -> Result<(), String> {
     }
 }
 
+/// A condition of a loot table, an item modifier or a predicate file
+/// (`LootItemCondition.DIRECT_CODEC`, which dispatches on `type`): an object without a `type`,
+/// such as pre-26.3 data's `{"condition": "minecraft:random_chance"}`, fails to decode, so the
+/// file that holds it is refused. A string is a reference to a predicate file.
+pub(super) fn validate_typed_loot_condition(value: &Value) -> Result<(), String> {
+    if let Some(values) = value.as_array() {
+        for value in values {
+            validate_typed_loot_condition(value)?;
+        }
+        return Ok(());
+    }
+    if value.is_object() && !value.get("type").is_some_and(Value::is_string) {
+        return Err("loot condition has no type".into());
+    }
+    validate_loot_condition(value)
+}
+
 /// Item-modifier dispatch; custom function data and `set_custom_data.tag` do
 /// not contain component maps just because they have a key named components.
 pub fn validate_item_modifier(value: &Value) -> Result<(), String> {
@@ -136,7 +153,7 @@ pub fn validate_item_modifier(value: &Value) -> Result<(), String> {
         }
         return Ok(());
     }
-    validate_loot_condition(&value["condition"])?;
+    validate_typed_loot_condition(&value["condition"])?;
     super::number_validation::modifier(value)?;
     match kind(value) {
         "set_components" => validate_component_map(&value["components"]),
@@ -167,7 +184,7 @@ pub fn validate_item_modifier(value: &Value) -> Result<(), String> {
 }
 fn validate_modifiers_and_conditions(value: &Value) -> Result<(), String> {
     validate_item_modifier(&value["modifier"])?;
-    validate_loot_condition(&value["condition"])
+    validate_typed_loot_condition(&value["condition"])
 }
 fn validate_entry(value: &Value) -> Result<(), String> {
     validate_modifiers_and_conditions(value)?;
@@ -280,5 +297,31 @@ mod slot_source_tests {
         ] {
             assert!(validate_slot_source(&file).is_err(), "{file}");
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use serde_json::json;
+
+    /// `LootItemCondition.DIRECT_CODEC` dispatches on `type` (#5378): a table, an item modifier
+    /// or a predicate file whose condition names its kind under the pre-26.3 `condition` key is
+    /// refused; the same condition with `type`, or a reference to a predicate, loads.
+    #[test]
+    fn a_condition_without_a_type_refuses_its_file() {
+        let old = json!({"condition":"minecraft:random_chance","chance":0.1});
+        let typed = json!({"type":"minecraft:random_chance","chance":0.1});
+        let table = |condition| {
+            json!({"pools":[{"rolls":1,"condition":condition,
+                "entries":[{"type":"minecraft:item","name":"minecraft:stone"}]}]})
+        };
+        assert!(super::validate_loot_table(&table(old.clone())).is_err());
+        assert!(super::validate_loot_table(&table(typed.clone())).is_ok());
+        assert!(super::validate_loot_table(&table(json!("minecraft:p"))).is_ok());
+        let modifier =
+            |condition| json!({"type":"minecraft:set_count","count":2,"condition":condition});
+        assert!(super::validate_item_modifier(&modifier(old.clone())).is_err());
+        assert!(super::validate_item_modifier(&modifier(typed.clone())).is_ok());
+        assert!(super::validate_typed_loot_condition(&json!([typed, old])).is_err());
     }
 }
