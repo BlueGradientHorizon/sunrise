@@ -6798,6 +6798,7 @@ impl Game<'_> {
                 .in_source(SoundSource::Hostile);
                 self.play_bound_sound(sound, id, None);
             }
+            deflected.turn_bullet();
             if deflected.arrow.is_some() {
                 self.finish_arrow_hit(deflected, EntityHit::Deflected);
             } else {

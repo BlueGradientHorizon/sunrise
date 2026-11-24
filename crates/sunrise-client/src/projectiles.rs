@@ -1365,6 +1365,12 @@ impl Projectile {
         self.pitch = self.previous_pitch + t * (x_rot - self.previous_pitch);
         self.yaw = self.previous_yaw + t * (y_rot - self.previous_yaw);
     }
+    /// `ShulkerBullet.tick`'s `rotateTowardsMovement(this, 0.5F)`, after the move and any hit, so a bullet a hit leaves alive turns from its new motion.
+    pub fn turn_bullet(&mut self) {
+        if matches!(self.kind, ProjectileKind::ShulkerBullet { .. }) {
+            self.rotate_towards_movement(0.5);
+        }
+    }
     /// The kinds whose tick turns them with `Projectile.updateRotation`: a
     /// `ThrowableProjectile` (the thrown kinds and the experience bottle) and
     /// llama spit.
@@ -1631,7 +1637,7 @@ impl Projectile {
             return (false, Hit::Block { pos, at, face });
         }
         self.position = to;
-        self.update_rotation();
+        self.turn_bullet();
         if let Some(b) = target {
             let (dir, steps) = match self.kind {
                 ProjectileKind::ShulkerBullet { dir, steps, .. } => (dir, steps),
@@ -3081,6 +3087,88 @@ mod tests {
             falling.position.y
         );
         assert_eq!(held.position, Vec3::new(0.5, 110.0, 0.5));
+    }
+
+    /// Vanilla 26.3 `ShulkerBullet.tick` rotation witness recorded by `tools/test_shulker_bullet_parity.py`.
+    #[test]
+    #[ignore = "run by tools/test_shulker_bullet_parity.py"]
+    fn a_shulker_bullet_turns_halfway_towards_its_motion_26_3() {
+        let path = std::env::var("SUNRISE_SHULKER_BULLET_TURN_WITNESS")
+            .expect("run through tools/test_shulker_bullet_parity.py, which records the witness");
+        let witness = std::fs::read_to_string(&path).unwrap_or_else(|err| {
+            panic!(
+                "missing shulker bullet turn witness at {path} ({err}); run tools/test_shulker_bullet_parity.py"
+            )
+        });
+        let hex_f64 = |s: &str| f64::from_bits(u64::from_str_radix(s, 16).unwrap());
+        let hex_u32 = |s: &str| u32::from_str_radix(s, 16).unwrap();
+        let mut cases = 0usize;
+        for line in witness.lines() {
+            if line.is_empty() || line.starts_with('#') {
+                continue;
+            }
+            let cols: Vec<&str> = line.split('\t').collect();
+            assert_eq!(cols.len(), 11, "unexpected witness row: {line}");
+            let name = cols[0];
+            let mut p = Projectile::new(
+                ProjectileKind::ShulkerBullet {
+                    target: None,
+                    dir: None,
+                    steps: 0,
+                    delta: [0.0; 3],
+                    seed: 0,
+                },
+                Vec3::new(0.5, 110.0, 0.5),
+                None,
+            );
+            p.no_gravity = cols[1] == "1";
+            p.velocity = Vec3::new(hex_f64(cols[2]), hex_f64(cols[3]), hex_f64(cols[4]));
+            p.yaw = f32::from_bits(hex_u32(cols[5]));
+            p.pitch = f32::from_bits(hex_u32(cols[6]));
+            p.set_old_pos_and_rot();
+            let mut targets = Vec::new();
+            if cols[7] != "-" {
+                let seed: i64 = cols[7].parse().unwrap();
+                p = p.with_entity_random(sunrise_core::random::LegacyRandom::new(seed));
+                let at: Vec<f64> = cols[8].split(',').map(hex_f64).collect();
+                assert_eq!(at.len(), 3, "{name}: bad breeze coords");
+                let half = f64::from(0.6_f32 / 2.0_f32);
+                let height = f64::from(1.77_f32);
+                targets.push((
+                    Who::Mob(99),
+                    Aabb::new(
+                        Vec3::new(at[0] - half, at[1], at[2] - half),
+                        Vec3::new(at[0] + half, at[1] + height, at[2] + half),
+                    ),
+                ));
+            }
+            let w = Empty(targets);
+            let ticks: usize = cols[9].parse().unwrap();
+            let steps: Vec<&str> = cols[10].split(',').collect();
+            assert_eq!(steps.len(), ticks, "{name}: step count mismatch");
+            for (tick, step) in steps.iter().enumerate() {
+                let (_, hit) = p.tick(&w);
+                if matches!(hit, Hit::Entity { .. }) {
+                    assert!(p.deflect(Turn::Reverse, [1.0; 3], (None, None, None), false));
+                    p.turn_bullet();
+                }
+                let expected: Vec<u32> = step.split(':').map(hex_u32).collect();
+                assert_eq!(expected.len(), 4, "{name} tick {}: bad step", tick + 1);
+                assert_eq!(
+                    [
+                        p.yaw.to_bits(),
+                        p.pitch.to_bits(),
+                        p.previous_yaw.to_bits(),
+                        p.previous_pitch.to_bits(),
+                    ],
+                    [expected[0], expected[1], expected[2], expected[3]],
+                    "{name} tick {}",
+                    tick + 1
+                );
+            }
+            cases += 1;
+        }
+        assert!(cases > 0, "witness file has no cases");
     }
     /// `ShulkerBullet.tick`: a bullet turns off its axis before the block
     /// ahead when it could stand on it (`loadedAndEntityCanStandOn`, asked
