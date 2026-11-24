@@ -113,7 +113,13 @@ impl Frontend {
             .and_then(|var| var.constant);
         if let Some((constant, ty)) = enclosing_constant {
             let span = ctx.module.constants.get_span(constant);
-            let expr = ctx.add_expression(Expression::Constant(constant), span)?;
+            // `expr` is in this context's own arena, as `Context::new` puts the globals'; a
+            // constant context reads the constant through `constant`, and `.length()`, which
+            // lowers the array outside the constant context, reads `expr`.
+            let is_const = core::mem::replace(&mut ctx.is_const, false);
+            let expr = ctx.add_expression(Expression::Constant(constant), span);
+            ctx.is_const = is_const;
+            let expr = expr?;
             return Ok(Some(VariableReference {
                 expr,
                 load: false,

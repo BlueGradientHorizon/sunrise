@@ -291,3 +291,99 @@ fn a_block_program_sized_by_a_const_local_draws_block_entities() {
         Some("gbuffers_block")
     );
 }
+
+// `.length()` of a `const` array inside an array size: the array is lowered outside the
+// constant context, for its type only, so the name must resolve to an expression of the
+// function's own arena (GLSL 4.60, 4.3.3: the length of an explicitly sized array is a constant
+// expression). Each case sizes `a` with a length no other array in the shader has.
+
+/// The local array sizes of `main` when `size` sizes `float a[size]`, after `decls` (globals)
+/// and `locals` (the start of `main`).
+fn sized_by(decls: &str, locals: &str, size: &str) -> Vec<u32> {
+    let source = format!(
+        "{decls}\nvoid main() {{\n{locals}\nfloat a[{size}];\na[0] = 1.0;\n\
+         gl_FragColor = vec4(a[0]);\n}}\n"
+    );
+    local_array_sizes(&fragment(&source).unwrap_or_else(|e| panic!("{source}\n{e:?}")))
+}
+
+/// Sized global arrays declared before the `const` arrays, so a handle into the wrong arena
+/// lands on one of them (or past the end) instead of on the `const` array.
+const SIZED_GLOBALS: &str = "uniform float u9[9];\nuniform vec2 v11[11];\n\
+                             const int g2[2] = int[2](20, 21);\n";
+
+#[test]
+fn length_of_a_global_const_array_sizes_an_array() {
+    let decls = "const float g[4] = float[4](1.0, 2.0, 3.0, 4.0);";
+    assert_eq!(sized_by(decls, "", "g.length()"), [4]);
+    let decls = format!("{SIZED_GLOBALS}{decls}");
+    assert_eq!(sized_by(&decls, "", "g.length()"), [4]);
+}
+
+#[test]
+fn length_of_a_local_const_array_sizes_an_array() {
+    let locals = "const float l[3] = float[3](1.0, 2.0, 3.0);";
+    assert_eq!(sized_by("", locals, "l.length()"), [3]);
+    assert_eq!(sized_by(SIZED_GLOBALS, locals, "l.length()"), [3]);
+}
+
+#[test]
+fn length_of_an_element_of_a_const_array_of_arrays_sizes_an_array() {
+    // The indexed element's type is resolved in the same arena as the array.
+    let global = "const float gm[2][5] = float[2][5](float[5](1.0, 2.0, 3.0, 4.0, 5.0), \
+                  float[5](6.0, 7.0, 8.0, 9.0, 10.0));";
+    assert_eq!(
+        sized_by(&format!("{SIZED_GLOBALS}{global}"), "", "gm[1].length()"),
+        [5]
+    );
+    let local = "const float lm[2][6] = float[2][6](float[6](1.0, 2.0, 3.0, 4.0, 5.0, 6.0), \
+                 float[6](7.0, 8.0, 9.0, 10.0, 11.0, 12.0));";
+    assert_eq!(sized_by(SIZED_GLOBALS, local, "lm[0].length()"), [6]);
+}
+
+#[test]
+fn length_of_a_member_of_a_const_struct_sizes_an_array() {
+    let decls = format!(
+        "{SIZED_GLOBALS}struct S {{ float f; int arr[7]; }};\n\
+         const S gs = S(1.0, int[7](1, 2, 3, 4, 5, 6, 7));"
+    );
+    assert_eq!(sized_by(&decls, "", "gs.arr.length()"), [7]);
+    let local = "const S ls = S(2.0, int[7](1, 2, 3, 4, 5, 6, 7));";
+    let decls = format!("{SIZED_GLOBALS}struct S {{ float f; int arr[7]; }};");
+    assert_eq!(sized_by(&decls, local, "ls.arr.length()"), [7]);
+}
+
+#[test]
+fn length_of_a_const_array_as_an_argument_sizes_an_array() {
+    // A call's arguments are lowered in the constant context, through the constant itself.
+    let decls = format!("{SIZED_GLOBALS}const float g[4] = float[4](1.0, 2.0, 3.0, 4.0);");
+    let locals = "const float l[3] = float[3](1.0, 2.0, 3.0);";
+    assert_eq!(
+        sized_by(&decls, locals, "max(g.length(), l.length()) + 4"),
+        [8]
+    );
+    assert_eq!(
+        sized_by(&decls, locals, "g2[1] - g.length() - l.length()"),
+        [14]
+    );
+}
+
+#[test]
+fn length_of_a_const_array_labels_a_case() {
+    let program = fragment(
+        "uniform int pick;\nuniform float u9[9];\n\
+         const float g[4] = float[4](1.0, 2.0, 3.0, 4.0);\nvoid main() {\n\
+         const float l[3] = float[3](1.0, 2.0, 3.0);\nfloat v = 0.0;\nswitch (pick) {\n\
+         case g.length(): v = 1.0; break;\ncase l.length(): v = 2.0; break;\n\
+         default: break;\n}\ngl_FragColor = vec4(v + u9[0]);\n}\n",
+    )
+    .unwrap_or_else(|e| panic!("{e:?}"));
+    assert_eq!(
+        case_labels(&program),
+        [
+            naga::SwitchValue::I32(4),
+            naga::SwitchValue::I32(3),
+            naga::SwitchValue::Default
+        ]
+    );
+}
