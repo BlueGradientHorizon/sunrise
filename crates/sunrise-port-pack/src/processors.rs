@@ -16,7 +16,6 @@
 //! What is not here is taken out of its list later and counted
 //! (`worldgen::upgrade`). The entity NBT is written in 26.3's shape (an
 //! `equipment` map, not 1.21.1's `HandItems` and `ArmorItems`).
-use crate::lithostitched;
 use serde_json::{Value, json};
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -40,11 +39,6 @@ pub struct ProcessorData {
 }
 
 impl ProcessorData {
-    /// Notes which mods its compat processors name are `loaded`.
-    pub fn mark_loaded(&mut self, loaded: &dyn Fn(&str) -> bool) {
-        lithostitched::mark_loaded(self, loaded);
-    }
-
     pub fn read<R: Read + Seek>(zip: &mut zip::ZipArchive<R>) -> Self {
         let mut out = Self::default();
         let mut budget = crate::entry::Budget::archive();
@@ -167,35 +161,18 @@ pub fn carry(
     })
 }
 
-/// The processors of one list carried: references written in, then each
-/// one with a data form replaced by it. Whether anything changed.
+/// The processors of one list carried: each one with a vanilla data form
+/// replaced by it. Whether anything changed.
 pub(crate) fn carry_all(
     list: Vec<Value>,
     data: &ProcessorData,
     carried: &mut BTreeMap<String, usize>,
 ) -> (Vec<Value>, bool) {
-    carry_at(list, data, carried, 0)
-}
-
-/// [`carry_all`] for a list `depth` pillars deep (see [`pillar`]).
-fn carry_at(
-    list: Vec<Value>,
-    data: &ProcessorData,
-    carried: &mut BTreeMap<String, usize>,
-    depth: usize,
-) -> (Vec<Value>, bool) {
-    let (expanded, mut changed) = lithostitched::expand_references(list, data, carried);
-    let mut out = Vec::with_capacity(expanded.len());
-    for p in expanded {
+    let mut changed = false;
+    let mut out = Vec::with_capacity(list.len());
+    for p in list {
         let kind = p["processor_type"].as_str().unwrap_or_default().to_owned();
-        // Lithostitched's processors stay theirs, with what they hold carried.
-        let replacement = lithostitched::processor(&kind, &p, data, carried).or_else(|| {
-            match pillar_type(&kind) {
-                Some(to) => Some(vec![pillar(&p, to, data, carried, depth)]),
-                None => as_data(&kind, &p, data),
-            }
-        });
-        match replacement {
+        match as_data(&kind, &p, data) {
             Some(replacement) => {
                 *carried.entry(kind).or_default() += 1;
                 out.extend(replacement);
@@ -207,68 +184,12 @@ fn carry_at(
     (out, changed)
 }
 
-/// The game's type for the mods' processors that place blocks past their
-/// template, which keep their fields (`sunrise-world`'s `pillars.rs`).
-fn pillar_type(kind: &str) -> Option<&'static str> {
-    Some(match kind {
-        "repurposed_structures:pillar_processor" | "moogs_structures:pillar_processor" => {
-            "sunrise:pillar"
-        }
-        "repurposed_structures:bottom_pillar_processor" => "sunrise:bottom_pillar",
-        "repurposed_structures:close_off_fluid_sources_processor"
-        | "moogs_structures:close_off_fluid_sources_processor" => "sunrise:close_off_fluid_sources",
-        "repurposed_structures:close_off_air_sources_processor" => "sunrise:close_off_air_sources",
-        _ => return None,
-    })
-}
-
-/// A pillar processor as the game's `to`. Its `pillar_processor_list`
-/// (which runs on each block of the column; Repurposed's often names the
-/// list it is in) is written in, carried; the pillars inside that copy lose
-/// theirs, as a column's blocks are never the mods' triggers.
-fn pillar(
-    p: &Value,
-    to: &str,
-    data: &ProcessorData,
-    carried: &mut BTreeMap<String, usize>,
-    depth: usize,
-) -> Value {
-    let mut out = p.clone();
-    out["processor_type"] = to.into();
-    let Some(o) = out.as_object_mut() else {
-        return out;
-    };
-    let Some(list) = o.remove("pillar_processor_list") else {
-        return out;
-    };
-    let inner = match &list {
-        Value::String(id) if id == "minecraft:empty" => None,
-        _ if depth > 0 => None,
-        other => referenced(other, data),
-    };
-    if let Some(inner) = inner {
-        let (inner, _) = carry_at(inner, data, carried, depth + 1);
-        o.insert("pillar_processor_list".into(), json!({"processors": inner}));
-    }
-    out
-}
-
 /// Repurposed Structures' rule tests and the game's types that run them
 /// (`sunrise_world::worldgen`'s `rule_test` and `structure::processor`).
-const RULE_TESTS: [(&str, &str); 3] = [
-    (
-        "repurposed_structures:matter_phase_rule_test",
-        "sunrise:matter_phase",
-    ),
-    (
-        "repurposed_structures:piece_origin_axis_aligned_linear_pos_rule_test",
-        "sunrise:piece_origin_axis_aligned_linear_pos",
-    ),
-    (
-        "repurposed_structures:y_value_pos_rule_test",
-        "sunrise:y_value",
-    ),
-];
+const RULE_TESTS: [(&str, &str); 1] = [(
+    "repurposed_structures:matter_phase_rule_test",
+    "sunrise:matter_phase",
+)];
 
 /// Renames the rule tests written in Java that the game runs under its own
 /// type ([`RULE_TESTS`]) in a worldgen file's processor lists; each is
@@ -296,32 +217,6 @@ pub fn rule_tests(kind: &str, v: &mut Value, carried: &mut BTreeMap<String, usiz
     each_list(kind, v, &mut |list| rename(list, carried))
 }
 
-/// The processors of the lists a reference names: an id, an inline list, or
-/// a list of either.
-pub(crate) fn referenced(lists: &Value, data: &ProcessorData) -> Option<Vec<Value>> {
-    let one = |l: &Value| -> Option<Vec<Value>> {
-        let mut list = match l {
-            Value::String(id) if !id.starts_with('#') => {
-                let id = if id.contains(':') {
-                    id.clone()
-                } else {
-                    format!("minecraft:{id}")
-                };
-                data.lists.get(&id)?.clone()
-            }
-            Value::Object(_) | Value::Array(_) => l.clone(),
-            _ => return None,
-        };
-        processors(&mut list).map(std::mem::take)
-    };
-    match lists {
-        // A bare list of processors is one inline list; else a list of lists.
-        Value::Array(a) if a.iter().any(|x| x.get("processor_type").is_some()) => Some(a.clone()),
-        Value::Array(a) => Some(a.iter().map(one).collect::<Option<Vec<_>>>()?.concat()),
-        other => one(other),
-    }
-}
-
 /// The data form of a Java processor: the processors to put in its place
 /// (none for a no-op), or `None` when it has none.
 fn as_data(kind: &str, p: &Value, data: &ProcessorData) -> Option<Vec<Value>> {
@@ -332,42 +227,6 @@ fn as_data(kind: &str, p: &Value, data: &ProcessorData) -> Option<Vec<Value>> {
         "repurposed_structures:structure_void_processor" => vec![json!({
             "processor_type": "minecraft:block_ignore",
             "blocks": ["minecraft:structure_void"]})],
-        "moogs_structures:spawner_randomizing_processor" => {
-            let mobs = p["weighted_entities"]
-                .as_array()?
-                .iter()
-                .map(|e| {
-                    // The entry's NBT, then its id over it.
-                    let mut entity = match &e["nbt"] {
-                        Value::Object(o) => o.clone(),
-                        _ => serde_json::Map::new(),
-                    };
-                    entity.insert("id".into(), e["entity"].as_str()?.into());
-                    Some(json!({"entity": entity, "weight": e["weight"].as_f64()?}))
-                })
-                .collect::<Option<Vec<_>>>()?;
-            vec![spawner_mobs(p, mobs, None)]
-        }
-        "repurposed_structures:spawner_randomizing_processor" => {
-            // A list the mod does not ship falls back to a vanilla dungeon
-            // mob in the mod; left out here.
-            let list = data
-                .spawners
-                .get(p["rs_spawner_resourcelocation"].as_str()?)?;
-            let mobs = list
-                .iter()
-                .map(|(id, weight)| json!({"entity": {"id": id}, "weight": weight}))
-                .collect();
-            vec![spawner_mobs(p, mobs, repurposed_light(p)?)]
-        }
-        // Wet where the world holds water, dry where it does not.
-        "repurposed_structures:waterlogging_when_replacing_water_processor" => {
-            vec![json!({"processor_type": "sunrise:waterlog_in_world_water"})]
-        }
-        // Its mineshafts: nothing above the ocean floor but grounded rails.
-        "repurposed_structures:mineshaft_sky_view_processor" => {
-            vec![json!({"processor_type": "sunrise:mineshaft_sky_view"})]
-        }
         "moogs_structures:vanilla_loot_swap_processor" => {
             let key = (
                 p["modid"].as_str()?.to_owned(),
@@ -378,123 +237,8 @@ fn as_data(kind: &str, p: &Value, data: &ProcessorData) -> Option<Vec<Value>> {
             }
             Vec::new()
         }
-        "moogs_structures:trial_spawner_randomizing_processor" => {
-            // The configs by id: 26.3 reads them from `trial_spawner/`, the
-            // folder Moog's loads them from.
-            let mut nbt = json!({"normal_config": p["normal_config"].as_str()?});
-            if let Some(ominous) = p["ominous_config"].as_str() {
-                nbt["ominous_config"] = ominous.into();
-            }
-            // The state the template was saved with goes.
-            let saved = [
-                "server_data",
-                "shared_data",
-                "spawn_data",
-                "cooldown_end_at_tick",
-                "next_mob_spawns_at",
-            ];
-            vec![same_state_rule(&TRIAL_SPAWNER_STATES, &saved, |_| {
-                nbt.clone()
-            })]
-        }
-        "moogs_structures:vault_randomizing_processor" => {
-            let normal = p["loot_table"].as_str()?;
-            let config = |ominous: bool| {
-                let (table, key) = match ominous {
-                    true => (
-                        p["ominous_loot_table"].as_str().unwrap_or(normal),
-                        p["ominous_key_item"]
-                            .as_str()
-                            .unwrap_or("minecraft:ominous_trial_key"),
-                    ),
-                    false => (
-                        normal,
-                        p["key_item"].as_str().unwrap_or("minecraft:trial_key"),
-                    ),
-                };
-                // Merged into the vault's config, as the mod puts both in.
-                json!({"config": {"loot_table": table, "key_item": {"id": key, "count": 1}}})
-            };
-            vec![same_state_rule(
-                &VAULT_STATES,
-                &["server_data", "shared_data"],
-                |s| config(s.get("ominous") == Some(&"true")),
-            )]
-        }
         _ => return None,
     })
-}
-
-/// A block's states, as (block, [(property, values)]).
-type States = (
-    &'static str,
-    &'static [(&'static str, &'static [&'static str])],
-);
-const TRIAL_SPAWNER_STATES: States = (
-    "minecraft:trial_spawner",
-    &[
-        (
-            "trial_spawner_state",
-            &[
-                "inactive",
-                "waiting_for_players",
-                "active",
-                "waiting_for_reward_ejection",
-                "ejecting_reward",
-                "cooldown",
-            ],
-        ),
-        ("ominous", &["false", "true"]),
-    ],
-);
-const VAULT_STATES: States = (
-    "minecraft:vault",
-    &[
-        ("facing", &["north", "south", "west", "east"]),
-        (
-            "vault_state",
-            &["inactive", "active", "unlocking", "ejecting"],
-        ),
-        ("ominous", &["false", "true"]),
-    ],
-);
-
-/// Moog's trial spawner and vault processors keep the block, take keys out
-/// of its block entity and set others. As vanilla's `rule`: one rule per
-/// state of the block, matching it and writing it back, with the game's
-/// `sunrise:edit` modifier taking out `remove` and merging `nbt(state)` in.
-fn same_state_rule(
-    states: &States,
-    remove: &[&str],
-    nbt: impl Fn(&BTreeMap<&str, &str>) -> Value,
-) -> Value {
-    let (block, properties) = states;
-    let mut all = vec![BTreeMap::new()];
-    for (key, values) in properties.iter() {
-        all = all
-            .into_iter()
-            .flat_map(|s| {
-                values.iter().map(move |v| {
-                    let mut s = s.clone();
-                    s.insert(*key, *v);
-                    s
-                })
-            })
-            .collect();
-    }
-    let rules: Vec<Value> = all
-        .iter()
-        .map(|s| {
-            let state = json!({"id": block, "properties": s});
-            json!({
-                "input_predicate": {"predicate_type": "minecraft:blockstate_match", "block_state": state},
-                "location_predicate": {"predicate_type": "minecraft:always_true"},
-                "output_state": state,
-                "block_entity_modifier": {"type": "sunrise:edit", "remove": remove, "data": nbt(s)},
-            })
-        })
-        .collect();
-    json!({"processor_type": "minecraft:rule", "rules": rules})
 }
 
 /// An entity's NBT in 26.3's shape, in place: 1.21.1's `ArmorItems` (feet
@@ -546,63 +290,6 @@ pub fn upgrade_trial_spawner(config: &mut Value) -> bool {
         changed |= upgrade_entity(&mut p["data"]["entity"]);
     }
     changed
-}
-
-/// [`as_data`]'s `sunrise:spawner_mobs` for the mods' spawner randomizing
-/// processors, whose fields have the same names and defaults.
-fn spawner_mobs(p: &Value, mobs: Vec<Value>, rules: Option<Value>) -> Value {
-    let mut out = json!({"processor_type": "sunrise:spawner_mobs", "mobs": mobs});
-    for key in [
-        "delay",
-        "min_spawn_delay",
-        "max_spawn_delay",
-        "spawn_count",
-        "max_nearby_entities",
-        "required_player_range",
-        "spawn_range",
-    ] {
-        if let Some(n) = p.get(key).filter(|n| n.is_i64()) {
-            out[key] = n.clone();
-        }
-    }
-    if let Some(r) = rules {
-        out["custom_spawn_rules"] = r;
-    }
-    if let Some(b) = p.get("spawner_replacement_block") {
-        out["replacement"] = b.clone();
-    }
-    out
-}
-
-/// Repurposed Structures' `custom_spawn_rules` from its light level ranges:
-/// `Some(None)` without either, `None` when one does not read. The sky
-/// light's upper bound is written as `max_exclusive`, as the mod does.
-fn repurposed_light(p: &Value) -> Option<Option<Value>> {
-    let range = |key: &str| -> Option<Option<(i64, i64)>> {
-        match p.get(key) {
-            None => Some(None),
-            Some(Value::Number(n)) => n.as_i64().map(|n| Some((n, n))),
-            Some(v) => Some(Some((
-                v["min_inclusive"].as_i64()?,
-                v["max_inclusive"].as_i64()?,
-            ))),
-        }
-    };
-    let (block, sky) = (
-        range("valid_block_light_level")?,
-        range("valid_sky_light_level")?,
-    );
-    if block.is_none() && sky.is_none() {
-        return Some(None);
-    }
-    let mut rules = json!({});
-    if let Some((min, max)) = block {
-        rules["block_light_limit"] = json!({"min_inclusive": min, "max_inclusive": max});
-    }
-    if let Some((min, max)) = sky {
-        rules["sky_light_limit"] = json!({"min_inclusive": min, "max_exclusive": max});
-    }
-    Some(Some(rules))
 }
 
 #[cfg(test)]
@@ -677,48 +364,6 @@ mod tests {
     }
 
     #[test]
-    fn trial_spawners_and_vaults_drop_their_saved_state() {
-        let mut list = json!({"processors": [
-            {"processor_type": "moogs_structures:trial_spawner_randomizing_processor",
-             "normal_config": "mns:arena/normal", "ominous_config": "mns:arena/ominous"},
-            {"processor_type": "moogs_structures:vault_randomizing_processor",
-             "loot_table": "mns:vaults/main", "ominous_loot_table": "mns:vaults/ominous"}]});
-        let mut carried = BTreeMap::new();
-        assert!(carry("processor_list", &mut list, &data(), &mut carried));
-        let p = list["processors"].as_array().unwrap();
-        let rules = |i: usize| p[i]["rules"].as_array().unwrap().clone();
-        // Every state of the block: 6 x 2 trial spawners, 4 x 4 x 2 vaults.
-        assert_eq!((rules(0).len(), rules(1).len()), (12, 32));
-        let spawner = &rules(0)[0];
-        assert_eq!(
-            spawner["input_predicate"]["block_state"],
-            spawner["output_state"]
-        );
-        assert_eq!(
-            spawner["block_entity_modifier"],
-            json!({"type": "sunrise:edit",
-                   "remove": ["server_data", "shared_data", "spawn_data",
-                              "cooldown_end_at_tick", "next_mob_spawns_at"],
-                   "data": {"normal_config": "mns:arena/normal",
-                            "ominous_config": "mns:arena/ominous"}})
-        );
-        for rule in rules(1) {
-            let ominous = rule["output_state"]["properties"]["ominous"] == "true";
-            let (table, key) = match ominous {
-                true => ("mns:vaults/ominous", "minecraft:ominous_trial_key"),
-                false => ("mns:vaults/main", "minecraft:trial_key"),
-            };
-            assert_eq!(
-                rule["block_entity_modifier"],
-                json!({"type": "sunrise:edit", "remove": ["server_data", "shared_data"],
-                       "data": {"config": {"loot_table": table,
-                                           "key_item": {"id": key, "count": 1}}}})
-            );
-        }
-        assert_eq!(carried.len(), 2);
-    }
-
-    #[test]
     fn trial_spawner_mobs_take_26_3s_equipment() {
         let mut config = json!({"spawn_potentials": [{"weight": 1, "data": {"entity": {
             "id": "minecraft:skeleton",
@@ -735,25 +380,6 @@ mod tests {
                    "drop_chances": {"head": 0.0}})
         );
         assert!(!upgrade_trial_spawner(&mut config));
-    }
-
-    #[test]
-    fn repurposed_waterlogging_follows_the_world() {
-        let mut list = json!({"processors": [{"processor_type":
-            "repurposed_structures:waterlogging_when_replacing_water_processor"},
-            {"processor_type": "repurposed_structures:mineshaft_sky_view_processor"}]});
-        let mut carried = BTreeMap::new();
-        assert!(carry(
-            "processor_list",
-            &mut list,
-            &ProcessorData::default(),
-            &mut carried
-        ));
-        assert_eq!(
-            list["processors"],
-            json!([{"processor_type": "sunrise:waterlog_in_world_water"},
-                {"processor_type": "sunrise:mineshaft_sky_view"}])
-        );
     }
 
     #[test]
@@ -827,70 +453,5 @@ mod tests {
                 "blocks": ["minecraft:structure_void"]}])
         );
         assert_eq!(carried["repurposed_structures:structure_void_processor"], 1);
-    }
-
-    #[test]
-    fn pillars_become_the_games() {
-        let mut d = ProcessorData::default();
-        // Repurposed's city list names itself as its pillar's list.
-        let city = json!({"processors": [
-            {"processor_type": "repurposed_structures:pillar_processor", "direction": "down",
-             "pillar_length": 15, "pillar_processor_list": "repurposed_structures:cities/x",
-             "pillar_trigger_and_replacements": [{"trigger": {"Name": "minecraft:red_stained_glass"},
-                 "replacement": {"Name": "minecraft:cobblestone"}}]},
-            {"processor_type": "minecraft:block_rot", "integrity": 0.5}]});
-        d.lists
-            .insert("repurposed_structures:cities/x".into(), city.clone());
-        let mut list = city;
-        list["processors"].as_array_mut().unwrap().extend([
-            json!({"processor_type": "repurposed_structures:bottom_pillar_processor",
-                   "pillar_processor_list": "minecraft:empty"}),
-            json!({"processor_type": "moogs_structures:close_off_fluid_sources_processor",
-                   "weighted_list_of_replacement_blocks": [{"block": "minecraft:stone", "weight": 1}]}),
-            json!({"processor_type": "repurposed_structures:close_off_air_sources_processor",
-                   "weighted_list_of_replacement_blocks": [{"block": "minecraft:prismarine", "weight": 1}]}),
-            json!({"processor_type": "betterfortresses:pillar_processor",
-                   "target_block": {"Name": "minecraft:orange_terracotta"},
-                   "target_block_output": {"defaultBlockState": {"Name": "minecraft:red_nether_bricks"}, "entries": []},
-                   "pillar_states": {"defaultBlockState": {"Name": "minecraft:nether_bricks"}, "entries": []}}),
-            json!({"processor_type": "betterfortresses:stair_pillar_processor"}),
-        ]);
-        let mut carried = BTreeMap::new();
-        assert!(carry("processor_list", &mut list, &d, &mut carried));
-        let p = list["processors"].as_array().unwrap();
-        let types: Vec<&str> = p
-            .iter()
-            .map(|p| p["processor_type"].as_str().unwrap())
-            .collect();
-        assert_eq!(
-            types,
-            [
-                "sunrise:pillar",
-                "minecraft:block_rot",
-                "sunrise:bottom_pillar",
-                "sunrise:close_off_fluid_sources",
-                "sunrise:close_off_air_sources",
-                // YUNG's processors stay Java (dropped later) until the
-                // specification covers them.
-                "betterfortresses:pillar_processor",
-                "betterfortresses:stair_pillar_processor"
-            ]
-        );
-        // The named list is written in once; its own pillar loses its list.
-        let inner = &p[0]["pillar_processor_list"]["processors"];
-        assert_eq!(inner[0]["processor_type"], "sunrise:pillar");
-        assert!(inner[0].get("pillar_processor_list").is_none());
-        assert_eq!(
-            inner[0]["pillar_trigger_and_replacements"],
-            p[0]["pillar_trigger_and_replacements"]
-        );
-        assert_eq!(inner[1]["processor_type"], "minecraft:block_rot");
-        assert!(p[2].get("pillar_processor_list").is_none());
-        assert_eq!(
-            p[4]["weighted_list_of_replacement_blocks"],
-            json!([{"block": "minecraft:prismarine", "weight": 1}])
-        );
-        assert_eq!(carried["repurposed_structures:pillar_processor"], 2);
-        assert!(!carried.contains_key("betterfortresses:stair_pillar_processor"));
     }
 }

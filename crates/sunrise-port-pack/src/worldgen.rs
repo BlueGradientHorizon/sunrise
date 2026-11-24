@@ -214,29 +214,13 @@ fn drop_java_processors(list: &mut Value, dropped: &mut BTreeMap<String, usize>)
     let before = processors.len();
     processors.retain(|p| {
         let t = p["processor_type"].as_str().unwrap_or_default();
-        let java = !t.starts_with("minecraft:")
-            && !t.starts_with("sunrise:")
-            && !lithostitched::game_reads(p);
-        if java {
+        let keep = t.starts_with("minecraft:");
+        if !keep {
             *dropped.entry(t.to_owned()).or_default() += 1;
         }
-        !java
+        keep
     });
-    let mut changed = processors.len() != before;
-    // The inline lists inside Lithostitched's apply_random and condition.
-    for p in processors.iter_mut() {
-        let inner: Vec<&mut Value> = match p["processor_type"].as_str() {
-            Some(t) if t.starts_with("lithostitched:") => lithostitched::inner_lists(p),
-            Some("sunrise:pillar" | "sunrise:bottom_pillar") => {
-                p.get_mut("pillar_processor_list").into_iter().collect()
-            }
-            _ => Vec::new(),
-        };
-        for list in inner {
-            changed |= drop_java_processors(list, dropped);
-        }
-    }
-    changed
+    processors.len() != before
 }
 
 /// 1.21.1 writes a block or fluid state as `{"Name": ..., "Properties":
