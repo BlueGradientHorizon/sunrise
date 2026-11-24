@@ -216,6 +216,7 @@ impl Game<'_> {
         }
         self.attachment_indexes.clear();
         self.passages.retire_world();
+        self.close_all_saved_chunk_readers();
         self.native_lifecycle
             .begin_open_at(self.native_lifecycle_authority(), epoch);
     }
@@ -242,6 +243,7 @@ impl Game<'_> {
         self.native_lifecycle.retire();
         self.attachment_indexes.clear();
         self.passages.retire_world();
+        self.close_all_saved_chunk_readers();
         self.resident_entities.table.get_mut().reset();
         super::cauldron_interactions::clear();
         self.clear_composter_randoms();

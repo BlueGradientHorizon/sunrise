@@ -151,6 +151,13 @@ impl Game<'_> {
             open.store(false, Ordering::Release);
         }
     }
+
+    /// Mark all `SavedChunkReader` handles across every dimension as unavailable.
+    pub(super) fn close_all_saved_chunk_readers(&mut self) {
+        for (_, open) in self.saved_chunk_readers.borrow_mut().drain() {
+            open.store(false, Ordering::Release);
+        }
+    }
 }
 
 #[cfg(test)]
@@ -283,7 +290,8 @@ mod tests {
             assert_eq!(live_11.block_state(0, 0, 0).unwrap().block(), dirt_key);
 
             // Closing the level immediately invalidates the reader without retaining SaveDir.
-            game.native_levels_closing();
+            let dim = game.dim;
+            game.close_saved_chunk_readers_for_dim(dim);
             assert_eq!(
                 reader.read([4, -2]).err(),
                 Some(SavedChunkError::Unavailable)
@@ -435,7 +443,8 @@ mod tests {
                 .join()
                 .expect("concurrent writer/reader thread succeeded");
 
-            game.native_levels_closing();
+            let dim = game.dim;
+            game.close_saved_chunk_readers_for_dim(dim);
             drop(save);
             let _ = std::fs::remove_dir_all(&world_root);
         });
