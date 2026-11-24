@@ -38,7 +38,9 @@ impl Game<'_> {
                 .identity_index(player.uuid(), player.entity().id())
             {
                 let guest = &host.hub.guests[index];
-                if guest.placed && (guest.participates_online() || guest.is_fake()) {
+                if (guest.joined() && guest.participates_online())
+                    || (guest.placed && guest.is_fake())
+                {
                     return Ok(PostEffectsTarget::Guest(guest.conn));
                 }
             }
