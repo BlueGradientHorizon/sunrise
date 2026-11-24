@@ -17,7 +17,7 @@
 //! - an integer texel buffer (`uniform isamplerBuffer Faces;`) becomes a read-only storage buffer
 //!   of `int`s (`uint`s for `usamplerBuffer`), and `texelFetch` on it reads one into the first
 //!   channel of an `ivec4`: wgpu has no texel buffers. Like any block the caller gives beyond
-//!   its own, it is bound at [`other_binding`], and refused when not given.
+//!   its own, it is bound at [`Translated::other_binding`], and refused when not given.
 
 use std::collections::HashSet;
 use std::fmt::Write;
@@ -27,11 +27,6 @@ use naga::front::glsl::{Frontend, InterfaceLimits, Options};
 use naga::valid::{Capabilities, ValidationFlags, Validator};
 
 mod glsl_fixups;
-
-/// The first binding of the blocks and samplers a program names beyond [`Inputs::blocks`] and
-/// [`Inputs::samplers`]: fine while the preprocessor drops them, an error when a stage uses one
-/// the caller doesn't give.
-const OTHER_BINDINGS: u32 = 16;
 
 /// What a program's pipeline gives it, beyond its [`Glue`].
 pub struct Inputs<'a> {
@@ -85,13 +80,15 @@ pub struct Translated {
     pub vertex: naga::Module,
     pub fragment: naga::Module,
     /// The blocks and samplers that are none of [`Inputs::blocks`] and [`Inputs::samplers`], in
-    /// binding order: the `i`th is at
-    /// [`other_binding`]`(i)` (a sampler's object one after its texture; a block leaves that binding
-    /// unused).
+    /// binding order: the `i`th is at [`Translated::other_binding`]`(i)` (a sampler's object one
+    /// after its texture; a block leaves that binding unused).
     pub other: Vec<String>,
     /// The resources of set 0 the stages' entry points read, each with those stages
     /// ([`bindings_read`], from the validation that made the program).
     pub read: Vec<(u32, wgpu_types::ShaderStages)>,
+    /// First set-0 binding assigned to [`Translated::other`], strictly above every binding in
+    /// [`Inputs::blocks`] and [`Inputs::samplers`].
+    other_base: u32,
 }
 
 /// The integer texel buffers a stage declares (`uniform isamplerBuffer` or `usamplerBuffer`).
@@ -151,6 +148,7 @@ impl Translated {
         (vertex, vertex_info): (naga::Module, naga::valid::ModuleInfo),
         (fragment, fragment_info): (naga::Module, naga::valid::ModuleInfo),
         other: Vec<String>,
+        other_base: u32,
     ) -> Self {
         let read = bindings_read([(&vertex, &vertex_info), (&fragment, &fragment_info)]);
         Self {
@@ -158,7 +156,13 @@ impl Translated {
             fragment,
             other,
             read,
+            other_base,
         }
+    }
+
+    /// The binding of the `index`th block or sampler of [`Translated::other`] in set 0.
+    pub fn other_binding(&self, index: usize) -> u32 {
+        self.other_base + 2 * index as u32
     }
 
     /// The stages whose entry points read the resource at `binding` of set 0, through any
@@ -232,11 +236,6 @@ impl Translated {
     }
 }
 
-/// The binding of the `index`th block or sampler of [`Translated::other`].
-pub fn other_binding(index: usize) -> u32 {
-    OTHER_BINDINGS + 2 * index as u32
-}
-
 /// The resources of set 0 that the entry points of each stage read, through any function they
 /// call (naga's per entry point use, from the stage's own validation), each with the stages
 /// reading it.
@@ -305,7 +304,7 @@ pub fn translate(
         Ok(texel_fetches(&glsl_fixups::fixups(&expanded)))
     };
     let (vertex_text, fragment_text) = (stage(vertex)?, stage(fragment)?);
-    let mut names = Names::default();
+    let mut names = Names::new(other_binding_base(inputs)?);
     let vertex_code = rewrite(&vertex_text, ShaderStage::Vertex, inputs, glue, &mut names)
         .map_err(|e| format!("vertex shader: {e}"))?;
     let fragment_code = rewrite(
@@ -343,7 +342,12 @@ pub fn translate(
             "the fragment shader reads location {missing}, which the vertex shader doesn't write"
         ));
     }
-    Ok(Translated::new(vertex, fragment, names.other))
+    Ok(Translated::new(
+        vertex,
+        fragment,
+        names.other,
+        names.other_base,
+    ))
 }
 
 /// A bound on a program's includes, which are pasted every time.
@@ -730,15 +734,41 @@ fn block_name(line: &str) -> Option<&str> {
         .then_some(name)
 }
 
+/// First set-0 binding strictly above every caller-declared block (`b`) and sampler (`b`, `b + 1`).
+fn other_binding_base(inputs: &Inputs) -> Result<u32, String> {
+    let mut base = 0u32;
+    for &(_, b) in inputs.blocks {
+        let next = b
+            .checked_add(1)
+            .ok_or_else(|| "block binding index overflow".to_owned())?;
+        base = base.max(next);
+    }
+    for &(_, b) in inputs.samplers {
+        let next = b
+            .checked_add(2)
+            .ok_or_else(|| "sampler binding index overflow".to_owned())?;
+        base = base.max(next);
+    }
+    Ok(base)
+}
+
 /// What the two stages share: the vertex stage's outputs and their locations, and the names of
 /// the blocks and samplers of other pipelines in binding order.
-#[derive(Default)]
 struct Names {
     varyings: Vec<(String, u32)>,
     other: Vec<String>,
+    other_base: u32,
 }
 
 impl Names {
+    fn new(other_base: u32) -> Self {
+        Self {
+            varyings: Vec::new(),
+            other: Vec::new(),
+            other_base,
+        }
+    }
+
     fn location(&self, varying: &str) -> Option<u32> {
         self.varyings
             .iter()
@@ -747,7 +777,7 @@ impl Names {
     }
 
     /// A block or sampler of another pipeline: its binding (two for a sampler).
-    fn other_binding(&mut self, name: &str) -> u32 {
+    fn other_binding(&mut self, name: &str) -> Result<u32, String> {
         let index = match self.other.iter().position(|n| n == name) {
             Some(index) => index,
             None => {
@@ -755,7 +785,18 @@ impl Names {
                 self.other.len() - 1
             }
         };
-        other_binding(index)
+        let offset = u32::try_from(index)
+            .ok()
+            .and_then(|i| i.checked_mul(2))
+            .ok_or_else(|| "other binding index overflow".to_owned())?;
+        let binding = self
+            .other_base
+            .checked_add(offset)
+            .ok_or_else(|| "other binding index overflow".to_owned())?;
+        binding
+            .checked_add(1)
+            .ok_or_else(|| "other binding index overflow".to_owned())?;
+        Ok(binding)
     }
 }
 
@@ -792,9 +833,10 @@ fn rewrite(
     for source_line in text.lines() {
         for line in declaration_lines(source_line) {
             if let Some(name) = block_name(line) {
-                let binding = (inputs.blocks.iter())
-                    .find(|(block, _)| *block == name)
-                    .map_or_else(|| names.other_binding(name), |(_, b)| *b);
+                let binding = match inputs.blocks.iter().find(|(block, _)| *block == name) {
+                    Some((_, b)) => *b,
+                    None => names.other_binding(name)?,
+                };
                 let tail = line[line.find("uniform").unwrap_or(0)..].trim();
                 writeln!(out, "layout(std140, set = 0, binding = {binding}) {tail}").unwrap();
                 continue;
@@ -807,7 +849,7 @@ fn rewrite(
             let qualifiers = decl.qualifiers.join(" ");
             match decl.storage {
                 "uniform" if matches!(decl.ty, "isamplerBuffer" | "usamplerBuffer") => {
-                    let binding = names.other_binding(decl.name);
+                    let binding = names.other_binding(decl.name)?;
                     let name = decl.name;
                     let (scalar, vector) = if decl.ty == "isamplerBuffer" {
                         ("int", "ivec4")
@@ -822,9 +864,14 @@ fn rewrite(
                     .unwrap();
                 }
                 "uniform" if decl.ty == "sampler2D" => {
-                    let binding = (inputs.samplers.iter())
+                    let binding = match inputs
+                        .samplers
+                        .iter()
                         .find(|(sampler, _)| *sampler == decl.name)
-                        .map_or_else(|| names.other_binding(decl.name), |(_, b)| *b);
+                    {
+                        Some((_, b)) => *b,
+                        None => names.other_binding(decl.name)?,
+                    };
                     let name = decl.name;
                     writeln!(
                         out,
@@ -994,12 +1041,17 @@ fn compile(
         })?;
     let entry = info.get_entry_point(0);
     for (handle, global) in module.global_variables.iter() {
-        let Some(binding) = global.binding.as_ref().map(|b| b.binding) else {
+        let Some(binding) = global
+            .binding
+            .as_ref()
+            .filter(|b| b.group == 0)
+            .map(|b| b.binding)
+        else {
             continue;
         };
-        if binding >= OTHER_BINDINGS && !entry[handle].is_empty() {
+        if binding >= names.other_base && !entry[handle].is_empty() {
             // The name it was declared with (a block's instance may have none).
-            let index = ((binding - OTHER_BINDINGS) / 2) as usize;
+            let index = ((binding - names.other_base) / 2) as usize;
             let name = names.other.get(index).map_or("?", String::as_str);
             if provided(name) {
                 continue;
@@ -1416,17 +1468,17 @@ mod tests {
         assert!(
             bindings(&program.vertex)
                 .iter()
-                .any(|(_, b)| *b == other_binding(0)),
+                .any(|(_, b)| *b == program.other_binding(0)),
             "{:?}",
             bindings(&program.vertex)
         );
         let fragment = bindings(&program.fragment);
         assert!(
-            fragment.contains(&(Some("hz_tex_Bounds".into()), other_binding(1))),
+            fragment.contains(&(Some("hz_tex_Bounds".into()), program.other_binding(1))),
             "{fragment:?}"
         );
         assert!(
-            fragment.contains(&(Some("hz_smp_Bounds".into()), other_binding(1) + 1)),
+            fragment.contains(&(Some("hz_smp_Bounds".into()), program.other_binding(1) + 1)),
             "{fragment:?}"
         );
         let error = translate_core(vsh, fsh, &[], &include, &GLUE).unwrap_err();
@@ -1640,6 +1692,97 @@ mod tests {
             )
             .as_deref(),
             Some("minecraft:shaders/include/fog.glsl")
+        );
+    }
+
+    #[test]
+    fn translate_supports_caller_high_bindings_and_custom_includes() {
+        let read = |id: &str| -> Result<Option<String>, String> {
+            match id {
+                "demo:custom/inc/scale.glsl" => {
+                    Ok(Some("float scale_it(float v) { return v * 0.5; }\n".into()))
+                }
+                _ => Ok(None),
+            }
+        };
+        let custom_includes = Includes {
+            read: &read,
+            namespace: "demo",
+            folder: "custom/inc/",
+            once: &[],
+        };
+        let inputs = Inputs {
+            blocks: &[("Camera", 17), ("Params", 24)],
+            samplers: &[("Albedo", 15)],
+            loose: &[],
+            defines: &[],
+            includes: &custom_includes,
+        };
+        let vsh = "#version 330\n\
+            #include <scale.glsl>\n\
+            layout(std140) uniform Camera { mat4 ViewProj; };\n\
+            layout(std140) uniform Extra { float extra_v; };\n\
+            out vec2 uv;\n\
+            void main() {\n\
+                uv = vec2(scale_it(extra_v), 0.5);\n\
+                gl_Position = ViewProj * vec4(0.0, 0.0, 0.0, 1.0);\n\
+            }\n";
+        let fsh = "#version 330\n\
+            layout(std140) uniform Params { vec4 Tint; };\n\
+            uniform sampler2D Albedo;\n\
+            uniform sampler2D ExtraTex;\n\
+            in vec2 uv;\n\
+            out vec4 fragColor;\n\
+            void main() {\n\
+                fragColor = Tint * texture(Albedo, uv) * texture(ExtraTex, uv);\n\
+            }\n";
+        let stages = Stages {
+            dir: "demo:custom/core/",
+            vertex: vsh,
+            fragment: fsh,
+        };
+        let provided = |name: &str| name == "Extra" || name == "ExtraTex";
+        let program = translate(&stages, &inputs, &GLUE, &provided)
+            .expect("caller bindings >= 15 and provided others must translate");
+        assert_eq!(program.other, ["Extra", "ExtraTex"]);
+        // Highest caller binding is Params at 24 (Albedo uses 15 and 16, Camera uses 17),
+        // so `other` starts at 25 without colliding with any caller binding.
+        assert_eq!(program.other_binding(0), 25);
+        assert_eq!(program.other_binding(1), 27);
+        assert_eq!(
+            program.stages_reading(15),
+            wgpu_types::ShaderStages::FRAGMENT
+        );
+        assert_eq!(
+            program.stages_reading(16),
+            wgpu_types::ShaderStages::FRAGMENT
+        );
+        assert_eq!(program.stages_reading(17), wgpu_types::ShaderStages::VERTEX);
+        assert_eq!(
+            program.stages_reading(24),
+            wgpu_types::ShaderStages::FRAGMENT
+        );
+        assert_eq!(program.stages_reading(25), wgpu_types::ShaderStages::VERTEX);
+        assert_eq!(
+            program.stages_reading(27),
+            wgpu_types::ShaderStages::FRAGMENT
+        );
+
+        // An unprovided extra block is still refused by its real name.
+        let err = translate(&stages, &inputs, &GLUE, &|_| false).unwrap_err();
+        assert!(err.contains("Extra is not a block or sampler"), "{err}");
+
+        // With `once: &[]`, `#moj_import` is not treated as an include directive.
+        let untouched = expand_includes(
+            "#moj_import <scale.glsl>\nfloat x;\n",
+            "demo:custom/core/",
+            &custom_includes,
+            None,
+        )
+        .unwrap();
+        assert!(
+            untouched.contains("#moj_import <scale.glsl>"),
+            "{untouched}"
         );
     }
 }

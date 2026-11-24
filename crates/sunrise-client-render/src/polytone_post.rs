@@ -364,7 +364,7 @@ impl ShaderModifiers {
         }
         if let Some(i) = (program.other.iter()).position(|n| n == sunrise_polytone::globals::BLOCK)
         {
-            let binding = sunrise_glsl::other_binding(i);
+            let binding = program.other_binding(i);
             crate::gfx::expression_blocks::check_poly_globals(
                 [&program.vertex, &program.fragment],
                 binding,
@@ -376,7 +376,7 @@ impl ShaderModifiers {
             if own.contains(&name.as_str()) {
                 continue;
             }
-            let binding = sunrise_glsl::other_binding(i);
+            let binding = program.other_binding(i);
             let stages = program.stages_reading(binding);
             if stages.is_empty() {
                 continue;

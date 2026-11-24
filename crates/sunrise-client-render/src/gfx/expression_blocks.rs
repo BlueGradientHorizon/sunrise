@@ -243,7 +243,7 @@ impl ExpressionBlocks {
     pub(crate) fn new(program: &Translated, uniforms: &[ExpressionUniform], base: u64) -> Self {
         let globals = (program.other.iter())
             .position(|name| name == sunrise_polytone::globals::BLOCK)
-            .map(sunrise_glsl::other_binding)
+            .map(|i| program.other_binding(i))
             .map(|binding| {
                 (
                     binding,
@@ -504,7 +504,7 @@ mod tests {
         assert_eq!(values, [0.25, 1.5]);
         // `PolyGlobals` read: its 176 bytes at `base`, the uniforms after it.
         let reading = program(true);
-        let globals = sunrise_glsl::other_binding(
+        let globals = reading.other_binding(
             reading
                 .other
                 .iter()
@@ -555,7 +555,7 @@ mod tests {
                 .unwrap();
             check_poly_globals(
                 [&program.vertex, &program.fragment],
-                sunrise_glsl::other_binding(i),
+                program.other_binding(i),
             )
         };
         assert_eq!(check(&program(true)), Ok(()));
@@ -595,7 +595,7 @@ mod tests {
                 .iter()
                 .position(|n| n == "PolyGlobals")
                 .unwrap();
-            let binding = sunrise_glsl::other_binding(i);
+            let binding = program.other_binding(i);
             let mut fragment = program.fragment;
             let (handle, ty) = (fragment.global_variables.iter())
                 .find(|(_, g)| g.binding.as_ref().is_some_and(|b| b.binding == binding))

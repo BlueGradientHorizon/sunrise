@@ -224,7 +224,7 @@ impl Draw {
                 .other
                 .iter()
                 .position(|n| n == name)
-                .map(sunrise_glsl::other_binding)
+                .map(|i| program.other_binding(i))
         };
         let faces_binding = binding(FACES);
         let info_binding = binding(INFO_BLOCK);

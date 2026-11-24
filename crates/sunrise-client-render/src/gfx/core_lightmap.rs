@@ -199,7 +199,7 @@ impl CoreLightmap {
             .other
             .iter()
             .position(|n| n == INFO_BLOCK)
-            .map(sunrise_glsl::other_binding);
+            .map(|i| program.other_binding(i));
         // A pack's shader is untrusted: the backend failing to compile it is an internal error.
         let validation = device.push_error_scope(wgpu::ErrorFilter::Validation);
         let internal = device.push_error_scope(wgpu::ErrorFilter::Internal);

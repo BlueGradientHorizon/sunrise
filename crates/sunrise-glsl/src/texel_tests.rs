@@ -63,8 +63,8 @@ fn integer_texel_buffers_become_storage_buffers_the_pipeline_gives() {
     assert_eq!(
         storage(&program.vertex),
         [
-            (other_binding(1), naga::ScalarKind::Sint),
-            (other_binding(2), naga::ScalarKind::Uint)
+            (program.other_binding(1), naga::ScalarKind::Sint),
+            (program.other_binding(2), naga::ScalarKind::Uint)
         ]
     );
     assert!(program.vertex.global_variables.iter().any(|(_, v)| {
