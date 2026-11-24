@@ -661,7 +661,7 @@ mod tests {
     fn saved_chunk() -> Arc<Chunk> {
         let mut source = Attachments::default();
         VALUE.set(&mut source, Holder::Chunk([3, 5]), 7).unwrap();
-        let form = source.to_nbt();
+        let form = source.try_to_nbt().unwrap();
         let mut chunk = Chunk::empty(3, 5);
         chunk.saved = Some(Arc::new(crate::chunk::ChunkExtras {
             attachments: Attachments::from_nbt(form),
