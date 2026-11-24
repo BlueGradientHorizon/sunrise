@@ -2685,6 +2685,32 @@ fn keeps_its_air(m: &Mob) -> bool {
     m.species() == Species::IronGolem
 }
 
+/// `LivingEntity.decreaseAirSupply` starts with `getAttribute(OXYGEN_BONUS)`, and
+/// `AttributeMap.getInstance` makes the instance, which `AttributeMap.pack` saves from then on.
+fn make_oxygen_bonus(m: &mut Mob, w: &MobWorld) {
+    if m.extra.oxygen_bonus_made {
+        return;
+    }
+    m.extra.oxygen_bonus_made = true;
+    let seed: Vec<_> = if m.extra.live.built().is_none() {
+        crate::entity_nbt::attribute_entries(m)
+            .into_iter()
+            .map(|(_, entry)| entry)
+            .collect()
+    } else {
+        Vec::new()
+    };
+    let kind = m.kind.clone();
+    m.extra.live.edit(
+        w.attributes,
+        &kind.id,
+        "minecraft:oxygen_bonus",
+        true,
+        move || seed,
+        |_, _| Ok(()),
+    );
+}
+
 /// `base_tick` finished, or stopped at its air update for the owner to ask
 /// the mods (`living_breathe`) with a host.
 enum BaseTick {
@@ -2891,6 +2917,9 @@ fn continue_base_tick(
                         && !can_breathe_under_water(m, w)
                         && !water_breathing
                         && !nautilus;
+                    if drowns && !keeps_its_air(m) {
+                        make_oxygen_bonus(m, w);
+                    }
                     let held = submerged && nautilus && !water_breathing;
                     let max = m.max_air_supply();
                     let vanilla = Breath {
@@ -9274,6 +9303,169 @@ mod dolphin_noai_air_tests {
     #[ignore = "daily"]
     fn normal_dolphins_keep_their_underwater_countdown() {
         check(true, false, 4800, [4799, 4798]);
+    }
+}
+
+#[cfg(test)]
+mod oxygen_bonus_tests {
+    use super::*;
+    use std::collections::HashMap;
+    use std::sync::Arc;
+    use sunrise_core::nbt::Tag;
+
+    #[derive(serde::Deserialize)]
+    struct Witness {
+        minecraft: String,
+        cases: Vec<Case>,
+    }
+
+    #[derive(serde::Deserialize)]
+    struct Case {
+        name: String,
+        entity: String,
+        medium: String,
+        effect: Option<String>,
+        stored_oxygen_bonus_bits: Option<String>,
+        ticks: u32,
+        attributes: Vec<AttrRow>,
+    }
+
+    #[derive(serde::Deserialize)]
+    struct AttrRow {
+        id: String,
+        base_bits: String,
+    }
+
+    fn saved_attributes(case: &Case) -> Vec<(String, u64)> {
+        let mut out = Vec::new();
+        let medium = case.medium.as_str();
+        let ran = crate::mobs::world::with_built_test_world(
+            &[],
+            |world, registry| {
+                world
+                    .chunks
+                    .insert((0, 0), Arc::new(crate::chunk::Chunk::empty(0, 0)));
+                let block = match medium {
+                    "air" => None,
+                    "water" => Some("minecraft:water"),
+                    "bubble_column" => Some("minecraft:bubble_column"),
+                    other => panic!("unexpected medium {other}"),
+                };
+                if let Some(name) = block {
+                    let state = registry.default_state(name).unwrap();
+                    for x in 1..=3 {
+                        for z in 1..=3 {
+                            for y in 3..=8 {
+                                world.set(x, y, z, state).unwrap();
+                            }
+                        }
+                    }
+                }
+            },
+            |w, types| {
+                let kind = Arc::new(types.types[case.entity.as_str()].clone());
+                let kind_map = HashMap::from([(case.entity.clone(), kind)]);
+                let mut entries: Vec<(&str, Tag)> = vec![
+                    ("id", Tag::String(case.entity.as_str().into())),
+                    (
+                        "Pos",
+                        Tag::List(vec![
+                            Tag::Double(2.5_f64.to_bits()),
+                            Tag::Double(3.0_f64.to_bits()),
+                            Tag::Double(2.5_f64.to_bits()),
+                        ]),
+                    ),
+                    ("NoAI", Tag::Byte(1)),
+                    ("NoGravity", Tag::Byte(1)),
+                    ("PersistenceRequired", Tag::Byte(1)),
+                ];
+                if let Some(effect) = &case.effect {
+                    entries.push((
+                        "active_effects",
+                        Tag::List(vec![Tag::compound([
+                            ("id", Tag::String(effect.as_str().into())),
+                            ("duration", Tag::Int(100)),
+                            ("amplifier", Tag::Byte(0)),
+                        ])]),
+                    ));
+                }
+                if let Some(bits) = &case.stored_oxygen_bonus_bits {
+                    let raw = u64::from_str_radix(bits, 16).unwrap();
+                    entries.push((
+                        "attributes",
+                        Tag::List(vec![Tag::compound([
+                            ("id", Tag::String("minecraft:oxygen_bonus".into())),
+                            ("base", Tag::Double(raw)),
+                        ])]),
+                    ));
+                }
+                let input = Tag::compound(entries);
+                let mut m = crate::entity_nbt::mob_from_nbt(&input, &kind_map, 1, None).unwrap();
+                let (mut level, mut events) = (crate::health::TestLevel::new(0), Vec::new());
+                for _ in 0..case.ticks {
+                    assert!(tick(&mut m, w, &mut level.level(), &mut events));
+                }
+                if case.ticks > 0 {
+                    assert_eq!(m.fluids.eye_in_water, medium != "air", "{}", case.name);
+                }
+                let tag = crate::entity_nbt::mob_to_nbt(
+                    &m,
+                    [1, 2, 3, 4],
+                    None,
+                    None,
+                    |_| None,
+                    &Default::default(),
+                );
+                let Some(Tag::List(list)) = tag.get("attributes") else {
+                    panic!("no attributes list for {}", case.name);
+                };
+                for entry in list {
+                    let Some(Tag::String(name)) = entry.get("id") else {
+                        panic!("attribute entry missing id for {}", case.name);
+                    };
+                    let Some(Tag::Double(base_bits)) = entry.get("base") else {
+                        panic!("attribute entry missing double base for {}", case.name);
+                    };
+                    out.push((name.to_string().unwrap(), *base_bits));
+                }
+            },
+        );
+        assert!(ran, "vanilla data is missing");
+        out.sort_by(|a, b| a.0.cmp(&b.0));
+        out
+    }
+
+    /// Saved `attributes` against the vanilla 26.3 witness `tools/test_mob_oxygen_bonus_parity.py` records (#2679).
+    #[test]
+    #[ignore = "run by tools/test_mob_oxygen_bonus_parity.py"]
+    fn a_mob_losing_air_under_water_saves_oxygen_bonus() {
+        let path = std::env::var_os("SUNRISE_MOB_OXYGEN_BONUS_WITNESS").unwrap_or_else(|| {
+            panic!(
+                "SUNRISE_MOB_OXYGEN_BONUS_WITNESS is unset; run tools/test_mob_oxygen_bonus_parity.py, which records the witness"
+            )
+        });
+        let raw = std::fs::read_to_string(&path).unwrap_or_else(|err| {
+            panic!(
+                "failed to read SUNRISE_MOB_OXYGEN_BONUS_WITNESS ({}): {err}; run tools/test_mob_oxygen_bonus_parity.py",
+                std::path::Path::new(&path).display()
+            )
+        });
+        let witness: Witness = serde_json::from_str(&raw).unwrap();
+        assert_eq!(witness.minecraft, "26.3");
+        assert!(!witness.cases.is_empty());
+        for case in &witness.cases {
+            let expected: Vec<(String, u64)> = case
+                .attributes
+                .iter()
+                .map(|row| {
+                    (
+                        row.id.clone(),
+                        u64::from_str_radix(&row.base_bits, 16).unwrap(),
+                    )
+                })
+                .collect();
+            assert_eq!(saved_attributes(case), expected, "{}", case.name);
+        }
     }
 }
 

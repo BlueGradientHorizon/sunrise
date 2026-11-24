@@ -171,6 +171,7 @@ def main():
     parser.add_argument('--baby-modifier-raw-diagnostic', action='store_true', help='add the whole attributes lists and entity data')
     parser.add_argument('--mob-attribute-save-fixture', action='store_true', help='which attribute instances a pig, allay and armor stand save before and after a tick')
     parser.add_argument('--mob-attribute-save-raw-diagnostic', action='store_true', help='add the whole attributes lists and entity data')
+    parser.add_argument('--record-oxygen-bonus-witness', type=Path, help='record the vanilla underwater oxygen_bonus attribute witness JSON to this path')
     parser.add_argument('--mob-inventory-merge-fixture', action='store_true', help='Piglin and Villager saved inventories loaded as SimpleContainer.addItem does')
     parser.add_argument('--mob-inventory-merge-raw-diagnostic', action='store_true', help='add each mob\'s whole entity data')
     parser.add_argument('--summon-passengers-fixture', action='store_true', help='summon trees with Passengers entries vanilla cannot load')
@@ -482,9 +483,11 @@ def main():
     if args.baby_modifier_fixture:
         from baby_modifier_corpus import baby_modifier
         groups = [('setup', corpus_module.group_setup()), ('baby modifier mutation', baby_modifier(args.baby_modifier_raw_diagnostic))]
-    if args.mob_attribute_save_fixture:
+    if args.mob_attribute_save_fixture or args.record_oxygen_bonus_witness:
         from mob_attribute_save_corpus import mob_attribute_save
-        groups = [('setup', corpus_module.group_setup()), ('mob attribute save', mob_attribute_save(args.mob_attribute_save_raw_diagnostic))]
+        groups = [('setup', corpus_module.group_setup()),
+                  ('mob attribute save', mob_attribute_save(
+                      args.mob_attribute_save_raw_diagnostic or bool(args.record_oxygen_bonus_witness)))]
     if args.mob_inventory_merge_fixture:
         from mob_inventory_merge_corpus import mob_inventory_merge
         groups = [('setup', corpus_module.group_setup()), ('mob inventory merge', mob_inventory_merge(args.mob_inventory_merge_raw_diagnostic))]
@@ -628,6 +631,10 @@ def main():
                                          script_path=script_path, oracle_path=oracle)
             print(f'Recorded {lock["minecraft"]["version"]} shulker motion witness: {args.record_shulker_motion}')
             return
+        if args.record_oxygen_bonus_witness:
+            from mob_attribute_save_corpus import record_oxygen_bonus_witness
+            record_oxygen_bonus_witness(reference, lock['minecraft']['version'], args.record_oxygen_bonus_witness)
+            print(f'Recorded oxygen_bonus witness: {args.record_oxygen_bonus_witness}')
         print(f'Java reference: {len(reference)} records, fixture guards passed')
         return
 

@@ -1254,5 +1254,13 @@
     "path": "crates/sunrise-client/src/game/interface/native_client_screens.rs",
     "reason": "run by tools/test_writable_book_parity.py",
     "rationale": "Parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_writable_book_parity.py records the vanilla 26.3 writable-book witness into .local and runs this test against it through SUNRISE_WRITABLE_BOOK_WITNESS, so no recorded vanilla data is committed."
+  },
+  {
+    "package": "sunrise-client-lib",
+    "target": "lib",
+    "test": "mobs::ai::oxygen_bonus_tests::a_mob_losing_air_under_water_saves_oxygen_bonus",
+    "path": "crates/sunrise-client/src/mobs/ai.rs",
+    "reason": "run by tools/test_mob_oxygen_bonus_parity.py",
+    "rationale": "Parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_mob_oxygen_bonus_parity.py records the vanilla 26.3 underwater oxygen_bonus witness into .local and runs this test against it through SUNRISE_MOB_OXYGEN_BONUS_WITNESS, so no recorded vanilla data is committed."
   }
 ]
