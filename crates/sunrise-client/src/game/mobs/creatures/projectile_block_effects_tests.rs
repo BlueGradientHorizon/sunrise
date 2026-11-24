@@ -59,7 +59,7 @@ fn fire_lava_and_water_reach_a_projectile_in_its_tick() {
             }
             #[mod_api::__subscriptions]
             impl Hooks for Probe {
-                fn register(&self, r: &mut dyn Registrar, _: &RegistrationContext) {
+                fn register(&self, r: &mut (dyn Registrar + '_), _: &RegistrationContext) {
                     r.entity_tick_each("minecraft:snowball");
                 }
                 fn hears_projectile_impacts(
