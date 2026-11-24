@@ -8,6 +8,7 @@ use crate::{ChunkLoadError, ChunkSnapshot, LevelRef};
 /// [`ChunkRequestRef::cancel`] to cancel the request and release its level-33
 /// (`ChunkLevel.FULL_CHUNK_LEVEL`) ticket before completion, or match it against
 /// [`CompletedChunkRequest::request`] returned by `LevelRef::drain_chunk_requests`.
+// exhaustive: opaque handle with crate-private fields; constructed only by the engine.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct ChunkRequestRef {
     pub(crate) level: LevelRef,
