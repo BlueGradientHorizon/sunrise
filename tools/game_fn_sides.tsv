@@ -348,7 +348,7 @@ creatures	impl Game<'_>	handle_mob_events_pending	-	server	touches only server-o
 creatures	impl Game<'_>	hurt_player_by	-	server	touches only server-owned fields
 creatures	impl Game<'_>	hurt_player_from	-	server	touches only server-owned fields
 creatures	impl Game<'_>	interact_armadillo	-	client	touches only client-owned fields
-creatures	impl Game<'_>	interact_mob	-	game	touches both client-owned and server-owned fields
+creatures	impl Game<'_>	interact_mob	-	server	touches only server-owned fields
 creatures	impl Game<'_>	item_burst	-	client	touches only client-owned fields
 creatures	impl Game<'_>	killer_uuid	-	server	touches only server-owned fields
 creatures	impl Game<'_>	launch_mob_projectile	-	server	touches only server-owned fields
@@ -1195,8 +1195,8 @@ passengers	impl Game<'_>	position_riders	-	client	touches only client-owned fiel
 perspective	impl Game<'_>	local_stuck_counts	-	server	touches only server-owned fields
 pick_entity	impl Game<'_>	pick_knot_fence	-	server	touches only server-owned fields
 pick_entity::tests	-	server_entity_pick_returns_lead_and_delegates_dragon_parts	#[cfg(test)]	server	touches only server-owned fields
-piston_carry_state	impl Game<'_>	finish_piston_position_changes	-	game	touches both client-owned and server-owned fields
 piston_carry_state	impl Game<'_>	finish_piston_position_changes_client	-	client	touches only client-owned fields
+piston_carry_state	impl Game<'_>	finish_piston_position_changes_renderer_client	-	client	touches only client-owned fields
 piston_push	impl Game<'_>	finish_pushed_restitution	-	server	touches only server-owned fields
 piston_push	impl Game<'_>	move_local_player	-	server	touches only server-owned fields
 piston_push	impl Game<'_>	push_entities_up	-	server	touches only server-owned fields
@@ -1470,10 +1470,10 @@ remote::tests::spear_jab_tests	-	a_spear_jab_sends_only_its_stab	#[cfg(test)]	cl
 remote::tests::tracking_state_tests	-	tracking_emitters_follow_the_packet_target	#[cfg(test)]	client	touches only client-owned fields
 remote::tick	impl Game<'_>	count_untold_client_ticks	-	client	touches only client-owned fields
 remote::tick	impl Game<'_>	tick_client_load	-	client	touches only client-owned fields
-remote::tick	impl Game<'_>	tick_local_player	-	game	touches both client-owned and server-owned fields
+remote::tick	impl Game<'_>	tick_local_player	-	client	touches only client-owned fields
 remote::tick	impl Game<'_>	tick_local_water_vision	-	client	touches only client-owned fields
 remote::tick	impl Game<'_>	tick_remote_entities	-	client	touches only client-owned fields
-remote::tick	impl Game<'_>	tick_remote_entity_turns	-	game	touches both client-owned and server-owned fields
+remote::tick	impl Game<'_>	tick_remote_entity_turns	-	client	touches only client-owned fields
 remote::tick	impl Game<'_>	tick_remote_guardian_eyes	-	client	touches only client-owned fields
 remote::tick	impl Game<'_>	tick_remote_own_player	-	client	touches only client-owned fields
 remote::tick	impl Game<'_>	tick_remote_player	-	client	touches only client-owned fields
@@ -1481,15 +1481,6 @@ remote::tracking	impl Game<'_>	detach_remote_tracking_entity	-	client	touches on
 remote::tracking	impl Game<'_>	remote_entity_tracking_body	-	client	touches only client-owned fields
 remote::ui	impl Game<'_>	remote_overlay	-	client	touches only client-owned fields
 remote::ui	impl Game<'_>	remote_player_attack	-	client	touches only client-owned fields
-remote_projectiles	impl Game<'_>	arrow_effect_particles	-	client	touches only client-owned fields
-remote_projectiles	impl Game<'_>	arrow_makeparticle	-	client	touches only client-owned fields
-remote_projectiles	impl Game<'_>	dragon_breath_trails	-	client	touches only client-owned fields
-remote_projectiles	impl Game<'_>	shulker_bullet_trails	-	client	touches only client-owned fields
-remote_projectiles	impl Game<'_>	smoke_trails	-	client	touches only client-owned fields
-remote_projectiles	impl Game<'_>	spawn_remote_projectile_inner	-	client	touches only client-owned fields
-remote_projectiles	impl Game<'_>	throwable_bubbles	-	client	touches only client-owned fields
-remote_projectiles	impl Game<'_>	tick_remote_clouds	-	client	touches only client-owned fields
-remote_projectiles	impl Game<'_>	tick_remote_projectiles	-	game	touches both client-owned and server-owned fields
 remote_tags::tests	-	reload_publishes_retained_and_bound_empty_tags_to_loot_and_clients	#[cfg(test)]	server	touches only server-owned fields
 repro	impl Game<'_>	start_recording_world_root_server	-	server	touches only server-owned fields
 respawn_anchor	impl Game<'_>	charge_anchor	-	client	touches only client-owned fields
@@ -1583,7 +1574,5 @@ world_entry	impl Game<'_>	poll_world_creation	-	client	touches only client-owned
 world_entry	impl Game<'_>	poll_world_rest	-	client	touches only client-owned fields
 world_entry	impl Game<'_>	resume_world_entry	-	client	touches only client-owned fields
 world_entry	impl Game<'_>	station_recipes	-	client	touches only client-owned fields
-world_update	impl Game<'_>	clear_lod	-	client	touches only client-owned fields
-world_update	impl Game<'_>	prepare_lod	-	client	touches only client-owned fields
-world_update	impl Game<'_>	update_world	-	game	touches both client-owned and server-owned fields
+world_update	impl Game<'_>	update_world_save_server	-	server	touches only server-owned fields
 world_update	impl Game<'_>	update_world_server	-	server	touches only server-owned fields

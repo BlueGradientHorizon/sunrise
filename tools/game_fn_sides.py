@@ -1689,7 +1689,7 @@ def run_rustfmt(paths: list[Path]) -> None:
     rs_paths = sorted({p for p in paths if p.suffix == ".rs" and p.is_file()})
     for start in range(0, len(rs_paths), 100):
         subprocess.run(
-            [rustfmt, "--edition", "2024", *(str(p) for p in rs_paths[start : start + 100])],
+            [rustfmt, "--edition", "2024", "--config", "skip_children=true", *(str(p) for p in rs_paths[start : start + 100])],
             check=True,
         )
 
@@ -1756,6 +1756,8 @@ def run_fix(root: Path, rows: dict[FnKey, FnRow], mod_sides: dict[str, str], *, 
                 print(f"error: table row `{k.module}::{k.impl}::{k.name}` ({k.cfg}) not found in `{top_name}`", file=sys.stderr)
                 return 1
         for side in ("client", "server"):
+            if side == parent_side:
+                continue
             for k in mirror_fns[side]:
                 if k not in top_rows:
                     print(f"error: unlisted function `{k.module}::{k.name}` in `{top_name}_{side}`", file=sys.stderr)
@@ -2232,7 +2234,13 @@ def run_fix(root: Path, rows: dict[FnKey, FnRow], mod_sides: dict[str, str], *, 
                 for txt in restore_trait_impls:
                     chunks.append("\n" + txt)
                 ins_pos = node.inline_item.impl_close_brace if node.inline_item is not None else len(node.src)
-                edits_by_file[node.file_path].append((ins_pos, ins_pos, "".join(chunks)))
+                for it in node.items:
+                    if it.kind in ("mod_inline", "mod_ext", "mod_include") and any(
+                        "test" in c for c in it.cfg_attrs
+                    ):
+                        ins_pos = it.start
+                        break
+                edits_by_file[node.file_path].append((ins_pos, ins_pos, "".join(chunks) + "\n"))
 
             for ch in node.children:
                 edit_orig_node(ch, False if is_game_root else node_split)
