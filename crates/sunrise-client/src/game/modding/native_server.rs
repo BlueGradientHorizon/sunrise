@@ -3124,6 +3124,106 @@ mod tests {
         assert_eq!(apple.count, 3);
     }
 
+    /// The game's `Inventory.add` (pickups, `/give`, a bucket's or a bottle's result) takes
+    /// its slots from `getSlotWithRemainingSpace` and `getFreeSlot`
+    /// (`sunrise_client::menu::{slot_with_remaining_space, free_slot}`): one dirt at a time
+    /// lands where they answer and nowhere else, in vanilla's order (the selected slot, the
+    /// off hand, the main slots, then the first empty one).
+    #[test]
+    fn every_added_item_lands_where_the_slot_pickers_answer() {
+        use super::super::inventory_add;
+        use sunrise_client::menu::{OFFHAND, free_slot, slot_with_remaining_space};
+        let mut inv = vec![stack("minecraft:stone", 64); 36];
+        for (slot, have) in [
+            (0, stack("minecraft:stone", 5)),
+            (1, None),
+            (2, None),
+            (3, stack("minecraft:dirt", 63)),
+            (7, stack("minecraft:dirt", 63)),
+            (20, None),
+        ] {
+            inv[slot] = have;
+        }
+        let mut off = stack("minecraft:dirt", 62);
+        let selected = 3;
+        let dirt = stack("minecraft:dirt", 1).unwrap();
+        let mut landed = Vec::new();
+        for _ in 0..6 {
+            let answer = slot_with_remaining_space(&inv, off.as_ref(), selected, &dirt, 64)
+                .or_else(|| free_slot(&inv))
+                .unwrap();
+            let (mut inv_after, mut off_after) = (inv.clone(), off.clone());
+            let cell = if answer == OFFHAND {
+                &mut off_after
+            } else {
+                &mut inv_after[answer]
+            };
+            match cell {
+                Some(have) => have.count += 1,
+                empty => *empty = Some(dirt.clone()),
+            }
+            let mut one = dirt.clone();
+            assert!(!inventory_add(&mut inv, &mut off, selected, 64, &mut one));
+            assert_eq!((&inv, &off), (&inv_after, &off_after), "into {answer}");
+            landed.push(answer);
+        }
+        assert_eq!(landed, [3, OFFHAND, OFFHAND, 7, 1, 1]);
+    }
+
+    /// A mod's rows that keep hotbar slots 6 to 8 free change the slot the game's
+    /// `Inventory.add` takes (replaced on this thread through `rule_replacements::ADD_SLOT`):
+    /// a dirt passes the stack in slot 6 with room and the selected slot 7 for slot 0.
+    #[test]
+    fn a_replaced_slot_choice_reaches_the_games_inventory_add() {
+        use super::super::inventory_add;
+        use super::super::rule_replacements::{ADD_SLOT, replaced};
+        use sunrise_client::menu::OFFHAND;
+        fn open(i: usize) -> bool {
+            !(6..=8).contains(&i)
+        }
+        fn locked(
+            items: &[Option<ItemStack>],
+            offhand: Option<&ItemStack>,
+            selected: usize,
+            stack: &ItemStack,
+            max: u32,
+        ) -> Option<usize> {
+            let has = |have: Option<&ItemStack>| {
+                have.is_some_and(|have| have.same_item_same_components(stack) && have.count < max)
+            };
+            if open(selected) && has(items[selected].as_ref()) {
+                Some(selected)
+            } else if has(offhand) {
+                Some(OFFHAND)
+            } else {
+                (0..items.len())
+                    .find(|&i| open(i) && has(items[i].as_ref()))
+                    .or_else(|| (0..items.len()).find(|&i| open(i) && items[i].is_none()))
+            }
+        }
+        let mut inv = vec![None; 36];
+        inv[6] = stack("minecraft:dirt", 10);
+        let mut vanilla = inv.clone();
+        let mut off = None;
+        let mut one = stack("minecraft:dirt", 1).unwrap();
+        let left = replaced(&ADD_SLOT, locked, || {
+            inventory_add(&mut inv, &mut off, 7, 64, &mut one)
+        });
+        assert!(!left);
+        assert_eq!(
+            (&inv[0], &inv[6], &inv[7]),
+            (
+                &stack("minecraft:dirt", 1),
+                &stack("minecraft:dirt", 10),
+                &None
+            )
+        );
+        // Without the rows, vanilla's slot: the stack in slot 6 with room.
+        let mut one = stack("minecraft:dirt", 1).unwrap();
+        assert!(!inventory_add(&mut vanilla, &mut off, 7, 64, &mut one));
+        assert_eq!(vanilla[6], stack("minecraft:dirt", 11));
+    }
+
     #[test]
     fn usages_merge_into_one_tree_with_runnable_nodes() {
         let (t, levels, problems) = tree(&[
