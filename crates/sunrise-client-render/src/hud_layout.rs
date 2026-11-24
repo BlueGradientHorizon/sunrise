@@ -903,6 +903,13 @@ pub struct ResolvedGuiQuad {
     pub color: u32,
 }
 
+fn is_mob_effect_sprite(sprite: &str) -> bool {
+    sprite.starts_with("mob_effect/")
+        || sprite
+            .split_once(':')
+            .is_some_and(|(_, path)| path.starts_with("mob_effect/"))
+}
+
 impl ResolvedGuiQuad {
     /// Paint a packed atlas sprite without GUI sprite modifiers or a special blend.
     pub fn paint(self, batch: &mut HudBatch) {
@@ -911,7 +918,8 @@ impl ResolvedGuiQuad {
     }
 
     /// Paint a GUI sprite, optionally cut to a region `[sprite_w, sprite_h, u, v]`, then apply
-    /// Polytone sprite modifiers and the GUI sprite's blend to the resulting draws.
+    /// Polytone sprite modifiers, `gui.scaling` for whole non-effect sprites
+    /// (`GuiGraphicsExtractor.blitSprite`), and the GUI sprite's blend to the resulting draws.
     pub fn paint_sprite(
         mut self,
         batch: &mut HudBatch,
@@ -932,6 +940,15 @@ impl ResolvedGuiQuad {
             r.u0 = u0;
             r.v0 = v0;
         }
+        let whole_scaling = region.is_none() && !is_mob_effect_sprite(sprite);
+        // A whole GUI sprite draws as its `gui.scaling` says (`GuiGraphicsExtractor.blitSprite`).
+        let draw = |batch: &mut HudBatch, key: &str, rect: Rect, at: [f32; 4], color: u32| {
+            if whole_scaling {
+                crate::ui::draw_whole_sprite(batch, atlas, key, rect, at, color);
+            } else {
+                batch.rect_uv(at[0], at[1], at[2], at[3], rect, color);
+            }
+        };
         match crate::hud::sprite_modifiers::draws(
             atlas,
             sprite,
@@ -942,10 +959,10 @@ impl ResolvedGuiQuad {
             // A Polytone screen sprite modifier: the sprite changed, then its overlays.
             Some(draws) => {
                 for d in draws {
-                    batch.rect_uv(d.at[0], d.at[1], d.at[2], d.at[3], d.rect, d.color);
+                    draw(batch, &d.key, d.rect, d.at, d.color);
                 }
             }
-            None => self.paint(batch),
+            None => draw(batch, sprite, self.rect, self.dst, abgr(self.color)),
         }
         if blend == Blend::Crosshair {
             batch.invert_since(start);
@@ -1061,10 +1078,7 @@ fn paint_with<'a>(
             } => {
                 // An effect sprite (a content mod's under its namespace) draws as the missing
                 // sprite where the atlas lacks it; any other GUI sprite is then not drawn.
-                let effect = sprite.starts_with("mob_effect/")
-                    || sprite
-                        .split_once(':')
-                        .is_some_and(|(_, path)| path.starts_with("mob_effect/"));
+                let effect = is_mob_effect_sprite(sprite);
                 let found = match effect {
                     true => atlas.gui_sprite_or_missing(sprite),
                     false => atlas.gui_rect(sprite).copied(),

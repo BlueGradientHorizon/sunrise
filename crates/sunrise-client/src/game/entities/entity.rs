@@ -1251,8 +1251,8 @@ impl mod_api::InsideEntityAccess for ProjectileInsideAccess<'_, '_> {
             }
             Action::LavaHurt => {
                 // Entity.lavaHurt: the burn plays when `hurtServer` returned true,
-                // which only a shulker bullet's does.
-                if self.builtin_hurt("minecraft:lava") {
+                // which only a shulker bullet's does (unless silent).
+                if self.builtin_hurt("minecraft:lava") && !self.game.entity_silent(self.shot.id) {
                     let pitch = 2.0 + self.shot.random.0.next_float() * 0.4;
                     self.game.audio.play(
                         "minecraft:entity.generic.burn",
@@ -1278,12 +1278,24 @@ impl ProjectileInsideAccess<'_, '_> {
     fn builtin_hurt(&mut self, damage_type: &str) -> bool {
         match self.shot.kind {
             ProjectileKind::ShulkerBullet { .. } => {
-                self.shot.destroyed = true;
-                self.game.shulker_bullet_hurt([
+                if self.shot.destroyed {
+                    return false;
+                }
+                let at = [
                     self.shot.position.x,
                     self.shot.position.y,
                     self.shot.position.z,
-                ]);
+                ];
+                let silent = self.game.entity_silent(self.shot.id);
+                let ctx = sunrise_client::sculk::Context {
+                    owner: self.shot.owner,
+                    owner_uuid: self.shot.owner_uuid,
+                    ..self.game.entity_event_context(self.shot.id, None)
+                };
+                self.shot.destroyed = true;
+                self.game.shulker_bullet_hurt(at, silent);
+                self.game
+                    .post_game_event("minecraft:entity_damage", at, ctx);
                 true
             }
             _ if self.shot.is_fireball()
@@ -2869,6 +2881,7 @@ impl Game<'_> {
             .chain(self.paintings.iter().map(|e| e.id))
             .chain(self.others.iter().map(|e| e.id))
             .chain(self.breath_clouds.iter().map(|e| e.id))
+            .chain(self.bolts.iter().map(|e| e.id))
             .chain(self.fangs.list.iter().map(|e| e.id))
             .chain(self.crystals.iter().map(|e| e.id))
             .chain(self.dragon.iter().map(|e| e.id))

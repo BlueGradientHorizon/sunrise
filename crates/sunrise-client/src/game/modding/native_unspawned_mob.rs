@@ -381,7 +381,17 @@ fn write_mob_attribute(
     attribute: &Identifier,
     write: AttributeWrite,
 ) -> Result<bool, UnspawnedMobError> {
-    write_unspawned_attribute(attributes, items, mob, &attribute.to_string(), write)
+    let name = attribute.to_string();
+    // Every write here is a mod's, so a base stays in the attribute's range.
+    let write = match write {
+        AttributeWrite::Base(base) => AttributeWrite::Base(
+            attributes
+                .definition(&name)
+                .map_or(base, |d| d.sanitize(base)),
+        ),
+        other => other,
+    };
+    write_unspawned_attribute(attributes, items, mob, &name, write)
         .ok_or(UnspawnedMobError::Unsupported)
 }
 
@@ -753,6 +763,30 @@ mod tests {
         );
     }
 
+    /// A mod's base written through the editor stays in the attribute's range, as documented.
+    #[test]
+    #[ignore = "daily"]
+    fn a_base_written_through_the_editor_stays_in_range() {
+        let seen: Arc<Mutex<Option<Result<f64, UnspawnedMobError>>>> = Arc::new(Mutex::new(None));
+        let saw = seen.clone();
+        let max_health = id("minecraft:max_health");
+        listening(
+            move |_, event| {
+                let mob = &mut event.mob;
+                mob.set_attribute_base(&max_health, 2000.0).unwrap();
+                *saw.lock().unwrap() = Some(mob.attribute_base(&max_health));
+                Flow::Continue
+            },
+            || {
+                with_game(|game| {
+                    let spawned = spawn_pig(game).unwrap();
+                    let m = game.mobs.iter().find(|m| m.id == spawned).unwrap();
+                    assert_eq!(finalize::base_value(m, Attr::MaxHealth), 1024.0);
+                });
+                assert_eq!(seen.lock().unwrap().take(), Some(Ok(1024.0)));
+            },
+        );
+    }
     /// `Flow::Cancel` skips finalization and keeps the listener's edits on
     /// the mob that still joins; `spawn_cancelled` adds no mob at all.
     #[test]
