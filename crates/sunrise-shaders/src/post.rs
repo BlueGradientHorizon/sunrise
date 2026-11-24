@@ -1153,6 +1153,11 @@ pub fn load_post(
             }
         }
         loader.post.terrain = solid;
+        // Translucent terrain blends every buffer it writes with the translucent default (3.2),
+        // encoded data included. A pack keeps a buffer exact with its own
+        // `blend.<program>.<buffer>=off`, keyed by the program that draws water
+        // (`gbuffers_water`, or the `gbuffers_terrain` chain it falls back to); see
+        // sunrise-client-render's `gfx::pack_post::water_blend_tests`.
         loader.post.water = water.map(|mut p| {
             p.blend = blend(properties, &p.name).unwrap_or(Some(TRANSLUCENT_BLEND));
             p

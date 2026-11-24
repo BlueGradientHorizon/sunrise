@@ -340,6 +340,9 @@ mod runtime_length_tests;
 mod translucent_color_tests;
 
 #[cfg(test)]
+mod water_blend_tests;
+
+#[cfg(test)]
 mod noise_resolution_tests;
 
 #[cfg(test)]
