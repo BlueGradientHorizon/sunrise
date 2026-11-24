@@ -19,10 +19,10 @@ pub use sunrise_render_core::entity::{
 /// ignored and they stay in the first one, in their order.
 /// Sorted still-fluid geometry follows, then the two native world-canvas text materials,
 /// NORMAL and POLYGON_OFFSET, the four native terrain model materials, banner patterns,
-/// glint-only overlays, and solid `POLYGON_OFFSET` and `NORMAL` text
-/// (`SubmitNodeCollection.canRenderAsSolid`).
+/// glint-only overlays, solid `POLYGON_OFFSET` and `NORMAL` text
+/// (`SubmitNodeCollection.canRenderAsSolid`), and translucent `NORMAL` text (52).
 /// Material storage order is independent of their draw stages.
-const MATERIALS: usize = 21;
+const MATERIALS: usize = 22;
 const _: () = assert!(
     TEXT_POLYGON_OFFSET_SOLID_OVERLAY != super::EXPLICIT_PARTICLE_OVERLAY
         && TEXT_POLYGON_OFFSET_SOLID_OVERLAY != GLINT_ONLY_OVERLAY
@@ -101,6 +101,10 @@ pub const TRANSLUCENT_GLINT_ITEM_OVERLAY: u32 = 33;
 /// The overlay of text in `Font.DisplayMode.POLYGON_OFFSET` (text displays):
 /// drawn like an ordinary entity, pulled toward the camera.
 pub const TEXT_POLYGON_OFFSET_OVERLAY: u32 = 35;
+/// The overlay of translucent text in `Font.DisplayMode.NORMAL` (`RenderTypes.text`,
+/// `RenderPipelines.TEXT`; `OIT_TEXT` under Improved Transparency): a discrete name tag on its
+/// background, which `SubmitNodeCollection.canRenderAsSolid` leaves out of the solid phase.
+pub const TEXT_NORMAL_OVERLAY: u32 = 52;
 /// A native world canvas, drawn after particles with normal text depth/culling.
 pub const WORLD_TEXT_OVERLAY: u32 = 39;
 /// The front of its eight-offset outlined text, using POLYGON_OFFSET.
@@ -154,6 +158,7 @@ fn material(layer: u32, oit: bool) -> usize {
         GLINT_ONLY_OVERLAY => return 18,
         TEXT_POLYGON_OFFSET_SOLID_OVERLAY => return 19,
         TEXT_NORMAL_SOLID_OVERLAY => return 20,
+        TEXT_NORMAL_OVERLAY => return 21,
         _ => {}
     }
     if layer & 0xffff == FLUID_OVERLAY {
@@ -371,8 +376,8 @@ impl EntityBatch {
         }
         // Native translucent models sort their quads far to near, as `sortOnUpload` does.
         append_sorted(&mut self.sort, &mut self.combined, entities, &self.runs[16]);
-        // Classic `RenderTypes.textPolygonOffset` sorts on upload. `RenderTypes.text`,
-        // banner patterns and glint keep their submission order in either mode.
+        // Classic `RenderTypes.textPolygonOffset` sorts on upload. `RenderTypes.text` (solid and
+        // translucent), banner patterns and glint keep their submission order in either mode.
         for (kind, runs) in self.runs.iter().enumerate().skip(17) {
             if kind == 19 && !oit {
                 append_sorted(&mut self.sort, &mut self.combined, entities, runs);
@@ -459,6 +464,7 @@ mod tests {
             TEXT_POLYGON_OFFSET_OVERLAY,
             TEXT_POLYGON_OFFSET_SOLID_OVERLAY,
             TEXT_NORMAL_SOLID_OVERLAY,
+            TEXT_NORMAL_OVERLAY,
             11,
             12,
             OIT_ENTITY,
@@ -615,7 +621,7 @@ mod tests {
         assert_eq!(
             counts,
             [
-                1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 2, 1, 1, 0, 0, 0, 0, 0
+                1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 2, 1, 1, 0, 0, 0, 0, 0, 0
             ]
         );
         let xs: Vec<_> = batch.combined.iter().step_by(4).map(|v| v.pos[0]).collect();
@@ -691,7 +697,7 @@ mod tests {
         assert_eq!(
             batch.update(&entities, &additive, &quad(0, 9.0), &quad(0, 10.0), true),
             [
-                1, 1, 0, 0, 0, 0, 0, 0, 0, 2, 2, 2, 1, 0, 0, 0, 0, 0, 0, 0, 0
+                1, 1, 0, 0, 0, 0, 0, 0, 0, 2, 2, 2, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0
             ]
         );
         let positions: Vec<_> = batch.combined.iter().step_by(4).map(|v| v.pos[0]).collect();
@@ -818,7 +824,7 @@ mod tests {
         let mut batch = EntityBatch::default();
         for (oit, want) in [(false, [2, 3, 1, 4, 5]), (true, [1, 2, 3, 4, 5])] {
             let counts = batch.update(&entities, &[], &[], &[], oit);
-            assert_eq!(counts[19..], [3, 2]);
+            assert_eq!(counts[19..21], [3, 2]);
             assert_eq!(counts[9], 0);
             let ids: Vec<u32> = batch.combined.iter().step_by(4).map(|v| v.color).collect();
             assert_eq!(ids, want);
@@ -936,7 +942,7 @@ mod tests {
         assert_eq!(
             counts,
             [
-                4, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+                4, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
             ]
         );
         let xs: Vec<f32> = batch.combined.iter().step_by(4).map(|v| v.pos[0]).collect();
@@ -946,7 +952,7 @@ mod tests {
         assert_eq!(
             counts,
             [
-                2, 0, 0, 0, 0, 0, 1, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+                2, 0, 0, 0, 0, 0, 1, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
             ]
         );
         let xs: Vec<f32> = batch.combined.iter().step_by(4).map(|v| v.pos[0]).collect();

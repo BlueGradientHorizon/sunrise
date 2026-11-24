@@ -1397,6 +1397,7 @@ impl Renderer {
             glint_only_quads,
             text_offset_solid_quads,
             text_normal_solid_quads,
+            text_normal_quads,
         ] = self.entity_batch.update(
             entities,
             frame.additive,
@@ -1430,7 +1431,11 @@ impl Renderer {
             + native_translucent_quads
             + banner_pattern_quads
             + glint_only_quads
-            + text_solid_quads;
+            + text_solid_quads
+            + text_normal_quads;
+        // Where the solid text ends and the translucent `NORMAL` text (`RenderTypes.text`, the
+        // last material) begins.
+        let text_end = world_quads - text_normal_quads;
         laps.lap("r_draw_lists");
         // Where the tail of materials the classic and the improved passes
         // both draw ends: the shadows, particles and items count back from it.
@@ -1445,7 +1450,8 @@ impl Renderer {
             - native_translucent_quads
             - banner_pattern_quads
             - glint_only_quads
-            - text_solid_quads;
+            - text_solid_quads
+            - text_normal_quads;
         let native_clouds = self.native.as_ref().is_none_or(|n| n.vanilla_clouds);
         // A pack's core/clouds, decided before either mesh is prepared: its faces, or none and
         // the native mesh in this same frame.
@@ -2201,6 +2207,13 @@ impl Renderer {
             ) {
                 core.bind_oit(&self.device, &samples);
             }
+            // So does a pack's translucent world text (`OIT_TEXT`).
+            if let (Some(core), Some(samples)) = (
+                self.core_text.as_mut(),
+                self.oit.as_ref().and_then(|o| o.cloud_samples()),
+            ) {
+                core.bind_oit(&self.device, &samples);
+            }
         }
         let pack_sky_clear = pack_draws_sky
             .then(|| self.pack_post.as_ref().and_then(|p| p.1.as_ref()))
@@ -2888,7 +2901,7 @@ impl Renderer {
                 pass.set_vertex_buffer(0, self.entity_buffer.slice(..));
                 pass.draw_indexed(
                     0..banner_pattern_quads * 6,
-                    ((world_quads - text_solid_quads - glint_only_quads - banner_pattern_quads) * 4)
+                    ((text_end - text_solid_quads - glint_only_quads - banner_pattern_quads) * 4)
                         as i32,
                     0..1,
                 );
@@ -2901,7 +2914,7 @@ impl Renderer {
                 pass.set_vertex_buffer(0, self.entity_buffer.slice(..));
                 pass.draw_indexed(
                     0..glint_only_quads * 6,
-                    ((world_quads - text_solid_quads - glint_only_quads) * 4) as i32,
+                    ((text_end - text_solid_quads - glint_only_quads) * 4) as i32,
                     0..1,
                 );
                 pass.set_bind_group(0, &self.group, &[]);
@@ -2918,14 +2931,14 @@ impl Renderer {
                         &self.world_text_pipeline,
                         &self.text_mark_pipelines[0],
                         text_normal_solid_quads,
-                        world_quads - text_normal_solid_quads,
+                        text_end - text_normal_solid_quads,
                     ),
                     (
                         core_text::WorldTextMode::PolygonOffset,
                         &self.text_polygon_offset_pipeline,
                         &self.text_mark_pipelines[1],
                         text_offset_solid_quads,
-                        world_quads - text_solid_quads,
+                        text_end - text_solid_quads,
                     ),
                 ] {
                     if count == 0 {
@@ -2959,12 +2972,31 @@ impl Renderer {
                 }
                 pass.set_bind_group(0, &self.group, &[]);
             }
-            if text_quads > 0 && !oit_on {
+            // The translucent world text: `TEXT_POLYGON_OFFSET`'s (text displays) and `TEXT`'s
+            // (discrete name tags). Under Improved Transparency their `OIT_*` stages draw it.
+            if text_quads + text_normal_quads > 0 && !oit_on {
                 pass.stage(self.own_timing.as_mut(), "entity text");
-                pass.set_pipeline(&self.text_polygon_offset_pipeline);
-                self.bind_world_text(&mut pass, core_text::WorldTextMode::PolygonOffset);
                 pass.set_vertex_buffer(0, self.entity_buffer.slice(..));
-                pass.draw_indexed(0..text_quads * 6, (entity_quads * 4) as i32, 0..1);
+                for (mode, pipeline, count, first) in [
+                    (
+                        core_text::WorldTextMode::PolygonOffset,
+                        &self.text_polygon_offset_pipeline,
+                        text_quads,
+                        entity_quads,
+                    ),
+                    (
+                        core_text::WorldTextMode::Normal,
+                        &self.world_text_pipeline,
+                        text_normal_quads,
+                        text_end,
+                    ),
+                ] {
+                    if count > 0 {
+                        pass.set_pipeline(pipeline);
+                        self.bind_world_text(&mut pass, mode);
+                        pass.draw_indexed(0..count * 6, (first * 4) as i32, 0..1);
+                    }
+                }
                 pass.set_bind_group(0, &self.group, &[]);
             }
             // FeatureRenderDispatcher.PreparedFrame.executeTranslucent: the shadows
@@ -3009,7 +3041,7 @@ impl Renderer {
             // Native terrain models use the block sprite arrays with their own
             // alpha/mipmap policies and ordinary opaque depth. Storage follows
             // the existing materials without moving their indices or frame tails.
-            let mut first = world_quads
+            let mut first = text_end
                 - text_solid_quads
                 - glint_only_quads
                 - banner_pattern_quads
@@ -3044,7 +3076,7 @@ impl Renderer {
                 pass.set_vertex_buffer(0, self.entity_buffer.slice(..));
                 pass.draw_indexed(
                     0..native_translucent_quads * 6,
-                    ((world_quads
+                    ((text_end
                         - text_solid_quads
                         - glint_only_quads
                         - banner_pattern_quads
@@ -3235,6 +3267,7 @@ impl Renderer {
                     };
                     // "Features, World Border, Weather": what follows the opaque
                     // world in the classic pass, one stage at a time.
+                    let core_text = self.core_text.as_ref();
                     let features = |pass: &mut wgpu::RenderPass<'_>, stage: oit::Stage| {
                         let f = oit.features();
                         let s = stage as usize;
@@ -3251,7 +3284,21 @@ impl Renderer {
                                 pass.draw_indexed(0..count * 6, (first * 4) as i32, 0..1);
                             }
                         };
-                        quads(pass, &f.text[s], text_quads, entity_quads);
+                        // `OIT_TEXT_POLYGON_OFFSET` (text displays) and `OIT_TEXT` (discrete
+                        // name tags): one program, the pack's when it has one.
+                        for (count, first) in
+                            [(text_quads, entity_quads), (text_normal_quads, text_end)]
+                        {
+                            if count == 0 {
+                                continue;
+                            }
+                            if core_text.is_some_and(|c| c.bind_oit_stage(pass, stage)) {
+                                pass.draw_indexed(0..count * 6, (first * 4) as i32, 0..1);
+                                pass.set_bind_group(0, &self.entity_group, &[]);
+                            } else {
+                                quads(pass, &f.text[s], count, first);
+                            }
+                        }
                         if !hdr_gain {
                             quads(
                                 pass,

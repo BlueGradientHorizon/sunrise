@@ -2059,6 +2059,7 @@ pub fn render_entity_world(draw: EntityWorldDraw<'_>) -> std::result::Result<Vec
         glint_only_quads,
         text_offset_solid_quads,
         text_normal_solid_quads,
+        text_normal_quads,
     ] = counts;
     let text_solid_quads = text_offset_solid_quads + text_normal_solid_quads;
     let world_quads: u32 = counts.iter().sum();
@@ -2073,7 +2074,8 @@ pub fn render_entity_world(draw: EntityWorldDraw<'_>) -> std::result::Result<Vec
         - native_translucent_quads
         - banner_pattern_quads
         - glint_only_quads
-        - text_solid_quads;
+        - text_solid_quads
+        - text_normal_quads;
     let vertex = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
         label: None,
         contents: bytemuck::cast_slice(&batch.combined),
@@ -2201,8 +2203,12 @@ pub fn render_entity_world(draw: EntityWorldDraw<'_>) -> std::result::Result<Vec
                 pass.set_pipeline(&banner_pattern_pipeline);
                 pass.draw_indexed(
                     0..banner_pattern_quads * 6,
-                    ((world_quads - text_solid_quads - glint_only_quads - banner_pattern_quads) * 4)
-                        as i32,
+                    ((world_quads
+                        - text_normal_quads
+                        - text_solid_quads
+                        - glint_only_quads
+                        - banner_pattern_quads)
+                        * 4) as i32,
                     0..1,
                 );
             }
@@ -2210,7 +2216,8 @@ pub fn render_entity_world(draw: EntityWorldDraw<'_>) -> std::result::Result<Vec
                 pass.set_pipeline(&glint_only_pipeline);
                 pass.draw_indexed(
                     0..glint_only_quads * 6,
-                    ((world_quads - text_solid_quads - glint_only_quads) * 4) as i32,
+                    ((world_quads - text_normal_quads - text_solid_quads - glint_only_quads) * 4)
+                        as i32,
                     0..1,
                 );
             }

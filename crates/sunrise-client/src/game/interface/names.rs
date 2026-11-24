@@ -676,7 +676,7 @@ impl Game<'_> {
                     &tag.lines,
                     faded,
                     background,
-                    0,
+                    name_tag_layer(faded, background),
                     light,
                     NAME_TAG_UNIT,
                     out,
@@ -693,7 +693,7 @@ impl Game<'_> {
                 &tag.lines,
                 0xFF,
                 0,
-                0,
+                name_tag_layer(0xFF, 0),
                 light,
                 NAME_TAG_UNIT,
                 out,
@@ -829,6 +829,19 @@ impl Game<'_> {
         }
         // Glyphs rasterized on first use (Unifont's) upload with the frame.
         batch.patches
+    }
+}
+
+/// The layer of a name tag's `Font.DisplayMode.NORMAL` copy (`RenderTypes.text`, a pack's
+/// `core/text`): `SubmitNodeCollection.submitNameTagPart` puts it in the solid phase when
+/// `canRenderAsSolid` (its text's alpha 255 and its background's 0, in a level), else with the
+/// translucent text (`OIT_TEXT` under Improved Transparency). `text_alpha` is 0 to 255,
+/// `background` ARGB.
+pub(super) fn name_tag_layer(text_alpha: u32, background: u32) -> u32 {
+    if text_alpha == 0xFF && background >> 24 == 0 {
+        sunrise_client::gfx::TEXT_NORMAL_SOLID_OVERLAY
+    } else {
+        sunrise_client::gfx::TEXT_NORMAL_OVERLAY
     }
 }
 
