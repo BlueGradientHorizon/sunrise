@@ -1430,7 +1430,6 @@ impl Game<'_> {
     ) -> Result<Dispensed> {
         let target = offset(pos, facing);
         let target_pos = Self::pos_of(target);
-        let state = self.block_at(target);
         let name = self.dispenser_block_name(target);
         let mut success = true;
         // tryIgniteExplosiveEntities: the first sulfur cube that can explode is primed.

@@ -4,7 +4,7 @@ pub trait Hooks {
     /// NeoForge's `IItemExtension.canPerformAction`: can `stack` perform the item
     /// ability `ability`, a plain, case-sensitive name such as `shield_block` or
     /// `sword_sweep` (a mod's own abilities also use plain names, such as
-    /// `my_mod_chop`; `host.items().item_abilities()` lists the game's)?
+    /// `my_mod_chop`; `host.item_abilities()` lists the game's)?
     /// `can_perform` arrives with vanilla's answer for that ability: the item kind's
     /// (shears shear), its tag's (`#minecraft:swords` sweep) or the stack's component
     /// (`blocks_attacks`, a shield's, blocks); set it either way and the stack grants or

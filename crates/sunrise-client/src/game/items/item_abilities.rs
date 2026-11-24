@@ -55,7 +55,7 @@ pub(in crate::game) mod ability {
 }
 
 impl Game<'_> {
-    /// `host.items().item_abilities()`: [`ability::ALL`] as owned names.
+    /// `host.item_abilities()`: [`ability::ALL`] as owned names.
     pub(in crate::game) fn item_abilities(&self) -> Vec<String> {
         ability::ALL.map(String::from).to_vec()
     }

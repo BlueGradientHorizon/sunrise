@@ -19,7 +19,7 @@ impl ItemPart for CarvingTool {
 
 Attach this Part to your item with the registrar's `item_part` method. This grants pumpkin carving only: `shears_harvest` is a separate ability for mob and dispenser shearing. `shield_block` permits blocking and uses the stack's blocking component, or the default component when absent. Leave unknown abilities unchanged.
 
-The game asks these abilities at the following action sites; `host.items().item_abilities()` lists them:
+The game asks these abilities at the following action sites; `host.item_abilities()` lists them:
 
 | Ability | Consumers |
 | --- | --- |

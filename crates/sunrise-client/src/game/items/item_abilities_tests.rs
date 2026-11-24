@@ -261,7 +261,7 @@ fn without_parts_the_vanilla_item_checks_stand() {
 /// The abilities [`Lights`] heard `block_tool_modification` ask, and whether a player acted.
 static HEARD: std::sync::Mutex<Vec<(mod_api::ToolAbility, bool)>> =
     std::sync::Mutex::new(Vec::new());
-/// What `host.items().item_abilities()` answered [`Lights`].
+/// What `host.item_abilities()` answered [`Lights`].
 static LISTED: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
 /// Where [`Lights`] takes every tool's answer away.
 const REFUSED: [i32; 3] = [6, 64, 8];
@@ -287,7 +287,7 @@ impl Hooks for Lights {
             .lock()
             .unwrap()
             .push((event.tool.ability, event.tool.player.is_some()));
-        *LISTED.lock().unwrap() = host.items().item_abilities();
+        *LISTED.lock().unwrap() = host.item_abilities();
         if event.tool.pos == REFUSED {
             *event.final_state = None;
         }
