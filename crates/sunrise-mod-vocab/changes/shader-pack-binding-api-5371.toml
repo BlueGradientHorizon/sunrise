@@ -1,6 +1,7 @@
 ids = [
     "method:prelude::ClientOptionsClientHost::shader_pack_active",
-    "type:RenderPipeline",
+    "type:RenderPipeline.geometry_class",
+    "type:RenderPipeline.pack_binding",
     "type:PipelineGeometryClass",
     "type:PackBinding",
     "type:PackPassSlot",
