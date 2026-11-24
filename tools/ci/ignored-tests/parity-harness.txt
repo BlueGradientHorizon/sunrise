@@ -21,6 +21,7 @@ sunrise-client-lib mobs::villager_brain::reputation_witness_tests::witnesses_use
 sunrise-client-render packs::cache::tests::benchmark_real_resource_root SUNRISE_OVERLAY_BENCH_VANILLA harness
 sunrise-client game::campfire::block_entity_items_tests::block_entity_items_match_the_vanilla_cases tools/test_block_entity_item_geometry_parity.py harness
 sunrise-client-lib mobs::finalize::load_tests::a_loaded_health_is_clamped_to_the_loaded_max_health tools/test_mob_attribute_nbt_parity.py harness
+sunrise-client-lib mobs::cube::own_base_tests::a_cube_keeps_the_bases_its_own_size_set tools/test_mob_attribute_nbt_parity.py harness
 sunrise-client-render gfx::view::tests::cull_frustum_matches_26_3_witness_with_zoom_widen_and_bob tools/test_camera_parity.py harness
 sunrise-client game::interactions::tests::interaction_negative_height_bounds_invert_downward_26_3 tools/test_camera_parity.py harness
 sunrise-client game::interactions::tests::interaction_unsynced_default_sync_and_pose_sync_seat_height_26_3 tools/test_camera_parity.py harness

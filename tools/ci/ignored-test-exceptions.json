@@ -728,6 +728,14 @@
     "rationale": "Parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_mob_attribute_nbt_parity.py records the vanilla 26.3 loaded-health witness into .local and runs this test against it through SUNRISE_MOB_LOADED_HEALTH_WITNESS, so no recorded vanilla data is committed."
   },
   {
+    "package": "sunrise-client-lib",
+    "target": "lib",
+    "test": "mobs::cube::own_base_tests::a_cube_keeps_the_bases_its_own_size_set",
+    "path": "crates/sunrise-client/src/mobs/cube.rs",
+    "reason": "run by tools/test_mob_attribute_nbt_parity.py",
+    "rationale": "Parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_mob_attribute_nbt_parity.py records the vanilla 26.3 mob attribute NBT witness into .local and runs this test against it through SUNRISE_MOB_ATTRIBUTE_NBT_WITNESS, so no recorded vanilla data is committed."
+  },
+  {
     "package": "sunrise-client-render",
     "target": "lib",
     "test": "gfx::view::tests::cull_frustum_matches_26_3_witness_with_zoom_widen_and_bob",
