@@ -253,8 +253,9 @@ impl GoalCx<'_, '_> {
         &self,
         entity: EntityRef,
         distance: f64,
+        include_fluids: bool,
     ) -> Option<mod_api::ClipHit> {
-        if !(distance.is_finite() && distance >= 0.0) {
+        if !distance.is_finite() {
             return None;
         }
         let mob = self.entity_mob(entity)?;
@@ -262,14 +263,13 @@ impl GoalCx<'_, '_> {
         let look = self.r_entity_view_vector(entity)?;
         let to = std::array::from_fn(|i| from[i] + look[i] * distance);
         let level = self.r_entity_level(entity)?;
+        let fluids = if include_fluids {
+            mod_api::ClipFluid::Any
+        } else {
+            mod_api::ClipFluid::None
+        };
         mod_api::__private::backend_read(self.host, |backend| {
-            backend.level_clip(
-                level,
-                from,
-                to,
-                mod_api::ClipBlock::Outline,
-                mod_api::ClipFluid::None,
-            )
+            backend.level_clip(level, from, to, mod_api::ClipBlock::Outline, fluids)
         })
         .flatten()
     }

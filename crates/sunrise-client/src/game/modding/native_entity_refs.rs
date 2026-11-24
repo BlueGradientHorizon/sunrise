@@ -1012,10 +1012,9 @@ impl Game<'_> {
         )
     }
 
-    /// Clip an empty-context ray against collider or outline shapes, without fluids, in the
-    /// world `native_level_view_world` reads. None on failed reads, dynamic shapes (unless
-    /// the block's entity published its shapes, which stand over them), invalid rays or
-    /// traversal limits.
+    /// Clip an empty-context ray against collider or outline shapes and fluids (`BlockGetter.clip`)
+    /// in the world `native_level_view_world` reads. None for stale, unloaded, out-of-height,
+    /// non-finite, or unsupported dynamic-shape inputs; never loads chunks.
     pub(super) fn level_clip(
         &self,
         level: LevelRef,
@@ -1031,6 +1030,15 @@ impl Game<'_> {
             world_ray::{RayBlockMode, RayFluidMode, clip_world},
         };
         let world = self.native_level_view_world(level)?;
+        let items = if self.options.execution_role.is_client() {
+            self.remote
+                .as_ref()
+                .and_then(|r| r.tags.as_ref())
+                .unwrap_or_else(|| self.items())
+        } else {
+            self.items()
+        };
+        let fluid_resources = &self.res.motion().fluids;
         let mut rays = super::explosion::ColliderRays {
             scene: SceneCollisions {
                 world,
@@ -1044,6 +1052,12 @@ impl Game<'_> {
                 tables: &self.pack.context.tables,
                 registry: self.pack.assets.registry,
             }),
+            fluid_clip: Some(sunrise_client::motion::FluidClip {
+                states: fluid_resources.states(),
+                items,
+                shapes: &fluid_resources.shapes,
+            }),
+            last_block: None,
         };
         let mode = match blocks {
             ClipBlock::Collider => RayBlockMode::Collider,
@@ -1052,6 +1066,9 @@ impl Game<'_> {
         };
         let fluid = match fluids {
             ClipFluid::None => RayFluidMode::None,
+            ClipFluid::SourceOnly => RayFluidMode::SourceOnly,
+            ClipFluid::Any => RayFluidMode::Any,
+            ClipFluid::Water => RayFluidMode::Water,
             _ => unreachable!("ClipFluid: unhandled variant"),
         };
         let result = clip_world(
@@ -1060,7 +1077,7 @@ impl Game<'_> {
             Vec3::new(to[0], to[1], to[2]),
             mode,
             fluid,
-            4096,
+            usize::MAX,
         )
         .ok()?;
         let h = result.hit;
@@ -4660,6 +4677,8 @@ pub(super) mod tests {
                 },
                 context: sunrise_world::collision_context::CollisionContext::empty(false),
                 clip_data: None,
+                fluid_clip: None,
+                last_block: None,
             };
             assert!(
                 ordinary
@@ -4719,6 +4738,134 @@ pub(super) mod tests {
                     .block,
                 [1, 64, 0]
             );
+        });
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn level_clip_fluid_modes_shapes_and_solid_on_tie() {
+        use mod_api::{BlockFace as Face, ClipBlock as Block, ClipFluid as Fluid};
+        use std::sync::Arc;
+        use sunrise_client::chunk::Chunk;
+        with_game(|game| {
+            game.world
+                .chunks
+                .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
+            game.world
+                .chunks
+                .insert((0, -1), Arc::new(Chunk::empty(0, -1)));
+            let level = game.level(game.dim.id()).unwrap();
+            let stone = game.block_state_id("minecraft:stone").unwrap();
+            let water_src = game.block_state_id("minecraft:water[level=0]").unwrap();
+            let water_flow3 = game.block_state_id("minecraft:water[level=5]").unwrap();
+            let water_flow4 = game.block_state_id("minecraft:water[level=4]").unwrap();
+            let lava_src = game.block_state_id("minecraft:lava[level=0]").unwrap();
+            let lava_flow6 = game.block_state_id("minecraft:lava[level=2]").unwrap();
+            let slab_bot = game
+                .block_state_id("minecraft:oak_slab[type=bottom,waterlogged=true]")
+                .unwrap();
+            let slab_top = game
+                .block_state_id("minecraft:oak_slab[type=top,waterlogged=true]")
+                .unwrap();
+            let h8 = f64::from(8.0_f32 / 9.0);
+            let h6 = f64::from(6.0_f32 / 9.0);
+            let h3 = f64::from(3.0_f32 / 9.0);
+
+            // Matrix over water/lava (source vs flowing) and waterlogged slab with stone below.
+            let cells = [
+                (0, water_src, h8, [false, true, true, true]),
+                (1, water_flow3, h3, [false, false, true, true]),
+                (2, lava_src, h8, [false, true, true, false]),
+                (3, lava_flow6, h6, [false, false, true, false]),
+                (4, slab_bot, h8, [false, true, true, true]),
+            ];
+            for &(x, state, _, _) in &cells {
+                game.world.set(x, 63, 0, stone).unwrap();
+                game.world.set(x, 64, 0, state).unwrap();
+            }
+            // Flowing water under same fluid lifts its shape height to 1.0.
+            game.world.set(5, 64, 0, water_flow4).unwrap();
+            game.world.set(5, 65, 0, water_src).unwrap();
+            // Solid-on-tie comparison: plain water vs waterlogged top slab.
+            game.world.set(6, 64, 0, water_src).unwrap();
+            game.world.set(7, 64, 0, slab_top).unwrap();
+
+            let modes = [Fluid::None, Fluid::SourceOnly, Fluid::Any, Fluid::Water];
+            for &(x, state, height, stops) in &cells {
+                let cx = f64::from(x) + 0.5;
+                for (mode, expect_fluid) in modes.into_iter().zip(stops) {
+                    let hit = level
+                        .clip(game, [cx, 65.5, 0.5], [cx, 62.5, 0.5], Block::Outline, mode)
+                        .unwrap();
+                    assert!(!hit.miss, "x={x} mode={mode:?}");
+                    if expect_fluid {
+                        assert_eq!(hit.block, [x, 64, 0]);
+                        assert_eq!(hit.face, Face::Up);
+                        assert_eq!(hit.location[1], 64.0 + height);
+                    } else if state == slab_bot {
+                        assert_eq!(hit.block, [x, 64, 0]);
+                        assert_eq!(hit.location[1], 64.5);
+                    } else {
+                        assert_eq!(hit.block, [x, 63, 0]);
+                        assert_eq!(hit.location[1], 64.0);
+                    }
+                }
+            }
+
+            let deep = level
+                .clip(
+                    game,
+                    [5.5, 64.95, -0.5],
+                    [5.5, 64.95, 0.5],
+                    Block::Outline,
+                    Fluid::Any,
+                )
+                .unwrap();
+            assert!(!deep.miss);
+            assert_eq!((deep.block, deep.face), ([5, 64, 0], Face::North));
+
+            let plain = level
+                .clip(
+                    game,
+                    [6.5, 64.0 + h8 + 0.5, -0.5],
+                    [6.5, 64.0 + h8 - 0.5, 0.5],
+                    Block::Outline,
+                    Fluid::Any,
+                )
+                .unwrap();
+            assert_eq!((plain.block, plain.face), ([6, 64, 0], Face::Up));
+            let tied = level
+                .clip(
+                    game,
+                    [7.5, 64.0 + h8 + 0.5, -0.5],
+                    [7.5, 64.0 + h8 - 0.5, 0.5],
+                    Block::Outline,
+                    Fluid::Any,
+                )
+                .unwrap();
+            assert_eq!((tied.block, tied.face), ([7, 64, 0], Face::North));
+
+            // Tagging a non-water-named fluid into minecraft:water makes ClipFluid::Water hit it.
+            let mut tagged = game.items().clone();
+            tagged
+                .fluid_tags
+                .entry("minecraft:water".into())
+                .or_default()
+                .insert("minecraft:lava".into());
+            game.server_items = Some(Arc::new(tagged));
+            let tagged_hit = level
+                .clip(
+                    game,
+                    [2.5, 65.5, 0.5],
+                    [2.5, 62.5, 0.5],
+                    Block::Outline,
+                    Fluid::Water,
+                )
+                .unwrap();
+            assert_eq!((tagged_hit.block, tagged_hit.face), ([2, 64, 0], Face::Up));
+            assert_eq!(tagged_hit.location[1], 64.0 + h8);
+            game.server_items = None;
+            assert_eq!(game.world.chunks.len(), 2, "clip loads no chunks");
         });
     }
 

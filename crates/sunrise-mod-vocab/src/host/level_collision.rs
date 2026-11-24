@@ -29,10 +29,13 @@ pub trait LevelCollisionBackend {
         kind: BlockShapeKind,
     ) -> Option<Vec<[f64; 6]>>;
     /// Side: both.
-    /// Clip an empty-context ray against collider or outline shapes, without fluids.
-    /// None on failed reads, dynamic shapes, invalid rays or traversal limits, and for a ray
-    /// that enters a column the level doesn't hold. On a client, the level it shows or a
-    /// viewed one (`host.level`), each through its own world.
+    /// Clip an empty-context ray against collider or outline shapes and fluids (`BlockGetter.clip`).
+    /// `fluids` selects which fluid states stop the ray (`ClipFluid`), using `FluidState.getShape`
+    /// with neighbour-dependent height; in each cell, block and fluid hits compare squared distance
+    /// at the actual hit point and the block wins a tie. Returns `None` for a stale level,
+    /// non-finite endpoints, an unloaded or out-of-height cell, or an unsupported dynamic block
+    /// shape; never loads chunks and imposes no fixed visit budget. On a client, reads the level
+    /// it shows or a viewed one (`host.level`), each through its own world.
     fn level_clip(
         &self,
         level: LevelRef,
