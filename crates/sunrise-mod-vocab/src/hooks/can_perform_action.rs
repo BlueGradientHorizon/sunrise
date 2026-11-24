@@ -21,7 +21,8 @@ pub trait Hooks {
     /// wear (`shears_dig`); brushing an armadillo (`brush_brush`); priming TNT and
     /// lighting a campfire, candle or candle cake, by hand or from a dispenser
     /// (`firestarter_light`); putting out a campfire (`shovel_douse`); a cast line
-    /// staying out and drawn from the hand, a player's or another's (`fishing_rod_cast`); a trident's throw
+    /// staying out and drawn from the hand, and which hand another player's cast rod
+    /// shows in (`fishing_rod_cast`); a trident's throw
     /// (`trident_throw`, a trident's own use, so only a denial counts); a charged
     /// grounded hit sweeping (`sword_sweep`); and the spyglass's zoom, overlay, view
     /// and held-to-the-eye pose (`spyglass_scope`, of the item in use). It decides whether the stack may do the action,

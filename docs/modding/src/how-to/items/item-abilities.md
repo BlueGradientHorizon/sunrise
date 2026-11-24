@@ -25,7 +25,7 @@ The game asks these abilities at the following action sites; `host.item_abilitie
 | --- | --- |
 | `brush_brush` | Brushing a scute off an armadillo. |
 | `firestarter_light` | Priming TNT; lighting a campfire, candle or candle cake, by hand or from a dispenser. |
-| `fishing_rod_cast` | A cast line staying out while a hand holds the stack, and the line drawn from that hand, for this player and others. |
+| `fishing_rod_cast` | A cast line staying out while a hand holds the stack, the line drawn from that hand, and which hand another player's cast rod shows in. |
 | `shears_carve` | Pumpkin carving. |
 | `shears_dig` | A mined block wearing the stack as shears wear (every block but fire). |
 | `shears_disarm` | Disarming a tripwire before breaking it. |
