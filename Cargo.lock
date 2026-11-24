@@ -544,13 +544,13 @@ dependencies = [
  "sunrise-attestation",
  "sunrise-mod-api-gen",
  "sunrise-mod-package",
+ "sunrise-mod-pipeline",
  "sunrise-mod-source",
  "sunrise-mod-surface",
  "sunrise-native-build",
  "sunrise-port-pack",
  "sunrise-proxy",
  "sunrise-release-sign",
- "sunrise-shader-api",
  "tar",
  "tempfile",
  "toml",
@@ -4797,6 +4797,7 @@ dependencies = [
  "sunrise-mod-api",
  "sunrise-mod-api-macros",
  "sunrise-mod-package",
+ "sunrise-mod-pipeline",
  "sunrise-mod-runtime",
  "sunrise-mod-vocab",
  "sunrise-narrator",
@@ -5144,6 +5145,13 @@ dependencies = [
  "xz4rust",
  "zip",
  "zune-jpeg",
+]
+
+[[package]]
+name = "sunrise-mod-pipeline"
+version = "0.1.0"
+dependencies = [
+ "naga",
 ]
 
 [[package]]
@@ -5599,6 +5607,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2 0.10.9",
+ "sunrise-mod-pipeline",
  "toml",
  "zip",
 ]

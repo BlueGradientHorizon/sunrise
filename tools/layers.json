@@ -87,6 +87,7 @@
     "sunrise-mod-surface": "engine",
     "sunrise-mod-source": "engine",
     "sunrise-mod-render": "platform",
+    "sunrise-mod-pipeline": "engine",
     "sunrise-server-launch": "platform",
     "sunrise-mod-package": "engine",
     "sunrise-mod-runtime": "engine",
