@@ -1581,7 +1581,8 @@ impl Game<'_> {
             to: inside.item.position,
             original: None,
         };
-        let mut visited = crate::fast_hash::FxHashSet::default();
+        let mut visited = std::mem::take(&mut inside.game.creatures.inside_visited_scratch);
+        visited.clear();
         let _ = sunrise_client::block_contact::sweep_movements(
             &mut inside,
             &[movement],
@@ -1589,6 +1590,8 @@ impl Game<'_> {
             &mut effects,
         );
         let ItemInside { game, item } = inside;
+        visited.clear();
+        game.creatures.inside_visited_scratch = visited;
         // `applyAndClear`: the queued effects and callbacks apply in the
         // collector's order, in this item's tick, until it is destroyed.
         let mut access = ItemInsideAccess {
@@ -1681,7 +1684,8 @@ impl Game<'_> {
             to: inside.shot.position,
             original: None,
         };
-        let mut visited = crate::fast_hash::FxHashSet::default();
+        let mut visited = std::mem::take(&mut inside.game.creatures.inside_visited_scratch);
+        visited.clear();
         let _ = sunrise_client::block_contact::sweep_movements(
             &mut inside,
             &[movement],
@@ -1689,6 +1693,8 @@ impl Game<'_> {
             &mut effects,
         );
         let ProjectileInside { game, shot, .. } = inside;
+        visited.clear();
+        game.creatures.inside_visited_scratch = visited;
         let mut access = ProjectileInsideAccess {
             game,
             shot,

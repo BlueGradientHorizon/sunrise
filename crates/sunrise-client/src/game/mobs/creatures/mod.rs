@@ -252,6 +252,8 @@ pub(super) struct Creatures {
     event_buf: Vec<MobEvent>,
     pickable_projectile_targets: Vec<sunrise_client::projectiles::TargetCandidate>,
     arrow_hit_scratch: sunrise_client::arrows::ArrowHitScratch,
+    /// Reusable visited-cell set for `sweep_item_inside` and `sweep_projectile_inside`.
+    pub(super) inside_visited_scratch: sunrise_client::fast_hash::FxHashSet<i64>,
     /// For each arrow an entity hit in this projectile tick, the projectiles
     /// that ticked after it and stayed, in order: a bounced one goes back
     /// before the first still listed (`finish_arrow_hit`).

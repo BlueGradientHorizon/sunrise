@@ -26,13 +26,12 @@ pub enum InsideShape {
     Fixed(&'static sunrise_core::geometry::VoxelShape),
 }
 
-/// `LavaCauldronBlock.FILLED_SHAPE`: `Shapes.or(AbstractCauldronBlock.SHAPE,
-/// Block.column(12, 4, 15))`, the cauldron's solid shape plus its lava. It is the
-/// block's `getEntityInsideCollisionShape` whatever the collision tables hold.
-pub(crate) fn lava_cauldron_filled_shape() -> &'static sunrise_core::geometry::VoxelShape {
+/// `AbstractCauldronBlock.SHAPE`: the cauldron's hollow shell, shared across
+/// lava, water, and powder-snow cauldrons.
+fn cauldron_shell_shape() -> &'static sunrise_core::geometry::VoxelShape {
     use sunrise_core::geometry::{ShapeOp, VoxelShape};
-    static SHAPE: std::sync::OnceLock<VoxelShape> = std::sync::OnceLock::new();
-    SHAPE.get_or_init(|| {
+    static SHELL: std::sync::OnceLock<VoxelShape> = std::sync::OnceLock::new();
+    SHELL.get_or_init(|| {
         let cuboid = |x0, y0, z0, x1, y1, z1| {
             VoxelShape::from_box(Aabb::new(
                 Vec3::new(x0 / 16.0, y0 / 16.0, z0 / 16.0),
@@ -54,9 +53,45 @@ pub(crate) fn lava_cauldron_filled_shape() -> &'static sunrise_core::geometry::V
                 .expect("valid cauldron cutout");
         }
         solid
-            .join(&cuboid(2.0, 4.0, 2.0, 14.0, 15.0, 14.0), ShapeOp::OR)
-            .expect("valid filled cauldron")
     })
+}
+
+fn cauldron_filled_shape_for_top(top: f64) -> sunrise_core::geometry::VoxelShape {
+    use sunrise_core::geometry::{ShapeOp, VoxelShape};
+    let fill = VoxelShape::from_box(Aabb::new(
+        Vec3::new(2.0 / 16.0, 4.0 / 16.0, 2.0 / 16.0),
+        Vec3::new(14.0 / 16.0, top / 16.0, 14.0 / 16.0),
+    ))
+    .expect("valid cauldron fill");
+    cauldron_shell_shape()
+        .join(&fill, ShapeOp::OR)
+        .expect("valid filled cauldron")
+}
+
+/// `LavaCauldronBlock.FILLED_SHAPE`: `Shapes.or(AbstractCauldronBlock.SHAPE,
+/// Block.column(12, 4, 15))`, the cauldron's solid shape plus its lava. It is the
+/// block's `getEntityInsideCollisionShape` whatever the collision tables hold.
+pub(crate) fn lava_cauldron_filled_shape() -> &'static sunrise_core::geometry::VoxelShape {
+    static SHAPE: std::sync::OnceLock<sunrise_core::geometry::VoxelShape> =
+        std::sync::OnceLock::new();
+    SHAPE.get_or_init(|| cauldron_filled_shape_for_top(15.0))
+}
+
+/// `LayeredCauldronBlock.FILLEDSLOT_SHAPES`: precomputed fixed shapes for levels 1..=3
+/// (`top = 6 + 3 * level`, i.e. 9, 12, 15), avoiding per-contact `Vec<Aabb>` allocation.
+fn layered_cauldron_filled_shape(level: u8) -> Option<&'static sunrise_core::geometry::VoxelShape> {
+    static SHAPES: std::sync::OnceLock<[sunrise_core::geometry::VoxelShape; 3]> =
+        std::sync::OnceLock::new();
+    let idx = usize::from(level.checked_sub(1)?);
+    SHAPES
+        .get_or_init(|| {
+            [
+                cauldron_filled_shape_for_top(9.0),
+                cauldron_filled_shape_for_top(12.0),
+                cauldron_filled_shape_for_top(15.0),
+            ]
+        })
+        .get(idx)
 }
 
 /// The filled inside-collision shape of a lava or layered cauldron: its shell
@@ -78,6 +113,9 @@ pub fn cauldron_inside_shape(
             else {
                 return InsideShape::Empty;
             };
+            if let Some(fixed) = layered_cauldron_filled_shape(level) {
+                return InsideShape::Fixed(fixed);
+            }
             6.0 + 3.0 * f64::from(level)
         }
         _ => return InsideShape::Full,
@@ -1205,6 +1243,34 @@ mod tests {
                 .any(|&(_, p, _)| (16..20).contains(&p[0])),
             "nothing between the budget and the target is visited"
         );
+    }
+
+    #[test]
+    fn layered_cauldron_inside_shape_uses_static_fixed_shapes_for_levels_1_to_3() {
+        use std::collections::BTreeMap;
+        use sunrise_world::{
+            block_collision::BlockCollisionRegistry, chunk::BlockState, registry::BlockRegistry,
+        };
+        let registry = BlockRegistry::default();
+        let collision = BlockCollisionRegistry::new(&registry);
+        for name in ["minecraft:water_cauldron", "minecraft:powder_snow_cauldron"] {
+            for level in 1u8..=3 {
+                let def = BlockState {
+                    name: name.into(),
+                    properties: BTreeMap::from([("level".into(), level.to_string())]),
+                };
+                let shape = cauldron_inside_shape(
+                    &collision,
+                    BlockStateId(0),
+                    &def,
+                    BlockPos::new(1, 64, 2),
+                );
+                assert!(
+                    matches!(shape, InsideShape::Fixed(_)),
+                    "{name} level {level} must use cached InsideShape::Fixed"
+                );
+            }
+        }
     }
 }
 
