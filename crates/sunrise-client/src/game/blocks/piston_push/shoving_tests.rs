@@ -41,18 +41,22 @@ fn holder(game: &mut Game<'_>, x: f64) -> u32 {
 }
 
 fn pig(game: &mut Game<'_>, at: [f64; 3]) -> u32 {
-    game.summon(
-        game.dim.id(),
-        "minecraft:pig",
-        at,
-        [
-            ("NoGravity".into(), Tag::Byte(1)),
-            ("NoAI".into(), Tag::Byte(1)),
-        ]
-        .into_iter()
-        .collect(),
-    )
-    .unwrap()
+    let level = game.level(game.dim.id()).unwrap();
+    level
+        .summon(
+            game,
+            "minecraft:pig",
+            at,
+            [
+                ("NoGravity".into(), Tag::Byte(1)),
+                ("NoAI".into(), Tag::Byte(1)),
+            ]
+            .into_iter()
+            .collect(),
+        )
+        .unwrap()
+        .unwrap()
+        .id()
 }
 
 fn turn(game: &mut Game<'_>, holder: u32, degrees: f32) {
