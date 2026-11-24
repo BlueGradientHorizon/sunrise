@@ -1279,10 +1279,6 @@ impl Game<'_> {
                 // then `closeOnSubmit` closes it. InBedChatScreen sends without closing
                 // (`closeOnSubmit` is false): the box empties and the screen stays.
                 let close_on_submit = !(self.ui.in_bed_chat && self.sleeping.is_some());
-                if !close_on_submit {
-                    screen.suggest_command(&m, &c, "");
-                    self.ui.chat.reset_scroll();
-                }
                 self.ui.chat_screen = Some(screen);
                 if !message.is_empty() {
                     self.handle_chat_input(&message);
@@ -1290,6 +1286,17 @@ impl Game<'_> {
                 if close_on_submit {
                     // A sent message discards the draft (DONE), whatever the box holds.
                     self.close_chat(ChatExit::Done);
+                } else {
+                    // The line is handled first, then the box empties and chat scrolls back.
+                    if let Some(screen) = self.ui.chat_screen.as_mut() {
+                        let m = Measure(&self.gui.atlas.font);
+                        let c = Commands {
+                            dispatcher: chat_tree(&self.remote),
+                            registries: &self.ui.registries,
+                        };
+                        screen.suggest_command(&m, &c, "");
+                    }
+                    self.ui.chat.reset_scroll();
                 }
             }
             ChatAction::None => {
