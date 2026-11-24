@@ -547,8 +547,8 @@ impl SaveDir {
             root
         };
         self.upgrade_record(Folder::Region, &mut root)?;
-        let tables = self.tables.get().map(|t| &**t);
-        let Some(mut chunk) = decode_with(&root, registry, biomes, tables, self.shape.column())
+        let Some(mut chunk) = decode_readonly_full(&root, (x, z), registry, biomes, self.shape)
+            .map_err(|msg| -> Box<dyn std::error::Error + Send + Sync> { msg.into() })?
         else {
             return Ok(None);
         };
