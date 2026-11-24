@@ -119,18 +119,18 @@ impl Game<'_> {
         Some(self.target_name(t).plain())
     }
     /// `Entity.getCustomName`: the name `setCustomName` gave the entity, as stored (no click
-    /// events removed), or None. A mob's and an armor stand's live with them, a frame's and a
-    /// falling block's with their saved data, the other kinds' in their saved `CustomName`.
+    /// events removed), or None. A mob's (styled, or the plain name a spawn gave it) and an
+    /// armor stand's live with them; a frame's, a falling block's, a lightning bolt's and a
+    /// cushion's with their own data; every other kind's in its saved `CustomName`. On a
+    /// client, the name the server synced for a mob, an armor stand or a display.
     pub(super) fn entity_custom_name(&self, entity: EntityRef) -> Option<Text> {
         let decode = sunrise_client::entity_nbt::decode_custom_name_text;
+        if let Some(display) = self.native_client_display(entity) {
+            return display.custom_name().cloned();
+        }
         match self.native_entity_read_target(entity)? {
             Target::Player | Target::Guest(_) => None,
-            Target::Mob(id) => self
-                .mobs
-                .iter()
-                .find(|m| m.id == id)?
-                .custom_name_text
-                .clone(),
+            Target::Mob(id) => mob_custom_name(self.mobs.iter().find(|m| m.id == id)?),
             Target::Stand(id) => self
                 .armor_stands
                 .iter()
@@ -144,6 +144,20 @@ impl Game<'_> {
                     .custom_name
                     .as_ref()?,
             ),
+            Target::Bolt(id) => decode(
+                self.bolts
+                    .iter()
+                    .find(|b| b.id == id)?
+                    .custom_name
+                    .as_ref()?,
+            ),
+            Target::Cushion(id) => decode(
+                self.cushions
+                    .iter()
+                    .find(|c| c.id == id)?
+                    .custom_name
+                    .as_ref()?,
+            ),
             Target::Falling(id) => self
                 .falling
                 .iter()
@@ -152,7 +166,10 @@ impl Game<'_> {
                 .and_then(|saved| saved.1.get("CustomName"))
                 .or_else(|| self.persist_raw(id)?.get("CustomName"))
                 .and_then(decode),
-            t => decode(self.persist_raw(named_id(t)?)?.get("CustomName")?),
+            t => decode(
+                self.persist_raw(super::native_entities::target_id(t)?)?
+                    .get("CustomName")?,
+            ),
         }
     }
     /// Names the entity (`Entity.setCustomName`), or takes its name away
@@ -287,6 +304,13 @@ impl Game<'_> {
     }
 }
 
+/// A mob's `Entity.getCustomName`: its styled name, else the plain name a spawn gave it.
+pub(super) fn mob_custom_name(mob: &sunrise_client::mobs::Mob) -> Option<Text> {
+    mob.custom_name_text
+        .clone()
+        .or_else(|| mob.custom_name.as_deref().map(Text::literal))
+}
+
 /// The id of an entity whose custom name the game keeps and saves
 /// (`target_name` reads it): the struct's own for mobs, armor stands and
 /// item frames, the saved compound's for the rest.
@@ -359,7 +383,8 @@ mod tests {
 
     /// `Entity.getCustomName` (#5380): None until a name is set, then the name as set, style
     /// included, for a mob, an armor stand and a kind whose name lives in its saved data (a
-    /// dropped item); None again once taken away, and for the player.
+    /// dropped item); None again once taken away. A spawn's plain mob name, a cushion's own
+    /// name and an orb's saved name read too; the player has none.
     #[test]
     #[ignore = "daily"]
     fn custom_name_reads_the_styled_name_or_none() {
@@ -384,6 +409,46 @@ mod tests {
             assert_eq!(item.custom_name(game).unwrap(), None);
             assert!(item.set_custom_name(game, Some(name.clone())).unwrap());
             assert_eq!(item.custom_name(game).unwrap(), Some(name));
+
+            // A mob a spawn named with a plain name: no styled text, the name all the same.
+            game.mobs
+                .iter_mut()
+                .find(|m| m.id == 15)
+                .unwrap()
+                .custom_name = Some("Plain".into());
+            assert_eq!(
+                mob.custom_name(game).unwrap(),
+                Some(mod_api::Text::literal("Plain"))
+            );
+
+            // A cushion keeps its name on itself, not in the saved data.
+            game.cushions.push(sunrise_client::entities::Cushion {
+                attachment_lifetime: Default::default(),
+                join: Default::default(),
+                id: 17,
+                position: Vec3::new(2.5, 70.0, 2.5),
+                pos: [2, 70, 2],
+                yaw: 0.0,
+                color: 0,
+                check_interval: 0,
+                custom_name: Some(Tag::String("Seat".into())),
+            });
+            let cushion = game.entity(17).unwrap();
+            assert_eq!(
+                cushion.custom_name(game).unwrap(),
+                Some(mod_api::Text::literal("Seat"))
+            );
+
+            // An experience orb, a kind whose name only its saved `CustomName` holds.
+            game.spawn_orbs([0.5, 70.0, 0.5], 3);
+            let orb_id = game.orbs.last().unwrap().id;
+            let orb = game.entity(orb_id).unwrap();
+            assert_eq!(orb.custom_name(game).unwrap(), None);
+            game.put_saved(orb_id, "CustomName", Some(Tag::String("Shiny".into())));
+            assert_eq!(
+                orb.custom_name(game).unwrap(),
+                Some(mod_api::Text::literal("Shiny"))
+            );
 
             game.player =
                 Some(sunrise_client::motion::PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());

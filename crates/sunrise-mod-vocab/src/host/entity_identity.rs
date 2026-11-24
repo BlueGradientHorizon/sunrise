@@ -18,7 +18,8 @@ pub trait EntityIdentityBackend {
     /// none, as `setCustomName(null)` leaves it; `Entity.hasCustomName` is `is_some`. Unlike
     /// `name` it never falls back to a player's or the type's name, and keeps the click events
     /// `getName` removes. On a client, the name the server synced (`Entity.DATA_CUSTOM_NAME`)
-    /// for a mob or an armor stand. None for a player and a stale handle.
+    /// for a mob, an armor stand or a text, item or block display; other kinds read None
+    /// there. None for a player and a stale handle.
     /// Refuses text deeper than 512 component nodes.
     fn entity_custom_name(&self, entity: EntityRef) -> Result<Option<Text>, TextFormError>;
     /// Side: server.
