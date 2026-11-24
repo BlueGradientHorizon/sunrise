@@ -79,7 +79,7 @@ changing its pinned dependencies.
 
 `release --check` checks the proposed version and tag in a separate checkout. `release --pull-request` is for a
 branch that takes only pull requests: it commits on a new branch `release/<tag>` (which must not exist locally or
-on `origin`), pushes that branch and the tag atomically, and prints GitHub's page for a pull request back into the
+on `origin`), pushes that branch and then the tag, and prints GitHub's page for a pull request back into the
 branch you released from. `release setup` reads the
 registry's current shared workflow reference and refreshes the caller without requiring registration. It
 removes old copied Sunrise release files, but leaves the manifest, commit history and tags alone; it needs a
