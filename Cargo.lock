@@ -5456,6 +5456,7 @@ dependencies = [
  "serde_json",
  "sha1",
  "sha2 0.10.9",
+ "sunrise-jar-fetch",
  "sunrise-mod-api",
  "sunrise-mod-api-gen",
  "sunrise-mod-package",
