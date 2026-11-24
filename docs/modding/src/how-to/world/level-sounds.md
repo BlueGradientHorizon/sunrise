@@ -41,6 +41,17 @@ return `Flow::Cancel` to suppress the vanilla sound for that hit.
 The default plays the state's hit sound at volume `(volume + 1) / 8` and pitch
 `pitch * 0.5`. Sculk growth sounds do not use this hook.
 
+## Block break sounds
+
+A block part's `play_break_sound` is asked before the client plays a block's break sound
+(level event 2001, sent for a broken block and played by the client's own predicted break). The
+event supplies the block state and position. Play your sound through the supplied `ClientHost`
+and return `Flow::Cancel` to suppress the vanilla sound; the destroy particles still follow
+(`add_destroy_effects` decides those). Air is never asked.
+
+The default plays the state's break sound at the block's centre, at volume `(volume + 1) / 2`
+and pitch `pitch * 0.8`.
+
 ## Playing a level sound from a server mod
 
 `LevelRef::play_sound(host, sound, at, source, volume, pitch, except)` is `ServerLevel.playSound(except, ...)`:
