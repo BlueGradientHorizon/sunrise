@@ -1928,6 +1928,7 @@ impl Game<'_> {
         self.attachment_indexes.remove(&dim);
         self.passages.retire_level(dim.key());
         self.clear_async_chunk_requests_for_dim(dim);
+        self.close_saved_chunk_readers_for_dim(dim);
     }
 
     /// `MinecraftServer.stopServer`'s `level.close()` loop: close every loaded

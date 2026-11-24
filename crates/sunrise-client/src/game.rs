@@ -1688,6 +1688,8 @@ mod native_ride_player;
 pub(crate) mod native_rotate;
 #[path = "game/modding/native_rule_tests.rs"]
 mod native_rule_tests;
+#[path = "game/modding/native_saved_chunks.rs"]
+mod native_saved_chunks;
 #[path = "game/modding/native_scene.rs"]
 mod native_scene;
 #[path = "game/modding/native_scene_live.rs"]
@@ -4302,6 +4304,8 @@ struct Game<'a> {
     passages: native_passages::Passages,
     /// Non-blocking server chunk load/generation requests (`native_chunk_requests.rs`).
     async_chunk_requests: native_chunk_requests::AsyncChunkRequests,
+    /// Open-state flags for `SavedChunkReader` handles per dimension (`native_saved_chunks.rs`).
+    saved_chunk_readers: std::cell::RefCell<HashMap<Dim, Arc<std::sync::atomic::AtomicBool>>>,
     /// PauseScreen.showPauseMenu (false after F3+Escape).
     pause_menu: bool,
     pause_focus: Option<u8>,
@@ -14417,6 +14421,7 @@ impl<'a> Game<'a> {
             spawn_policies: HashMap::new(),
             passages: Default::default(),
             async_chunk_requests: Default::default(),
+            saved_chunk_readers: Default::default(),
             pause_menu: true,
             pause_focus: None,
             death_focus: None,
