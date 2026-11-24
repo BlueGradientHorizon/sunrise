@@ -1144,6 +1144,9 @@ pub(crate) mod native_collision_shape;
 #[cfg(test)]
 #[path = "game/modding/native_command_completion_tests.rs"]
 mod native_command_completion_tests;
+#[cfg(test)]
+#[path = "game/modding/native_command_entity_tests.rs"]
+mod native_command_entity_tests;
 #[path = "game/modding/native_command_reads.rs"]
 mod native_command_reads;
 #[path = "game/modding/native_components.rs"]
