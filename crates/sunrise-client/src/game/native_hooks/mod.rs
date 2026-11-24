@@ -318,6 +318,7 @@ mod grindstone_take;
 #[cfg(test)]
 mod guest_death_lifecycle_tests;
 mod gui_render_post;
+mod gui_status_heights;
 mod gui_ticks;
 mod held_item_tint;
 mod highlight_tip;
