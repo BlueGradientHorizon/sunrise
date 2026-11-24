@@ -1,5 +1,6 @@
 use crate::game::{
-    native_client_session::tests::logged_client, native_entity_refs::tests::with_client_game,
+    native_client_session::tests::logged_client,
+    native_entity_refs::tests::{with_client_game, with_game},
 };
 use mod_api::{
     BlockPart, BlockPos, ClientHost, Flow, Hooks, ModEntry, PlayBreakSoundEvent, Registrar,
@@ -89,6 +90,33 @@ fn a_cancelling_part_silences_level_event_2001_and_keeps_the_debris() {
                 assert_eq!(*asked.lock().unwrap(), expected);
                 assert_eq!(admitted(game) > 0, state != air);
             }
+        })
+    });
+}
+
+/// The hook is the client's: the server thread, which handles level event 2001 too, never asks
+/// a part, so a single-player break asks it once.
+#[test]
+#[ignore = "daily"]
+fn the_server_thread_never_asks_a_part() {
+    let asked = Asked::default();
+    let mods = vec![ModEntry::new("quiet", Box::new(Register(asked.clone())))];
+    mod_platform::testing::with_mods(mods.into(), || {
+        with_game(|game| {
+            let glass = game
+                .pack
+                .assets
+                .registry
+                .default_state("minecraft:glass")
+                .unwrap();
+            game.level_events.push(LevelEvent::LevelEvent {
+                source: None,
+                id: 2001,
+                pos: sunrise_core::position::BlockPos::new(5, 63, 4),
+                data: glass.0 as i32,
+            });
+            game.process_level_events().unwrap();
+            assert!(asked.lock().unwrap().is_empty());
         })
     });
 }

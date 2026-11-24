@@ -10,7 +10,10 @@ impl Game<'_> {
         pos: [i32; 3],
     ) -> bool {
         let mut cancel = false;
-        if mod_api::__private::has_scoped_hook(mod_api::HookId::PlayBreakSound) {
+        // A client hook: the server thread handles level event 2001 too, and never asks it.
+        if self.native_window()
+            && mod_api::__private::has_scoped_hook(mod_api::HookId::PlayBreakSound)
+        {
             self.native_play_break_sound(super::fire::PlayBreakSoundCall {
                 state,
                 pos: BlockPos::new(pos[0], pos[1], pos[2]),
