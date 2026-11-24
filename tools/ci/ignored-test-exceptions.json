@@ -1222,5 +1222,21 @@
     "path": "crates/sunrise-client/src/game/network/lan_pvp.rs",
     "reason": "run by tools/test_arrow_hit_ding_parity.py",
     "rationale": "Parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_arrow_hit_ding_parity.py records the vanilla 26.3 arrow-hit witness into .local and runs this test against it through SUNRISE_ARROW_HIT_DING_WITNESS, so no recorded vanilla data is committed."
+  },
+  {
+    "package": "sunrise-client-lib",
+    "target": "lib",
+    "test": "mobs::shulker::saved_bytes_tests::a_loaded_shulker_has_no_motion_and_keeps_its_yaw",
+    "path": "crates/sunrise-client/src/mobs/shulker.rs",
+    "reason": "run by tools/test_shulker_motion_parity.py",
+    "rationale": "Parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_shulker_motion_parity.py records the vanilla 26.3 shulker motion witness into .local and runs this test against it through SUNRISE_SHULKER_MOTION_WITNESS, so no recorded vanilla data is committed."
+  },
+  {
+    "package": "sunrise-client-lib",
+    "target": "lib",
+    "test": "mobs::shulker::saved_bytes_tests::a_noai_shulker_in_flowing_water_keeps_zero_motion",
+    "path": "crates/sunrise-client/src/mobs/shulker.rs",
+    "reason": "run by tools/test_shulker_motion_parity.py",
+    "rationale": "Parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_shulker_motion_parity.py records the vanilla 26.3 shulker motion witness into .local and runs this test against it through SUNRISE_SHULKER_MOTION_WITNESS, so no recorded vanilla data is committed."
   }
 ]

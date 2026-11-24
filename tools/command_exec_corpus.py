@@ -1484,6 +1484,113 @@ def shulker_command_damage():
     return ops
 
 
+SHULKER_MOTION_GROUP = 'shulker motion and yaw'
+SHULKER_MOTION_UUID_PREFIX = '00000a7a-0000-0000-0000-'
+SHULKER_MOTION_LOADED_CASES = (
+    {
+        'name': 'loaded_noai_default',
+        'uuid_index': 1,
+        'no_ai': True,
+        'motion': [0.1, 0.25, -0.3],
+        'rotation': [45.0, 10.0],
+        'nbt': '{id:"minecraft:shulker",Pos:[0.5d,64d,0.5d],NoAI:1b,Motion:[0.1d,0.25d,-0.3d],Rotation:[45f,10f]}',
+    },
+    {
+        'name': 'loaded_noai_negative',
+        'uuid_index': 2,
+        'no_ai': True,
+        'motion': [-0.5, -0.125, 0.75],
+        'rotation': [-135.5, -20.25],
+        'nbt': '{id:"minecraft:shulker",Pos:[0.5d,64d,0.5d],NoAI:1b,Motion:[-0.5d,-0.125d,0.75d],Rotation:[-135.5f,-20.25f]}',
+    },
+    {
+        'name': 'loaded_ai',
+        'uuid_index': 3,
+        'no_ai': False,
+        'motion': [0.1, 0.25, -0.3],
+        'rotation': [45.0, 10.0],
+        'nbt': '{id:"minecraft:shulker",Pos:[0.5d,64d,0.5d],Motion:[0.1d,0.25d,-0.3d],Rotation:[45f,10f]}',
+    },
+)
+SHULKER_MOTION_WATER_CASE = {
+    'name': 'noai_flowing_water',
+    'uuid_index': 4,
+    'no_ai': True,
+    'motion': [0.1, 0.25, -0.3],
+    'rotation': [45.0, 10.0],
+    'trough_levels': [0, 1, 2, 3, 4, 5, 6, 7],
+    'shulker_trough_index': 3,
+    'ticks': 5,
+}
+
+
+def shulker_motion_uuid(index):
+    return f'{SHULKER_MOTION_UUID_PREFIX}{index:04x}00000001'
+
+
+def shulker_motion_and_yaw():
+    """Vanilla 26.3 (#2682): a loaded shulker has zero Motion and keeps its loaded Rotation, and a NoAI shulker in flowing water keeps zero Motion and its Rotation across ticks."""
+    x0, y0, z0 = 5632, 260, 5632
+    chunk = [[(x0 >> 4) + i, (z0 >> 4) + k] for i in range(-2, 3) for k in range(-2, 3)]
+    ops = [cmd(f'/forceload add {x0} {z0}', False), {'op': 'wait_chunks', 'chunks': chunk},
+           cmd('/tick freeze', False),
+           cmd(f'/fill {x0} {y0 - 1} {z0} {x0 + 15} {y0 - 1} {z0 + 15} stone', False)]
+    # Build a steady-state 1-wide stone trough with water levels 0..7 along +x.
+    ops += setup(
+        f'/fill {x0 + 1} {y0} {z0 + 7} {x0 + 10} {y0} {z0 + 7} stone',
+        f'/fill {x0 + 1} {y0} {z0 + 9} {x0 + 10} {y0} {z0 + 9} stone',
+        f'/setblock {x0 + 1} {y0} {z0 + 8} stone',
+        *[f'/setblock {x0 + 2 + offset} {y0} {z0 + 8} water[level={level}]'
+          for offset, level in enumerate(SHULKER_MOTION_WATER_CASE['trough_levels'])],
+    )
+
+    def summon_shulker(x, z, index, no_ai, motion, rotation):
+        m = ','.join(f'{v}d' for v in motion)
+        r = ','.join(f'{v}f' for v in rotation)
+        ai = 'NoAI:1b,' if no_ai else ''
+        return cmd(f'/summon shulker {x}.5 {y0} {z}.5 '
+                   f'{{UUID:[I;2682,0,{index},1],{ai}PersistenceRequired:1b,Motion:[{m}],Rotation:[{r}]}}',
+                   expect_result=1)
+
+    noai_loaded = [case for case in SHULKER_MOTION_LOADED_CASES if case['no_ai']]
+    ai_loaded = [case for case in SHULKER_MOTION_LOADED_CASES if not case['no_ai']]
+    for offset, case in enumerate(noai_loaded):
+        ops.append(summon_shulker(x0 + 2 + 4 * offset, z0 + 2, case['uuid_index'], True,
+                                  case['motion'], case['rotation']))
+    water_x = x0 + 2 + SHULKER_MOTION_WATER_CASE['shulker_trough_index']
+    water_level = SHULKER_MOTION_WATER_CASE['trough_levels'][SHULKER_MOTION_WATER_CASE['shulker_trough_index']]
+    water_uuid = shulker_motion_uuid(SHULKER_MOTION_WATER_CASE['uuid_index'])
+    ops.append(summon_shulker(water_x, z0 + 8, SHULKER_MOTION_WATER_CASE['uuid_index'], True,
+                              SHULKER_MOTION_WATER_CASE['motion'], SHULKER_MOTION_WATER_CASE['rotation']))
+
+    for case in noai_loaded:
+        uid = shulker_motion_uuid(case['uuid_index'])
+        ops += [cmd(f'/data get entity {uid} Motion'), cmd(f'/data get entity {uid} Rotation')]
+    ops += [cmd(f'/execute if block {water_x} {y0} {z0 + 8} water[level={water_level}]', expect_result=1),
+            cmd(f'/data get entity {water_uuid} Motion'),
+            cmd(f'/data get entity {water_uuid} Rotation')]
+
+    for _ in range(SHULKER_MOTION_WATER_CASE['ticks']):
+        ops += [cmd('/tick unfreeze', False), {'op': 'tick', 'n': 1}, cmd('/tick freeze', False),
+                cmd(f'/execute if block {water_x} {y0} {z0 + 8} water[level={water_level}]', expect_result=1),
+                cmd(f'/data get entity {water_uuid} Motion'),
+                cmd(f'/data get entity {water_uuid} Rotation')]
+
+    for case in noai_loaded:
+        uid = shulker_motion_uuid(case['uuid_index'])
+        ops += [cmd(f'/data get entity {uid} Motion'), cmd(f'/data get entity {uid} Rotation')]
+    for offset, case in enumerate(ai_loaded):
+        uid = shulker_motion_uuid(case['uuid_index'])
+        ops.append(summon_shulker(x0 + 10 + 2 * offset, z0 + 2, case['uuid_index'], False,
+                                  case['motion'], case['rotation']))
+        ops += [cmd(f'/data get entity {uid} Motion'), cmd(f'/data get entity {uid} Rotation')]
+
+    return ops + setup('/tick unfreeze',
+                       f'/kill @e[type=!player,x={x0},y={y0 - 4},z={z0},dx=16,dy=16,dz=16]',
+                       f'/fill {x0} {y0 - 1} {z0} {x0 + 15} {y0 + 2} {z0 + 15} air',
+                       f'/forceload remove {x0} {z0}')
+
+
 def snbt_trailing_commas():
     """SnbtGrammar: a compound, a list and a typed array may end with a comma; an empty one
     may not hold only a comma, and two commas in a row are an error."""
@@ -8755,6 +8862,7 @@ def groups():
         ('tnt minecart explosion power', tnt_minecart_explosion_power()),
         ('enderman command damage', enderman_command_damage()),
         ('shulker command damage', shulker_command_damage()),
+        (SHULKER_MOTION_GROUP, shulker_motion_and_yaw()),
         ('SNBT trailing commas', snbt_trailing_commas()),
         ('execute', execute()),
         ('projectile origin', projectile_origin()),
