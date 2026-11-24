@@ -6826,37 +6826,41 @@ impl Game<'_> {
         &mut self,
         pos: [i32; 3],
     ) -> Result<Option<(BlockStateId, Option<u32>)>> {
-        // DebugStickItem.canDestroyBlock: a left click selects a property and
-        // never destroys the block.
-        if !self.debug_stick_can_destroy(pos)? {
-            return Ok(None);
-        }
-        // ServerPlayerGameMode.destroyBlock.
-        if self.block_action_restricted(pos) {
-            return Ok(None);
-        }
-        if !self
-            .res
-            .items()
-            .can_destroy_block(self.held(), self.creative)
-        {
-            return Ok(None);
-        }
-        // ServerPlayerGameMode.destroyBlock (and MultiPlayerGameMode.destroyBlock
-        // on the client): a GameMasterBlock stays when the player cannot use
-        // game master blocks (Player.canUseGameMasterBlocks).
-        let state = self.world.block(pos[0], pos[1], pos[2]);
-        if !self.can_use_game_master_blocks()
-            && is_game_master_block(&self.res.facts().get(state).name)
-        {
-            return Ok(None);
-        }
-        // Native mods, once the game allowed the break: a canceled one keeps
-        // the block, and a guest's acknowledgement puts it back in its world.
-        let mut canceled = false;
-        let mut exp_to_drop = None;
-        self.native_break_block(pos, state, &mut canceled, &mut exp_to_drop);
-        Ok((!canceled).then_some((state, exp_to_drop)))
+        // ServerPlayerGameMode.destroyBlock and CommonHooks.fireBlockBreak read the main hand,
+        // whichever hand is acting.
+        self.with_hand(Hand::Main, |game| {
+            // DebugStickItem.canDestroyBlock: a left click selects a property and
+            // never destroys the block.
+            if !game.debug_stick_can_destroy(pos)? {
+                return Ok(None);
+            }
+            // ServerPlayerGameMode.destroyBlock.
+            if game.block_action_restricted(pos) {
+                return Ok(None);
+            }
+            if !game
+                .res
+                .items()
+                .can_destroy_block(game.held(), game.creative)
+            {
+                return Ok(None);
+            }
+            // ServerPlayerGameMode.destroyBlock (and MultiPlayerGameMode.destroyBlock
+            // on the client): a GameMasterBlock stays when the player cannot use
+            // game master blocks (Player.canUseGameMasterBlocks).
+            let state = game.world.block(pos[0], pos[1], pos[2]);
+            if !game.can_use_game_master_blocks()
+                && is_game_master_block(&game.res.facts().get(state).name)
+            {
+                return Ok(None);
+            }
+            // Native mods, once the game allowed the break: a canceled one keeps
+            // the block, and a guest's acknowledgement puts it back in its world.
+            let mut canceled = false;
+            let mut exp_to_drop = None;
+            game.native_break_block(pos, state, &mut canceled, &mut exp_to_drop);
+            Ok((!canceled).then_some((state, exp_to_drop)))
+        })
     }
     fn break_block_as_player(&mut self, pos: [i32; 3]) -> Result<bool> {
         let Some((state, exp_to_drop)) = self.break_block_allowed(pos)? else {

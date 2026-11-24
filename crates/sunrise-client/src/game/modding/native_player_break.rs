@@ -113,7 +113,7 @@ impl Game<'_> {
         let _nested = NestedBreak::enter()?;
         // The clicked block, `pos.relative(face.getOpposite())`.
         let normal = block_face_direction(face).normal();
-        let against = [0, 1, 2].map(|axis| pos[axis] - normal[axis]);
+        let against = [0, 1, 2].map(|axis| pos[axis].wrapping_sub(normal[axis]));
         let mut canceled = None;
         self.native_as_player_handle(player, |game| {
             if game.acting_in_level_in_place()

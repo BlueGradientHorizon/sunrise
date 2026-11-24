@@ -136,14 +136,14 @@ pub trait PlayerInteractionBackendMut {
     /// place, an unloaded block, a refused nesting and a client.
     fn player_break_canceled(&mut self, player: PlayerRef, pos: [i32; 3]) -> Option<bool>;
     /// Side: server.
-    /// `EventHooks.onBlockPlace`: whether a mod cancels the player placing `state` at `pos`, the
-    /// block they clicked on its `face` (`pos` lies against it), without placing anything, for a
-    /// mod that sets the block itself afterwards. `entity_place` hears it as a single placement
-    /// by this player against the block at the clicked position. Nothing else is checked: ask
-    /// `player_may_use_item_at` for the game's own rule. Asked from inside eight other breaks or
-    /// asks, it is refused. None for a stale handle, a player who isn't here, is dead or is in
-    /// another level than the one in place, an unknown state, an unloaded block, a refused
-    /// nesting and a client.
+    /// `EventHooks.onBlockPlace`: whether a mod cancels the player placing `state` at `pos`, where
+    /// the block goes, having clicked the `face` of the block `pos` lies against (the block one
+    /// step from `pos` opposite `face`), without placing anything, for a mod that sets the block
+    /// itself afterwards. `entity_place` hears it as a single placement by this player against
+    /// the block at the clicked position. Nothing else is checked: ask `player_may_use_item_at`
+    /// for the game's own rule. Asked from inside eight other breaks or asks, it is refused. None
+    /// for a stale handle, a player who isn't here, is dead or is in another level than the one
+    /// in place, an unknown state, an unloaded block, a refused nesting and a client.
     fn player_place_canceled(
         &mut self,
         player: PlayerRef,

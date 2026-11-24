@@ -22,9 +22,9 @@ whether the player's break or placement would be stopped before it makes the cha
   `break_block` listener cancels it, without breaking anything. The listeners hear it as a break.
   As in vanilla, a held debug stick takes it as a click and selects its next property.
 - `PlayerRef::place_canceled(host, pos, face, state)` is true when an `entity_place` listener
-  cancels this player placing `state` at `pos`, the block clicked on its `face`, without placing
-  anything. It is heard as a single placement against the clicked block. The game's own rule is
-  `PlayerRef::may_use_item_at`.
+  cancels this player placing `state` at `pos`, where the block goes, having clicked the `face`
+  of the block `pos` lies against, without placing anything. It is heard as a single placement
+  against the clicked block. The game's own rule is `PlayerRef::may_use_item_at`.
 
 Both are None for a player who isn't here or is in another level than the one in place, and for
 an unloaded block. They share the nesting limit below with `destroy_block`.
