@@ -2828,12 +2828,7 @@ impl Game<'_> {
             if d.growl < 0 {
                 d.growl = 200 + d.random.next_int_bound(200).unwrap_or(0);
                 let pitch = 0.8 + self.world.random.next_float() * 0.3;
-                self.client_audio_play(
-                    "minecraft:entity.ender_dragon.growl",
-                    Some(at),
-                    2.5,
-                    pitch,
-                );
+                self.client_audio_play("minecraft:entity.ender_dragon.growl", Some(at), 2.5, pitch);
             }
         }
         // checkCrystals: heal 1 every 10 ticks from the nearest crystal, found
@@ -3536,27 +3531,6 @@ impl Game<'_> {
     /// `BossHealthOverlay.shouldPlayMusic`.
     pub(super) fn boss_music(&self) -> bool {
         self.client.boss_overlay.should_play_music()
-    }
-    pub(in crate::game) fn client_audio_play(
-        &mut self,
-        event: &str,
-        at: Option<[f64; 3]>,
-        volume: f32,
-        pitch: f32,
-    ) {
-        self.audio.0.play(event, at, volume, pitch);
-    }
-    pub(in crate::game) fn client_particles_add_with(
-        &mut self,
-        options: &ParticleOptions,
-        p: [f64; 3],
-        v: [f64; 3],
-        override_limiter: bool,
-        always_show: bool,
-    ) {
-        self.particles
-            .0
-            .add_with(options, p, v, override_limiter, always_show);
     }
 }
 /// `DragonLandingPhase.doClientTick` and `DragonSittingFlamingPhase.doClientTick`:

@@ -544,25 +544,4 @@ impl Game<'_> {
         amount += enchant_bonus * scale;
         ((amount, scale, crit, enchant_bonus * scale > 0.0), damaging)
     }
-
-    pub(in crate::game) fn client_audio_play(
-        &mut self,
-        event: &str,
-        at: Option<[f64; 3]>,
-        volume: f32,
-        pitch: f32,
-    ) {
-        self.audio.0.play(event, at, volume, pitch);
-    }
-
-    pub(in crate::game) fn client_particles_send_particles(
-        &mut self,
-        options: &sunrise_client::particles::ParticleOptions,
-        at: [f64; 3],
-        spread: [f64; 3],
-        speed: f64,
-        count: u32,
-    ) {
-        self.particles.0.send_particles(options, at, spread, speed, count);
-    }
 }

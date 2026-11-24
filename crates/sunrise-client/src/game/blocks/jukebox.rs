@@ -326,10 +326,6 @@ impl Game<'_> {
             self.audio.0.stop_and_release(id);
         }
     }
-    #[inline]
-    pub(in crate::game) fn audio_capture_active(&self) -> bool {
-        self.audio.0.capture.is_some()
-    }
     /// Level event 1011: the song ends, here and for the guests.
     fn stop_song(&mut self, pos: [i32; 3]) {
         self.stop_sound(pos);

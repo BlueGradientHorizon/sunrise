@@ -492,26 +492,6 @@ impl Game<'_> {
         }
     }
 
-    pub(in crate::game) fn client_audio_play(
-        &mut self,
-        event: &str,
-        at: Option<[f64; 3]>,
-        volume: f32,
-        pitch: f32,
-    ) {
-        self.audio.0.play(event, at, volume, pitch);
-    }
-
-    pub(in crate::game) fn client_audio_play_unshared(
-        &mut self,
-        event: &str,
-        at: Option<[f64; 3]>,
-        volume: f32,
-        pitch: f32,
-    ) {
-        self.audio.0.play_unshared(event, at, volume, pitch);
-    }
-
     /// `getTicksSinceLastKineticHitFeedback` of this window's player.
     pub(in crate::game) fn kinetic_hit_ticks(&self, partial: f32) -> f32 {
         self.server

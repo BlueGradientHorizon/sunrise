@@ -1886,27 +1886,6 @@ impl Game<'_> {
         self.lan_explode(center, small, radius, block_count, pushed, effects);
         Ok(())
     }
-    pub(in crate::game) fn client_audio_play(
-        &mut self,
-        event: &str,
-        at: Option<[f64; 3]>,
-        volume: f32,
-        pitch: f32,
-    ) {
-        self.audio.0.play(event, at, volume, pitch);
-    }
-    pub(in crate::game) fn client_particles_explosion(
-        &mut self,
-        center: [f64; 3],
-        emitter: &sunrise_client::particles::ParticleOptions,
-        block_count: usize,
-        radius: f32,
-        particles: &[sunrise_client::particles::ExplosionParticle],
-    ) {
-        self.particles
-            .0
-            .explosion(center, emitter, block_count, radius, particles);
-    }
     /// `InfestedBlock.spawnAfterBreak` without a tool that prevents it: while
     /// blocks drop, its silverfish (`spawnInfestation`) comes out at the
     /// bottom centre of the block, with its spawn animation.

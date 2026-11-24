@@ -307,6 +307,8 @@ pub(in crate::game) use client_side::client_attack_targets;
 #[allow(unused_imports)]
 pub(in crate::game) use client_side::client_cracks;
 #[allow(unused_imports)]
+pub(in crate::game) use client_side::client_engine_forwarders;
+#[allow(unused_imports)]
 pub(in crate::game) use client_side::client_executor;
 #[path = "game/modding/client_item_extensions.rs"]
 mod client_item_extensions;
@@ -5519,15 +5521,14 @@ impl Game<'_> {
                         format!("minecraft:{sound}")
                     };
                     match source {
-                        Some(sunrise_world::level::LevelSoundSource::Blocks) => {
-                            self.client_audio_play_on(
+                        Some(sunrise_world::level::LevelSoundSource::Blocks) => self
+                            .client_audio_play_on(
                                 mod_api::SoundSource::Blocks.index(),
                                 &name,
                                 Some(c),
                                 volume,
                                 pitch,
-                            )
-                        }
+                            ),
                         None => self.client_audio_play(&name, Some(c), volume, pitch),
                     }
                 }
@@ -5787,12 +5788,9 @@ impl Game<'_> {
         );
         let random = self.particles.0.level_random();
         let pitch = (1.0 + (random.next_float() - random.next_float()) * 0.2) * 0.7;
-        self.audio.0.play_unshared(
-            "minecraft:block.end_gateway.spawn",
-            Some(at),
-            10.0,
-            pitch,
-        );
+        self.audio
+            .0
+            .play_unshared("minecraft:block.end_gateway.spawn", Some(at), 10.0, pitch);
     }
     pub(in crate::game) fn process_level_events_portal_travel_client(&mut self) {
         let pitch = self.particles.0.level_random().next_float() * 0.4 + 0.8;
@@ -5812,9 +5810,7 @@ impl Game<'_> {
         volume: f32,
     ) {
         let pitch = match id {
-            1009 => {
-                2.6 + (self.world.random.next_float() - self.world.random.next_float()) * 0.8
-            }
+            1009 => 2.6 + (self.world.random.next_float() - self.world.random.next_float()) * 0.8,
             // LevelEventHandler draws these from the client
             // level's random, before 1501's and 1502's smoke.
             1501 | 1502 => {
@@ -14097,48 +14093,6 @@ impl Game<'_> {
         } else {
             PresenceStatus::Online
         }
-    }
-    pub(in crate::game) fn client_audio_play(
-        &mut self,
-        event: &str,
-        at: Option<[f64; 3]>,
-        volume: f32,
-        pitch: f32,
-    ) {
-        self.audio.0.play(event, at, volume, pitch);
-    }
-    pub(in crate::game) fn client_audio_play_unshared(
-        &mut self,
-        event: &str,
-        at: Option<[f64; 3]>,
-        volume: f32,
-        pitch: f32,
-    ) {
-        self.audio.0.play_unshared(event, at, volume, pitch);
-    }
-    pub(in crate::game) fn client_audio_play_on(
-        &mut self,
-        source: usize,
-        event: &str,
-        at: Option<[f64; 3]>,
-        volume: f32,
-        pitch: f32,
-    ) {
-        self.audio.0.play_on(source, event, at, volume, pitch);
-    }
-    pub(in crate::game) fn client_audio_set_world(&mut self, world: &str) {
-        self.audio.0.set_world(world);
-    }
-    pub(in crate::game) fn client_particles_add(
-        &mut self,
-        options: &sunrise_client::particles::ParticleOptions,
-        p: [f64; 3],
-        v: [f64; 3],
-    ) {
-        self.particles.0.add(options, p, v);
-    }
-    pub(in crate::game) fn client_recipe_ui_reset_screen(&mut self) {
-        self.recipe_ui.0.reset_screen();
     }
     #[inline]
     pub(in crate::game) fn set_client_message(&mut self, text: String) {

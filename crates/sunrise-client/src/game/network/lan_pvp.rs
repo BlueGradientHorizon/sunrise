@@ -556,16 +556,6 @@ impl Game<'_> {
         hurt
     }
 
-    pub(in crate::game) fn client_audio_play(
-        &mut self,
-        event: &str,
-        at: Option<[f64; 3]>,
-        volume: f32,
-        pitch: f32,
-    ) {
-        self.audio.0.play(event, at, volume, pitch);
-    }
-
     /// What follows a player's blow on a player as the victim's hurt ends:
     /// the victim's thorns dealt back to the attacker (`ServerPlayer.die`'s
     /// `awardKillScore` waits for the death itself, in

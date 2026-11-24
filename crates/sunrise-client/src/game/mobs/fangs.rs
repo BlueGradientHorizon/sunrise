@@ -205,15 +205,6 @@ impl Game<'_> {
             .list
             .restore(list, sunrise_client::join_seq::RestoreOrder::SurvivorsFirst);
     }
-    pub(in crate::game) fn client_audio_play_unshared(
-        &mut self,
-        event: &str,
-        at: Option<[f64; 3]>,
-        volume: f32,
-        pitch: f32,
-    ) {
-        self.audio.0.play_unshared(event, at, volume, pitch);
-    }
     /// `Entity.baseTick`'s `updateFluidInteraction` for fangs (0.5F x 0.8F): the
     /// currents of the water and lava the box touches add to the motion.
     fn fangs_fluid_step(&self, f: &mut Fangs) {

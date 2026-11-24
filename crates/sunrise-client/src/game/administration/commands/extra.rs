@@ -274,10 +274,6 @@ impl Game<'_> {
         self.tick_camera();
         self.tick_waypoints();
     }
-    #[inline]
-    pub(in crate::game) fn is_playing_screen(&self) -> bool {
-        self.client.screen == super::Screen::Playing
-    }
     /// The camera part of `ServerPlayer.tick`: follow a living camera, drop a
     /// removed one, and stop when the player sneaks or leaves spectator mode.
     fn tick_camera(&mut self) {
@@ -288,7 +284,7 @@ impl Game<'_> {
             self.set_camera(None);
             return;
         }
-        let sneaking = self.held_mapping(Action::Sneak) && self.is_playing_screen();
+        let sneaking = self.held_mapping(Action::Sneak) && self.playing_screen_open();
         match self.target_position(t) {
             Some(p) if !sneaking => {
                 let rot = self.target_rotation(t);

@@ -994,16 +994,6 @@ impl Game<'_> {
         self.persist.sync_body_position.insert(id);
         movement
     }
-
-    pub(in crate::game) fn client_audio_play(
-        &mut self,
-        event: &str,
-        at: Option<[f64; 3]>,
-        volume: f32,
-        pitch: f32,
-    ) {
-        self.audio.0.play(event, at, volume, pitch);
-    }
 }
 
 /// One `ItemEntity.tick`, with the fluid push and the bubble column decided by

@@ -192,23 +192,6 @@ impl Game<'_> {
         let _ = key;
         Ok(())
     }
-    pub(in crate::game) fn client_audio_play(
-        &mut self,
-        event: &str,
-        at: Option<[f64; 3]>,
-        volume: f32,
-        pitch: f32,
-    ) {
-        self.audio.0.play(event, at, volume, pitch);
-    }
-    pub(in crate::game) fn client_particles_add(
-        &mut self,
-        options: &ParticleOptions,
-        p: [f64; 3],
-        v: [f64; 3],
-    ) {
-        self.particles.0.add(options, p, v);
-    }
     /// After `Creaking.hurtServer` posts ENTITY_ACTION, check the live protector, let
     /// a player-credited hit reach the heart, then play the mob's hurt sound.
     pub(in crate::game) fn creaking_hurt(&mut self, home: [i32; 3], id: u32, by_player: bool) {

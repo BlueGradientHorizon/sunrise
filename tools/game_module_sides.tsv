@@ -78,6 +78,7 @@ class_tags_tests	game	touches neither ClientState nor ServerState fields	game/wo
 client_ambient	game	touches neither ClientState nor ServerState fields	game/interface/client_ambient.rs
 client_attack_targets	client	touches only ClientState fields	game/items/client_attack_targets.rs
 client_cracks	client	touches only ClientState fields	game/modding/client_cracks.rs
+client_engine_forwarders	client	touches only client-owned engine fields	game/interface/client_engine_forwarders.rs
 client_executor	client	touches only ClientState fields	game/modding/client_executor.rs
 client_item_extensions	game	touches neither ClientState nor ServerState fields	game/modding/client_item_extensions.rs
 client_reload	client	touches only ClientState fields	game/interface/client_reload/mod.rs

@@ -22,6 +22,8 @@ pub(in crate::game) mod camera_hud;
 pub(in crate::game) mod client_attack_targets;
 #[path = "modding/client_cracks.rs"]
 pub(in crate::game) mod client_cracks;
+#[path = "interface/client_engine_forwarders.rs"]
+pub(in crate::game) mod client_engine_forwarders;
 #[path = "modding/client_executor.rs"]
 pub(in crate::game) mod client_executor;
 #[path = "interface/client_reload/mod.rs"]

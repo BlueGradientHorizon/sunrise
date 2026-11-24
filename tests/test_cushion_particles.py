@@ -26,6 +26,7 @@ impl Registry {
 struct Assets { registry: Registry }
 struct Pack { assets: Assets }
 struct Audio { capture: Option<()> }
+mod sunrise_world { pub mod registry { pub type BlockStateId = u32; } }
 mod sunrise_client { pub mod particles {
     pub enum ParticleType { Block }
     pub struct ParticleOptions;
@@ -78,7 +79,10 @@ fn main() {
         }
     }
 }
-'''.replace("METHOD", rust_fn("cushion_break_particles"))
+'''.replace(
+            "METHOD",
+            rust_fn("cushion_break_particles") + "\n" + rust_fn("cushion_break_particles_server"),
+        )
         with tempfile.TemporaryDirectory(prefix="cushion-particles-") as directory:
             path = Path(directory)
             (path / "main.rs").write_text(fixture)

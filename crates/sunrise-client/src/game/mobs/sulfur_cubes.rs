@@ -186,15 +186,6 @@ impl Game<'_> {
         }
         false
     }
-    pub(in crate::game) fn client_audio_play(
-        &mut self,
-        event: &str,
-        at: Option<[f64; 3]>,
-        volume: f32,
-        pitch: f32,
-    ) {
-        self.audio.0.play(event, at, volume, pitch);
-    }
 
     /// `Bucketable.bucketMobPickup` for a sulfur cube
     /// (`SulfurCube.canBePickedUpWithBucket`: an empty bucket), as the water
@@ -202,12 +193,7 @@ impl Game<'_> {
     fn bucket_sulfur_cube(&mut self, index: usize) {
         let held = self.held().cloned();
         let at = self.mobs[index].center();
-        self.client_audio_play(
-            "minecraft:item.bucket.fill_sulfur_cube",
-            Some(at),
-            1.0,
-            1.0,
-        );
+        self.client_audio_play("minecraft:item.bucket.fill_sulfur_cube", Some(at), 1.0, 1.0);
         // getBucketItemStack, then saveToBucketTag.
         let mut filled = ItemStack::new("minecraft:sulfur_cube_bucket", 1);
         filled.extra = Some(Box::new(sunrise_client::entity_nbt::bucket_components(

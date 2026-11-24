@@ -203,15 +203,6 @@ impl Game<'_> {
         self.native_mobs_joined(self.mobs.len() - 1, false);
         true
     }
-    pub(in crate::game) fn client_audio_play(
-        &mut self,
-        event: &str,
-        at: Option<[f64; 3]>,
-        volume: f32,
-        pitch: f32,
-    ) {
-        self.audio.0.play(event, at, volume, pitch);
-    }
 
     /// `VillagerMakeLove.tryToGiveBirth`: both eat, a free bed within 48
     /// blocks is taken for the child, who is a baby villager of one of

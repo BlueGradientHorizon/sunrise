@@ -818,16 +818,6 @@ impl Game<'_> {
             None => self.client_audio_play_on(source, sound, Some(at), volume, pitch),
         }
     }
-    pub(in crate::game) fn client_audio_play_on(
-        &mut self,
-        source: usize,
-        event: &str,
-        at: Option<[f64; 3]>,
-        volume: f32,
-        pitch: f32,
-    ) {
-        self.audio.0.play_on(source, event, at, volume, pitch);
-    }
     /// `StopSoundCommand`: each target's connection gets the packet; the
     /// window's own player stops its sounds. `/stopsound` and a native mod's
     /// `PlayerRef::stop_sound` both send through here.
@@ -878,13 +868,6 @@ impl Game<'_> {
                 None => self.client_audio_stop_sounds(sound, source),
             }
         }
-    }
-    pub(in crate::game) fn client_audio_stop_sounds(
-        &mut self,
-        event: Option<&str>,
-        source: Option<usize>,
-    ) {
-        self.audio.0.stop_sounds(event, source);
     }
     pub(super) fn cmd_stopsound(&mut self, ctx: &Context) -> R<i32> {
         let targets = self.entities(ctx, "targets", true)?;

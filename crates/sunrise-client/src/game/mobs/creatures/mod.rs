@@ -516,54 +516,6 @@ enum OrbOrder {
 }
 
 impl Game<'_> {
-    pub(in crate::game) fn client_audio_play(
-        &mut self,
-        event: &str,
-        at: Option<[f64; 3]>,
-        volume: f32,
-        pitch: f32,
-    ) {
-        self.audio.0.play(event, at, volume, pitch);
-    }
-    pub(in crate::game) fn client_audio_play_unshared(
-        &mut self,
-        event: &str,
-        at: Option<[f64; 3]>,
-        volume: f32,
-        pitch: f32,
-    ) {
-        self.audio.0.play_unshared(event, at, volume, pitch);
-    }
-    pub(in crate::game) fn client_particles_add(
-        &mut self,
-        options: &ParticleOptions,
-        p: [f64; 3],
-        v: [f64; 3],
-    ) {
-        self.particles.0.add(options, p, v);
-    }
-    pub(in crate::game) fn client_particles_send_particles(
-        &mut self,
-        options: &ParticleOptions,
-        at: [f64; 3],
-        spread: [f64; 3],
-        speed: f64,
-        count: u32,
-    ) {
-        self.particles
-            .0
-            .send_particles(options, at, spread, speed, count);
-    }
-    pub(in crate::game) fn client_particles_llama_spit_burst(
-        &mut self,
-        at: [f64; 3],
-        movement: [f64; 3],
-    ) {
-        self.particles.0.llama_spit_burst(at, movement);
-    }
-    pub(in crate::game) fn client_particles_elder_guardian(&mut self) {
-        self.particles.0.elder_guardian();
-    }
     /// The game's own player's uuid and entity id — the identity behind
     /// [`Self::player_view`], so a tick that lends no guest's view names its
     /// player (#1077). None where the view stands for nobody: no player of
@@ -4060,7 +4012,12 @@ impl Game<'_> {
                     // Chicken.aiStep: `dropFromGiftLootTable` says whether
                     // anything dropped; only then the sound and the game event.
                     if self.drop_gift_loot(mob, "minecraft:gameplay/chicken_lay", at) {
-                        self.client_audio_play("minecraft:entity.chicken.egg", Some(at), 1.0, pitch);
+                        self.client_audio_play(
+                            "minecraft:entity.chicken.egg",
+                            Some(at),
+                            1.0,
+                            pitch,
+                        );
                         let ctx = self.who_context(Some(Who::Mob(mob)), None);
                         self.post_game_event("minecraft:entity_place", at, ctx);
                     }

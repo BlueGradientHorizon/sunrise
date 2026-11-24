@@ -987,15 +987,6 @@ impl Game<'_> {
         }
         Some(skin.fallback.to_owned())
     }
-    pub(in crate::game) fn client_audio_play(
-        &mut self,
-        event: &str,
-        at: Option<[f64; 3]>,
-        volume: f32,
-        pitch: f32,
-    ) {
-        self.audio.0.play(event, at, volume, pitch);
-    }
 }
 
 /// `Entity.isInRain`'s two positions: `blockPosition()` and the same column at the box's top.

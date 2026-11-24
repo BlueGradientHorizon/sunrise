@@ -340,11 +340,9 @@ impl Game<'_> {
             self.world.modified.remove(&key);
             let chunks = self.with_entities(self.world.chunks.get(&key));
             self.native_full_chunk_snapshots(&chunks);
-            self.save.0.save_later(
-                &chunks,
-                self.pack.assets.registry,
-                world_biomes!(self),
-            )?;
+            self.save
+                .0
+                .save_later(&chunks, self.pack.assets.registry, world_biomes!(self))?;
             keys.pop_front();
             if started.elapsed() >= budget {
                 break;

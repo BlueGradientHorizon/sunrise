@@ -83,12 +83,4 @@ impl Game<'_> {
         self.post_game_event("minecraft:entity_die", at, ctx);
         self.catalyst_takes_experience(at, |_| 0);
     }
-    pub(in crate::game) fn client_particles_add(
-        &mut self,
-        options: &ParticleOptions,
-        p: [f64; 3],
-        v: [f64; 3],
-    ) {
-        self.particles.0.add(options, p, v);
-    }
 }

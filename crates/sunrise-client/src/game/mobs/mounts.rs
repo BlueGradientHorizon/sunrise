@@ -1062,15 +1062,6 @@ impl Game<'_> {
         let draws = sunrise_client::hud_overlays::jump_bar(w, h, cooldown, self.mount.jump_scale);
         sunrise_client::hud_layout::paint(batch, &self.gui.atlas, &draws);
     }
-    pub(in crate::game) fn client_audio_play(
-        &mut self,
-        event: &str,
-        at: Option<[f64; 3]>,
-        volume: f32,
-        pitch: f32,
-    ) {
-        self.audio.0.play(event, at, volume, pitch);
-    }
 }
 
 /// The mount a rider gets off: its kind, where it stands, its box,

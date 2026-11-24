@@ -252,16 +252,6 @@ impl Game<'_> {
         self.server.respawn_config = config;
         true
     }
-    #[inline]
-    pub(in crate::game) fn client_audio_play(
-        &mut self,
-        event: &str,
-        at: Option<[f64; 3]>,
-        volume: f32,
-        pitch: f32,
-    ) {
-        self.audio.0.play(event, at, volume, pitch);
-    }
     /// `RespawnAnchorBlock.useWithoutItem` on a charged anchor: outside the
     /// Nether it explodes; inside, it becomes the respawn point.
     pub(in crate::game) fn respawn_anchor_used(&mut self, pos: [i32; 3]) -> Result<()> {

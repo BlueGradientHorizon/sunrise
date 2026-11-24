@@ -775,11 +775,6 @@ impl Game<'_> {
     }
 
     #[inline]
-    pub(in crate::game) fn audio_capture_len(&self) -> usize {
-        self.audio.0.capture.as_ref().map_or(0, Vec::len)
-    }
-
-    #[inline]
     pub(in crate::game) fn creative_item_enabled(
         &self,
         stack: &ItemStack,

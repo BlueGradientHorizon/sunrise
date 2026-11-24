@@ -1134,16 +1134,6 @@ impl Game<'_> {
         self.experience.add_levels(-cost);
         self.native_player_level_changed(old_level);
     }
-    #[inline]
-    pub(in crate::game) fn client_audio_play(
-        &mut self,
-        event: &str,
-        at: Option<[f64; 3]>,
-        volume: f32,
-        pitch: f32,
-    ) {
-        self.audio.0.play(event, at, volume, pitch);
-    }
     /// `Player.giveExperienceLevels`: all players near its feet hear the sound.
     pub(super) fn play_level_up(&mut self, amount: i32, level: i32) {
         if let Some(volume) = self.server.level_up_sound.give_levels(amount, level) {

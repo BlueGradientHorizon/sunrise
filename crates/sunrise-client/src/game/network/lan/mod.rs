@@ -117,7 +117,6 @@ impl Game<'_> {
     pub(in crate::game) fn lan_acting_uuid(&self) -> Option<u128> {
         self.server.lan_acting_uuid
     }
-
     /// `PlayerList.remove`: `player.awardStat(Stats.LEAVE_GAME)` before the
     /// player is saved, heard by native mods first. Once per guest, however
     /// often they are saved.
@@ -3575,14 +3574,6 @@ impl Game<'_> {
         }
     }
 
-    pub(in crate::game) fn client_particles_tracking_emitter(
-        &mut self,
-        options: sunrise_client::particles::ParticleOptions,
-        target: sunrise_client::particles::TrackingTarget,
-        body: sunrise_client::particles::TrackingBody,
-    ) {
-        self.particles.0.tracking_emitter(options, target, body);
-    }
     /// Send the tick's level events, sounds and mob animations.
     pub(in crate::game) fn lan_flush_effects(&mut self) {
         let Some(host) = self.lan.as_mut() else {

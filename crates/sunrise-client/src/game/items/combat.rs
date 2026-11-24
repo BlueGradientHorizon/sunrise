@@ -1157,15 +1157,6 @@ impl Game<'_> {
             self.client_audio_play("minecraft:entity.bee.sting", Some(from), 1.0, 1.0);
         }
     }
-    pub(in crate::game) fn client_audio_play(
-        &mut self,
-        event: &str,
-        at: Option<[f64; 3]>,
-        volume: f32,
-        pitch: f32,
-    ) {
-        self.audio.0.play(event, at, volume, pitch);
-    }
     /// Whether a hit from a mob's tick on `target`, handled after the mob
     /// loop, comes after a tick of the target that vanilla runs after the hit:
     /// `ServerLevel.tick` ticks entities in list order and the attacker deals

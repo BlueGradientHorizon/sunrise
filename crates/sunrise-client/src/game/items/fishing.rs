@@ -1721,15 +1721,6 @@ impl Game<'_> {
             )
         }
     }
-    pub(in crate::game) fn client_audio_play(
-        &mut self,
-        event: &str,
-        at: Option<[f64; 3]>,
-        volume: f32,
-        pitch: f32,
-    ) {
-        self.audio.0.play(event, at, volume, pitch);
-    }
 }
 /// `FishingHookRenderer.getPlayerHandPos` in first person, from the eye: the camera's
 /// `getNearPlane(fov).getPointOnPlane(invert * 0.525, -0.1)` scaled by 960 / fov, then

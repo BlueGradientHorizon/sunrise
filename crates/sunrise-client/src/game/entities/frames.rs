@@ -121,16 +121,6 @@ fn visual_rotation_y_degrees(f: &ItemFrame) -> f32 {
     )
 }
 impl Game<'_> {
-    #[inline]
-    pub(in crate::game) fn client_audio_play(
-        &mut self,
-        event: &str,
-        at: Option<[f64; 3]>,
-        volume: f32,
-        pitch: f32,
-    ) {
-        self.audio.0.play(event, at, volume, pitch);
-    }
     /// `ItemFrame.survives` (not fixed): no collision, a solid block behind
     /// (or a diode for wall frames), no overlapping hanging entity.
     fn frame_survives(&self, f: &ItemFrame) -> bool {
@@ -348,12 +338,7 @@ impl Game<'_> {
             }
             self.item_frames[i].set_item(Some(held));
             action = "put";
-            self.client_audio_play(
-                &sound(&self.item_frames[i], "add_item"),
-                Some(at),
-                1.0,
-                1.0,
-            );
+            self.client_audio_play(&sound(&self.item_frames[i], "add_item"), Some(at), 1.0, 1.0);
         } else {
             let s = sound(&self.item_frames[i], "rotate_item");
             self.client_audio_play(&s, Some(at), 1.0, 1.0);

@@ -357,15 +357,6 @@ impl Game<'_> {
             self.client_audio_play("minecraft:event.mob_effect.trial_omen", Some(at), 1.0, 1.0);
         }
     }
-    pub(in crate::game) fn client_audio_play(
-        &mut self,
-        event: &str,
-        at: Option<[f64; 3]>,
-        volume: f32,
-        pitch: f32,
-    ) {
-        self.audio.0.play(event, at, volume, pitch);
-    }
     /// `sendBlockUpdated` of a block entity: the clients load its new update tag.
     pub(in crate::game) fn mark_block_entity_updated(&mut self, key: Pos) {
         self.world

@@ -486,15 +486,6 @@ impl Game<'_> {
             self.set_event_ai_target(self.mobs[i].id, Some(Who::Player), players[pick]);
         }
     }
-    pub(in crate::game) fn client_audio_play(
-        &mut self,
-        event: &str,
-        at: Option<[f64; 3]>,
-        volume: f32,
-        pitch: f32,
-    ) {
-        self.audio.0.play(event, at, volume, pitch);
-    }
 }
 
 #[cfg(test)]

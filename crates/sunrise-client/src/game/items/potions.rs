@@ -807,17 +807,6 @@ pub(super) fn collect_dragon_breath(
 }
 
 impl Game<'_> {
-    #[inline]
-    pub(in crate::game) fn client_audio_play(
-        &mut self,
-        event: &str,
-        at: Option<[f64; 3]>,
-        volume: f32,
-        pitch: f32,
-    ) {
-        self.audio.0.play(event, at, volume, pitch);
-    }
-
     /// Right-click with a potion, splash/lingering potion or glass bottle.
     pub(super) fn use_potion_item(&mut self, stack: &ItemStack) -> sunrise_client::Result<bool> {
         match &*stack.item {
