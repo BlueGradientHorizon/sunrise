@@ -791,14 +791,6 @@ fn set_placed_by_writes_are_part_of_player_placement() {
                     level.set_block(game, ABOVE, wool, BlockUpdateFlags::NONE),
                     Ok(true)
                 );
-                game.storage_transaction(|game, _| {
-                    assert_eq!(
-                        level.destroy_block(game, ABOVE, true, None, false),
-                        Ok(None)
-                    );
-                    Ok::<_, ()>(())
-                })
-                .unwrap();
             }
             let before_random = <(u64, Option<f64>)>::from(&*game.world.random);
             let mob_count = game.mobs.len();

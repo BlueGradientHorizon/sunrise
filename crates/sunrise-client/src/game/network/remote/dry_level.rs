@@ -85,22 +85,6 @@ impl crate::game::Game<'_> {
         })
     }
 
-    /// Trace `Level.destroyBlock` against the staged level. Loot is rolled separately while
-    /// the old block still stands, before the returned write is applied.
-    pub(in crate::game) fn capture_destroy_block(
-        &mut self,
-        pos: BlockPos,
-        drop: bool,
-    ) -> Vec<sunrise_world::level::ticks::PlacementOperation> {
-        self.with_level_access(true, |b, level, ticks| {
-            let drop = drop && level.game_rules().block_drops;
-            let mut dry = DryLevel::new(level);
-            b.capture_placement_operations(&mut dry, ticks, |b, dry, ticks| {
-                b.destroy_block(dry, ticks, pos, drop);
-            })
-        })
-    }
-
     /// Ask for the candidate state without spending the level random or scheduling live ticks.
     /// A directional context's `replace_clicked` is read from the level; a question vanilla
     /// throws on is refused (`Behaviours::state_for_resolved_placement`).
@@ -220,9 +204,11 @@ impl sunrise_world::level::LevelAccess for DryLevel<'_> {
         {
             let source = match source {
                 // Block-use prediction already plays uncategorized sounds on Blocks.
-                None | Some(sunrise_world::level::LevelSoundSource::Blocks) => {
-                    mod_api::SoundSource::Blocks
-                }
+                None
+                | Some(
+                    sunrise_world::level::LevelSoundSource::Blocks
+                    | sunrise_world::level::LevelSoundSource::BlockPlacement { .. },
+                ) => mod_api::SoundSource::Blocks,
             };
             self.sounds.push((pos, sound, source, volume, pitch));
         }
