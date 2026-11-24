@@ -774,9 +774,9 @@ impl Game<'_> {
             } else {
                 MAINHAND
             };
-            let item = match m.extra.slot_stack(slot).map(|s| &*s.item) {
-                Some("minecraft:bow") => UseItem::Bow,
-                Some("minecraft:spyglass") => UseItem::Spyglass,
+            let item = match m.extra.slot_stack(slot) {
+                Some(s) if &*s.item == "minecraft:bow" => UseItem::Bow,
+                Some(s) if self.stack_scopes(s) => UseItem::Spyglass,
                 _ => UseItem::Other,
             };
             (item, (m.extra.using_item - 1).max(0))
