@@ -192,6 +192,36 @@ fn a_const_local_in_an_unbraced_do_ends_with_it() {
 }
 
 #[test]
+fn a_do_bodys_name_is_seen_by_its_condition() {
+    // Accepted before the body had a scope: the condition still sees an unbraced body's name.
+    fragment(
+        "void main() {\nfloat s = 0.0;\ndo int x = 1; while (x < 3);\ngl_FragColor = vec4(s);\n}\n",
+    )
+    .unwrap_or_else(|e| panic!("{e:?}"));
+}
+
+#[test]
+fn an_if_statements_name_is_not_in_its_else() {
+    let program = fragment(
+        "uniform int pick;\nconst int n = 3;\nvoid main() {\nfloat s = 0.0;\n\
+         if (pick == 1) const int n = 2; else { float b[n]; b[0] = 1.0; s = b[0]; }\n\
+         gl_FragColor = vec4(s);\n}\n",
+    )
+    .unwrap_or_else(|e| panic!("{e:?}"));
+    assert_eq!(local_array_sizes(&program), [3]);
+}
+
+#[test]
+fn a_for_conditions_name_is_in_its_body() {
+    fragment(
+        "void main() {\nfloat s = 0.0;\n\
+         for (int i = 0; bool go = i < 1; i++) s += go ? 1.0 : 0.0;\n\
+         gl_FragColor = vec4(s);\n}\n",
+    )
+    .unwrap_or_else(|e| panic!("{e:?}"));
+}
+
+#[test]
 fn a_const_local_in_a_for_or_a_block_ends_with_it() {
     // Scoped before this change too: guards that they stay so.
     assert_global_after("for (int i = 0; i < 1; i++) const int n = 2;", &[]);

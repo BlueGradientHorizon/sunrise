@@ -398,10 +398,11 @@ impl ParsingContext<'_> {
 
                 let loop_body = ctx.new_body(|ctx| {
                     let mut terminator = None;
-                    // The loop's body is scoped to its end, braced or not (GLSL 4.60, 4.2.2).
+                    // A name the body declares, braced or not, is gone after the statement
+                    // (GLSL 4.60, 4.2.2); an unbraced body's is still seen by the condition, as
+                    // before.
                     ctx.symbol_table.push_scope();
                     self.parse_statement(frontend, ctx, &mut terminator, true)?;
-                    ctx.symbol_table.pop_scope();
 
                     let mut stmt = ctx.stmt_ctx();
 
@@ -435,6 +436,7 @@ impl ParsingContext<'_> {
                     if let Some(idx) = terminator {
                         ctx.body.cull(idx..)
                     }
+                    ctx.symbol_table.pop_scope();
                     Ok(())
                 })?;
 
