@@ -28,17 +28,6 @@ impl Game<'_> {
         self.send_level_sound(LevelSound::new(sound, at, 1.0, 1.0), Some(conn));
     }
     #[inline(always)]
-    pub(in crate::game) fn guest_turn_client_take_input(
-        client: &mut crate::game::client_side::ClientState,
-    ) -> (
-        sunrise_client::held::HeldKeys,
-        sunrise_client::keymapping::VanillaMappings,
-    ) {
-        let host_keys = std::mem::take(&mut client.keys);
-        let saved_mappings = std::mem::take(&mut client.vanilla_mappings);
-        (host_keys, saved_mappings)
-    }
-    #[inline(always)]
     pub(in crate::game) fn guest_turn_client_enter_screens(
         &mut self,
     ) -> (
@@ -112,5 +101,16 @@ impl Game<'_> {
         message: Option<(String, std::time::Instant)>,
     ) -> Option<(String, std::time::Instant)> {
         std::mem::replace(&mut self.client.message, message)
+    }
+    #[inline(always)]
+    pub(in crate::game) fn guest_turn_client_take_input(
+        client: &mut crate::game::client_side::ClientState,
+    ) -> (
+        sunrise_client::held::HeldKeys,
+        sunrise_client::keymapping::VanillaMappings,
+    ) {
+        let host_keys = std::mem::take(&mut client.keys);
+        let saved_mappings = std::mem::take(&mut client.vanilla_mappings);
+        (host_keys, saved_mappings)
     }
 }
