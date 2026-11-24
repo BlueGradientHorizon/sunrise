@@ -221,10 +221,13 @@ impl Game<'_> {
                 .pending_by_handle
                 .remove(&(dim, request));
             self.async_chunk_requests.dec_active(dim);
-            if self.async_chunk_requests.release_holder(dim, pos)
-                && let Some(streaming) = self.level_streaming_mut(dim)
-            {
-                streaming.remove_async_request(pos);
+            if self.async_chunk_requests.release_holder(dim, pos) {
+                if let Some(streaming) = self.level_streaming_mut(dim) {
+                    streaming.remove_async_request(pos);
+                }
+                if dim == self.dim {
+                    self.rebuild_chunk_tickets(false);
+                }
             }
             if !self.async_chunk_requests.has_pending_in(dim) {
                 self.async_chunk_requests.pending.remove(&dim);
@@ -436,10 +439,15 @@ impl Game<'_> {
         if !queue.is_empty() {
             self.async_chunk_requests.pending.insert(dim, queue);
         }
+        let mut released_any = false;
         for pos in released_chunks {
             if self.async_chunk_requests.release_holder(dim, pos) {
                 self.streaming.remove_async_request(pos);
+                released_any = true;
             }
+        }
+        if released_any {
+            self.rebuild_chunk_tickets(false);
         }
         let _ = processed;
     }

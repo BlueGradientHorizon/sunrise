@@ -1850,6 +1850,7 @@ impl Game<'_> {
         self.streaming.paused = false;
         self.streaming.force_unload_sweep();
         let evicted = self.update_world_with_eviction(true);
+        self.rebuild_chunk_tickets(false);
         self.streaming.radius = prev_radius;
         self.streaming.paused = prev_paused;
         self.streaming.extra = prev_extra;
