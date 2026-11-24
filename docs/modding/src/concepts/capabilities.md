@@ -70,12 +70,31 @@ extraction and rolls it back before insertion, then commits a step only if the s
 exactly what the destination accepted. An overanswer rolls back the whole helper call, even if
 the caller later commits the enclosing transaction. Pass capability references to keep provider
 names in an overanswer diagnostic. Stacking variants try occupied destination slots first.
-See [Capability answer limits](capabilities/answer-limits.md) and the `resource_util` module in
+See [Capability answer limits](#capability-answer-limits) and the `resource_util` module in
 the [generated API reference](../reference/api.md) for scans, wrappers and composition.
 
 To try a transfer without keeping it, use a [transaction](transactions.md) and abort. Pass
 `Some(tx)` for the innermost frame, or `None` to open a root when no frame is open. A wrong
 context or an unavailable transaction is an error, not a successful zero transfer.
+
+### Capability answer limits
+
+If a handler answers more than requested, `resource_util::move_resources` rolls back the
+whole move and returns `Err(TransactionError::Aborted(Overanswered))`. If a needed scope
+cannot open, the move returns `Err(TransactionError::Unavailable)`. Use `?` to abort the
+enclosing transaction too when its other writes depend on the move succeeding; an error
+returned from its closure is wrapped in the outer transaction's `Aborted` variant.
+
+- `Overanswered.owner` is `Some` with the mod ID or `"the game"` when a capability can
+  attribute a slot-less error. A direct handler or a raw indexed answer may leave it `None`.
+  Capabilities still warn once, naming their provider, when an indexed answer exceeds the request.
+- Handlers must not move more than the amount passed to `insert_at`, `extract_at`, `insert`,
+  or `extract`. Journal their writes with the supplied `&TransactionContext` so an abort can undo
+  them. If you open a nested transaction, forward the new context inside it, not its parent's.
+- Partial acceptance is not an overanswer. The helper attempts to extract exactly the accepted
+  amount. If the source cannot supply it exactly, the step rolls back.
+- The separate `move_energy` helper keeps its source-first order: partial acceptance rolls
+  back its attempt and retries at the smaller amount.
 
 ### Hopper and dropper attempts
 
@@ -100,4 +119,4 @@ mod-defined [Wire types](wire-types.md) for payload values, and the registered c
 [attachments](attachments.md).
 
 For other resource families, see [Block fluids](capabilities/block-fluids.md),
-[Block energy](capabilities/block-energy.md) and [Entity energy and fluids](capabilities/entity-energy-and-fluids.md).
+[Block energy](capabilities/block-energy.md) and [Entity capabilities](capabilities/entity-items.md).
