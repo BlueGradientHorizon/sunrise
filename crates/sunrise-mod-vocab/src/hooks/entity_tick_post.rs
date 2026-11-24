@@ -9,12 +9,13 @@ pub trait Hooks {
     /// family is told once, after its last tick. Item and glow item frames, paintings, armor stands
     /// and thrown tridents are told alone on the server. Told where `entity_tick_pre` is, on the
     /// server and on a client (`host` says which side). Version 3 observes additional families
-    /// without changing the event signature.
+    /// without changing the event signature; version 4 adds the server's frames, paintings, armor
+    /// stands and thrown tridents.
     #[hook(
         target = "sunrise_client::game::native_hooks::base::Game<'_>::native_entity_tick_post",
         dispatch = "flat",
         side = "both",
-        version = 3,
+        version = 4,
         contract = "listen",
         neoforge = "EntityTickEvent.Post",
         cancellable = false

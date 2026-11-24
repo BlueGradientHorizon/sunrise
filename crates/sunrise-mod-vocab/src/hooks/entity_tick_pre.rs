@@ -24,12 +24,13 @@ pub trait Hooks {
     /// passengers unless dismount is vetoed. An eligible former passenger can still tick as a
     /// root in this pass if it has not ticked and its join-order slot is still ahead. An
     /// already-passed slot is not revisited.
-    /// Version 3 expands the version 2 coverage without changing the event signature.
+    /// Version 3 expands the version 2 coverage without changing the event signature; version 4
+    /// adds the server's item and glow item frames, paintings, armor stands and thrown tridents.
     #[hook(
         target = "sunrise_client::game::native_hooks::base::Game<'_>::native_entity_tick_pre",
         dispatch = "flat",
         side = "both",
-        version = 3,
+        version = 4,
         contract = "collect",
         out = "canceled",
         neoforge = "EntityTickEvent.Pre",
