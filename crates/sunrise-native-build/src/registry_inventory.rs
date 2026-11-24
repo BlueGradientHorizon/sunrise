@@ -223,130 +223,6 @@ impl Metadata {
         Ok(uses)
     }
 
-    /// The digest of the crates each mod's library is compiled with from outside its own files,
-    /// as cargo resolved this workspace: the tree of compilation units its root reaches through
-    /// normal and build edges (a build script or proc macro shapes its code too), each by name,
-    /// version and source with the features enabled on that unit. Under resolver 2 cargo compiles
-    /// a package once for the target and once for the host, each with its own features, so the
-    /// digest reads `cargo tree`, which keeps the two apart, not the per-package feature union of
-    /// `cargo metadata`, which a target feature can join unseen when a build dependency already
-    /// enabled it. One workspace unifies features and shares one lock across the install set, so
-    /// another mod in the set can change these under a mod whose files did not. Another mod's
-    /// root is pruned: the identity names that library by its own identity. A path package is
-    /// named without its path, which differs between install sets: its files are the mod's own
-    /// (in the source digest) or the SDK's (in the build). `workspace` is the staged workspace and
-    /// `mods` maps each mod to its staged folder.
-    pub fn graphs(
-        &self,
-        rust: &dyn crate::rust::Toolchain,
-        workspace: &std::path::Path,
-        mods: &std::collections::BTreeMap<String, std::path::PathBuf>,
-    ) -> Result<std::collections::BTreeMap<String, String>, String> {
-        use sha2::{Digest, Sha256};
-        let canonical = |path: &std::path::Path| {
-            path.canonicalize()
-                .map_err(|e| format!("{}: {e}", path.display()))
-        };
-        let packages: std::collections::BTreeMap<_, _> = self
-            .packages
-            .iter()
-            .map(|package| (package.id.as_str(), package))
-            .collect();
-        let mut folders = std::collections::BTreeMap::new();
-        for member in &self.workspace_members {
-            let package = packages
-                .get(member.as_str())
-                .ok_or("Cargo metadata: missing package")?;
-            let folder = package
-                .manifest_path
-                .parent()
-                .ok_or("Cargo metadata: invalid manifest path")?;
-            folders.insert(canonical(folder)?, member.as_str());
-        }
-        let mut roots = std::collections::BTreeMap::new();
-        for (id, folder) in mods {
-            let root = folders
-                .get(&canonical(folder)?)
-                .ok_or_else(|| format!("Cargo metadata: mod {id} is not a workspace member"))?;
-            roots.insert(id.as_str(), *root);
-        }
-        let other_roots: BTreeSet<&str> = roots.values().copied().collect();
-        let nodes: std::collections::BTreeMap<_, _> = self
-            .resolve
-            .nodes
-            .iter()
-            .map(|node| (node.id.as_str(), node))
-            .collect();
-        let mut graphs = std::collections::BTreeMap::new();
-        for (id, root) in &roots {
-            let mut command = super::cargo(rust, workspace, "tree");
-            command.args([
-                "--offline",
-                "--target",
-                rust.target(),
-                "--edges",
-                "normal,build",
-                "--charset",
-                "ascii",
-                "--format",
-                "{p}|{f}",
-                "--package",
-                root,
-            ]);
-            // `--prune` refuses a package outside the tree, so only the mods this root reaches.
-            let mut pending = vec![*root];
-            let mut seen = BTreeSet::new();
-            while let Some(current) = pending.pop() {
-                if !seen.insert(current) {
-                    continue;
-                }
-                if current != *root && other_roots.contains(current) {
-                    command.args(["--prune", current]);
-                    continue;
-                }
-                let node = nodes
-                    .get(current)
-                    .ok_or("Cargo metadata: missing resolved node")?;
-                pending.extend(
-                    node.deps
-                        .iter()
-                        .filter(|dep| {
-                            dep.dep_kinds
-                                .iter()
-                                .any(|kind| kind.kind.as_deref() != Some("dev"))
-                        })
-                        .map(|dep| dep.pkg.as_str()),
-                );
-            }
-            let output = command.output().map_err(|e| e.to_string())?;
-            if !output.status.success() {
-                return Err(String::from_utf8_lossy(&output.stderr).into_owned());
-            }
-            let tree = String::from_utf8(output.stdout).map_err(|e| format!("cargo tree: {e}"))?;
-            let mut hash = Sha256::new();
-            for line in tree.lines() {
-                // `{p}` adds a path package's folder in parentheses: `name v1.0.0 (/folder)`.
-                let (package, features) = line.split_once('|').unwrap_or((line, ""));
-                let mut parts = package.split(" (");
-                hash.update(parts.next().unwrap_or_default().as_bytes());
-                for part in parts
-                    .filter(|part| !std::path::Path::new(part.trim_end_matches(')')).is_absolute())
-                {
-                    hash.update(b" (");
-                    hash.update(part.as_bytes());
-                }
-                hash.update(b"|");
-                hash.update(features.as_bytes());
-                hash.update(b"\n");
-            }
-            graphs.insert(
-                (*id).to_owned(),
-                hash.finalize().iter().map(|b| format!("{b:02x}")).collect(),
-            );
-        }
-        Ok(graphs)
-    }
-
     /// The facade copies in the target graph, including ones reached only through other crates.
     /// The older 0.3 facade forwards to its dependency on 0.4.
     pub fn runtime_logs(&self) -> Result<BTreeSet<Used>, String> {
@@ -451,6 +327,131 @@ pub fn read(
     serde_json::from_slice(&output.stdout).map_err(|e| format!("Cargo metadata: {e}"))
 }
 
+/// The digest of the crates each mod's library is compiled with from outside its own files, as
+/// cargo resolved this workspace: the tree of compilation units its root reaches through normal
+/// and build edges (a build script or proc macro shapes its code too), each by name, version and
+/// source with the features enabled on that unit. Under resolver 2 cargo compiles a package once
+/// for the target and once for the host, each with its own features, so the digest reads
+/// `cargo tree`, which keeps the two apart, not the per-package feature union of
+/// `cargo metadata`, which a target feature can join unseen when a build dependency already
+/// enabled it. The install set builds as one `--workspace`, which unifies features and shares
+/// one lock across it, so the tree is read for the whole workspace the same way: another mod in
+/// the set can change these under a mod whose files did not. Another mod's root is left out:
+/// the identity names that library by its own identity. A path package is named without its
+/// path, which differs between install sets: its files are the mod's own (in the source digest)
+/// or the SDK's (in the build). `workspace` is the staged workspace and `mods` maps each mod to
+/// its staged folder.
+pub fn graphs(
+    rust: &dyn crate::rust::Toolchain,
+    workspace: &std::path::Path,
+    mods: &std::collections::BTreeMap<String, std::path::PathBuf>,
+) -> Result<std::collections::BTreeMap<String, String>, String> {
+    use sha2::{Digest, Sha256};
+    use std::collections::BTreeMap;
+    let canonical = |path: &std::path::Path| {
+        path.canonicalize()
+            .map_err(|e| format!("{}: {e}", path.display()))
+    };
+    let mut roots = BTreeMap::new();
+    for (id, folder) in mods {
+        roots.insert(canonical(folder)?, id.as_str());
+    }
+    let output = super::cargo(rust, workspace, "tree")
+        .args([
+            "--offline",
+            "--workspace",
+            "--target",
+            rust.target(),
+            "--edges",
+            "normal,build",
+            "--charset",
+            "ascii",
+            "--format",
+            "{p}|{f}",
+            "--prefix",
+            "depth",
+        ])
+        .output()
+        .map_err(|e| e.to_string())?;
+    if !output.status.success() {
+        return Err(String::from_utf8_lossy(&output.stderr).into_owned());
+    }
+    let tree = String::from_utf8(output.stdout).map_err(|e| format!("cargo tree: {e}"))?;
+    // Each unit's dependencies, from the one place cargo expands it; a later `(*)` repeats it.
+    let mut children: BTreeMap<&str, Vec<&str>> = BTreeMap::new();
+    let mut unit_roots: BTreeMap<&str, &str> = BTreeMap::new();
+    let mut parents: Vec<(&str, bool)> = Vec::new();
+    for line in tree.lines().filter(|line| !line.is_empty()) {
+        let text = line.trim_start_matches(|c: char| c.is_ascii_digit());
+        let depth: usize = line[..line.len() - text.len()]
+            .parse()
+            .map_err(|_| format!("cargo tree: {line}"))?;
+        let (unit, repeated) = match text.strip_suffix(" (*)") {
+            Some(unit) => (unit, true),
+            None => (text, false),
+        };
+        parents.truncate(depth);
+        if let Some(&(parent, true)) = parents.last() {
+            children.entry(parent).or_default().push(unit);
+        }
+        let expands = !repeated && !children.contains_key(unit);
+        if expands {
+            children.insert(unit, Vec::new());
+        }
+        parents.push((unit, expands));
+        // `{p}` adds a path package's folder in parentheses: `name v1.0.0 (/folder)`.
+        let package = unit.split_once('|').map_or(unit, |(package, _)| package);
+        if let Some(folder) = package
+            .split_once(" (")
+            .and_then(|(_, rest)| rest.strip_suffix(')'))
+            .filter(|folder| std::path::Path::new(folder).is_absolute())
+            && let Ok(folder) = std::path::Path::new(folder).canonicalize()
+            && let Some(id) = roots.get(&folder)
+        {
+            unit_roots.insert(unit, id);
+        }
+    }
+    let mut graphs = BTreeMap::new();
+    for (unit, id) in &unit_roots {
+        let mut hash = Sha256::new();
+        let mut seen = BTreeSet::new();
+        let mut pending = vec![(*unit, 0usize)];
+        while let Some((current, depth)) = pending.pop() {
+            if depth > 0 && unit_roots.contains_key(current) {
+                continue;
+            }
+            let (package, features) = current.split_once('|').unwrap_or((current, ""));
+            let mut parts = package.split(" (");
+            hash.update(depth.to_string().as_bytes());
+            hash.update(parts.next().unwrap_or_default().as_bytes());
+            for part in
+                parts.filter(|part| !std::path::Path::new(part.trim_end_matches(')')).is_absolute())
+            {
+                hash.update(b" (");
+                hash.update(part.as_bytes());
+            }
+            hash.update(b"|");
+            hash.update(features.as_bytes());
+            if !seen.insert(current) {
+                hash.update(b" (*)\n");
+                continue;
+            }
+            hash.update(b"\n");
+            if let Some(next) = children.get(current) {
+                pending.extend(next.iter().rev().map(|child| (*child, depth + 1)));
+            }
+        }
+        graphs.insert(
+            (*id).to_owned(),
+            hash.finalize().iter().map(|b| format!("{b:02x}")).collect(),
+        );
+    }
+    match mods.keys().find(|id| !graphs.contains_key(*id)) {
+        Some(id) => Err(format!("cargo tree: mod {id} is not a workspace member")),
+        None => Ok(graphs),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -477,6 +478,7 @@ mod tests {
         version: &str,
         features: &str,
         tool: &str,
+        other: &str,
     ) -> std::collections::BTreeMap<String, std::path::PathBuf> {
         let write = |path: std::path::PathBuf, text: &str| {
             std::fs::create_dir_all(path.parent().unwrap()).unwrap();
@@ -487,7 +489,7 @@ mod tests {
         };
         write(
             stage.join("Cargo.toml"),
-            "[workspace]\nresolver = \"2\"\nmembers = [\"a\", \"b\", \"shared\", \"tool\"]\n",
+            "[workspace]\nresolver = \"2\"\nmembers = [\"a\", \"b\", \"c\", \"shared\", \"tool\"]\n",
         );
         write(
             stage.join("shared/Cargo.toml"),
@@ -514,7 +516,14 @@ mod tests {
                 package("b", "0.1.0")
             ),
         );
-        for name in ["a", "b", "shared", "tool"] {
+        write(
+            stage.join("c/Cargo.toml"),
+            &format!(
+                "{}[dependencies]\nshared = {{ path = \"../shared\", features = [{other}] }}\n",
+                package("c", "0.1.0")
+            ),
+        );
+        for name in ["a", "b", "c", "shared", "tool"] {
             write(stage.join(name).join("src/lib.rs"), "");
         }
         ["a", "b"]
@@ -525,7 +534,8 @@ mod tests {
 
     /// A mod's graph digest follows the version and the per-unit features cargo resolved for the
     /// crates it is compiled with, not where the install set is staged or what it only tests
-    /// with; a target feature its build dependency already enabled still changes it, and a
+    /// with; a target feature its build dependency already enabled still changes it, as does one
+    /// another workspace member enables on the same unit, and a
     /// dependent's own digest leaves its dependency mod out (its identity names that one).
     #[test]
     #[ignore = "daily"]
@@ -539,25 +549,25 @@ mod tests {
             String::from_utf8(sysroot.stdout).unwrap().trim(),
         ));
         let dir = tempfile::tempdir().unwrap();
-        let graphs = |stage: &str, version: &str, features: &str, tool: &str| {
+        let digest = |stage: &str, version: &str, features: &str, tool: &str, other: &str| {
             let stage = dir.path().join(stage);
-            let mods = two_mods(&stage, version, features, tool);
-            read(&rust, &stage)
-                .unwrap()
-                .graphs(&rust, &stage, &mods)
-                .unwrap()
+            let mods = two_mods(&stage, version, features, tool, other);
+            graphs(&rust, &stage, &mods).unwrap()
         };
-        let base = graphs("one", "1.2.0", "", "1.0.0");
-        assert_eq!(base, graphs("two", "1.2.0", "", "2.0.0"));
-        let moved = graphs("three", "1.1.0", "", "1.0.0");
+        let base = digest("one", "1.2.0", "", "1.0.0", "");
+        assert_eq!(base, digest("two", "1.2.0", "", "2.0.0", ""));
+        let moved = digest("three", "1.1.0", "", "1.0.0", "");
         // The package-level union stays `std` with the build dependency's feature.
-        let unified = graphs("four", "1.2.0", "\"std\"", "1.0.0");
-        let added = graphs("five", "1.2.0", "\"alloc\"", "1.0.0");
-        for other in [&moved, &unified, &added] {
+        let unified = digest("four", "1.2.0", "\"std\"", "1.0.0", "");
+        let added = digest("five", "1.2.0", "\"alloc\"", "1.0.0", "");
+        // Another workspace member that enables a feature on the same unit.
+        let beside = digest("six", "1.2.0", "", "1.0.0", "\"alloc\"");
+        for other in [&moved, &unified, &added, &beside] {
             assert_ne!(base["a"], other["a"]);
             assert_eq!(base["b"], other["b"]);
         }
         assert_ne!(moved["a"], unified["a"]);
+        assert_eq!(added["a"], beside["a"]);
         assert_ne!(unified["a"], added["a"]);
     }
 
