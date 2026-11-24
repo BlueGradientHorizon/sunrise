@@ -68,6 +68,11 @@ impl Game<'_> {
     /// engine doesn't model sends the clicks unpredicted. False when the batch
     /// cannot be submitted.
     pub(in crate::game) fn remote_menu_ops(&mut self, ops: &[(Option<usize>, i32, Input)]) -> bool {
+        // A displayed native screen whose server menu was already closed stays
+        // visible until removed, but cannot submit clicks to window 0.
+        if self.shown_native_screen().is_some() && self.active_native_screen().is_none() {
+            return false;
+        }
         // CrafterScreen.slotClicked: a slot toggle goes out before the click.
         if let [(Some(slot), button, input)] = ops {
             self.crafter_slot_clicked(*slot, *button, *input);
@@ -902,30 +907,56 @@ impl Game<'_> {
             self.capture(false);
         }
     }
-    /// `ClientPacketListener.handleMountScreenOpen`: a horse's or llama's
-    /// inventory; for another entity the window is closed again.
-    pub(in crate::game) fn remote_open_mount(&mut self, p: play::MountScreenOpen) {
+    /// `ClientPacketListener.handleMountScreenOpen`: only horses and nautiluses
+    /// open a menu. A missing or different entity leaves the current menu alone.
+    pub(in crate::game) fn remote_open_mount(&mut self, p: play::MountScreenOpen) -> Result<()> {
+        use crate::game::{inventory_slots::MOD_MENU_SLOT_BASE, mount_menu::CHEST};
+        // `new SimpleContainer(getInventorySize(inventoryColumns))` is built before
+        // the entity is looked at, so it throws for any entity: a size that comes
+        // out negative, as Java's `int` wraps, ends the connection. `HorseInventoryMenu`
+        // lays out `inventoryColumns` chest slots only when that is positive, a
+        // `NautilusInventoryMenu` has none; the chest's slots must end below the mod
+        // menus' base, and a chest that does not fit ends the connection, as the
+        // exception does.
+        let size = p.columns.wrapping_mul(3);
+        if size < 0 {
+            return self.refuse_play_payload("the mount menu's chest has a negative size");
+        }
+        let columns = usize::try_from(p.columns).unwrap_or(0);
+        if columns > (MOD_MENU_SLOT_BASE - CHEST) / 3 {
+            return self.refuse_play_payload("the mount menu's chest does not fit its slot range");
+        }
+        let mut items = Vec::new();
+        if items.try_reserve_exact(size as usize).is_err() {
+            return self.refuse_play_payload("the mount menu's chest does not fit its slot range");
+        }
+        let entity = p.entity as u32;
+        let Some(species) = self
+            .mobs
+            .iter()
+            .find(|m| m.id == entity)
+            .map(sunrise_client::mobs::Mob::species)
+            .filter(|&s| crate::game::mount_menu::has_mount_menu(s))
+        else {
+            return Ok(());
+        };
         if self.mod_screen.is_some() {
             self.remote_close_local();
         }
-        let columns = usize::try_from(p.columns).unwrap_or(0).min(5);
-        let record = |game: &mut Self| {
-            game.remote_set_menu(Some((p.container, format!("{MOUNT_MENU}{columns}"))), None);
+        // `HorseInventoryMenu` lays out its chest slots only `if (inventoryColumns > 0)`
+        // and a `NautilusInventoryMenu` has none: no chest slot addresses the container then.
+        let chest = if sunrise_client::mobs::nautilus::is_nautilus(species) || columns == 0 {
+            0
+        } else {
+            size as usize
         };
-        // With a screen hook listening, the window is recorded before the
-        // screen opens, so a mod's answer that replaces it closes this window
-        // (a rejection clears it again); otherwise after, as vanilla's order.
-        let staged = self.screen_hooks_heard();
-        if staged {
-            record(self);
-        }
-        if !self.open_remote_mount_menu(p.entity as u32, columns) {
-            self.remote_reject_container(p.container);
-            return;
-        }
-        if !staged {
-            record(self);
-        }
+        items.resize(chest, None);
+        let columns = if chest == 0 { 0 } else { columns };
+        // Install the window before opening its screen, including when a mod
+        // replaces the requested screen with the player's own inventory.
+        self.remote_set_menu(Some((p.container, format!("{MOUNT_MENU}{columns}"))), None);
+        self.open_remote_mount_menu(entity, species, items);
+        Ok(())
     }
     /// The type of the menu a server opened (`MenuType`'s id).
     pub(in crate::game) fn remote_menu_type(&self) -> Option<&str> {
