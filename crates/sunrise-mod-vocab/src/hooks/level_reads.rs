@@ -150,6 +150,11 @@ it is. The search builds structure starts but neither loads nor generates chunks
 structures, a structure this level cannot generate, an origin past the world's 30,000,000-block
 edge (`Level.isInWorldBoundsHorizontal`) and a negative radius give `None`.
 
+`structures_with_piece_at(host, pos, structure)` and `structures_at(host, pos, structure)` say
+which of the structures `structure` names lie at `pos`: inside one of a start's pieces
+(`StructureManager.getStructureWithPieceAt`) or inside its whole bounding box (`getStructureAt`).
+They read the loaded chunk's structure references and never load or generate a chunk.
+
 `chunk.visit_watchers(host, &mut visit)` visits `ChunkMap.getPlayers(pos, false)`: the players
 the chunk was sent to and is inside the view of, from their `chunk_watch` until they move away.
 Fake players watch nothing. Return `ControlFlow::Break(())` to stop. An empty walk completes

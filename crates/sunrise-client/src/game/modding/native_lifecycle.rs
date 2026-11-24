@@ -199,6 +199,9 @@ impl Game<'_> {
         self.attachment_indexes.clear();
         self.creatures.custom_spawners.clear();
         self.passages.retire_world();
+        self.clear_all_async_chunk_requests();
+        self.close_all_saved_chunk_readers();
+        self.close_all_detached_generators();
         let authority = match (self.options.execution_role, self.remote.is_some()) {
             (_, true) | (ExecutionRole::Client, false) => None,
             (ExecutionRole::IntegratedServer, false) => Some(Authority::IntegratedServer),
@@ -230,6 +233,9 @@ impl Game<'_> {
         self.creatures.custom_spawners.clear();
         self.attachment_indexes.clear();
         self.passages.retire_world();
+        self.clear_all_async_chunk_requests();
+        self.close_all_saved_chunk_readers();
+        self.close_all_detached_generators();
         self.resident_entities.table.get_mut().reset();
         super::cauldron_interactions::clear();
         self.clear_composter_randoms();

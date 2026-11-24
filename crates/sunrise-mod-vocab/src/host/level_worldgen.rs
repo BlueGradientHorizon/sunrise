@@ -38,6 +38,27 @@ pub trait LevelWorldgenBackend {
         parameters: StructureSearch,
     ) -> Option<StructureSearchResult>;
     /// Side: server.
+    /// `StructureManager.getStructureWithPieceAt`: the structures `structure` names (an id or a
+    /// `#tag`) with a start that one of its pieces reaches `pos` in, by the structure references
+    /// of `pos`'s loaded chunk, in their order and without repeats. Empty where none does. None
+    /// for a stale level, a client, and a chunk not loaded: never loads or generates chunks.
+    fn level_structures_with_piece_at(
+        &self,
+        level: LevelRef,
+        pos: [i32; 3],
+        structure: &str,
+    ) -> Option<Vec<String>>;
+    /// Side: server.
+    /// `StructureManager.getStructureAt`: as [`LevelRef::structures_with_piece_at`], with the
+    /// start's whole bounding box reaching `pos` instead of a piece's, so a position between a
+    /// structure's pieces counts.
+    fn level_structures_at(
+        &self,
+        level: LevelRef,
+        pos: [i32; 3],
+        structure: &str,
+    ) -> Option<Vec<String>>;
+    /// Side: server.
     /// The biome id selected by `LevelReader.getBiome` and this level's biome zoom.
     /// Reads an active or parked server level. None for a
     /// stale handle or an unloaded selected noise column. Never generates or loads chunks.
@@ -71,29 +92,6 @@ pub trait LevelWorldgenBackend {
     /// Side: server.
     /// The world's seed (`WorldOptions.seed`), as `/seed` shows it.
     fn level_seed(&self, level: LevelRef) -> Option<i64>;
-    /// Side: server.
-    /// Visit the level generator's undecorated surface for each `(x, z)` column in input order,
-    /// without creating, holding or loading chunks.
-    ///
-    /// Works on active and parked server levels. Each column yields `Some(TerrainColumn)` or
-    /// `None` (for void columns, custom generators without a noise surface, or levels without a
-    /// generator). Height counts from the level top (so the Nether returns its bedrock roof, not
-    /// a cave floor), omits slope rules and features, and is independent of loaded chunks.
-    ///
-    /// No column-count cap applies. The visitor can make shared reads on the same host,
-    /// including another terrain visit. Return `ControlFlow::Continue(())` to keep visiting or
-    /// `ControlFlow::Break(())` to stop before sampling later columns. Returns
-    /// `Ok(ControlFlow::Break(()))` if stopped or `Ok(ControlFlow::Continue(()))` after every
-    /// input column (including an empty slice). Returns `Err(LevelReadError::Stale)` for a stale
-    /// handle or closed level, and `Err(LevelReadError::Unavailable)` on a client, outside server
-    /// world access, or when block-state conversion is unavailable. Refusals before sampling do
-    /// not call `visit`.
-    fn level_visit_terrain_surface(
-        &self,
-        level: LevelRef,
-        columns: &[(i32, i32)],
-        visit: &mut dyn FnMut((i32, i32), Option<TerrainColumn>) -> core::ops::ControlFlow<()>,
-    ) -> Result<core::ops::ControlFlow<()>, LevelReadError>;
 }
 /// The handles' writes of the `level_worldgen` area, implemented by the game and reached through [`BackendMut`].
 // hidden: a handle's backend, reached through `Backend`; mods call the handle, never this trait

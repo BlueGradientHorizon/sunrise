@@ -71,6 +71,7 @@ pub struct Clock {
     /// it modulo 24000 for the hour; `/time set` can make it negative.
     pub day_time: i64,
 }
+
 /// The generator's undecorated surface, without slope rules or chunk allocation.
 /// Created only by the game.
 #[derive(Clone, Debug, PartialEq, Eq)]

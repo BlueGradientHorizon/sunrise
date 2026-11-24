@@ -53,25 +53,26 @@ is not loaded), with no column-count or total-block cap:
 
 ## Query terrain before loading chunks
 
-`LevelRef::visit_terrain_surface(host, columns, visit)` reads an open server level's
-generator (active or parked), not resident chunks. It streams one `Option<TerrainColumn>`
-per input pair `(x, z)` in input order with no column-count cap, and stops before sampling
-later columns when `visit` returns `ControlFlow::Break(())`.
+`LevelRef::detached_generator(host)` returns a thread-safe `DetachedChunkGenerator` bound to an
+open server level's generator, without creating, holding, or loading chunks. Clone and move it
+onto background worker threads to avoid blocking the server tick.
 
-- `height` is one above the highest solid block, skipping fluids, like OceanFloor. The scan
-  starts at the level top, so the Nether returns its bedrock roof, not a floor.
-- `block` is that surface's `BlockKey`; `water` is one above the highest fluid over it,
-  or absent on dry land. `biome` names the biome in the world's table, including data pack biomes.
-- Void columns and worlds without their own generator yield `None`. Custom generators that
-  do not provide a noise surface also have no answer.
-- No chunk is created, loaded or held. Features (trees, ores, lakes and decorations) and slope
-  rules are not included: even an undecorated chunk may have a different top block. A teleport
-  mod can sample candidate columns, then hold only its chosen chunk and verify the decorated blocks.
-- Stale handles or closed levels return `Err(LevelReadError::Stale)` and clients or
-  unavailable hosts return `Err(LevelReadError::Unavailable)` before visiting any column.
-  Results depend on generator inputs, not loaded chunks or query order. The visitor can make
-  shared reads on the same host. The game makes one noise sample per column on the server
-  tick, and logs the visited column count when a call exceeds the configured slow-call threshold.
+- `sample_surface_columns(columns)` returns one optional `TerrainColumn` per input pair `(x, z)`,
+  in input order, without loading chunks:
+  - `height` is one above the highest solid block, skipping fluids, like OceanFloor. The scan
+    starts at the level top, so the Nether returns its bedrock roof, not a floor.
+  - `block` is that surface's `BlockKey`; `water` is one above the highest fluid over it,
+    or absent on dry land. `biome` names the biome in the world's table, including data pack biomes.
+  - Void columns and worlds without their own generator return `None`. Custom generators that
+    do not provide a noise surface also have no answer.
+  - Features (trees, ores, lakes and decorations) and slope rules are not included.
+- `generate_chunk(pos, stage)` generates a full in-memory `ChunkSnapshot` up to `GenerationStage`
+  (`Biomes`, `Noise`, `Surface`, `Carvers`, `Features`, `Light`) without mutating live chunks or
+  saves. `Biomes..=Carvers` match live worldgen bit-for-bit (`has_light() == false`); `Features`
+  and `Light` decorate over a detached 3x3 scratch neighbourhood, and only `Light` runs the light
+  engine (`has_light() == true`).
+- Once the level closes, remaining handles return `Err(GenerationError::Unavailable)` and release
+  their worker state immediately.
 
 The non-exhaustive `TerrainColumn` is supplied by the game.
 

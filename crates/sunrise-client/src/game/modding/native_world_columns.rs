@@ -102,63 +102,6 @@ impl Game<'_> {
         self.native_read_logged(started, "column read", visited);
         Ok(flow)
     }
-
-    /// Visit the level generator's undecorated surface for each `(x, z)` column in an active or
-    /// parked open server level, without creating, holding or loading chunks.
-    pub(super) fn level_visit_terrain_surface(
-        &self,
-        level: mod_api::LevelRef,
-        columns: &[(i32, i32)],
-        visit: &mut dyn FnMut((i32, i32), Option<mod_api::TerrainColumn>) -> ControlFlow<()>,
-    ) -> Result<ControlFlow<()>, mod_api::LevelReadError> {
-        self.native_level_world_result(level)?;
-        let locator = if level.dimension() == self.dim.key() {
-            self.end.locator()
-        } else {
-            self.levels.parked_locator_of(level.dimension_id())
-        };
-        let index = match locator.as_ref() {
-            Some(_) => Some(
-                super::native_worldgen::prepare(self.pack.assets.registry)
-                    .map_err(|_| mod_api::LevelReadError::Unavailable)?,
-            ),
-            None => None,
-        };
-        let started = std::time::Instant::now();
-        let biomes = world_biomes!(self);
-        let mut flow = ControlFlow::Continue(());
-        let mut visited = 0usize;
-        for &(x, z) in columns {
-            let column = match (&locator, &index) {
-                (Some(generator), Some(index)) => match generator.terrain_surface(x, z) {
-                    Some(surface) => {
-                        let state = index
-                            .to_api(surface.state)
-                            .map_err(|_| mod_api::LevelReadError::Unavailable)?;
-                        Some(
-                            mod_api::__private::built::TerrainColumn {
-                                height: surface.height,
-                                block: state.block(),
-                                water: surface.water.map(|(height, _)| height),
-                                biome: biomes.name(surface.biome).to_owned(),
-                            }
-                            .into(),
-                        )
-                    }
-                    None => None,
-                },
-                _ => None,
-            };
-            visited += 1;
-            if visit((x, z), column).is_break() {
-                flow = ControlFlow::Break(());
-                break;
-            }
-        }
-        self.native_read_logged(started, "terrain surface query", visited);
-        Ok(flow)
-    }
-
     /// A read's time logged with `SUNRISE_SPIKES`, as an edit's is.
     fn native_read_logged(&self, started: std::time::Instant, what: &str, columns: usize) {
         let ms = started.elapsed().as_secs_f32() * 1000.0;
@@ -170,140 +113,13 @@ impl Game<'_> {
 
 #[cfg(test)]
 mod tests {
-    use super::super::native_entity_refs::tests::with_game;
-    use mod_api::{LevelReadError, LevelRef, WorldEpoch};
-    use std::{ops::ControlFlow, sync::Arc};
-    use sunrise_client::vanillagen::{TerrainResources, VanillaTerrain};
-    use sunrise_world::worldgen::generator::FlatSettings;
-
-    #[test]
-    #[ignore = "daily"]
-    fn terrain_surface_reads_flat_layers_without_chunks() {
-        with_game(|game| {
-            game.options.dedicated = Some(Vec::new());
-            let directory = game.options.resources.join("worldgen");
-            let terrain = VanillaTerrain::for_flat(
-                TerrainResources {
-                    data: Some(&game.pack.data_changes),
-                    dir: &directory,
-                    registry: game.pack.assets.registry,
-                    biomes: world_biomes!(game),
-                    item_data: &game.res.core.item_data,
-                },
-                &Default::default(),
-                12345,
-                &FlatSettings {
-                    layers: vec![
-                        ("minecraft:bedrock".into(), 1),
-                        ("minecraft:dirt".into(), 2),
-                        ("minecraft:grass_block".into(), 1),
-                    ],
-                    biome: "minecraft:plains".into(),
-                    structure_overrides: Some(Vec::new()),
-                    features: false,
-                    lakes: false,
-                },
-                false,
-            )
-            .unwrap();
-            game.end.set_locator(Some(Arc::new(terrain)));
-            let overworld = game.level(game.dim.id()).unwrap();
-            let before = (game.world.chunks.len(), game.streaming.pending());
-            let columns = [(100000, -100000), (0, 0), (-1, 31), (100000, -100000)];
-            let mut answer = Vec::new();
-            let flow = overworld
-                .visit_terrain_surface(game, &columns, &mut |pos, col| {
-                    answer.push((pos, col));
-                    ControlFlow::Continue(())
-                })
-                .unwrap();
-            assert_eq!(flow, ControlFlow::Continue(()));
-            assert_eq!(answer.len(), columns.len());
-            // Four layers from the overworld minimum -64, independent of the sampler.
-            for ((pos, column), expected_pos) in answer.iter().zip(columns) {
-                assert_eq!(*pos, expected_pos);
-                let column = column.as_ref().unwrap();
-                assert_eq!(column.height, -60);
-                assert_eq!(
-                    column.block,
-                    mod_api::__private::block_key("minecraft:grass_block").unwrap()
-                );
-                assert_eq!(column.water, None);
-                assert_eq!(column.biome, "minecraft:plains");
-            }
-            // Early exit stops before sampling later columns, and parked open levels work too.
-            let mut stopped = 0usize;
-            let break_flow = overworld
-                .visit_terrain_surface(game, &columns, &mut |_, _| {
-                    stopped += 1;
-                    ControlFlow::Break(())
-                })
-                .unwrap();
-            assert_eq!(break_flow, ControlFlow::Break(()));
-            assert_eq!(stopped, 1);
-
-            let here = game.dim;
-            game.enter_level(crate::game::Dim::Nether).unwrap();
-            let mut parked_answer = Vec::new();
-            let parked_flow = overworld
-                .visit_terrain_surface(game, &columns, &mut |pos, col| {
-                    parked_answer.push((pos, col));
-                    ControlFlow::Continue(())
-                })
-                .unwrap();
-            assert_eq!(parked_flow, ControlFlow::Continue(()));
-            assert_eq!(parked_answer, answer);
-            game.enter_level(here).unwrap();
-            assert_eq!(before, (game.world.chunks.len(), game.streaming.pending()));
-        });
-    }
-
-    #[test]
-    #[ignore = "daily"]
-    fn terrain_surface_refuses_before_sampling() {
-        with_game(|game| {
-            game.options.dedicated = Some(Vec::new());
-            let level = game.level(game.dim.id()).unwrap();
-            game.end.set_locator(None);
-            let stale = LevelRef::new(WorldEpoch::new(level.epoch().get() + 1), level.dimension());
-            assert_eq!(
-                stale.visit_terrain_surface(game, &[(0, 0)], &mut |_, _| {
-                    panic!("refused query must not visit")
-                }),
-                Err(LevelReadError::Stale)
-            );
-            // No fixed 4096-column ceiling applies to streamed terrain queries.
-            let columns = vec![(0, 0); 5000];
-            let mut visited = 0usize;
-            assert_eq!(
-                level.visit_terrain_surface(game, &columns, &mut |_, col| {
-                    assert!(col.is_none());
-                    visited += 1;
-                    ControlFlow::Continue(())
-                }),
-                Ok(ControlFlow::Continue(()))
-            );
-            assert_eq!(visited, columns.len());
-            assert_eq!(
-                level.visit_terrain_surface(game, &[], &mut |_, _| {
-                    panic!("empty query must not visit")
-                }),
-                Ok(ControlFlow::Continue(()))
-            );
-            game.options.execution_role = crate::game::execution_role::ExecutionRole::Client;
-            assert_eq!(
-                level.visit_terrain_surface(game, &[(0, 0)], &mut |_, _| {
-                    panic!("client query must not visit")
-                }),
-                Err(LevelReadError::Unavailable)
-            );
-        });
-    }
+    use std::ops::ControlFlow;
 
     #[test]
     #[ignore = "daily"]
     fn read_columns_returns_server_water_colors_without_colormaps() {
         use std::path::Path;
+        use std::sync::Arc;
         use sunrise_assets::resource_source::ResourceRoot;
         use sunrise_client::{biome::Biomes, chunk::Chunk};
 
