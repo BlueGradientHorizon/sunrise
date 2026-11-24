@@ -144,7 +144,7 @@ pub enum PipelineGeometryClass {
     Translucent,
     /// Entity, block-entity, or contraption geometry (`gbuffers_entities` fallback chain).
     Entity,
-    /// Textured lit particle geometry (`gbuffers_textured_lit` fallback chain).
+    /// Textured lit particle geometry (`gbuffers_particles` fallback chain).
     Particles,
     /// Sky dome or horizon geometry (`gbuffers_skybasic` fallback chain).
     Sky,
@@ -184,6 +184,7 @@ impl PipelineGeometryClass {
                 "gbuffers_basic",
             ],
             Self::Particles => &[
+                "gbuffers_particles",
                 "gbuffers_textured_lit",
                 "gbuffers_textured",
                 "gbuffers_basic",
@@ -342,26 +343,42 @@ impl PackBinding {
             }
         }
         if let Some(target) = &self.depth_target {
-            for sampler in target
-                .depth_samplers
-                .iter()
-                .chain(target.opaque_depth_samplers.iter())
-            {
+            let mut seen_samplers = std::collections::HashSet::new();
+            for sampler in &target.depth_samplers {
                 if !is_valid_glsl_identifier(sampler) || sampler.starts_with("gl_") {
                     return Err(format!(
                         "invalid pack depth sampler name {sampler:?}: expected a valid non-gl_ GLSL identifier"
                     ));
                 }
+                if !seen_samplers.insert(sampler.as_str()) {
+                    return Err(format!(
+                        "duplicate pack depth sampler {sampler:?} on target {}",
+                        target.id
+                    ));
+                }
             }
             for sampler in &target.opaque_depth_samplers {
+                if !is_valid_glsl_identifier(sampler) || sampler.starts_with("gl_") {
+                    return Err(format!(
+                        "invalid pack depth sampler name {sampler:?}: expected a valid non-gl_ GLSL identifier"
+                    ));
+                }
                 if target.depth_samplers.iter().any(|s| s == sampler) {
                     return Err(format!(
                         "pack depth sampler {sampler:?} on target {} cannot be both a full depth sampler and an opaque depth sampler",
                         target.id
                     ));
                 }
+                if !seen_samplers.insert(sampler.as_str()) {
+                    return Err(format!(
+                        "duplicate pack opaque depth sampler {sampler:?} on target {}",
+                        target.id
+                    ));
+                }
             }
         }
+        let mut current_uniforms = std::collections::HashSet::new();
+        let mut previous_uniforms = std::collections::HashSet::new();
         for uniform in &self.frame_uniforms {
             if !is_valid_glsl_identifier(&uniform.name) || uniform.name.starts_with("gl_") {
                 return Err(format!(
@@ -369,6 +386,13 @@ impl PackBinding {
                     uniform.name
                 ));
             }
+            if previous_uniforms.contains(uniform.name.as_str()) {
+                return Err(format!(
+                    "pack uniform {:?} collides with another uniform's previous_name",
+                    uniform.name
+                ));
+            }
+            current_uniforms.insert(uniform.name.as_str());
             if let Some(prev) = &uniform.previous_name {
                 if !is_valid_glsl_identifier(prev) || prev.starts_with("gl_") {
                     return Err(format!(
@@ -381,6 +405,12 @@ impl PackBinding {
                         uniform.name
                     ));
                 }
+                if current_uniforms.contains(prev.as_str()) {
+                    return Err(format!(
+                        "pack previous uniform {prev:?} collides with another uniform's current name"
+                    ));
+                }
+                previous_uniforms.insert(prev.as_str());
             }
         }
         for input in &self.glsl_bindings {
@@ -520,20 +550,6 @@ impl PackGlslInput {
             ty,
         }
     }
-}
-
-/// Whether the active shader pack overrode a registered [`RenderPipeline`].
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-#[non_exhaustive]
-// no wire: local client shader-pack pipeline override state.
-pub enum PackOverrideState {
-    /// No shader pack is active; the pipeline draws with its own shader.
-    NoPack,
-    /// The active shader pack bound a program from [`RenderPipeline::effective_pack_programs`].
-    Bound,
-    /// A shader pack is active, but none of the chain's programs existed or translated; the
-    /// pipeline falls back to its own shader inside the pack's world targets.
-    UnboundPack,
 }
 
 /// Whether `name` is a valid ASCII GLSL identifier (`[A-Za-z_][A-Za-z0-9_]*`).
@@ -812,6 +828,15 @@ mod tests {
             ]
         );
         assert_eq!(
+            PipelineGeometryClass::Particles.default_programs(),
+            [
+                "gbuffers_particles",
+                "gbuffers_textured_lit",
+                "gbuffers_textured",
+                "gbuffers_basic",
+            ]
+        );
+        assert_eq!(
             entity.effective_pack_slot(),
             Some(PackPassSlot::AfterOpaqueGbuffers)
         );
@@ -949,9 +974,38 @@ mod tests {
         );
         assert!(
             PackBinding::new()
+                .depth_target(
+                    PackDepthTarget::new(Identifier::parse("example:aux_depth").unwrap())
+                        .depth_sampler("dupDepth")
+                        .depth_sampler("dupDepth")
+                )
+                .validate_syntax()
+                .is_err()
+        );
+        assert!(
+            PackBinding::new()
+                .depth_target(
+                    PackDepthTarget::new(Identifier::parse("example:aux_depth").unwrap())
+                        .opaque_depth_sampler("dupOpaque")
+                        .opaque_depth_sampler("dupOpaque")
+                )
+                .validate_syntax()
+                .is_err()
+        );
+        assert!(
+            PackBinding::new()
                 .frame_uniform(
                     PackUniformDecl::new("modProj", PackUniformType::Mat4).with_previous("modProj")
                 )
+                .validate_syntax()
+                .is_err()
+        );
+        assert!(
+            PackBinding::new()
+                .frame_uniform(
+                    PackUniformDecl::new("projA", PackUniformType::Mat4).with_previous("projB")
+                )
+                .frame_uniform(PackUniformDecl::new("projB", PackUniformType::Mat4))
                 .validate_syntax()
                 .is_err()
         );

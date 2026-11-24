@@ -8,7 +8,6 @@ ids = [
     "type:PackUniformDecl",
     "type:PackUniformType",
     "type:PackGlslInput",
-    "type:PackOverrideState",
 ]
 why = "Adds PipelineGeometryClass and optional PackBinding metadata on RenderPipeline plus ClientHost::shader_pack_active() (#5371), allowing mods to declare their geometry class and shader-pack bindings without mod-specific engine code."
 migrate = "Additive only; RenderPipeline is #[non_exhaustive]."
