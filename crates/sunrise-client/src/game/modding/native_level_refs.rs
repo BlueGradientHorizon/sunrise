@@ -388,15 +388,18 @@ impl Game<'_> {
         (self.level_handle_current(level) && level.dimension() == remote.level_key)
             .then_some(&self.world)
     }
-    /// Find a loaded chunk in an open server level: `ServerChunkCache.getChunkNow`, which also
-    /// makes a FULL column one of the level's recent FULL lookups (`Streaming::note_full_read`).
+    /// Find a loaded chunk in an open server level (`ServerChunkCache.getChunkNow`) or in a
+    /// logged-in client's loaded level. On a server, a FULL chunk found becomes one of the
+    /// level's recent FULL lookups (`Streaming::note_full_read`).
     pub(super) fn chunk(&self, level: LevelRef, pos: [i32; 2]) -> Option<ChunkRef> {
-        let world = self.native_level_world(level)?;
+        let world = self.native_level_view_world(level)?;
         let key = (pos[0], pos[1]);
         if !world.chunks.contains_key(&key) {
             return None;
         }
-        if let Some(streaming) = self.native_level_streaming(level) {
+        if self.is_logical_server()
+            && let Some(streaming) = self.native_level_streaming(level)
+        {
             streaming.note_full_read(world, key);
         }
         Some(mod_api::__private::game::chunk_ref(level, pos))
@@ -420,11 +423,13 @@ impl Game<'_> {
     }
     /// Whether this chunk is loaded; false on a client or for a stale handle.
     pub(super) fn chunk_loaded(&self, chunk: ChunkRef) -> bool {
-        self.chunk(chunk.level(), chunk.pos()).is_some()
+        self.is_logical_server() && self.chunk(chunk.level(), chunk.pos()).is_some()
     }
     /// The status of a loaded chunk. Proto chunks are not exposed here.
     pub(super) fn chunk_status(&self, chunk: ChunkRef) -> Option<ChunkStatus> {
-        self.chunk(chunk.level(), chunk.pos())
+        self.is_logical_server()
+            .then(|| self.chunk(chunk.level(), chunk.pos()))
+            .flatten()
             .map(|_| ChunkStatus::Full)
     }
     /// A handle for chunk `pos` of an open level, loaded or not, so a mod can
