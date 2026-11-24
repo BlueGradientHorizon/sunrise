@@ -107,20 +107,12 @@ refused at load: when its registration declares no texture but the file samples 
 reverse), when the registration's texture or another resource it names is missing, or when the GPU
 rejects the shader.
 
-The check, and the load, also refuse a shader that is too costly or that a player's system could
-not translate:
-
-- **Expressions.** The composed shader (your file with the game's prelude and entry points, which
-  are small and fixed) may hold 20,000 expressions over all its functions. The refusal gives the
-  count: `21066 expressions; a pipeline shader may hold 20000`.
-- **Texture reads.** It may hold 64 texture reads (`textureLoad` and `textureSample*` expressions
-  written in the code, not executions). A textured pipeline's `pipeline_texture` function is one of
-  them, so your own code has 63. The refusal gives the count.
-- **Backends.** The shader is translated to SPIR-V (Vulkan), MSL (Metal) and HLSL (DirectX 12) as
-  the GPU library does, and a shader that any of them refuses is refused naming it, as in
-  `Vulkan (SPIR-V) refuses it: ...`. Some shaders pass validation and still fail here, such as
-  passing a pointer to a matrix column or to an element of a local array to a function; copy the
-  value into a function argument instead.
+The check, and the load, also refuse a shader that a player's system could not translate. The
+shader is translated to SPIR-V (Vulkan), MSL (Metal) and HLSL (DirectX 12) as the GPU library does,
+and a shader that any of them refuses is refused naming it, as in `Vulkan (SPIR-V) refuses it: ...`.
+Some shaders pass validation and still fail here, such as passing a pointer to a matrix column or
+to an element of a local array to a function; copy the value into a function argument instead.
+There is no count of expressions or texture reads: what the GPU library translates is drawn.
 
 ## 3. Resolve and draw
 
