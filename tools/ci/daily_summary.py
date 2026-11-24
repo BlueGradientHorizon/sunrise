@@ -32,7 +32,8 @@ write, completes what is missing). `daily_summary.py --seen SHA` prints a comple
 same way: not `success` files or comments on `Daily: JOB did not complete`, naming its failed steps; `success` closes
 it. The parity leg holds global green but not sdk_green. It files one issue per failing harness, with the pull
 requests merged since the last green daily as suspects, and closes issues only on complete coverage.
-Only a run on refs/heads/main with DRY_RUN=false writes; otherwise it prints what it would do to the job summary.
+Only a run on refs/heads/main or the release branch with DRY_RUN=false writes; otherwise it prints what it would do to
+the job summary. The release branch's issues are titled apart (WRITING_REFS) and it never moves the tag.
 Lookups come first and fail the job on any API error (a rate limit included), so a failed lookup never files
 duplicates.
 
@@ -56,6 +57,9 @@ from tools.ci import ignored_shards  # noqa: E402
 TAG = "daily-green"
 LABEL = "bug"
 PREFIX = "Daily: "
+# The refs whose real runs write, and the title prefix of their issues: the release line's daily runs (a break-glass
+# release's follow-up among them) file and close their own issues, apart from main's. Only main moves `daily-green`.
+WRITING_REFS = {"refs/heads/main": PREFIX, "refs/heads/release/26.3": "Daily (release/26.3): "}
 UNFINISHED = " did not complete"
 DISCLOSURE = "> 🤖 Filed by Aria's agent swarm, Dyna, not by Aria."
 # The daily's legs are the jobs its summary needs (RESULTS), each a called workflow: daily_legs().
@@ -361,7 +365,7 @@ def verdicts(jobs, reports, results, legs, parity_report, all_legs):
         if not known(job["name"], all_legs) and not never_started(job):
             unfinished.append((job["name"], job["conclusion"], [], "did not report: a job the summary does not know"))
     names = {job["name"] for job in jobs}
-    if "shards" not in helpers and "shards" not in unstarted:
+    if "shards" in all_legs and "shards" not in helpers and "shards" not in unstarted:
         for expected in expected_shards():
             if expected not in names:
                 unfinished.append((expected, "missing", [], "did not report: the daily matrix has this shard, but "
@@ -473,8 +477,10 @@ def previous_run(commit, call, git):
         if run["id"] == current or run["conclusion"] not in ("success", "failure"):
             continue
         jobs = pages(call, f"actions/runs/{run['id']}/jobs?filter=latest", "jobs")
+        # A break-glass run's summary ran only some legs: it says nothing of the others.
         tested = [job["name"].split()[1] for job in jobs if job["name"].startswith("summary ")
-                  and job["conclusion"] in ("success", "failure") and len(job["name"].split()) > 1]
+                  and job["conclusion"] in ("success", "failure") and len(job["name"].split()) > 1
+                  and "(break-glass legs)" not in job["name"]]
         if tested and tested[0] != commit and git("merge-base", "--is-ancestor", tested[0], commit) is not None:
             return tested[0], run["html_url"], {job["name"]: job["conclusion"] for job in jobs}
     return None
@@ -528,13 +534,13 @@ def suspect_line(numbers, commit):
     return f"Suspects, merged since the last green daily (`{TAG}`..`{commit[:9]}`): " + ", ".join(f"#{n}" for n in numbers)
 
 
-def test_title(item):
-    return f"{PREFIX}{item['package']} {item['test']}"
+def test_title(item, prefix=PREFIX):
+    return f"{prefix}{item['package']} {item['test']}"
 
 
-def leg_title(leg):
+def leg_title(leg, prefix=PREFIX):
     action = ACTIONS.get(leg.split(" / ", 1)[0])
-    return f"{PREFIX}{action[0]}" if action else f"{PREFIX}{leg}{UNFINISHED}"
+    return f"{prefix}{action[0]}" if action else f"{prefix}{leg}{UNFINISHED}"
 
 
 def detail(item):
@@ -558,17 +564,20 @@ def leg_detail(leg, conclusion, steps, reason):
             + f"Leg `{leg}` ended `{conclusion}`: {reason}. Failed steps: {named_steps}.")
 
 
-def plan(commit, run_url, tests, unfinished, passed, green_legs, green, open_issues, numbers, fixes=None, lines=None):
+def plan(commit, run_url, tests, unfinished, passed, green_legs, green, open_issues, numbers, fixes=None, lines=None,
+         prefix=PREFIX):
     """Every write this run makes, in order: ("tag", sha) / ("create", title, body) / ("comment", number, title, body)
     / ("close", number, title, body). `fixes` (fixes_after) holds the closed issues whose fix this commit predates;
-    `lines` a failing test's own suspects line by title (test_suspect_line), else every red gets `numbers`' line."""
+    `lines` a failing test's own suspects line by title (test_suspect_line), else every red gets `numbers`' line.
+    `prefix` titles the issues (WRITING_REFS); only main's (PREFIX) green moves the tag."""
     fixes = fixes or {}
     lines = lines or {}
     actions = []
-    if green:
+    if green and prefix == PREFIX:
         actions.append(("tag", commit))
-    reds = [(test_title(item), detail(item)) for item in tests]
-    reds += [(leg_title(leg), leg_detail(leg, conclusion, steps, reason)) for leg, conclusion, steps, reason in unfinished]
+    reds = [(test_title(item, prefix), detail(item)) for item in tests]
+    reds += [(leg_title(leg, prefix), leg_detail(leg, conclusion, steps, reason))
+             for leg, conclusion, steps, reason in unfinished]
     filed = set()
     for title, text in reds:
         if title in filed:
@@ -591,7 +600,7 @@ def plan(commit, run_url, tests, unfinished, passed, green_legs, green, open_iss
     for title, number in sorted(open_issues.items()):
         if title in filed:
             continue
-        rest = title[len(PREFIX):]
+        rest = title[len(prefix):]
         acted = [leg for leg, (action, _) in ACTIONS.items() if action == rest]
         if acted:
             back = acted[0] in green_legs or any(name.startswith(f"{acted[0]} / ") for name in green_legs)
@@ -668,8 +677,12 @@ def git(*args):
 def main(call=api, run_git=git, query=graphql):
     env = os.environ
     commit = env["COMMIT"]
-    # Only main writes, whatever the input says: a branch's run is always a dry run.
-    writes = env.get("GITHUB_REF") == "refs/heads/main" and env.get("DRY_RUN") == "false"
+    needs = json.loads(env["RESULTS"])
+    selected = needs.get("resolve", {}).get("outputs", {}).get("legs")
+    # Only main and the release branch write, whatever the input says: another branch's run is always a dry run. A
+    # break-glass run (daily.yml `break_glass`, its legs selected) files and closes no issue either.
+    prefix = WRITING_REFS.get(env.get("GITHUB_REF"), PREFIX)
+    writes = env.get("GITHUB_REF") in WRITING_REFS and env.get("DRY_RUN") == "false" and not selected
     run_url = f"{env.get('GITHUB_SERVER_URL', 'https://github.com')}/{env['GITHUB_REPOSITORY']}/actions/runs/{env['GITHUB_RUN_ID']}"
     reports_dir = Path(env["REPORTS"])
     reports = [json.loads(path.read_text()) for path in sorted(reports_dir.glob("*/*.json")) if path.name != "parity.json"]
@@ -680,25 +693,31 @@ def main(call=api, run_git=git, query=graphql):
             "run_id": env["GITHUB_RUN_ID"], "run_attempt": attempt, "commit": commit}:
         parity_report = None
     jobs = pages(call, f"actions/runs/{env['GITHUB_RUN_ID']}/jobs?filter=latest", "jobs")
-    needs = json.loads(env["RESULTS"])
     all_legs, results = daily_legs(needs), leg_results(needs)
     # Only a run that writes nothing may leave parity out: a writing run's skipped parity holds green and the tag.
     parity_not_applicable = (not writes and results.get("resolve", {}).get("outputs", {}).get("parity_required") == "false"
                              and results.get(PARITY, {}).get("result") == "skipped")
     legs = tuple(leg for leg in all_legs if leg != PARITY or not parity_not_applicable)
+    if selected:
+        # A break-glass run (daily.yml `break_glass`) ran only these legs: the others, and their skipped jobs, are no
+        # part of its verdict.
+        chosen = set(json.loads(selected))
+        all_legs = legs = tuple(leg for leg in legs if leg in chosen)
+        jobs = [job for job in jobs if job["name"].partition(" / ")[0] not in set(daily_legs(needs)) - chosen]
     tests, unfinished, passed, green_legs, green = verdicts(jobs, reports, results, legs, parity_report, all_legs)
     open_issues = {issue["title"]: issue["number"]
                    for issue in pages(call, f"issues?state=open&labels={LABEL}")
-                   if "pull_request" not in issue and issue["title"].startswith(PREFIX)}
+                   if "pull_request" not in issue and issue["title"].startswith(prefix)}
     # Resolve the prior green before planning or applying any writes, including the tag move.
     numbers = suspects(commit, run_git) if tests or unfinished else []
-    reds = {test_title(item) for item in tests} | {leg_title(leg) for leg, *_ in unfinished}
+    reds = {test_title(item, prefix) for item in tests} | {leg_title(leg, prefix) for leg, *_ in unfinished}
     fixes = fixes_after(commit, reds - open_issues.keys(), call, query, run_git)
     other_tests = [item for item in tests if item["kind"] not in (PARITY, SDK_CHECK)]
     previous = previous_run(commit, call, run_git) if other_tests else None
-    lines = {test_title(item): line for item in other_tests
+    lines = {test_title(item, prefix): line for item in other_tests
              if (line := test_suspect_line(item, previous, commit, run_git))}
-    actions = plan(commit, run_url, tests, unfinished, passed, green_legs, green, open_issues, numbers, fixes, lines)
+    actions = plan(commit, run_url, tests, unfinished, passed, green_legs, green, open_issues, numbers, fixes, lines,
+                   prefix)
     sdk_green = legs_green(SDK_LEGS, jobs, results, tests, unfinished)
     text = render(actions, writes) + (
         f"\nSDK legs ({', '.join(SDK_LEGS)}): {'green' if sdk_green else 'not green'}; "
@@ -720,22 +739,23 @@ def after(name, result, call=api, run_git=git, query=graphql):
     """Reports the job `name` that ran after the summary, which concluded `result` (`needs.<name>.result`): one
     issue for it while it fails, closed by its next success. Writes only where the summary would."""
     env = os.environ
-    writes = env.get("GITHUB_REF") == "refs/heads/main" and env.get("DRY_RUN") == "false"
+    prefix = WRITING_REFS.get(env.get("GITHUB_REF"), PREFIX)
+    writes = env.get("GITHUB_REF") in WRITING_REFS and env.get("DRY_RUN") == "false" and env.get("PARTIAL") != "true"
     run_url = f"{env.get('GITHUB_SERVER_URL', 'https://github.com')}/{env['GITHUB_REPOSITORY']}/actions/runs/{env['GITHUB_RUN_ID']}"
     commit = env["COMMIT"]
     open_issues = {issue["title"]: issue["number"]
                    for issue in pages(call, f"issues?state=open&labels={LABEL}")
-                   if "pull_request" not in issue and issue["title"] == leg_title(name)}
+                   if "pull_request" not in issue and issue["title"] == leg_title(name, prefix)}
     if result == "success":
-        actions = plan(commit, run_url, [], [], set(), {name}, False, open_issues, [])
+        actions = plan(commit, run_url, [], [], set(), {name}, False, open_issues, [], prefix=prefix)
     else:
         jobs = pages(call, f"actions/runs/{env['GITHUB_RUN_ID']}/jobs?filter=latest", "jobs")
         steps = [f"{job['name']}: {step}" for job in jobs if job["name"].startswith(f"{name} / ")
                  for step in failed_steps(job)]
         unfinished = [(name, result, steps, "nothing was published, so no Nightly follows")]
-        fixes = fixes_after(commit, {leg_title(name)} - open_issues.keys(), call, query, run_git)
+        fixes = fixes_after(commit, {leg_title(name, prefix)} - open_issues.keys(), call, query, run_git)
         actions = plan(commit, run_url, [], unfinished, set(), set(), False, open_issues,
-                       suspects(commit, run_git), fixes)
+                       suspects(commit, run_git), fixes, prefix=prefix)
     text = render(actions, writes)
     print(text)
     if env.get("GITHUB_STEP_SUMMARY"):

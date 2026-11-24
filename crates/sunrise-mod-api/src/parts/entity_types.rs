@@ -12,15 +12,16 @@ impl GeneralTypesRegistrar for PartRegistrar {
         save_policy: GeneralSavePolicy,
         summonable: bool,
         pickable: bool,
+        piston_push_reaction: Option<PushReaction>,
         tracking_chunks: i32,
         update_interval: i32,
         payload_version: u16,
         required_features: &[&str],
     ) -> Result<(), GeneralEntityRegistrationError> {
         use GeneralEntityRegistrationError as Error;
-        // The registry freezes with the phase: once registration ends and any
-        // later phase begins, no declaration is accepted anywhere.
-        if crate::__private::current_phase() != crate::__private::ModPhase::Registration {
+        // The registry freezes once startup registration closes: no declaration is accepted
+        // outside it.
+        if !crate::registration_open() {
             self.refused.push(format!(
                 "mod {} declares a general entity type after the registry froze",
                 self.mod_id
@@ -46,10 +47,7 @@ impl GeneralTypesRegistrar for PartRegistrar {
         };
         let id_for_log = id.clone();
         let result = (|| {
-            if mod_vocab::__private::parts_installation::loaded_mods()
-                .get(self.mod_id)
-                .is_some_and(|package| package.side() != crate::Side::Both)
-            {
+            if self.declaration_side_not_both(&id) {
                 return Err(Error::WrongSide);
             }
             if self
@@ -85,6 +83,7 @@ impl GeneralTypesRegistrar for PartRegistrar {
                     save_policy,
                     summonable,
                     pickable,
+                    piston_push_reaction: piston_push_reaction.unwrap_or_default(),
                     tracking_chunks,
                     update_interval,
                     payload_version,
@@ -105,14 +104,13 @@ impl GeneralTypesRegistrar for PartRegistrar {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::__private::{ModPhase, PhaseOwner};
+    use crate::__private::RegistrationGuard;
     use crate::GeneralEntityRegistrationError as Error;
 
-    fn registrar() -> (impl Sized, PartRegistrar) {
-        // Declarations are phase-owned; tests scope their thread to the
-        // registration phase the way the loader does, restoring it after.
-        let scope = PhaseOwner::scope(ModPhase::Registration);
-        (scope, PartRegistrar::new("mymod"))
+    fn registrar() -> (RegistrationGuard, PartRegistrar) {
+        // Declarations are accepted only while startup registration is open.
+        let guard = RegistrationGuard::open();
+        (guard, PartRegistrar::new("mymod"))
     }
 
     fn declare(
@@ -133,6 +131,7 @@ mod tests {
             GeneralSavePolicy::Save,
             true,
             false,
+            None,
             tracking_chunks,
             update_interval,
             1,
@@ -209,6 +208,7 @@ mod tests {
                 GeneralSavePolicy::Save,
                 true,
                 false,
+                None,
                 8,
                 3,
                 1,
@@ -251,7 +251,7 @@ mod tests {
             vec!["shared".to_owned()],
             vec![],
         )];
-        let _scope = PhaseOwner::scope(ModPhase::Registration);
+        let _registration = RegistrationGuard::open();
         with_test_package_inventory(packages, || {
             let mut registrar = PartRegistrar::new("amod");
             assert_eq!(
@@ -262,15 +262,58 @@ mod tests {
         });
     }
 
-    /// The registry is frozen outside the registration phase: a declaration
+    #[test]
+    fn served_by_entity_type_enforces_supplier_side() {
+        crate::__private::initialize().unwrap();
+        use crate::load_state::with_test_package_inventory;
+        use crate::{PackageInfo, PackageKind};
+        let packages = vec![
+            PackageInfo::new(
+                "host".to_owned(),
+                "1".to_owned(),
+                PackageKind::Code,
+                crate::Side::Both,
+                vec!["host".to_owned()],
+                vec![],
+            ),
+            PackageInfo::new(
+                "runes".to_owned(),
+                "1".to_owned(),
+                PackageKind::Content,
+                crate::Side::Both,
+                vec!["runes".to_owned()],
+                vec![],
+            )
+            .with_served_by(Some("host".to_owned())),
+            PackageInfo::new(
+                "srv_runes".to_owned(),
+                "1".to_owned(),
+                PackageKind::Content,
+                crate::Side::Server,
+                vec!["srv_runes".to_owned()],
+                vec![],
+            )
+            .with_served_by(Some("host".to_owned())),
+        ];
+        let _registration = crate::__private::RegistrationGuard::open();
+        with_test_package_inventory(packages, || {
+            let mut registrar = PartRegistrar::new("host");
+            declare(&mut registrar, "runes:drone", 0.8, 1.9, 8, 3, &[]).unwrap();
+            assert_eq!(
+                declare(&mut registrar, "srv_runes:drone", 0.8, 1.9, 8, 3, &[]),
+                Err(Error::WrongSide)
+            );
+            assert_eq!(registrar.general_entity_types.len(), 1);
+            assert_eq!(registrar.general_entity_types[0].id, "runes:drone");
+        });
+    }
+
+    /// The registry is frozen outside startup registration: a declaration
     /// then refuses with `Frozen`, whatever it names, and the frozen table is
     /// unchanged.
     #[test]
     pub(crate) fn general_entity_types_frozen_outside_registration() {
         crate::__private::initialize().unwrap();
-        // Scoped, because the thread pool reuses threads across tests: this
-        // test must see `World` even after another test's registration scope.
-        let _world = PhaseOwner::scope(ModPhase::World);
         let mut registrar = PartRegistrar::new("mymod");
         assert_eq!(
             declare(&mut registrar, "robot", 0.8, 1.9, 8, 3, &[]),
@@ -328,7 +371,7 @@ mod tests {
                 vec![],
             ),
         ];
-        let _scope = PhaseOwner::scope(ModPhase::Registration);
+        let _registration = RegistrationGuard::open();
         with_test_package_inventory(packages, || {
             let mut registrar = PartRegistrar::new("amod");
             declare(&mut registrar, "shared:x", 0.8, 1.9, 8, 3, &[]).unwrap();
@@ -348,7 +391,7 @@ mod tests {
     #[test]
     pub(crate) fn declare_general_entity_reaches_mods_through_dyn_registrar() {
         crate::__private::initialize().unwrap();
-        let _scope = PhaseOwner::scope(ModPhase::Registration);
+        let _registration = RegistrationGuard::open();
         let mut registrar = PartRegistrar::new("mymod");
         let dynamic: &mut dyn crate::Registrar = &mut registrar;
         dynamic
@@ -361,6 +404,7 @@ mod tests {
                 GeneralSavePolicy::Save,
                 true,
                 false,
+                Some(PushReaction::IgnoreEntity),
                 8,
                 3,
                 1,
@@ -368,5 +412,9 @@ mod tests {
             )
             .unwrap();
         assert_eq!(registrar.general_entity_types.len(), 1);
+        assert_eq!(
+            registrar.general_entity_types[0].piston_push_reaction,
+            PushReaction::IgnoreEntity
+        );
     }
 }

@@ -2,7 +2,7 @@
 //! while a large reply waits for the peer to drain its socket or memory pipe.
 use mod_api::{PayloadFrameStage, PayloadId, PayloadSendError, SendPacketError};
 use std::sync::{
-    Arc, Mutex, Weak,
+    Arc, Condvar, Mutex, Weak,
     atomic::{AtomicBool, Ordering},
 };
 use sunrise_mod_runtime::byte_channel::{self, Permit, ReserveError, Sender, TrySendError};
@@ -42,7 +42,8 @@ pub(crate) struct Inner {
     closer: Arc<Closer>,
     alive: Arc<AtomicBool>,
     retired: AtomicBool,
-    terminal: AtomicBool,
+    terminal: Arc<AtomicBool>,
+    done: Arc<(Mutex<bool>, Condvar)>,
     phase: Mutex<(u64, Phase)>,
 }
 impl std::ops::Deref for QueuedWriter {
@@ -184,6 +185,10 @@ impl QueuedWriter {
         #[cfg(any(test, feature = "test-payload-probe"))]
         let writing = probe.clone();
         let running = alive.clone();
+        let terminal = Arc::new(AtomicBool::new(false));
+        let closing = terminal.clone();
+        let done = Arc::new((Mutex::new(false), Condvar::new()));
+        let finished = done.clone();
         let droppable: Arc<std::sync::OnceLock<Arc<crate::raw_payloads::droppable::Queue>>> =
             Arc::default();
         let droppable_woken = Arc::new(AtomicBool::new(false));
@@ -239,6 +244,13 @@ impl QueuedWriter {
                         break;
                     }
                 }
+                if closing.load(Ordering::Acquire) {
+                    running.store(false, Ordering::Release);
+                    writer.shutdown();
+                }
+                let (lock, cvar) = &*finished;
+                *lock.lock().unwrap() = true;
+                cvar.notify_all();
                 writer
             })
             .map_err(|error| Error::new(format!("cannot start client writer: {error}")))?;
@@ -250,7 +262,8 @@ impl QueuedWriter {
             droppable_woken,
             worker: Mutex::new(Some(worker)),
             retired: AtomicBool::new(false),
-            terminal: AtomicBool::new(false),
+            terminal,
+            done,
             framing,
             closer,
             alive,
@@ -296,6 +309,9 @@ impl QueuedWriter {
     pub(crate) fn is_terminal(&self) -> bool {
         self.terminal.load(Ordering::Acquire)
     }
+    pub(crate) fn accepts_packets(&self) -> bool {
+        !self.is_terminal() && self.alive.load(Ordering::Acquire)
+    }
     pub(crate) fn framing(&self) -> Framing {
         self.framing
     }
@@ -332,8 +348,61 @@ impl QueuedWriter {
             Err(TrySendError::Disconnected(_)) => Err(Error::new("client writer disconnected")),
         }
     }
+    /// Disconnect/transfer reached in an ordered bundle: stop accepting new
+    /// writes, but let the writer send replies that came before the close.
+    pub(crate) fn close_after_pending(&self) {
+        let mut sender = self.sender.lock().unwrap();
+        if self.seal_droppable()
+            && let Some(sender) = sender.as_ref()
+            && let Ok(marker) = sender.reserve_terminal(0)
+        {
+            // Unpublished reliable reservations can fill the channel without
+            // leaving any queued job to wake the writer and poll this lane.
+            let _ = marker.publish(WriteJob::Droppable);
+        }
+        self.terminal.store(true, Ordering::Release);
+        sender.take();
+    }
+
+    /// Stop accepting writes, drain preceding replies, and wait for the transport shutdown to complete.
+    pub(crate) fn close_and_wait(&self) {
+        self.close_after_pending();
+        let (lock, cvar) = &*self.done;
+        let mut done = lock.lock().unwrap();
+        if !*done {
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+            while !*done {
+                let Some(remaining) = deadline.checked_duration_since(std::time::Instant::now())
+                else {
+                    break;
+                };
+                let (guard, timeout) = cvar.wait_timeout(done, remaining).unwrap();
+                done = guard;
+                if timeout.timed_out() {
+                    break;
+                }
+            }
+        }
+        let finished = *done;
+        drop(done);
+        self.alive.store(false, Ordering::Release);
+        if !finished {
+            // A stalled peer can block `write_all`; close the transport to unblock the worker.
+            self.closer.close();
+        }
+        if let Some(worker) = self.worker.lock().unwrap().take() {
+            let _ = worker.join();
+        }
+        self.closer.close();
+    }
+
+    fn seal_droppable(&self) -> bool {
+        self.droppable.get().is_some_and(|queue| queue.seal())
+    }
+
     pub(crate) fn disconnect(&self, body: Vec<u8>) {
         let mut sender = self.sender.lock().unwrap();
+        self.seal_droppable();
         self.terminal.store(true, Ordering::Release);
         let Some(queue) = sender.take() else {
             return;

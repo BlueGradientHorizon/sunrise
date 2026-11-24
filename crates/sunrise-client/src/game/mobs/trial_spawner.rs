@@ -16,7 +16,6 @@ use sunrise_client::{
         },
     },
 };
-use sunrise_core::nbt::Tag;
 use sunrise_core::{
     geometry::Vec3,
     random::{LegacyRandom, LevelRandom, RandomSource},
@@ -199,16 +198,8 @@ impl Game<'_> {
             let seed = self.level.seed;
             let mut spawn = |l: &GameLevel, rng: &mut LevelRandom, r: &SpawnerSpawn| {
                 let added = l.game.plan_spawner_mob(l, r, source, &mut planned, rng)?;
-                let uuid = match planned.last_mut() {
-                    Some(Planned::Loaded(Tag::Compound(tag), _, _)) => {
-                        let tag_uuid =
-                            sunrise_client::entity_nbt::uuid(&Tag::Compound(tag.clone()));
-                        tag_uuid.unwrap_or_else(|| {
-                            let uuid = sunrise_client::save::random_uuid();
-                            tag.insert("UUID".into(), Tag::IntArray(uuid.to_vec()));
-                            uuid
-                        })
-                    }
+                let uuid = match planned.last() {
+                    Some(Planned::Loaded(tree, _, _)) => tree.root_uuid(),
                     _ => sunrise_client::save::random_uuid(),
                 };
                 uuids.push((added.id, uuid));
@@ -292,23 +283,15 @@ impl Game<'_> {
                 }
                 TrialEvent::TrialOmen(uuid) => self.bad_omen_to_trial_omen(uuid),
                 TrialEvent::Discard(uuid) => {
-                    let (at, dropped) = {
-                        let id = self.persist.uuids.iter().find(|(_, u)| **u == uuid);
-                        if let Some((id, _)) = id
-                            && let Some(m) = self.mobs.iter_mut().find(|m| m.id == *id)
-                        {
-                            let at = m.position;
-                            let dropped = sunrise_client::mobs::drops::drop_preserved_equipment(m);
-                            m.removed = true;
-                            (Some(at), dropped)
-                        } else {
-                            (None, Vec::new())
-                        }
-                    };
-                    if let Some(at) = at {
-                        for stack in dropped {
+                    if let Some((&id, _)) = self.persist.uuids.iter().find(|(_, u)| **u == uuid)
+                        && let Some(m) = self.mobs.iter_mut().find(|m| m.id == id && !m.removed)
+                    {
+                        let at = m.position;
+                        let drops = sunrise_client::mobs::drops::drop_preserved_equipment(m);
+                        for stack in drops {
                             self.spawn_at_location(at, 0.0, stack);
                         }
+                        self.remove_mob_now(id, false);
                     }
                 }
                 TrialEvent::SoundAt(name, at, pitch) => self.audio.play(

@@ -1,6 +1,6 @@
 //! Connection epochs and main-executor barriers, independent of gameplay ownership.
 mod payload_queue;
-pub(super) use payload_queue::PayloadTurn;
+pub(crate) use payload_queue::PayloadTurn;
 #[cfg(test)]
 mod tests;
 use super::{Local, Peer, Side};
@@ -9,7 +9,6 @@ use std::sync::{
     Arc, Condvar, Mutex,
     atomic::{AtomicBool, Ordering},
 };
-use std::time::{Duration, Instant};
 use sunrise_mod_runtime::byte_channel;
 use sunrise_protocol::payload_negotiation::{Entry, Phase};
 
@@ -18,8 +17,6 @@ pub struct Epoch {
     pub peer: Arc<Peer>,
     pub phase: Phase,
     active: AtomicBool,
-    /// Whether an engine send to this epoch was already refused and logged.
-    engine_refused: AtomicBool,
     publication: Mutex<()>,
     pending: Mutex<usize>,
     drained: Condvar,
@@ -30,7 +27,6 @@ impl Epoch {
             peer,
             phase,
             active: AtomicBool::new(true),
-            engine_refused: AtomicBool::new(false),
             publication: Mutex::new(()),
             pending: Mutex::new(0),
             drained: Condvar::new(),
@@ -39,10 +35,18 @@ impl Epoch {
     pub fn active(&self) -> bool {
         self.active.load(Ordering::Acquire)
     }
-    /// True the first time an engine send to this epoch is refused, so its refusal is
-    /// logged once per connection incarnation.
-    pub fn first_engine_refusal(&self) -> bool {
-        !self.engine_refused.swap(true, Ordering::AcqRel)
+    /// The send test of this epoch, before any bytes: still active, and `id` declared, in this
+    /// direction and negotiated with the peer for its phase.
+    pub fn can_send(&self, id: &mod_api::PayloadId) -> Result<(), PayloadSendError> {
+        if !self.active() {
+            return Err(PayloadSendError::StaleEpoch);
+        }
+        self.peer.can_send(self.phase, id)
+    }
+    /// Whether [`Self::can_send`] passes, decided the same way without building its error:
+    /// nothing is allocated, also when the answer is no.
+    pub fn sends(&self, id: &str) -> bool {
+        self.active() && self.peer.send_refusal(self.phase, id).is_none()
     }
     /// Atomically publish against invalidation. The closure may only perform nonblocking
     /// queue publication, never user callbacks, waits or connection-state operations.
@@ -100,16 +104,6 @@ struct Current {
 pub struct IngressLease {
     _permit: byte_channel::Permit<()>,
     pub(super) owned_bytes: usize,
-    received: Instant,
-}
-pub(super) const PAYLOAD_DEADLINE: Duration =
-    Duration::from_millis(2 * sunrise_mod_runtime::MAX_GUEST_CALL_BUDGET_MILLIS);
-impl IngressLease {
-    /// A retained payload may wait longer than the VM's largest (30 s) load call,
-    /// but never extend its deadline by moving between receiving queues.
-    pub(super) fn expired(&self, now: Instant) -> bool {
-        now.saturating_duration_since(self.received) >= PAYLOAD_DEADLINE
-    }
 }
 // Four slots cover Vec's initial growth and later geometric staging. Provider
 // queue storage is separately charged by the typed ingress channel. This charge
@@ -205,7 +199,6 @@ impl Connection {
             .map(|permit| IngressLease {
                 _permit: permit,
                 owned_bytes,
-                received: Instant::now(),
             })
             .map_err(|e| match e {
                 byte_channel::ReserveError::Full => PayloadSendError::Backpressure,
@@ -252,7 +245,7 @@ impl Connection {
             queue.clear();
         }
     }
-    pub fn accept(&self, entries: &[Entry]) -> Result<(), String> {
+    pub(super) fn accept(&self, entries: &[Entry]) -> Result<Arc<Epoch>, String> {
         let mut peer = self.local.freeze(entries, self.side)?;
         let bytes = peer.owned_snapshot_bytes();
         let physical = self
@@ -271,29 +264,33 @@ impl Connection {
         if current.closed {
             return Err("payload connection disconnected".into());
         }
-        if let Some(old) = current
-            .epoch
-            .replace(Epoch::new(peer, Phase::Configuration))
-        {
+        let epoch = Epoch::new(peer, Phase::Configuration);
+        if let Some(old) = current.epoch.replace(epoch.clone()) {
             old.invalidate();
         }
-        Ok(())
+        Ok(epoch)
     }
     /// No configuration acknowledgement overtakes a queued main-thread handler or its replies.
     /// Never hold the connection-state or writer lock while waiting for gameplay.
     pub fn finish_configuration(&self) -> Result<(), String> {
-        self.finish_configuration_with(|| Ok(()))
+        self.commit_play(self.wait_for_configuration()?, || Ok(()))
     }
-    /// Publish the phase-transition acknowledgement after invalidating old replies,
-    /// before exposing the new Play epoch. The closure only queues engine bytes.
-    pub fn finish_configuration_with(
-        &self,
-        publish: impl FnOnce() -> Result<(), String>,
-    ) -> Result<(), String> {
+
+    pub(super) fn wait_for_configuration(&self) -> Result<Arc<Epoch>, String> {
         let old = self.epoch().ok_or("payload negotiation is not complete")?;
         if !old.wait_main() {
             return Err("payload configuration epoch ended".into());
         }
+        Ok(old)
+    }
+
+    /// Publish the acknowledgement after invalidating old replies, before
+    /// exposing the new Play epoch. The closure only queues engine bytes.
+    pub(super) fn commit_play(
+        &self,
+        old: Arc<Epoch>,
+        publish: impl FnOnce() -> Result<(), String>,
+    ) -> Result<(), String> {
         let mut current = self.current.lock().unwrap();
         if current.closed {
             return Err("payload connection disconnected".into());

@@ -3,7 +3,6 @@ use super::Streaming;
 use crate::{
     chunk::Light,
     light::{LightChanges, apply_lighting, apply_relighting},
-    section_mask::SectionMask,
     world::World,
 };
 use std::sync::Arc;
@@ -21,6 +20,7 @@ impl Streaming {
     ) {
         if let Some(chunk) = world.chunks.get_mut(&(x, z)) {
             let chunk = Arc::make_mut(chunk);
+            let before = chunk.light_support;
             // Keep blocks edited since the snapshot; take only light.
             // A chunk relit (a neighbour loaded or changed) remeshes
             // only around the light that changed, as vanilla's light
@@ -40,7 +40,7 @@ impl Streaming {
             }
             chunk.lit = true;
             if first {
-                world.publish_light_border((x, z), SectionMask::EMPTY);
+                world.publish_light_border((x, z), before);
                 for dz in -1..=1 {
                     for dx in -1..=1 {
                         for sy in 0..world.layout().sections() as i32 {

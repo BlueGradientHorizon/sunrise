@@ -230,7 +230,7 @@ pub fn move_control(m: &mut Mob) {
 /// moved velocity's y, then the `0.91F`/`0.98F` drags widen from float. While
 /// the `NoGravity` of the tick's end stands, `effective_gravity` is 0 and the
 /// vex keeps gliding (`Vex.tick` sets the flag only after `super.tick()`).
-pub fn travel(m: &mut Mob, w: &super::MobWorld) -> bool {
+pub fn travel(m: &mut Mob, w: &super::MobWorld) {
     let from = m.position;
     m.position = m.position.add_vector(m.velocity);
     super::living::section_writes::record_with(
@@ -246,8 +246,7 @@ pub fn travel(m: &mut Mob, w: &super::MobWorld) -> bool {
         y * f64::from(0.98_f32),
         m.velocity.z * f64::from(0.91_f32),
     );
-    m.on_ground = false;
-    true
+    m.ground.on_ground = false;
 }
 /// `Vex.tick`: the limited life costs a heart a second once spent.
 pub fn ai_step(m: &mut Mob, w: &super::MobWorld, level: &mut DamageLevel<'_>) {
@@ -323,7 +322,7 @@ pub fn texture(m: &Mob) -> &'static str {
 /// loaded with stands when the owner is gone.
 pub fn write_nbt(
     m: &Mob,
-    map: &mut sunrise_core::nbt::Compound,
+    map: &mut crate::entity_nbt::EntityTagWriter,
     uuid_of: &mut impl FnMut(u32) -> Option<[i32; 4]>,
 ) {
     use sunrise_core::nbt::Tag;
@@ -445,6 +444,12 @@ mod owner_save_tests {
     impl WhoLookup for Level {
         fn who_by_uuid(&self, uuid: [i32; 4]) -> Option<Who> {
             self.0.get(&uuid).copied()
+        }
+
+        fn mob_uuid(&self, id: u32) -> Option<[i32; 4]> {
+            self.0
+                .iter()
+                .find_map(|(&uuid, &who)| (who == Who::Mob(id)).then_some(uuid))
         }
     }
 

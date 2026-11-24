@@ -33,7 +33,7 @@ fn blast_ok(center: [f64; 3], radius: f32) -> bool {
 fn blast_particle(id: &str) -> Result<ParticleOptions, ExplodeError> {
     let options =
         ParticleOptions::simple(ParticleType::from_name(id).ok_or(ExplodeError::InvalidParticle)?);
-    if !mod_particles_ok(&options, None, |_| false, [0.0; 3], [0.0; 3], 0.0) {
+    if !mod_particles_ok(&options, None, |_| false, &[[0.0; 3]], [0.0; 3], 0.0) {
         return Err(ExplodeError::InvalidParticle);
     }
     Ok(options)
@@ -101,8 +101,14 @@ impl Game<'_> {
             }
         }
         // Only the source's `isSilent` keeps the blast quiet.
-        let blast =
+        let mut blast =
             ExplosionSource::default().with_silence(id.is_some_and(|id| self.entity_silent(id)));
+        if let Some((id, target)) = source {
+            blast = blast.with_damage_direct(
+                id,
+                Self::target_direct_entity(Some(target), &self.creatures.projectiles),
+            );
+        }
         let done = self.server_explode_from(center, radius, interaction, fire, blast);
         self.restore_blast_state(outer);
         done.map_err(|_| ExplodeError::Unavailable)

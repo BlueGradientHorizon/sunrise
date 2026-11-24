@@ -31,122 +31,7 @@ pub fn style_flag(v: Option<&Value>) -> Option<bool> {
     }
 }
 
-/// ExtraCodecs.UNTRUSTED_URI / Util.parseAndValidateUntrustedUri: http and
-/// https only, scheme case-insensitive. Every `open_url` a server sends must
-/// pass it: anything else (`file:`, a UNC path, a custom protocol handler)
-/// could start a program through the system's URL handler.
-pub fn untrusted_http_url(url: &str) -> bool {
-    // java.net.URI uses the RFC 2396 character classes (with IPv6 literals),
-    // not the WHATWG URL parser, which repairs malformed strings and requires a host.
-    fn valid(mut part: &str, reserved: &str) -> bool {
-        while let Some(c) = part.chars().next() {
-            part = &part[c.len_utf8()..];
-            if c == '%' {
-                let Some(hex) = part.as_bytes().get(..2) else {
-                    return false;
-                };
-                if !hex.iter().all(u8::is_ascii_hexdigit) {
-                    return false;
-                }
-                part = &part[2..];
-            } else if !(c.is_ascii_alphanumeric()
-                || "-_.!~*'()".contains(c)
-                || reserved.contains(c)
-                || (!c.is_ascii() && !c.is_whitespace() && !c.is_control()))
-            {
-                return false;
-            }
-        }
-        true
-    }
-
-    let Some((scheme, rest)) = url.split_once(':') else {
-        return false;
-    };
-    if !scheme.eq_ignore_ascii_case("http") && !scheme.eq_ignore_ascii_case("https") {
-        return false;
-    }
-    const URIC: &str = ";/?:@&=+$,[]";
-    let (main, fragment) = rest
-        .split_once('#')
-        .map_or((rest, None), |(main, frag)| (main, Some(frag)));
-    if main.is_empty() || fragment.is_some_and(|frag| !valid(frag, URIC)) {
-        return false;
-    }
-    if !main.starts_with('/') {
-        return valid(main, URIC); // Opaque scheme-specific part.
-    }
-    let (path, query) = main
-        .split_once('?')
-        .map_or((main, None), |(path, query)| (path, Some(query)));
-    let path = if let Some(suffix) = path.strip_prefix("//") {
-        let end = suffix.find('/').unwrap_or(suffix.len());
-        let (authority, path) = suffix.split_at(end);
-        if authority.is_empty() && path.is_empty() && query.is_none() && fragment.is_none() {
-            return false;
-        }
-        if let Some((prefix, literal)) = authority.split_once('[') {
-            // Brackets are allowed only around an IPv6 server address, with
-            // optional user info, scope ID and decimal port.
-            let Some((ip, port)) = literal.split_once(']') else {
-                return false;
-            };
-            let (address, scope) = ip
-                .split_once('%')
-                .map_or((ip, None), |(ip, scope)| (ip, Some(scope)));
-            let valid_address = if let Some((prefix, tail)) = address
-                .rsplit_once(':')
-                .filter(|(_, tail)| tail.contains('.'))
-            {
-                // java.net.URI also allows leading zeroes in a decimal IPv4 tail.
-                let mut octets = tail.split('.');
-                let mut next = || {
-                    let octet = octets.next()?;
-                    octet.bytes().all(|b| b.is_ascii_digit()).then_some(())?;
-                    octet.parse::<u8>().ok()
-                };
-                match (next(), next(), next(), next(), octets.next()) {
-                    (Some(a), Some(b), Some(c), Some(d), None) => format!(
-                        "{prefix}:{:x}:{:x}",
-                        u16::from_be_bytes([a, b]),
-                        u16::from_be_bytes([c, d]),
-                    )
-                    .parse::<std::net::Ipv6Addr>()
-                    .is_ok(),
-                    _ => false,
-                }
-            } else {
-                address.parse::<std::net::Ipv6Addr>().is_ok()
-            };
-            if (!prefix.is_empty()
-                && !prefix
-                    .strip_suffix('@')
-                    .is_some_and(|user| valid(user, ";:&=+$,")))
-                || !valid_address
-                || scope.is_some_and(|id| {
-                    id.is_empty()
-                        || !id
-                            .bytes()
-                            .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'.')
-                })
-                || (!port.is_empty()
-                    && !port.strip_prefix(':').is_some_and(|port| {
-                        port.is_empty()
-                            || (port.bytes().all(|b| b.is_ascii_digit())
-                                && port.parse::<i32>().is_ok())
-                    }))
-            {
-                return false;
-            }
-        } else if !valid(authority, "$,;:@&=+") {
-            return false;
-        }
-        path
-    } else {
-        path
-    };
-    valid(path, "/;:@&=+$,") && query.is_none_or(|query| valid(query, URIC))
-}
+pub use sunrise_core::text::untrusted_http_url;
 
 /// A current `ClickEvent.CODEC` value, with no legacy field fallbacks.
 pub fn parse_click_event(
@@ -272,8 +157,15 @@ fn object_style<'a>(
     child: &mut dyn FnMut(&'a Value) -> Text,
     origin: Origin,
     decoded_clicks: Option<&[crate::text::ClickEvent]>,
+    local_styles: bool,
 ) -> Style {
     let mut style = Style::default();
+    if local_styles {
+        style.opaque_style_id = o
+            .get("__sunrise_local_style_id")
+            .and_then(Value::as_u64)
+            .and_then(|id| usize::try_from(id).ok());
+    }
     if let Some(c) = o.get("color").and_then(Value::as_str) {
         style.color = parse_color(c);
     }
@@ -376,6 +268,7 @@ pub fn to_text_with(
         &|_| Origin::Remote,
         None,
         None,
+        false,
     )
     .unwrap_or_default()
 }
@@ -391,6 +284,24 @@ pub fn text_with_decoded_clicks(v: &Value, clicks: &[crate::text::ClickEvent]) -
         &|_| Origin::Remote,
         None,
         Some(clicks),
+        false,
+    )
+    .unwrap_or_default()
+}
+
+/// Render the engine-generated local layout projection, which omits user metadata.
+/// Only that projection's internally assigned style indices are used, and its
+/// objects are not retained as a serialized source.
+pub fn text_with_local_styles(v: &Value) -> Text {
+    build(
+        v,
+        &mut |s| Text::literal(s),
+        &mut |_| None,
+        Sourced(false, Origin::Local),
+        &|_| Origin::Local,
+        None,
+        None,
+        true,
     )
     .unwrap_or_default()
 }
@@ -429,6 +340,7 @@ fn build_source(
         origin,
         language,
         None,
+        false,
     )
 }
 
@@ -731,6 +643,7 @@ fn build(
     origin: &dyn Fn(&Value) -> Origin,
     language: Option<&crate::lang::Language>,
     decoded_clicks: Option<&[crate::text::ClickEvent]>,
+    local_styles: bool,
 ) -> Option<Text> {
     enum Content<'a> {
         Decode(Option<Text>),
@@ -791,8 +704,13 @@ fn build(
                 let Value::Object(o) = value else {
                     unreachable!()
                 };
-                let style =
-                    object_style(o, &mut |v| done.take_text(v), origin(value), decoded_clicks);
+                let style = object_style(
+                    o,
+                    &mut |v| done.take_text(v),
+                    origin(value),
+                    decoded_clicks,
+                    local_styles,
+                );
                 let overridden = if hover { None } else { contents(o) };
                 let needs_content = overridden.is_none();
                 let translation = o.get("translate").and_then(Value::as_str).filter(|_| {
@@ -1117,6 +1035,114 @@ pub fn name_text(tag: &Tag) -> Text {
     match tag {
         Tag::String(s) => Text::untrusted_legacy(&s.to_string_lossy()),
         t => crate::scoreboard::comp_text(&crate::scoreboard::tag_to_json(t)),
+    }
+}
+
+/// `ComponentSerialization.CODEC`: validate an NBT text component and collapse
+/// a plain `{text: "..."}` compound to a string, returning `None` for invalid
+/// inputs such as numbers (`123`), empty lists (`[]`), or empty compounds (`{}`).
+pub fn validated_component(tag: &Tag) -> Option<Tag> {
+    if !is_valid_component_tag(tag, 0) {
+        return None;
+    }
+    match tag {
+        Tag::Compound(map)
+            if map.len() == 1 && matches!(map.get(&"text".into()), Some(Tag::String(_))) =>
+        {
+            map.get(&"text".into()).cloned()
+        }
+        Tag::List(items) if items.len() == 1 => validated_component(&items[0]),
+        _ => Some(tag.clone()),
+    }
+}
+
+fn is_valid_component_tag(tag: &Tag, depth: usize) -> bool {
+    if depth > 64 {
+        return false;
+    }
+    match tag {
+        Tag::String(_) => true,
+        Tag::List(items) => {
+            !items.is_empty()
+                && items
+                    .iter()
+                    .all(|item| is_valid_component_tag(item, depth + 1))
+        }
+        Tag::Compound(map) => {
+            let is_str = |key: &str| matches!(map.get(&key.into()), Some(Tag::String(_)));
+            let is_num = |t: &Tag| {
+                matches!(
+                    t,
+                    Tag::Byte(_)
+                        | Tag::Short(_)
+                        | Tag::Int(_)
+                        | Tag::Long(_)
+                        | Tag::Float(_)
+                        | Tag::Double(_)
+                )
+            };
+            let valid_content = match map.get(&"type".into()) {
+                Some(Tag::String(ty)) => match ty.to_string_lossy().as_ref() {
+                    "text" => is_str("text"),
+                    "translatable" => is_str("translate"),
+                    "keybind" => is_str("keybind"),
+                    "score" => matches!(map.get(&"score".into()), Some(Tag::Compound(_))),
+                    "selector" => is_str("selector"),
+                    "nbt" => is_str("nbt"),
+                    "object" => map.contains_key(&"player".into()) || is_str("sprite"),
+                    _ => false,
+                },
+                Some(_) => false,
+                None => {
+                    is_str("text")
+                        || is_str("translate")
+                        || is_str("keybind")
+                        || matches!(map.get(&"score".into()), Some(Tag::Compound(_)))
+                        || is_str("selector")
+                        || is_str("nbt")
+                        || map.contains_key(&"player".into())
+                        || is_str("sprite")
+                }
+            };
+            if !valid_content {
+                return false;
+            }
+            if let Some(extra) = map.get(&"extra".into()) {
+                let Tag::List(items) = extra else {
+                    return false;
+                };
+                if items.is_empty()
+                    || !items
+                        .iter()
+                        .all(|item| is_valid_component_tag(item, depth + 1))
+                {
+                    return false;
+                }
+            }
+            if let Some(color) = map.get(&"color".into()) {
+                let Tag::String(s) = color else {
+                    return false;
+                };
+                if parse_color(&s.to_string_lossy()).is_none() {
+                    return false;
+                }
+            }
+            for flag in [
+                "bold",
+                "italic",
+                "underlined",
+                "strikethrough",
+                "obfuscated",
+            ] {
+                if let Some(v) = map.get(&flag.into())
+                    && !is_num(v)
+                {
+                    return false;
+                }
+            }
+            true
+        }
+        _ => false,
     }
 }
 

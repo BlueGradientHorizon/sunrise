@@ -9,6 +9,7 @@ pub trait Hooks {
     /// The client host allows reads and local effects, not server writes.
     /// A disabled owner's subscribed interaction passes without running the block template.
     #[hook(
+        dispatch = "flat",
         side = "both",
         version = 2,
         contract = "replace",
@@ -18,5 +19,9 @@ pub trait Hooks {
         key = "state",
         neoforge = "none (vanilla BlockBehaviour.useItemOn; PlayerInteractEvent.RightClickBlock cancels or answers before it)"
     )]
-    fn use_item_on();
+    fn use_item_on(
+        state: BlockState,
+        click: &BlockClick<'_>,
+        answer: &mut Option<mod_api::InteractionResult>,
+    );
 }

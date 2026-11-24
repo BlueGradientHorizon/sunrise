@@ -17,7 +17,7 @@
 use crate::fast_hash::FxHashMap;
 use crate::{
     blocks::BlockFacts,
-    chunk::{Chunk, ColumnLayout, LevelShape, Light, Section, index},
+    chunk::{Chunk, ColumnLayout, LevelShape, Light, Section, StoredLight, index},
     section_mask::SectionMask,
 };
 use std::{
@@ -68,6 +68,12 @@ pub struct LightTables {
     /// Any state is [`Cell::dynamic`]: without one, no chunk waits to be asked.
     dynamic: bool,
 }
+#[derive(Clone, Copy, Default)]
+pub(crate) struct SectionStatus {
+    pub occupied: SectionMask,
+    pub fully_lit_from: Option<usize>,
+}
+
 impl LightTables {
     /// Dampening and emission only: every occlusion face is empty.
     pub fn new(facts: &BlockFacts) -> Self {
@@ -97,9 +103,15 @@ impl LightTables {
         tables.rebuild_cache();
         tables
     }
-    /// `LevelChunkSection.hasOnlyAir`: only used when a column first publishes its light.
-    pub(crate) fn publish_section_status(&self, chunk: &mut Chunk, shape: LevelShape) {
+    /// Publish the storage supported by non-air sections and gather the inputs
+    /// for initializing omitted layers in a light-correct saved chunk.
+    pub(crate) fn publish_section_status(
+        &self,
+        chunk: &mut Chunk,
+        shape: LevelShape,
+    ) -> SectionStatus {
         let first = chunk.min_y() >> 4;
+        let mut status = SectionStatus::default();
         chunk.light_support = SectionMask::EMPTY;
         chunk.light_sky = shape.sky_light;
         for s in 0..chunk.sections.len() {
@@ -109,8 +121,37 @@ impl LightTables {
                     .has(|id| !self.air_states.get(id as usize).copied().unwrap_or(true))
             {
                 chunk.add_light_support(s);
+                status.occupied.insert(s);
             }
         }
+        if shape.sky_light
+            && chunk.light_layers.is_some_and(|m| m.saved_arrays.is_some())
+            && let Some(upper) = status.occupied.iter().last()
+        {
+            // `ChunkSkyLightSources.getHighestLowestSourceY` bounds the sections
+            // filled by `setLightEnabled`. With no occlusion the Java sentinel
+            // wraps on subtraction, so no already allocated layer is filled.
+            let mut above = [0; 256];
+            let lower = (shape.min_section() - first) as usize;
+            'sections: for s in (lower..=upper).rev() {
+                if !status.occupied.contains(s) {
+                    above.fill(0);
+                    continue;
+                }
+                let section = &chunk.sections[s];
+                for y in (0..16).rev() {
+                    for (xz, top) in above.iter_mut().enumerate() {
+                        let bottom = section.get(y * 256 + xz) as usize;
+                        if self.edge_occluded(*top, bottom) {
+                            status.fully_lit_from = Some(s + 2);
+                            break 'sections;
+                        }
+                        *top = bottom;
+                    }
+                }
+            }
+        }
+        status
     }
 
     /// Build the packed per-cell info and the per-configuration blocking masks
@@ -918,7 +959,11 @@ fn write_computed_light(
 ) {
     let section = &mut chunk.sections[s];
     let mut refresh = None;
-    if let Some([sky, block]) = &mut chunk.light_layers {
+    if let Some(StoredLight {
+        masks: [sky, block],
+        ..
+    }) = &mut chunk.light_layers
+    {
         // A relight can overwrite an inherited sky or absent block layer. Once computed,
         // the changed layer is data to save and send in its own right.
         let old = &section.light;
@@ -1079,6 +1124,24 @@ pub fn light_from_layers<L: AsRef<[u8]>>(
     layers: &[(Option<L>, Option<L>)],
     sky_light: bool,
 ) {
+    hydrate_light(chunk, layers, sky_light, false);
+}
+
+/// Hydrate saved byte arrays. Unlike a packet, NBT does not list empty layers.
+pub fn light_from_saved_layers<L: AsRef<[u8]>>(
+    chunk: &mut Chunk,
+    layers: &[(Option<L>, Option<L>)],
+    sky_light: bool,
+) {
+    hydrate_light(chunk, layers, sky_light, true);
+}
+
+fn hydrate_light<L: AsRef<[u8]>>(
+    chunk: &mut Chunk,
+    layers: &[(Option<L>, Option<L>)],
+    sky_light: bool,
+    from_save: bool,
+) {
     let sections = chunk.sections.len();
     let mut above = [15 * u8::from(sky_light); 256];
     let mut stored = [SectionMask::EMPTY; 2];
@@ -1114,11 +1177,62 @@ pub fn light_from_layers<L: AsRef<[u8]>>(
             section.compact();
         }
     }
-    chunk.light_layers = Some(stored);
+    chunk.light_layers = Some(StoredLight {
+        masks: stored,
+        saved_arrays: from_save.then_some(stored),
+    });
     chunk.light_sky = sky_light;
     crate::chunk::share_uniform(&mut chunk.sections);
     chunk.lit = true;
     chunk.light_loaded = true;
+}
+
+/// The packet decoder has already hydrated the supplied layers. Overlay the sections omitted
+/// by the packet from the queued layers, or from storage on a same-position resend.
+pub fn inherit_packet_light(
+    chunk: &mut Chunk,
+    previous: Option<&Chunk>,
+    queued: Option<Vec<sunrise_protocol::chunk::SectionLight>>,
+    sky_light: bool,
+) {
+    let Some(mut layers) = queued.or_else(|| {
+        previous.and_then(Chunk::stored_light)?;
+        Some(vec![(None, None); chunk.sections.len() + 2])
+    }) else {
+        return;
+    };
+    for (b, (sky, block)) in layers.iter_mut().enumerate() {
+        let supplied = chunk.stored_light_layers(b).unwrap_or_default();
+        let stored = previous
+            .and_then(|old| old.stored_light_layers(b))
+            .unwrap_or_default();
+        for (layer, shift, present, old_present) in [
+            (sky, 4, supplied[0], stored[0]),
+            (block, 0, supplied[1], stored[1]),
+        ] {
+            if present {
+                *layer = None;
+            } else if layer.is_none()
+                && old_present
+                && let Some(old) = previous.and_then(|old| old.light_section(b))
+            {
+                *layer = Some(
+                    (0..2048)
+                        .map(|i| {
+                            ((old.light.get(2 * i) >> shift) & 15)
+                                | (((old.light.get(2 * i + 1) >> shift) & 15) << 4)
+                        })
+                        .collect(),
+                );
+            }
+        }
+    }
+    if layers
+        .iter()
+        .any(|(sky, block)| sky.is_some() || block.is_some())
+    {
+        update_light_layers(chunk, &layers, sky_light);
+    }
 }
 
 /// `LevelLightEngine.queueSectionData`: replace only the named layers. Rebuild the render cache
@@ -1129,16 +1243,49 @@ pub fn update_light_layers<L: AsRef<[u8]>>(
     layers: &[(Option<L>, Option<L>)],
     sky_light: bool,
 ) -> Vec<usize> {
+    edit_light_layers(chunk, layers, SectionMask::EMPTY, sky_light)
+}
+
+/// `markNewInconsistencies`: drop layers whose last section-status support went away.
+pub(crate) fn remove_light_layers(chunk: &mut Chunk, removed: SectionMask) -> Vec<usize> {
+    edit_light_layers::<&[u8]>(chunk, &[], removed, chunk.light_sky)
+}
+
+fn edit_light_layers<L: AsRef<[u8]>>(
+    chunk: &mut Chunk,
+    layers: &[(Option<L>, Option<L>)],
+    removed: SectionMask,
+    sky_light: bool,
+) -> Vec<usize> {
     let sections = chunk.sections.len();
     let mut above = [15 * u8::from(sky_light); 256];
-    let mut stored = chunk.light_layers.unwrap_or_else(|| {
-        let dense = SectionMask::below(sections + 1).from(1);
-        [if sky_light { dense } else { SectionMask::EMPTY }, dense]
-    });
+    let mut stored = chunk
+        .light_layers
+        .map(|light| light.masks)
+        .unwrap_or_else(|| {
+            let dense = SectionMask::below(sections + 1).from(1);
+            [if sky_light { dense } else { SectionMask::EMPTY }, dense]
+        });
     let mut changed = SectionMask::EMPTY;
     let mut unchanged_source = None;
     let mut refresh = false;
     for b in (0..sections + 2).rev() {
+        let drop = removed.contains(b);
+        if drop {
+            refresh |= stored[0].contains(b);
+            stored[0].remove(b);
+            stored[1].remove(b);
+            if b == 0 || b == sections + 1 {
+                let (pad, adjacent) = if b == 0 {
+                    (&mut chunk.pad_below, 0)
+                } else {
+                    (&mut chunk.pad_above, sections - 1)
+                };
+                *pad = None;
+                changed.insert(adjacent);
+                continue;
+            }
+        }
         let (sky, block) = layers.get(b).map_or((None, None), |(sky, block)| {
             (
                 sky.as_ref().filter(|_| sky_light).map(AsRef::as_ref),
@@ -1165,7 +1312,7 @@ pub fn update_light_layers<L: AsRef<[u8]>>(
             stored[1].insert(b);
         }
         let inherited = !has_sky && (refresh || old.is_none());
-        if sky.is_none() && block.is_none() && (!inherited || old.is_none()) {
+        if !drop && sky.is_none() && block.is_none() && (!inherited || old.is_none()) {
             continue;
         }
         // An unchanged stored source need not be sampled for every section: gaps already
@@ -1188,7 +1335,9 @@ pub fn update_light_layers<L: AsRef<[u8]>>(
                 None if inherited => above[i & 255],
                 None => previous >> 4,
             };
-            let block = block.map_or(previous & 15, |layer| nibble(layer, i));
+            let block = block.map_or(if drop { 0 } else { previous & 15 }, |layer| {
+                nibble(layer, i)
+            });
             *packed = sky << 4 | block;
         }
         let light = Light::packed(data);
@@ -1214,7 +1363,13 @@ pub fn update_light_layers<L: AsRef<[u8]>>(
             }
         }
     }
-    chunk.light_layers = Some(stored);
+    chunk.light_layers = Some(StoredLight {
+        masks: stored,
+        saved_arrays: chunk
+            .light_layers
+            .and_then(|light| light.saved_arrays)
+            .map(|arrays| arrays.map(|mask| mask & !removed)),
+    });
     chunk.light_sky = sky_light;
     changed.iter().collect()
 }

@@ -12,7 +12,7 @@ impl Game<'_> {
         let name = self.native_client_menu_name(menu)?;
         let content = mod_menu_type(name);
         let count = match content {
-            Some(content) => content.slots + 36,
+            Some(content) => content.slot_count(),
             None => self.menu_slot_count(menu)?,
         };
         Some(layout_kinds(name, count, content, |slot| {
@@ -236,8 +236,11 @@ mod tests {
         use sunrise_client::containers::{ModCrafting, ModLinks};
         let content = ModMenuType {
             id: "test:roles",
+            owner: "test",
             slots: 9,
+            player_inventory: true,
             data_slots: 0,
+            owned_slots: None,
             results: vec![7],
             inputs: vec![5, 8],
             crafting: Some(ModCrafting {
@@ -261,6 +264,28 @@ mod tests {
         expected.extend(PLAYER);
         assert_eq!(
             layout_kinds("test:roles", 45, Some(&content), |_| None),
+            expected
+        );
+    }
+
+    #[test]
+    fn owned_processing_layout_roles() {
+        let content = ModMenuType {
+            id: "test:processor",
+            owner: "test",
+            slots: 3,
+            player_inventory: true,
+            data_slots: 0,
+            owned_slots: Some(vec![64, 64, 64]),
+            results: vec![2],
+            inputs: vec![0, 1],
+            crafting: None,
+            links: None,
+        };
+        let mut expected = vec![Input, Input, Result];
+        expected.extend(PLAYER);
+        assert_eq!(
+            layout_kinds("test:processor", 39, Some(&content), |_| None),
             expected
         );
     }

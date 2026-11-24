@@ -118,6 +118,7 @@ impl Game<'_> {
             * glam::Mat4::from_scale(glam::Vec3::new(k, -k, -k))
             * glam::Mat4::from_translation(glam::Vec3::new(0.0, -0.56, 3.5));
         let poses = sunrise_client::mobs::anim::Poses::new(&kind.model);
+        self.mark_entity(out.len(), &kind.id);
         render::draw(
             &kind.model,
             m,

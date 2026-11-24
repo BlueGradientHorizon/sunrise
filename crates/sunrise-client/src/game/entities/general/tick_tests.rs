@@ -66,21 +66,28 @@ struct Counter {
 
 #[mod_api::sunrise_part]
 impl EntityPart for Counter {
-    fn general_entity_tick(
-        &self,
-        host: &mut dyn ServerHost,
-        event: &mut GeneralEntityTickEvent<'_>,
-    ) {
-        let holder = Holder::Entity(event.entity.id());
+    fn general_entity_tick(&self, event: &mut GeneralEntityTickEvent<'_>) {
+        let entity = event
+            .subject
+            .with_view(|view| view.handle())
+            .expect("live resident general entity");
+        let host = event.subject.host();
+        let holder = Holder::Entity(entity.id());
         let value = COUNTER.get(host, holder).unwrap() + 1;
         COUNTER.set(host, holder, value).unwrap();
-        if self.panicking_on() == Some(event.entity.id())
+        if self.panicking_on() == Some(entity.id())
             && !self.fired.swap(true, std::sync::atomic::Ordering::Relaxed)
         {
+            assert_eq!(
+                event
+                    .subject
+                    .with_view(|mut view| view.set_velocity([7.0, 8.0, 9.0])),
+                Some(true)
+            );
             panic!("general entity tick boom");
         }
         let action = std::mem::replace(&mut *self.action.lock().unwrap(), OnTick::Nothing);
-        let other = |id: u32| mod_api::EntityRef::new(event.entity.epoch(), id);
+        let other = |id: u32| mod_api::EntityRef::new(entity.epoch(), id);
         match action {
             OnTick::Nothing => {}
             OnTick::Remove(id) => {
@@ -90,11 +97,8 @@ impl EntityPart for Counter {
                 assert!(other(id).stop_riding(host));
             }
         }
-        self.events
-            .lock()
-            .unwrap()
-            .push((event.entity.id(), "tick"));
-        self.trace.lock().unwrap().push(event.entity.id());
+        self.events.lock().unwrap().push((entity.id(), "tick"));
+        self.trace.lock().unwrap().push(entity.id());
     }
 }
 
@@ -138,6 +142,7 @@ impl Hooks for Declare {
                 },
                 true,
                 false,
+                None,
                 8,
                 3,
                 1,
@@ -235,7 +240,7 @@ fn with_counter(test: impl FnOnce(&mut Game<'_>, Levers)) {
         pre_victim: declare.pre_victim.clone(),
     };
     mod_platform::__private::initialize().expect("test registration requires the mod API runtime");
-    let _phase = mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::Registration);
+    let _phase = mod_platform::__private::RegistrationGuard::open();
     let mods: mod_api::Mods = vec![mod_api::ModEntry::new("mymod", Box::new(declare))].into();
     mod_platform::testing::with_mods(mods, || {
         with_game(|game| {
@@ -249,7 +254,6 @@ fn with_counter(test: impl FnOnce(&mut Game<'_>, Levers)) {
             // The registration phase ends before the test's own ticks: a
             // part's writes are storage writes, which only a world's phases
             // take, as the server's own tick runs in World.
-            let _world = mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::World);
             test(game, levers)
         })
     });
@@ -495,12 +499,12 @@ fn a_listener_discarded_row_gets_no_callback() {
     });
 }
 
-/// A rider a listener discarded from its vehicle's callback does not tick,
-/// and neither does the rider's own subtree: the edge is re-checked at the
-/// parent's callback (`tickPassenger`'s `getVehicle` gate).
+/// A discarded rider is skipped in `tickPassenger`, but `Entity.setRemoved`
+/// dismounts its passenger. `ServerLevel.tick` reads the live mount at the
+/// former passenger's own later slot, so it ticks after the vehicle's subtree.
 #[test]
 #[ignore = "daily"]
-fn a_listener_discarded_rider_stops_its_subtree() {
+fn a_discarded_riders_passenger_ticks_at_its_later_root_slot() {
     with_counter(|game, l| {
         let grandchild = record_at("mymod:robot", [8, 8, 8, 8], [0.5, 64.0, 0.5], Vec::new());
         let rider = record_at(
@@ -514,7 +518,33 @@ fn a_listener_discarded_rider_stops_its_subtree() {
         let ids = row_ids(game);
         *l.action.lock().unwrap() = OnTick::Remove(ids[1]);
         tick(game);
+        assert_eq!(*l.trace.lock().unwrap(), [root, ids[3], ids[2]]);
+    });
+}
+
+/// `EntityTickList` does not revisit a slot already passed while mounted.
+#[test]
+#[ignore = "daily"]
+fn a_discarded_riders_passenger_waits_if_its_root_slot_passed() {
+    with_counter(|game, l| {
+        let grandchild = seeded_row(game, [8, 8, 8, 8], 0);
+        let rider = record_at("mymod:robot", [9, 9, 9, 9], [0.5, 64.0, 0.5], Vec::new());
+        let sibling = record_at("mymod:robot", [7, 7, 7, 7], [0.5, 64.0, 0.5], Vec::new());
+        let root = spawn_tree(game, [1, 2, 3, 4], [0.5, 64.0, 0.5], vec![rider, sibling]);
+        let ids = row_ids(game);
+        let rider = game.entity(ids[2]).unwrap();
+        game.entity(grandchild)
+            .unwrap()
+            .start_riding(game, rider, true)
+            .unwrap();
+        *l.action.lock().unwrap() = OnTick::Remove(rider.id());
+
+        tick(game);
         assert_eq!(*l.trace.lock().unwrap(), [root, ids[3]]);
+
+        l.trace.lock().unwrap().clear();
+        tick(game);
+        assert_eq!(*l.trace.lock().unwrap(), [grandchild, root, ids[3]]);
     });
 }
 
@@ -641,29 +671,50 @@ fn a_parked_level_holds_the_counter_until_it_returns() {
 }
 
 /// The containment row: a native panic in a row's tick rolls the row's
-/// writes back (the counter keeps its value), the later row ticks on, and
-/// the panicking row's own next tick proceeds. A subscriber is not
-/// auto-disabled.
+/// writes back (the counter keeps its value) and disables that mod's
+/// `general_entity_tick` for the rest of the session, so later rows and
+/// later ticks proceed without invoking the disabled callback again.
 #[test]
 #[ignore = "daily"]
 fn a_panicking_row_rolls_back_and_the_next_tick_proceeds() {
-    with_counter(|game, l| {
-        let first = seeded_row(game, [1, 2, 3, 4], 41);
-        let second = seeded_row(game, [5, 6, 7, 8], 7);
-        l.panic_on
-            .store(first, std::sync::atomic::Ordering::Relaxed);
-        tick(game);
-        assert_eq!(
-            *l.trace.lock().unwrap(),
-            [second],
-            "only the later row ticked"
-        );
-        assert_eq!(counter(game, first), 41, "the panic rolled the write back");
-        assert_eq!(counter(game, second), 8);
-        tick(game);
-        assert_eq!(*l.trace.lock().unwrap(), [second, first, second]);
-        assert_eq!(counter(game, first), 42);
-    });
+    crate::game::in_own_process(
+        "game::general::tick_tests::a_panicking_row_rolls_back_and_the_next_tick_proceeds",
+        || {
+            with_counter(|game, l| {
+                let first = seeded_row(game, [1, 2, 3, 4], 41);
+                let second = seeded_row(game, [5, 6, 7, 8], 7);
+                l.panic_on
+                    .store(first, std::sync::atomic::Ordering::Relaxed);
+                tick(game);
+                assert_eq!(
+                    mod_api::__private::take_hook_panics(),
+                    [mod_api::__private::HookPanicReport {
+                        mod_id: "mymod",
+                        hook: "general_entity_tick",
+                    }]
+                );
+                assert!(
+                    l.trace.lock().unwrap().is_empty(),
+                    "the panicking mod's general_entity_tick is disabled after its first panic"
+                );
+                assert_eq!(
+                    counter(game, first),
+                    41,
+                    "the panic rolled the Host write back"
+                );
+                assert_eq!(
+                    game.resident_entities.general.row(first).unwrap().velocity,
+                    sunrise_core::geometry::Vec3::ZERO,
+                    "the panic rolled the scoped subject write back"
+                );
+                assert_eq!(counter(game, second), 7);
+                tick(game);
+                assert!(l.trace.lock().unwrap().is_empty());
+                assert_eq!(counter(game, first), 41);
+                assert_eq!(counter(game, second), 7);
+            });
+        },
+    );
 }
 
 /// The ruling's flat order: the vehicle's Pre, tick and Post, then each
@@ -770,17 +821,16 @@ fn a_canceled_passenger_still_follows_and_his_passengers_tick() {
     });
 }
 
-/// A rider removed in its own Pre — the removal the liveness re-check
-/// exists for: it neither ticks nor walks its descendants, however its Pre
-/// ended. A stack of three covers the depth: the middle rider's own Pre
-/// discards it, and the bottom row hears nothing at all.
+/// A rider removed in its own Pre gets no tick or Post. Its dismounted
+/// passenger ticks at its later root slot, after the sibling rider.
 #[test]
 #[ignore = "daily"]
-fn a_rider_removed_in_its_own_pre_walks_no_descendants() {
+fn a_riders_removal_in_pre_leaves_its_passengers_later_root_tick() {
     with_counter(|game, l| {
         let bottom = record_at("mymod:robot", [8, 8, 8, 8], [0.5, 64.0, 0.5], Vec::new());
         let middle = record_at("mymod:robot", [9, 9, 9, 9], [0.5, 64.0, 0.5], vec![bottom]);
-        let root = spawn_tree(game, [1, 2, 3, 4], [0.5, 64.0, 0.5], vec![middle]);
+        let sibling = record_at("mymod:robot", [7, 7, 7, 7], [0.5, 64.0, 0.5], Vec::new());
+        let root = spawn_tree(game, [1, 2, 3, 4], [0.5, 64.0, 0.5], vec![middle, sibling]);
         let ids = row_ids(game);
         tick(game);
         l.events.lock().unwrap().clear();
@@ -796,26 +846,30 @@ fn a_rider_removed_in_its_own_pre_walks_no_descendants() {
                 (root, "tick"),
                 (root, "post"),
                 (ids[1], "pre"),
-            ],
-            "the removed rider neither ticks nor walks its descendants"
+                (ids[3], "pre"),
+                (ids[3], "tick"),
+                (ids[3], "post"),
+                (ids[2], "pre"),
+                (ids[2], "tick"),
+                (ids[2], "post"),
+            ]
         );
         assert_eq!(counter(game, ids[1]), 1);
-        assert_eq!(counter(game, ids[2]), 1, "the descendant did not tick");
+        assert_eq!(counter(game, ids[2]), 2);
         assert_eq!(counter(game, root), 2);
     });
 }
 
-/// The same removal with the Pre also canceled: the liveness re-check runs
-/// after a canceled Pre too — the cancel skips the rider's tick and Post,
-/// not the check — so a rider that removed itself in its canceled Pre
-/// walks no descendants, and a live one keeps the ruling's follow.
+/// The liveness check still applies when the rider cancels Pre as it is
+/// removed. Its former passenger ticks at its own slot, not in that branch.
 #[test]
 #[ignore = "daily"]
-fn a_rider_removed_in_its_own_canceled_pre_walks_no_descendants() {
+fn a_riders_removal_in_canceled_pre_leaves_its_passengers_later_root_tick() {
     with_counter(|game, l| {
         let bottom = record_at("mymod:robot", [8, 8, 8, 8], [0.5, 64.0, 0.5], Vec::new());
         let middle = record_at("mymod:robot", [9, 9, 9, 9], [0.5, 64.0, 0.5], vec![bottom]);
-        let root = spawn_tree(game, [1, 2, 3, 4], [0.5, 64.0, 0.5], vec![middle]);
+        let sibling = record_at("mymod:robot", [7, 7, 7, 7], [0.5, 64.0, 0.5], Vec::new());
+        let root = spawn_tree(game, [1, 2, 3, 4], [0.5, 64.0, 0.5], vec![middle, sibling]);
         let ids = row_ids(game);
         tick(game);
         l.events.lock().unwrap().clear();
@@ -833,9 +887,15 @@ fn a_rider_removed_in_its_own_canceled_pre_walks_no_descendants() {
                 (root, "tick"),
                 (root, "post"),
                 (ids[1], "pre"),
+                (ids[3], "pre"),
+                (ids[3], "tick"),
+                (ids[3], "post"),
+                (ids[2], "pre"),
+                (ids[2], "tick"),
+                (ids[2], "post"),
             ]
         );
-        assert_eq!(counter(game, ids[2]), 1, "the descendant did not tick");
+        assert_eq!(counter(game, ids[2]), 2);
         assert_eq!(counter(game, root), 2);
         l.cancel_on.store(0, std::sync::atomic::Ordering::Relaxed);
     });

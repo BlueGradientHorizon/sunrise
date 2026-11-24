@@ -41,6 +41,8 @@ pub(in crate::gfx) struct PostPassArgs<'a> {
     pub(in crate::gfx) gpu_frame: bool,
     pub(in crate::gfx) serial: u64,
     pub(in crate::gfx) cpu: [usize; 3],
+    pub(in crate::gfx) sourced_frame: bool,
+    pub(in crate::gfx) sourced_cpu: [usize; 3],
     pub(in crate::gfx) lifts_world: bool,
 }
 
@@ -97,6 +99,8 @@ impl Renderer {
             gpu_frame,
             serial,
             cpu,
+            sourced_frame,
+            sourced_cpu,
             lifts_world,
         } = args;
 
@@ -114,7 +118,7 @@ impl Renderer {
                     .prepare(
                         &self.device,
                         &mut encoder,
-                        &mut self.uploads,
+                        |enc, buf, offset, data| self.uploads.buffer(enc, buf, offset, data),
                         atlas,
                         frame.weather,
                         frame.weather_time,
@@ -125,7 +129,10 @@ impl Renderer {
             post.set_weather(weather);
             let flat = self.flat.as_ref().filter(|_| flat_frame);
             self.pack_pages.clear();
-            if flat.is_some() && (pack_draws_terrain || pack_draws_shadow) {
+            // The pack's terrain programs read their pages: flat, or per section where vertex
+            // shaders read storage (`pack_terrain_draws`).
+            let reads_pages = flat.is_some() || self.pack_terrain_draws().reads_pages();
+            if reads_pages && (pack_draws_terrain || pack_draws_shadow) {
                 self.pack_pages.extend(
                     self.arena
                         .page_buffers()
@@ -193,14 +200,15 @@ impl Renderer {
                                     (shadow_first + shadow_solid, shadow_translucent)
                                 }
                             };
-                            self.draw_sections(rp, &self.indirect, 0, first, count);
+                            self.draw_sections_paged(rp, &self.indirect, first, count, page);
                         }
                     }
                 };
             // Both strokes of a high contrast outline, the black one first.
             post.set_lines(pack_draws_outline.then(|| pack_post::Lines {
                 edges: self.outline.clone(),
-                count: outline_edges as u32 * if frame.outline_high_contrast { 2 } else { 1 },
+                count: outline_edges as u32,
+                strokes: if frame.outline_high_contrast { 2 } else { 1 },
             }));
             post.set_clouds(pack_draws_clouds.then(|| pack_post::Clouds {
                 vertices: self.cloud_buffer.clone(),
@@ -224,6 +232,7 @@ impl Renderer {
                 pages,
                 &mut terrain,
                 &self.device_lost,
+                super::super::in_flight::poll_live,
             );
             // Keep the capacity, not the buffers: a page the arena frees must not stay alive
             // here until the next shader-pack frame (or forever once the pack is off).
@@ -353,9 +362,14 @@ impl Renderer {
         if culling && let Some(cull) = &mut self.cull {
             cull.end(&self.device, &mut encoder);
         }
-        // GPU culling's counts once its world passes are done (phase 2's too).
+        // GPU culling's counts once its world passes are done (phase 2's too), and sourced
+        // geometry's beside them; whether the frame drew sourced geometry rides the near
+        // copy, so its half waits for sourced geometry's (`in_flight::collect_stats`).
         if gpu_frame && let Some(gpu) = &mut self.gpu_culling {
-            gpu.copy_stats(&mut encoder, serial, cpu);
+            gpu.copy_stats(&mut encoder, serial, cpu, sourced_frame);
+        }
+        if sourced_frame {
+            self.sourced.copy_stats(&mut encoder, serial, sourced_cpu);
         }
         if let Some(timer) = &mut self.gpu_timer {
             timer.end(&self.device, &mut encoder, (&view_target, overlay_format));

@@ -5,6 +5,10 @@ tick. `BlockCapabilityCache` keeps what one lookup found and gives it back while
 depends on has changed. It is the caching half of NeoForge's `BlockCapabilityCache`, without the
 listener: the cache is polled, never told.
 
+For a yes/no question from a read-only level view (for example, in placement prediction), use
+`LevelHost::has_item_capability`. It does not construct or cache a handler. This cache belongs to
+the server-side acquisition and transfer path.
+
 ## Making one
 
 ```rust,ignore
@@ -18,9 +22,11 @@ keeps is bounded by the number of caches you make.
 ## Polling it
 
 ```rust,ignore
+use mod_api::resource_util::move_resources;
+
 // Each tick, inside a transaction `tx`, with `own` your own handler.
 if let Some(items) = west.get(host) {
-    move_resources(host, items, own, |_| true, 8, tx)?;
+    move_resources(host, items, own, |_| true, 8, Some(tx))?;
 }
 ```
 

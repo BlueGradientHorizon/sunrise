@@ -77,7 +77,7 @@ impl<'a> MeshFacts<'a> {
 }
 /// The water mirror's targets: the world as a camera mirrored about the water plane sees
 /// it, at half the world's resolution (the material stage's `reflection`).
-pub(super) struct MirrorTarget {
+pub(crate) struct MirrorTarget {
     pub(super) size: [u32; 2],
     pub(super) color: wgpu::TextureView,
     pub(super) depth: wgpu::TextureView,
@@ -85,7 +85,7 @@ pub(super) struct MirrorTarget {
 
 /// Not before then may a large translucent page start to shrink.
 #[derive(Default)]
-pub(super) struct ShrinkGate(pub(super) Option<Instant>);
+pub(crate) struct ShrinkGate(pub(super) Option<Instant>);
 impl ShrinkGate {
     /// Not before `wait` from `now`, nor before an earlier wait is over.
     pub(super) fn wait(&mut self, now: Instant, wait: std::time::Duration) {
@@ -98,11 +98,24 @@ impl ShrinkGate {
     }
 }
 
+/// What one quad of [`Frame::celestial`] is, as its producer built it
+/// (`Game::celestial_geometry`, `Game::end_flash_geometry`). A producer leaves out a body whose
+/// sprite is missing, so a quad's place in the list doesn't tell which body it is.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub enum CelestialBody {
+    Sun,
+    Moon,
+    /// The End's flash (`SkyRenderer.renderEndFlash`): neither the sun nor the moon.
+    EndFlash,
+}
+
 pub struct Frame<'a> {
     pub camera: DVec3,
     pub yaw: f32,
     pub pitch: f32,
     pub fov_degrees: f32,
+    /// `Camera.createProjectionMatrixForCulling`: `max(fov_degrees, option_fov)`.
+    pub cull_fov_degrees: f32,
     /// The camera entity's eye and view rotation (yaw, pitch): the camera's own except in a
     /// third-person view.
     pub eye: DVec3,
@@ -125,6 +138,9 @@ pub struct Frame<'a> {
     pub distance: f32,
     /// Full-detail terrain distance in blocks; distant LODs bypass the cave graph.
     pub detail_distance: f32,
+    /// Shadow caster selection distance in blocks; defaults to the effective eye distance
+    /// (`detail_distance`) when `None`.
+    pub shadow_distance: Option<f32>,
     /// `Camera.depthFar`: the far plane (`crate::camera::depth_far`).
     pub depth_far: f32,
     pub underwater: bool,
@@ -182,6 +198,8 @@ pub struct Frame<'a> {
     pub nether_lighting: bool,
     /// Camera-relative entity geometry textured from the shared atlas.
     pub entities: &'a [Vertex],
+    /// Explicit world particle-atlas geometry, drawn outside the combined entity buffer.
+    pub explicit_particles: Option<&'a crate::particles::ParticleQuads>,
     /// Per-section cacheable block-entity models. Positions are section-local.
     pub static_block_entities: &'a [StaticSectionSnapshot],
     /// Sections currently intersecting the coarse camera frustum.
@@ -226,6 +244,9 @@ pub struct Frame<'a> {
     /// Camera-relative sun and moon, or the animated End flash (additive,
     /// behind everything and after the resident End sky box).
     pub celestial: &'a [Vertex],
+    /// What each quad of `celestial` is, in the same order, one entry a quad. A quad without
+    /// an entry isn't drawn, and nor is an entry without a quad.
+    pub celestial_bodies: &'a [CelestialBody],
     /// The stars, drawn from their static buffer after the sun and moon:
     /// the sky's rotation (camera-relative world from star space) and the
     /// star brightness.

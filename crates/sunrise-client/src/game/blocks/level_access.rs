@@ -85,7 +85,7 @@ impl LevelAccess for GameLevel<'_> {
         cancel
     }
     fn observe_neighbor_changed(
-        &self,
+        &mut self,
         ticks: &mut Ticks,
         pos: BlockPos,
         state: BlockStateId,
@@ -699,45 +699,6 @@ impl LevelAccess for GameLevel<'_> {
                 .native_state_for_placement(self.dimension, state, context, fluid, answer);
         }
     }
-    fn placement_context(
-        &self,
-        item: &str,
-        context: &PlacementContext,
-    ) -> Option<Option<PlacementContext>> {
-        let mut answer = None;
-        self.native_placement_context(item, context, &mut answer);
-        answer.map(|answer| {
-            answer.and_then(|snapshot| {
-                if !snapshot.hit.iter().all(|n| n.is_finite())
-                    || !snapshot.yaw.is_finite()
-                    || !snapshot.pitch.is_finite()
-                {
-                    log::warn!("placement_context: refused {item}: nonfinite hit or rotation");
-                    return None;
-                }
-                if snapshot.item.and_then(mod_api::__private::item_key_id) != Some(item) {
-                    log::warn!("placement_context: refused {item}: replacement changed the item");
-                    return None;
-                }
-                Some(PlacementContext {
-                    pos: snapshot.pos,
-                    hit_pos: snapshot.hit_pos,
-                    face: snapshot.face,
-                    hit: sunrise_core::geometry::Vec3::new(
-                        snapshot.hit[0],
-                        snapshot.hit[1],
-                        snapshot.hit[2],
-                    ),
-                    inside: snapshot.inside,
-                    yaw: snapshot.yaw,
-                    pitch: snapshot.pitch,
-                    sneaking: snapshot.sneaking,
-                    item: context.item.clone(),
-                    replace_clicked: snapshot.replace_clicked,
-                })
-            })
-        })
-    }
     fn must_survive(&self, item: &str) -> Option<bool> {
         let mut answer = None;
         self.native_must_survive(item, &mut answer);
@@ -1002,8 +963,8 @@ impl LevelAccess for GameLevel<'_> {
         )
     }
     fn biome_name(&self, pos: BlockPos) -> Option<&str> {
-        let chunk = self.world.chunks.get(&(pos.x >> 4, pos.z >> 4))?;
-        Some(&self.biomes.get(chunk.biome(pos.x, pos.y, pos.z)).name)
+        let biome = self.world.biome_at(self.biome_zoom, pos.x, pos.y, pos.z)?;
+        Some(&self.biomes.get(biome).name)
     }
     fn world_seed(&self) -> i64 {
         self.seed
@@ -1285,10 +1246,13 @@ impl LevelAccess for GameLevel<'_> {
         if !self.collision.publishes_shapes(state) {
             return None;
         }
-        match self.world.block_entities.get(&(pos.x, pos.y, pos.z))? {
-            BlockEntity::Mod(entity) => entity.shapes().map(|shapes| shapes.collision().clone()),
-            _ => None,
-        }
+        sunrise_client::collisions::published_shapes(
+            self.world,
+            self.registry,
+            state,
+            [pos.x, pos.y, pos.z],
+        )
+        .map(|shapes| shapes.collision().clone())
     }
     fn remove_block_entity(&mut self, pos: BlockPos, old: BlockStateId, side_effects: bool) -> u8 {
         if let Some(change) = &mut self.command_block_transition

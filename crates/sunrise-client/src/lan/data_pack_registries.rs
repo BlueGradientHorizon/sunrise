@@ -1,5 +1,5 @@
 //! Winning definitions for the synchronized registries that read world packs.
-use super::{PACK_REGISTRIES, condition_filter, json_to_nbt, synchronized_entries, walk};
+use super::{PACK_REGISTRIES, condition_filter, json_to_nbt, synchronized_entries};
 use crate::dialog::Reference;
 use serde_json::Value;
 use std::{
@@ -340,155 +340,67 @@ pub(super) fn bind_dialog_tags(
     overlay: &PackOverlay<'_>,
     held: impl Fn(&str) -> bool,
 ) -> (BTreeMap<String, Vec<String>>, BTreeSet<String>) {
-    struct Member {
-        id: String,
-        tag: bool,
-        required: bool,
-        remove: bool,
-    }
-
-    let mut files = BTreeMap::<String, Vec<Member>>::new();
-    let mut add_file = |id: &str, value: Value| {
-        let Ok(id) = Identifier::parse(id) else {
-            return;
-        };
-        let entries = files.entry(id.to_string()).or_default();
-        let parse = || {
-            let flag = |value: Option<&Value>, default| match value {
-                None | Some(Value::Null) => Some(default),
-                Some(value) => value.as_bool(),
-            };
-            let replace = flag(value.get("replace"), false)?;
-            let parse_member = |value: &Value, remove: bool| {
-                let id = sunrise_world::tag_layers::entry_id(value)?;
-                let (tag, id) = id.strip_prefix('#').map_or((false, id), |id| (true, id));
-                Some(Member {
-                    id: Identifier::parse(id).ok()?.to_string(),
-                    tag,
-                    required: flag(value.get("required"), true)?,
-                    remove: remove || flag(value.get("remove"), false)?,
-                })
-            };
-            let mut parsed = value
-                .get("values")?
-                .as_array()?
-                .iter()
-                .map(|value| parse_member(value, false))
-                .collect::<Option<Vec<_>>>()?;
-            if let Some(remove) = value.get("remove").filter(|v| !v.is_null()) {
-                for value in remove.as_array()? {
-                    parsed.push(parse_member(value, true)?);
-                }
+    let mut unbound = BTreeSet::new();
+    let bound = bind_registry_tags(root, overlay, "dialog", |id, required| {
+        if held(id) {
+            Some(id.to_owned())
+        } else {
+            if required {
+                unbound.insert(id.to_owned());
             }
-            Some((replace, parsed))
-        };
-        // TagLoader creates a builder after reading JSON, but only a decoded
-        // TagFile adds entries to it. A syntactically unreadable file has no builder.
-        if let Some((replace, parsed)) = parse() {
-            if replace {
-                entries.clear();
-            }
-            entries.extend(parsed);
+            None
         }
-    };
-    let mut prepared = BTreeMap::new();
-    walk(&root.join("tags/dialog"), &mut prepared, false);
-    for (id, value) in prepared {
-        add_file(&id, value);
-    }
-    for (id, packs) in overlay.tag_kind("dialog") {
-        for bytes in packs {
-            if let Ok(value) = serde_json::from_slice(bytes) {
-                add_file(&id, value);
-            }
-        }
-    }
-    let indices: BTreeMap<&str, usize> = files
-        .keys()
-        .enumerate()
-        .map(|(i, k)| (k.as_str(), i))
-        .collect();
-    let mut dependencies = vec![Vec::new(); files.len()];
-    let mut work = Vec::new();
-    let mut seen = BTreeSet::new();
-    // TagLoader.build uses DependencySorter.orderByDependencies: add every
-    // required edge before considering optional ones. Reject cycle-closing
-    // edges without changing the order of members within a tag.
-    for required in [true, false] {
-        for (from, entries) in files.values().enumerate() {
-            for entry in entries
-                .iter()
-                .filter(|e| e.tag && (e.required && !e.remove) == required)
-            {
-                let Some(&to) = indices.get(entry.id.as_str()) else {
-                    continue;
-                };
-                work.clear();
-                seen.clear();
-                work.push(to);
-                let mut closes_cycle = false;
-                while let Some(node) = work.pop() {
-                    if node == from {
-                        closes_cycle = true;
-                        break;
-                    }
-                    if seen.insert(node) {
-                        work.extend(dependencies[node].iter().copied());
-                    }
-                }
-                if !closes_cycle {
-                    dependencies[from].push(to);
-                }
-            }
-        }
-    }
-
-    let files: Vec<_> = files.iter().collect();
-    let mut scheduled = vec![false; files.len()];
-    let mut stack = Vec::new();
-    let (mut bound, mut unbound) = (BTreeMap::new(), BTreeSet::new());
-    for root in 0..files.len() {
-        stack.push((root, false));
-        while let Some((index, ready)) = stack.pop() {
-            if !ready {
-                if !std::mem::replace(&mut scheduled[index], true) {
-                    stack.push((index, true));
-                    stack.extend(dependencies[index].iter().rev().map(|&dep| (dep, false)));
-                }
-                continue;
-            }
-            let (name, entries) = files[index];
-            let mut failed = false;
-            let mut out = Vec::new();
-            for entry in entries {
-                let members: Option<&[String]> = if entry.tag {
-                    bound.get(&entry.id).map(Vec::as_slice)
-                } else if held(&entry.id) {
-                    Some(std::slice::from_ref(&entry.id))
-                } else {
-                    if entry.required && !entry.remove {
-                        unbound.insert(entry.id.clone());
-                    }
-                    None
-                };
-                if let Some(members) = members {
-                    for id in members {
-                        if entry.remove {
-                            out.retain(|member| member != id);
-                        } else if !out.contains(id) {
-                            out.push(id.clone());
-                        }
-                    }
-                } else {
-                    failed |= entry.required && !entry.remove;
-                }
-            }
-            if !failed {
-                bound.insert(name.clone(), out);
-            }
-        }
-    }
+    });
     (bound, unbound)
+}
+
+/// Build the stacked tag files against the registry that will publish them.
+/// Only a successfully built tag can satisfy a nested reference.
+pub(super) fn bind_registry_tags<T: Clone + Ord>(
+    root: &Path,
+    overlay: &PackOverlay<'_>,
+    kind: &str,
+    mut lookup: impl FnMut(&str, bool) -> Option<T>,
+) -> BTreeMap<String, Vec<T>> {
+    use sunrise_world::worldgen::tags::TagDefinitions;
+
+    // ResourceManager lists whole stacks in Identifier file order (path
+    // first, namespace second). Pack versions then apply low to high.
+    let prepared = sunrise_world::json_folder::read(&root.join("tags").join(kind)).ok();
+    let mut files = BTreeMap::<_, Vec<&[u8]>>::new();
+    for file in prepared.iter().flat_map(|folder| &folder.files) {
+        if let Ok(bytes) = file.bytes() {
+            files
+                .entry((format!("{}.json", file.name), "minecraft".to_owned()))
+                .or_default()
+                .push(bytes);
+        }
+    }
+    for (id, versions) in overlay.tag_kind(kind) {
+        let (namespace, path) = id.split_once(':').unwrap_or(("minecraft", &id));
+        files
+            .entry((format!("{path}.json"), namespace.to_owned()))
+            .or_default()
+            .extend(versions.iter().map(Vec::as_slice));
+    }
+    let mut definitions = TagDefinitions::default();
+    for ((path, namespace), stack) in files {
+        let id = format!("{namespace}:{}", path.strip_suffix(".json").unwrap());
+        for bytes in stack {
+            if let Ok(json) = std::str::from_utf8(bytes) {
+                let _ = definitions.apply_json(&id, "pack", json);
+            }
+        }
+    }
+    let built = definitions.bind(&mut lookup);
+    for (id, missing) in built.missing {
+        let entries: Vec<_> = missing.iter().map(|e| e.entry.display()).collect();
+        log::warn!(
+            "Sunrise: {kind} tag {id} has unresolved required entries: {}",
+            entries.join(", ")
+        );
+    }
+    built.tags
 }
 
 fn check_network_nbt(tag: &Tag) -> Result<(), String> {
@@ -742,6 +654,7 @@ mod tests {
             let overlay = PackOverlay {
                 conditions: &conditions,
                 files: &files,
+                ..PackOverlay::default()
             };
             let packed = super::super::SyncData::stage_registry_definitions(
                 root.path(),

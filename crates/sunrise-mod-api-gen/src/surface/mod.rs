@@ -16,18 +16,17 @@ mod walk;
 mod wire_forms;
 
 use crate::catalog::{self, Catalog};
-use crate::index::{Found, Index, ItemId};
-use mod_source::layouts::Layouts;
-use mod_source::layouts::{WireForm, derives, param_names};
+use crate::index::{Found, Index, ItemId, OutsideSeam};
+use mod_source::layouts::{GenericName, Layouts, WireForm, derives, param_names};
 use mod_surface::shape::{ShapeError, Shapes};
 use mod_surface::*;
 use quote::ToTokens;
-use rust::{GameWires, Paths, print};
+use rust::{ExternalTypes, GameWires, Paths, print};
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::path::Path;
 use syn::visit_mut::VisitMut;
 use syn::{Item, Visibility};
-use walk::{attrs, compiled, hidden};
+use walk::{attrs, hidden};
 
 /// The crates whose own `macro_rules!` calls the export expands: the API and the crates its
 /// public items come from.
@@ -312,7 +311,7 @@ pub fn export_with(root: &Path, options: ExportOptions) -> Result<Export, String
 
 fn export_here(root: &Path, options: ExportOptions) -> Result<Export, String> {
     let catalog = Catalog::load(root).map_err(|e| e.to_string())?;
-    let generated = crate::sources(root, crate::FillMode::Require)?;
+    let generated = crate::sources(root)?;
     let included = [
         (crate::host::AREAS_OUTPUT, generated.areas.as_str()),
         ("mod_api_generated.rs", generated.hooks.as_str()),
@@ -367,20 +366,29 @@ fn has_attr(attrs: &[syn::Attribute], name: &str) -> bool {
 struct Writer<'p, 'a> {
     index: &'p mut Index<'a>,
     public: &'p HashMap<ItemId, Vec<String>>,
+    external: &'p ExternalTypes<'p>,
+    item: ItemId,
 }
 
 impl<'a> Writer<'_, 'a> {
-    fn paths(&mut self, module: usize, params: &[String]) -> Paths<'_, 'a> {
+    fn paths(&mut self, module: usize, params: &[GenericName]) -> Paths<'_, 'a> {
         Paths {
             index: self.index,
             public: self.public,
             module,
             params: params.to_vec(),
             refs: BTreeSet::new(),
+            check: Some((self.external, self.item)),
+            aliases: std::collections::HashSet::new(),
         }
     }
 
-    fn ty(&mut self, module: usize, params: &[String], ty: &syn::Type) -> (String, Vec<String>) {
+    fn ty(
+        &mut self,
+        module: usize,
+        params: &[GenericName],
+        ty: &syn::Type,
+    ) -> (String, Vec<String>) {
         let mut ty = ty.clone();
         let mut paths = self.paths(module, params);
         paths.visit_type_mut(&mut ty);
@@ -393,7 +401,7 @@ impl<'a> Writer<'_, 'a> {
     fn path(
         &mut self,
         module: usize,
-        params: &[String],
+        params: &[GenericName],
         path: &syn::Path,
     ) -> (String, Vec<String>) {
         let ty = syn::Type::Path(syn::TypePath {
@@ -406,7 +414,7 @@ impl<'a> Writer<'_, 'a> {
     fn signature(
         &mut self,
         module: usize,
-        params: &[String],
+        params: &[GenericName],
         sig: &syn::Signature,
     ) -> (String, Vec<String>) {
         let mut sig = sig.clone();
@@ -448,7 +456,7 @@ impl<'a> Writer<'_, 'a> {
     fn associated(
         &mut self,
         module: usize,
-        params: &[String],
+        params: &[GenericName],
         item: &syn::TraitItem,
     ) -> Option<(String, AssociatedKind, bool, Vec<String>)> {
         let (mut written, kind, required) = match item {
@@ -492,10 +500,10 @@ fn merge(into: &mut Vec<String>, refs: Vec<String>) {
 }
 
 /// An item's public inherent members: methods and consts of `impl Type` and `impl dyn Trait`
-/// blocks, with the block's module, generic parameter names (and `Self`) and generics text.
+/// blocks, with the block's module and generics.
 struct Inherent {
     module: usize,
-    params: Vec<String>,
+    params: Vec<GenericName>,
     generics: syn::Generics,
     item: syn::ImplItem,
 }
@@ -504,7 +512,7 @@ struct Inherent {
 struct Impls {
     inherent: HashMap<ItemId, Vec<Inherent>>,
     /// The traits implemented for each nameable type, by trait path as written in its module.
-    traits: HashMap<ItemId, Vec<(usize, Vec<String>, syn::Path)>>,
+    traits: HashMap<ItemId, Vec<(usize, Vec<GenericName>, syn::Path)>>,
     /// Impl blocks whose self type the export does not record, by kind.
     skipped: BTreeMap<&'static str, usize>,
     /// Impl blocks and inherent members compiled out of a default native build.
@@ -513,7 +521,7 @@ struct Impls {
 
 fn module_name(index: &Index<'_>, module: usize) -> String {
     let m = &index.modules[module];
-    std::iter::once(m.krate)
+    std::iter::once(m.krate.as_str())
         .chain(m.path.iter().map(String::as_str))
         .collect::<Vec<_>>()
         .join("::")
@@ -534,7 +542,7 @@ fn impls(
         let module_items = index.modules[module].items.clone();
         for item in module_items {
             let Item::Impl(block) = item else { continue };
-            if !compiled(&block.attrs) {
+            if !index.default_build(module, &block.attrs) {
                 out.gated.push(format!(
                     "impl {} in {}: compiled out of a default native build ({}), not recorded",
                     print(block.self_ty.to_token_stream()),
@@ -575,7 +583,7 @@ fn impls(
             if !nameable.contains_key(&owner) {
                 continue;
             }
-            let mut params = param_names(&block.generics);
+            let params = param_names(&block.generics);
             if let Some((_, trait_path, _)) = &block.trait_ {
                 out.traits
                     .entry(owner)
@@ -583,14 +591,16 @@ fn impls(
                     .push((module, params, trait_path.clone()));
                 continue;
             }
-            params.push("Self".into());
             for impl_item in &block.items {
                 let (vis, attrs) = match impl_item {
                     syn::ImplItem::Fn(f) => (&f.vis, &f.attrs),
                     syn::ImplItem::Const(c) => (&c.vis, &c.attrs),
                     _ => continue,
                 };
-                if matches!(vis, Visibility::Public(_)) && !compiled(attrs) && !hidden(attrs) {
+                if matches!(vis, Visibility::Public(_))
+                    && !index.default_build(module, attrs)
+                    && !hidden(attrs)
+                {
                     let name = match impl_item {
                         syn::ImplItem::Fn(f) => f.sig.ident.to_string(),
                         syn::ImplItem::Const(c) => c.ident.to_string(),
@@ -603,7 +613,10 @@ fn impls(
                     ));
                     continue;
                 }
-                if matches!(vis, Visibility::Public(_)) && compiled(attrs) && !hidden(attrs) {
+                if matches!(vis, Visibility::Public(_))
+                    && index.default_build(module, attrs)
+                    && !hidden(attrs)
+                {
                     out.inherent.entry(owner).or_default().push(Inherent {
                         module,
                         params: params.clone(),
@@ -642,7 +655,9 @@ pub(crate) fn build(
 ) -> Result<Export, String> {
     // The facade crate is indexed for this walk only.
     index.add_crate("sunrise_mod_api", "crates/sunrise-mod-api/src");
-    // The API crates' own macro calls, expanded before anything reads their modules.
+    let outside = OutsideSeam::read(root)?;
+    outside.add_to_index(index)?;
+    // The API crates' own macro calls, expanded in the default build before the public walk.
     let mut notes = Vec::new();
     let mut expanded = Vec::new();
     {
@@ -655,16 +670,17 @@ pub(crate) fn build(
     }
     notes.extend(expand::expand_modules(index, &expanded));
     let mut walker = walk::Walker::new(index);
-    let public = walker.public()?;
+    let public = walker.public(&outside)?;
     notes.extend(public.notes.iter().cloned());
     // Inherent items and impls live in any module of the crate that defines the type.
-    let mut crates: BTreeSet<&'static str> = BTreeSet::from(["mod_api", "sunrise_mod_api"]);
+    let mut crates: BTreeSet<String> =
+        BTreeSet::from(["mod_api".to_owned(), "sunrise_mod_api".to_owned()]);
     for id in public.items.keys() {
-        crates.insert(walker.index.modules[id.module].krate);
+        crates.insert(walker.index.modules[id.module].krate.clone());
     }
     let mut modules = Vec::new();
     for krate in crates {
-        modules.extend(walker.all_modules(krate)?);
+        modules.extend(walker.all_modules(&krate)?);
     }
     notes.extend(walker.take_notes());
     let roles = Roles::resolve(index, boundary, &mut notes);
@@ -684,10 +700,7 @@ pub(crate) fn build(
             "{count} impl blocks on {kind}: no record kind for their items"
         ));
     }
-    let mut writer = Writer {
-        index,
-        public: &nameable,
-    };
+    let external = ExternalTypes::new(&outside, &nameable);
     let mut queue: Vec<(ItemId, Vec<String>)> = public
         .items
         .iter()
@@ -718,7 +731,13 @@ pub(crate) fn build(
         let path = path.join("::");
         let paths = public.paths.get(&id).cloned().unwrap_or_default();
         let module = id.module;
-        let item = writer.index.item(id).clone();
+        let item = index.item(id).clone();
+        let mut writer = Writer {
+            index,
+            public: &nameable,
+            external: &external,
+            item: id,
+        };
         let mut named: Vec<String> = Vec::new();
         let owner = match &item {
             Item::Trait(_) => format!("trait:{path}"),
@@ -766,14 +785,22 @@ pub(crate) fn build(
                 record.paths = paths;
                 functions.push(record);
             }
-            Item::Const(constant) => match capability_key(&mut writer, module, &path, constant) {
-                Some(capability) => {
-                    named.extend(capability.contract.refs.iter().cloned());
-                    capabilities.push(capability);
+            Item::Const(constant) => {
+                let (_, refs) = writer.ty(module, &[], &constant.ty);
+                named.extend(refs);
+                match capability_key(&mut writer, module, &path, constant) {
+                    Some(capability) => {
+                        named.extend(capability.contract.refs.iter().cloned());
+                        capabilities.push(capability);
+                    }
+                    None => notes.push(format!("constant {path}: no record kind for constants")),
                 }
-                None => notes.push(format!("constant {path}: no record kind for constants")),
-            },
-            Item::Static(_) => notes.push(format!("static {path}: no record kind for statics")),
+            }
+            Item::Static(static_) => {
+                let (_, refs) = writer.ty(module, &[], &static_.ty);
+                named.extend(refs);
+                notes.push(format!("static {path}: no record kind for statics"));
+            }
             _ => notes.push(format!("{path}: not a kind the surface records")),
         }
         for member in found.inherent.get(&id).into_iter().flatten() {
@@ -828,21 +855,20 @@ pub(crate) fn build(
         }
     }
 
-    let macros = macros(root, writer.index, &public.macros, &mut notes)?;
+    external.finish()?;
+    let macros = macros(root, index, &public.macros, &mut notes)?;
 
     // Shapes, over every type the crossing types contain.
-    let mut layouts = Layouts::new(GameWires {
-        forms: &forms,
-        ids: &nameable,
-    });
+    let mut layouts = Layouts::new(GameWires::new(&forms, &nameable, Some(&external)));
     let keys: Vec<Option<String>> = pending
         .iter()
         .map(|record| {
             (record.contract.wire && record.contract.kind != TypeKind::Alias)
-                .then(|| layouts.key(writer.index, record.item))
+                .then(|| layouts.key(index, record.item))
         })
         .collect();
-    layouts.finish(writer.index);
+    layouts.finish(index);
+    external.finish()?;
     let mut shapes = Shapes::new(&layouts.table);
     let mut types = Vec::new();
     for (record, key) in pending.into_iter().zip(keys) {
@@ -878,11 +904,11 @@ pub(crate) fn build(
         types.push(built);
     }
 
-    let hooks = hook_records(hooks, &types, &mut notes);
-    let parts = part_records(&hooks, &traits, &mut notes);
+    let catalog_hooks = hooks;
+    let hooks = hook_records(catalog_hooks, &types, &mut notes);
+    let parts = part_records(&hooks, catalog_hooks, &traits, &mut notes);
     capabilities.extend(manifest_capabilities(root, &mut notes));
-    let behaviours = behaviours::read(root, &root.join("crates/sunrise-mod-vocab/behaviours"))
-        .map_err(|e| e.to_string())?;
+    let behaviours = behaviours::read(root).map_err(|e| e.to_string())?;
     notes.sort();
     notes.dedup();
     Ok(Export {
@@ -914,8 +940,7 @@ fn trait_record(
     let owner = format!("trait:{path}");
     let role = roles.role(id);
     let (generics, mut refs) = writer.generics(module, &item.generics);
-    let mut params = param_names(&item.generics);
-    params.push("Self".into());
+    let params = param_names(&item.generics);
     let mut bounds = Vec::new();
     for bound in &item.supertraits {
         let mut bound = bound.clone();
@@ -938,7 +963,7 @@ fn trait_record(
         if hidden(attrs) {
             continue;
         }
-        if !compiled(attrs) {
+        if !writer.index.default_build(module, attrs) {
             let name = match member {
                 syn::TraitItem::Fn(f) => f.sig.ident.to_string(),
                 syn::TraitItem::Type(t) => t.ident.to_string(),
@@ -1023,7 +1048,7 @@ fn type_record(
     item_id: ItemId,
     path: &str,
     item: &Item,
-    trait_impls: &[(usize, Vec<String>, syn::Path)],
+    trait_impls: &[(usize, Vec<GenericName>, syn::Path)],
     forms: &HashMap<ItemId, WireForm>,
 ) -> Pending {
     let module = item_id.module;
@@ -1424,7 +1449,7 @@ fn macros(
                 let Some(name) = &mac.ident else { continue };
                 if !has_attr(&mac.attrs, "macro_export")
                     || hidden(&mac.attrs)
-                    || !compiled(&mac.attrs)
+                    || !walker.index.default_build(module, &mac.attrs)
                     || name.to_string().starts_with("__")
                 {
                     continue;
@@ -1488,15 +1513,6 @@ fn hook_records(hooks: &[catalog::Hook], types: &[Type], notes: &mut Vec<String>
                 arguments.push(argument);
             }
         }
-        let snake = |kind: catalog::PartKind| match kind {
-            catalog::PartKind::Block => "block",
-            catalog::PartKind::BlockEntity => "block_entity",
-            catalog::PartKind::Item => "item",
-            catalog::PartKind::Menu => "menu",
-            catalog::PartKind::Effect => "effect",
-            catalog::PartKind::Fluid => "fluid",
-            catalog::PartKind::Entity => "entity",
-        };
         out.push(Hook::new(
             format!("hook:{}", hook.name),
             hook.doc.clone(),
@@ -1516,6 +1532,13 @@ fn hook_records(hooks: &[catalog::Hook], types: &[Type], notes: &mut Vec<String>
                         catalog::PhaseContext::Loop => "loop",
                         catalog::PhaseContext::Worldgen => "worldgen",
                         catalog::PhaseContext::ChunkDisk => "chunk_disk",
+                        catalog::PhaseContext::Config => "config",
+                        catalog::PhaseContext::Reload => "reload",
+                        catalog::PhaseContext::ClientReload => "client_reload",
+                        catalog::PhaseContext::ClientReloadListener => "client_reload_listener",
+                        catalog::PhaseContext::ClientSetup => "client_setup",
+                        catalog::PhaseContext::ClientIdentity => "client_identity",
+                        catalog::PhaseContext::PackDiscovery => "pack_discovery",
                     }
                     .to_owned()
                 }),
@@ -1532,7 +1555,7 @@ fn hook_records(hooks: &[catalog::Hook], types: &[Type], notes: &mut Vec<String>
                     crate::Contract::Replace => HookKind::Replace,
                 },
                 scope: hook.scope.as_ref().map(|scope| Scope {
-                    kind: snake(scope.kind).to_owned(),
+                    kind: part_kind_snake(scope.kind).to_owned(),
                     key: scope.key.clone(),
                 }),
                 cancellable: hook.cancellable,
@@ -1540,6 +1563,7 @@ fn hook_records(hooks: &[catalog::Hook], types: &[Type], notes: &mut Vec<String>
                     match host {
                         catalog::HostAccess::Read => "read",
                         catalog::HostAccess::Level => "level",
+                        catalog::HostAccess::LevelRandomSide => "level_random_side",
                         catalog::HostAccess::Hit => "hit",
                     }
                     .to_owned()
@@ -1555,8 +1579,26 @@ fn hook_records(hooks: &[catalog::Hook], types: &[Type], notes: &mut Vec<String>
     out
 }
 
-/// One Part kind per kind the catalog's scoped hooks name, implemented through `<Kind>Part`.
-fn part_records(hooks: &[Hook], traits: &[Trait], notes: &mut Vec<String>) -> Vec<Part> {
+fn part_kind_snake(kind: catalog::PartKind) -> &'static str {
+    match kind {
+        catalog::PartKind::Block => "block",
+        catalog::PartKind::BlockEntity => "block_entity",
+        catalog::PartKind::Item => "item",
+        catalog::PartKind::Menu => "menu",
+        catalog::PartKind::Effect => "effect",
+        catalog::PartKind::Fluid => "fluid",
+        catalog::PartKind::Entity => "entity",
+    }
+}
+
+/// One Part kind per kind the catalog's scoped or `part`-linked hooks name, implemented through
+/// `<Kind>Part`.
+fn part_records(
+    hooks: &[Hook],
+    catalog_hooks: &[catalog::Hook],
+    traits: &[Trait],
+    notes: &mut Vec<String>,
+) -> Vec<Part> {
     let mut kinds: BTreeMap<String, Vec<String>> = BTreeMap::new();
     for hook in hooks {
         if let Some(scope) = &hook.contract.scope {
@@ -1566,8 +1608,21 @@ fn part_records(hooks: &[Hook], traits: &[Trait], notes: &mut Vec<String>) -> Ve
                 .push(hook.id.clone());
         }
     }
+    for hook in catalog_hooks {
+        if let Some(part_kind) = hook.part {
+            let id = format!("hook:{}", hook.name);
+            let entry = kinds
+                .entry(part_kind_snake(part_kind).to_owned())
+                .or_default();
+            if !entry.contains(&id) {
+                entry.push(id);
+            }
+        }
+    }
     let mut out = Vec::new();
-    for (kind, scoped) in kinds {
+    for (kind, mut scoped) in kinds {
+        scoped.sort();
+        scoped.dedup();
         let name = format!(
             "{}Part",
             heck::ToUpperCamelCase::to_upper_camel_case(kind.as_str())

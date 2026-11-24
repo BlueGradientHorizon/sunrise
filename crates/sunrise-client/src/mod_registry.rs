@@ -174,7 +174,7 @@ pub fn install(
     let _lock = sunrise_mod_package::install_lock::lock_home(home)
         .map_err(|e| format!("cannot lock mod browser in {}: {e}", home.display()))?;
     let mut list = Installed::load(home)?;
-    let ours = list.position(id);
+    let ours = list.single(id)?;
     let old_file = ours.and_then(|i| list.entries[i]["file"].as_str().map(str::to_owned));
     // A missing file does not relinquish the launcher's native pin or change its kind.
     if (ours.is_some() && old_file.as_deref() != Some(relative.as_str()))
@@ -185,6 +185,7 @@ pub fn install(
     {
         return Err("code mods are installed and updated in the launcher".into());
     }
+    list.check_file_claim(home, &relative, id)?;
     if target.exists() && old_file.as_deref() == Some(relative.as_str()) {
         let package = sunrise_mod_package::Package::read(&target)?;
         if package.manifest.native.is_some() {
@@ -208,9 +209,6 @@ pub fn install(
             "a mod with the id {id} is already in {}: move it away first",
             crate::mod_list::DIR
         ));
-    }
-    if let Some(other) = list.taken_by(&relative, id) {
-        return Err(format!("{relative} belongs to {other}: remove it first"));
     }
     let bytes = get(&v.file.url, v.file.size)?;
     let staging = home.join(DOWNLOADS);

@@ -80,7 +80,15 @@ where
 }
 
 /// A native Part cannot be attached to this type during registration.
-#[derive(sunrise_mod_api_macros::Wire, Clone, Debug, PartialEq, Eq)]
+///
+/// This is a process-local registration error, not a `Wire` type.
+///
+/// ```compile_fail,E0277
+/// fn requires_wire<T: mod_api::wire::Wire>() {}
+/// requires_wire::<mod_api::BlockEntityPartError>();
+/// ```
+// no wire: local block-entity Part registration error.
+#[derive(Clone, Debug, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum BlockEntityPartError {
     /// Vanilla entities do not expose a native Part's payload.
@@ -103,13 +111,13 @@ impl fmt::Display for BlockEntityPartError {
             Self::VanillaType { kind } => write!(
                 f,
                 "cannot attach a native block entity Part to vanilla type {}",
-                crate::content::registry_keys::block_entity_type_display_name(*kind)
+                crate::content::registry_keys::block_entity_type_display_name(*kind).as_str()
             ),
             Self::Duplicate { kind, part } => {
                 write!(
                     f,
                     "Part {part} is attached to type {} twice",
-                    crate::content::registry_keys::block_entity_type_display_name(*kind)
+                    crate::content::registry_keys::block_entity_type_display_name(*kind).as_str()
                 )
             }
         }
@@ -155,13 +163,15 @@ impl BlockEntityTypeBuilder<'_> {
 }
 
 impl crate::BlockEntityTypeAddBlocksEvent<'_> {
-    /// Add blocks to one registered type, leaving its factory unchanged.
+    /// Stage valid blocks for one registered type, leaving its factory unchanged.
+    /// The game checks the type and blocks when it freezes the validity table.
     pub fn modify(&mut self, kind: BlockEntityTypeKey, blocks: &[crate::BlockKey]) {
         self.additions
             .extend(blocks.iter().map(|&block| (kind, block)));
     }
 
-    /// Add blocks to every registered type accepted by `predicate`.
+    /// Stage valid blocks for every registered type accepted by `predicate`, in `types` order.
+    /// The game checks the additions when it freezes the validity table.
     pub fn modify_matching(
         &mut self,
         mut predicate: impl FnMut(BlockEntityTypeKey) -> bool,

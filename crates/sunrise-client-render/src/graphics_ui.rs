@@ -1322,6 +1322,31 @@ fn parts(item: Item, s: &Settings, out: &EffectiveOutput) -> (String, Option<Str
     shell::name_and_value(&item.label(s, out).plain())
 }
 
+/// Render distances up to this one get no memory hint; vanilla's slider stops at 32.
+const MEMORY_HINT_ABOVE: i32 = 48;
+/// Section mesh bytes per loaded column, from one world (#3299's capture: 13.4 GiB for 52,653 columns at 128).
+const MESH_BYTES_PER_COLUMN: f64 = 256.0 * 1024.0;
+
+/// About how many GB (10^9 bytes) of section meshes a render distance keeps; none up to `MEMORY_HINT_ABOVE`.
+fn render_distance_mesh_gb(distance: i32) -> Option<f64> {
+    if distance <= MEMORY_HINT_ABOVE {
+        return None;
+    }
+    // Vanilla's ChunkTrackingView keeps the columns within distance + 1 of the centre's.
+    let columns = std::f64::consts::PI * f64::from(distance + 1).powi(2);
+    Some(columns * MESH_BYTES_PER_COLUMN / 1e9)
+}
+
+/// What a render distance past `MEMORY_HINT_ABOVE` can cost in memory, and what to use instead.
+fn render_distance_memory(distance: i32) -> Option<Text> {
+    render_distance_mesh_gb(distance).map(|gb| {
+        Text::tr(
+            "sunrise.options.renderDistance.memory",
+            &[&format!("{gb:.1}")],
+        )
+    })
+}
+
 /// A setting's row: its control, what it does (and what its chosen value does), what it costs,
 /// and why it can't be used now.
 fn row(setting: Setting, s: &Settings, out: &EffectiveOutput) -> Row<Item> {
@@ -1337,9 +1362,14 @@ fn row(setting: Setting, s: &Settings, out: &EffectiveOutput) -> Row<Item> {
         _ => value.map_or(Value::Press, Value::Choice),
     };
     let about = lang::get(setting.text);
-    let chosen = lang::get(description(item, s, out, setting.text));
+    let chosen = match item {
+        Item::Vanilla(Opt::RenderDistance) => {
+            render_distance_memory(s.render_distance).map(|t| t.plain())
+        }
+        _ => Some(lang::get(description(item, s, out, setting.text))).filter(|c| *c != about),
+    };
     Row {
-        chosen: (chosen != about).then_some(chosen),
+        chosen,
         ..Row::new(item, name, value)
             .about(about)
             .cost(setting.cost)
@@ -1556,6 +1586,33 @@ mod tests {
     pub(super) const DRAGGED: Output = Output::Event(Event::SliderDrag);
     /// A renderer whose destination offers nothing and whose display reports nothing.
     pub(super) const NONE: EffectiveOutput = EffectiveOutput::NONE;
+
+    #[test]
+    fn render_distance_row_gives_its_memory_past_48_only() {
+        let setting = v(
+            Opt::RenderDistance,
+            Cost::High,
+            "Full-detail terrain range.",
+        );
+        let mut s = Settings {
+            render_distance: 32,
+            ..Settings::default()
+        };
+        assert_eq!(super::row(setting, &s, &NONE).chosen, None);
+        s.render_distance = 128;
+        let (shown, _) = lang::scoped(lang::Language::load(&[], "en_us"), || {
+            super::row(setting, &s, &NONE).chosen.unwrap()
+        });
+        assert!(shown.contains("about 13.7 GB"), "{shown}");
+    }
+
+    #[test]
+    fn render_distance_memory_estimate_matches_a_measured_world() {
+        assert_eq!(render_distance_mesh_gb(48), None);
+        // #3299's capture at distance 128: the section buffer arena held 13.4 GiB, 14.4 GB.
+        let at_128 = render_distance_mesh_gb(128).unwrap();
+        assert!((13.0..15.5).contains(&at_128), "{at_128}");
+    }
 
     pub(super) type Ui = Shell<GraphicsScreen>;
     pub(super) fn ui() -> Ui {
@@ -1910,23 +1967,24 @@ mod tests {
         let item = Item::Vanilla(Opt::AttackIndicator);
         let r = row(&mut ui, &s, item);
         let before = format!("{s:?}");
-        let outputs = ui.wheel(&mut s, SIZE, (r[0] + 4.0, r[1] + 4.0), -1.0);
+        let (handled, outputs) = ui.wheel(&mut s, SIZE, (r[0] + 4.0, r[1] + 4.0), -1.0);
+        assert!(handled);
         assert_eq!(format!("{s:?}"), before, "the hovered value stays put");
         assert!(outputs.is_empty());
 
         s.extras.wheel_cycles_settings = true;
         let r = row(&mut ui, &s, item);
         let before = format!("{s:?}");
-        let outputs = ui.wheel(&mut s, SIZE, (r[0] + 4.0, r[1] + 4.0), -1.0);
+        let (handled, outputs) = ui.wheel(&mut s, SIZE, (r[0] + 4.0, r[1] + 4.0), -1.0);
+        assert!(handled);
         assert_ne!(format!("{s:?}"), before, "the hovered value steps");
         assert_eq!(outputs, [CLICK, CHANGED]);
         // A tick box leaves it to scroll the list.
         let vsync = row(&mut ui, &s, Item::Vanilla(Opt::Vsync));
         let before = s.vsync;
-        assert!(
-            ui.wheel(&mut s, SIZE, (vsync[0] + 4.0, vsync[1] + 4.0), -1.0)
-                .is_empty()
-        );
+        let (handled, outputs) = ui.wheel(&mut s, SIZE, (vsync[0] + 4.0, vsync[1] + 4.0), -1.0);
+        assert!(handled);
+        assert!(outputs.is_empty());
         assert_eq!(s.vsync, before);
     }
 

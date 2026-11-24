@@ -436,41 +436,37 @@ CI lints the same build. `sunrise-server` runs `sunrise-engine` when it is besid
 and copy `target/release/sunrise-client` as `sunrise-engine`. macOS and Windows have no such libraries to
 avoid, so they keep the one archive.
 
-**Game files: the owner's own copy, as with `prepare`.** Nothing of Mojang's is redistributed and nothing is
-downloaded on the owner's behalf. `sunrise-server` looks for prepared resources in this order:
+**Game files.** Sunrise redistributes no Mojang files or data derived from them. `sunrise-server` looks for
+prepared resources in this order:
 
-1. `[engine] resources` in `server.toml`;
+1. `[engine] resources` in `server.toml`, which `init --resources DIR` can set;
 2. `resources/` in the server folder;
-3. `.local/sunrise-client/26.3` beside the engine or up to four folders above it: a release folder, the
-   installer's `game-files` (below), or a checkout.
+3. the server-only profile in `game-files/sunrise-client/26.3-server`, then the full `26.3` profile. It checks
+   the server folder, the installer's shared `game-files` and release or checkout paths by the engine (including
+   `.local/sunrise-client`).
 
-If none is found, `init` says where it looked. Today the owner runs `sunrise-prepare --prepare --server-jar
-PATH` from the release folder (it needs a JDK and the client files, as for playing), or copies a folder
-prepared on their own computer to the server (`scp -r`). Planned wrappers:
+If no folder is found, `init` runs `sunrise-prepare --server` after the EULA answer. It downloads the pinned
+free `server.jar` from Mojang, checks SHA-1 and prepares only server data. If needed, a release can download
+Mojang's Java runtime, with files checked against the runtime manifest. Use `init --server-jar PATH` to pass
+an existing, pinned jar. Client files do not enter this preparation; only the launcher downloads those for a
+signed-in account that owns Minecraft.
 
-- **On this machine:** `sunrise-server prepare --server-jar PATH` runs `sunrise-prepare` on the owner's own
-  server jar plus their launcher install.
-- **Prepared elsewhere:** `sunrise-server import-resources DIR` copies a folder prepared on the owner's own
-  computer, for example by the launcher, to a headless machine. It first checks the folder: `sunrise-resources.json`
-  is there and names Minecraft 26.3, the derived files match their checksums, and the font and texture folders
-  aren't empty; otherwise it lists what is wrong and changes nothing. It copies next to the destination and
-  renames the copy in, so a failure partway keeps the old copy. The destination is the first place the server
-  reads: `[engine] resources` when set, else `resources/` in the server folder when it exists or the server
-  wasn't installed by `install.sh`, else the installer's `game-files/sunrise-client/26.3` (where the release's
-  `.local/sunrise-client` points). It ends by saying to start or restart the server.
-
-A server-only `prepare` (from `server.jar` alone, without the client jar or a JDK) is the follow-up that
-removes the last Java step. It needs a list of which prepared files the server really reads, and that list
-comes out of the headless-engine work.
+For offline setup, prepare on another computer and use `sunrise-server import-resources DIR` to copy the
+folder into place. It checks the version and files first, stages a copy next to the destination and preserves
+the previous copy on failure. The font and texture folders are required only for a full preparation. The
+destination is `[engine] resources` if specified, otherwise the server folder's `resources/` (or the
+installer's shared game files if `resources/` doesn't exist).
 
 **One-command install** (`packaging/server/`):
 
 - Linux and macOS:
-  `curl -fsSL https://raw.githubusercontent.com/horizon-rust/horizon/main/packaging/server/install.sh | sh`
+  `curl -fsSL https://raw.githubusercontent.com/sunrise-org/sunrise/main/packaging/server/install.sh | sh`
   The script picks the release archive for the OS and architecture (on Linux x86_64 the server archive,
   on macOS arm64 the game's), downloads it from GitHub Releases, and checks it against the release's signed
-  `SHA256SUMS` when OpenSSL 3 is installed, else against the SHA-256 GitHub publishes for each asset
-  (docs/security.md). It never asks for sudo. Options: `--version vX.Y.Z`, `--dir` (default
+  `SHA256SUMS` with `sunrise-verify`, which it downloads and accepts only with the SHA-256 pinned in the script;
+  it refuses the install on any failure (docs/security.md, "The first install"). It installs the Nightly unless
+  told otherwise. It never asks for sudo. Options: `--version` (a release's tag: a stable one such as `26.3-0.1.0`
+  puts the server on that stable line), `--dir` (default
   `~/.local/share/sunrise`), `--bin` (default `~/.local/bin`), and `--archive FILE` to install an archive
   already on the machine (a build of your own; no download and no checksum).
   A Linux release from before the server archive installs the full game, which links ALSA's and udev's
@@ -479,10 +475,10 @@ comes out of the headless-engine work.
   any that are missing, `init` warns, and `run` stops at once with what to install, rather than restarting
   a game that can't load.
 - Windows:
-  `irm https://raw.githubusercontent.com/horizon-rust/horizon/main/packaging/server/install.ps1 | iex`
-  The script does the same into `%LOCALAPPDATA%\Sunrise` (`-Version`, `-Dir`), with junctions instead of
-  links (no admin rights), and adds `bin` to the user's PATH. It finds OpenSSL 3 on the PATH or in Git for
-  Windows to check the signature.
+  `irm https://raw.githubusercontent.com/sunrise-org/sunrise/main/packaging/server/install.ps1 | iex`
+  The script does the same into `%LOCALAPPDATA%\Sunrise` (`-Version <tag>`, such as `-Version 26.3-0.1.0` for a
+  stable line, and `-Dir`), with junctions instead of links (no admin rights), and adds `bin` to the user's PATH. It
+  checks the signature with the pinned `sunrise-verify` the same way.
 - **Layout.** Each release goes to `<dir>/releases/<tag>` and `<dir>/current` points at the one in use, so an
   update or a rollback is one link. `<bin>/sunrise-server` and `<bin>/sunrise-prepare` are two-line launchers
   that run `current`. The prepared game files live in `<dir>/game-files/sunrise-client` and each release's
@@ -518,7 +514,7 @@ the container exits and says why. `docker stop` sends SIGTERM, which saves and s
 3. **Port.** 25565 by default, checked free right away.
 4. **Players.** It asks whether to use a whitelist (yes by default, as vanilla) and who to add first, then
    offers to make the first player an operator.
-5. **Game files.** It finds or explains the prepared resources (see above).
+5. **Game files.** It uses existing prepared resources or downloads and prepares the server-only profile.
 6. It writes `server.toml`, shows the panel address and the commands to start it in the background
    (`sunrise-server start`) or as a service.
 
@@ -617,16 +613,17 @@ sunrise-server import <server.properties>
 sunrise-server config [--json]           config set KEY=VALUE... [--json]
 sunrise-server service install|uninstall|print [--system]
 sunrise-server panel                     the panel's address and a one-time login link
-sunrise-server update [--check [--json]] [--version vX.Y.Z] [--timeout S]     rollback [--timeout S]
+sunrise-server update [--check [--json]] [--version TAG] [--timeout S]     rollback [--timeout S]
 sunrise-server update --archive FILE --version NAME     an archive you have (your own build)
 sunrise-server mcp                       MCP server on stdio (section 8)
 sunrise-server import-resources <dir>    copy game files prepared elsewhere into place (checked first)
 
-Planned:
-sunrise-server prepare --server-jar PATH
 ```
 
 - Every command takes `--dir` (the server folder; default: the current folder).
+- Managed game files are prepared on setup or startup when missing or stale. For explicitly configured files,
+  use the profile-specific [re-prepare command](hosting.md#2-prepare-the-game-files); full output v7 must be
+  re-prepared for the current game.
 - While the server runs, management commands go through the control API, so the engine applies them as
   vanilla's console would and its lists stay right. While it's stopped, `op`, `deop`, `whitelist`, `ban`,
   `pardon`, `ban-ip` and `pardon-ip` edit the vanilla files directly with the same code the engine uses
@@ -705,11 +702,14 @@ runtime or new dependency. Server-sent events can replace the polling later if a
   newer release a minute after it starts and then every 6 hours, and only says so, in its log, in `status`
   and in the panel (`SUNRISE_NO_UPDATE_CHECK=1` turns the check off). `update --check` asks GitHub once.
   `update`:
-  1. downloads the current Nightly's archive for this computer (the only build Sunrise ships since 2026-10-28;
-     GitHub's latest release while there is none; on Linux the server build; `--version` picks another: a
-     `vX.Y.Z` release, or a `nightly-<date>` of the last 7 days) and checks it against its SHA256SUMS, whose Ed25519
+  1. downloads the newest build of the server's channel for this computer: on a stable release (`26.3-0.1.0`), the
+     newest published stable release of its line (the same Minecraft version and Sunrise major, `26.3-0.x`: never
+     a Nightly, whose mod API may differ, nor the next major, which a server moves to with `--version`); on any
+     other build, the current Nightly (GitHub's latest release while there is none). On Linux it takes the server
+     build. `--version` picks another: a stable release's tag, a `vX.Y.Z` release, or a `nightly-<date>` of the
+     last 7 days; a Dev build (`dev-<date>-<commit>`) is refused. It checks the archive against its SHA256SUMS, whose Ed25519
      signature must check with a key built into `sunrise-server` (docs/release-flow.md, "Signed checksums"),
-     signed for the Nightly channel: an unsigned or tampered build is refused. A Nightly installs as
+     signed for the Nightly's own version or the stable release's tag: an unsigned or tampered build is refused. A Nightly installs as
      `nightly-<date>-<commit>`, newer than every `vX.Y.Z`; another build of the same day is an update too;
   2. unpacks it into `<dir>/releases/<tag>`, beside the others, with its game files linked to
      `<dir>/game-files` as the installers do;
@@ -974,7 +974,6 @@ machine, then published in `benchmarks/`; and item 5.
 
 - the Nether and End for remote players;
 - the headless engine and its RAM win;
-- a server-only prepare without a JDK;
 - a Windows service, hot reload, modpacks in the panel;
 
 Online mode works, so a public server can check accounts. An offline server should still run only on a

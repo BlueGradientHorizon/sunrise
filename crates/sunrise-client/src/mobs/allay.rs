@@ -11,6 +11,7 @@ use super::{
 use crate::health::DamageLevel;
 use crate::items::ItemStack;
 use crate::sculk::{self, Context, Info};
+use std::ops::ControlFlow;
 use sunrise_core::geometry::trig::Mth;
 use sunrise_core::geometry::{Aabb, Vec3};
 use sunrise_protocol::entity_data::PositionSource;
@@ -506,10 +507,9 @@ pub(super) fn travel(
     input: Vec3,
     events: &mut Vec<MobEvent>,
     pause: bool,
-) -> Result<bool, super::living::TravelTrample> {
+) -> ControlFlow<super::living::TravelPause> {
     let speed = m.ai.speed;
-    m.travel_flying_speeds(w, level, input, events, 0.02, 0.02, speed, pause)?;
-    Ok(true)
+    m.travel_flying_speeds(w, level, input, events, 0.02, 0.02, speed, pause)
 }
 /// `Allay.aiStep` / `tick`: pause the Brain's memory clocks, not passive work.
 pub fn ai_step(m: &mut Mob, w: &MobWorld) {

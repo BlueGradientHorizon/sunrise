@@ -10,6 +10,7 @@ pub trait Hooks {
     /// Only `Success` predicts a swing; the client host allows reads and local effects.
     /// A disabled owner's subscribed interaction passes without running the block template.
     #[hook(
+        dispatch = "flat",
         side = "both",
         version = 2,
         contract = "replace",
@@ -19,5 +20,9 @@ pub trait Hooks {
         key = "state",
         neoforge = "none (vanilla BlockBehaviour.useWithoutItem; PlayerInteractEvent.RightClickBlock cancels or answers before it)"
     )]
-    fn use_without_item();
+    fn use_without_item(
+        state: BlockState,
+        click: &BlockClick<'_>,
+        answer: &mut Option<mod_api::InteractionResult>,
+    );
 }

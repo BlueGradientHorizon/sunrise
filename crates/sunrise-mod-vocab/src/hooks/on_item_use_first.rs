@@ -9,6 +9,7 @@ pub trait Hooks {
     /// `Success` swings on the client. A client answer changes prediction,
     /// not the authoritative request; its host allows reads and local effects.
     #[hook(
+        dispatch = "flat",
         side = "both",
         version = 2,
         contract = "replace",
@@ -17,5 +18,9 @@ pub trait Hooks {
         key = "stack",
         neoforge = "IItemExtension.onItemUseFirst"
     )]
-    fn on_item_use_first();
+    fn on_item_use_first(
+        stack: &mod_api::ItemStack,
+        click: &BlockClick<'_>,
+        answer: &mut Option<mod_api::InteractionResult>,
+    );
 }
