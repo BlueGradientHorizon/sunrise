@@ -27,26 +27,24 @@ struct Listen {
 
 #[mod_api::__subscriptions]
 impl Hooks for Listen {
-    fn entity_tick_listened(&self, _: HostSide<'_>, event: &mut mod_api::EntityTickListenedEvent) {
-        event.listened = true;
-    }
-
-    fn entity_tick_pre(&self, _: HostSide<'_>, event: &mut mod_api::EntityTickPreEvent<'_>) {
+    fn entity_tick_pre(
+        &self,
+        _: HostSide<'_>,
+        event: &mut mod_api::EntityTickPreEvent<'_>,
+    ) -> mod_api::Flow {
         let cancel = self.cancel.lock().unwrap();
         let mut heard = self.heard.lock().unwrap();
-        for (&id, kind) in event.entities.iter().zip(event.kinds.iter()) {
-            heard.push(("pre", id, (*kind).to_owned()));
-            if cancel.contains(&id) {
-                event.canceled.push(id);
-            }
+        heard.push(("pre", event.entity, event.kind.to_owned()));
+        if cancel.contains(&event.entity) {
+            mod_api::Flow::Cancel
+        } else {
+            mod_api::Flow::Continue
         }
     }
 
     fn entity_tick_post(&self, _: HostSide<'_>, event: &mut mod_api::EntityTickPostEvent<'_>) {
         let mut heard = self.heard.lock().unwrap();
-        for (&id, kind) in event.entities.iter().zip(event.kinds.iter()) {
-            heard.push(("post", id, (*kind).to_owned()));
-        }
+        heard.push(("post", event.entity, event.kind.to_owned()));
     }
 }
 
