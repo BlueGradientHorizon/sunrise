@@ -427,7 +427,7 @@ impl Game<'_> {
                     .native_entity_target(player.entity())
                     .ok_or(Unavailable)?;
                 let here = match target {
-                    Target::Player => true,
+                    Target::Player => self.acting_in_level_in_place(),
                     Target::Guest(conn) => self
                         .lan
                         .as_ref()
