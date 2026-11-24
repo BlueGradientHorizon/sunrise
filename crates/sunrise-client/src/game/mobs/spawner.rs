@@ -2,11 +2,8 @@
 //! `clientTick` for every spawner (`mobs::spawner`), the mobs they add, a
 //! spawn egg used on one (`SpawnEggItem.useOn`), their events and the mob
 //! spinning inside (`SpawnerRenderer`).
-use super::{
-    Game,
-    creatures::{Finalized, SpawnReason},
-};
-use std::collections::{HashMap, HashSet};
+use super::{Game, creatures::SpawnReason, persist::SpawnTree};
+use std::collections::HashMap;
 use sunrise_client::{
     Result,
     containers::BlockEntity,
@@ -33,14 +30,12 @@ pub(super) enum Planned {
     Finalized(Mob, Option<Tag>),
     /// A mob loaded from the spawn data (with its passengers) and its
     /// `equipment`; the provisional id its events carry.
-    Loaded(Tag, Option<Tag>, u32),
+    Loaded(SpawnTree, Option<Tag>, u32),
 }
 
 /// What the spawner code keeps between ticks.
 #[derive(Default)]
 pub(super) struct SpawnerState {
-    /// Every entity type id (`EntityType.byString`), read once.
-    entity_types: Option<HashSet<String>>,
     /// The mob shown in each spawner and the id it was made for
     /// (`getOrCreateDisplayEntity`).
     displays: HashMap<Pos, (String, Mob)>,
@@ -49,35 +44,14 @@ pub(super) struct SpawnerState {
 impl Game<'_> {
     /// `EntityType.byString`: the type is in the registry.
     pub(super) fn entity_type_exists(&self, id: &str) -> bool {
-        self.spawners
-            .entity_types
-            .as_ref()
-            .is_some_and(|t| t.contains(id))
+        self.res
+            .rest
+            .get()
+            .is_some_and(|rest| rest.spawner_types.contains_key(id))
     }
     /// Whether `entity_type_exists` has a registry to answer from.
     pub(super) fn entity_types_loaded(&self) -> bool {
-        self.spawners
-            .entity_types
-            .as_ref()
-            .is_some_and(|t| !t.is_empty())
-    }
-    pub(super) fn load_entity_types(&mut self) {
-        if self.spawners.entity_types.is_some() {
-            return;
-        }
-        let path = self.options.resources.join("entity-types.json");
-        let types = std::fs::read(path)
-            .ok()
-            .and_then(|b| serde_json::from_slice::<serde_json::Value>(&b).ok())
-            .and_then(|v| {
-                v.as_object().map(|o| {
-                    o.keys()
-                        .map(|k| sunrise_client::command::args::normalize(k))
-                        .collect()
-                })
-            })
-            .unwrap_or_default();
-        self.spawners.entity_types = Some(types);
+        self.res.rest.get().is_some()
     }
     /// The server tick of the spawner at `key`. Its client tick comes after
     /// every block entity's (`client_tick_spawners`).
@@ -189,14 +163,14 @@ impl Game<'_> {
         let _save_lease = sunrise_client::join_seq::visibility::PassLease::enter();
         let mut finalized: Vec<Mob> = Vec::new();
         let mut gears: Vec<Option<Tag>> = Vec::new();
-        let mut loads: Vec<(Tag, Option<Tag>, u32)> = Vec::new();
+        let mut loads = Vec::new();
         for plan in planned {
             match plan {
                 Planned::Finalized(mob, equipment) => {
                     finalized.push(mob);
                     gears.push(equipment);
                 }
-                Planned::Loaded(tag, equipment, key) => loads.push((tag, equipment, key)),
+                Planned::Loaded(tree, equipment, key) => loads.push((tree, equipment, key)),
             }
         }
         // Real ids for finalizeSpawn's provisional mobs, in spawn order, the
@@ -218,19 +192,18 @@ impl Game<'_> {
             self.mobs.push(mob);
             self.native_mobs_joined(i, false);
         }
-        for (tag, equipment, key) in loads {
-            if let Some(id) = self.load_mob(tag, None) {
-                // `nextSpawnData.getEquipment().ifPresent(mob::equip)`.
-                if let Some(table) = equipment {
-                    self.equip_from_table(id, &table);
-                }
-                ids.insert(key, id);
+        for (tree, equipment, key) in loads {
+            let id = tree.install(self);
+            // `nextSpawnData.getEquipment().ifPresent(mob::equip)`.
+            if let Some(table) = equipment {
+                self.equip_from_table(id, &table);
             }
+            ids.insert(key, id);
         }
         ids
     }
     /// The spawner's `loadEntityRecursive` and `tryAddFreshEntityWithPassengers`:
-    /// the mob it will add (created after the tick) and its box.
+    /// make the accepted mobs visible to the next attempt before the tick inserts them.
     pub(super) fn plan_spawner_mob(
         &self,
         l: &super::natural_spawning::GameLevel,
@@ -242,40 +215,38 @@ impl Game<'_> {
         let kind = self.res.mob_types().get(r.id)?.clone();
         let [x, y, z] = r.position;
         let at = Vec3::new(x, y, z);
-        let (bounds, key) = if r.finalize {
+        let reason = if r.trial {
+            SpawnReason::TrialSpawner
+        } else {
+            SpawnReason::Spawner
+        };
+        let key = if r.finalize {
             // The mob a listened position check created, else a new one.
             let mut mob = l
                 .take_checked(r.id, r.position, r.yaw)
                 .unwrap_or_else(|| Mob::new(l.provisional_id(), kind, at, r.yaw));
-            let reason = if r.trial {
-                SpawnReason::TrialSpawner
-            } else {
-                SpawnReason::Spawner
-            };
-            // TrialSpawner.spawnMob: setPersistenceRequired.
-            mob.persistent = r.trial;
             let mut group = None;
-            match self.finalize_spawn_event(&mut mob, reason, source, &mut group) {
-                (Finalized::Cancelled, _) => return None,
-                (outcome, difficulty) => {
-                    if outcome == Finalized::Done {
-                        let mut level = super::natural_spawning::PassLevel::new(l);
-                        let mut cx = sunrise_client::mobs::finalize::Ctx {
-                            level: &mut level,
-                            random,
-                            difficulty,
-                            created: Vec::new(),
-                            jockey_rider: None,
-                        };
-                        sunrise_client::mobs::finalize::finalize(&mut cx, &mut mob, reason, group);
-                        for m in cx.created {
-                            let bounds = m.bounds();
-                            l.pending.borrow_mut().push(bounds);
-                            l.pending_ids.borrow_mut().push((m.kind.id.clone(), bounds));
-                            l.spawned.borrow_mut().push(m);
-                        }
-                    }
+            let (event, difficulty) =
+                self.finalize_spawn_event(&mut mob, reason, source, &mut group);
+            if !event.skip_initialization {
+                let mut level = super::natural_spawning::PassLevel::new(l);
+                let mut cx = sunrise_client::mobs::finalize::Ctx {
+                    level: &mut level,
+                    random,
+                    difficulty,
+                    created: Vec::new(),
+                    jockey_rider: None,
+                };
+                sunrise_client::mobs::finalize::finalize(&mut cx, &mut mob, reason, group);
+                for m in cx.created {
+                    l.record_pending(&m);
+                    l.spawned.borrow_mut().push(m);
                 }
+            }
+            // TrialSpawner.spawnMob sets persistence after finalization.
+            mob.persistent |= r.trial;
+            if event.veto_admission {
+                return None;
             }
             // Shulker.finalizeSpawn faces it south.
             if mob.species() == sunrise_client::mobs::Species::Shulker {
@@ -286,55 +257,45 @@ impl Game<'_> {
                 mob.head_yaw = 0.0;
                 mob.previous_head_yaw = 0.0;
             }
-            let bounds = mob.bounds();
+            l.record_pending(&mob);
             let key = mob.id;
             planned.push(Planned::Finalized(mob, r.equipment.cloned()));
-            (bounds, key)
+            key
         } else {
-            // A UUID already in the level is refused.
-            let mut tag = r.entity.clone();
-            if let Some(uuid) = sunrise_client::entity_nbt::uuid(&Tag::Compound(tag.clone()))
-                && self.persist.uuids.values().any(|u| *u == uuid)
-            {
+            let mut tree = l
+                .take_checked_tree()
+                .or_else(|| self.decode_spawner_tree(r.entity, r.position, r.yaw))?;
+            let mob = tree.root_mob()?;
+            // NeoForge posts FinalizeSpawnEvent even when configuration skips Mob.finalizeSpawn.
+            let (event, _) = self.finalize_spawn_event(mob, reason, source, &mut None);
+            mob.persistent |= r.trial;
+            if event.veto_admission {
                 return None;
             }
-            let double = |v: f64| Tag::Double(v.to_bits());
-            tag.insert(
-                "Pos".into(),
-                Tag::List(vec![double(x), double(y), double(z)]),
-            );
-            tag.insert(
-                "Rotation".into(),
-                Tag::List(vec![
-                    Tag::Float(r.yaw.to_bits()),
-                    Tag::Float(0f32.to_bits()),
-                ]),
-            );
-            if r.trial {
-                tag.insert("PersistenceRequired".into(), Tag::Byte(1));
+            if !l.admit_pending_tree(&mut tree) {
+                return None;
             }
-            let mut tag = Tag::Compound(tag);
-            // EntityType.loadEntityRecursive applies the spawner's placement
-            // callback to every passenger as well as the root.
-            super::commands::place_summoned(&mut tag, r.position);
-            let mob = sunrise_client::entity_nbt::mob_from_nbt(
-                &tag,
-                self.res.mob_types(),
-                0,
-                Some(self.pack.assets.registry),
-            )?;
-            let bounds = mob.bounds();
             let key = l.provisional_id();
-            planned.push(Planned::Loaded(tag, r.equipment.cloned(), key));
-            (bounds, key)
+            planned.push(Planned::Loaded(tree, r.equipment.cloned(), key));
+            key
         };
-        l.pending.borrow_mut().push(bounds);
-        l.pending_ids.borrow_mut().push((r.id.to_owned(), bounds));
-        Some(SpawnerAdded {
-            id: key,
-            bounds,
-            mob: true,
-        })
+        Some(SpawnerAdded { id: key, mob: true })
+    }
+    pub(super) fn decode_spawner_tree(
+        &self,
+        entity: &sunrise_core::nbt::Compound,
+        position: [f64; 3],
+        yaw: f32,
+    ) -> Option<SpawnTree> {
+        let mut tag = entity.clone();
+        tag.insert(
+            "Rotation".into(),
+            Tag::List(vec![Tag::Float(yaw.to_bits()), Tag::Float(0f32.to_bits())]),
+        );
+        let mut tag = Tag::Compound(tag);
+        // EntityType.loadEntityRecursive runs the placement callback for every member.
+        super::commands::place_summoned(&mut tag, position);
+        SpawnTree::decode(self, tag)
     }
     /// What a spawner's tick or a spawn egg did, shown and sent.
     fn apply_spawner_events(

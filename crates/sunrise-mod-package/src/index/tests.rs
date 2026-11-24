@@ -365,7 +365,7 @@ fn refuses_broken_indexes() {
     assert!(e.contains("https"), "{e}");
     // A local test registry may list files on disk; the published one may not.
     let local = text.replace(
-        "https://github.com/horizon-rust/horizon-mods/releases/download/coords_hud-0.1.0/",
+        "https://github.com/sunrise-org/sunrise-mods/releases/download/coords_hud-0.1.0/",
         "file:///tmp/",
     );
     let published = Index::parse(&local).unwrap();
@@ -797,4 +797,21 @@ fn installing_a_native_mod_checks_its_runtime_files_against_the_manifest() {
     assert_eq!(facts.unwrap().id.as_deref(), Some("ruby"));
     let error = refused.unwrap_err();
     assert!(error.contains("runtime/nav.bin"), "{error}");
+}
+
+#[test]
+fn a_stable_tag_is_only_its_canonical_form() {
+    assert_eq!(stable_tag("26.3-0.1.0"), Some(("26.3", 0)));
+    assert_eq!(stable_tag("26.3.1-1.2.0"), Some(("26.3.1", 1)));
+    for tag in [
+        "026.3-0.1.0",
+        "26.03-0.1.0",
+        "26.3.1.2-0.1.0",
+        "26-0.1.0",
+        "26.3-0.1.0-rc.1",
+        "26.3-0.1",
+        "26.3-0.1.0+build",
+    ] {
+        assert_eq!(stable_tag(tag), None, "{tag}");
+    }
 }

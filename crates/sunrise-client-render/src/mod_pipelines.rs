@@ -11,21 +11,153 @@ use mod_api::{
     Identifier, PipelineBlend, PipelineTexture, PipelineTextureError, RenderPipeline,
     RenderPipelineError, RenderPipelineRef, WorldDepth,
 };
+use std::collections::{BTreeMap, HashSet};
+use std::path::Path;
 use std::sync::OnceLock;
 use sunrise_shader_api::mod_pipeline::{FOLDER, compose_with};
 
 static REGISTERED: OnceLock<Vec<RenderPipeline>> = OnceLock::new();
 
-/// Publish the mods' registrations once at startup, as `register_render_pipelines` left them:
-/// each id once, in a namespace its mod owns. A pipeline's place in the list is its slot.
-pub fn register(pipelines: Vec<RenderPipeline>) {
-    if REGISTERED.set(pipelines).is_err() {
-        log::warn!("Render pipelines already registered; keeping the first list");
+/// The built-in tables exported by `RenderPipelines.requiredPipelines` and `optionalPipelines`.
+#[derive(serde::Deserialize)]
+struct VanillaPipelines {
+    required: HashSet<String>,
+    optional: HashSet<String>,
+}
+
+#[derive(Debug)]
+pub enum RegistrationError {
+    Read {
+        path: std::path::PathBuf,
+        error: std::io::Error,
+    },
+    Parse {
+        path: std::path::PathBuf,
+        error: serde_json::Error,
+    },
+    InvalidIdTable(std::path::PathBuf),
+    VanillaCollision {
+        owner: String,
+        id: Identifier,
+        optional: bool,
+    },
+    DuplicateModId {
+        earlier: String,
+        owner: String,
+        id: Identifier,
+    },
+    AlreadyPublished,
+}
+
+impl std::fmt::Display for RegistrationError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("register_render_pipelines: ")?;
+        match self {
+            Self::Read { path, error } => write!(
+                f,
+                "could not read {}: {error}; prepare the client resources again",
+                path.display()
+            ),
+            Self::Parse { path, error } => write!(
+                f,
+                "invalid {}: {error}; prepare the client resources again",
+                path.display()
+            ),
+            Self::InvalidIdTable(path) => write!(
+                f,
+                "invalid pipeline ID table in {}; prepare the client resources again",
+                path.display()
+            ),
+            Self::VanillaCollision {
+                owner,
+                id,
+                optional,
+            } => {
+                let kind = if *optional { "optional" } else { "required" };
+                write!(
+                    f,
+                    "mod {owner}: {kind} pipeline {id} collides with vanilla {kind} pipeline"
+                )
+            }
+            Self::DuplicateModId { earlier, owner, id } => write!(
+                f,
+                "mod {owner}: pipeline {id} collides with earlier registration from mod {earlier}"
+            ),
+            Self::AlreadyPublished => f.write_str("pipeline registrations were already published"),
+        }
     }
 }
 
+impl std::error::Error for RegistrationError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Read { error, .. } => Some(error),
+            Self::Parse { error, .. } => Some(error),
+            _ => None,
+        }
+    }
+}
+
+/// Validate and publish the mods' registrations once at startup, as `register_render_pipelines`
+/// left them: each ID at most once and never colliding with vanilla's same-kind table.
+/// A pipeline's place in the list is its slot.
+pub fn register(
+    pipelines: Vec<RenderPipeline>,
+    vanilla_root: &Path,
+) -> Result<(), RegistrationError> {
+    if pipelines.is_empty() {
+        return Ok(());
+    }
+    let path = vanilla_root.join("render-pipelines.json");
+    let bytes = std::fs::read(&path).map_err(|error| RegistrationError::Read {
+        path: path.clone(),
+        error,
+    })?;
+    let vanilla: VanillaPipelines =
+        serde_json::from_slice(&bytes).map_err(|error| RegistrationError::Parse {
+            path: path.clone(),
+            error,
+        })?;
+    if [&vanilla.required, &vanilla.optional]
+        .into_iter()
+        .any(|ids| {
+            ids.is_empty()
+                || ids
+                    .iter()
+                    .any(|id| Identifier::parse_namespaced(id).is_none())
+        })
+    {
+        return Err(RegistrationError::InvalidIdTable(path));
+    }
+    let mut seen = BTreeMap::new();
+    for pipeline in &pipelines {
+        let table = if pipeline.optional {
+            &vanilla.optional
+        } else {
+            &vanilla.required
+        };
+        if table.contains(&pipeline.id.to_string()) {
+            return Err(RegistrationError::VanillaCollision {
+                owner: pipeline.owner().to_owned(),
+                id: pipeline.id.clone(),
+                optional: pipeline.optional,
+            });
+        }
+        if let Some(earlier) = seen.insert(&pipeline.id, pipeline.owner()) {
+            return Err(RegistrationError::DuplicateModId {
+                earlier: earlier.to_owned(),
+                owner: pipeline.owner().to_owned(),
+                id: pipeline.id.clone(),
+            });
+        }
+    }
+    REGISTERED
+        .set(pipelines)
+        .map_err(|_| RegistrationError::AlreadyPublished)
+}
+
 /// The registered pipelines; none until registration publishes them.
-fn registered() -> &'static [RenderPipeline] {
+pub fn registered() -> &'static [RenderPipeline] {
     REGISTERED.get().map_or(&[], Vec::as_slice)
 }
 
@@ -58,7 +190,7 @@ pub enum BuiltTexture {
 /// load refused has no shader here and resolves to [`RenderPipelineError::Invalid`].
 #[derive(Clone, Debug, Default)]
 pub struct Pipelines {
-    ids: Vec<Identifier>,
+    keys: Vec<Identifier>,
     built: Vec<Option<Built>>,
     /// The render assets' generation this set was loaded for; 0 for none.
     generation: u64,
@@ -147,7 +279,7 @@ impl Pipelines {
             return Err(required.join("; "));
         }
         Ok(Self {
-            ids: registered.iter().map(|p| p.id.clone()).collect(),
+            keys: registered.iter().map(|p| p.id.clone()).collect(),
             built,
             generation,
             invalid: Default::default(),
@@ -185,7 +317,7 @@ impl Pipelines {
     /// The handle of the registered pipeline `id` in this load.
     pub fn resolve(&self, id: &Identifier) -> Result<RenderPipelineRef, RenderPipelineError> {
         let slot = self
-            .ids
+            .keys
             .iter()
             .position(|registered| registered == id)
             .ok_or(RenderPipelineError::Unknown)?;

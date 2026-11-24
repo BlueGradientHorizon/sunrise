@@ -28,16 +28,17 @@ otherwise, aren't saved, as for `chunk_unload`. On a client (the window's own in
 it fires when the server forgets a chunk or the view moves away from it, while the chunk is still there.
 
 It fires once per block entity per unload and never for a vanilla block entity. It does not fire when the world
-closes (that moment has `world_lifecycle`), nor on a client when its whole level goes (a respawn, a
+closes (those moments have `level_unload`, `server_stopping`, and `server_stopped`), nor on a client when its whole level goes (a respawn, a
 dimension change, leaving the server). The chunk-wide notice stays `chunk_unload`, a server hook: on a server
 it is told after the chunk's block entities, and a client is told of them alone. A chunk unload with no part
 subscribed costs one check."##]
     #[hook(
+        dispatch = "flat",
         side = "both",
         contract = "listen",
         scope = "block_entity",
         key = "entity",
         neoforge = "IBlockEntityExtension.onChunkUnloaded"
     )]
-    fn on_chunk_unloaded();
+    fn on_chunk_unloaded(pos: [i32; 3], block_entity: BlockEntityRef, entity: &ModBlockEntity);
 }

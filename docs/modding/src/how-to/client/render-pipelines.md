@@ -1,9 +1,10 @@
 # Drawing with your own render pipeline
 
 Draw world quads with your own fragment shader. Register a `RenderPipeline`, resolve
-its handle, and submit quads through a `WorldDrawContext`. This is the restricted
-counterpart of NeoForge's `RegisterRenderPipelinesEvent`: you supply the fragment
-stage; the game fixes the vertex stage, primitive type and bindings.
+its handle, and submit quads through a `WorldDrawContext` (in `submit_custom_geometry` or
+a debug renderer). This is the restricted counterpart of NeoForge's
+`RegisterRenderPipelinesEvent`: you supply the fragment stage; the game fixes the vertex
+stage, primitive type and bindings.
 
 ## 1. Write the shader
 
@@ -38,13 +39,18 @@ indexings (`a + b + c + ...`), is refused by name: split a long sum over several
 
 ## 2. Register the pipeline
 
+Call `event.register(pipeline)` in `register_render_pipelines` at client startup.
+The event adds declarations in order and does not expose earlier registrations.
+Resource reloads rebuild the registered pipelines from the current shader files;
+they do not call the registration hook again.
+
 ```rust,ignore
 fn register_render_pipelines(
     &self,
     _context: &RegistrationContext,
     event: &mut RegisterRenderPipelinesEvent<'_>,
 ) {
-    event.pipelines.push(RenderPipeline::new(
+    event.register(RenderPipeline::new(
         Identifier::parse("example:glow").unwrap(), // the pipeline's id
         Identifier::parse("example:glow").unwrap(), // assets/example/shaders/pipeline/glow.wgsl
         PipelineBlend::Additive,
@@ -57,8 +63,10 @@ fn register_render_pipelines(
 scaled by its alpha. `WorldDepth::Tested` hides the quads behind nearer world surfaces, and
 `ThroughWalls` draws them over everything. No pipeline writes depth.
 
-The id must be in a namespace your mod owns (or in a content package it serves via `served_by`). There is no per-mod pipeline count cap. A registration
-with an unowned namespace or a duplicate id is logged with the mod's id and dropped.
+Any valid `Identifier` is accepted. Use a unique ID for every mod pipeline, regardless of its
+required or optional policy. A mod ID collision fails startup. Collisions with vanilla are checked
+in the corresponding required or optional table. If startup reports missing or invalid
+`render-pipelines.json`, prepare the client resources again.
 
 ### Required or optional
 
@@ -66,15 +74,21 @@ A pipeline is required unless you register it with `.optional()`, as NeoForge's 
 and `registerOptionalPipeline` are:
 
 ```rust,ignore
-event.pipelines.push(
+event.register(
     RenderPipeline::new(id, fragment, PipelineBlend::Translucent, WorldDepth::Tested).optional(),
 );
 ```
 
 | Policy | When a resource load cannot build it |
 | --- | --- |
-| Required (`RenderPipeline::new`) | The load fails with a message naming each required pipeline and why. At startup the game does not start. A resource reload fails and keeps the previous resources, so handles from before it still draw; then, as vanilla does with any failed reload, the selected resource packs are dropped and the reload runs again. |
+| Required (`RenderPipeline::new`) | The load fails with a message naming each required pipeline and why. Startup cannot finish with a broken required pipeline. A failed resource reload keeps the previous resources, so handles from before it still draw. |
 | Optional (`.optional()`) | The log has one line naming the pipeline and why. It resolves to `RenderPipelineError::Invalid`, and every other pipeline builds and draws. |
+
+Client resource pack recovery only runs if an optional pack was selected. It clears and saves the
+failing selection before reloading the required packs and mod content. If recovery fails, the
+error is reported and that selection stays cleared. If the player has already committed a newer
+selection during startup, the queued load uses it instead. Create World's data-pack editor is
+unaffected.
 
 A load cannot build a pipeline when its shader file is missing, the file is refused, or the GPU
 rejects the shader. The game never panics over a pipeline's shader.
@@ -111,9 +125,12 @@ not translate:
 ## 3. Resolve and draw
 
 ```rust,ignore
-fn client_setup(&self, host: &dyn ClientHost, _event: &mut ClientSetupEvent<'_>) {
+fn client_setup(&self, context: &mut dyn ClientSetupContext, _event: &mut ClientSetupEvent<'_>) {
     let id = Identifier::parse("example:glow").unwrap();
-    *self.glow.lock().unwrap() = host.render_assets().render_pipeline(&id).ok();
+    *self.glow.lock().unwrap() = context
+        .render_assets()
+        .render_pipeline(&id)
+        .ok();
 }
 
 fn submit_custom_geometry(&self, _host: &dyn ClientHost, event: &mut SubmitCustomGeometryEvent<'_>) {
@@ -134,25 +151,22 @@ reload answers `Stale`.
 | `RenderPipelineError::Unknown` | No mod registered that id. |
 | `RenderPipelineError::Invalid` | The pipeline is optional and its shader file is missing, was refused or was rejected by the GPU. The log has a line `render pipeline <id> from mod <owner> refused: <file>: <reason>`, with the file's line number for a syntax or type error, or `render pipeline <id> from mod <owner> refused by the GPU: <reason>`. |
 | `RenderPipelineError::Stale` | The handle is from before a resource reload. |
-| `PipelineDrawError::NonFinite` | A corner or texture coordinate is not finite, or a camera-relative coordinate overflows `f32`. |
-| `PipelineDrawError::CapacityExceeded` | The view's 4,096 quads, shared with `WorldDrawContext::quads`, are used up. |
 
-A refused batch draws nothing. An `Invalid` pipeline never stops the game from starting; a required
-pipeline that cannot be built does.
+`pipeline_quads` returns `PipelineDrawError::Pipeline(...)` when the handle is invalid or stale, drawing nothing for that call. Any quad with a non-finite corner, camera-relative `f32` overflow, or non-finite texture coordinate is ignored while the valid quads in the batch still draw, and quad storage grows dynamically into the GPU buffers without a 4,096 cap. An `Invalid` pipeline never stops the game from starting; a required pipeline that cannot be built does.
 
 ## What a pipeline draws, and when
 
-`pipeline_quads` works wherever a `WorldDrawContext` is given: `submit_custom_geometry` and each
-`render_level_stage`. Within a stage, pipeline quads draw after that stage's plain quads and
-lines, in the order submitted. Under a shader pack they follow the plain quads: a stage the pack
-draws itself is drawn with the next stage the game reaches.
+`WorldDrawContext::pipeline_quads` in `submit_custom_geometry` or a debug renderer submits quads
+for the deferred world pass. Quads with non-finite coordinates or UVs are skipped individually
+without rejecting valid quads in the same slice; accepted pipeline quads draw after the pass's
+plain quads and lines, in submission order.
 
 ## Sampling a texture
 
 A pipeline can sample one texture (vanilla's `Sampler0`). Name it when you register the pipeline:
 
 ```rust,ignore
-event.pipelines.push(
+event.register(
     RenderPipeline::new(id.clone(), id, PipelineBlend::Additive, WorldDepth::Tested)
         .textured(PipelineTexture::Sprite(Identifier::parse("example:block/charge").unwrap())),
 );
@@ -160,10 +174,9 @@ event.pipelines.push(
 
 `PipelineTexture::Sprite(id)` names a sprite of the block or item atlas by its texture id:
 `example:block/charge` is `assets/example/textures/block/charge.png` as the `minecraft:blocks`
-atlas holds it, `minecraft:item/diamond` an item sprite. An animated sprite animates. A pipeline
-always samples a rectangle of the atlas, never a texture of its own. A texture file of your mod's
-own, packed into the runtime atlas's slot pool (#4438) and drawn the same way, follows once that
-pool exists.
+atlas holds it, and `minecraft:item/diamond` names an item sprite. Animated sprites keep their
+animation. A textured pipeline samples a rectangle of the atlas; it does not sample a standalone
+texture file.
 
 The shader then has one more function:
 
@@ -189,7 +202,6 @@ cause and resolves to `Invalid`:
 | --- | --- |
 | `NoSuchSprite` | Neither the block nor the item atlas has the sprite (`… refused by the GPU: its texture sprite <name>: NoSuchSprite: …`) |
 | `NotASpriteKey` | The id names a file (a `textures/` path or a `.png` name), not a sprite key |
-| `NoSuchTextureFile`, `OverCap`, `Undecodable`, `NoSlot` | Texture files, once the slot pool exists: missing, over 1024 x 1024, not an image, or no slot within the mod's budget of 16 images and 4 MiB |
 
 A pipeline without `.textured(…)` has no `pipeline_texture`: its file is refused with a note
 naming `RenderPipeline::textured`.

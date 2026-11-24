@@ -3,8 +3,7 @@
 //! use `/waypoint_set` to place a cyan marker. The most recent death appears in red after respawn.
 use mod_api::{
     ClientHost, ClientTickPostEvent, CommandEvent, ConfigFileError, ConfigPath, Flow, Hooks,
-    ModEntry, RegisterClientCommandsEvent, RenderLevelStage, RenderLevelStageEvent, WorldDepth,
-    WorldLine,
+    ModEntry, RegisterClientCommandsEvent, SubmitCustomGeometryEvent, WorldDepth, WorldLine,
 };
 use std::sync::Mutex;
 
@@ -59,7 +58,7 @@ impl Hooks for Waypoints {
         if let Some((path, position)) = host
             .client_session()
             .client_server()
-            .and_then(|server| waypoint_path(&server.save_folder?, host.dimension()))
+            .and_then(|server| waypoint_path(server.save_folder?, host.dimension()))
             .zip(host.local_player().and_then(|player| {
                 player
                     .entity()
@@ -85,7 +84,7 @@ impl Hooks for Waypoints {
         let path = host
             .client_session()
             .client_server()
-            .and_then(|server| waypoint_path(&server.save_folder?, dimension));
+            .and_then(|server| waypoint_path(server.save_folder?, dimension));
         let mut markers = self.0.lock().unwrap();
         if markers.path != path {
             markers.manual = path.as_ref().and_then(|path| read_waypoint(host, path));
@@ -109,10 +108,11 @@ impl Hooks for Waypoints {
         *self.0.lock().unwrap() = Markers::default();
     }
 
-    fn render_level_stage(&self, _: &dyn ClientHost, event: &mut RenderLevelStageEvent<'_>) {
-        if event.stage != RenderLevelStage::AfterLevel {
-            return;
-        }
+    fn submit_custom_geometry(
+        &self,
+        _: &dyn ClientHost,
+        event: &mut SubmitCustomGeometryEvent<'_>,
+    ) {
         let markers = self.0.lock().unwrap();
         for (point, color) in [(markers.manual, 0xff00ffff), (markers.death, 0xffff3030)] {
             if let Some([x, y, z]) = point {

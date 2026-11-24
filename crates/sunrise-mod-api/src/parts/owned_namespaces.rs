@@ -37,6 +37,7 @@ impl PartRegistrar {
 mod tests {
     use super::*;
     use crate::*;
+    use mod_vocab::__private::game::RegistrationContextNew;
 
     fn with_porter(f: impl FnOnce()) {
         crate::load_state::with_test_package_inventory(
@@ -53,30 +54,30 @@ mod tests {
     }
 
     /// A Press whose state has no codec: kept for the session by a native mod.
-    struct Session;
+    struct Session(AttachmentKey<u32>);
     #[mod_api::sunrise_part]
     impl BlockPart for Session {}
     #[mod_api::sunrise_part]
     impl BlockEntityPart for Session {}
-    static SESSION: AttachmentType<u32> = AttachmentType {
-        namespace: "porter",
-        name: "session",
-        default: || 0,
-        codec: None,
-        copy_on_death: false,
-        sync: false,
-    };
     impl BlockEntityPartState for Session {
         type Data = u32;
-        const DATA: &'static AttachmentType<u32> = &SESSION;
+        fn state_key(&self) -> &AttachmentKey<u32> {
+            &self.0
+        }
     }
     struct DeclaresSession;
     #[mod_api::__subscriptions]
     impl Hooks for DeclaresSession {
         fn register(&self, r: &mut dyn Registrar, _: &RegistrationContext) {
-            r.register_attachment_type("porter:session", false).unwrap();
+            let session = r
+                .register_attachment_type(crate::AttachmentDescriptor::new(
+                    "porter:session",
+                    || 0_u32,
+                ))
+                .unwrap();
             let kind = r.block_entity_type("press").blocks(&[]).build();
-            let _ = r.block_entity_part_with_state(&kind, Session);
+            r.block_entity_part_with_state(&kind, Session(session))
+                .unwrap();
         }
     }
 
@@ -94,48 +95,59 @@ mod tests {
     }
 
     #[test]
-    fn part_state_keys_allow_foreign_uses_with_one_type_each() {
-        const fn key<T>(namespace: &'static str, default: fn() -> T) -> AttachmentType<T> {
-            AttachmentType {
-                namespace,
-                name: "progress",
-                default,
-                codec: None,
-                copy_on_death: false,
-                sync: false,
+    fn part_state_keys_use_owned_namespaces_and_refuse_stale_keys() {
+        struct Checks(AttachmentKey<i64>);
+        #[mod_api::__subscriptions]
+        impl Hooks for Checks {
+            fn register(&self, r: &mut dyn Registrar, _: &RegistrationContext) {
+                let legacy_key = r
+                    .register_attachment_type(AttachmentDescriptor::new("legacy:progress", || {
+                        0_u32
+                    }))
+                    .unwrap();
+                let primary_key = r
+                    .register_attachment_type(AttachmentDescriptor::new("porter:progress", || {
+                        0_u32
+                    }))
+                    .unwrap();
+                let progress = PartStateDeclaration::of(&legacy_key);
+                assert_eq!(
+                    r.declare_block_entity_part_state("porter::Press", progress.clone()),
+                    Ok(())
+                );
+                assert_eq!(
+                    r.declare_block_entity_part_state("porter::Press", progress),
+                    Ok(()),
+                    "one key, one type, two parts"
+                );
+                let stale = PartStateDeclaration::of(&self.0);
+                assert_eq!(
+                    r.declare_block_entity_part_state("porter::Press", stale.clone()),
+                    Err(stale.refused("porter::Press", PartStateRefusal::StaleKey))
+                );
+                assert_eq!(
+                    r.declare_block_entity_part_state(
+                        "porter::Press",
+                        PartStateDeclaration::of(&primary_key),
+                    ),
+                    Ok(())
+                );
             }
         }
         with_porter(|| {
-            let mut r = PartRegistrar::new("porter");
-            let declare = |r: &mut PartRegistrar, declaration| {
-                r.declare_block_entity_part_state("porter::Press", declaration)
-            };
-            let progress = PartStateDeclaration::of(&key("legacy", || 0_u32));
-            assert_eq!(declare(&mut r, progress), Ok(()));
-            assert_eq!(
-                declare(&mut r, progress),
-                Ok(()),
-                "one key, one type, two parts"
-            );
-            let wider = PartStateDeclaration::of(&key("legacy", || 0_i64));
-            assert_eq!(
-                declare(&mut r, wider),
-                Err(wider.refused(
-                    "porter::Press",
-                    PartStateRefusal::Incompatible { declared: "u32" }
-                ))
-            );
-            assert_eq!(
-                declare(
-                    &mut r,
-                    PartStateDeclaration::of(&key("minecraft", || 0_u32))
-                ),
-                Ok(())
+            let stale_key = crate::testing::registered_attachment_fixture(
+                "porter",
+                AttachmentDescriptor::new("legacy:progress", || 0_i64),
+            )
+            .1;
+            let r = super::super::register_all(
+                &[ModEntry::new("porter", Box::new(Checks(stale_key)))],
+                |_| false,
             );
             assert_eq!(
                 r.refused.len(),
                 1,
-                "the incompatible layout is the registration refusal"
+                "the stale key is the registration refusal"
             );
             assert!(r.refused[0].contains("legacy:progress"));
         });
@@ -264,11 +276,62 @@ mod tests {
         crate::testing::with_mods(vec![ModEntry::new("late", Box::new(Late))].into(), || {
             let mut blocks = Vec::new();
             // Call the engine dispatcher out of phase; a mod cannot retain the event.
-            crate::dispatch_blocks(&RegistrationContext::new(), &mut |block| {
-                blocks.push(block);
-                Ok(())
+            crate::dispatch_blocks(&RegistrationContext::new(), &mut |listen| {
+                assert!(listen(&mut |block| {
+                    blocks.push(block);
+                    Ok(())
+                }));
             });
             assert!(blocks.is_empty());
+        });
+    }
+
+    #[test]
+    fn panicking_block_declaration_drops_its_batch_and_is_skipped_next_time() {
+        struct Declares(bool);
+        #[crate::__subscriptions]
+        impl Hooks for Declares {
+            fn blocks(&self, _: &RegistrationContext, event: &mut BlocksEvent<'_>) {
+                event
+                    .register(Block::new("stone_variant", "minecraft:stone"))
+                    .unwrap();
+                if self.0 {
+                    panic!("declare then panic");
+                }
+            }
+        }
+        let mods = vec![
+            ModEntry::new("broken", Box::new(Declares(true))),
+            ModEntry::new("later", Box::new(Declares(false))),
+        ]
+        .into();
+        crate::testing::with_mods(mods, || {
+            let _registration = crate::__private::RegistrationGuard::open();
+            let context = RegistrationContext::new();
+            for expected in [[false, true].as_slice(), [true].as_slice()] {
+                let mut outcomes = Vec::new();
+                let mut published = Vec::new();
+                crate::dispatch_blocks(&context, &mut |listen| {
+                    let mut pending = Vec::new();
+                    let completed = listen(&mut |declaration| {
+                        pending.push(declaration.answer.id);
+                        Ok(())
+                    });
+                    outcomes.push(completed);
+                    if completed {
+                        published.extend(pending);
+                    }
+                });
+                assert_eq!(outcomes, expected);
+                assert_eq!(published, ["later:stone_variant"]);
+            }
+            assert_eq!(
+                mod_vocab::__private::take_hook_panics(),
+                [mod_vocab::__private::HookPanicReport {
+                    mod_id: "broken",
+                    hook: "blocks",
+                }]
+            );
         });
     }
 
@@ -308,18 +371,21 @@ mod tests {
         let mods: Mods = vec![ModEntry::new("porter", Box::new(Declares))].into();
         crate::testing::with_mods(mods, || {
             with_porter(|| {
-                let _registration =
-                    crate::__private::PhaseOwner::scope(crate::__private::ModPhase::Registration);
+                let _registration = crate::__private::RegistrationGuard::open();
                 let context = RegistrationContext::new();
                 let mut blocks = Vec::new();
                 let mut items = Vec::new();
-                crate::dispatch_blocks(&context, &mut |block| {
-                    blocks.push(block);
-                    Ok(())
+                crate::dispatch_blocks(&context, &mut |listen| {
+                    assert!(listen(&mut |block| {
+                        blocks.push(block);
+                        Ok(())
+                    }));
                 });
-                crate::dispatch_items(&context, &mut |item| {
-                    items.push(item);
-                    Ok(())
+                crate::dispatch_items(&context, &mut |listen| {
+                    assert!(listen(&mut |item| {
+                        items.push(item);
+                        Ok(())
+                    }));
                 });
                 assert_eq!(blocks.len(), 1);
                 assert_eq!(blocks[0].mod_id, "porter");
@@ -467,19 +533,6 @@ mod tests {
                 "runes_extra:infusing",
             );
             let book = host.recipe_book_type("runes:book").unwrap();
-            let screen = crate::Screen {
-                width: 176.0,
-                height: 166.0,
-                slots: vec![
-                    Some(crate::ScreenSlot {
-                        position: [8.0, 8.0],
-                        ..Default::default()
-                    });
-                    3
-                ],
-                recipe_book: Some(book.clone()),
-                ..Default::default()
-            };
             host.menu_recipe_book(
                 "runes:altar",
                 &book,
@@ -489,7 +542,6 @@ mod tests {
                     fuel: 1,
                     result: 2,
                 },
-                screen,
             )
             .unwrap();
             assert!(host.refused.is_empty(), "{:?}", host.refused);
@@ -509,18 +561,21 @@ mod tests {
             ]
             .into();
             crate::testing::with_mods(mods, || {
-                let _registration =
-                    crate::__private::PhaseOwner::scope(crate::__private::ModPhase::Registration);
+                let _registration = crate::__private::RegistrationGuard::open();
                 let context = RegistrationContext::new();
                 let mut blocks = Vec::new();
                 let mut items = Vec::new();
-                crate::dispatch_blocks(&context, &mut |block| {
-                    blocks.push(block);
-                    Ok(())
+                crate::dispatch_blocks(&context, &mut |listen| {
+                    assert!(listen(&mut |block| {
+                        blocks.push(block);
+                        Ok(())
+                    }));
                 });
-                crate::dispatch_items(&context, &mut |item| {
-                    items.push(item);
-                    Ok(())
+                crate::dispatch_items(&context, &mut |listen| {
+                    assert!(listen(&mut |item| {
+                        items.push(item);
+                        Ok(())
+                    }));
                 });
                 assert_eq!(
                     blocks

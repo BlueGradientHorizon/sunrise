@@ -216,7 +216,7 @@ impl Game<'_> {
         sunrise_client::mobs::living::teleports::set_pos(m, Vec3::new(x, high[1] - offset, z));
         m.velocity = Vec3::ZERO;
         m.fall_distance = 0.0;
-        m.on_ground = false;
+        m.ground.on_ground = false;
         m.extra.passenger = true;
         m.ai.nav.stop();
         true
@@ -393,11 +393,10 @@ mod tests {
     #[ignore = "daily"]
     fn an_unload_save_ejects_a_mob_riding_a_player() {
         ejected(|game, _| {
-            let chunk =
-                game.world.chunks.get(&(0, 0)).cloned().unwrap_or_else(|| {
-                    std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0))
-                });
-            game.unload_entities(&[chunk]);
+            let keys = [(0, 0)].into_iter().collect();
+            let (records, _) = game.unloading_entity_snapshots(&keys);
+            game.save.save_entities_later(records).unwrap();
+            game.remove_unloading_entities(&keys);
         });
     }
 
@@ -433,7 +432,7 @@ mod tests {
     #[ignore = "daily"]
     fn a_dimension_change_ejects_a_mob_riding_the_player() {
         ejected(|game, conn| {
-            game.start_server_trip(conn, super::super::Dim::Nether, None, false);
+            game.start_server_trip(conn, super::super::Dim::Nether, None);
         });
     }
 

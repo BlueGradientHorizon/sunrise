@@ -3,7 +3,7 @@
 use super::guest::{Guest, SavedBody};
 use crate::{
     items::ItemStack,
-    save::{Level, put, read_dat, uuid_from_tag, uuid_tag, write_dat},
+    save::{Level, put, read_dat, read_doubles, uuid_from_tag, uuid_tag, write_dat},
 };
 use std::{
     path::{Path, PathBuf},
@@ -74,16 +74,51 @@ pub fn with_warden(guest: &mut Guest, tracker: Option<Tag>) -> &mut Guest {
     guest
 }
 
-/// `PlayerDataStorage.load`: a guest's saved state, if they have been here
-/// before. The player's file, else its `.dat_old` (what a save cut off
-/// between its two renames leaves, `write_dat`).
+/// `PlayerDataStorage.load`: the player's file, else its `.dat_old` (what a
+/// save cut off between its two renames leaves).
+fn read_saved(world: &Path, uuid: u128) -> Option<Tag> {
+    let file = path(world, uuid);
+    let mut tag = read_dat(&file).or_else(|| read_dat(&file.with_extension("dat_old")))?;
+    crate::save::adopt_horizon_player(&mut tag);
+    Some(tag)
+}
+
+/// `ServerPlayer.SavedPosition`: each field can be absent independently.
+#[derive(Default)]
+pub struct SavedPosition {
+    pub dimension: Option<String>,
+    pub position: Option<[f64; 3]>,
+    pub rotation: Option<[f32; 2]>,
+}
+
+/// `PrepareSpawnTask.start` reads only the saved position, dimension and rotation.
+pub fn saved_position(world: &Path, uuid: u128, owner: Option<&Level>) -> SavedPosition {
+    let loaded;
+    let tag = if let Some(level) = owner.filter(|l| l.singleplayer_file) {
+        level.player_extra.as_ref()
+    } else {
+        loaded = read_saved(world, uuid);
+        loaded
+            .as_ref()
+            .or_else(|| owner.and_then(|l| l.player_extra.as_ref()))
+    };
+    let Some(tag) = tag else {
+        return SavedPosition::default();
+    };
+    SavedPosition {
+        dimension: match tag.get("Dimension") {
+            Some(Tag::String(id)) => Some(id.to_string_lossy()),
+            _ => None,
+        },
+        position: read_doubles(tag.get("Pos")),
+        rotation: read_doubles::<2>(tag.get("Rotation")).map(|r| r.map(|v| v as f32)),
+    }
+}
+
 pub fn load(guest: &mut Guest, world: &Path) -> bool {
-    let file = path(world, guest.uuid);
-    let Some(mut tag) = read_dat(&file).or_else(|| read_dat(&file.with_extension("dat_old")))
-    else {
+    let Some(tag) = read_saved(world, guest.uuid) else {
         return false;
     };
-    crate::save::adopt_horizon_player(&mut tag);
     let mut level = Level {
         health: 20.0,
         food: 20,
@@ -119,21 +154,30 @@ pub fn load_owner(guest: &mut Guest, world: &Path, saved: Option<&Level>) -> boo
 }
 
 /// Save the world's single-player owner: its state into `level` (`store`),
-/// then to the file level.dat names, which it loads ([`load_owner`]), and to
-/// its own file, so that the one it loads is never the older of the two.
-pub fn save_owner(guest: &Guest, level: &mut Level, world: &Path, items: &crate::items::Items) {
+/// then to its own file, which level.dat names and [`load_owner`] reads.
+/// Returns whether the player file was replaced; world metadata is saved separately.
+pub fn save_owner(
+    guest: &Guest,
+    level: &mut Level,
+    world: &Path,
+    items: &crate::items::Items,
+) -> bool {
     // `MinecraftServer.saveAllChunks`: `saveDataTag(worldData, getSingleplayerProfile().id())`
     // — the server's own profile on every save, never the stale `singleplayer_uuid` a
     // world arrived with (a Realms download, a server world). The player file written is
     // then the owner's own, not another player's the world happened to name.
-    level.player_uuid = Some(uuid_ints(guest.uuid));
-    store(guest, level, None);
-    // `saveDataTag`: level.dat carries the profile the player file is named after, so the
-    // file the owner loads next is the one just written.
-    if let Err(e) = level.write(world, items) {
-        log::warn!("Sunrise: the owner's playerdata is not saved: {e}");
+    if let Err(error) = try_store(guest, level, None) {
+        log::error!("Sunrise: the owner's playerdata is not saved: {error}");
+        return false;
     }
-    save(guest, world, items);
+    level.player_uuid = Some(uuid_ints(guest.uuid));
+    match level.write_player(world, items) {
+        Ok(()) => true,
+        Err(e) => {
+            log::warn!("Sunrise: the owner's playerdata is not saved: {e}");
+            false
+        }
+    }
 }
 
 /// Move a world that older Sunrise builds named by the offline profile to the account's
@@ -351,20 +395,39 @@ pub fn apply(guest: &mut Guest, level: &Level) {
 
 /// The shared player compound for logout and autosave snapshots, and for
 /// `player-export`'s record (`arrivals::export_record`).
-pub fn player_tag(guest: &Guest, items: &crate::items::Items) -> Tag {
+pub fn try_player_tag(
+    guest: &Guest,
+    items: &crate::items::Items,
+) -> Result<Tag, sunrise_mod_runtime::attachments::AttachmentEncodeError> {
     let mut level = Level {
         player_uuid: Some(uuid_ints(guest.uuid)),
         ..Level::default()
     };
-    store(guest, &mut level, None);
-    level.player_tag(items)
+    try_store(guest, &mut level, None)?;
+    Ok(level.player_tag(items))
 }
 
-/// Save a leaving guest, including its saved vehicle tree.
-pub fn save(guest: &Guest, world: &Path, items: &crate::items::Items) {
+/// The shared player compound for tests and callers whose attachments are known to encode.
+pub fn player_tag(guest: &Guest, items: &crate::items::Items) -> Tag {
+    try_player_tag(guest, items).expect("player attachments encode cleanly")
+}
+
+/// Save a leaving guest, including its saved vehicle tree. Returns whether the file was replaced.
+pub fn save(guest: &Guest, world: &Path, items: &crate::items::Items) -> bool {
     let file = path(world, guest.uuid);
-    if let Err(e) = write_dat(&file, player_tag(guest, items)) {
-        log::warn!("Sunrise: {} is not saved: {e}", file.display());
+    let tag = match try_player_tag(guest, items) {
+        Ok(tag) => tag,
+        Err(error) => {
+            log::error!("Sunrise: {} is not saved: {error}", file.display());
+            return false;
+        }
+    };
+    match write_dat(&file, tag) {
+        Ok(()) => true,
+        Err(e) => {
+            log::warn!("Sunrise: {} is not saved: {e}", file.display());
+            false
+        }
     }
 }
 
@@ -372,7 +435,9 @@ pub fn save(guest: &Guest, world: &Path, items: &crate::items::Items) {
 /// point (`player-confirm`) answers only once it is.
 pub fn save_now(guest: &Guest, world: &Path, items: &crate::items::Items) -> Result<(), String> {
     let file = path(world, guest.uuid);
-    crate::save::write_dat_durable(&file, player_tag(guest, items))
+    let tag = try_player_tag(guest, items)
+        .map_err(|error| format!("{} is not saved: {error}", file.display()))?;
+    crate::save::write_dat_durable(&file, tag)
         .map_err(|e| format!("{} is not saved: {e}", file.display()))
 }
 
@@ -417,11 +482,19 @@ pub struct Autosaves {
 
 impl Autosaves {
     pub fn enqueue(&mut self, guest: &Guest, world: &Path, items: &crate::items::Items) {
+        let file = path(world, guest.uuid);
+        let tag = match try_player_tag(guest, items) {
+            Ok(tag) => tag,
+            Err(error) => {
+                log::error!("Sunrise: {} is not saved: {error}", file.display());
+                return;
+            }
+        };
         let snapshot = Snapshot {
             uuid: guest.uuid,
             name: guest.name.clone(),
-            file: path(world, guest.uuid),
-            tag: player_tag(guest, items),
+            file,
+            tag,
         };
         if self.writer.is_none() {
             let (send, receive) = std::sync::mpsc::channel::<Snapshot>();
@@ -465,18 +538,6 @@ impl Autosaves {
                 self.error = Some(error);
             }
         }
-    }
-
-    /// Serialize a newer logout snapshot after every queued autosave.
-    pub fn save_after(
-        &mut self,
-        guest: &Guest,
-        world: &Path,
-        items: &crate::items::Items,
-    ) -> Vec<SavedPlayer> {
-        let saved = self.completed(true);
-        save(guest, world, items);
-        saved
     }
 
     /// Drain completions on the tick thread; `wait` is the durability barrier
@@ -536,7 +597,24 @@ impl Drop for Autosaves {
 
 /// Put a guest's state in `level`'s player fields; `vehicle` is the
 /// RootVehicle compound of the ride (`ServerPlayer.saveParentVehicle`).
-pub fn store(guest: &Guest, level: &mut Level, vehicle: Option<Tag>) {
+/// Refuses the update without modifying `level` if any persistent attachment fails to encode.
+pub fn try_store(
+    guest: &Guest,
+    level: &mut Level,
+    vehicle: Option<Tag>,
+) -> Result<(), sunrise_mod_runtime::attachments::AttachmentEncodeError> {
+    let encoded_attachments = if attachment_compound(
+        guest
+            .saved
+            .as_ref()
+            .and_then(|tag| tag.get(ATTACHMENTS_KEY)),
+    )
+    .is_ok()
+    {
+        Some(guest.attachments.try_to_nbt()?)
+    } else {
+        None
+    };
     level.player_impulse_grace = guest.motion.as_ref().map(|p| p.impulse.reset_grace_time);
     level.player_fall_particles = guest
         .motion
@@ -581,9 +659,8 @@ pub fn store(guest: &Guest, level: &mut Level, vehicle: Option<Tag>) {
         .player_extra
         .get_or_insert_with(|| Tag::Compound(Default::default()));
     if let Tag::Compound(map) = extra
-        && attachment_compound(map.get(&ATTACHMENTS_KEY.into())).is_ok()
+        && let Some(data) = encoded_attachments
     {
-        let data = guest.attachments.to_nbt();
         if data.is_empty() {
             map.remove(&ATTACHMENTS_KEY.into());
         } else {
@@ -695,6 +772,12 @@ pub fn store(guest: &Guest, level: &mut Level, vehicle: Option<Tag>) {
             put(saved, &guest.equipment[slot]);
         }
     }
+    Ok(())
+}
+
+/// Put a guest's state in `level`'s player fields for tests whose attachments are known to encode.
+pub fn store(guest: &Guest, level: &mut Level, vehicle: Option<Tag>) {
+    try_store(guest, level, vehicle).expect("player attachments encode cleanly");
 }
 
 #[cfg(test)]
@@ -891,11 +974,12 @@ mod tests {
                 &Default::default(),
             );
         }
-        saves.save_after(
+        assert_eq!(saves.completed(true).len(), 150);
+        assert!(save(
             &holding(1, "minecraft:iron_ingot", 11),
             &dir,
             &Default::default(),
-        );
+        ));
         drop(saves);
         assert!(load(&mut loaded, &dir));
         assert_eq!(first_item(&loaded), Some(("minecraft:iron_ingot", 11)));
@@ -1082,7 +1166,7 @@ mod tests {
                 },
             }),
             copy_on_death: true,
-            sync: false,
+            sync_codec: None,
         };
         let dir = world("attachments");
         let mut original = guest();
@@ -1100,7 +1184,7 @@ mod tests {
         ));
         let binding = loaded.attachments.bind_index(&index, loaded.uuid);
         assert!(load(&mut loaded, &dir));
-        let copy = loaded.attachments.copy_on_death().unwrap();
+        let copy = loaded.attachments.copy_on_death(|_, _| None);
         loaded.attachments.replace_contents(copy);
         assert_eq!(
             keep.get(
@@ -1156,7 +1240,10 @@ mod tests {
         // the owner loads holds the gold, as its own file does.
         let owner = sunrise_protocol::crypto::offline_uuid("Player46606");
         let dir = world("leave");
-        let mut level = Level::default();
+        let mut level = Level {
+            player_uuid: Some(uuid_ints(owner)),
+            ..Level::default()
+        };
         store(&holding(owner, "minecraft:diamond", 5), &mut level, None);
         level.write(&dir, &Default::default()).unwrap();
         save(

@@ -24,6 +24,8 @@ pub(super) struct StabPlayer {
 /// One stab on a player, as the attacker worked it out.
 pub(super) struct PlayerStab {
     victim: u32,
+    /// Its place among the use's contacts, in `stabAttack` order.
+    contact: usize,
     /// The damage after the enchantments (and the attack strength when the
     /// spear isn't in use); 0 when the stab deals none.
     amount: f32,
@@ -37,6 +39,9 @@ pub(super) struct PlayerStab {
     knockback: (f32, f64, f64),
     disable_blocking: f32,
     item: Option<Text>,
+    /// The spear at this contact, for mods' own `post_attack` kinds (a later
+    /// contact may break it before the stab lands).
+    weapon: Option<sunrise_client::items::ItemStack>,
     ignite: f32,
 }
 
@@ -47,13 +52,15 @@ pub(super) struct StabBatch {
     kinetic: Kinetic,
     /// A charge's tick (its hit feedback), else a jab (its hit sound).
     charge: bool,
-    /// Whether a mob stabbed in the same tick gave the feedback already.
-    felt: bool,
+    /// The place of the last mob contact the same tick affected, which also gave the
+    /// feedback already. A player stab after it is the attacker's last hurt target.
+    last_mob: Option<usize>,
     stabs: Vec<PlayerStab>,
 }
 
 /// What a landed stab did to the victim.
 struct Landed {
+    contact: usize,
     hurt: bool,
     /// The stab's enchantments added damage (the magic crit).
     magic: bool,
@@ -65,6 +72,8 @@ struct Landed {
     feet: [f64; 3],
     width: f64,
     height: f64,
+    /// The stab's [`PlayerStab::weapon`].
+    weapon: Option<sunrise_client::items::ItemStack>,
 }
 
 /// A spear's push on a player as the native hooks name it.
@@ -85,11 +94,7 @@ impl Game<'_> {
             return Vec::new();
         };
         let board = &self.score.board;
-        let Some(attacker) = host.hub.guest(actor).filter(|_| {
-            self.ui
-                .rules
-                .bool_at(sunrise_client::gamerules::vanilla::PVP)
-        }) else {
+        let Some(attacker) = host.hub.guest(actor) else {
             return Vec::new();
         };
         let own_team = board.players_team(&attacker.name);
@@ -105,9 +110,11 @@ impl Game<'_> {
                     && !g.dead
                     && !g.spectator()
                     && (own_vehicle.is_none() || g.vehicle != own_vehicle)
-                    && sunrise_client::scoreboard::teams_allow_damage(
-                        board.players_team(&g.name),
+                    && self.player_may_harm(
+                        attacker.entity_id,
+                        g.entity_id,
                         own_team,
+                        board.players_team(&g.name),
                     )
             })
             .map(|g| {
@@ -127,6 +134,7 @@ impl Game<'_> {
     pub(super) fn queue_player_stab(
         &mut self,
         target: usize,
+        contact: usize,
         base_damage: f32,
         deals_damage: bool,
         deals_knockback: bool,
@@ -173,6 +181,7 @@ impl Game<'_> {
         };
         Some(PlayerStab {
             victim,
+            contact,
             amount,
             deals_damage,
             deals_knockback,
@@ -183,6 +192,7 @@ impl Game<'_> {
             disable_blocking,
             item: self.main_hand_custom_name(),
             ignite: self.weapon_ignite_seconds(),
+            weapon: self.native_post_attack_weapon(self.held()),
         })
     }
 
@@ -192,7 +202,7 @@ impl Game<'_> {
         &mut self,
         kinetic: Kinetic,
         charge: bool,
-        felt: bool,
+        last_mob: Option<usize>,
         stabs: Vec<PlayerStab>,
     ) {
         let Some(attacker) = self.lan_acting.filter(|_| !stabs.is_empty()) else {
@@ -202,7 +212,7 @@ impl Game<'_> {
             attacker,
             kinetic,
             charge,
-            felt,
+            last_mob,
             stabs,
         });
     }
@@ -267,7 +277,13 @@ impl Game<'_> {
                 {
                     let _ = p.ignite_for_ticks((s.ignite * 20.0) as i32);
                 }
-                let dismounted = s.dismounts && g.riding.is_some();
+                // `Player.stabAttack`: a type in `cannot_be_dismounted_by_item_usage` stays seated.
+                let dismounted = s.dismounts
+                    && g.riding.is_some()
+                    && !g.items().entity_type_tags.has_flag(
+                        "minecraft:player",
+                        sunrise_client::items::EntityTypeTags::CANNOT_BE_DISMOUNTED_BY_ITEM_USAGE,
+                    );
                 if dismounted {
                     g.stop_riding();
                 }
@@ -280,6 +296,7 @@ impl Game<'_> {
                     )
                 });
                 let landed = Landed {
+                    contact: s.contact,
                     hurt,
                     magic: s.magic,
                     affected: hurt || s.deals_knockback || dismounted,
@@ -288,6 +305,7 @@ impl Game<'_> {
                     feet,
                     width,
                     height,
+                    weapon: s.weapon.clone(),
                 };
                 (landed, thorns)
             })
@@ -309,8 +327,24 @@ impl Game<'_> {
             if l.magic {
                 self.critical_hit(self.lan_acting, l.id, l.feet, l.width, l.height, true);
             }
+            // setLastHurtMob at this stab's own tail: a mob contact that came later
+            // in the same use already wrote the record during the turn.
+            if batch.last_mob.is_none_or(|m| l.contact > m) {
+                self.remember_player_target(Some(l.id as u32));
+            }
             // itemAttackInteraction: hurtEnemy (statistic, wear), and the
             // post-attack enchantments when the target was hurt.
+            if l.hurt
+                && let Some(weapon) = &l.weapon
+            {
+                let attacker = self.consuming_player_entity().id();
+                self.native_weapon_post_attack(
+                    weapon,
+                    (attacker, "minecraft:player"),
+                    (l.id as u32, "minecraft:player"),
+                    "minecraft:spear",
+                );
+            }
             if let Some(stack) = self.held().cloned() {
                 self.award_stat("used", &stack.item, 1);
                 if l.hurt {
@@ -325,7 +359,7 @@ impl Game<'_> {
                 p.cause_food_exhaustion(0.1);
             }
         }
-        if !affected || batch.felt {
+        if !affected || batch.last_mob.is_some() {
             return;
         }
         if batch.charge {

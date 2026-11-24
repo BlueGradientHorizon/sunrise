@@ -1,6 +1,8 @@
 //! Levels, chunks, dimensions, spawning, fluids as world state and the vocabulary the world speaks.
 
 pub(crate) mod advancement_progress;
+pub(crate) mod placement_modifier;
+pub(crate) mod pool_element;
 pub(crate) mod scoreboard;
 pub(crate) mod team;
 // hidden: a module of game-side types; mods use their re-exports
@@ -37,9 +39,9 @@ pub(crate) mod map_decoration_types;
 #[doc(hidden)]
 pub mod mod_chunk_tickets;
 pub(crate) mod package_details;
+pub(crate) mod package_files;
 pub(crate) mod passage;
 pub(crate) mod phase;
-pub(crate) mod phase_refusal;
 pub(crate) mod portal;
 pub(crate) mod random;
 pub(crate) mod read_error;
@@ -55,6 +57,7 @@ pub(crate) mod server_console;
 pub(crate) mod server_reload;
 pub mod snapshots;
 pub(crate) mod startup_progress;
+pub(crate) mod structure_processor;
 pub(crate) mod structure_template;
 pub(crate) mod structure_type;
 pub(crate) mod tags;

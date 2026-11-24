@@ -67,7 +67,7 @@ impl Game<'_> {
         &self,
         registry: &str,
     ) -> Option<&std::collections::HashMap<String, serde_json::Value>> {
-        self.res.providers().registry(registry)
+        self.active_providers().registry(registry)
     }
     fn local_registry(&self, registry: &str) -> Option<LocalRegistry<'_>> {
         Some(match registry {
@@ -93,11 +93,14 @@ impl Game<'_> {
     fn registry_datapacks(&self, registry: &str) -> Option<Arc<mod_api::DatapackRegistrySet>> {
         if self.is_logical_server() {
             self.mods.datapack_registries.clone()
-        } else if self.remote.is_some() {
-            // This set has already been filtered by the offer, sync policy and accepted schema.
-            sunrise_client::datapack_net::received().filter(|set| set.registry_available(registry))
         } else {
-            None
+            // This set has already been filtered by the offer, sync policy and accepted schema.
+            self.remote
+                .as_ref()?
+                .datapacks
+                .received()
+                .filter(|set| set.registry_available(registry))
+                .cloned()
         }
     }
 
@@ -115,6 +118,7 @@ impl Game<'_> {
                 super::lan::sync::sync_data(
                     &self.options.resources,
                     &self.res.core.item_data,
+                    self.items(),
                     &self.pack_files(),
                 )
                 .ok()
@@ -246,6 +250,11 @@ impl Game<'_> {
     pub(super) fn registry_entry_in_tag(&self, entry: &RegistryEntry, tag: &str) -> Option<bool> {
         let registry = entry.registry.to_string();
         let id = entry.id.to_string();
+        if registry == "minecraft:damage_type" && self.is_logical_server() {
+            self.native_lifecycle.epoch()?;
+            let damage = &self.health_resources.damage;
+            return damage.id(&id).map(|id| damage.in_tag(id, &normalized(tag)));
+        }
         if !self.registry_has_entry(&registry, &id) {
             return None;
         }

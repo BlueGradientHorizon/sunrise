@@ -201,10 +201,8 @@ pub mod tests {
         );
         struct Table;
         impl mod_api::prelude::KeysBackend for Table {
-            fn block_entity_type_key_id(&self, key: BlockEntityTypeKey) -> String {
+            fn block_entity_type_key_id(&self, key: BlockEntityTypeKey) -> Option<&str> {
                 mod_vocab::__private::block_entity_type_name(key)
-                    .unwrap()
-                    .to_owned()
             }
         }
         impl Backend for Table {}
@@ -215,7 +213,7 @@ pub mod tests {
             }
         }
         mod_api::impl_host_areas!(Table);
-        assert_eq!(keys[0].id(&Table), "owner:press");
+        assert_eq!(keys[0].id(&Table), Some("owner:press"));
     }
 
     #[test]
@@ -240,8 +238,8 @@ pub mod tests {
             && (error.contains("invalid identifier") || error.contains("unowned namespace"))));
     }
 
-    /// The block entity of type `doubler:press_entity`, held by block `test:press`: it ticks, and
-    /// each tick adds a data slot.
+    /// The block entity of type `doubler:press_entity`, held by block `test:press`.
+    static PRESS_TICKS: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
     pub(crate) struct Press;
     #[mod_api::sunrise_part]
     impl BlockPart for Press {
@@ -254,8 +252,8 @@ pub mod tests {
         fn block_entity_ticks(&self, _: &dyn Host, event: &mut BlockEntityTicksEvent<'_>) {
             event.ticks = true;
         }
-        fn block_entity_tick(&self, _: &mut dyn ServerHost, event: &mut BlockEntityTickEvent<'_>) {
-            event.entity.data.push(1);
+        fn block_entity_tick(&self, _: &mut BlockEntityTickEvent<'_>) {
+            PRESS_TICKS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         }
         fn block_entity_view_distance(
             &self,
@@ -265,35 +263,32 @@ pub mod tests {
             event.distance = 128.0;
         }
     }
-    /// The gold a `doubler:hoard` block entity holds, kept beside it.
-    pub const HOARD: AttachmentType<u32> = AttachmentType {
-        namespace: "test",
-        name: "hoard",
-        default: || 0,
-        codec: None,
-        copy_on_death: false,
-        sync: false,
-    };
+    /// Attachment stored by the active Doubler fixture.
+    pub fn hoard_key() -> AttachmentKey<u32> {
+        crate::testing::attachment_key("doubler", "hoard")
+    }
     /// How many times a `doubler:hoard` was asked about its removal.
     pub static HOARD_ASKED: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
     /// The block entity of type `doubler:hoard`, held by block `test:hoard`: when it is
-    /// removed it gives back the gold its `HOARD` counts.
-    pub(crate) struct Hoard(pub(crate) BlockKey);
+    /// removed it gives back the gold its `doubler:hoard` attachment counts.
+    pub(crate) struct Hoard(pub(crate) BlockKey, pub(crate) AttachmentKey<u32>);
     #[mod_api::sunrise_part]
     impl BlockPart for Hoard {}
     #[mod_api::sunrise_part]
     impl BlockEntityPart for Hoard {
         /// With data `[1]`, it replaces its own block with granite.
-        fn block_entity_tick(
-            &self,
-            host: &mut dyn ServerHost,
-            event: &mut BlockEntityTickEvent<'_>,
-        ) {
-            if event.entity.data == [1] {
-                let level = host.level("minecraft:overworld").unwrap();
+        fn block_entity_tick(&self, event: &mut BlockEntityTickEvent<'_>) {
+            if let Some((level, pos)) = event
+                .subject
+                .with_view(|entity| {
+                    (entity.data_slots() == [1]).then(|| (entity.level(), entity.position()))
+                })
+                .flatten()
+            {
+                let host = event.subject.host();
                 let state = BlockState::of(&host.block_states(), self.0, &[]).unwrap();
                 assert_eq!(
-                    level.set_block(host, event.pos, state, BlockUpdateFlags::KNOWN_SHAPE),
+                    level.set_block(host, pos, state, BlockUpdateFlags::KNOWN_SHAPE),
                     Ok(true)
                 );
             }
@@ -305,7 +300,11 @@ pub mod tests {
         ) {
             HOARD_ASKED.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
             let BlockPos { x, y, z } = event.pos;
-            if let Ok(Some(count @ 1..)) = HOARD.get_existing(level, Holder::BlockEntity([x, y, z]))
+            if let Ok(Some(count @ 1..)) =
+                self.1
+                    .get_existing_in(level, Holder::BlockEntity([x, y, z]), |value| {
+                        value.cloned()
+                    })
             {
                 event.drops.push(Some(crate::parts::items::tests::stack(
                     "minecraft:gold_ingot",
@@ -574,7 +573,9 @@ pub mod tests {
                 r.block_entity_capability(
                     &crate::parts::capabilities::tests::CHEMICALS,
                     &press,
-                    |_, at| Some(Box::new(crate::parts::capabilities::tests::ChemTank(at))),
+                    |_, at, _, _, offer| {
+                        offer.offer(|| Box::new(crate::parts::capabilities::tests::ChemTank(at)))
+                    },
                 );
             }
         }
@@ -687,59 +688,18 @@ pub mod tests {
     }
 
     #[cfg(test)]
-    static OWNERS_PROGRESS: AttachmentType<u32> = AttachmentType {
-        namespace: "owner",
-        name: "progress",
-        default: || 0,
-        codec: None,
-        copy_on_death: false,
-        sync: false,
-    };
-    #[cfg(test)]
-    static B_PROGRESS: AttachmentType<u32> = AttachmentType {
-        namespace: "b",
-        name: "progress",
-        default: || 0,
-        codec: None,
-        copy_on_death: false,
-        sync: false,
-    };
-    #[cfg(test)]
-    struct Keeps<const OWNERS: bool>;
+    struct Keeps(AttachmentKey<u32>);
     #[cfg(test)]
     #[mod_api::sunrise_part]
-    impl BlockPart for Keeps<true> {}
+    impl BlockPart for Keeps {}
     #[cfg(test)]
     #[mod_api::sunrise_part]
-    impl BlockEntityPart for Keeps<true> {}
+    impl BlockEntityPart for Keeps {}
     #[cfg(test)]
-    impl BlockEntityPartState for Keeps<true> {
+    impl BlockEntityPartState for Keeps {
         type Data = u32;
-        const DATA: &'static AttachmentType<u32> = &OWNERS_PROGRESS;
-    }
-    #[cfg(test)]
-    #[mod_api::sunrise_part]
-    impl BlockPart for Keeps<false> {}
-    #[cfg(test)]
-    #[mod_api::sunrise_part]
-    impl BlockEntityPart for Keeps<false> {}
-    #[cfg(test)]
-    impl BlockEntityPartState for Keeps<false> {
-        type Data = u32;
-        const DATA: &'static AttachmentType<u32> = &B_PROGRESS;
-    }
-    #[cfg(test)]
-    struct KeepsState<const OWNERS: bool>;
-    #[cfg(test)]
-    #[mod_api::__subscriptions]
-    impl<const OWNERS: bool> Hooks for KeepsState<OWNERS>
-    where
-        Keeps<OWNERS>: BlockEntityPartState + 'static,
-    {
-        fn register(&self, r: &mut dyn Registrar, _: &RegistrationContext) {
-            r.register_attachment_type("b:progress", false).unwrap();
-            let press = r.block_entity_type_key("owner:press");
-            let _ = r.block_entity_part_with_state(&press, Keeps::<OWNERS>);
+        fn state_key(&self) -> &AttachmentKey<u32> {
+            &self.0
         }
     }
 
@@ -756,8 +716,65 @@ pub mod tests {
         #[mod_api::__subscriptions]
         impl Hooks for OwnerDeclaresKey {
             fn register(&self, r: &mut dyn Registrar, cx: &RegistrationContext) {
-                r.register_attachment_type("owner:progress", false).unwrap();
+                r.register_attachment_type(crate::AttachmentDescriptor::new(
+                    "owner:progress",
+                    || 0_u32,
+                ))
+                .unwrap();
                 Owner.register(r, cx);
+            }
+        }
+        struct UsesOwnKey;
+        #[mod_api::__subscriptions]
+        impl Hooks for UsesOwnKey {
+            fn register(&self, r: &mut dyn Registrar, _: &RegistrationContext) {
+                let key = r
+                    .register_attachment_type(crate::AttachmentDescriptor::new(
+                        "b:progress",
+                        || 0_u32,
+                    ))
+                    .unwrap();
+                let press = r.block_entity_type_key("owner:press");
+                r.block_entity_part_with_state(&press, Keeps(key)).unwrap();
+            }
+        }
+        struct UsesOwnersKey;
+        #[mod_api::__subscriptions]
+        impl Hooks for UsesOwnersKey {
+            fn register(&self, r: &mut dyn Registrar, _: &RegistrationContext) {
+                let key = r.attachment_key::<u32>("owner:progress").unwrap();
+                assert!(matches!(
+                    r.attachment_key::<i64>("owner:progress"),
+                    Err(AttachmentError::TypeMismatch)
+                ));
+                let press = r.block_entity_type_key("owner:press");
+                r.block_entity_part_with_state(&press, Keeps(key)).unwrap();
+            }
+        }
+        struct UsesUndeclaredOrStaleOwnerKey(AttachmentKey<u32>);
+        #[mod_api::__subscriptions]
+        impl Hooks for UsesUndeclaredOrStaleOwnerKey {
+            fn register(&self, r: &mut dyn Registrar, _: &RegistrationContext) {
+                assert_eq!(
+                    r.attachment_key::<u32>("owner:progress"),
+                    Err(AttachmentError::Undeclared {
+                        package_id: "b".into(),
+                        attachment_id: "owner:progress".into(),
+                    })
+                );
+                let press = r.block_entity_type_key("owner:press");
+                let err = r
+                    .block_entity_part_with_state(&press, Keeps(self.0.clone()))
+                    .unwrap_err();
+                assert!(matches!(
+                    err,
+                    BlockEntityStateError::State {
+                        namespace: "owner",
+                        name: "progress",
+                        reason: PartStateRefusal::StaleKey,
+                        ..
+                    }
+                ));
             }
         }
         let packages = || {
@@ -766,47 +783,53 @@ pub mod tests {
                 package("b", Side::Both, &["owner"]),
             ]
         };
-        // The part's own key: declared by `b` in `b`'s namespace, saved under `b`.
+        // The part's own key: declared by `b` in `b`'s namespace.
         crate::load_state::with_test_package_inventory(packages(), || {
             let mods = [
                 ModEntry::new("owner", Box::new(OwnerWithState)),
-                ModEntry::new("b", Box::new(KeepsState::<false>)),
+                ModEntry::new("b", Box::new(UsesOwnKey)),
             ];
             let registrar = crate::parts::shared::register_all(&mods, |_| false);
             assert_eq!(registrar.refused, Vec::<String>::new());
-            assert_eq!(
-                registrar.attachment_uses,
-                [("b".to_owned(), "b".to_owned(), "progress".to_owned())]
+            assert!(
+                registrar
+                    .attachment_types
+                    .get("b")
+                    .is_some_and(|types| types.contains_key("progress"))
             );
         });
-        // The owner's key is only usable when the owner declared it (its public attachment);
-        // a part cannot invent a key under the owner's namespace.
+        // The owner's key is only obtainable when the owner declared it; a stale key
+        // forged outside this registration pass is refused with `StaleKey`.
         crate::load_state::with_test_package_inventory(packages(), || {
+            let stale = crate::testing::registered_attachment_fixture(
+                "owner",
+                crate::AttachmentDescriptor::new("owner:progress", || 0_u32),
+            )
+            .1;
             let mods = [
                 ModEntry::new("owner", Box::new(OwnerWithState)),
-                ModEntry::new("b", Box::new(KeepsState::<true>)),
+                ModEntry::new("b", Box::new(UsesUndeclaredOrStaleOwnerKey(stale))),
             ];
             let errors =
                 crate::__private::install_parts(&mods, &crate::parts::tests::rule_schema(), |_| {
                     false
                 })
                 .unwrap_err();
-            assert_eq!(
-                errors,
-                ["package b attachment owner:progress: undeclared attachment use"]
+            assert_eq!(errors.len(), 1, "{errors:?}");
+            assert!(
+                errors[0].contains("owner:progress")
+                    && errors[0].contains("not issued in this registration pass"),
+                "{errors:?}"
             );
         });
+        // A key declared by the owner can be looked up by type and used as part state.
         crate::load_state::with_test_package_inventory(packages(), || {
             let mods = [
                 ModEntry::new("owner", Box::new(OwnerDeclaresKey)),
-                ModEntry::new("b", Box::new(KeepsState::<true>)),
+                ModEntry::new("b", Box::new(UsesOwnersKey)),
             ];
             let registrar = crate::parts::shared::register_all(&mods, |_| false);
-            assert_eq!(
-                registrar.attachment_uses,
-                [("b".to_owned(), "owner".to_owned(), "progress".to_owned())],
-                "a declared key is the owner's public attachment"
-            );
+            assert_eq!(registrar.refused, Vec::<String>::new());
         });
     }
 
@@ -867,15 +890,40 @@ pub mod tests {
         // The ticker is asked by block: the type id is not a block.
         assert!(ticks("test:press"));
         assert!(!ticks("doubler:press_entity"));
+        mod_vocab::__private::resolve_block_entity_types(
+            [
+                "doubler:press_entity",
+                "doubler:hoard",
+                "test:pipe",
+                "test:greedy",
+                "test:item_overstates",
+                "test:press",
+            ],
+            |_| Some(()),
+        )
+        .unwrap();
+        struct Unused;
+        impl BlockEntityAccess for Unused {
+            fn with_view(&mut self, _: &mut dyn FnMut(BlockEntityView<'_>)) {
+                unreachable!()
+            }
+            fn host(&mut self) -> &mut dyn ServerHost {
+                unreachable!()
+            }
+            fn with_transaction_scope(
+                &mut self,
+                _: &mut dyn for<'loan> FnMut(
+                    &'loan mut dyn BlockEntityAccess,
+                    &'loan mod_vocab::TransactionContext,
+                ) -> bool,
+            ) -> Result<bool, mod_vocab::TransactionScopeError> {
+                unreachable!()
+            }
+        }
         let tick = |kind: &str| {
-            let mut entity = ModBlockEntity::new(kind.into(), Default::default());
-            dispatch_block_entity_tick(
-                &mut NoHost,
-                &mut BlockEntityTickReply::Changed,
-                [0, 64, 0],
-                &mut entity,
-            );
-            entity.data.len()
+            let kind = mod_vocab::__private::block_entity_type_key(kind).unwrap();
+            dispatch_block_entity_tick(kind, BlockEntityScope::new(&mut Unused));
+            PRESS_TICKS.swap(0, std::sync::atomic::Ordering::Relaxed)
         };
         // The tick is asked by the entity's type, which differs from its block's id.
         assert_eq!(tick("doubler:press_entity"), 1);
@@ -987,7 +1035,7 @@ impl BlockEntitiesRegistrar for PartRegistrar {
         part: &'static str,
         declaration: crate::PartStateDeclaration,
     ) -> Result<(), crate::BlockEntityStateError> {
-        self.check_part_state(declaration).map_err(|reason| {
+        self.check_part_state(&declaration).map_err(|reason| {
             let error = declaration.refused(part, reason);
             self.refused.push(format!("{}: {error}", self.mod_id));
             error
@@ -1017,25 +1065,23 @@ impl BlockEntitiesRegistrar for PartRegistrar {
 }
 
 impl PartRegistrar {
-    /// Checks a Part state declaration of either holder and records its key: see
-    /// `PartStateDeclaration::check` or a key used with another Rust type name.
-    /// Owner declarations are checked after all packages have registered.
+    /// Checks a Part state declaration of either holder: the issued key must belong to this
+    /// registration pass (not a stale key from another installation), and must pass
+    /// `PartStateDeclaration::check`.
     pub(crate) fn check_part_state(
-        &mut self,
-        declaration: crate::PartStateDeclaration,
+        &self,
+        declaration: &crate::PartStateDeclaration,
     ) -> Result<(), crate::PartStateRefusal> {
-        let key = (declaration.namespace, declaration.name);
-        declaration
-            .check()
-            .and_then(|()| match self.part_states.get(&key) {
-                Some(&declared) if declared != declaration.data_name => {
-                    Err(crate::PartStateRefusal::Incompatible { declared })
-                }
-                _ => Ok(()),
-            })?;
-        self.attachment_uses
-            .push((self.mod_id.into(), key.0.into(), key.1.into()));
-        self.part_states.insert(key, declaration.data_name);
-        Ok(())
+        let live = self
+            .attachment_types
+            .get(declaration.namespace)
+            .and_then(|types| types.get(declaration.name))
+            .is_some_and(|record| {
+                mod_vocab::__private::part_state_matches_registration(declaration, record)
+            });
+        if !live {
+            return Err(crate::PartStateRefusal::StaleKey);
+        }
+        declaration.check()
     }
 }

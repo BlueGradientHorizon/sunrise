@@ -8,20 +8,19 @@ use sunrise_world::{
 };
 impl MotionWorld<'_, '_, '_> {
     pub(super) fn environment_hurt(&mut self, source: &str, damage: f32) -> Result<()> {
-        if self.player.invulnerable || self.player.spectator {
-            return Ok(());
-        }
-        // Frost walker's `damage_immunity`: #burn_from_stepping (magma, campfire).
-        if self.player.burn_from_stepping_immune
-            && matches!(source, "minecraft:hot_floor" | "minecraft:campfire")
-        {
-            return Ok(());
-        }
         let id = self
             .health
             .damage
             .id(source)
             .ok_or("missing environment damage type")?;
+        self.environment_hurt_type(id, damage)
+    }
+
+    pub(super) fn environment_hurt_type(
+        &mut self,
+        id: sunrise_world::damage_source::DamageTypeId,
+        damage: f32,
+    ) -> Result<()> {
         let rules = self.scene.health_rules;
         self.player.hurt(
             &mut crate::health::DamageLevel::of(
@@ -30,7 +29,9 @@ impl MotionWorld<'_, '_, '_> {
                 self.tag_items,
                 self.block_registries,
                 self.damage_hooks,
-            ),
+            )
+            .with_player_equipment(self.side.player_equipment())
+            .with_reads(self.side.hit_reads()),
             self.health,
             rules,
             id,
@@ -38,7 +39,7 @@ impl MotionWorld<'_, '_, '_> {
         )?;
         Ok(())
     }
-    pub(super) fn tick_remaining_fire(&mut self) -> Result<()> {
+    pub(super) fn hurt_from_remaining_fire(&mut self) -> Result<()> {
         if self.player.spectator {
             self.player.fire_ticks = 0;
         } else if self.player.mod_fire_immune {
@@ -47,14 +48,11 @@ impl MotionWorld<'_, '_, '_> {
         if self.player.invulnerable && self.player.fire_ticks > 1 {
             self.player.fire_ticks = 1;
         }
-        if self.player.fire_ticks > 0 {
-            if self.player.fire_ticks % 20 == 0 && !self.player.is_in_lava() {
-                self.environment_hurt("minecraft:on_fire", 1.0)?;
-            }
-            self.player.fire_ticks -= 1;
-        }
-        if self.player.fluids.was_touching_water {
-            self.player.fire_ticks = self.player.fire_ticks.min(0);
+        if self.player.fire_ticks > 0
+            && self.player.fire_ticks % 20 == 0
+            && !self.player.is_in_lava()
+        {
+            self.environment_hurt("minecraft:on_fire", 1.0)?;
         }
         Ok(())
     }
@@ -164,11 +162,8 @@ impl MotionWorld<'_, '_, '_> {
         self.player.ignite_for_ticks(300)?;
         self.environment_hurt("minecraft:lava", 4.0)
     }
-    /// What a server's `LivingEntity.baseTick` adds for a player it hosts:
-    /// the void (`Entity.checkBelowWorld`, 4 a tick, which creative players
-    /// take too) and suffocation (`isInWall`, which the caller decides from
-    /// the blocks at the eyes).
-    pub fn server_hazards_tick(&mut self, in_wall: bool) -> Result<()> {
+    /// Entity.checkBelowWorld: the void damages even a creative player.
+    pub fn check_below_world(&mut self) -> Result<()> {
         if self.player.position.y < self.scene.below_world_y() {
             let id = self
                 .health
@@ -183,41 +178,35 @@ impl MotionWorld<'_, '_, '_> {
                     self.tag_items,
                     self.block_registries,
                     self.damage_hooks,
-                ),
+                )
+                .with_player_equipment(self.side.player_equipment())
+                .with_reads(self.side.hit_reads()),
                 self.health,
                 rules,
                 id,
                 4.0,
             )?;
         }
-        if in_wall {
-            self.environment_hurt("minecraft:in_wall", 1.0)?;
-        }
         Ok(())
     }
-    pub fn apply_fire_contact(&mut self) -> Result<()> {
+    /// LivingEntity.baseTick's eye-in-wall hurt, after the owning server's shape check.
+    pub fn suffocation_hurt(&mut self) -> Result<()> {
+        self.environment_hurt("minecraft:in_wall", 1.0)
+    }
+
+    /// Reset the player's fire-contact delay (`-getFireImmuneTicks()`) when
+    /// not touching fire (`Entity.baseTick`). Ordinary fire ignition and hurt
+    /// run inside `BaseFireBlock.entityInside`'s collector steps.
+    pub fn reset_unlit_fire(&mut self) {
         if self.player.spectator {
             self.player.fire_ticks = 0;
-            return Ok(());
+            return;
         }
-        let damage = fire_contact(self.scene, self.assets.registry, self.player.bounds());
-        if damage > 0.0 {
-            self.player.ticks_frozen = 0;
-            if !self.player.mod_fire_immune && !self.player.fluids.was_touching_water {
-                let multiplier = self.player.attribute("minecraft:burning_time")?;
-                let ticks = ignite_contact(
-                    self.player.fire_ticks,
-                    true,
-                    &mut self.scene.random,
-                    multiplier,
-                );
-                self.player.set_remaining_fire_ticks(ticks);
-            }
-            self.environment_hurt("minecraft:in_fire", damage)?;
-        } else if self.player.fire_ticks <= 0 {
+        if fire_contact(self.scene, self.assets.registry, self.player.bounds()) <= 0.0
+            && self.player.fire_ticks <= 0
+        {
             self.player.fire_ticks = -20;
         }
-        Ok(())
     }
 }
 pub(crate) fn fire_contact(
@@ -422,7 +411,7 @@ pub(crate) fn ignite_contact(
     let ticks = if ticks < 0 {
         ticks + 1
     } else if player {
-        ticks + 1 + random.next_int_bound(2).unwrap_or(0)
+        ticks.wrapping_add(1 + random.next_int_bound(2).unwrap_or(0))
     } else {
         ticks
     };
@@ -459,7 +448,7 @@ mod below_world_tests {
     use super::*;
     use crate::chunk::LevelShape;
 
-    /// The player's health after one `server_hazards_tick` at `y` in a level of `shape`.
+    /// The player's health after the server hazard steps at `y` in a level of `shape`.
     fn health_after_hazards(shape: LevelShape, y: f64) -> f32 {
         let root = std::path::PathBuf::from(
             std::env::var_os("SUNRISE_TEST_RESOURCES").expect("SUNRISE_TEST_RESOURCES"),
@@ -489,7 +478,7 @@ mod below_world_tests {
             resources: &resources,
             health: &resources.health,
         }
-        .server_hazards_tick(false)
+        .check_below_world()
         .unwrap();
         player.health.health()
     }

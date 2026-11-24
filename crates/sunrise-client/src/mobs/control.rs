@@ -186,7 +186,7 @@ impl Mob {
                     let y_rot = trig::atan2_degrees(zd, xd) - 90.0;
                     self.yaw = rotlerp(self.yaw, y_rot, 90.0);
                     let speed = (self.ai.mov.speed_modifier
-                        * if self.on_ground {
+                        * if self.ground.on_ground {
                             attr_speed
                         } else {
                             // getAttributeValue(FLYING_SPEED): a summon's base counts.
@@ -326,7 +326,7 @@ impl Mob {
             }
             Operation::Jumping => {
                 self.set_speed((self.ai.mov.speed_modifier * attr_speed) as f32);
-                if self.on_ground || self.is_in_liquid() {
+                if self.ground.on_ground || self.is_in_liquid() {
                     self.ai.mov.operation = Operation::Wait;
                 }
             }
@@ -482,16 +482,6 @@ impl Mob {
 /// Entity.rotlerp used by Mob.lookAt (clamped turn, no wrap of the result).
 fn rotate_toward_max(from: f32, to: f32, max: f32) -> f32 {
     from + wrap(to - from).clamp(-max, max)
-}
-
-impl Mob {
-    /// The end of `Entity.applyEffectsFromBlocks`: an entity that is not burning
-    /// and was not just ignited gets `setRemainingFireTicks(-getFireImmuneTicks())`.
-    /// `getFireImmuneTicks` is 0 outside `Player`, so a negative `Fire` ends at 0;
-    /// a fresh ignition is positive and an extinguish already leaves 0.
-    pub(super) fn reset_unlit_fire(&mut self) {
-        self.fire_ticks = self.fire_ticks.max(0);
-    }
 }
 
 #[cfg(test)]

@@ -532,14 +532,23 @@ pub struct Bx<'a, 'w, 'l> {
     pub now: i64,
 }
 
-/// `Brain.tick` then `updateActivity` (from `customServerAiStep`).
+/// Runs the animal brain without an owning Game to handle breeding in place.
 pub fn tick(m: &mut Mob, w: &MobWorld, level: &mut DamageLevel<'_>, events: &mut Vec<MobEvent>) {
+    let _ = tick_until_birth(m, w, level, events, false);
+}
+
+/// `Brain.tick` then `updateActivity` (from `customServerAiStep`).
+pub(super) fn tick_until_birth(
+    m: &mut Mob,
+    w: &MobWorld,
+    level: &mut DamageLevel<'_>,
+    events: &mut Vec<MobEvent>,
+    breed: bool,
+) -> Option<(Box<MobEvent>, BrainBreed)> {
     if brain(m).is_none() {
         let seed = i64::from(m.id);
         init(m, seed);
-        if brain(m).is_none() {
-            return;
-        }
+        brain(m)?;
     }
     // forgetOutdatedMemories
     mem(m).tick();
@@ -557,13 +566,57 @@ pub fn tick(m: &mut Mob, w: &MobWorld, level: &mut DamageLevel<'_>, events: &mut
             e.b.try_start(m, &mut cx);
         }
     }
-    for e in list.iter_mut() {
-        if e.b.running() {
-            e.b.tick_or_stop(m, &mut cx);
+    brain_mut(m).list = list;
+    tick_running(m, &mut cx, 0, breed)
+}
+
+#[derive(Debug)]
+pub(super) struct BrainBreed(usize);
+
+pub(super) fn resume_after_birth(
+    m: &mut Mob,
+    w: &MobWorld,
+    level: &mut DamageLevel<'_>,
+    events: &mut Vec<MobEvent>,
+    paused: BrainBreed,
+) -> Option<(Box<MobEvent>, BrainBreed)> {
+    tick_running(
+        m,
+        &mut Bx {
+            w,
+            level,
+            events,
+            now: w.game_time,
+        },
+        paused.0,
+        true,
+    )
+}
+
+fn tick_running(
+    m: &mut Mob,
+    cx: &mut Bx<'_, '_, '_>,
+    start: usize,
+    breed: bool,
+) -> Option<(Box<MobEvent>, BrainBreed)> {
+    let mut list = std::mem::take(&mut brain_mut(m).list);
+    for (slot, e) in list.iter_mut().enumerate().skip(start) {
+        if !e.b.running() {
+            continue;
+        }
+        let before = cx.events.len();
+        e.b.tick_or_stop(m, cx);
+        if breed
+            && cx.events.len() > before
+            && matches!(cx.events.last(), Some(MobEvent::Breed { .. }))
+        {
+            let event = Box::new(cx.events.pop().unwrap());
+            brain_mut(m).list = list;
+            return Some((event, BrainBreed(slot + 1)));
         }
     }
     brain_mut(m).list = list;
-    update_activity(m, w);
+    update_activity(m, cx.w);
     m.ai.panicking = is_panicking(m);
     if m.species() == Species::Axolotl {
         m.extra.axolotl.playing_dead = mem(m)
@@ -572,6 +625,7 @@ pub fn tick(m: &mut Mob, w: &MobWorld, level: &mut DamageLevel<'_>, events: &mut
             .is_some_and(|ticks| ticks > 0);
         m.ai.target = mem(m).attack_target.value();
     }
+    None
 }
 
 /// `SnifferAi.updateActivity` / `HappyGhastAi.updateActivity`:
@@ -1657,9 +1711,15 @@ impl B {
                     && now >= *spawn_at
                 {
                     // spawnChildFromBreeding: spawn the egg/baby and rest both parents.
+                    // When baby_entity_spawn has listeners on a live-baby route, defer the
+                    // initiating parent's cooldown until Game::breed so an uncanceled empty
+                    // slot does not leave the parent cooled down.
                     let Who::Mob(id) = partner else { return };
-                    m.extra.in_love = 0;
-                    m.extra.age = 6000;
+                    let listened_birth = cx.w.asks_live_birth(m.species());
+                    if !listened_birth {
+                        m.extra.in_love = 0;
+                        super::finalize::set_age(m, 6000, Some(cx.w));
+                    }
                     cx.events.push(MobEvent::Breed {
                         parent: m.id,
                         partner: id,
@@ -1682,7 +1742,10 @@ impl B {
                         cx.events
                             .push(MobEvent::Sound("block.sniffer_egg.plop", at, 1.0, pitch));
                     }
-                    mem(m).breed_target.clear();
+                    // AnimalMakeLove clears both memories after the breeding action returns.
+                    if !listened_birth {
+                        mem(m).breed_target.clear();
+                    }
                 }
             }
             B::FollowTemptation {
@@ -2079,7 +2142,7 @@ fn can_sniff(m: &Mob) -> bool {
         && !is_panicking(m)
         && !m.fluids.in_water
         && m.extra.in_love <= 0
-        && m.on_ground
+        && m.ground.on_ground
         && !m.extra.passenger
         && m.extra.leash.is_none()
 }
@@ -2097,7 +2160,7 @@ fn can_dig(m: &mut Mob, w: &MobWorld) -> bool {
         || is_tempted(m)
         || m.is_baby()
         || m.fluids.in_water
-        || !m.on_ground
+        || !m.ground.on_ground
         || m.extra.passenger
     {
         return false;
@@ -2438,12 +2501,14 @@ fn sense_axolotl_attackables(m: &mut Mob, w: &MobWorld) {
     let target = find_closest(m, w, |m, who| {
         let Who::Mob(id) = who else { return false };
         let Some(s) = w.seen(id) else { return false };
-        let id = format!("minecraft:{}", super::species::def(s.species).name);
         super::axolotl::prey_eligible(
             m.distance_sqr(s.position),
             s.in_water,
-            w.data.entity_has("minecraft:axolotl_always_hostiles", &id),
-            w.data.entity_has("minecraft:axolotl_hunt_targets", &id),
+            w.entity_tag_bit(
+                &s.kind,
+                crate::items::EntityTypeTags::AXOLOTL_ALWAYS_HOSTILES,
+            ),
+            w.entity_tag_bit(&s.kind, crate::items::EntityTypeTags::AXOLOTL_HUNT_TARGETS),
             cooldown,
             s.alive && !s.playing_dead,
         )
@@ -2731,7 +2796,7 @@ fn axolotl_action(m: &mut Mob, cx: &mut Bx, action: AxolotlAction, until: &mut i
             true
         }
         StayWater => m.fluids.in_water,
-        StayGround => m.on_ground,
+        StayGround => m.ground.on_ground,
     }
 }
 /// `TadpoleAi`: the core activity (panic 2.0, the look and move sinks, the temptation
@@ -3084,6 +3149,56 @@ mod axolotl_parity_tests {
             activity: Act::Idle,
             list: Vec::new(),
         }
+    }
+    #[test]
+    #[ignore = "daily"]
+    fn axolotl_senses_content_prey_tagged_by_registry_id() {
+        use crate::items::{EntityTypeTags, Items};
+        use std::sync::Arc;
+
+        let mut items = Items::empty();
+        items.set_entity_type_tags(EntityTypeTags::from_ordered(
+            [(
+                "minecraft:axolotl_hunt_targets".into(),
+                vec!["test:custom_prey".into()],
+            )]
+            .into(),
+            vec!["test:custom_prey".into()].into(),
+        ));
+        let mut kind = (*crate::mobs::sensor_scan_tests::kind()).clone();
+        kind.id = "test:custom_prey".into();
+        // Its place in the registry IDs above, as a content type's is set at load.
+        kind.flags.entity_tag_slot = Some(0);
+        kind.species = Species::Cod;
+        let mut prey = Mob::new(2, Arc::new(kind), Vec3::new(2.0, 80.0, 0.0), 0.0);
+        prey.fluids.in_water = true;
+        let others = [prey.seen(None, &items)];
+        assert!(crate::mobs::world::with_test_world(
+            &others,
+            |world, types| {
+                let w = MobWorld {
+                    items: Some(&items),
+                    ..world.clone()
+                };
+                let mut axolotl = Mob::new(
+                    1,
+                    Arc::new(types.types["minecraft:axolotl"].clone()),
+                    Vec3::new(0.0, 80.0, 0.0),
+                    0.0,
+                );
+                let mut brain = empty_brain();
+                brain.mem.visible_mobs.set(Visible {
+                    list: vec![Who::Mob(prey.id)],
+                    cache: vec![(Who::Mob(prey.id), true)],
+                });
+                axolotl.extra.animal_brain = Some(Box::new(brain));
+                sense_axolotl_attackables(&mut axolotl, &w);
+                assert_eq!(
+                    mem(&mut axolotl).nearest_attackable.value(),
+                    Some(Who::Mob(prey.id))
+                );
+            }
+        ));
     }
     #[test]
     fn fight_exit_sets_hunting_cooldown_and_play_dead_has_priority() {
