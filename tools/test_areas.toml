@@ -372,9 +372,10 @@ about = "what the client sends to a server: movement, acks, keep-alives, setting
 paths = [
   "crates/sunrise-client/src/player_sync.rs", "crates/sunrise-client/src/net.rs",
   "crates/sunrise-client/src/game/network/remote*", "crates/sunrise-protocol/src/packets/*",
-  "crates/sunrise-client/src/game/world/tick_script.rs", "tools/net_capture.py", "tools/wire_stream.py",
+  "crates/sunrise-client/src/game/world/tick_script.rs", "third_party/winit/*", "tools/net_capture.py",
+  "tools/wire_stream.py", "tools/client_packet_*.py", "tools/input_recording.py", "tools/packet_parity_runs.py",
 ]
-harnesses = ["wire_stream", "protocol_*", "item_wire", "stop_sound_wire", "player_sync"]
+harnesses = ["wire_stream", "x11_mouse_look", "protocol_*", "item_wire", "stop_sound_wire", "player_sync"]
 
 [[area]]
 name = "mod-api"
