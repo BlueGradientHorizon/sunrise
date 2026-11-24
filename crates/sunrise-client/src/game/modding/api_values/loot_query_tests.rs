@@ -98,13 +98,6 @@ impl ItemPart for Ability {
         context: &mod_api::ItemAbilityContext<'_>,
         event: &mut mod_api::CanPerformActionEvent<'_>,
     ) {
-        assert!(context.host().is_none());
-        let params = context.loot().expect("loot predicate lends LootParamsView");
-        assert_eq!(params.queried_table_id(), "minecraft:blocks/short_grass");
-        assert_eq!(
-            params.tool().map(|tool| tool.item_id()),
-            Some(self.expected_item)
-        );
         assert_eq!(
             mod_api::__private::item_key_id(event.stack.item()),
             Some(self.expected_item)
@@ -199,29 +192,13 @@ fn queried_ability_parts_grant_and_deny_isolated() {
             let items = sunrise_items::items::Items::for_tests(Default::default());
             let mut holds = items.vanilla_can_perform(item, "shears_dig");
             assert_eq!(holds, initial);
-            let facts = engine::LootContext {
-                queried_table_id: Some("minecraft:blocks/short_grass"),
-                tool: Some(&tool as &dyn engine::LootToolAccess),
-                ..Default::default()
-            };
-            dispatch_loot_ability(&tool, "shears_dig", &facts, &Tags, &mut holds);
+            dispatch_loot_ability(&tool, "shears_dig", &Tags, &mut holds);
             assert_eq!(holds, expected);
 
             // Resident `sunrise_items::ItemStack` tools also flow through lazily without eager conversion.
             let resident = sunrise_items::items::ItemStack::new(item, 1);
             let mut resident_holds = items.vanilla_can_perform(item, "shears_dig");
-            let resident_facts = engine::LootContext {
-                queried_table_id: Some("minecraft:blocks/short_grass"),
-                tool: Some(&resident as &dyn engine::LootToolAccess),
-                ..Default::default()
-            };
-            dispatch_loot_ability(
-                &resident,
-                "shears_dig",
-                &resident_facts,
-                &Tags,
-                &mut resident_holds,
-            );
+            dispatch_loot_ability(&resident, "shears_dig", &Tags, &mut resident_holds);
             assert_eq!(resident_holds, expected);
 
             let query = engine::query::LootQuery::default();
@@ -232,28 +209,18 @@ fn queried_ability_parts_grant_and_deny_isolated() {
                     &condition,
                     &query,
                     Some(&tool as &dyn engine::LootAbilityTool),
-                    || engine::LootContext {
-                        queried_table_id: query.id(),
-                        tool: Some(&tool as &dyn engine::LootToolAccess),
-                        ..Default::default()
-                    },
                     &Tags,
                     |item, ability| items.vanilla_can_perform(item, ability),
                 );
                 assert_eq!(answer, Some(ability == "shears_dig" && expected));
                 assert_eq!(
-                    engine::query::condition(
-                        &condition,
-                        &query,
-                        None,
-                        || panic!("missing TOOL must never build loot facts or dispatch"),
-                        &Tags,
-                        |item, ability| items.vanilla_can_perform(item, ability),
-                    ),
+                    engine::query::condition(&condition, &query, None, &Tags, |item, ability| {
+                        items.vanilla_can_perform(item, ability)
+                    },),
                     Some(false)
                 );
             }
-            // Empty or air tools and unrelated conditions never build loot facts or dispatch.
+            // Empty or air tools and unrelated conditions never dispatch.
             let empty_tool = engine::LootStack {
                 count: 0,
                 ..tool.clone()
@@ -269,7 +236,6 @@ fn queried_ability_parts_grant_and_deny_isolated() {
                         &ability_condition,
                         &query,
                         Some(skipped as &dyn engine::LootAbilityTool),
-                        || panic!("empty or air tool must never build loot facts or dispatch"),
                         &Tags,
                         |item, ability| items.vanilla_can_perform(item, ability),
                     ),
@@ -282,7 +248,6 @@ fn queried_ability_parts_grant_and_deny_isolated() {
                     &unrelated,
                     &query,
                     Some(&tool as &dyn engine::LootAbilityTool),
-                    || panic!("unrelated condition must never build loot facts"),
                     &Tags,
                     |item, ability| items.vanilla_can_perform(item, ability),
                 ),

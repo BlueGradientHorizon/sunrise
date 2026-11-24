@@ -1595,15 +1595,6 @@ impl<R: RandomSource> Context<'_, R> {
                 .tool
                 .as_ref()
                 .map(|tool| tool as &dyn query::LootAbilityTool),
-            || {
-                query_context::roll_facts(
-                    &self.query,
-                    self.place.as_deref(),
-                    self.entity,
-                    self.biome,
-                    self.luck,
-                )
-            },
             self.data,
             |item, ability| {
                 crate::native_load_hooks::item_ability_default(item, ability, self.data)

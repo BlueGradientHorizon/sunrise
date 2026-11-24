@@ -23,7 +23,7 @@ fn load_hooks_are_noops_before_install_and_use_first_callbacks_after() {
 
     let hooks = || NativeLoadHooks {
         item_ability_default: |_, _, _| false,
-        loot_ability: |_, _, _, _, _| {},
+        loot_ability: |_, _, _, _| {},
         loot_table_load: |context, id, table| {
             assert_eq!(context.origin(), DataLoadOrigin::ServerDataLoad);
             if id == "minecraft:malformed" {
@@ -46,7 +46,7 @@ fn load_hooks_are_noops_before_install_and_use_first_callbacks_after() {
     assert!(
         native_load_hooks::install(NativeLoadHooks {
             item_ability_default: |_, _, _| false,
-            loot_ability: |_, _, _, _, _| {},
+            loot_ability: |_, _, _, _| {},
             loot_table_load: |_, _, table| *table = json!("second"),
             modify_default_components: |_, _, components| components.clear(),
         })

@@ -47,10 +47,6 @@ impl<'a> LootParamsView<'a> {
         Self(parts, project_name)
     }
 
-    pub(crate) fn reborrow(&self) -> LootParamsView<'_> {
-        Self(self.0, self.1)
-    }
-
     /// The original queried table id. The first id wins, nested rolls never set it,
     /// and an unset id reads as `UNKNOWN_LOOT_TABLE` until the root completes.
     pub fn queried_table_id(&self) -> &'a str {

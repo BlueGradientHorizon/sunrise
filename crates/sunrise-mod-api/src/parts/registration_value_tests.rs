@@ -1218,11 +1218,9 @@ fn an_ability_question_reaches_only_the_parts_of_the_asked_item_and_names_the_ab
     impl ItemPart for Abilities {
         fn can_perform_action(
             &self,
-            context: &ItemAbilityContext<'_>,
+            _: &ItemAbilityContext<'_>,
             event: &mut CanPerformActionEvent<'_>,
         ) {
-            assert!(context.host().is_some());
-            assert!(context.loot().is_none());
             assert_eq!(event.stack.count(), 1);
             self.asked.lock().unwrap().push(event.ability.to_owned());
             if event.ability == self.granted {
@@ -1265,7 +1263,7 @@ fn an_ability_question_reaches_only_the_parts_of_the_asked_item_and_names_the_ab
     let diamond = crate::parts::tests::stack("minecraft:diamond", 1, 0);
     let ask = |stack: &ItemStack, ability: &str, vanilla: bool| {
         let mut can_perform = vanilla;
-        let context = ItemAbilityContext::from_host(&host);
+        let context = ItemAbilityContext::new((&host as &dyn crate::Host).tags());
         let project = |_| -> Option<ItemStack> {
             panic!("ability routing and scalar reads must not project the stack")
         };

@@ -1,6 +1,6 @@
 //! One installer for the world library test binary; observations belong to each test thread.
 use super::*;
-use crate::loot::{self, LootContext, LootStack, LootToolAccess};
+use crate::loot::{self, LootContext, LootStack};
 struct QueryCodec;
 struct QueryCondition;
 impl loot::types::BoundCondition for QueryCondition {
@@ -84,11 +84,7 @@ pub(crate) fn install() {
                     }
                     _ => {}
                 },
-                loot_ability: |tool, ability, facts, _tags, holds| {
-                    assert_eq!(
-                        facts.tool.map(LootToolAccess::item_id),
-                        Some(tool.item_id())
-                    );
+                loot_ability: |tool, ability, _tags, holds| {
                     ABILITY.with(|v| {
                         *v.borrow_mut() = Some((tool.item_id().to_owned(), ability.to_owned()))
                     });

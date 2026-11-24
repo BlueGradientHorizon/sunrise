@@ -9,11 +9,13 @@ pub trait Hooks {
     /// stack's component (`blocks_attacks`, a shield's, blocks); set it either
     /// way and the stack grants or loses the ability. `stack` is a borrowed
     /// [`ItemStackView`] (call [`ItemStackView::project`] only when you need
-    /// components or an owned copy). The `context` is an [`ItemAbilityContext`]:
-    /// gameplay action sites lend a read-only [`Host`] (`context.host()`) and its
-    /// merged tags (`context.tags()`); loot predicates (`neoforge:can_item_perform_ability`)
-    /// lend the evaluator's merged tags and [`LootParamsView`] (`context.loot()`)
-    /// with `context.host() == None`. Loot conditions use the shared item defaults;
+    /// components or an owned copy). The answer depends only on the stack and the
+    /// ability: the hook is asked from gameplay and from loot predicates
+    /// (`neoforge:can_item_perform_ability`) and must give the same answer in both.
+    /// So it has no host or level, by design, as NeoForge's has none; the
+    /// [`ItemAbilityContext`] lends only the merged tags (`context.tags()`).
+    /// Behaviour that depends on the world belongs in the hook for that moment
+    /// (block breaking, item use). Loot conditions use the shared item defaults;
     /// action sites retain their own vanilla answers until #3330. Asked where vanilla
     /// checks the item for an action: a raised item blocking attacks
     /// (`shield_block`: a granted stack blocks as a bare
@@ -25,7 +27,7 @@ pub trait Hooks {
     /// the world or the tool (`block_tool_modification` is the block's side of a
     /// tool action; item wear is its own). Only the `ItemPart`s attached to `stack`'s
     /// item are asked, on both sides, so the client's prediction agrees with the
-    /// server: answer from the stack, `ability` and `context` alone, and fast. An
+    /// server: answer from the stack and `ability` alone, and fast. An
     /// item with no such part costs one table lookup and does not project the stack.
     /// A client without this mod predicts vanilla here; the server corrects it.
     #[hook(

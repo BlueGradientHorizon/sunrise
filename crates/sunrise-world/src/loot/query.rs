@@ -93,11 +93,10 @@ impl LootAbilityTool for LootStack {
 }
 
 /// Recognise stock conditions before the mod-kind fallback, without drawing randomness.
-pub fn condition<'a>(
+pub fn condition(
     value: &serde_json::Value,
     query: &LootQuery,
     tool: Option<&dyn LootAbilityTool>,
-    facts: impl FnOnce() -> super::LootContext<'a>,
     tags: &dyn super::LootTags,
     default: impl Fn(&str, &str) -> bool,
 ) -> Option<bool> {
@@ -112,7 +111,7 @@ pub fn condition<'a>(
                 .zip(value["ability"].as_str())
                 .is_some_and(|(tool, ability)| {
                     let mut holds = default(tool.item_id(), ability);
-                    crate::native_load_hooks::loot_ability(tool, ability, facts, tags, &mut holds);
+                    crate::native_load_hooks::loot_ability(tool, ability, tags, &mut holds);
                     holds
                 }),
         ),

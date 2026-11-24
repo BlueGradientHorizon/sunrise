@@ -137,7 +137,6 @@ fn project_queried_stack(
 pub(crate) fn dispatch_loot_ability(
     tool: &dyn engine::LootAbilityTool,
     ability: &str,
-    facts: &engine::LootContext<'_>,
     tags: &dyn engine::LootTags,
     holds: &mut bool,
 ) {
@@ -147,7 +146,7 @@ pub(crate) fn dispatch_loot_ability(
         return;
     }
     let tags = crate::game::loot_tags::LootTags(tags);
-    let context = mod_api::ItemAbilityContext::from_loot(&tags, loot_params(*facts));
+    let context = mod_api::ItemAbilityContext::new(&tags);
     if let Some(loot_stack) = tool.as_loot_stack() {
         let Some(stack) = queried_inventory_view(loot_stack) else {
             return;
