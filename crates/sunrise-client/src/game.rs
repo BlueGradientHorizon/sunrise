@@ -444,6 +444,8 @@ mod decorated_pot;
 pub(crate) mod dedicated;
 #[path = "game/items/deflect.rs"]
 mod deflect;
+#[path = "game/interface/demo_intro.rs"]
+mod demo_intro;
 #[path = "game/interface/developer_launch.rs"]
 mod developer_launch;
 #[path = "game/interface/dialogs.rs"]
@@ -1324,6 +1326,9 @@ mod native_held_out_tests;
 #[cfg(test)]
 #[path = "game/modding/native_hit_attempt_tests.rs"]
 mod native_hit_attempt_tests;
+#[cfg(test)]
+#[path = "game/modding/native_hit_causer_tests.rs"]
+mod native_hit_causer_tests;
 #[path = "game/modding/native_hit_effects.rs"]
 mod native_hit_effects;
 #[cfg(test)]
@@ -2044,6 +2049,9 @@ mod respawn_position;
 #[cfg(test)]
 #[path = "game/blocks/respawn_position_tests.rs"]
 mod respawn_position_tests;
+#[cfg(test)]
+#[path = "game/modding/rule_replacements.rs"]
+mod rule_replacements;
 #[path = "game/world/runtime_levels.rs"]
 mod runtime_levels;
 #[cfg(test)]
@@ -2554,6 +2562,8 @@ enum Screen {
     ServerLinks,
     /// ConfirmLinkScreen for a server link (game/network/server_links.rs).
     ConfirmLink,
+    /// Parentless PopupScreen opened by the server's demo event.
+    DemoIntro,
     /// DialogScreen.WarningScreen: the note about custom screens.
     DialogWarning,
     /// WinScreen: the end poem and the credits (game/interface/win.rs).
@@ -2589,6 +2599,7 @@ impl Screen {
             Screen::BlockEditor => "block_editor",
             Screen::ServerLinks => "server_links",
             Screen::ConfirmLink => "confirm_link",
+            Screen::DemoIntro => "demo_intro",
             Screen::DialogWarning => "dialog_warning",
             Screen::Win => "win",
             Screen::DebugOptions => "debug_options",
@@ -3885,6 +3896,7 @@ struct Game<'a> {
     end_portal_travel: bool,
     /// The open WinScreen (game/interface/win.rs).
     win: Option<win::Win>,
+    demo_intro: Option<demo_intro::DemoIntro>,
     end: end::EndState,
     block_ticks: Ticks,
     tick_scratch: TickScratch,
@@ -4595,11 +4607,11 @@ impl Dim {
     }
 }
 /// `Inventory.add` on a player's 36 slots (hotbar first) and off hand,
-/// `max` the stack's own maximum: onto equal stacks first
-/// (`getSlotWithRemainingSpace`: the selected slot, the off hand, then the
-/// hotbar and the main inventory), then into empty slots of the inventory
-/// (`getFreeSlot`, never the off hand). What does not fit stays in `stack`;
-/// true when some of it is left.
+/// `max` the stack's own maximum, one slot at a time (`addResource`): onto an
+/// equal stack while there is one (`getSlotWithRemainingSpace`), else into an
+/// empty slot of the inventory (`getFreeSlot`, never the off hand), until the
+/// stack is used up, no slot is left or a slot takes none of it. What does
+/// not fit stays in `stack`; true when some of it is left.
 fn inventory_add(
     inventory: &mut [Option<ItemStack>],
     offhand: &mut Option<ItemStack>,
@@ -4607,41 +4619,47 @@ fn inventory_add(
     max: u32,
     stack: &mut ItemStack,
 ) -> bool {
-    let order = std::iter::once(selected)
-        .chain(std::iter::once(shield::OFFHAND_SLOT))
-        .chain((0..36).filter(|&i| i != selected));
-    for i in order {
-        let slot = if i == shield::OFFHAND_SLOT {
+    use sunrise_client::menu::{OFFHAND, free_slot, slot_with_remaining_space};
+    loop {
+        // `Inventory.add`: an empty stack adds nothing (`isEmpty`).
+        if stack.count == 0 {
+            return false;
+        }
+        let slot =
+            slot_with_remaining_space(&inventory[..36], offhand.as_ref(), selected, stack, max)
+                .or_else(|| free_slot(&inventory[..36]));
+        #[cfg(test)]
+        let slot =
+            rule_replacements::add_slot(&inventory[..36], offhand.as_ref(), selected, stack, max)
+                .unwrap_or(slot);
+        let Some(slot) = slot else {
+            return true;
+        };
+        let cell = if slot == OFFHAND {
             &mut *offhand
         } else {
-            &mut inventory[i]
+            &mut inventory[slot]
         };
-        if let Some(slot) = slot
-            && slot.same_item_same_components(stack)
-            && slot.count < max
-        {
-            let moved = (max - slot.count).min(stack.count);
-            slot.count += moved;
-            stack.count -= moved;
-            if stack.count == 0 {
-                return false;
+        let moved = cell
+            .as_ref()
+            .map_or(max, |cell| max.saturating_sub(cell.count))
+            .min(stack.count);
+        // `Inventory.add`'s loop ends once an `addResource` moves nothing
+        // (`getCount() < lastSize`): a slot with no room for the stack.
+        if moved == 0 {
+            return true;
+        }
+        match cell {
+            Some(cell) => cell.count += moved,
+            None => {
+                *cell = Some(ItemStack {
+                    count: moved,
+                    ..stack.clone()
+                })
             }
         }
+        stack.count -= moved;
     }
-    for slot in inventory.iter_mut().take(36) {
-        if slot.is_none() {
-            let moved = stack.count.min(max);
-            *slot = Some(ItemStack {
-                count: moved,
-                ..stack.clone()
-            });
-            stack.count -= moved;
-            if stack.count == 0 {
-                return false;
-            }
-        }
-    }
-    true
 }
 
 fn facing_offset(facing: &str) -> [i32; 3] {
@@ -7948,6 +7966,7 @@ impl Game<'_> {
             Screen::Social => self.draw_social_screen(&mut batch),
             Screen::ServerLinks => self.draw_server_links(&mut batch),
             Screen::ConfirmLink => self.draw_confirm_link(&mut batch),
+            Screen::DemoIntro => self.draw_demo_intro(&mut batch),
             Screen::DialogWarning => self.draw_dialog_warning(&mut batch),
             Screen::CommandBlock => self.draw_command_block(&mut batch),
             Screen::BlockEditor => self.draw_block_editor(&mut batch),
@@ -12530,6 +12549,7 @@ impl Game<'_> {
             }
             Screen::HudEditor if left => self.hud_editor_release(),
             Screen::ConfirmLink if left_press => self.confirm_link_click(),
+            Screen::DemoIntro if left_press => self.demo_intro_click(),
             Screen::DialogWarning if left_press => self.dialog_warning_click()?,
             Screen::WorldOptions if left => self.world_options_release(),
             Screen::Friends if left_press => self.friends_screen_click(),
@@ -13461,6 +13481,7 @@ impl Game<'_> {
                             | Screen::CommandBlock
                             | Screen::BlockEditor
                             | Screen::DebugOptions
+                            | Screen::DemoIntro
                             | Screen::Win
                     ))))
     }
@@ -14118,6 +14139,7 @@ impl<'a> Game<'a> {
             respawn_config: None,
             end_portal_travel: false,
             win: None,
+            demo_intro: None,
             end: Default::default(),
             block_ticks: Ticks::new(0),
             tick_scratch: TickScratch::default(),

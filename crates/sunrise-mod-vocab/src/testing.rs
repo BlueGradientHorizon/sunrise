@@ -861,9 +861,13 @@ impl crate::prelude::ItemsBackend for FakeHost {
     fn entity_equipment_size(&self, _: u32) -> Option<usize> {
         None
     }
-    fn item_bundle_slots(&self, _: &ItemStack) -> Option<Vec<Option<ItemStack>>> {
+    fn bundle_slots(
+        &self,
+        _: &ItemStack,
+        _: &crate::BundleConfig,
+    ) -> Result<Option<Vec<Option<ItemStack>>>, crate::BundleReadError> {
         // The fake registry models declared containers, not game bundle components.
-        None
+        Ok(None)
     }
     fn item_container_slots(&self, stack: &ItemStack) -> Option<Vec<Option<ItemStack>>> {
         self.registries.container_slots(stack)

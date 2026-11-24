@@ -366,38 +366,35 @@ impl<'r> Game<'r> {
         owner_guest: Option<u32>,
         target: Who,
     ) -> bool {
-        let attacker_team = match owner {
+        // A player by entity id with their team; none when `who` is no player.
+        let guest = |conn: u32| {
+            self.lan
+                .as_ref()
+                .and_then(|h| h.hub.guest(conn))
+                .map(|g| (g.entity_id, self.score.board.players_team(&g.name)))
+        };
+        let guest_by_id = |id: u32| {
+            self.lan_guest_conn_by_id(id)
+                .map(|conn| (id as i32, guest(conn).and_then(|(_, team)| team)))
+        };
+        let attacker = match owner {
             Who::Player => match owner_guest {
-                Some(conn) if self.lan_acting != Some(conn) => self
-                    .lan
-                    .as_ref()
-                    .and_then(|h| h.hub.guest(conn))
-                    .map(|g| self.score.board.players_team(&g.name)),
-                _ => Some(self.player_team()),
+                Some(conn) if self.lan_acting != Some(conn) => guest(conn),
+                _ => Some((self.own_entity_id(), self.player_team())),
             },
-            Who::Mob(oid) => self.lan_guest_conn_by_id(oid).map(|conn| {
-                self.lan
-                    .as_ref()
-                    .and_then(|h| h.hub.guest(conn))
-                    .and_then(|g| self.score.board.players_team(&g.name))
-            }),
+            Who::Mob(oid) => guest_by_id(oid),
         };
-        let Some(attacker_team) = attacker_team else {
+        let Some((attacker, attacker_team)) = attacker else {
             return true;
         };
-        let victim_team = match target {
-            Who::Player => Some(self.player_team()),
-            Who::Mob(tid) => self.lan_guest_conn_by_id(tid).map(|conn| {
-                self.lan
-                    .as_ref()
-                    .and_then(|h| h.hub.guest(conn))
-                    .and_then(|g| self.score.board.players_team(&g.name))
-            }),
+        let victim = match target {
+            Who::Player => Some((self.own_entity_id(), self.player_team())),
+            Who::Mob(tid) => guest_by_id(tid),
         };
-        let Some(victim_team) = victim_team else {
+        let Some((victim, victim_team)) = victim else {
             return true;
         };
-        self.player_may_harm(victim_team, attacker_team)
+        self.player_may_harm(attacker, victim, attacker_team, victim_team)
     }
 
     /// Current bounding box of a live target (for `ShulkerBullet` homing).

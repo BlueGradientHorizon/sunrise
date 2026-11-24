@@ -524,6 +524,16 @@ mod tests {
         assert_eq!(properties("brigadier:string", &p), vec![2]);
     }
 
+    /// `StringArgumentSerializer` writes the `StringType` ordinal as a varint: `SINGLE_WORD` 0,
+    /// `QUOTABLE_PHRASE` 1, `GREEDY_PHRASE` 2; the report names them `word`, `phrase`, `greedy`.
+    #[test]
+    fn string_modes_are_brigadiers_ordinals() {
+        for (mode, wire) in [("word", 0), ("phrase", 1), ("greedy", 2)] {
+            let p = serde_json::json!({ "type": mode });
+            assert_eq!(properties("brigadier:string", &p), vec![wire], "{mode}");
+        }
+    }
+
     /// A mod's root of a vanilla name merges into vanilla's node, as NeoForge's
     /// `RegisterCommandsEvent` registers into vanilla's dispatcher (Brigadier's
     /// `CommandNode.addChild`): one `stop`, vanilla's (still executable, still restricted), with

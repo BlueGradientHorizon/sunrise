@@ -21,10 +21,11 @@ impl Game<'_> {
             let Some(p) = r.tab_players.get(uuid) else {
                 continue;
             };
-            let skin = r.skins.get(uuid).map_or_else(
-                || sunrise_client::tab_list::default_skin(*uuid),
-                String::as_str,
-            );
+            let skin = r
+                .skins
+                .get(uuid)
+                .map(|skin| skin.body(*uuid).0)
+                .unwrap_or_else(|| sunrise_client::tab_list::default_skin(*uuid));
             for key in [
                 format!("id:{uuid:032x}"),
                 format!("name:{}", p.name.to_ascii_lowercase()),
@@ -174,20 +175,7 @@ impl Game<'_> {
         }
         present
     }
-    /// A player's skin and model as drawn: the downloaded skin once it is in
-    /// the atlas, until then the profile's default (`DefaultPlayerSkin.get`),
-    /// as `PlayerInfo.getSkin` gives before the texture has loaded.
-    pub(super) fn drawn_skin(&self, uuid: u128, (skin, slim): (String, bool)) -> (String, bool) {
-        if self.skin_pending(&skin) {
-            let skin = sunrise_client::tab_list::default_skin(uuid);
-            return (skin.to_owned(), skin.contains("/slim/"));
-        }
-        (skin, slim)
-    }
     /// Whether `skin` is a downloaded skin not yet in the atlas ([`Self::again_skin`]).
-    fn skin_pending(&self, skin: &str) -> bool {
-        self.skin_pending_with_journal(skin, None)
-    }
     fn skin_pending_with_journal(
         &self,
         skin: &str,
@@ -196,8 +184,9 @@ impl Game<'_> {
         (skin.starts_with("skins/") || skin == "sunrise/offline_skin")
             && !self.again_skin_with_journal(skin, journal)
     }
-    /// `drawn_skin` for a face in the player list or spectator menu, borrowed: `skin`, or the
-    /// UUID's default while it is pending.
+    /// A face in the player list or spectator menu as drawn, borrowed: `skin`, or the
+    /// UUID's default (`DefaultPlayerSkin.get`) while the downloaded skin is not yet in the
+    /// atlas, as `PlayerInfo.getSkin` gives before the texture has loaded.
     fn shown_face<'s>(&self, uuid: u128, skin: &'s str) -> &'s str {
         self.shown_face_with_journal(uuid, skin, None)
     }
@@ -212,7 +201,7 @@ impl Game<'_> {
             false => skin,
         }
     }
-    /// `drawn_skin` for a face in the player list or spectator menu.
+    /// [`Self::shown_face`], owned.
     pub(in crate::game) fn face_skin(&self, uuid: u128, skin: &str) -> String {
         self.shown_face(uuid, skin).to_owned()
     }
@@ -233,7 +222,7 @@ impl Game<'_> {
             .map(|r| {
                 let skin = r.skins.get(&uuid).map_or_else(
                     || sunrise_client::tab_list::default_skin(uuid),
-                    String::as_str,
+                    |skin| skin.body(uuid).0,
                 );
                 self.shown_face_with_journal(uuid, skin, journal)
             });
