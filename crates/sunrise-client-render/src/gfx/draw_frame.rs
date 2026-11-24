@@ -1406,7 +1406,11 @@ impl Renderer {
         let pack_owns_sky_stage = pack_world_runs
             && (pack_draws_sky || pack_draws_celestial)
             && (!frame.end_sky || end_fog_sky(frame));
-        let sky_stage = if !live_hooks || !frame.sky_pass {
+        let wants_after_sky = live_hooks
+            && hooks
+                .as_deref()
+                .is_some_and(|hooks| hooks.wants_after_sky());
+        let sky_stage = if !wants_after_sky || !frame.sky_pass {
             None
         } else if pack_owns_sky_stage {
             Some(SkyStageOwner::ClassicPack)
@@ -1497,11 +1501,12 @@ impl Renderer {
                     native.sky.is_some() && t.recording() && sky_visible && frame.skybox;
             }
         }
-        // Complete the separate engine sky pass before buffer preparation. The main world pass
+        // Complete the separate engine sky pass before buffer preparation only when a
+        // listener subscribes to `RenderLevelStage::AfterSky`. The main world pass
         // loads that colour and starts its own depth as usual. A classic pack's replacement
         // sky draws and notifies after the engine world import in PackPost instead.
         let separate_sky =
-            live_hooks && sky_visible && (frame.skybox || frame.end_sky) && !pack_draws_sky;
+            wants_after_sky && sky_visible && (frame.skybox || frame.end_sky) && !pack_draws_sky;
         if separate_sky {
             if let Some(timer) = &mut self.gpu_timer {
                 timer.begin(&mut encoder);

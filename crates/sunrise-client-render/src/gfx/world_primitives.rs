@@ -112,6 +112,11 @@ pub struct PreparedHookGeometry {
 /// Renderer-driven lifecycle for mod world rendering hooks (`submit_custom_geometry`,
 /// `prepare_render_buffers`, and `render_level_stage`).
 pub trait FrameHooks {
+    /// Whether any listener wants the `RenderLevelStage::AfterSky` boundary
+    /// (which requires splitting the engine sky pass before buffer preparation).
+    fn wants_after_sky(&self) -> bool {
+        true
+    }
     fn on_custom_geometry(&mut self, sections: &[mod_api::RenderableSection], oit_on: bool);
     fn on_after_sky(&mut self, sections: &[mod_api::RenderableSection], oit_on: bool);
     fn on_prepare_render_buffers(

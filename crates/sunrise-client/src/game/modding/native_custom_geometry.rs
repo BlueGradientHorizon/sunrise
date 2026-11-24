@@ -54,6 +54,10 @@ impl Drop for GameWorldStageDriver<'_, '_> {
 }
 
 impl sunrise_client::gfx::world_primitives::FrameHooks for GameWorldStageDriver<'_, '_> {
+    fn wants_after_sky(&self) -> bool {
+        mod_api::__private::listened(mod_api::HookId::RenderLevelStage)
+    }
+
     fn on_custom_geometry(&mut self, sections: &[mod_api::RenderableSection], oit_on: bool) {
         let view = Self::view(
             self.frame_camera,
