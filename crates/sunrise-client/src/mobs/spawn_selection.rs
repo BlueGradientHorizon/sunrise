@@ -1386,7 +1386,7 @@ pub struct SpawnCluster {
     count: u32,
     groups: u8,
     group_index: u32,
-    current: Option<(SpawnEntry, Option<(MobType, Category)>, [i32; 3])>,
+    current: Option<(SpawnEntry, Option<Category>, [i32; 3])>,
     x: i32,
     z: i32,
     attempt: i32,
@@ -1479,16 +1479,19 @@ impl SpawnCluster {
                     continue;
                 };
                 self.max = sample_count(&entry, random) as i32;
-                let kind = l
+                let type_category = l
                     .mob_type(&entry.entity)
-                    .map(|t| (t.clone(), Category::from_name(&t.category)));
-                self.current = Some((entry, kind, [x, y, z]));
+                    .map(|t| Category::from_name(&t.category));
+                self.current = Some((entry, type_category, [x, y, z]));
             }
-            let (entry, kind, picked_at) = self.current.as_ref().unwrap_or_else(|| unreachable!());
-            let Some((kind, type_category)) = kind.as_ref() else {
+            let (entry, type_category, picked_at) =
+                self.current.as_ref().unwrap_or_else(|| unreachable!());
+            let Some(type_category) = *type_category else {
                 continue;
             };
-            let type_category = *type_category;
+            let Some(kind) = l.mob_type(&entry.entity) else {
+                continue;
+            };
             // The list the entry was picked from holds it where it was picked.
             let listed = *picked_at == [x, y, z];
             if !valid_position_for_type(

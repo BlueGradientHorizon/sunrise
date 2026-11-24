@@ -1590,7 +1590,12 @@ impl<'a> Game<'a> {
         let mut category_index = categories.len();
         let mut cluster: Option<SpawnCluster> = None;
         let mut provisional = 0;
-        let may_edit_players = !mod_api::__private::mods().is_empty();
+        let may_edit_players = mod_api::__private::listened(mod_api::HookId::EntityJoinLevel)
+            || mod_api::__private::listened(mod_api::HookId::MobSpawned)
+            || mod_api::__private::listened(mod_api::HookId::EntityConstructing)
+            || mod_api::__private::listened(mod_api::HookId::FinalizeSpawn)
+            || mod_api::__private::listened(mod_api::HookId::MobSpawnPlacementCheck)
+            || mod_api::__private::listened(mod_api::HookId::MobSpawnPositionCheck);
         let mut trace = |_: spawn_selection::Event<'_>| {};
         let _save_lease = sunrise_client::join_seq::visibility::PassLease::enter();
         loop {
