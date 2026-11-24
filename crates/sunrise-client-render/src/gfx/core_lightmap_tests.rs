@@ -272,8 +272,8 @@ fn stores_the_nearest_byte(device: &wgpu::Device, queue: &wgpu::Queue) -> bool {
 
 /// Vanilla's own `screenquad` and `lightmap` through the pack path draw vanilla's light texture
 /// exactly, all 256 texels, in two lighting states ([`vanilla_textures`]), row by sky level and
-/// column by block level. An adapter that does not store the nearest byte (RADV, NVIDIA) skips it: its
-/// conversion, not the shader's math, moves some texels down a step.
+/// column by block level. An adapter that does not store the nearest byte (RADV, NVIDIA) skips
+/// it: its conversion, not the shader's math, moves some texels down a step.
 #[test]
 #[ignore = "daily"]
 fn vanillas_lightmap_shaders_draw_vanillas_light_texture() {
