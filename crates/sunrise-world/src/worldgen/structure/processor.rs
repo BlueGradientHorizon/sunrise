@@ -35,6 +35,10 @@ pub trait ProcessorRandom {
     fn float(&mut self) -> f32;
     fn int(&mut self, bound: i32) -> i32;
     fn long(&mut self) -> i64;
+    fn int_unbounded(&mut self) -> i32;
+    fn double(&mut self) -> f64;
+    fn boolean(&mut self) -> bool;
+    fn gaussian(&mut self) -> f64;
 }
 impl<R: RandomSource> ProcessorRandom for R {
     fn float(&mut self) -> f32 {
@@ -45,6 +49,18 @@ impl<R: RandomSource> ProcessorRandom for R {
     }
     fn long(&mut self) -> i64 {
         self.next_long()
+    }
+    fn int_unbounded(&mut self) -> i32 {
+        self.next_int()
+    }
+    fn double(&mut self) -> f64 {
+        self.next_double()
+    }
+    fn boolean(&mut self) -> bool {
+        self.next_boolean()
+    }
+    fn gaussian(&mut self) -> f64 {
+        self.next_gaussian()
     }
 }
 
@@ -360,6 +376,9 @@ pub enum Processor {
     /// `sunrise:mineshaft_sky_view` (Repurposed Structures' mineshafts):
     /// nothing above the ocean floor but rails on solid ground.
     MineshaftSkyView,
+    /// A mod-registered structure processor (`Registries.STRUCTURE_PROCESSOR`),
+    /// resolved once at decode.
+    Mod(Arc<dyn super::mod_processors::ModStructureProcessor>),
 }
 #[derive(Clone, Debug, Default)]
 pub struct ProcessorList(pub Vec<Processor>);
@@ -734,7 +753,7 @@ fn float_range(value: &Value, key: &'static str, min: f32, max: f32) -> Result<f
     Ok(v)
 }
 impl Processor {
-    fn decode(
+    pub fn decode(
         value: &Value,
         resources: &StructureResources,
         bindings: &FeatureBlockBindings<'_>,
@@ -873,11 +892,23 @@ impl Processor {
             "lithostitched:condition" => Self::Condition(Box::new(litho::Conditional::decode(
                 value, resources, bindings,
             )?)),
-            _ => return Err(DecodeError::Field("structure processor type")),
+            other => {
+                if let Some(ty) = super::mod_processors::mod_structure_processor_type(other) {
+                    return ty
+                        .decode(value, resources, bindings)
+                        .map(Self::Mod)
+                        .map_err(DecodeError::Registry);
+                }
+                return Err(DecodeError::Field("structure processor type"));
+            }
         })
     }
     fn evaluates_entire_piece(&self) -> bool {
-        matches!(self, Self::Capped { .. })
+        match self {
+            Self::Capped { .. } => true,
+            Self::Mod(processor) => processor.evaluates_entire_piece_state(),
+            _ => false,
+        }
     }
 }
 impl ProcessorList {
@@ -887,7 +918,16 @@ impl ProcessorList {
         resources: &StructureResources,
         bindings: &FeatureBlockBindings<'_>,
     ) -> Result<Self, DecodeError> {
-        // Lists name lists (a pillar's, Lithostitched's): a cycle of names
+        let value: Value = serde_json::from_str(json)?;
+        Self::decode_value(&value, resources, bindings)
+    }
+    /// Decode a processor list holder from an already-parsed JSON value.
+    pub fn decode_value(
+        value: &Value,
+        resources: &StructureResources,
+        bindings: &FeatureBlockBindings<'_>,
+    ) -> Result<Self, DecodeError> {
+        // Lists name lists (a pillar's, a mod's): a cycle of names
         // is refused rather than followed.
         thread_local!(static DEPTH: std::cell::Cell<u32> = const { std::cell::Cell::new(0) });
         let depth = DEPTH.get();
@@ -895,29 +935,33 @@ impl ProcessorList {
             return Err(DecodeError::Field("processor lists nest too deep"));
         }
         DEPTH.set(depth + 1);
-        let decoded = Self::decode_at(json, resources, bindings);
+        let decoded = Self::decode_at(value, resources, bindings);
         DEPTH.set(depth);
         decoded
     }
     fn decode_at(
-        json: &str,
+        value: &Value,
         resources: &StructureResources,
         bindings: &FeatureBlockBindings<'_>,
     ) -> Result<Self, DecodeError> {
-        let value: Value = serde_json::from_str(json)?;
-        let value = match &value {
+        let owned;
+        let value = match value {
             Value::String(name) => {
                 let name = super::super::tags::identifier(name)?;
                 let raw = resources.processor_lists.get(&name).ok_or_else(|| {
                     DecodeError::Registry(format!("unknown processor list {name}"))
                 })?;
-                serde_json::from_str(raw)?
+                owned = serde_json::from_str::<Value>(raw)?;
+                &owned
             }
-            other => other.clone(),
+            other => other,
         };
-        let list = match &value {
-            Value::Array(a) => a.clone(),
-            Value::Object(_) => value["processors"].as_array().cloned().unwrap_or_default(),
+        let list = match value {
+            Value::Array(a) => a.as_slice(),
+            Value::Object(_) => value["processors"]
+                .as_array()
+                .map(Vec::as_slice)
+                .unwrap_or(&[]),
             _ => return Err(DecodeError::Field("processor list")),
         };
         Ok(Self(
@@ -1028,20 +1072,20 @@ fn blackstone(name: &str) -> Option<&'static str> {
 type ProcessResult = Result<Option<BlockInfo>, PlacementQueryError>;
 /// The processors of a list in turn, until one removes the block.
 #[allow(clippy::too_many_arguments)]
-fn process_list<W: PlacementContext>(
+pub(super) fn process_list<W: PlacementContext>(
     list: &ProcessorList,
     world: &mut W,
     resources: &StructureResources,
     position: [i32; 3],
     reference: [i32; 3],
-    relative: [i32; 3],
+    original: &BlockInfo,
     info: BlockInfo,
     settings: &mut PlaceSettings<'_>,
 ) -> ProcessResult {
     let mut current = info;
     for processor in &list.0 {
         match process_block(
-            processor, world, resources, position, reference, relative, current, settings,
+            processor, world, resources, position, reference, original, current, settings,
         )? {
             Some(next) => current = next,
             None => return Ok(None),
@@ -1050,18 +1094,19 @@ fn process_list<W: PlacementContext>(
     Ok(Some(current))
 }
 /// StructureProcessor.processBlock: `position` is the piece's, `reference`
-/// the structure's pivot and `relative` the block's in the template.
+/// the structure's pivot and `original` the template's untransformed block.
 #[allow(clippy::too_many_arguments)]
-fn process_block<W: PlacementContext>(
+pub(super) fn process_block<W: PlacementContext>(
     processor: &Processor,
     world: &mut W,
     resources: &StructureResources,
     position: [i32; 3],
     reference: [i32; 3],
-    relative: [i32; 3],
+    original: &BlockInfo,
     info: BlockInfo,
     settings: &mut PlaceSettings<'_>,
 ) -> ProcessResult {
+    let relative = original.pos;
     let registry = resources.registry;
     let name = |id: BlockStateId| registry.state(id).map(|s| s.name.as_str()).unwrap_or("");
     Ok(match processor {
@@ -1194,7 +1239,7 @@ fn process_block<W: PlacementContext>(
             match apply.pick(&mut random) {
                 Some(list) => {
                     return process_list(
-                        list, world, resources, position, reference, relative, info, settings,
+                        list, world, resources, position, reference, original, info, settings,
                     );
                 }
                 None => Some(info),
@@ -1204,7 +1249,7 @@ fn process_block<W: PlacementContext>(
             let mut current = info;
             for list in lists {
                 match process_list(
-                    list, world, resources, position, reference, relative, current, settings,
+                    list, world, resources, position, reference, original, current, settings,
                 )? {
                     Some(next) => current = next,
                     None => return Ok(None),
@@ -1237,7 +1282,7 @@ fn process_block<W: PlacementContext>(
                 .test(info.state, location, registry, &mut random);
             let list = if passed { &c.then } else { &c.otherwise };
             return process_list(
-                list, world, resources, position, reference, relative, info, settings,
+                list, world, resources, position, reference, original, info, settings,
             );
         }
         Processor::Pillar(p) => return p.process(world, resources, position, info, settings),
@@ -1297,6 +1342,12 @@ fn process_block<W: PlacementContext>(
                     nbt: None,
                 },
             })
+        }
+        Processor::Mod(mod_processor) => {
+            let mut ctx = super::mod_processors::ProcessorRunContext::new(
+                world, resources, position, reference, settings, info.pos,
+            );
+            return mod_processor.process_block(&mut ctx, original, info);
         }
     })
 }
@@ -1388,7 +1439,7 @@ fn block_age(
 }
 
 /// StructureTemplate.processBlockInfos.
-fn process_infos<W: PlacementContext>(
+fn process_infos<W: FeatureWorld + PlacementContext>(
     world: &mut W,
     resources: &StructureResources,
     template: &StructureTemplate,
@@ -1398,10 +1449,8 @@ fn process_infos<W: PlacementContext>(
     settings: &mut PlaceSettings<'_>,
 ) -> Result<Vec<BlockInfo>, PlacementQueryError> {
     settings.counted = 0;
-    let whole = settings
-        .processors
-        .iter()
-        .any(|p| p.evaluates_entire_piece());
+    let processors = settings.processors.clone();
+    let whole = processors.iter().any(|p| p.evaluates_entire_piece());
     let mut original = Vec::new();
     let mut processed = Vec::new();
     for info in template.palettes()[palette].blocks() {
@@ -1420,11 +1469,10 @@ fn process_infos<W: PlacementContext>(
             state: info.state,
             nbt: info.nbt.clone(),
         });
-        let processors = settings.processors.clone();
-        for processor in processors {
+        for &processor in &processors {
             let Some(value) = current.take() else { break };
             current = process_block(
-                processor, world, resources, position, reference, info.pos, value, settings,
+                processor, world, resources, position, reference, info, value, settings,
             )?;
         }
         if let Some(value) = current {
@@ -1432,54 +1480,64 @@ fn process_infos<W: PlacementContext>(
             original.push(info.clone());
         }
     }
-    let processors = settings.processors.clone();
-    for processor in processors {
-        let Processor::Capped { delegate, limit } = processor else {
-            continue;
-        };
-        if limit.bounds()[1] == 0 || processed.is_empty() || original.len() != processed.len() {
-            continue;
-        }
-        let seed = world.world_seed()?;
-        let mut random = LegacyRandom::new(seed).fork_positional().at(BlockPos::new(
-            position[0],
-            position[1],
-            position[2],
-        ));
-        let max = limit
-            .sample(&mut random)
-            .unwrap_or(0)
-            .min(processed.len() as i32);
-        if max < 1 {
-            continue;
-        }
-        let mut indices: Vec<usize> = (0..processed.len()).collect();
-        for i in (2..=indices.len()).rev() {
-            let swap = random.next_int_bound(i as i32).unwrap_or(0) as usize;
-            indices.swap(i - 1, swap);
-        }
-        let mut replaced = 0;
-        for index in indices {
-            if replaced >= max {
-                break;
+    for &processor in &processors {
+        match processor {
+            Processor::Capped { delegate, limit } => {
+                if limit.bounds()[1] == 0
+                    || processed.is_empty()
+                    || original.len() != processed.len()
+                {
+                    continue;
+                }
+                let seed = world.world_seed()?;
+                let mut random = LegacyRandom::new(seed).fork_positional().at(BlockPos::new(
+                    position[0],
+                    position[1],
+                    position[2],
+                ));
+                let max = limit
+                    .sample(&mut random)
+                    .unwrap_or(0)
+                    .min(processed.len() as i32);
+                if max < 1 {
+                    continue;
+                }
+                let mut indices: Vec<usize> = (0..processed.len()).collect();
+                for i in (2..=indices.len()).rev() {
+                    let swap = random.next_int_bound(i as i32).unwrap_or(0) as usize;
+                    indices.swap(i - 1, swap);
+                }
+                let mut replaced = 0;
+                for index in indices {
+                    if replaced >= max {
+                        break;
+                    }
+                    let before = processed[index].clone();
+                    let altered = process_block(
+                        delegate,
+                        world,
+                        resources,
+                        position,
+                        reference,
+                        &original[index],
+                        before.clone(),
+                        settings,
+                    )?;
+                    if let Some(altered) = altered
+                        && altered != before
+                    {
+                        replaced += 1;
+                        processed[index] = altered;
+                    }
+                }
             }
-            let before = processed[index].clone();
-            let altered = process_block(
-                delegate,
-                world,
-                resources,
-                position,
-                reference,
-                original[index].pos,
-                before.clone(),
-                settings,
-            )?;
-            if let Some(altered) = altered
-                && altered != before
-            {
-                replaced += 1;
-                processed[index] = altered;
+            Processor::Mod(mod_processor) => {
+                let mut ctx = super::mod_processors::ProcessorRunContext::new(
+                    world, resources, position, reference, settings, position,
+                );
+                processed = mod_processor.finalize_processing(&mut ctx, &original, processed)?;
             }
+            _ => {}
         }
     }
     Ok(processed)
@@ -2053,6 +2111,18 @@ mod tests {
             i
         }
         fn long(&mut self) -> i64 {
+            unreachable!()
+        }
+        fn int_unbounded(&mut self) -> i32 {
+            unreachable!()
+        }
+        fn double(&mut self) -> f64 {
+            unreachable!()
+        }
+        fn boolean(&mut self) -> bool {
+            unreachable!()
+        }
+        fn gaussian(&mut self) -> f64 {
             unreachable!()
         }
     }

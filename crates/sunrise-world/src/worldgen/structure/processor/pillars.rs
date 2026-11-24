@@ -231,7 +231,12 @@ fn run_nested<W: PlacementContext>(
         return Ok(Some(info));
     };
     let local = std::array::from_fn(|i| at[i] - origin[i] + position[i]);
-    process_list(list, world, resources, local, at, local, info, settings)
+    let original = BlockInfo {
+        pos: local,
+        state,
+        nbt: None,
+    };
+    process_list(list, world, resources, local, at, &original, info, settings)
 }
 
 /// Moog's `pillar_state_randomizer`: the first entry whose share of
@@ -865,6 +870,18 @@ mod tests {
             unreachable!()
         }
         fn long(&mut self) -> i64 {
+            unreachable!()
+        }
+        fn int_unbounded(&mut self) -> i32 {
+            unreachable!()
+        }
+        fn double(&mut self) -> f64 {
+            unreachable!()
+        }
+        fn boolean(&mut self) -> bool {
+            unreachable!()
+        }
+        fn gaussian(&mut self) -> f64 {
             unreachable!()
         }
     }

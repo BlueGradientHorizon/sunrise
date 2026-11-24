@@ -2,6 +2,7 @@
 //! Block-query modifiers and actual configured features remain separate work.
 mod chain;
 mod layer;
+pub mod mod_placements;
 use super::block_predicate::{BlockPredicate, PredicateBlockResolver};
 use super::{
     DecodeError, Object, anchor::WorldGenerationContext, biome_temperature::biome_info_noise,
@@ -11,6 +12,7 @@ use super::{
 use crate::heightmap::HeightmapType;
 pub use chain::{FeaturePlacementError, FeaturePlacer};
 use serde_json::value::RawValue;
+use std::sync::Arc;
 use sunrise_core::random::{InvalidBound, RandomSource};
 mod context;
 pub use context::{LayerBlock, PlacementContext, PlacementQueryError};
@@ -57,6 +59,9 @@ pub enum PlacementModifier {
     RandomChance(f32),
     Fixed(Vec<[i32; 3]>),
     RandomlySelected(Vec<Self>),
+    /// A mod-registered placement modifier (`Registries.PLACEMENT_MODIFIER_TYPE`),
+    /// resolved once at decode.
+    Mod(Arc<dyn mod_placements::ModPlacementModifier>),
 }
 #[derive(Debug)]
 pub enum PlacementError<E> {
@@ -273,7 +278,17 @@ impl PlacementModifier {
                         .collect::<Result<_, _>>()?,
                 ))
             }
-            _ => Err(DecodeError::Field("placement modifier type")),
+            other => {
+                if let Some(ty) = mod_placements::mod_placement_modifier_type(other) {
+                    let value: serde_json::Value = serde_json::from_str(json)?;
+                    let scope =
+                        mod_placements::PlacementDecodeScope::new(depth, *remaining, blocks);
+                    let modifier = ty.decode(&value, &scope).map_err(DecodeError::Registry)?;
+                    *remaining = scope.remaining();
+                    return Ok(Self::Mod(modifier));
+                }
+                Err(DecodeError::Field("placement modifier type"))
+            }
         }
     }
     /// Return the count for repeating modifiers without allocating or emitting
@@ -498,6 +513,20 @@ impl PlacementModifier {
                 }
                 let index = random.next_int_bound(placements.len() as i32)? as usize;
                 placements[index].modify_inner(context, random, position, emit, remaining)?;
+            }
+            Self::Mod(modifier) => {
+                let positions = {
+                    let mut ctx = mod_placements::PlacementRunContext::new(context, remaining);
+                    let mut rng = mod_placements::EngineRandom(random);
+                    modifier.get_positions(&mut ctx, &mut rng, position)?
+                };
+                for pos in positions {
+                    if *remaining == 0 {
+                        return Err(PlacementError::WorkLimit);
+                    }
+                    *remaining -= 1;
+                    emit(random, pos).map_err(PlacementError::Output)?;
+                }
             }
         }
         Ok(())

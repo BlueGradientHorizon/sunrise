@@ -509,6 +509,11 @@ mod tests {
                 state: self.id(state),
                 nbt: None,
             };
+            let original = BlockInfo {
+                pos: [0; 3],
+                state: info.state,
+                nbt: None,
+            };
             let mut settings = PlaceSettings::new(Rotation::None);
             process_list(
                 list,
@@ -516,7 +521,7 @@ mod tests {
                 &self.resources,
                 piece,
                 piece,
-                [0; 3],
+                &original,
                 info,
                 &mut settings,
             )
