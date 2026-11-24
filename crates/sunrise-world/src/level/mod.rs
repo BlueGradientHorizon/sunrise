@@ -1086,6 +1086,11 @@ pub trait LevelAccess: BlockEntityNeighbors {
     fn infiniburn(&self) -> Option<&data::BlockSet> {
         None
     }
+    /// The blocks of `sunrise:golem_heads`, resolved once for this level with the mods' and data packs'
+    /// members; None is an empty tag, so only `CarvedPumpkinBlock`'s own class completes a golem on place.
+    fn golem_heads(&self) -> Option<&data::BlockSet> {
+        None
+    }
     /// The level's dimension type.
     fn dimension_type(&self) -> &DimensionFacts {
         DimensionFacts::of_level(self.level_key())

@@ -103,6 +103,8 @@ pub struct World {
     path_type_cache: OnceLock<path_type_cache::PathTypeCache>,
     /// The dimension type's fire-source tag, resolved at entry and data reload.
     pub infiniburn: Option<Arc<sunrise_world::level::data::BlockSet>>,
+    /// `sunrise:golem_heads`, resolved with the mods' and data packs' members at entry and on every tag install.
+    pub golem_heads: Option<Arc<sunrise_world::level::data::BlockSet>>,
     /// Server-owned mod data attached to this dimension.
     pub attachments: sunrise_mod_runtime::attachments::Attachments,
     /// Mod-owned watered areas; never serialized with the world.
@@ -357,6 +359,7 @@ impl World {
         Self {
             path_type_cache: OnceLock::new(),
             infiniburn: None,
+            golem_heads: None,
             shape: LevelShape::OVERWORLD,
             chunks: Default::default(),
             border: Default::default(),

@@ -426,6 +426,7 @@ impl Game<'_> {
         world.shape = format.shape;
         world.fast_lava = facts.fast_lava;
         world.infiniburn = Some(self.resolve_level_infiniburn(&facts));
+        world.golem_heads = Some(self.resolve_golem_heads());
         let mut world = ViewedWorld::new(
             spawn.dimension.clone(),
             format.chunk_format,
