@@ -291,11 +291,55 @@ fn uses_list(path: &Path) -> Result<(), String> {
     Ok(())
 }
 
+/// Loads every listed `[[jar]]` from the local jar store, fetching missing jars from Modrinth.
+/// Returns `None` when the manifest lists no jars or when any jar cannot be fetched or read,
+/// printing one note so `check` and `build` still succeed offline.
+fn load_jar_layer(
+    manifest: &sunrise_mod_package::Manifest,
+) -> Option<sunrise_mod_package::content::JarLayer> {
+    if manifest.jar.is_empty() {
+        return None;
+    }
+    let store = crate::jar::default_store();
+    let mut layer = sunrise_mod_package::content::JarLayer::new();
+    for jar in &manifest.jar {
+        let cached = jar.cache_path(&store);
+        if !cached.is_file()
+            && let Err(error) = sunrise_jar_fetch::fetch(
+                &crate::jar::ProxyHttp,
+                crate::jar::MODRINTH,
+                jar.sha512(),
+                &cached,
+            )
+        {
+            eprintln!(
+                "note: could not fetch jar {} {} ({error}); its resources were not checked",
+                jar.id(),
+                jar.version()
+            );
+            return None;
+        }
+        if let Err(error) = layer.add_archive(&cached) {
+            eprintln!(
+                "note: could not read jar {} {} ({error}); its resources were not checked",
+                jar.id(),
+                jar.version()
+            );
+            return None;
+        }
+    }
+    Some(layer)
+}
+
 /// The references among a project's content files ([`sunrise_mod_package::content::check_references`]):
-/// warnings are printed, errors fail with one line each.
+/// warnings are printed, errors fail with one line each. When the manifest lists `[[jar]]`, each
+/// jar is read from the local jar store (fetched from Modrinth if missing) so references resolve
+/// against the mod and its jars together.
 pub fn references(root: &Path, manifest: &sunrise_mod_package::Manifest) -> Result<(), String> {
     let content = sunrise_mod_package::Content::read(root, manifest)?;
-    let findings = sunrise_mod_package::content::check_references(&content, manifest)?;
+    let jars = load_jar_layer(manifest);
+    let findings =
+        sunrise_mod_package::content::check_references(&content, manifest, jars.as_ref())?;
     for warning in findings
         .warnings
         .iter()
