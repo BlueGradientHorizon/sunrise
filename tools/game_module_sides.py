@@ -21,9 +21,26 @@ in sync:
 - `--fix` runs `rustfmt --edition 2024` on modified Rust files so generated output matches
   the repository's formatting gate; pass `--no-fmt` to inspect raw source substitutions.
 
+Enforcement boundary:
+- Rust's privacy checker enforces that code outside `game::client_side` cannot directly
+  read or write `pub(in crate::game::client_side)` fields (and symmetrically for
+  `server_side`), and cannot re-export items with visibility exceeding their own.
+- `--check` enforces exact side-container bindings in `game.rs`, strict side-file structure
+  (exact `super::*` glob import, registered out-of-line `mod` declarations, unattributed
+  state structs, and `fn new` constructor only — rejecting free functions, inherent getters,
+  re-exports, inline modules, macros, `include!`, and trait impls), cross-file state impl
+  prohibition, registered child source paths, the `tools/game_module_includes.tsv` allowlist,
+  exact field visibilities, and (with `--against <git-ref>`) no table relaxation or new
+  wide-field exception without a matching out-of-side source access.
+- The compiler does not catch this and neither does the check: adding a new
+  `pub(in crate::game)` helper function inside an already-registered child module that lends
+  a side-private field out to `game` (outside `client_side.rs`/`server_side.rs`), or a
+  field widening paired with a newly introduced out-of-side caller; reviewers verify those
+  on the pull-request diff.
+
 Usage:
     python3 tools/game_module_sides.py --fix [--no-fmt]
-    python3 tools/game_module_sides.py --check
+    python3 tools/game_module_sides.py --check [--against REF [--pull-request-merge]]
     python3 tools/game_module_sides.py --list
     python3 tools/game_module_sides.py --renames BEFORE_FUNCTIONS_JSON AFTER_FUNCTIONS_JSON [--out PATH]
 """
@@ -33,6 +50,7 @@ from __future__ import annotations
 import argparse
 from bisect import bisect_right
 import csv
+import io
 import json
 import os
 import re
@@ -45,9 +63,14 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_TABLE = Path(__file__).resolve().with_name("game_module_sides.tsv")
 DEFAULT_FIELDS_TABLE = Path(__file__).resolve().with_name("game_field_owners.tsv")
+DEFAULT_INCLUDES_TABLE = Path(__file__).resolve().with_name("game_module_includes.tsv")
 
 SIDE_MOD_NAME = {"client": "client_side", "server": "server_side"}
 SIDE_STRUCT_NAME = {"client": "ClientState", "server": "ServerState"}
+SIDE_ALLOWED_STRUCTS = {
+    "client": frozenset({"ClientState", "ClientCpuResources", "ClientConstructEffects"}),
+    "server": frozenset({"ServerState"}),
+}
 SIDE_OLD_FILE = {"client": "client_state.rs", "server": "server_state.rs"}
 SIDE_NEW_FILE = {"client": "client_side.rs", "server": "server_side.rs"}
 SIDE_CONTAINERS = frozenset({"client_state", "server_state", "client_side", "server_side"})
@@ -494,6 +517,7 @@ class IncludeSite:
     line: int
     mod_depth: int
     raw_arg: str
+    canon_arg: str
     target: Path | None
     is_literal: bool
 
@@ -856,48 +880,96 @@ def scan_top_level_items(src: str, file_rel: str, parent_dir: Path) -> tuple[lis
     return items, errors
 
 
-def load_module_sides(table_path: Path) -> dict[str, tuple[str, str]]:
-    """Return `module -> (side, reason)` from `game_module_sides.tsv`."""
-    sides: dict[str, tuple[str, str]] = {}
-    with table_path.open(newline="", encoding="utf-8") as fp:
-        reader = csv.DictReader(fp, delimiter="\t")
-        if not reader.fieldnames or not {"module", "side", "reason"}.issubset(reader.fieldnames):
-            raise SystemExit(f"{table_path}: expected columns module, side, reason")
-        for lineno, row in enumerate(reader, 2):
-            mod = row["module"].strip()
-            side = row["side"].strip()
-            reason = row["reason"].strip()
-            if not mod or side not in ("client", "server", "game"):
-                raise SystemExit(f"{table_path}:{lineno}: invalid row ({mod!r}, {side!r})")
-            if mod in SIDE_CONTAINERS:
-                raise SystemExit(f"{table_path}:{lineno}: side container `{mod}` must not appear in table")
-            if mod in sides:
-                raise SystemExit(f"{table_path}:{lineno}: duplicate module `{mod}`")
-            sides[mod] = (side, reason)
+def parse_module_sides_rows(text: str, label: str) -> dict[str, tuple[str, str, tuple[str, ...] | None]]:
+    """Parse `game_module_sides.tsv` text into `module -> (side, reason, paths_or_None)`."""
+    sides: dict[str, tuple[str, str, tuple[str, ...] | None]] = {}
+    reader = csv.DictReader(io.StringIO(text), delimiter="\t")
+    if not reader.fieldnames or not {"module", "side", "reason"}.issubset(reader.fieldnames):
+        raise SystemExit(f"{label}: expected columns module, side, reason")
+    has_paths = "paths" in reader.fieldnames
+    for lineno, row in enumerate(reader, 2):
+        mod = row["module"].strip()
+        side = row["side"].strip()
+        reason = row["reason"].strip()
+        if not mod or side not in ("client", "server", "game"):
+            raise SystemExit(f"{label}:{lineno}: invalid row ({mod!r}, {side!r})")
+        if mod in SIDE_CONTAINERS:
+            raise SystemExit(f"{label}:{lineno}: side container `{mod}` must not appear in table")
+        if mod in sides:
+            raise SystemExit(f"{label}:{lineno}: duplicate module `{mod}`")
+        paths: tuple[str, ...] | None = None
+        if has_paths:
+            raw_paths = (row.get("paths") or "").strip()
+            if not raw_paths:
+                raise SystemExit(f"{label}:{lineno}: module `{mod}` has empty `paths` column")
+            paths = tuple(sorted(p.strip() for p in raw_paths.split(",") if p.strip()))
+            if not paths:
+                raise SystemExit(f"{label}:{lineno}: module `{mod}` has invalid `paths` column")
+        sides[mod] = (side, reason, paths)
     return sides
+
+
+def load_module_sides(table_path: Path) -> dict[str, tuple[str, str, tuple[str, ...] | None]]:
+    """Return `module -> (side, reason, paths_or_None)` from `game_module_sides.tsv`."""
+    return parse_module_sides_rows(table_path.read_text(encoding="utf-8"), str(table_path))
+
+
+def parse_field_specs_rows(text: str, label: str) -> dict[str, FieldSpec] | None:
+    """Parse `game_field_owners.tsv` text, or return None if it predates the `visibility` column."""
+    specs: dict[str, FieldSpec] = {}
+    reader = csv.DictReader(io.StringIO(text), delimiter="\t")
+    if not reader.fieldnames or not {"field", "owner"}.issubset(reader.fieldnames):
+        raise SystemExit(f"{label}: expected columns including field, owner")
+    if "visibility" not in reader.fieldnames:
+        return None
+    for lineno, row in enumerate(reader, 2):
+        fld = row["field"].strip()
+        owner = row["owner"].strip()
+        vis = row["visibility"].strip()
+        if owner in ("client", "server") and vis not in ("side", "game"):
+            raise SystemExit(
+                f"{label}:{lineno}: {owner} field `{fld}` must have visibility `side` or `game`, got {vis!r}"
+            )
+        if owner == "game" and vis not in ("-", "game"):
+            raise SystemExit(
+                f"{label}:{lineno}: game field `{fld}` has unexpected visibility {vis!r}"
+            )
+        specs[fld] = FieldSpec(field=fld, owner=owner, visibility=vis)
+    return specs
 
 
 def load_field_specs(fields_table_path: Path) -> dict[str, FieldSpec]:
     """Return `field -> FieldSpec` from `game_field_owners.tsv`."""
-    specs: dict[str, FieldSpec] = {}
-    with fields_table_path.open(newline="", encoding="utf-8") as fp:
-        reader = csv.DictReader(fp, delimiter="\t")
-        if not reader.fieldnames or not {"field", "owner", "visibility"}.issubset(reader.fieldnames):
-            raise SystemExit(f"{fields_table_path}: expected columns including field, owner, visibility")
-        for lineno, row in enumerate(reader, 2):
-            fld = row["field"].strip()
-            owner = row["owner"].strip()
-            vis = row["visibility"].strip()
-            if owner in ("client", "server") and vis not in ("side", "game"):
-                raise SystemExit(
-                    f"{fields_table_path}:{lineno}: {owner} field `{fld}` must have visibility `side` or `game`, got {vis!r}"
-                )
-            if owner == "game" and vis not in ("-", "game"):
-                raise SystemExit(
-                    f"{fields_table_path}:{lineno}: game field `{fld}` has unexpected visibility {vis!r}"
-                )
-            specs[fld] = FieldSpec(field=fld, owner=owner, visibility=vis)
+    specs = parse_field_specs_rows(fields_table_path.read_text(encoding="utf-8"), str(fields_table_path))
+    if specs is None:
+        raise SystemExit(f"{fields_table_path}: expected columns including field, owner, visibility")
     return specs
+
+
+def parse_allowed_includes_rows(text: str, label: str) -> dict[tuple[str, str], str]:
+    """Parse `game_module_includes.tsv` text into `(file_rel, canon_arg) -> scope`."""
+    allowed: dict[tuple[str, str], str] = {}
+    reader = csv.DictReader(io.StringIO(text), delimiter="\t", quoting=csv.QUOTE_NONE)
+    if not reader.fieldnames or not {"file", "include_arg", "scope"}.issubset(reader.fieldnames):
+        raise SystemExit(f"{label}: expected columns file, include_arg, scope")
+    for lineno, row in enumerate(reader, 2):
+        frel = row["file"].strip()
+        arg = row["include_arg"].strip()
+        scope = row["scope"].strip()
+        if not frel or not arg or not scope:
+            raise SystemExit(f"{label}:{lineno}: invalid include allowlist row")
+        key = (frel, arg)
+        if key in allowed:
+            raise SystemExit(f"{label}:{lineno}: duplicate include allowlist row {key!r}")
+        allowed[key] = scope
+    return allowed
+
+
+def load_allowed_includes(includes_table_path: Path) -> dict[tuple[str, str], str]:
+    """Return `(file_rel, canon_arg) -> scope` from `game_module_includes.tsv`, or empty if absent."""
+    if not includes_table_path.is_file():
+        return {}
+    return parse_allowed_includes_rows(includes_table_path.read_text(encoding="utf-8"), str(includes_table_path))
 
 
 def resolve_arm_entry_file(root: Path, arm: ModArm) -> tuple[Path | None, str | None]:
@@ -1031,13 +1103,16 @@ def scan_includes_in_tokens(tokens: list[Token], src: str, file_path: Path) -> l
                     arg_end = skip_balanced(tokens, i + 2)
                     arg_toks = tokens[i + 3 : arg_end - 1]
                     raw_arg = src[tokens[i + 2][3] : tokens[arg_end - 1][2]].strip()
+                    canon_arg = "".join(t[1] for t in arg_toks)
                     line = line_index.line_of(tokens[i][2])
                     if len(arg_toks) == 1 and arg_toks[0][0] == "STR":
                         decoded = decode_rust_str(arg_toks[0])
                         target = (file_path.parent / decoded).resolve() if decoded is not None else None
-                        sites.append(IncludeSite(file_path.resolve(), line, mod_depth, raw_arg, target, decoded is not None))
+                        sites.append(
+                            IncludeSite(file_path.resolve(), line, mod_depth, raw_arg, canon_arg, target, decoded is not None)
+                        )
                     else:
-                        sites.append(IncludeSite(file_path.resolve(), line, mod_depth, raw_arg, None, False))
+                        sites.append(IncludeSite(file_path.resolve(), line, mod_depth, raw_arg, canon_arg, None, False))
                     i = arg_end
                     continue
             i += 1
@@ -1560,28 +1635,592 @@ def parse_struct_fields(text: str, struct_name: str, rel: str = "") -> list[tupl
     return fields
 
 
-def check_state_struct_rules(text: str, struct_name: str, rel: str) -> list[str]:
-    """Check Wall Rules 1 & 2: no derives and no Deref/AsRef impls on ClientState/ServerState."""
-    problems: list[str] = []
-    decl_start, _, _, _, tokens, _, _ = find_struct_span(text, struct_name)
-    line_index = LineIndex(text)
-    items, _ = scan_top_level_items(text, rel, Path("."))
+def check_game_side_containers(game_text: str, root: Path) -> list[str]:
+    """Verify `game.rs` binds `client_side`/`server_side` unconditionally to their exact files and aliases."""
+    src_root = (root / "crates/sunrise-client/src").resolve()
+    rel = "crates/sunrise-client/src/game.rs"
+    items, errors = scan_top_level_items(game_text, rel, src_root)
+    problems = list(errors)
+
+    mod_decls: dict[str, list[TopItem]] = {}
+    aliases: dict[str, list[TopItem]] = {}
     for item in items:
-        if item.kind == "struct" and norm_ident(item.name) == struct_name:
+        if item.kind == "mod_decl" and item.mod_arm is not None and item.name in SIDE_CONTAINERS:
+            mod_decls.setdefault(item.name, []).append(item)
+        elif item.kind == "use_side_alias" and item.alias_pair is not None:
+            aliases.setdefault(item.alias_pair[1], []).append(item)
+
+    for side in ("client", "server"):
+        smod = SIDE_MOD_NAME[side]
+        old_alias = "client_state" if side == "client" else "server_state"
+        expected_path = f"game/{smod}.rs"
+        expected_file = (src_root / expected_path).resolve()
+
+        if old_alias in mod_decls:
+            for item in mod_decls[old_alias]:
+                problems.append(f"{rel}:{item.line}: legacy `mod {old_alias};` must be replaced by `mod {smod};`")
+
+        decls = mod_decls.get(smod, [])
+        if len(decls) != 1:
+            problems.append(f"{rel}: expected exactly one `mod {smod};` declaration, found {len(decls)}")
+        else:
+            item = decls[0]
+            assert item.mod_arm is not None
+            arm = item.mod_arm
+            if arm.vis != "pub(in crate::game)":
+                problems.append(
+                    f"{rel}:{item.line}: `mod {smod};` has visibility `{arm.vis or '<private>'}`, expected `pub(in crate::game)`"
+                )
+            if any(a.name in ("cfg", "cfg_attr") for a in item.attrs):
+                problems.append(f"{rel}:{item.line}: `mod {smod};` must not be conditional")
+            if arm.path_value != expected_path:
+                problems.append(
+                    f"{rel}:{item.line}: `mod {smod};` has #[path = {arm.path_value!r}], expected {expected_path!r}"
+                )
+            else:
+                resolved, rerr = resolve_arm_entry_file(root, arm)
+                if rerr:
+                    problems.append(rerr)
+                elif resolved != expected_file:
+                    problems.append(f"{rel}:{item.line}: `mod {smod};` resolves to `{resolved}`, expected `{expected_file}`")
+
+        alist = aliases.get(old_alias, [])
+        if len(alist) != 1:
+            problems.append(f"{rel}: expected exactly one `use {smod} as {old_alias};` alias, found {len(alist)}")
+        else:
+            aitem = alist[0]
+            if aitem.alias_pair != (smod, old_alias):
+                problems.append(f"{rel}:{aitem.line}: unexpected side alias `{aitem.alias_pair}`")
+            if (aitem.vis.norm if aitem.vis else "") != "pub(in crate::game)":
+                problems.append(
+                    f"{rel}:{aitem.line}: `use {smod} as {old_alias};` must have visibility `pub(in crate::game)`"
+                )
+            if any(a.name in ("cfg", "cfg_attr") for a in aitem.attrs):
+                problems.append(f"{rel}:{aitem.line}: `use {smod} as {old_alias};` must not be conditional")
+
+    return problems
+
+
+def parse_impl_header(impl_toks: list[Token]) -> tuple[bool, list[Token], int | None]:
+    """Inspect tokens of an `impl` item; return `(is_trait_impl, target_tokens, brace_idx)`."""
+    n = len(impl_toks)
+    kw_idx = next((idx for idx, t in enumerate(impl_toks) if t[0] == "IDENT" and t[1] == "impl"), None)
+    if kw_idx is None:
+        return False, [], None
+
+    brace_idx: int | None = None
+    i = kw_idx + 1
+    while i < n:
+        tv = impl_toks[i][1]
+        if tv == "{":
+            brace_idx = i
+            break
+        if tv in ("(", "["):
+            i = skip_balanced(impl_toks, i)
+            continue
+        i += 1
+    if brace_idx is None:
+        return False, [], None
+
+    header = impl_toks[kw_idx + 1 : brace_idx]
+    h_idx = 0
+    # Skip optional impl-level generic parameters `<...>`.
+    if h_idx < len(header) and header[h_idx][1] == "<":
+        depth = 0
+        while h_idx < len(header):
+            if header[h_idx][1] == "<":
+                depth += 1
+            elif header[h_idx][1] == ">":
+                depth -= 1
+                if depth == 0:
+                    h_idx += 1
+                    break
+            h_idx += 1
+
+    # Scan header at top level for `for` and `where`.
+    for_pos: int | None = None
+    where_pos: int | None = None
+    depth = 0
+    k = h_idx
+    while k < len(header):
+        tv = header[k][1]
+        if tv in ("(", "[", "<"):
+            depth += 1
+        elif tv in (")", "]", ">"):
+            depth = max(0, depth - 1)
+        elif depth == 0 and header[k][0] == "IDENT":
+            if tv == "for" and for_pos is None:
+                for_pos = k
+            elif tv == "where":
+                where_pos = k
+                break
+        k += 1
+
+    end_target = where_pos if where_pos is not None else len(header)
+    if for_pos is not None:
+        return True, header[for_pos + 1 : end_target], brace_idx
+    return False, header[h_idx:end_target], brace_idx
+
+
+def target_path_segments(target_toks: list[Token]) -> list[str]:
+    """Extract normalized identifier path segments from an impl target (stripping trailing `<...>`)."""
+    segs: list[str] = []
+    i = 0
+    n = len(target_toks)
+    if i < n and target_toks[i][1] == "::":
+        i += 1
+    while i < n:
+        if target_toks[i][0] == "IDENT":
+            segs.append(norm_ident(target_toks[i][1]))
+            i += 1
+            if i < n and target_toks[i][1] == "::":
+                i += 1
+                continue
+            break
+        break
+    return segs
+
+
+def check_side_impl_body(
+    impl_toks: list[Token], brace_idx: int, side: str, rel: str, text: str, line_index: LineIndex
+) -> list[str]:
+    """Allow only `fn new(...)` with no `self` receiver and visibility at most `pub(in crate::game)`."""
+    smod = SIDE_MOD_NAME[side]
+    allowed_vis = {"", "pub(self)", "pub(in self)", f"pub(in crate::game::{smod})", "pub(in crate::game)"}
+    allowed_attrs = {"inline", "doc", "allow", "expect"}
+    problems: list[str] = []
+    body = impl_toks[brace_idx + 1 : len(impl_toks) - 1]
+    n = len(body)
+    i = 0
+    while i < n:
+        attrs: list[AttrInfo] = []
+        while i < n:
+            parsed = parse_outer_attr(body, i, text, line_index)
+            if parsed is None:
+                break
+            attr, i = parsed
+            attrs.append(attr)
+        if i >= n:
+            break
+        item_line = line_index.line_of(body[i][2])
+        for attr in attrs:
+            if attr.name not in allowed_attrs:
+                problems.append(f"{rel}:{attr.line}: disallowed attribute `#[{attr.name}]` inside state `impl`")
+        vis, j = parse_vis(body, i, text, line_index)
+        vis_norm = vis.norm if vis else ""
+        k = j
+        while k < n and body[k][0] == "IDENT" and body[k][1] in ("const", "async", "unsafe"):
+            k += 1
+        if k + 2 < n and body[k][0] == "IDENT" and body[k][1] == "fn" and body[k + 1][0] == "IDENT":
+            fname = norm_ident(body[k + 1][1])
+            if fname != "new":
+                problems.append(f"{rel}:{item_line}: disallowed inherent method `{fname}` in side file (only `fn new` is allowed)")
+            if vis_norm not in allowed_vis:
+                problems.append(
+                    f"{rel}:{item_line}: `fn {fname}` visibility `{vis_norm}` exceeds `pub(in crate::game)`"
+                )
+            p = k + 2
+            if p < n and body[p][1] == "<":
+                depth = 0
+                while p < n:
+                    if body[p][1] == "<":
+                        depth += 1
+                    elif body[p][1] == ">":
+                        depth -= 1
+                        if depth == 0:
+                            p += 1
+                            break
+                    p += 1
+            if p < n and body[p][1] == "(":
+                p_end = skip_balanced(body, p)
+                # Reject any `self` receiver (`self`, `&self`, `&mut self`, `mut self`).
+                if any(tok[0] == "IDENT" and tok[1] == "self" for tok in body[p + 1 : p_end - 1]):
+                    problems.append(f"{rel}:{item_line}: inherent method `{fname}` must not take `self` in side file")
+                i = skip_item_body(body, p_end)
+            else:
+                problems.append(f"{rel}:{item_line}: malformed `fn {fname}` in state `impl`")
+                i = skip_item_body(body, k + 2)
+            continue
+        problems.append(f"{rel}:{item_line}: disallowed associated item inside state `impl`")
+        i = skip_item_body(body, k)
+    return problems
+
+
+def check_side_file_structure(
+    text: str,
+    side: str,
+    rel: str,
+    game_dir: Path,
+    table: dict[str, tuple[str, str, tuple[str, ...] | None]],
+) -> list[str]:
+    """Enforce the strict structural allowlist for `client_side.rs` and `server_side.rs`."""
+    smod = SIDE_MOD_NAME[side]
+    sname = SIDE_STRUCT_NAME[side]
+    allowed_structs = SIDE_ALLOWED_STRUCTS[side]
+    tokens = tokenize_rust(text)
+    line_index = LineIndex(text)
+    items, scan_errs = scan_top_level_items(text, rel, game_dir)
+    problems = list(scan_errs)
+
+    glob_count = 0
+    seen_state_struct = False
+    for item in items:
+        if item.kind == "use_super_glob":
+            glob_count += 1
+            vis_norm = item.vis.norm if item.vis else ""
+            want_vis = f"pub(in crate::game::{smod})"
+            if vis_norm != want_vis:
+                problems.append(
+                    f"{rel}:{item.line}: `use super::*;` has visibility `{vis_norm or '<private>'}`, expected `{want_vis}`"
+                )
             for attr in item.attrs:
-                if attr.name == "derive" or (attr.name == "cfg_attr" and "derive" in attr.raw_text):
-                    problems.append(f"{rel}:{attr.line}: `{struct_name}` must not carry `#[derive(...)]`")
-        elif item.kind == "impl":
+                if attr.name != "allow":
+                    problems.append(f"{rel}:{attr.line}: unexpected attribute `#[{attr.name}]` on `use super::*;`")
+            continue
+
+        if item.kind == "mod_decl" and item.mod_arm is not None:
+            if seen_state_struct:
+                problems.append(f"{rel}:{item.line}: `mod {item.name};` must appear before `struct {sname}`")
+            if item.name not in table:
+                problems.append(f"{rel}:{item.line}: module `{item.name}` is missing from game_module_sides.tsv")
+            continue
+
+        if item.kind == "struct":
+            cname = norm_ident(item.name)
+            if cname == sname:
+                seen_state_struct = True
+            if cname not in allowed_structs:
+                problems.append(f"{rel}:{item.line}: disallowed struct `{cname}` in side file")
+                continue
+            if cname == sname:
+                for attr in item.attrs:
+                    if attr.name != "doc":
+                        if attr.name == "derive" or (attr.name == "cfg_attr" and "derive" in attr.raw_text):
+                            problems.append(f"{rel}:{attr.line}: `{sname}` must not carry `#[derive(...)]`")
+                        else:
+                            problems.append(
+                                f"{rel}:{attr.line}: `{sname}` must not carry attribute `#[{attr.name}...]`"
+                            )
+            continue
+
+        if item.kind == "impl":
+            if not seen_state_struct:
+                problems.append(f"{rel}:{item.line}: unexpected `impl` item before `struct {sname}` in side-file preamble")
             impl_toks = [t for t in tokens if item.start <= t[2] and t[3] <= item.end]
-            for_idx = next((idx for idx, t in enumerate(impl_toks) if t[0] == "IDENT" and t[1] == "for"), None)
-            if for_idx is not None:
-                after_for = [t[1] for t in impl_toks[for_idx + 1 :]]
-                if struct_name in after_for:
-                    before_for = [t[1] for t in impl_toks[:for_idx]]
-                    if any(tr in before_for for tr in ("Deref", "DerefMut", "AsRef", "AsMut")):
+            is_trait, target_toks, brace_idx = parse_impl_header(impl_toks)
+            segs = target_path_segments(target_toks)
+            if is_trait:
+                problems.append(
+                    f"{rel}:{item.line}: trait impl is disallowed in side file (state structs must not implement traits here)"
+                )
+            elif segs != [sname]:
+                problems.append(
+                    f"{rel}:{item.line}: disallowed inherent `impl {'::'.join(segs) or '<unknown>'}` in side file"
+                )
+            elif brace_idx is not None:
+                problems.extend(check_side_impl_body(impl_toks, brace_idx, side, rel, text, line_index))
+            else:
+                problems.append(f"{rel}:{item.line}: malformed `impl` in side file")
+            continue
+
+        # Every other top-level item (`fn`, `use`, `inline_mod`, `macro_call`/`include!`, etc.) is rejected.
+        where = f" before `struct {sname}` in side-file preamble" if not seen_state_struct else ""
+        problems.append(
+            f"{rel}:{item.line}: disallowed `{item.kind}` item{where} in side file"
+        )
+
+    if glob_count != 1:
+        problems.append(f"{rel}: expected exactly one `pub(in crate::game::{smod}) use super::*;`, found {glob_count}")
+
+    return problems
+
+
+def check_state_impls_across_game(
+    root: Path, tok_cache: dict[Path, tuple[str, list[Token]]] | None = None
+) -> list[str]:
+    """Reject any `impl` or type alias targeting `ClientState`/`ServerState` outside the two side files."""
+    problems: list[str] = []
+    game_rs = (root / "crates/sunrise-client/src/game.rs").resolve()
+    game_dir = (root / "crates/sunrise-client/src/game").resolve()
+    side_files = {(game_dir / SIDE_NEW_FILE["client"]).resolve(), (game_dir / SIDE_NEW_FILE["server"]).resolve()}
+    candidates: list[Path] = []
+    if game_rs.is_file():
+        candidates.append(game_rs)
+    if game_dir.is_dir():
+        candidates.extend(sorted(p.resolve() for p in game_dir.rglob("*.rs") if p.resolve() not in side_files))
+
+    state_names = frozenset({"ClientState", "ServerState"})
+    for path in candidates:
+        if tok_cache is not None and path in tok_cache:
+            txt, tokens = tok_cache[path]
+            if "ClientState" not in txt and "ServerState" not in txt:
+                continue
+        else:
+            txt = path.read_text(encoding="utf-8")
+            if "ClientState" not in txt and "ServerState" not in txt:
+                continue
+            tokens = tokenize_rust(txt)
+            if tok_cache is not None:
+                tok_cache[path] = (txt, tokens)
+        rel = path.relative_to(root).as_posix()
+        is_dedicated = rel.startswith("crates/sunrise-client/src/game/interface/dedicated/")
+        line_index = LineIndex(txt)
+        n = len(tokens)
+
+        def walk(start: int, end: int) -> None:
+            i = start
+            while i < end:
+                if tokens[i][0] == "IDENT" and tokens[i][1] == "macro_rules" and i + 2 < end and tokens[i + 1][1] == "!":
+                    j = i + 3
+                    if j < end and tokens[j][1] in ("(", "[", "{"):
+                        i = skip_balanced(tokens, j)
+                        continue
+                if (
+                    tokens[i][0] == "IDENT"
+                    and tokens[i][1] == "mod"
+                    and (i == start or tokens[i - 1][1] not in ("::", "."))
+                    and i + 2 < end
+                    and tokens[i + 1][0] == "IDENT"
+                    and tokens[i + 2][1] == "{"
+                ):
+                    body_end = skip_balanced(tokens, i + 2)
+                    walk(i + 3, body_end - 1)
+                    i = body_end
+                    continue
+                if tokens[i][0] == "IDENT" and tokens[i][1] == "impl":
+                    # Skip `impl Trait` in function parameter/return position (`:` or `->` immediately before `impl`).
+                    if i > start and tokens[i - 1][1] in (":", "->", "<", ",", "(", "&", "+"):
+                        i += 1
+                        continue
+                    end_idx = skip_item_body(tokens, i + 1)
+                    impl_toks = tokens[i:end_idx]
+                    is_trait, target_toks, _ = parse_impl_header(impl_toks)
+                    segs = target_path_segments(target_toks)
+                    if segs and segs[-1] in state_names:
+                        if not (is_dedicated and not is_trait and segs == ["ServerState"]):
+                            kind_label = "trait impl" if is_trait else "inherent impl"
+                            problems.append(
+                                f"{rel}:{line_index.line_of(tokens[i][2])}: disallowed {kind_label} for `{'::'.join(segs)}` outside side file"
+                            )
+                    i = end_idx
+                    continue
+                if tokens[i][0] == "IDENT" and tokens[i][1] == "type" and (i == start or tokens[i - 1][1] not in ("::", ".")):
+                    end_idx = skip_item_body(tokens, i + 1)
+                    stmt = tokens[i:end_idx]
+                    eq_idx = next((idx for idx, t in enumerate(stmt) if t[1] == "="), None)
+                    if eq_idx is not None:
+                        rhs = stmt[eq_idx + 1 :]
+                        for r_idx, rtok in enumerate(rhs):
+                            if rtok[0] == "IDENT" and norm_ident(rtok[1]) in state_names:
+                                st = norm_ident(rtok[1])
+                                qualified = r_idx > 0 and rhs[r_idx - 1][1] == "::"
+                                if not (is_dedicated and st == "ServerState" and not qualified):
+                                    problems.append(
+                                        f"{rel}:{line_index.line_of(tokens[i][2])}: disallowed type alias referencing `{st}` outside side file"
+                                    )
+                                    break
+                    i = end_idx
+                    continue
+                if tokens[i][1] in ("(", "[", "{"):
+                    i = skip_balanced(tokens, i)
+                else:
+                    i += 1
+
+        walk(0, n)
+
+    return problems
+
+
+def resolve_baseline_ref(root: Path, against: str, pull_request_merge: bool) -> str:
+    """Resolve the exact baseline commit for `--against`, matching `tools/merge_base.py`."""
+    if pull_request_merge:
+        parents_proc = subprocess.run(
+            ["git", "rev-list", "--parents", "-n", "1", "HEAD"],
+            cwd=root,
+            capture_output=True,
+            text=True,
+        )
+        if parents_proc.returncode != 0:
+            raise SystemExit(f"cannot inspect HEAD parents: {parents_proc.stderr.strip()}")
+        parents = parents_proc.stdout.split()[1:]
+        if len(parents) != 2:
+            raise SystemExit("--pull-request-merge needs HEAD to merge the pull request into a descendant of --against.")
+        anc = subprocess.run(
+            ["git", "merge-base", "--is-ancestor", against, parents[0]],
+            cwd=root,
+            capture_output=True,
+            text=True,
+        )
+        if anc.returncode != 0:
+            raise SystemExit("--pull-request-merge needs HEAD to merge the pull request into a descendant of --against.")
+        return parents[0]
+    proc = subprocess.run(
+        ["git", "merge-base", against, "HEAD"],
+        cwd=root,
+        capture_output=True,
+        text=True,
+    )
+    if proc.returncode != 0:
+        raise SystemExit(f"cannot resolve --against {against!r}: {proc.stderr.strip()}")
+    return proc.stdout.strip()
+
+
+def git_text_at(root: Path, rev: str, rel_path: str) -> str | None:
+    """Read `rel_path` at `rev`, or return None when absent; fail closed if present but unreadable."""
+    listed = subprocess.run(
+        ["git", "ls-tree", "--name-only", rev, "--", rel_path],
+        cwd=root,
+        capture_output=True,
+        text=True,
+    )
+    if listed.returncode != 0:
+        raise SystemExit(f"cannot list {rel_path} at {rev}: {listed.stderr.strip()}")
+    if rel_path not in listed.stdout.splitlines():
+        return None
+    shown = subprocess.run(["git", "show", f"{rev}:{rel_path}"], cwd=root, capture_output=True, text=True)
+    if shown.returncode != 0:
+        raise SystemExit(f"{rel_path} exists at {rev} but cannot be read: {shown.stderr.strip()}")
+    return shown.stdout
+
+
+def has_out_of_side_field_access(
+    root: Path,
+    field: str,
+    side: str,
+    moved_file_side: dict[Path, str],
+    tok_cache: dict[Path, tuple[str, list[Token]]] | None = None,
+) -> bool:
+    """Return True if any `.rs` file outside `side` accesses `.<side>.<field>` or `<StateStruct>` field `<field>`."""
+    src_root = (root / "crates/sunrise-client/src").resolve()
+    side_file = (src_root / "game" / SIDE_NEW_FILE[side]).resolve()
+    state_name = SIDE_STRUCT_NAME[side]
+    for path in sorted(src_root.rglob("*.rs")):
+        resolved = path.resolve()
+        if resolved == side_file or moved_file_side.get(resolved) == side:
+            continue
+        if tok_cache is not None and resolved in tok_cache:
+            txt, tokens = tok_cache[resolved]
+            if field not in txt:
+                continue
+        else:
+            txt = resolved.read_text(encoding="utf-8")
+            if field not in txt:
+                continue
+            tokens = tokenize_rust(txt)
+            if tok_cache is not None:
+                tok_cache[resolved] = (txt, tokens)
+        n = len(tokens)
+        mentions_state = state_name in txt
+        for i in range(n):
+            # `.client.<field>` or `.server.<field>`
+            if (
+                i + 3 < n
+                and tokens[i][1] == "."
+                and tokens[i + 1][0] == "IDENT"
+                and tokens[i + 1][1] == side
+                and tokens[i + 2][1] == "."
+                and tokens[i + 3][0] == "IDENT"
+                and norm_ident(tokens[i + 3][1]) == field
+            ):
+                return True
+            # Direct `.field` or destructuring inside a file naming `ClientState`/`ServerState`.
+            if mentions_state and tokens[i][0] == "IDENT" and norm_ident(tokens[i][1]) == field:
+                if i > 0 and tokens[i - 1][1] == ".":
+                    return True
+                if i > 0 and tokens[i - 1][1] in ("{", ",") and i + 1 < n and tokens[i + 1][1] in (":", ",", "}"):
+                    return True
+    return False
+
+
+def module_touches_side_state(
+    entries: list[Path],
+    side: str,
+    tok_cache: dict[Path, tuple[str, list[Token]]] | None = None,
+) -> bool:
+    """Return True if any entry file of a module accesses `.<side>.` or names its state struct."""
+    state_name = SIDE_STRUCT_NAME[side]
+    for path in entries:
+        resolved = path.resolve()
+        if not resolved.is_file():
+            continue
+        txt, tokens = read_tokens_cached(resolved, tok_cache)
+        if state_name in txt:
+            if any(t[0] == "IDENT" and norm_ident(t[1]) == state_name for t in tokens):
+                return True
+        for i in range(len(tokens) - 2):
+            if tokens[i][1] == "." and tokens[i + 1][0] == "IDENT" and tokens[i + 1][1] == side and tokens[i + 2][1] == ".":
+                return True
+    return False
+
+
+def check_baseline_ratchet(
+    root: Path,
+    base_rev: str,
+    table: dict[str, tuple[str, str, tuple[str, ...] | None]],
+    field_specs: dict[str, FieldSpec],
+    allowed_includes: dict[tuple[str, str], str],
+    resolved_entries: dict[str, list[Path]],
+    moved_file_side: dict[Path, str],
+    tok_cache: dict[Path, tuple[str, list[Token]]] | None = None,
+) -> list[str]:
+    """Fail when protected fields, modules, paths, or includes relax relative to `base_rev` without source cause."""
+    problems: list[str] = []
+    short_rev = base_rev[:10]
+    src_root = (root / "crates/sunrise-client/src").resolve()
+
+    base_fields_text = git_text_at(root, base_rev, "tools/game_field_owners.tsv")
+    if base_fields_text is not None:
+        base_fields = parse_field_specs_rows(base_fields_text, f"{short_rev}:tools/game_field_owners.tsv")
+        if base_fields is not None:
+            for fname, cur in sorted(field_specs.items()):
+                prev = base_fields.get(fname)
+                if prev is not None and prev.owner in ("client", "server") and prev.visibility == "side":
+                    if cur.owner == "game":
                         problems.append(
-                            f"{rel}:{line_index.line_of(item.start)}: `{struct_name}` must not implement Deref/DerefMut/AsRef/AsMut"
+                            f"tools/game_field_owners.tsv: field `{fname}` relaxed from `{prev.owner}/side` to `owner=game` since {short_rev}"
                         )
+                    elif cur.owner == prev.owner and cur.visibility == "game":
+                        if not has_out_of_side_field_access(root, fname, cur.owner, moved_file_side, tok_cache):
+                            problems.append(
+                                f"tools/game_field_owners.tsv: field `{SIDE_STRUCT_NAME[cur.owner]}::{fname}` widened from `side` to `game` since {short_rev} with no out-of-side source access"
+                            )
+                elif cur.owner in ("client", "server") and cur.visibility == "game":
+                    was_already_wide = prev is not None and prev.owner == cur.owner and prev.visibility == "game"
+                    if not was_already_wide and not has_out_of_side_field_access(
+                        root, fname, cur.owner, moved_file_side, tok_cache
+                    ):
+                        problems.append(
+                            f"tools/game_field_owners.tsv: new `{cur.owner}` field `{SIDE_STRUCT_NAME[cur.owner]}::{fname}` marked `visibility=game` since {short_rev} with no out-of-side source access"
+                        )
+
+    base_mods_text = git_text_at(root, base_rev, "tools/game_module_sides.tsv")
+    if base_mods_text is not None:
+        base_mods = parse_module_sides_rows(base_mods_text, f"{short_rev}:tools/game_module_sides.tsv")
+        for mod_name, (cur_side, _, cur_paths) in sorted(table.items()):
+            prev_entry = base_mods.get(mod_name)
+            if prev_entry is None:
+                continue
+            prev_side, _, prev_paths = prev_entry
+            if prev_side != cur_side and cur_side in ("client", "server"):
+                if not module_touches_side_state(resolved_entries.get(mod_name, []), cur_side, tok_cache):
+                    problems.append(
+                        f"tools/game_module_sides.tsv: module `{mod_name}` promoted from `{prev_side}` to `{cur_side}` since {short_rev} without accessing `{SIDE_STRUCT_NAME[cur_side]}`"
+                    )
+            if prev_paths is not None and cur_paths is not None and cur_paths != prev_paths:
+                retained_old = [p for p in set(prev_paths) - set(cur_paths) if (src_root / p).is_file()]
+                if retained_old:
+                    problems.append(
+                        f"tools/game_module_sides.tsv: module `{mod_name}` source path changed from `{','.join(prev_paths)}` to `{','.join(cur_paths)}` since {short_rev} while previous source `{retained_old[0]}` still exists"
+                    )
+
+    base_inc_text = git_text_at(root, base_rev, "tools/game_module_includes.tsv")
+    if base_inc_text is not None:
+        base_incs = parse_allowed_includes_rows(base_inc_text, f"{short_rev}:tools/game_module_includes.tsv")
+        for frel, carg in sorted(set(allowed_includes) - set(base_incs)):
+            problems.append(
+                f"tools/game_module_includes.tsv: new moved-subtree include `{frel}` ({carg}) added since {short_rev}"
+            )
+
     return problems
 
 
@@ -1706,7 +2345,7 @@ def rewrite_state_file(
 
 def rewrite_game_rs(
     game_text: str,
-    table: dict[str, tuple[str, str]],
+    table: dict[str, tuple[str, str, tuple[str, ...] | None]],
     all_arms: dict[str, list[ModArm]],
     root: Path,
 ) -> tuple[str, list[str]]:
@@ -2088,13 +2727,14 @@ def collect_moved_subtrees_and_includes(
     all_arms: dict[str, list[ModArm]],
     resolved_entries: dict[str, list[Path]],
     tok_cache: dict[Path, tuple[str, list[Token]]] | None = None,
-) -> tuple[dict[Path, int], set[Path], list[str]]:
-    """Collect every file in moved module subtrees with its depth and verify include! safety."""
+) -> tuple[dict[Path, int], dict[Path, str], set[Path], list[tuple[str, str, str, int]], list[str]]:
+    """Collect moved-subtree files, side map, root files, every moved `include!` site, and safety errors."""
     errors: list[str] = []
     # Map every file in moved subtrees to its module depth (`0` for moved entry and its root includes).
     moved_file_depth: dict[Path, int] = {}
     moved_file_side: dict[Path, str] = {}
     moved_root_files: set[Path] = set()
+    moved_includes: list[tuple[str, str, str, int]] = []
     # Track all include sites per target across the entire game tree to detect shared-include conflicts.
     all_include_sites: dict[Path, list[tuple[IncludeSite, str]]] = {}
 
@@ -2113,18 +2753,19 @@ def collect_moved_subtrees_and_includes(
         if depth == 0:
             moved_root_files.add(resolved)
         txt, tokens = read_tokens_cached(resolved, tok_cache)
+        rel = resolved.relative_to(root).as_posix()
         for site in scan_includes_in_tokens(tokens, txt, resolved):
             eff_depth = depth + site.mod_depth
+            scope_str = f"{side}:d={eff_depth}"
+            moved_includes.append((rel, site.canon_arg, scope_str, site.line))
             if not site.is_literal:
                 if eff_depth == 0:
-                    rel = resolved.relative_to(root).as_posix()
                     errors.append(f"{rel}:{site.line}: unresolved non-literal root-scope `include!({site.raw_arg})`")
                 continue
             if site.target is None or not site.target.is_file():
-                rel = resolved.relative_to(root).as_posix()
                 errors.append(f"{rel}:{site.line}: `include!({site.raw_arg})` target does not exist")
                 continue
-            all_include_sites.setdefault(site.target, []).append((site, f"{side}:d={eff_depth}"))
+            all_include_sites.setdefault(site.target, []).append((site, scope_str))
             walk_moved_file(site.target, side, eff_depth, is_path_loaded)
 
         children, cerrs = scan_child_mod_decls(txt, resolved, root, depth, is_path_loaded, tokens=tokens)
@@ -2176,7 +2817,7 @@ def collect_moved_subtrees_and_includes(
             )
             errors.append(f"{trel}: include! target is shared across conflicting scopes: {desc}")
 
-    return moved_file_depth, moved_root_files, errors
+    return moved_file_depth, moved_file_side, moved_root_files, moved_includes, errors
 
 
 def selector_targets(
@@ -2282,10 +2923,16 @@ def run_rustfmt(paths: list[Path]) -> None:
         )
 
 
-def run_fix(root: Path, table: dict[str, tuple[str, str]], field_specs: dict[str, FieldSpec], *, fmt: bool) -> int:
+def run_fix(
+    root: Path,
+    table: dict[str, tuple[str, str, tuple[str, ...] | None]],
+    field_specs: dict[str, FieldSpec],
+    *,
+    fmt: bool,
+) -> int:
     game_rs = root / "crates/sunrise-client/src/game.rs"
     game_dir = root / "crates/sunrise-client/src/game"
-    mod_to_side = {m: s for m, (s, _) in table.items()}
+    mod_to_side = {m: s for m, (s, _, _) in table.items()}
     tok_cache: dict[Path, tuple[str, list[Token]]] = {}
 
     all_arms, current_parents, resolved_entries, errors = collect_all_arms(root)
@@ -2327,7 +2974,7 @@ def run_fix(root: Path, table: dict[str, tuple[str, str]], field_specs: dict[str
         planned_writes[game_rs.resolve()] = new_game
         changed_rs.append(game_rs.resolve())
 
-    moved_file_depth, moved_root_files, sub_errs = collect_moved_subtrees_and_includes(
+    moved_file_depth, _, moved_root_files, _, sub_errs = collect_moved_subtrees_and_includes(
         root, mod_to_side, all_arms, resolved_entries, tok_cache=tok_cache
     )
     errors.extend(sub_errs)
@@ -2381,10 +3028,19 @@ def run_fix(root: Path, table: dict[str, tuple[str, str]], field_specs: dict[str
     return 0
 
 
-def run_check(root: Path, table: dict[str, tuple[str, str]], field_specs: dict[str, FieldSpec]) -> int:
-    game_rs = root / "crates/sunrise-client/src/game.rs"
-    game_dir = root / "crates/sunrise-client/src/game"
-    mod_to_side = {m: s for m, (s, _) in table.items()}
+def run_check(
+    root: Path,
+    table: dict[str, tuple[str, str, tuple[str, ...] | None]],
+    field_specs: dict[str, FieldSpec],
+    allowed_includes: dict[tuple[str, str], str],
+    *,
+    against: str | None = None,
+    pull_request_merge: bool = False,
+) -> int:
+    src_root = (root / "crates/sunrise-client/src").resolve()
+    game_rs = src_root / "game.rs"
+    game_dir = src_root / "game"
+    mod_to_side = {m: s for m, (s, _, _) in table.items()}
     problems: list[str] = []
 
     for side in ("client", "server"):
@@ -2400,6 +3056,9 @@ def run_check(root: Path, table: dict[str, tuple[str, str]], field_specs: dict[s
             print(f"error: {p}", file=sys.stderr)
         return 1
 
+    game_text = game_rs.read_text(encoding="utf-8")
+    problems.extend(check_game_side_containers(game_text, root))
+
     all_arms, current_parents, resolved_entries, collect_errs = collect_all_arms(root)
     problems.extend(collect_errs)
     for mod_name in sorted(set(all_arms) - set(table)):
@@ -2409,15 +3068,20 @@ def run_check(root: Path, table: dict[str, tuple[str, str]], field_specs: dict[s
     for mod_name in sorted(set(table) - set(all_arms)):
         problems.append(f"module `{mod_name}` in game_module_sides.tsv is not declared in game.rs or side files")
 
-    game_text = game_rs.read_text(encoding="utf-8")
     reexports, reexp_errs = parse_game_reexports(game_text, root)
     problems.extend(reexp_errs)
 
     for mod_name in sorted(set(all_arms) & set(table)):
-        want = mod_to_side[mod_name]
+        want, _, expected_paths = table[mod_name]
         actual = current_parents[mod_name]
         if actual != want:
             problems.append(f"module `{mod_name}` is in `{actual}`, expected `{want}` per game_module_sides.tsv")
+        if expected_paths is not None:
+            actual_paths = tuple(sorted(p.relative_to(src_root).as_posix() for p in resolved_entries.get(mod_name, [])))
+            if actual_paths != expected_paths:
+                problems.append(
+                    f"module `{mod_name}` resolves to `{','.join(actual_paths)}`, expected `{','.join(expected_paths)}` per game_module_sides.tsv"
+                )
         if want in ("client", "server"):
             expected_cfgs, expected_vis, cfg_err = cfg_attrs_for_reexport(all_arms[mod_name])
             if cfg_err:
@@ -2448,23 +3112,12 @@ def run_check(root: Path, table: dict[str, tuple[str, str]], field_specs: dict[s
         path = game_dir / SIDE_NEW_FILE[side]
         rel = path.relative_to(root).as_posix()
         txt = path.read_text(encoding="utf-8")
-        if f"pub(in crate::game::{smod}) use super::*;" not in txt:
-            problems.append(f"{rel}: missing `pub(in crate::game::{smod}) use super::*;`")
+        problems.extend(check_side_file_structure(txt, side, rel, game_dir, table))
         try:
-            problems.extend(check_state_struct_rules(txt, sname, rel))
             fields = parse_struct_fields(txt, sname, rel)
         except ValueError as err:
             problems.append(f"{rel}: {err}")
             continue
-        items, item_errs = scan_top_level_items(txt, rel, game_dir)
-        problems.extend(item_errs)
-        for item in items:
-            if item.kind == "struct" and norm_ident(item.name) == sname:
-                break
-            if item.kind not in ("use_super_glob", "mod_decl"):
-                problems.append(
-                    f"{rel}:{item.line}: unexpected `{item.kind}` item before `struct {sname}` in side-file preamble"
-                )
         seen: set[str] = set()
         for fname, actual_vis, _, _ in fields:
             seen.add(fname)
@@ -2485,20 +3138,40 @@ def run_check(root: Path, table: dict[str, tuple[str, str]], field_specs: dict[s
                         f"wider than table requirement `{allowed_private}`"
                     )
             else:
-                if actual_vis not in ("pub(in crate::game)", allowed_private):
+                if actual_vis != "pub(in crate::game)":
                     problems.append(
                         f"{rel}: field `{sname}::{fname}` has visibility `{actual_vis or '<private>'}`, "
-                        "wider than `pub(in crate::game)`"
+                        "expected `pub(in crate::game)` per game_field_owners.tsv"
                     )
         expected = {f for f, s in field_specs.items() if s.owner == side}
         for missing in sorted(expected - seen):
             problems.append(f"{rel}: expected `{side}` field `{missing}` missing from `{sname}`")
 
     tok_cache: dict[Path, tuple[str, list[Token]]] = {}
-    moved_file_depth, moved_root_files, sub_errs = collect_moved_subtrees_and_includes(
+    problems.extend(check_state_impls_across_game(root, tok_cache=tok_cache))
+
+    moved_file_depth, moved_file_side, moved_root_files, moved_includes, sub_errs = collect_moved_subtrees_and_includes(
         root, mod_to_side, all_arms, resolved_entries, tok_cache=tok_cache
     )
     problems.extend(sub_errs)
+
+    observed_includes: set[tuple[str, str]] = set()
+    for frel, carg, scope_str, lineno in moved_includes:
+        key = (frel, carg)
+        observed_includes.add(key)
+        expected_scope = allowed_includes.get(key)
+        if expected_scope is None:
+            problems.append(
+                f"{frel}:{lineno}: unapproved `include!({carg})` in moved module subtree (not listed in game_module_includes.tsv)"
+            )
+        elif expected_scope != scope_str:
+            problems.append(
+                f"{frel}:{lineno}: `include!({carg})` scope `{scope_str}` does not match `{expected_scope}` in game_module_includes.tsv"
+            )
+    for frel, carg in sorted(set(allowed_includes) - observed_includes):
+        problems.append(
+            f"tools/game_module_includes.tsv: stale entry `{frel}` ({carg}) not found in moved module subtrees"
+        )
 
     for path, depth in sorted(moved_file_depth.items()):
         txt, toks = read_tokens_cached(path, tok_cache)
@@ -2515,6 +3188,21 @@ def run_check(root: Path, table: dict[str, tuple[str, str]], field_specs: dict[s
         rel = path.relative_to(root).as_posix()
         problems.append(f"{rel}: stale module path selector(s); run `python3 tools/game_module_sides.py --fix`")
 
+    if against is not None:
+        base_rev = resolve_baseline_ref(root, against, pull_request_merge)
+        problems.extend(
+            check_baseline_ratchet(
+                root,
+                base_rev,
+                table,
+                field_specs,
+                allowed_includes,
+                resolved_entries,
+                moved_file_side,
+                tok_cache=tok_cache,
+            )
+        )
+
     problems = list(dict.fromkeys(problems))
     for p in problems:
         print(f"error: {p}", file=sys.stderr)
@@ -2527,7 +3215,11 @@ def run_check(root: Path, table: dict[str, tuple[str, str]], field_specs: dict[s
     return 0
 
 
-def run_list(root: Path, table: dict[str, tuple[str, str]], field_specs: dict[str, FieldSpec]) -> int:
+def run_list(
+    root: Path,
+    table: dict[str, tuple[str, str, tuple[str, ...] | None]],
+    field_specs: dict[str, FieldSpec],
+) -> int:
     all_arms, current_parents, _, errs = collect_all_arms(root)
     for e in errs:
         print(f"error: {e}", file=sys.stderr)
@@ -2535,15 +3227,15 @@ def run_list(root: Path, table: dict[str, tuple[str, str]], field_specs: dict[st
         return 1
     print("module\ttable_side\tactual_parent\tstatus\treason")
     for mod_name in sorted(set(all_arms) | set(table)):
-        want, reason = table.get(mod_name, ("<missing>", ""))
+        want, reason, _ = table.get(mod_name, ("<missing>", "", None))
         actual = current_parents.get(mod_name, "<missing>")
         status = "ok" if want == actual else "drift"
         print(f"{mod_name}\t{want}\t{actual}\t{status}\t{reason}")
     side_private = sum(1 for s in field_specs.values() if s.owner in ("client", "server") and s.visibility == "side")
     side_wide = sum(1 for s in field_specs.values() if s.owner in ("client", "server") and s.visibility == "game")
     print(
-        f"# summary: modules={len(table)} (client={sum(s=='client' for s,_ in table.values())}, "
-        f"server={sum(s=='server' for s,_ in table.values())}, game={sum(s=='game' for s,_ in table.values())}); "
+        f"# summary: modules={len(table)} (client={sum(s=='client' for s,_,_ in table.values())}, "
+        f"server={sum(s=='server' for s,_,_ in table.values())}, game={sum(s=='game' for s,_,_ in table.values())}); "
         f"fields private={side_private}, wide={side_wide}",
         file=sys.stderr,
     )
@@ -2553,13 +3245,13 @@ def run_list(root: Path, table: dict[str, tuple[str, str]], field_specs: dict[st
 def run_renames(
     before_json: Path,
     after_json: Path,
-    table: dict[str, tuple[str, str]],
+    table: dict[str, tuple[str, str, tuple[str, ...] | None]],
     out_path: Path | None,
 ) -> int:
     """Compute old_target -> new_target TSV for every moved function in `functions.json`."""
     before = json.loads(before_json.read_text(encoding="utf-8"))
     after = json.loads(after_json.read_text(encoding="utf-8"))
-    mod_to_side = {m: s for m, (s, _) in table.items()}
+    mod_to_side = {m: s for m, (s, _, _) in table.items()}
 
     before_fns = before.get("functions", {})
     after_fns = after.get("functions", {})
@@ -2638,6 +3330,13 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--root", type=Path, default=ROOT, help="repository root directory")
     parser.add_argument("--table", type=Path, default=None, help="path to game_module_sides.tsv")
     parser.add_argument("--fields-table", type=Path, default=None, help="path to game_field_owners.tsv")
+    parser.add_argument("--includes-table", type=Path, default=None, help="path to game_module_includes.tsv")
+    parser.add_argument("--against", default=None, help="compare table protection against this git ref (with --check)")
+    parser.add_argument(
+        "--pull-request-merge",
+        action="store_true",
+        help="HEAD is a PR merge commit; compare against its first parent when --against is given",
+    )
     parser.add_argument("--out", type=Path, default=None, help="output path for --renames")
     parser.add_argument("--no-fmt", action="store_true", help="skip rustfmt on modified Rust files")
     args = parser.parse_args(argv)
@@ -2647,6 +3346,9 @@ def main(argv: list[str] | None = None) -> int:
     fields_path = args.fields_table or (
         root / "tools/game_field_owners.tsv" if args.root != ROOT else DEFAULT_FIELDS_TABLE
     )
+    includes_path = args.includes_table or (
+        root / "tools/game_module_includes.tsv" if args.root != ROOT else DEFAULT_INCLUDES_TABLE
+    )
     table = load_module_sides(table_path)
     if args.renames:
         return run_renames(args.renames[0], args.renames[1], table, args.out)
@@ -2654,7 +3356,15 @@ def main(argv: list[str] | None = None) -> int:
     if args.fix:
         return run_fix(root, table, field_specs, fmt=not args.no_fmt)
     if args.check:
-        return run_check(root, table, field_specs)
+        allowed_includes = load_allowed_includes(includes_path)
+        return run_check(
+            root,
+            table,
+            field_specs,
+            allowed_includes,
+            against=args.against,
+            pull_request_merge=args.pull_request_merge,
+        )
     return run_list(root, table, field_specs)
 
 

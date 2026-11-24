@@ -394,6 +394,11 @@ def plan(args, base, changed, crates_of, libraries, dependencies, merge_base=Non
         Step("Export lists", "python3 tools/hotspots/check_lists.py", where="here"),
         # tools/hotspots/check_stand_ins.py: test stand-ins keep up with the hooks and traits they mirror.
         Step("Test stand-ins", "python3 tools/hotspots/check_stand_ins.py", where="here"),
+        # tools/game_field_owners.py and tools/game_module_sides.py: field ownership and side-module privacy wall.
+        Step("Game field owners", "python3 tools/game_field_owners.py --check", where="here"),
+        Step("Game module sides",
+             f"python3 tools/game_module_sides.py --check --against {shlex.quote(merge_base)}",
+             where="here"),
         # Always, as in CI: some read the crates, the roadmap or the workflows. One file per worker here, with
         # unittest's own summary (#5043); CI and --serial-python run them in one process.
         Step("Python tests", "python3 -m unittest discover -s tests" if getattr(args, "serial_python", False)

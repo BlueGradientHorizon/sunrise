@@ -153,6 +153,10 @@ mod tests {
                 "wide_tick\tu64\tserver\tserver\t3\tgame\n"
                 "world\tWorld\tgame\tshared\t4\t-\n"
             ),
+            "tools/game_module_includes.tsv": (
+                "file\tinclude_arg\tscope\treason\n"
+                'crates/sunrise-client/src/game/world/srv_mod.rs\t"srv_inc.rs"\tserver:d=0\tsynthetic root include\n'
+            ),
             "tools/ci/ignored-tests/sample.txt": (
                 "# comment game::hud::ignored_in_comment\n"
                 "sunrise-client game::hud::tests::a lib daily resources\n"
@@ -665,6 +669,20 @@ class GameModuleSidesTests(unittest.TestCase):
                 },
                 game_append="fn callers() { moved::literal(); moved::brace(); moved::raw(); moved::bracket(); }\n",
             )
+            write_tree(
+                root,
+                {
+                    "tools/game_module_includes.tsv": (
+                        "file\tinclude_arg\tscope\treason\n"
+                        'crates/sunrise-client/src/game/moved.rs\t"literal.inc"\tclient:d=0\tfixture\n'
+                        'crates/sunrise-client/src/game/literal.inc\t"transitive.inc"\tclient:d=0\tfixture\n'
+                        'crates/sunrise-client/src/game/moved.rs\t"brace.inc"\tclient:d=0\tfixture\n'
+                        'crates/sunrise-client/src/game/moved.rs\tr#"raw.inc"#\tclient:d=0\tfixture\n'
+                        'crates/sunrise-client/src/game/moved.rs\t"bracket.inc"\tclient:d=0\tfixture\n'
+                        'crates/sunrise-client/src/game/moved.rs\t"nested.inc"\tclient:d=1\tfixture\n'
+                    ),
+                },
+            )
             rc, _, err = run_cli("--fix", "--no-fmt", "--root", str(root))
             self.assertEqual(rc, 0, err)
             rc, _, err = run_cli("--check", "--root", str(root))
@@ -1005,6 +1023,302 @@ class GameModuleSidesTests(unittest.TestCase):
             self.assertEqual(before, snapshot_tree(root))
             self.assertTrue((root / "crates/sunrise-client/src/game/client_state.rs").exists())
             self.assertFalse((root / "crates/sunrise-client/src/game/client_side.rs").exists())
+
+    def test_new_state_field_requires_row_including_raw_identifier(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            make_synthetic_tree(root)
+            self.assertEqual(run_cli("--fix", "--no-fmt", "--root", str(root))[0], 0)
+            cs = root / "crates/sunrise-client/src/game/client_side.rs"
+            orig = cs.read_text()
+            for field_line, expected in (
+                ("    pub(in crate::game) extra_wide: bool,\n", "ClientState::extra_wide"),
+                ("    pub(in crate::game::client_side) extra_narrow: bool,\n", "ClientState::extra_narrow"),
+                ("    pub(in crate::game) r#type: bool,\n", "ClientState::type"),
+            ):
+                cs.write_text(orig.replace("    pub(in crate::game::client_side) private_flag: bool,\n", field_line + "    pub(in crate::game::client_side) private_flag: bool,\n"))
+                rc, _, err = run_cli("--check", "--root", str(root))
+                self.assertEqual(rc, 1)
+                self.assertIn(expected, err)
+                self.assertIn("missing from game_field_owners.tsv", err)
+            cs.write_text(orig)
+            self.assertEqual(run_cli("--check", "--root", str(root))[0], 0)
+
+    def test_protected_field_requirement_cannot_relax_against_base(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            make_synthetic_tree(root)
+            self.assertEqual(run_cli("--fix", "--no-fmt", "--root", str(root))[0], 0)
+            subprocess.run(["git", "init", "-q"], cwd=root, check=True)
+            for k, v in (("user.name", "Test"), ("user.email", "t@example.invalid"), ("commit.gpgsign", "false")):
+                subprocess.run(["git", "config", k, v], cwd=root, check=True)
+            subprocess.run(["git", "add", "."], cwd=root, check=True)
+            subprocess.run(["git", "commit", "-q", "-m", "base"], cwd=root, check=True)
+            base_sha = subprocess.run(["git", "rev-parse", "HEAD"], cwd=root, capture_output=True, text=True, check=True).stdout.strip()
+
+            cs = root / "crates/sunrise-client/src/game/client_side.rs"
+            ft = root / "tools/game_field_owners.tsv"
+            shared = root / "crates/sunrise-client/src/game/world/shared.rs"
+            orig_cs, orig_ft, orig_shared = cs.read_text(), ft.read_text(), shared.read_text()
+
+            # 1. Table-only relaxation (side -> game) fails even without --against and with --against.
+            ft.write_text(orig_ft.replace("private_flag\tbool\tclient\tclient\t0\tside", "private_flag\tbool\tclient\tclient\t0\tgame"))
+            rc, _, err = run_cli("--check", "--root", str(root))
+            self.assertEqual(rc, 1)
+            self.assertIn("private_flag", err)
+            rc, _, err = run_cli("--check", "--against", base_sha, "--root", str(root))
+            self.assertEqual(rc, 1)
+            self.assertIn("widened from `side` to `game`", err)
+
+            # 2. Coordinated table + source widening without an out-of-side user fails against base.
+            cs.write_text(orig_cs.replace("pub(in crate::game::client_side) private_flag", "pub(in crate::game) private_flag"))
+            rc, _, err = run_cli("--check", "--against", base_sha, "--root", str(root))
+            self.assertEqual(rc, 1)
+            self.assertIn("widened from `side` to `game`", err)
+            self.assertIn("no out-of-side source access", err)
+
+            # 3. Same widening paired with a real out-of-side source access passes against base.
+            shared.write_text(orig_shared + "\nfn uses_flag(g: &mut Game) -> bool { g.client.private_flag }\n")
+            rc, _, err = run_cli("--check", "--against", base_sha, "--root", str(root))
+            self.assertEqual(rc, 0, err)
+
+            # 4. Brand-new wide field with game row and no out-of-side user fails against base.
+            cs.write_text(orig_cs.replace("    pub(in crate::game::client_side) private_flag: bool,\n", "    pub(in crate::game::client_side) private_flag: bool,\n    pub(in crate::game) new_wide: bool,\n"))
+            ft.write_text(orig_ft + "new_wide\tbool\tclient\tprobe\t99\tgame\n")
+            shared.write_text(orig_shared)
+            rc, _, err = run_cli("--check", "--against", base_sha, "--root", str(root))
+            self.assertEqual(rc, 1)
+            self.assertIn("new_wide", err)
+            self.assertIn("no out-of-side source access", err)
+
+            # 5. Table relaxation from client/side to owner=game fails against base.
+            cs.write_text(orig_cs.replace("    pub(in crate::game::client_side) private_flag: bool,\n", ""))
+            ft.write_text(orig_ft.replace("private_flag\tbool\tclient\tclient\t0\tside", "private_flag\tbool\tgame\tshared\t0\t-"))
+            rc, _, err = run_cli("--check", "--against", base_sha, "--root", str(root))
+            self.assertEqual(rc, 1)
+            self.assertIn("relaxed from `client/side` to `owner=game`", err)
+
+    def test_all_side_module_arms_are_registered(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            make_synthetic_tree(root)
+            self.assertEqual(run_cli("--fix", "--no-fmt", "--root", str(root))[0], 0)
+            cs = root / "crates/sunrise-client/src/game/client_side.rs"
+            orig_cs = cs.read_text()
+
+            # 1. Unlisted inline module inside side file is rejected.
+            cs.write_text(orig_cs + "\nmod ratchet_inline {\n    const MARKER: bool = false;\n}\n")
+            rc, _, err = run_cli("--check", "--root", str(root))
+            self.assertEqual(rc, 1)
+            self.assertIn("disallowed `inline_mod` item", err)
+
+            # 2. Unlisted out-of-line module with trailing comment is rejected.
+            write_tree(root, {"crates/sunrise-client/src/game/r2_probe.rs": "const MARKER: bool = false;\n"})
+            cs.write_text(orig_cs + '\n#[path = "r2_probe.rs"]\nmod ratchet_commented; // trailing comment\n')
+            rc, _, err = run_cli("--check", "--root", str(root))
+            self.assertEqual(rc, 1)
+            self.assertIn("ratchet_commented", err)
+
+            # 3. Extra conditional arm on an existing module with non-complementary cfg is rejected.
+            cs.write_text(
+                orig_cs.replace(
+                    '#[path = "ui/hud.rs"]\npub(in crate::game) mod hud;',
+                    '#[cfg(feature = "a")]\n#[path = "ui/hud.rs"]\npub(in crate::game) mod hud;\n#[cfg(feature = "b")]\n#[path = "r2_probe.rs"]\npub(in crate::game) mod hud;',
+                )
+            )
+            rc, _, err = run_cli("--check", "--root", str(root))
+            self.assertEqual(rc, 1)
+            self.assertIn("complementary", err)
+
+    def test_side_container_and_registered_child_paths_are_checked(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            make_synthetic_tree(root)
+            self.assertEqual(run_cli("--fix", "--no-fmt", "--root", str(root))[0], 0)
+            # Populate paths column in synthetic game_module_sides.tsv.
+            src_root = (root / "crates/sunrise-client/src").resolve()
+            _, _, resolved, _ = gms.collect_all_arms(root)
+            tsv = root / "tools/game_module_sides.tsv"
+            lines = tsv.read_text().splitlines()
+            updated = [lines[0] + "\tpaths"]
+            for row in lines[1:]:
+                mod = row.split("\t", 1)[0]
+                paths = ",".join(sorted(p.relative_to(src_root).as_posix() for p in resolved[mod]))
+                updated.append(f"{row}\t{paths}")
+            tsv.write_text("\n".join(updated) + "\n")
+            self.assertEqual(run_cli("--check", "--root", str(root))[0], 0)
+
+            game_rs = root / "crates/sunrise-client/src/game.rs"
+            cs = root / "crates/sunrise-client/src/game/client_side.rs"
+            orig_game, orig_cs = game_rs.read_text(), cs.read_text()
+            write_tree(root, {"crates/sunrise-client/src/game/r2_probe.rs": orig_cs})
+
+            # 1. Redirecting client_side container in game.rs to another source file fails.
+            game_rs.write_text(orig_game.replace('#[path = "game/client_side.rs"]', '#[path = "game/r2_probe.rs"]'))
+            rc, _, err = run_cli("--check", "--root", str(root))
+            self.assertEqual(rc, 1)
+            self.assertIn("mod client_side;", err)
+            game_rs.write_text(orig_game)
+
+            # 2. Swapping a registered child module's source path fails against the paths column.
+            cs.write_text(orig_cs.replace('#[path = "ui/hud.rs"]', '#[path = "r2_probe.rs"]'))
+            rc, _, err = run_cli("--check", "--root", str(root))
+            self.assertEqual(rc, 1)
+            self.assertIn("module `hud` resolves to `game/r2_probe.rs`", err)
+
+    def test_side_file_rejects_state_and_private_field_accessors(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            make_synthetic_tree(root)
+            self.assertEqual(run_cli("--fix", "--no-fmt", "--root", str(root))[0], 0)
+            cs = root / "crates/sunrise-client/src/game/client_side.rs"
+            orig_cs = cs.read_text()
+
+            # 1. Free function returning &mut ClientState or private field is rejected.
+            for fn_src in (
+                "\npub(in crate::game) fn leak_state(g: &mut Game) -> &mut ClientState { &mut g.client }\n",
+                "\npub(in crate::game) fn leak_field(s: &mut ClientState) -> &mut bool { &mut s.private_flag }\n",
+            ):
+                cs.write_text(orig_cs + fn_src)
+                rc, _, err = run_cli("--check", "--root", str(root))
+                self.assertEqual(rc, 1)
+                self.assertIn("disallowed `fn` item", err)
+
+            # 2. Inherent method on ClientState returning private field is rejected; constructor fn new is allowed.
+            cs.write_text(
+                orig_cs
+                + "\nimpl ClientState {\n    pub(in crate::game) fn leak(&mut self) -> &mut bool { &mut self.private_flag }\n}\n"
+            )
+            rc, _, err = run_cli("--check", "--root", str(root))
+            self.assertEqual(rc, 1)
+            self.assertIn("disallowed inherent method `leak`", err)
+
+            # 3. Inherent fn new without self receiver is accepted.
+            cs.write_text(
+                orig_cs
+                + "\nimpl ClientState {\n    #[inline(never)]\n    pub(in crate::game) fn new() -> Self { Self { private_flag: false, wide_flag: std::cell::Cell::new(false) } }\n}\n"
+            )
+            rc, _, err = run_cli("--check", "--root", str(root))
+            self.assertEqual(rc, 0, err)
+
+    def test_side_file_rejects_game_visible_reexport(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            make_synthetic_tree(root)
+            self.assertEqual(run_cli("--fix", "--no-fmt", "--root", str(root))[0], 0)
+            cs = root / "crates/sunrise-client/src/game/client_side.rs"
+            orig_cs = cs.read_text()
+            cs.write_text(
+                orig_cs
+                + "\nmod hidden {\n    pub(in crate::game) fn reveal(s: &mut super::ClientState) -> &mut bool { &mut s.private_flag }\n}\n"
+                + "pub(in crate::game) use self::hidden::reveal as ratchet_reexport;\n"
+            )
+            rc, _, err = run_cli("--check", "--root", str(root))
+            self.assertEqual(rc, 1)
+            self.assertIn("disallowed `inline_mod` item", err)
+            self.assertIn("disallowed `use` item", err)
+
+    def test_side_scope_rejects_unapproved_item_includes(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            make_synthetic_tree(root)
+            self.assertEqual(run_cli("--fix", "--no-fmt", "--root", str(root))[0], 0)
+            # Documented child include (`srv_inc.rs`) passes cleanly.
+            self.assertEqual(run_cli("--check", "--root", str(root))[0], 0)
+
+            cs = root / "crates/sunrise-client/src/game/client_side.rs"
+            hud = root / "crates/sunrise-client/src/game/ui/hud.rs"
+            orig_cs, orig_hud = cs.read_text(), hud.read_text()
+            write_tree(
+                root,
+                {
+                    "crates/sunrise-client/src/game/r2_probe.rs": (
+                        "pub(in crate::game) fn leak(s: &mut ClientState) -> &mut bool { &mut s.private_flag }\n"
+                    ),
+                },
+            )
+
+            # 1. Root include! in side file (accessor or module injection) is rejected.
+            cs.write_text(orig_cs + '\ninclude!("r2_probe.rs");\n')
+            rc, _, err = run_cli("--check", "--root", str(root))
+            self.assertEqual(rc, 1)
+            self.assertIn("disallowed `macro_call` item", err)
+            cs.write_text(orig_cs)
+
+            # 2. Unapproved include! inside a registered child module is rejected.
+            hud.write_text(orig_hud + '\ninclude!("../r2_probe.rs");\n')
+            rc, _, err = run_cli("--check", "--root", str(root))
+            self.assertEqual(rc, 1)
+            self.assertIn("unapproved `include!", err)
+
+    def test_state_traits_cannot_bypass_check_via_rust_syntax(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            make_synthetic_tree(root)
+            self.assertEqual(run_cli("--fix", "--no-fmt", "--root", str(root))[0], 0)
+            cs = root / "crates/sunrise-client/src/game/client_side.rs"
+            hud = root / "crates/sunrise-client/src/game/ui/hud.rs"
+            orig_cs, orig_hud = cs.read_text(), hud.read_text()
+
+            # 1. Multiline derive on ClientState is rejected.
+            cs.write_text(
+                orig_cs.replace(
+                    "pub(in crate::game) struct ClientState {",
+                    "#[derive(\n    Debug,\n    Clone,\n)]\npub(in crate::game) struct ClientState {",
+                )
+            )
+            rc, _, err = run_cli("--check", "--root", str(root))
+            self.assertEqual(rc, 1)
+            self.assertIn("must not carry `#[derive(...)]`", err)
+
+            # 2. Qualified Deref target (`for self::ClientState`) is rejected.
+            cs.write_text(
+                orig_cs
+                + "\nimpl core::ops::Deref for self::ClientState {\n    type Target = bool;\n    fn deref(&self) -> &bool { &self.private_flag }\n}\n"
+            )
+            rc, _, err = run_cli("--check", "--root", str(root))
+            self.assertEqual(rc, 1)
+            self.assertIn("trait impl is disallowed", err)
+
+            # 3. Aliased AsRef trait (`use ... as RatchetRef; impl RatchetRef<bool> for ClientState`) is rejected.
+            cs.write_text(
+                orig_cs
+                + "\nuse core::convert::AsRef as RatchetRef;\nimpl RatchetRef<bool> for ClientState {\n    fn as_ref(&self) -> &bool { &self.private_flag }\n}\n"
+            )
+            rc, _, err = run_cli("--check", "--root", str(root))
+            self.assertEqual(rc, 1)
+            self.assertIn("disallowed `use` item", err)
+            self.assertIn("trait impl is disallowed", err)
+            cs.write_text(orig_cs)
+
+            # 4. Cross-file trait or inherent impl for ClientState inside a moved child module is rejected.
+            hud.write_text(
+                orig_hud
+                + "\nimpl core::convert::AsRef<bool> for super::ClientState {\n    fn as_ref(&self) -> &bool { &self.private_flag }\n}\n"
+            )
+            rc, _, err = run_cli("--check", "--root", str(root))
+            self.assertEqual(rc, 1)
+            self.assertIn("disallowed trait impl for `super::ClientState` outside side file", err)
+
+    def test_r2_06_ci_and_pr_ready_wire_real_tree_checks(self):
+        wf = (ROOT / ".github/workflows/dyna-ci.yml").read_text(encoding="utf-8")
+        self.assertIn("python3 tools/game_field_owners.py --check", wf)
+        self.assertIn('python3 tools/game_module_sides.py --check ${BASE_SHA:+--against "$BASE_SHA" --pull-request-merge}', wf)
+
+        from tools import pr_ready
+        import argparse
+        steps = pr_ready.plan(
+            argparse.Namespace(host="local", quick=True, harnesses=False),
+            "origin/main",
+            {"README.md"},
+            {},
+            set(),
+            {},
+            merge_base="deadbeef",
+        )
+        by_name = {s.name: s for s in steps}
+        self.assertEqual(by_name["Game field owners"].command, "python3 tools/game_field_owners.py --check")
+        self.assertEqual(by_name["Game module sides"].command, "python3 tools/game_module_sides.py --check --against deadbeef")
 
 
 if __name__ == "__main__":

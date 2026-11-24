@@ -1,1007 +1,1007 @@
-module	side	reason
-activity	game	touches neither ClientState nor ServerState fields
-advancements	game	touches both ClientState and ServerState fields
-advancements_screen	client	touches only ClientState fields
-agent	game	touches both ClientState and ServerState fields
-agent_settings	client	touches only ClientState fields
-ahead	server	touches only ServerState fields
-allay_jukebox_source_tests	game	touches neither ClientState nor ServerState fields
-allay_pickup_cooldown_tests	game	touches neither ClientState nor ServerState fields
-allays	game	touches neither ClientState nor ServerState fields
-api_values	game	touches neither ClientState nor ServerState fields
-armor_stand_refind_tests	server	touches only ServerState fields
-armor_stands	game	touches both ClientState and ServerState fields
-atlas_slots	game	touches neither ClientState nor ServerState fields
-attachment_index	server	touches only ServerState fields
-attachment_instruction_bench	game	touches neither ClientState nor ServerState fields
-attachment_sync	game	touches neither ClientState nor ServerState fields
-autosave	game	touches both ClientState and ServerState fields
-baked_model_keys_tests	game	touches neither ClientState nor ServerState fields
-banners	game	touches neither ClientState nor ServerState fields
-bare_declaration_names_tests	game	touches neither ClientState nor ServerState fields
-beacon	client	touches only ClientState fields
-beacon_cull_tests	game	touches neither ClientState nor ServerState fields
-beds	server	touches only ServerState fields
-beehives	server	touches only ServerState fields
-block_breaking	game	touches both ClientState and ServerState fields
-block_drops_pops_tests	server	touches only ServerState fields
-block_editor	client	touches only ClientState fields
-block_edits	game	touches neither ClientState nor ServerState fields
-block_entity_anims	server	touches only ServerState fields
-block_entity_part_state_tests	game	touches neither ClientState nor ServerState fields
-block_entity_reach_draw_tests	game	touches neither ClientState nor ServerState fields
-block_entity_ticks	game	defines published loop loop:block_entities.tick
-block_items	game	touches neither ClientState nor ServerState fields
-block_notifications	game	touches neither ClientState nor ServerState fields
-block_part_tool_tests	game	touches neither ClientState nor ServerState fields
-block_particles	server	touches only ServerState fields
-block_screen_effect_draw_tests	game	touches both ClientState and ServerState fields
-block_ticks	server	touches only ServerState fields
-block_use_completion	server	touches only ServerState fields
-block_use_completion_tests	server	touches only ServerState fields
-blockctl	game	touches neither ClientState nor ServerState fields
-boarding	server	touches only ServerState fields
-boat_authority_fixture	server	touches only ServerState fields
-boat_leads	server	touches only ServerState fields
-boat_passengers	server	touches only ServerState fields
-boat_refind_tests	game	touches neither ClientState nor ServerState fields
-boat_rider_fixture	client	touches only ClientState fields
-boats	game	touches both ClientState and ServerState fields
-books	game	touches both ClientState and ServerState fields
-bookshelves	client	touches only ClientState fields
-bossbars	game	touches both ClientState and ServerState fields
-breezes	game	touches neither ClientState nor ServerState fields
-brewing_remainder	game	touches neither ClientState nor ServerState fields
-brush	server	touches only ServerState fields
-bucket_empty	server	touches only ServerState fields
-buckets	server	touches only ServerState fields
-building_players	server	touches only ServerState fields
-bundle_use_tests	game	touches both ClientState and ServerState fields
-bundles	client	touches only ClientState fields
-cake_eligibility	game	touches neither ClientState nor ServerState fields
-camera_hud	client	touches only ClientState fields
-camera_submersion_tests	game	touches neither ClientState nor ServerState fields
-campfire	server	touches only ServerState fields
-campfire_douse	server	touches only ServerState fields
-carrier_transfers	server	touches only ServerState fields
-cart_rails	game	touches neither ClientState nor ServerState fields
-cartography	game	touches neither ClientState nor ServerState fields
-cat_spawner	game	touches neither ClientState nor ServerState fields
-cauldron_interactions	server	touches only ServerState fields
-cauldron_prediction	game	touches neither ClientState nor ServerState fields
-cauldron_underwater_tests	server	touches only ServerState fields
-cauldrons	game	touches neither ClientState nor ServerState fields
-chat	game	touches both ClientState and ServerState fields
-chiseled_bookshelf	game	touches neither ClientState nor ServerState fields
-class_tags	game	touches neither ClientState nor ServerState fields
-class_tags_tests	game	touches neither ClientState nor ServerState fields
-client_ambient	game	touches neither ClientState nor ServerState fields
-client_attack_targets	client	touches only ClientState fields
-client_cracks	client	touches only ClientState fields
-client_executor	client	touches only ClientState fields
-client_item_extensions	game	touches neither ClientState nor ServerState fields
-client_reload	client	touches only ClientState fields
-client_tick_steps	client	touches only ClientState fields
-clip_ray	game	touches neither ClientState nor ServerState fields
-clipboard	client	touches only ClientState fields
-clone_block_ticks_tests	game	touches neither ClientState nor ServerState fields
-clone_dimensions_tests	server	touches only ServerState fields
-closest_space	game	touches neither ClientState nor ServerState fields
-cloud_height_frame_tests	client	touches only ClientState fields
-code_of_conduct	client	touches only ClientState fields
-collision_source	game	touches neither ClientState nor ServerState fields
-combat	server	touches only ServerState fields
-command_blocks	client	touches only ClientState fields
-command_harness	server	touches only ServerState fields
-command_minecarts	game	touches neither ClientState nor ServerState fields
-command_registries	game	touches neither ClientState nor ServerState fields
-commands	game	touches both ClientState and ServerState fields
-composter	game	touches neither ClientState nor ServerState fields
-condition_reload_state	game	touches neither ClientState nor ServerState fields
-consume	server	touches only ServerState fields
-consume_effect_dispatch	game	touches neither ClientState nor ServerState fields
-consume_effect_dispatch_tests	game	touches neither ClientState nor ServerState fields
-contained_fluid_tests	game	touches neither ClientState nor ServerState fields
-container_hooks	client	touches only ClientState fields
-container_layout	client	touches only ClientState fields
-container_loot	server	touches only ServerState fields
-control	client	touches only ClientState fields
-conversion_place_tests	game	touches neither ClientState nor ServerState fields
-copper_golems	game	touches neither ClientState nor ServerState fields
-core_tests	game	touches both ClientState and ServerState fields
-crafting_recipe_kind_tests	game	touches both ClientState and ServerState fields
-creaking	server	touches only ServerState fields
-create_fluid_source_tests	game	touches neither ClientState nor ServerState fields
-creative_hotbar	client	touches only ClientState fields
-creative_screen	client	touches only ClientState fields
-creator_mod_id_tests	game	touches neither ClientState nor ServerState fields
-creatures	game	touches both ClientState and ServerState fields
-crop_grow_tests	game	touches neither ClientState nor ServerState fields
-crossbow	server	touches only ServerState fields
-crosshair_pick_tests	client	touches only ClientState fields
-cushion_refind_tests	game	touches neither ClientState nor ServerState fields
-cushions	game	touches both ClientState and ServerState fields
-custom_arm_pose	game	touches neither ClientState nor ServerState fields
-custom_sky	client	touches only ClientState fields
-custom_spawner_level	game	touches neither ClientState nor ServerState fields
-custom_spawners	game	touches neither ClientState nor ServerState fields
-damage_item_tests	server	touches only ServerState fields
-damage_resistant_tests	server	touches only ServerState fields
-data_map_files	game	touches neither ClientState nor ServerState fields
-data_map_json	game	touches neither ClientState nor ServerState fields
-debug_keys	client	touches only ClientState fields
-debug_lines	game	touches both ClientState and ServerState fields
-debug_options	client	touches only ClientState fields
-debug_renderer_tests	client	touches only ClientState fields
-debug_renderers	client	touches only ClientState fields
-debug_stick	game	touches neither ClientState nor ServerState fields
-decided_action	game	touches neither ClientState nor ServerState fields
-declared_vegetation_tests	game	touches neither ClientState nor ServerState fields
-decorated_pot	server	touches only ServerState fields
-dedicated	server	touches only ServerState fields
-deflect	server	touches only ServerState fields
-demo_intro	client	touches only ClientState fields
-developer_launch	game	touches neither ClientState nor ServerState fields
-dialogs	client	touches only ClientState fields
-disabled_block_tests	game	touches neither ClientState nor ServerState fields
-dispense_bucket	game	touches neither ClientState nor ServerState fields
-dispense_container_tests	game	touches neither ClientState nor ServerState fields
-dispense_fixture	server	touches only ServerState fields
-dispenser	server	touches only ServerState fields
-dragon	game	touches both ClientState and ServerState fields
-dragon_boss_bar_name_tests	client	touches only ClientState fields
-dragon_fireball_motion_tests	server	touches only ServerState fields
-draw_boundary	game	touches neither ClientState nor ServerState fields
-dropped_by_player_tests	game	touches neither ClientState nor ServerState fields
-dropped_item_setter	game	touches neither ClientState nor ServerState fields
-durability	game	touches neither ClientState nor ServerState fields
-dynamic_light_emission	game	touches neither ClientState nor ServerState fields
-dynamic_light_emission_tests	game	touches neither ClientState nor ServerState fields
-dynamic_lights	client	touches only ClientState fields
-early_game_rules	game	touches neither ClientState nor ServerState fields
-early_game_rules_tests	game	touches neither ClientState nor ServerState fields
-empty_contents_tests	game	touches neither ClientState nor ServerState fields
-enchant_effects	server	touches only ServerState fields
-enchant_pick_parts_tests	server	touches only ServerState fields
-enchant_power_beam_tests	client	touches only ClientState fields
-end	game	touches both ClientState and ServerState fields
-enderman	game	touches neither ClientState nor ServerState fields
-enderman_hurt_teleport_tests	server	touches only ServerState fields
-enderman_placement_tests	game	touches neither ClientState nor ServerState fields
-entity	server	touches only ServerState fields
-entity_culling	client	touches only ClientState fields
-entity_die_tests	game	touches neither ClientState nor ServerState fields
-entity_initialization	server	touches only ServerState fields
-entity_inside_tests	game	touches neither ClientState nor ServerState fields
-entity_model_loading_tests	game	touches neither ClientState nor ServerState fields
-entity_part_state	game	touches neither ClientState nor ServerState fields
-entity_part_state_tests	server	touches only ServerState fields
-entity_residency	server	touches only ServerState fields
-entity_sections	game	touches neither ClientState nor ServerState fields
-entity_sizes	game	touches both ClientState and ServerState fields (opposite side in tests)
-entity_sounds	game	touches neither ClientState nor ServerState fields
-entity_type_rows	game	touches neither ClientState nor ServerState fields
-equip_answers	game	touches neither ClientState nor ServerState fields
-equipment_piece	game	touches neither ClientState nor ServerState fields
-equipment_tick_tests	game	touches neither ClientState nor ServerState fields
-event_loop	game	touches neither ClientState nor ServerState fields
-events	game	touches neither ClientState nor ServerState fields
-execution_role	game	touches neither ClientState nor ServerState fields
-experience_points_tests	game	touches neither ClientState nor ServerState fields
-explosion	server	touches only ServerState fields
-explosion_detonate	game	touches neither ClientState nor ServerState fields
-explosion_settings	game	touches neither ClientState nor ServerState fields
-extinguish	server	touches only ServerState fields
-extras	client	touches only ClientState fields
-falling_air_tick_tests	game	touches neither ClientState nor ServerState fields
-falling_blocks	game	touches both ClientState and ServerState fields
-falling_damage	server	touches only ServerState fields
-falling_save	server	touches only ServerState fields
-falling_tick	server	touches only ServerState fields
-falling_tick_tests	game	touches neither ClientState nor ServerState fields
-fangs	game	touches both ClientState and ServerState fields
-far_terrain_edits	client	touches only ClientState fields
-fence_leash_force_tests	server	touches only ServerState fields
-fertile_part_tests	game	touches neither ClientState nor ServerState fields
-finalize_spawn	server	touches only ServerState fields
-fireworks	game	touches both ClientState and ServerState fields (opposite side in tests)
-first_tick_registration_tests	game	touches neither ClientState nor ServerState fields
-fishing	game	touches both ClientState and ServerState fields
-fluid_interaction_tests	game	touches neither ClientState nor ServerState fields
-fluid_interactions	game	touches neither ClientState nor ServerState fields
-focused_text_field	client	touches only ClientState fields
-fov	client	touches only ClientState fields
-foxes	game	touches neither ClientState nor ServerState fields
-frame_geometry	client	touches only ClientState fields
-frames	game	touches both ClientState and ServerState fields
-friends	client	touches only ClientState fields
-functions	server	touches only ServerState fields
-game_mode	game	touches both ClientState and ServerState fields
-game_tests	server	touches only ServerState fields
-gamemode_switcher	client	touches only ClientState fields
-general	server	touches only ServerState fields
-general_draw	game	touches neither ClientState nor ServerState fields
-ghasts	game	touches neither ClientState nor ServerState fields
-glide_wear	game	touches neither ClientState nor ServerState fields
-glide_wear_tests	game	touches neither ClientState nor ServerState fields
-global_loot_modifiers	game	touches neither ClientState nor ServerState fields
-glowing	client	touches only ClientState fields
-golem_defense_tests	server	touches only ServerState fields
-golems	server	touches only ServerState fields
-grindstone_decisions_tests	server	touches only ServerState fields
-growth	game	touches neither ClientState nor ServerState fields
-gui_clips	game	touches neither ClientState nor ServerState fields
-gui_entity	client	touches only ClientState fields
-gui_gradient_tests	game	touches neither ClientState nor ServerState fields
-gui_layer_tests	client	touches only ClientState fields
-gui_paint_items	game	touches neither ClientState nor ServerState fields
-gui_paint_items_tests	game	touches neither ClientState nor ServerState fields
-gui_pose	game	touches neither ClientState nor ServerState fields
-hand	game	touches both ClientState and ServerState fields
-hand_part_tests	game	touches both ClientState and ServerState fields
-hanging_refind_tests	game	touches neither ClientState nor ServerState fields
-headless	game	touches neither ClientState nor ServerState fields
-held_items	client	touches only ClientState fields
-highlight_tip_tests	client	touches only ClientState fields
-hit	game	touches neither ClientState nor ServerState fields
-hoglin_repeat_attack_tests	server	touches only ServerState fields
-hook_meddler_tests	server	touches only ServerState fields
-host	game	touches neither ClientState nor ServerState fields
-hot_paths	server	touches only ServerState fields
-hud_editor	client	touches only ClientState fields
-hud_render	game	touches neither ClientState nor ServerState fields
-hud_room	client	touches only ClientState fields
-humanoid_setup_anim	game	touches neither ClientState nor ServerState fields
-ime	client	touches only ClientState fields
-infiniburn	game	touches neither ClientState nor ServerState fields
-infiniburn_tests	server	touches only ServerState fields
-initial_client_models	client	touches only ClientState fields
-initial_client_models_tests	game	touches neither ClientState nor ServerState fields
-initial_spawn	server	touches only ServerState fields
-inline_feature_parse_tests	server	touches only ServerState fields
-inline_loot_reference_tests	server	touches only ServerState fields
-input_trace	client	touches only ClientState fields
-integrated	game	touches both ClientState and ServerState fields
-interaction_data_tests	server	touches only ServerState fields
-interactions	client	touches only ClientState fields
-inventory_input	client	touches only ClientState fields
-inventory_slots	client	touches only ClientState fields
-inventory_tick	game	touches neither ClientState nor ServerState fields
-invulnerable_time_tests	game	touches neither ClientState nor ServerState fields
-item_abilities	game	touches neither ClientState nor ServerState fields
-item_abilities_tests	server	touches only ServerState fields
-item_actions	server	touches only ServerState fields
-item_attack_tests	game	touches neither ClientState nor ServerState fields
-item_contact_tests	server	touches only ServerState fields
-item_draw	client	touches only ClientState fields
-item_drop_state_tests	server	touches only ServerState fields
-item_durability	server	touches only ServerState fields
-item_entities	server	touches only ServerState fields
-item_entity_spawn	server	touches only ServerState fields
-item_hurt	server	touches only ServerState fields
-item_interact_mob_tests	game	touches both ClientState and ServerState fields
-item_menu_parts_tests	game	touches neither ClientState nor ServerState fields
-item_model_context	game	touches neither ClientState nor ServerState fields
-item_name_tests	game	touches neither ClientState nor ServerState fields
-item_particle_send	game	touches neither ClientState nor ServerState fields
-item_particle_send_tests	game	touches neither ClientState nor ServerState fields
-item_particles	game	touches neither ClientState nor ServerState fields
-item_pickup_shape_tests	server	touches only ServerState fields
-item_slot_command_tests	game	touches neither ClientState nor ServerState fields
-item_use	game	touches both ClientState and ServerState fields (opposite side in tests)
-item_use_stacks	game	touches neither ClientState nor ServerState fields
-item_void_tests	server	touches only ServerState fields
-jigsaw_blocks	game	touches neither ClientState nor ServerState fields
-jigsaw_edit	game	touches neither ClientState nor ServerState fields
-journal_level_write	server	touches only ServerState fields
-jukebox	game	touches both ClientState and ServerState fields
-key_codes	game	touches neither ClientState nor ServerState fields
-key_focus	game	touches neither ClientState nor ServerState fields
-keymap_tests	game	touches neither ClientState nor ServerState fields
-kill_die_cancel_tests	game	touches neither ClientState nor ServerState fields
-kill_die_vibration_tests	server	touches only ServerState fields
-knot_residency_tests	server	touches only ServerState fields
-lan	server	touches only ServerState fields
-lan_actions	game	touches both ClientState and ServerState fields
-lan_attributes	game	touches neither ClientState nor ServerState fields
-lan_camera	game	touches neither ClientState nor ServerState fields
-lan_chat	server	touches only ServerState fields
-lan_configuration_tasks	server	touches only ServerState fields
-lan_crafting	server	touches only ServerState fields
-lan_entities	server	touches only ServerState fields
-lan_far	game	touches neither ClientState nor ServerState fields
-lan_menus	game	touches neither ClientState nor ServerState fields
-lan_menus_tests	server	touches only ServerState fields
-lan_mobs	server	touches only ServerState fields
-lan_mount_menu	game	touches neither ClientState nor ServerState fields
-lan_op	game	touches neither ClientState nor ServerState fields
-lan_particles	server	touches only ServerState fields
-lan_pickup	game	touches neither ClientState nor ServerState fields
-lan_pvp	server	touches only ServerState fields
-lan_quiet	game	touches neither ClientState nor ServerState fields
-lan_screen	client	touches only ClientState fields
-lan_stations	game	touches neither ClientState nor ServerState fields
-lan_trade_decisions	server	touches only ServerState fields
-lan_trade_decisions_tests	server	touches only ServerState fields
-lan_trading	server	touches only ServerState fields
-lan_vehicles	game	touches both ClientState and ServerState fields
-lan_waypoints	server	touches only ServerState fields
-last_hurt_by_mob_tests	game	touches neither ClientState nor ServerState fields
-launch_api	game	touches neither ClientState nor ServerState fields
-launch_options	game	touches neither ClientState nor ServerState fields
-launch_timeout	client	touches only ClientState fields
-leads	game	touches both ClientState and ServerState fields
-level_access	game	touches neither ClientState nor ServerState fields
-level_control_hooks	game	touches neither ClientState nor ServerState fields
-level_particles	server	touches only ServerState fields
-level_sounds	server	touches only ServerState fields
-level_tick	server	touches only ServerState fields
-levels	server	touches only ServerState fields
-lightmap_expression_tests	client	touches only ClientState fields
-lightning	game	touches both ClientState and ServerState fields
-lightning_bolt_uniform_tests	game	touches neither ClientState nor ServerState fields
-lightning_item_tests	game	touches neither ClientState nor ServerState fields
-living_attributes	server	touches only ServerState fields
-llamas	server	touches only ServerState fields
-load_conditions	game	touches neither ClientState nor ServerState fields
-loading_screen	client	touches only ClientState fields
-loading_window	client	touches only ClientState fields
-location_world	game	touches neither ClientState nor ServerState fields
-locator_bar	client	touches only ClientState fields
-look	client	touches only ClientState fields
-loom	client	touches only ClientState fields
-loot_kill_guest_tests	server	touches only ServerState fields
-loot_rolls	server	touches only ServerState fields
-loot_tags	game	touches neither ClientState nor ServerState fields
-loot_types	game	touches neither ClientState nor ServerState fields
-mace	server	touches only ServerState fields
-machines	server	touches only ServerState fields
-mannequin_save_tests	game	touches neither ClientState nor ServerState fields
-maps	game	touches both ClientState and ServerState fields
-melee	server	touches only ServerState fields
-memory	game	touches neither ClientState nor ServerState fields
-mending_pick_tests	server	touches only ServerState fields
-menu_clicks	client	touches only ClientState fields
-minecart_moves	server	touches only ServerState fields
-minecarts	game	touches both ClientState and ServerState fields
-mining_component_tests	server	touches only ServerState fields
-mob_blocks	client	touches only ClientState fields
-mob_discard_tests	game	touches neither ClientState nor ServerState fields
-mob_gear	server	touches only ServerState fields
-mob_hurt_cooldown_tests	game	touches neither ClientState nor ServerState fields
-mob_landing_support_tests	game	touches neither ClientState nor ServerState fields
-mob_level	server	touches only ServerState fields
-mob_light	game	touches neither ClientState nor ServerState fields
-mob_looting	game	touches neither ClientState nor ServerState fields
-mob_sounds	client	touches only ClientState fields
-mod_api_host	server	touches only ServerState fields
-mod_browser	game	touches neither ClientState nor ServerState fields
-mod_container_openers	server	touches only ServerState fields
-mod_container_openers_tests	server	touches only ServerState fields
-mod_crafting_commands	game	touches neither ClientState nor ServerState fields
-mod_menu_decisions_tests	client	touches only ClientState fields
-mod_raycast_tests	game	touches neither ClientState nor ServerState fields
-mod_recipe_property_tests	game	touches neither ClientState nor ServerState fields
-mod_toasts	client	touches only ClientState fields
-model_baking_completed_tests	game	touches neither ClientState nor ServerState fields
-mods	game	touches both ClientState and ServerState fields
-motion_ids	game	touches neither ClientState nor ServerState fields
-mount_menu	game	touches both ClientState and ServerState fields
-mounts	game	touches both ClientState and ServerState fields
-move_gate	game	touches neither ClientState nor ServerState fields
-moving_pistons	game	touches neither ClientState nor ServerState fields
-music	client	touches only ClientState fields
-names	game	touches both ClientState and ServerState fields
-narrator	client	touches only ClientState fields
-native_ai_pause	server	touches only ServerState fields
-native_audio_streams	game	touches neither ClientState nor ServerState fields
-native_biome_colors	game	touches neither ClientState nor ServerState fields
-native_biome_keys	game	touches neither ClientState nor ServerState fields
-native_biome_keys_tests	server	touches only ServerState fields
-native_biome_source	game	touches neither ClientState nor ServerState fields
-native_biome_tag_tests	game	touches neither ClientState nor ServerState fields
-native_block_class_tests	game	touches neither ClientState nor ServerState fields
-native_block_entity_draw	client	touches only ClientState fields
-native_block_entity_item_tests	server	touches only ServerState fields
-native_block_entity_refs	server	touches only ServerState fields
-native_block_entity_transform	game	touches neither ClientState nor ServerState fields
-native_block_entity_transform_tests	game	touches neither ClientState nor ServerState fields
-native_block_extra_models	game	touches neither ClientState nor ServerState fields
-native_block_sounds	server	touches only ServerState fields
-native_block_sprites	game	touches neither ClientState nor ServerState fields
-native_block_states	game	touches neither ClientState nor ServerState fields
-native_block_tables	game	touches neither ClientState nor ServerState fields
-native_block_use_criteria_tests	game	touches neither ClientState nor ServerState fields
-native_book_apply	game	touches neither ClientState nor ServerState fields
-native_book_backings	game	touches neither ClientState nor ServerState fields
-native_book_catalogue	game	touches neither ClientState nor ServerState fields
-native_book_displays	game	touches neither ClientState nor ServerState fields
-native_book_grid	game	touches neither ClientState nor ServerState fields
-native_book_invalidation	server	touches only ServerState fields
-native_book_net	game	touches neither ClientState nor ServerState fields
-native_book_placement	game	touches neither ClientState nor ServerState fields
-native_book_receive	game	touches neither ClientState nor ServerState fields
-native_book_scope	game	touches neither ClientState nor ServerState fields
-native_book_settings	game	touches neither ClientState nor ServerState fields
-native_book_transport	game	touches neither ClientState nor ServerState fields
-native_boss_bar_refs	server	touches only ServerState fields
-native_bots	server	touches only ServerState fields
-native_capability_cache_tests	game	touches neither ClientState nor ServerState fields
-native_cauldron_contents	game	touches neither ClientState nor ServerState fields
-native_chat_recipients	game	touches neither ClientState nor ServerState fields
-native_chat_recipients_tests	server	touches only ServerState fields
-native_chunk_areas	game	touches neither ClientState nor ServerState fields
-native_chunk_generator	game	touches neither ClientState nor ServerState fields
-native_chunk_queries	game	touches neither ClientState nor ServerState fields
-native_chunk_relight_tests	game	touches neither ClientState nor ServerState fields
-native_chunk_save	server	touches only ServerState fields
-native_claimed_items	client	touches only ClientState fields
-native_client_particles	game	touches neither ClientState nor ServerState fields
-native_client_particles_fixture	game	touches neither ClientState nor ServerState fields
-native_client_screens	client	touches only ClientState fields
-native_client_services	client	touches only ClientState fields
-native_client_session	client	touches only ClientState fields
-native_colliders	server	touches only ServerState fields
-native_colliders_tests	server	touches only ServerState fields
-native_collision_exclusions	server	touches only ServerState fields
-native_collision_shape	game	touches neither ClientState nor ServerState fields
-native_command_completion_tests	game	touches neither ClientState nor ServerState fields
-native_command_reads	game	touches neither ClientState nor ServerState fields
-native_components	client	touches only ClientState fields
-native_config_files	server	touches only ServerState fields
-native_configs	game	touches neither ClientState nor ServerState fields
-native_connection_groups	game	touches neither ClientState nor ServerState fields
-native_console	game	touches neither ClientState nor ServerState fields
-native_console_tests	server	touches only ServerState fields
-native_content_items	game	touches neither ClientState nor ServerState fields
-native_criteria	game	touches neither ClientState nor ServerState fields
-native_custom_geometry	client	touches only ClientState fields
-native_custom_stats	game	touches neither ClientState nor ServerState fields
-native_damage_tests	server	touches only ServerState fields
-native_data_bound	game	touches neither ClientState nor ServerState fields
-native_data_maps	server	touches only ServerState fields
-native_datafix	game	touches neither ClientState nor ServerState fields
-native_datafix_tests	game	touches neither ClientState nor ServerState fields
-native_datapack_refs	game	touches neither ClientState nor ServerState fields
-native_death_weapon	game	touches neither ClientState nor ServerState fields
-native_dimensions	game	touches neither ClientState nor ServerState fields
-native_disconnect	game	touches neither ClientState nor ServerState fields
-native_disconnect_tests	game	touches neither ClientState nor ServerState fields
-native_display_refs	game	touches neither ClientState nor ServerState fields
-native_dragon_refs	server	touches only ServerState fields
-native_dynamic_textures	client	touches only ClientState fields
-native_dynamic_textures_tests	game	touches neither ClientState nor ServerState fields
-native_effect_category	game	touches neither ClientState nor ServerState fields
-native_entities	server	touches only ServerState fields
-native_entity_commands	server	touches only ServerState fields
-native_entity_data	server	touches only ServerState fields
-native_entity_extinguish	game	touches neither ClientState nor ServerState fields
-native_entity_extinguish_tests	server	touches only ServerState fields
-native_entity_index_parity_tests	game	touches neither ClientState nor ServerState fields
-native_entity_invulnerable	server	touches only ServerState fields
-native_entity_kind	game	touches neither ClientState nor ServerState fields
-native_entity_layers	game	touches neither ClientState nor ServerState fields
-native_entity_layers_tests	game	touches neither ClientState nor ServerState fields
-native_entity_motion	game	touches both ClientState and ServerState fields
-native_entity_move_correction_tests	server	touches only ServerState fields
-native_entity_move_player_tests	server	touches only ServerState fields
-native_entity_move_sweep_tests	server	touches only ServerState fields
-native_entity_move_tests	game	touches neither ClientState nor ServerState fields
-native_entity_moves	server	touches only ServerState fields
-native_entity_physics	game	touches neither ClientState nor ServerState fields
-native_entity_refs	server	touches only ServerState fields
-native_entity_remove	server	touches only ServerState fields
-native_entity_renderers	game	touches neither ClientState nor ServerState fields
-native_entity_renderers_tests	game	touches neither ClientState nor ServerState fields
-native_entity_riding	server	touches only ServerState fields
-native_entity_selectors	game	touches neither ClientState nor ServerState fields
-native_entity_sounds	server	touches only ServerState fields
-native_entity_state	server	touches only ServerState fields
-native_experience_orb_renderers_tests	game	touches neither ClientState nor ServerState fields
-native_explosion_destroy	game	touches neither ClientState nor ServerState fields
-native_explosion_destroy_tests	game	touches neither ClientState nor ServerState fields
-native_explosion_resistance	game	touches neither ClientState nor ServerState fields
-native_explosion_resistance_tests	game	touches neither ClientState nor ServerState fields
-native_explosions	server	touches only ServerState fields
-native_explosions_tests	server	touches only ServerState fields
-native_fake_disconnect_tests	server	touches only ServerState fields
-native_falling	server	touches only ServerState fields
-native_feature_types	game	touches neither ClientState nor ServerState fields
-native_fire_odds_tests	game	touches neither ClientState nor ServerState fields
-native_fishing_hook_refs	server	touches only ServerState fields
-native_fluid_render	client	touches only ClientState fields
-native_game_event_context	server	touches only ServerState fields
-native_game_event_keys	game	touches neither ClientState nor ServerState fields
-native_game_event_keys_tests	server	touches only ServerState fields
-native_game_rules_read	game	touches neither ClientState nor ServerState fields
-native_general_renderers_tests	client	touches only ClientState fields
-native_give_stack	game	touches neither ClientState nor ServerState fields
-native_give_stack_tests	game	touches neither ClientState nor ServerState fields
-native_goal_ticks	server	touches only ServerState fields
-native_ground	game	touches neither ClientState nor ServerState fields
-native_guest_turn_tests	server	touches only ServerState fields
-native_hanging	game	touches neither ClientState nor ServerState fields
-native_hanging_tests	server	touches only ServerState fields
-native_harvest_queries	server	touches only ServerState fields
-native_held_out_tests	game	touches neither ClientState nor ServerState fields
-native_hit_attempt_tests	server	touches only ServerState fields
-native_hit_causer_tests	server	touches only ServerState fields
-native_hit_effects	game	touches neither ClientState nor ServerState fields
-native_hit_sounds_tests	server	touches only ServerState fields
-native_hit_view_tests	server	touches only ServerState fields
-native_hooks	game	touches both ClientState and ServerState fields
-native_hotbar_slot	client	touches only ClientState fields
-native_hover_name_tests	game	touches neither ClientState nor ServerState fields
-native_humanoid_setup_anim_tests	game	touches neither ClientState nor ServerState fields
-native_ignited_by_lava_tests	game	touches neither ClientState nor ServerState fields
-native_instance_groups	client	touches only ClientState fields
-native_inventories	server	touches only ServerState fields
-native_invulnerability_check_tests	server	touches only ServerState fields
-native_is_fire_source_tests	game	touches neither ClientState nor ServerState fields
-native_is_piglin_currency_tests	game	touches neither ClientState nor ServerState fields
-native_item_bundle	game	touches neither ClientState nor ServerState fields
-native_item_bundle_tests	game	touches both ClientState and ServerState fields
-native_item_container	game	touches neither ClientState nor ServerState fields
-native_item_entity_refs	game	touches neither ClientState nor ServerState fields
-native_item_frame_renderers_tests	client	touches only ClientState fields
-native_item_menu_parts	game	touches neither ClientState nor ServerState fields
-native_item_particles	game	touches neither ClientState nor ServerState fields
-native_item_places	server	touches only ServerState fields
-native_item_registry	game	touches neither ClientState nor ServerState fields
-native_key_mappings	client	touches only ClientState fields
-native_key_mappings_tests	client	touches only ClientState fields
-native_knockback_credit	server	touches only ServerState fields
-native_knockback_credit_site_tests	game	touches neither ClientState nor ServerState fields
-native_knockback_tests	server	touches only ServerState fields
-native_level_block_states_tests	game	touches neither ClientState nor ServerState fields
-native_level_border	game	touches neither ClientState nor ServerState fields
-native_level_effects	game	touches neither ClientState nor ServerState fields
-native_level_events	server	touches only ServerState fields
-native_level_items	server	touches only ServerState fields
-native_level_notify_tests	client	touches only ClientState fields
-native_level_placement_tests	server	touches only ServerState fields
-native_level_players	server	touches only ServerState fields
-native_level_refs	server	touches only ServerState fields
-native_level_signals	server	touches only ServerState fields
-native_level_sound_except_tests	server	touches only ServerState fields
-native_level_spawning	server	touches only ServerState fields
-native_level_ticking	game	touches neither ClientState nor ServerState fields
-native_level_weather	game	touches neither ClientState nor ServerState fields
-native_level_world	server	touches only ServerState fields
-native_lifecycle	game	touches both ClientState and ServerState fields
-native_live_holder_tests	game	touches neither ClientState nor ServerState fields
-native_living_absorption	game	touches neither ClientState nor ServerState fields
-native_living_blocking	client	touches only ClientState fields
-native_living_body	server	touches only ServerState fields
-native_living_effects	game	touches both ClientState and ServerState fields (opposite side in tests)
-native_living_flags	server	touches only ServerState fields
-native_living_position	server	touches only ServerState fields
-native_living_refs	server	touches only ServerState fields
-native_living_renderers_tests	game	touches neither ClientState nor ServerState fields
-native_living_travel_sweep_tests	game	touches neither ClientState nor ServerState fields
-native_living_travel_tests	game	touches neither ClientState nor ServerState fields
-native_living_writes	game	touches both ClientState and ServerState fields (opposite side in tests)
-native_local_player_writes	client	touches only ClientState fields
-native_local_sounds	client	touches only ClientState fields
-native_makes_piglins_neutral_tests	game	touches neither ClientState nor ServerState fields
-native_mapping_presses	client	touches only ClientState fields
-native_menu_inventory_tests	server	touches only ServerState fields
-native_menu_places	server	touches only ServerState fields
-native_menu_refs	game	touches both ClientState and ServerState fields
-native_menu_slot_kinds	client	touches only ClientState fields
-native_menus	server	touches only ServerState fields
-native_merchant_refs	game	touches neither ClientState nor ServerState fields
-native_minecart_refs	server	touches only ServerState fields
-native_mob_draw	game	touches neither ClientState nor ServerState fields
-native_mob_goals	server	touches only ServerState fields
-native_mob_navigation	game	touches neither ClientState nor ServerState fields
-native_mob_navigation_flags_tests	game	touches neither ClientState nor ServerState fields
-native_mob_refs	server	touches only ServerState fields
-native_mob_wanted_position	game	touches neither ClientState nor ServerState fields
-native_mob_wanted_position_tests	server	touches only ServerState fields
-native_mobs	game	touches neither ClientState nor ServerState fields
-native_model_3d	client	touches only ClientState fields
-native_motion	game	touches neither ClientState nor ServerState fields
-native_mounts	server	touches only ServerState fields
-native_move_by_tests	server	touches only ServerState fields
-native_namespaced_id	game	touches neither ClientState nor ServerState fields
-native_net	client	touches only ClientState fields
-native_on_caught_fire_tests	game	touches neither ClientState nor ServerState fields
-native_packet_builders	game	touches neither ClientState nor ServerState fields
-native_painting_renderers_tests	game	touches neither ClientState nor ServerState fields
-native_panel	client	touches only ClientState fields
-native_panel_recipes	client	touches only ClientState fields
-native_panel_wheel_tests	game	touches neither ClientState nor ServerState fields
-native_part_tables	game	touches neither ClientState nor ServerState fields
-native_part_tables_tests	game	touches neither ClientState nor ServerState fields
-native_passage_cross	client	touches only ClientState fields
-native_passages	server	touches only ServerState fields
-native_path_types_tests	server	touches only ServerState fields
-native_pending_children	game	touches neither ClientState nor ServerState fields
-native_place_feature	game	touches neither ClientState nor ServerState fields
-native_place_feature_tests	game	touches neither ClientState nor ServerState fields
-native_placement_state_tests	game	touches neither ClientState nor ServerState fields
-native_player_attack	game	touches neither ClientState nor ServerState fields
-native_player_break	server	touches only ServerState fields
-native_player_cooldowns	server	touches only ServerState fields
-native_player_death	game	touches neither ClientState nor ServerState fields
-native_player_destroyed_block_tests	server	touches only ServerState fields
-native_player_disconnect	game	touches neither ClientState nor ServerState fields
-native_player_disconnect_tests	game	touches neither ClientState nor ServerState fields
-native_player_ender_chest	server	touches only ServerState fields
-native_player_ender_chest_tests	server	touches only ServerState fields
-native_player_food	game	touches neither ClientState nor ServerState fields
-native_player_inventory	game	touches neither ClientState nor ServerState fields
-native_player_inventory_tests	game	touches neither ClientState nor ServerState fields
-native_player_level_tests	server	touches only ServerState fields
-native_player_modes	server	touches only ServerState fields
-native_player_move_tests	server	touches only ServerState fields
-native_player_moves	game	touches neither ClientState nor ServerState fields
-native_player_persistent_data	game	touches neither ClientState nor ServerState fields
-native_player_persistent_data_tests	game	touches neither ClientState nor ServerState fields
-native_player_place	game	touches neither ClientState nor ServerState fields
-native_player_place_tests	game	touches neither ClientState nor ServerState fields
-native_player_reach	game	touches neither ClientState nor ServerState fields
-native_player_respawn	server	touches only ServerState fields
-native_player_respawn_tests	game	touches neither ClientState nor ServerState fields
-native_player_spectating_tests	game	touches neither ClientState nor ServerState fields
-native_player_stats	server	touches only ServerState fields
-native_player_visibility	server	touches only ServerState fields
-native_player_visibility_tests	server	touches only ServerState fields
-native_pool_elements	game	touches neither ClientState nor ServerState fields
-native_portal_destination	game	touches neither ClientState nor ServerState fields
-native_profiles	game	touches neither ClientState nor ServerState fields
-native_projectile_launch	server	touches only ServerState fields
-native_projectile_launch_tests	server	touches only ServerState fields
-native_projectile_refs	server	touches only ServerState fields
-native_projectiles	server	touches only ServerState fields
-native_quick_move	game	touches neither ClientState nor ServerState fields
-native_raid_refs	server	touches only ServerState fields
-native_recipe_properties	game	touches neither ClientState nor ServerState fields
-native_recipe_sync	game	touches neither ClientState nor ServerState fields
-native_recipe_sync_tests	server	touches only ServerState fields
-native_recipes	game	touches neither ClientState nor ServerState fields
-native_registry_entries	game	touches neither ClientState nor ServerState fields
-native_registry_entries_tests	game	touches neither ClientState nor ServerState fields
-native_registry_history_tests	game	touches neither ClientState nor ServerState fields
-native_registry_ids	game	touches neither ClientState nor ServerState fields
-native_registry_ids_tests	server	touches only ServerState fields
-native_registry_processor_tests	game	touches neither ClientState nor ServerState fields
-native_render_pair_tests	client	touches only ClientState fields
-native_render_visibility	game	touches neither ClientState nor ServerState fields
-native_requires_tool_tests	game	touches neither ClientState nor ServerState fields
-native_resources	server	touches only ServerState fields
-native_ride_player	game	touches neither ClientState nor ServerState fields
-native_rotate	game	touches neither ClientState nor ServerState fields
-native_scene	client	touches only ClientState fields
-native_scene_live	client	touches only ClientState fields
-native_scene_live_tests	client	touches only ClientState fields
-native_scoreboard	server	touches only ServerState fields
-native_scoreboard_teams	game	touches neither ClientState nor ServerState fields
-native_section_visibility	game	touches neither ClientState nor ServerState fields
-native_server	game	touches both ClientState and ServerState fields
-native_server_distances	game	touches neither ClientState nor ServerState fields
-native_server_max_players	game	touches neither ClientState nor ServerState fields
-native_server_max_players_tests	game	touches neither ClientState nor ServerState fields
-native_shaders	client	touches only ClientState fields
-native_shield_totem_tests	server	touches only ServerState fields
-native_singleplayer_owner	server	touches only ServerState fields
-native_singleplayer_owner_tests	server	touches only ServerState fields
-native_small_reads_tests	client	touches only ClientState fields
-native_smoke_source_tests	game	touches neither ClientState nor ServerState fields
-native_sound_refs	server	touches only ServerState fields
-native_sound_seed_tests	game	touches neither ClientState nor ServerState fields
-native_special_renderers	client	touches only ClientState fields
-native_spectator_shader_tests	client	touches only ClientState fields
-native_state_shapes	game	touches neither ClientState nor ServerState fields
-native_structure_placement	game	touches neither ClientState nor ServerState fields
-native_structure_types	game	touches neither ClientState nor ServerState fields
-native_structures	game	touches neither ClientState nor ServerState fields
-native_success_broadcast_tests	server	touches only ServerState fields
-native_surface	server	touches only ServerState fields
-native_tags	game	touches neither ClientState nor ServerState fields
-native_terrain_model	client	touches only ClientState fields
-native_text_json	game	touches neither ClientState nor ServerState fields
-native_text_legacy	game	touches neither ClientState nor ServerState fields
-native_text_nbt	game	touches neither ClientState nor ServerState fields
-native_tick_time	server	touches only ServerState fields
-native_ticks	game	touches neither ClientState nor ServerState fields
-native_tnt_renderers_tests	game	touches neither ClientState nor ServerState fields
-native_trapdoor_ladder	game	touches neither ClientState nor ServerState fields
-native_tree_grow	game	touches neither ClientState nor ServerState fields
-native_unspawned_mob	game	touches neither ClientState nor ServerState fields
-native_viewed_levels	game	touches neither ClientState nor ServerState fields
-native_visuals	game	touches neither ClientState nor ServerState fields
-native_world_columns	game	touches neither ClientState nor ServerState fields
-native_world_edit	game	touches neither ClientState nor ServerState fields
-native_world_read	game	touches neither ClientState nor ServerState fields
-native_worldgen	game	touches neither ClientState nor ServerState fields
-native_worldgen_parts	game	touches neither ClientState nor ServerState fields
-natural_spawning	server	touches only ServerState fields
-nautili	game	touches both ClientState and ServerState fields
-neighbor_notify_tests	game	touches neither ClientState nor ServerState fields
-neoforge_block_maps	game	touches neither ClientState nor ServerState fields
-neoforge_mob_maps	game	touches neither ClientState nor ServerState fields
-net_harness	game	touches neither ClientState nor ServerState fields
-nether_portal	game	touches both ClientState and ServerState fields
-no_resources	game	touches neither ClientState nor ServerState fields
-ominous_item_spawner	server	touches only ServerState fields
-options	client	touches only ClientState fields
-options_close_tests	client	touches only ClientState fields
-orb_data_tests	server	touches only ServerState fields
-orb_merge_tests	game	touches neither ClientState nor ServerState fields
-orb_score_store_tests	game	touches neither ClientState nor ServerState fields
-ordered_tick	server	touches only ServerState fields
-original_player	game	touches neither ClientState nor ServerState fields
-owner_link	server	touches only ServerState fields
-pack_clouds_frame_tests	client	touches only ClientState fields
-pack_finders	server	touches only ServerState fields
-pack_sources_tests	game	touches neither ClientState nor ServerState fields
-packs	client	touches only ClientState fields
-pad	game	touches both ClientState and ServerState fields
-pad_actions	client	touches only ClientState fields
-pad_craft	client	touches only ClientState fields
-pad_menu	client	touches only ClientState fields
-paintings	server	touches only ServerState fields
-pandas	server	touches only ServerState fields
-parity_fixtures	game	touches neither ClientState nor ServerState fields
-part_admission	game	touches neither ClientState nor ServerState fields
-part_admission_tests	game	touches neither ClientState nor ServerState fields
-part_shearing	server	touches only ServerState fields
-particle_culling	game	touches neither ClientState nor ServerState fields
-passengers	game	touches both ClientState and ServerState fields (opposite side in tests)
-payload_transport	client	touches only ClientState fields
-pending_births	server	touches only ServerState fields
-perf_link	game	touches neither ClientState nor ServerState fields
-perf_remote	game	touches neither ClientState nor ServerState fields
-persist	server	touches only ServerState fields
-perspective	client	touches only ClientState fields
-pick_accumulator	client	touches only ClientState fields
-pick_entity	game	touches both ClientState and ServerState fields (opposite side in tests)
-pick_hotbar	game	touches neither ClientState nor ServerState fields
-pickups	game	touches neither ClientState nor ServerState fields
-piglin_admire_tests	game	touches neither ClientState nor ServerState fields
-piglin_conversion_tests	game	touches neither ClientState nor ServerState fields
-piglins	server	touches only ServerState fields
-piston_carry	game	touches neither ClientState nor ServerState fields
-piston_carry_state	game	touches both ClientState and ServerState fields
-piston_nbt	game	touches neither ClientState nor ServerState fields
-piston_push	game	touches both ClientState and ServerState fields (opposite side in tests)
-place_feature_tests	server	touches only ServerState fields
-play_input	client	touches only ClientState fields
-play_keys	game	touches both ClientState and ServerState fields (opposite side in tests)
-play_ping_tests	server	touches only ServerState fields
-player_destroy	game	touches neither ClientState nor ServerState fields
-player_destroy_item_tests	game	touches both ClientState and ServerState fields
-player_destroy_tests	server	touches only ServerState fields
-player_equip	server	touches only ServerState fields
-player_equipment_change_tests	game	touches neither ClientState nor ServerState fields
-player_hit_sources	game	touches neither ClientState nor ServerState fields
-player_kill_credit_tests	game	touches neither ClientState nor ServerState fields
-player_residency	server	touches only ServerState fields
-player_residency_tests	server	touches only ServerState fields
-player_save_projection_tests	server	touches only ServerState fields
-player_spawn	game	touches both ClientState and ServerState fields
-pointer_capture	game	touches both ClientState and ServerState fields
-polytone_frame_tests	client	touches only ClientState fields
-portal_ticking_tests	game	touches neither ClientState nor ServerState fields
-postprocess	game	touches neither ClientState nor ServerState fields
-potent_sulfur	server	touches only ServerState fields
-potions	game	touches both ClientState and ServerState fields
-powder_snow	game	touches neither ClientState nor ServerState fields
-primary_items	game	touches neither ClientState nor ServerState fields
-profile_capture	game	touches neither ClientState nor ServerState fields
-profile_lines	game	touches neither ClientState nor ServerState fields
-projectile_block_impacts	server	touches only ServerState fields
-projectile_spawned	game	touches neither ClientState nor ServerState fields
-projectile_spawned_tests	server	touches only ServerState fields
-projectile_spawned_validation	game	touches neither ClientState nor ServerState fields
-published_collision_mob_tests	game	touches neither ClientState nor ServerState fields
-published_loops	game	touches neither ClientState nor ServerState fields
-published_shape_game_tests	game	touches neither ClientState nor ServerState fields
-pumpkin	game	touches neither ClientState nor ServerState fields
-pvp	client	touches only ClientState fields
-quick_actions	client	touches only ClientState fields
-raids	game	touches both ClientState and ServerState fields (opposite side in tests)
-rail_parts_tests	server	touches only ServerState fields
-random_order_tests	game	touches neither ClientState nor ServerState fields
-random_textures	game	touches neither ClientState nor ServerState fields
-raw_backlog	game	touches neither ClientState nor ServerState fields
-recipe_book	client	touches only ClientState fields
-recipe_book_variants_tests	server	touches only ServerState fields
-recipe_properties_tests	game	touches neither ClientState nor ServerState fields
-rectangular_recipe_remainder_tests	game	touches neither ClientState nor ServerState fields
-registration_capability_coverage	game	touches neither ClientState nor ServerState fields
-remote	game	touches both ClientState and ServerState fields
-remote_block_writes	client	touches only ClientState fields
-remote_camera	client	touches only ClientState fields
-remote_chat	client	touches only ClientState fields
-remote_chunks	game	touches neither ClientState nor ServerState fields
-remote_mob_data	game	touches neither ClientState nor ServerState fields
-remote_mob_particles	game	touches neither ClientState nor ServerState fields
-remote_mob_use	game	touches neither ClientState nor ServerState fields
-remote_mob_use_tests	game	touches neither ClientState nor ServerState fields
-remote_objects	client	touches only ClientState fields
-remote_projectiles	game	touches both ClientState and ServerState fields
-remote_removal	client	touches only ClientState fields
-remote_save_tests	client	touches only ClientState fields
-remote_stations	game	touches neither ClientState nor ServerState fields
-remote_tags	game	touches neither ClientState nor ServerState fields
-remote_vehicles	client	touches only ClientState fields
-render_control	game	touches neither ClientState nor ServerState fields
-render_settings	client	touches only ClientState fields
-render_tick	client	touches only ClientState fields
-replay	client	touches only ClientState fields
-repro	game	touches both ClientState and ServerState fields
-residency_tick	game	touches neither ClientState nor ServerState fields
-resident_state	game	touches neither ClientState nor ServerState fields
-resource_load	game	touches neither ClientState nor ServerState fields
-resource_loader	client	touches only ClientState fields
-resource_tables	game	touches neither ClientState nor ServerState fields
-respawn_anchor	server	touches only ServerState fields
-respawn_position	game	touches neither ClientState nor ServerState fields
-respawn_position_tests	game	touches neither ClientState nor ServerState fields
-rule_replacements	game	touches neither ClientState nor ServerState fields
-runtime_levels	server	touches only ServerState fields
-runtime_levels_tests	server	touches only ServerState fields
-runtime_reset_tests	game	touches neither ClientState nor ServerState fields
-save_format_tests	game	touches neither ClientState nor ServerState fields
-save_load_pass_tests	game	touches neither ClientState nor ServerState fields
-save_pass_tests	server	touches only ServerState fields
-saves_control	game	touches neither ClientState nor ServerState fields
-saving	game	touches both ClientState and ServerState fields
-scheduled_tasks	game	touches neither ClientState nor ServerState fields
-scoreboard	game	touches both ClientState and ServerState fields
-screen_backgrounds	client	touches only ClientState fields
-screen_build	client	touches only ClientState fields
-screen_build_fixture	client	touches only ClientState fields
-screen_info	game	touches neither ClientState nor ServerState fields
-screen_render_phase_tests	client	touches only ClientState fields
-screen_room	client	touches only ClientState fields
-screen_widgets	client	touches only ClientState fields
-screens	client	touches only ClientState fields
-screenshot_sequence	client	touches only ClientState fields
-screenshot_writer	game	touches neither ClientState nor ServerState fields
-sculk	game	touches both ClientState and ServerState fields
-sculk_fixture	server	touches only ServerState fields
-seats	game	touches neither ClientState nor ServerState fields
-server_lifecycle	server	touches only ServerState fields
-server_links	client	touches only ClientState fields
-server_packs	client	touches only ClientState fields
-server_reload	server	touches only ServerState fields
-server_travel	server	touches only ServerState fields
-setblock_order_tests	game	touches neither ClientState nor ServerState fields
-shader_pack_switch_tests	client	touches only ClientState fields
-shader_packs	game	touches both ClientState and ServerState fields (opposite side in tests)
-shear_refind_tests	server	touches only ServerState fields
-sheep_dye	game	touches neither ClientState nor ServerState fields
-shelf	game	touches neither ClientState nor ServerState fields
-shield	server	touches only ServerState fields
-shoulders	game	touches neither ClientState nor ServerState fields
-sign_chain_tests	game	touches neither ClientState nor ServerState fields
-sign_edit	game	touches both ClientState and ServerState fields
-sign_outline_tests	client	touches only ClientState fields
-sign_use_tests	game	touches neither ClientState nor ServerState fields
-slot_changes	server	touches only ServerState fields
-slot_pickup_tests	game	touches neither ClientState nor ServerState fields
-slot_rules	game	touches neither ClientState nor ServerState fields
-slot_rules_tests	game	touches neither ClientState nor ServerState fields
-slot_take_tests	game	touches neither ClientState nor ServerState fields
-slot_takes	game	touches neither ClientState nor ServerState fields
-smithing_icons	game	touches neither ClientState nor ServerState fields
-sniffers	game	touches neither ClientState nor ServerState fields
-social	client	touches only ClientState fields
-spawn_save_tests	game	touches neither ClientState nor ServerState fields
-spawn_yaw_tests	game	touches neither ClientState nor ServerState fields
-spawner	game	touches both ClientState and ServerState fields
-spawner_client_tick_tests	game	touches neither ClientState nor ServerState fields
-spear	server	touches only ServerState fields
-spear_players	server	touches only ServerState fields
-special_attack_fixture	server	touches only ServerState fields
-special_attacks	server	touches only ServerState fields
-spectator	client	touches only ClientState fields
-spill	server	touches only ServerState fields
-splash_water	server	touches only ServerState fields
-stack_attribute_tooltip	game	touches neither ClientState nor ServerState fields
-stacked_on_other	client	touches only ClientState fields
-stacked_on_other_tests	game	touches both ClientState and ServerState fields
-stand_break_loot_tests	server	touches only ServerState fields
-stand_command_hurt_tests	server	touches only ServerState fields
-stand_equipment_change_tests	game	touches neither ClientState nor ServerState fields
-stand_low_health_tests	game	touches neither ClientState nor ServerState fields
-start_riding_refusal_tests	game	touches neither ClientState nor ServerState fields
-startup_cpu_tests	game	touches neither ClientState nor ServerState fields
-startup_menu	client	touches only ClientState fields
-startup_options	game	touches neither ClientState nor ServerState fields
-startup_progress	game	touches neither ClientState nor ServerState fields
-state_at_viewpoint_tests	game	touches neither ClientState nor ServerState fields
-state_digest	server	touches only ServerState fields
-state_resolver	game	touches neither ClientState nor ServerState fields
-stateful_block_entity_tests	game	touches neither ClientState nor ServerState fields
-station_control	client	touches only ClientState fields
-stations	game	touches both ClientState and ServerState fields
-stats	server	touches only ServerState fields
-stats_screen	client	touches only ClientState fields
-storage	game	touches both ClientState and ServerState fields
-storage_alias_tests	server	touches only ServerState fields
-structure_blocks	server	touches only ServerState fields
-structure_edit	game	touches neither ClientState nor ServerState fields
-structures	game	touches neither ClientState nor ServerState fields
-studio	client	touches only ClientState fields
-subtitle_hud	client	touches only ClientState fields
-subtitles	game	touches neither ClientState nor ServerState fields
-sulfur_bucket_tests	client	touches only ClientState fields
-sulfur_cubes	server	touches only ServerState fields
-sulfur_prime_phase_tests	game	touches neither ClientState nor ServerState fields
-swing_packet	game	touches neither ClientState nor ServerState fields
-sync_background_tests	client	touches only ClientState fields
-table_enchant	game	touches neither ClientState nor ServerState fields
-test_block_edit	game	touches neither ClientState nor ServerState fields
-test_blocks	game	touches neither ClientState nor ServerState fields
-test_entities	game	touches neither ClientState nor ServerState fields
-test_environments	game	touches neither ClientState nor ServerState fields
-test_instance_edit	game	touches neither ClientState nor ServerState fields
-test_instances	game	touches both ClientState and ServerState fields
-test_pos_guest_tests	server	touches only ServerState fields
-text_displays	client	touches only ClientState fields
-text_expression_tests	client	touches only ClientState fields
-thrown_item_draw	game	touches neither ClientState nor ServerState fields
-tick_script	client	touches only ClientState fields
-titles	game	touches both ClientState and ServerState fields
-tnt	server	touches only ServerState fields
-toast_manager	client	touches only ClientState fields
-tool_modification	game	touches neither ClientState nor ServerState fields
-totem	game	touches both ClientState and ServerState fields
-trading	game	touches both ClientState and ServerState fields
-transaction_entities_tests	server	touches only ServerState fields
-transactions	server	touches only ServerState fields
-transient_blocks	client	touches only ClientState fields
-trial_spawner	server	touches only ServerState fields
-trial_visuals	game	touches neither ClientState nor ServerState fields
-trident	game	touches both ClientState and ServerState fields
-tutorial	game	touches both ClientState and ServerState fields
-typed_payloads	game	touches neither ClientState nor ServerState fields
-ui_control	client	touches only ClientState fields
-ui_core_shader_tests	game	touches neither ClientState nor ServerState fields
-upload_pace	game	touches neither ClientState nor ServerState fields
-use_hand	game	touches both ClientState and ServerState fields (opposite side in tests)
-use_same_item_tests	client	touches only ClientState fields
-use_stop_tests	server	touches only ServerState fields
-using_item	client	touches only ClientState fields
-vault	server	touches only ServerState fields
-vehicle_removal_tests	server	touches only ServerState fields
-vehicle_teleport	server	touches only ServerState fields
-vibration_source_tests	server	touches only ServerState fields
-vibration_tests	server	touches only ServerState fields
-view_pass	server	touches only ServerState fields
-viewed_worlds	game	touches neither ClientState nor ServerState fields
-villager_client	game	touches neither ClientState nor ServerState fields
-villager_professions	server	touches only ServerState fields
-villagers	server	touches only ServerState fields
-visibility_unwind_tests	server	touches only ServerState fields
-wake_time	game	touches neither ClientState nor ServerState fields
-wandering_trader	server	touches only ServerState fields
-waxing	game	touches neither ClientState nor ServerState fields
-waxing_tests	game	touches neither ClientState nor ServerState fields
-weather	game	touches neither ClientState nor ServerState fields
-win	client	touches only ClientState fields
-wind	game	touches both ClientState and ServerState fields
-window_handler	client	touches only ClientState fields
-window_title	client	touches only ClientState fields
-wither	server	touches only ServerState fields
-wither_star_tests	server	touches only ServerState fields
-world_entry	game	touches both ClientState and ServerState fields
-world_fluid_tests	game	touches neither ClientState nor ServerState fields
-world_fluids	game	touches neither ClientState nor ServerState fields
-world_fluids_tests	game	touches neither ClientState nor ServerState fields
-world_loading	server	touches only ServerState fields
-world_name_tag_tests	client	touches only ClientState fields
-world_rest	game	touches neither ClientState nor ServerState fields
-world_session	client	touches only ClientState fields
-world_test_def_tests	server	touches only ServerState fields
-world_update	game	touches both ClientState and ServerState fields
-worn_boots	game	touches neither ClientState nor ServerState fields
-xp_orb_targeting	game	touches neither ClientState nor ServerState fields
-xp_repair_ratio_tests	server	touches only ServerState fields
-zombie_reinforcements	server	touches only ServerState fields
-zombie_villagers	game	touches neither ClientState nor ServerState fields
+module	side	reason	paths
+activity	game	touches neither ClientState nor ServerState fields	game/runtime/activity.rs
+advancements	game	touches both ClientState and ServerState fields	game/interface/advancements/mod.rs
+advancements_screen	client	touches only ClientState fields	game/interface/advancements_screen.rs
+agent	game	touches both ClientState and ServerState fields	game/runtime/agent/mod.rs
+agent_settings	client	touches only ClientState fields	game/runtime/agent_settings.rs
+ahead	server	touches only ServerState fields	game/entities/ahead.rs
+allay_jukebox_source_tests	game	touches neither ClientState nor ServerState fields	game/mobs/allay_jukebox_source_tests.rs
+allay_pickup_cooldown_tests	game	touches neither ClientState nor ServerState fields	game/mobs/allay_pickup_cooldown_tests.rs
+allays	game	touches neither ClientState nor ServerState fields	game/mobs/allays.rs
+api_values	game	touches neither ClientState nor ServerState fields	game/modding/api_values.rs
+armor_stand_refind_tests	server	touches only ServerState fields	game/entities/armor_stand_refind_tests.rs
+armor_stands	game	touches both ClientState and ServerState fields	game/entities/armor_stands.rs
+atlas_slots	game	touches neither ClientState nor ServerState fields	game/interface/atlas_slots.rs
+attachment_index	server	touches only ServerState fields	game/modding/attachment_index/mod.rs
+attachment_instruction_bench	game	touches neither ClientState nor ServerState fields	game/modding/attachment_instruction_bench.rs
+attachment_sync	game	touches neither ClientState nor ServerState fields	game/modding/attachment_sync.rs
+autosave	game	touches both ClientState and ServerState fields	game/world/autosave.rs
+baked_model_keys_tests	game	touches neither ClientState nor ServerState fields	game/modding/baked_model_keys_tests.rs
+banners	game	touches neither ClientState nor ServerState fields	game/blocks/banners.rs
+bare_declaration_names_tests	game	touches neither ClientState nor ServerState fields	game/modding/bare_declaration_names_tests.rs
+beacon	client	touches only ClientState fields	game/blocks/beacon.rs
+beacon_cull_tests	game	touches neither ClientState nor ServerState fields	game/blocks/beacon_cull_tests.rs
+beds	server	touches only ServerState fields	game/blocks/beds.rs
+beehives	server	touches only ServerState fields	game/mobs/beehives.rs
+block_breaking	game	touches both ClientState and ServerState fields	game/blocks/block_breaking.rs
+block_drops_pops_tests	server	touches only ServerState fields	game/blocks/block_drops_pops_tests.rs
+block_editor	client	touches only ClientState fields	game/interface/block_editor.rs
+block_edits	game	touches neither ClientState nor ServerState fields	game/blocks/block_edits.rs
+block_entity_anims	server	touches only ServerState fields	game/blocks/block_entity_anims.rs
+block_entity_part_state_tests	game	touches neither ClientState nor ServerState fields	game/modding/block_entity_part_state_tests.rs
+block_entity_reach_draw_tests	game	touches neither ClientState nor ServerState fields	game/blocks/block_entity_reach_draw_tests.rs
+block_entity_ticks	game	defines published loop loop:block_entities.tick	game/blocks/block_entity_ticks.rs
+block_items	game	touches neither ClientState nor ServerState fields	game/blocks/block_items.rs
+block_notifications	game	touches neither ClientState nor ServerState fields	game/modding/block_notifications.rs
+block_part_tool_tests	game	touches neither ClientState nor ServerState fields	game/blocks/block_part_tool_tests.rs
+block_particles	server	touches only ServerState fields	game/blocks/block_particles.rs
+block_screen_effect_draw_tests	game	touches both ClientState and ServerState fields	game/interface/block_screen_effect_draw_tests.rs
+block_ticks	server	touches only ServerState fields	game/blocks/block_ticks.rs
+block_use_completion	server	touches only ServerState fields	game/modding/block_use_completion.rs
+block_use_completion_tests	server	touches only ServerState fields	game/modding/block_use_completion_tests.rs
+blockctl	game	touches neither ClientState nor ServerState fields	game/runtime/blockctl.rs
+boarding	server	touches only ServerState fields	game/entities/boarding.rs
+boat_authority_fixture	server	touches only ServerState fields	game/entities/boat_authority_fixture.rs
+boat_leads	server	touches only ServerState fields	game/entities/boat_leads.rs
+boat_passengers	server	touches only ServerState fields	game/entities/boat_passengers.rs
+boat_refind_tests	game	touches neither ClientState nor ServerState fields	game/entities/boat_refind_tests.rs
+boat_rider_fixture	client	touches only ClientState fields	game/entities/boat_rider_fixture.rs
+boats	game	touches both ClientState and ServerState fields	game/entities/boats/mod.rs
+books	game	touches both ClientState and ServerState fields	game/interface/books.rs
+bookshelves	client	touches only ClientState fields	game/blocks/bookshelves.rs
+bossbars	game	touches both ClientState and ServerState fields	game/interface/bossbars.rs
+breezes	game	touches neither ClientState nor ServerState fields	game/mobs/breezes.rs
+brewing_remainder	game	touches neither ClientState nor ServerState fields	game/blocks/brewing_remainder.rs
+brush	server	touches only ServerState fields	game/blocks/brush.rs
+bucket_empty	server	touches only ServerState fields	game/items/bucket_empty.rs
+buckets	server	touches only ServerState fields	game/items/buckets.rs
+building_players	server	touches only ServerState fields	game/interface/building_players.rs
+bundle_use_tests	game	touches both ClientState and ServerState fields	game/items/bundle_use_tests.rs
+bundles	client	touches only ClientState fields	game/items/bundles.rs
+cake_eligibility	game	touches neither ClientState nor ServerState fields	game/items/cake_eligibility.rs
+camera_hud	client	touches only ClientState fields	game/interface/camera_hud.rs
+camera_submersion_tests	game	touches neither ClientState nor ServerState fields	game/interface/camera_submersion_tests.rs
+campfire	server	touches only ServerState fields	game/blocks/campfire.rs
+campfire_douse	server	touches only ServerState fields	game/blocks/campfire_douse.rs
+carrier_transfers	server	touches only ServerState fields	game/world/carrier_transfers.rs
+cart_rails	game	touches neither ClientState nor ServerState fields	game/entities/cart_rails.rs
+cartography	game	touches neither ClientState nor ServerState fields	game/blocks/cartography.rs
+cat_spawner	game	touches neither ClientState nor ServerState fields	game/mobs/cat_spawner.rs
+cauldron_interactions	server	touches only ServerState fields	game/blocks/cauldron_interactions.rs
+cauldron_prediction	game	touches neither ClientState nor ServerState fields	game/network/cauldron_prediction.rs
+cauldron_underwater_tests	server	touches only ServerState fields	game/blocks/cauldron_underwater_tests.rs
+cauldrons	game	touches neither ClientState nor ServerState fields	game/blocks/cauldrons.rs
+chat	game	touches both ClientState and ServerState fields	game/interface/chat.rs
+chiseled_bookshelf	game	touches neither ClientState nor ServerState fields	game/blocks/chiseled_bookshelf.rs
+class_tags	game	touches neither ClientState nor ServerState fields	game/world/class_tags.rs
+class_tags_tests	game	touches neither ClientState nor ServerState fields	game/world/class_tags_tests.rs
+client_ambient	game	touches neither ClientState nor ServerState fields	game/interface/client_ambient.rs
+client_attack_targets	client	touches only ClientState fields	game/items/client_attack_targets.rs
+client_cracks	client	touches only ClientState fields	game/modding/client_cracks.rs
+client_executor	client	touches only ClientState fields	game/modding/client_executor.rs
+client_item_extensions	game	touches neither ClientState nor ServerState fields	game/modding/client_item_extensions.rs
+client_reload	client	touches only ClientState fields	game/interface/client_reload/mod.rs
+client_tick_steps	client	touches only ClientState fields	game/runtime/client_tick_steps.rs
+clip_ray	game	touches neither ClientState nor ServerState fields	game/items/clip_ray.rs
+clipboard	client	touches only ClientState fields	game/interface/clipboard.rs
+clone_block_ticks_tests	game	touches neither ClientState nor ServerState fields	game/blocks/clone_block_ticks_tests.rs
+clone_dimensions_tests	server	touches only ServerState fields	game/administration/clone_dimensions_tests.rs
+closest_space	game	touches neither ClientState nor ServerState fields	game/entities/closest_space.rs
+cloud_height_frame_tests	client	touches only ClientState fields	game/interface/cloud_height_frame_tests.rs
+code_of_conduct	client	touches only ClientState fields	game/interface/code_of_conduct.rs
+collision_source	game	touches neither ClientState nor ServerState fields	game/entities/collision_source.rs
+combat	server	touches only ServerState fields	game/items/combat.rs
+command_blocks	client	touches only ClientState fields	game/administration/command_blocks.rs
+command_harness	server	touches only ServerState fields	game/administration/command_harness.rs
+command_minecarts	game	touches neither ClientState nor ServerState fields	game/administration/command_minecarts.rs
+command_registries	game	touches neither ClientState nor ServerState fields	game/interface/command_registries.rs
+commands	game	touches both ClientState and ServerState fields	game/administration/commands/mod.rs
+composter	game	touches neither ClientState nor ServerState fields	game/blocks/composter.rs
+condition_reload_state	game	touches neither ClientState nor ServerState fields	game/world/condition_reload_state.rs
+consume	server	touches only ServerState fields	game/items/consume.rs
+consume_effect_dispatch	game	touches neither ClientState nor ServerState fields	game/modding/consume_effect_dispatch.rs
+consume_effect_dispatch_tests	game	touches neither ClientState nor ServerState fields	game/modding/consume_effect_dispatch_tests.rs
+contained_fluid_tests	game	touches neither ClientState nor ServerState fields	game/interface/contained_fluid_tests.rs
+container_hooks	client	touches only ClientState fields	game/interface/container_hooks.rs
+container_layout	client	touches only ClientState fields	game/interface/container_layout.rs
+container_loot	server	touches only ServerState fields	game/world/container_loot.rs
+control	client	touches only ClientState fields	game/runtime/control.rs
+conversion_place_tests	game	touches neither ClientState nor ServerState fields	game/mobs/conversion_place_tests.rs
+copper_golems	game	touches neither ClientState nor ServerState fields	game/mobs/copper_golems.rs
+core_tests	game	touches both ClientState and ServerState fields	game/runtime/core_tests.rs
+crafting_recipe_kind_tests	game	touches both ClientState and ServerState fields	game/modding/crafting_recipe_kind_tests.rs
+creaking	server	touches only ServerState fields	game/mobs/creaking.rs
+create_fluid_source_tests	game	touches neither ClientState nor ServerState fields	game/interface/create_fluid_source_tests.rs
+creative_hotbar	client	touches only ClientState fields	game/items/creative_hotbar.rs
+creative_screen	client	touches only ClientState fields	game/interface/creative_screen.rs
+creator_mod_id_tests	game	touches neither ClientState nor ServerState fields	game/items/creator_mod_id_tests.rs
+creatures	game	touches both ClientState and ServerState fields	game/mobs/creatures/mod.rs
+crop_grow_tests	game	touches neither ClientState nor ServerState fields	game/interface/crop_grow_tests.rs
+crossbow	server	touches only ServerState fields	game/items/crossbow.rs
+crosshair_pick_tests	client	touches only ClientState fields	game/entities/crosshair_pick_tests.rs
+cushion_refind_tests	game	touches neither ClientState nor ServerState fields	game/entities/cushion_refind_tests.rs
+cushions	game	touches both ClientState and ServerState fields	game/entities/cushions.rs
+custom_arm_pose	game	touches neither ClientState nor ServerState fields	game/interface/custom_arm_pose.rs
+custom_sky	client	touches only ClientState fields	game/interface/custom_sky.rs
+custom_spawner_level	game	touches neither ClientState nor ServerState fields	game/mobs/custom_spawner_level.rs
+custom_spawners	game	touches neither ClientState nor ServerState fields	game/mobs/custom_spawners.rs
+damage_item_tests	server	touches only ServerState fields	game/items/damage_item_tests.rs
+damage_resistant_tests	server	touches only ServerState fields	game/items/damage_resistant_tests.rs
+data_map_files	game	touches neither ClientState nor ServerState fields	game/modding/data_map_files.rs
+data_map_json	game	touches neither ClientState nor ServerState fields	game/modding/data_map_json.rs
+debug_keys	client	touches only ClientState fields	game/interface/debug_keys.rs
+debug_lines	game	touches both ClientState and ServerState fields	game/interface/debug_lines.rs
+debug_options	client	touches only ClientState fields	game/interface/debug_options.rs
+debug_renderer_tests	client	touches only ClientState fields	game/modding/debug_renderer_tests.rs
+debug_renderers	client	touches only ClientState fields	game/interface/debug_renderers.rs
+debug_stick	game	touches neither ClientState nor ServerState fields	game/blocks/debug_stick.rs
+decided_action	game	touches neither ClientState nor ServerState fields	game/modding/decided_action.rs
+declared_vegetation_tests	game	touches neither ClientState nor ServerState fields	game/modding/declared_vegetation_tests.rs
+decorated_pot	server	touches only ServerState fields	game/blocks/decorated_pot.rs
+dedicated	server	touches only ServerState fields	game/interface/dedicated/mod.rs
+deflect	server	touches only ServerState fields	game/items/deflect.rs
+demo_intro	client	touches only ClientState fields	game/interface/demo_intro.rs
+developer_launch	game	touches neither ClientState nor ServerState fields	game/interface/developer_launch.rs
+dialogs	client	touches only ClientState fields	game/interface/dialogs.rs
+disabled_block_tests	game	touches neither ClientState nor ServerState fields	game/modding/disabled_block_tests.rs
+dispense_bucket	game	touches neither ClientState nor ServerState fields	game/blocks/dispense_bucket.rs
+dispense_container_tests	game	touches neither ClientState nor ServerState fields	game/blocks/dispense_container_tests.rs
+dispense_fixture	server	touches only ServerState fields	game/interface/dispense_fixture.rs
+dispenser	server	touches only ServerState fields	game/blocks/dispenser.rs
+dragon	game	touches both ClientState and ServerState fields	game/mobs/dragon.rs
+dragon_boss_bar_name_tests	client	touches only ClientState fields	game/interface/dragon_boss_bar_name_tests.rs
+dragon_fireball_motion_tests	server	touches only ServerState fields	game/mobs/dragon_fireball_motion_tests.rs
+draw_boundary	game	touches neither ClientState nor ServerState fields	game/modding/draw_boundary.rs
+dropped_by_player_tests	game	touches neither ClientState nor ServerState fields	game/items/dropped_by_player_tests.rs
+dropped_item_setter	game	touches neither ClientState nor ServerState fields	game/modding/dropped_item_setter.rs
+durability	game	touches neither ClientState nor ServerState fields	game/items/durability.rs
+dynamic_light_emission	game	touches neither ClientState nor ServerState fields	game/world/dynamic_light_emission.rs
+dynamic_light_emission_tests	game	touches neither ClientState nor ServerState fields	game/world/dynamic_light_emission_tests.rs
+dynamic_lights	client	touches only ClientState fields	game/interface/dynamic_lights.rs
+early_game_rules	game	touches neither ClientState nor ServerState fields	game/world/early_game_rules.rs
+early_game_rules_tests	game	touches neither ClientState nor ServerState fields	game/world/early_game_rules_tests.rs
+empty_contents_tests	game	touches neither ClientState nor ServerState fields	game/blocks/empty_contents_tests.rs
+enchant_effects	server	touches only ServerState fields	game/items/enchant_effects.rs
+enchant_pick_parts_tests	server	touches only ServerState fields	game/items/enchant_pick_parts_tests.rs
+enchant_power_beam_tests	client	touches only ClientState fields	game/blocks/enchant_power_beam_tests.rs
+end	game	touches both ClientState and ServerState fields	game/world/end.rs
+enderman	game	touches neither ClientState nor ServerState fields	game/mobs/enderman.rs
+enderman_hurt_teleport_tests	server	touches only ServerState fields	game/mobs/enderman_hurt_teleport_tests.rs
+enderman_placement_tests	game	touches neither ClientState nor ServerState fields	game/interface/enderman_placement_tests.rs
+entity	server	touches only ServerState fields	game/entities/entity.rs
+entity_culling	client	touches only ClientState fields	game/interface/entity_culling/mod.rs
+entity_die_tests	game	touches neither ClientState nor ServerState fields	game/entities/entity_die_tests.rs
+entity_initialization	server	touches only ServerState fields	game/modding/entity_initialization.rs
+entity_inside_tests	game	touches neither ClientState nor ServerState fields	game/entities/entity_inside_tests.rs
+entity_model_loading_tests	game	touches neither ClientState nor ServerState fields	game/interface/entity_model_loading_tests.rs
+entity_part_state	game	touches neither ClientState nor ServerState fields	game/modding/entity_part_state.rs
+entity_part_state_tests	server	touches only ServerState fields	game/modding/entity_part_state_tests.rs
+entity_residency	server	touches only ServerState fields	game/entities/entity_residency.rs
+entity_sections	game	touches neither ClientState nor ServerState fields	game/modding/entity_sections.rs
+entity_sizes	game	touches both ClientState and ServerState fields (opposite side in tests)	game/modding/entity_sizes.rs
+entity_sounds	game	touches neither ClientState nor ServerState fields	game/entities/entity_sounds.rs
+entity_type_rows	game	touches neither ClientState nor ServerState fields	game/modding/entity_type_rows.rs
+equip_answers	game	touches neither ClientState nor ServerState fields	game/items/equip_answers.rs
+equipment_piece	game	touches neither ClientState nor ServerState fields	game/entities/equipment_piece.rs
+equipment_tick_tests	game	touches neither ClientState nor ServerState fields	game/mobs/equipment_tick_tests.rs
+event_loop	game	touches neither ClientState nor ServerState fields	game/runtime/event_loop.rs
+events	game	touches neither ClientState nor ServerState fields	game/runtime/events.rs
+execution_role	game	touches neither ClientState nor ServerState fields	game/runtime/execution_role.rs
+experience_points_tests	game	touches neither ClientState nor ServerState fields	game/interface/experience_points_tests.rs
+explosion	server	touches only ServerState fields	game/entities/explosion.rs
+explosion_detonate	game	touches neither ClientState nor ServerState fields	game/entities/explosion_detonate.rs
+explosion_settings	game	touches neither ClientState nor ServerState fields	game/entities/explosion_settings.rs
+extinguish	server	touches only ServerState fields	game/entities/extinguish.rs
+extras	client	touches only ClientState fields	game/interface/extras.rs
+falling_air_tick_tests	game	touches neither ClientState nor ServerState fields	game/runtime/falling_air_tick_tests.rs
+falling_blocks	game	touches both ClientState and ServerState fields	game/blocks/falling_blocks.rs
+falling_damage	server	touches only ServerState fields	game/entities/falling_damage.rs
+falling_save	server	touches only ServerState fields	game/entities/falling_save.rs
+falling_tick	server	touches only ServerState fields	game/entities/falling_tick.rs
+falling_tick_tests	game	touches neither ClientState nor ServerState fields	game/entities/falling_tick_tests.rs
+fangs	game	touches both ClientState and ServerState fields	game/mobs/fangs.rs
+far_terrain_edits	client	touches only ClientState fields	game/world/far_terrain_edits.rs
+fence_leash_force_tests	server	touches only ServerState fields	game/mobs/fence_leash_force_tests.rs
+fertile_part_tests	game	touches neither ClientState nor ServerState fields	game/blocks/fertile_part_tests.rs
+finalize_spawn	server	touches only ServerState fields	game/mobs/finalize_spawn.rs
+fireworks	game	touches both ClientState and ServerState fields (opposite side in tests)	game/entities/fireworks.rs
+first_tick_registration_tests	game	touches neither ClientState nor ServerState fields	game/blocks/first_tick_registration_tests.rs
+fishing	game	touches both ClientState and ServerState fields	game/items/fishing.rs
+fluid_interaction_tests	game	touches neither ClientState nor ServerState fields	game/interface/fluid_interaction_tests.rs
+fluid_interactions	game	touches neither ClientState nor ServerState fields	game/modding/fluid_interactions.rs
+focused_text_field	client	touches only ClientState fields	game/interface/focused_text_field.rs
+fov	client	touches only ClientState fields	game/interface/fov.rs
+foxes	game	touches neither ClientState nor ServerState fields	game/mobs/foxes.rs
+frame_geometry	client	touches only ClientState fields	game/interface/frame_geometry.rs
+frames	game	touches both ClientState and ServerState fields	game/entities/frames.rs
+friends	client	touches only ClientState fields	game/network/friends.rs,game/network/friends_off.rs
+functions	server	touches only ServerState fields	game/administration/functions.rs
+game_mode	game	touches both ClientState and ServerState fields	game/interface/game_mode.rs
+game_tests	server	touches only ServerState fields	game/administration/game_tests.rs
+gamemode_switcher	client	touches only ClientState fields	game/interface/gamemode_switcher.rs
+general	server	touches only ServerState fields	game/entities/general.rs
+general_draw	game	touches neither ClientState nor ServerState fields	game/mobs/general_draw.rs
+ghasts	game	touches neither ClientState nor ServerState fields	game/mobs/ghasts.rs
+glide_wear	game	touches neither ClientState nor ServerState fields	game/items/glide_wear.rs
+glide_wear_tests	game	touches neither ClientState nor ServerState fields	game/items/glide_wear_tests.rs
+global_loot_modifiers	game	touches neither ClientState nor ServerState fields	game/modding/global_loot_modifiers.rs
+glowing	client	touches only ClientState fields	game/entities/glowing.rs
+golem_defense_tests	server	touches only ServerState fields	game/mobs/golem_defense_tests.rs
+golems	server	touches only ServerState fields	game/mobs/golems.rs
+grindstone_decisions_tests	server	touches only ServerState fields	game/modding/grindstone_decisions_tests.rs
+growth	game	touches neither ClientState nor ServerState fields	game/blocks/growth.rs
+gui_clips	game	touches neither ClientState nor ServerState fields	game/modding/gui_clips.rs
+gui_entity	client	touches only ClientState fields	game/interface/gui_entity.rs
+gui_gradient_tests	game	touches neither ClientState nor ServerState fields	game/modding/gui_gradient_tests.rs
+gui_layer_tests	client	touches only ClientState fields	game/modding/gui_layer_tests.rs
+gui_paint_items	game	touches neither ClientState nor ServerState fields	game/modding/gui_paint_items.rs
+gui_paint_items_tests	game	touches neither ClientState nor ServerState fields	game/modding/gui_paint_items_tests.rs
+gui_pose	game	touches neither ClientState nor ServerState fields	game/modding/gui_pose.rs
+hand	game	touches both ClientState and ServerState fields	game/items/hand.rs
+hand_part_tests	game	touches both ClientState and ServerState fields	game/items/hand_part_tests.rs
+hanging_refind_tests	game	touches neither ClientState nor ServerState fields	game/entities/hanging_refind_tests.rs
+headless	game	touches neither ClientState nor ServerState fields	game/runtime/headless.rs
+held_items	client	touches only ClientState fields	game/items/held_items.rs
+highlight_tip_tests	client	touches only ClientState fields	game/interface/highlight_tip_tests.rs
+hit	game	touches neither ClientState nor ServerState fields	game/interface/hit.rs
+hoglin_repeat_attack_tests	server	touches only ServerState fields	game/mobs/hoglin_repeat_attack_tests.rs
+hook_meddler_tests	server	touches only ServerState fields	game/modding/hook_meddler_tests.rs
+host	game	touches neither ClientState nor ServerState fields	game/host/mod.rs
+hot_paths	server	touches only ServerState fields	game/runtime/hot_paths/mod.rs
+hud_editor	client	touches only ClientState fields	game/interface/hud_editor.rs
+hud_render	game	touches neither ClientState nor ServerState fields	game/interface/hud_render.rs
+hud_room	client	touches only ClientState fields	game/interface/hud_room.rs
+humanoid_setup_anim	game	touches neither ClientState nor ServerState fields	game/interface/humanoid_setup_anim.rs
+ime	client	touches only ClientState fields	game/interface/ime.rs
+infiniburn	game	touches neither ClientState nor ServerState fields	game/world/infiniburn.rs
+infiniburn_tests	server	touches only ServerState fields	game/world/infiniburn_tests.rs
+initial_client_models	client	touches only ClientState fields	game/modding/initial_client_models.rs
+initial_client_models_tests	game	touches neither ClientState nor ServerState fields	game/modding/initial_client_models_tests.rs
+initial_spawn	server	touches only ServerState fields	game/world/initial_spawn.rs
+inline_feature_parse_tests	server	touches only ServerState fields	game/administration/inline_feature_parse_tests.rs
+inline_loot_reference_tests	server	touches only ServerState fields	game/administration/inline_loot_reference_tests.rs
+input_trace	client	touches only ClientState fields	game/runtime/input_trace.rs
+integrated	game	touches both ClientState and ServerState fields	game/world/integrated.rs
+interaction_data_tests	server	touches only ServerState fields	game/entities/interaction_data_tests.rs
+interactions	client	touches only ClientState fields	game/items/interactions.rs
+inventory_input	client	touches only ClientState fields	game/interface/inventory_input.rs
+inventory_slots	client	touches only ClientState fields	game/interface/inventory_slots.rs
+inventory_tick	game	touches neither ClientState nor ServerState fields	game/items/inventory_tick.rs
+invulnerable_time_tests	game	touches neither ClientState nor ServerState fields	game/mobs/invulnerable_time_tests.rs
+item_abilities	game	touches neither ClientState nor ServerState fields	game/items/item_abilities.rs
+item_abilities_tests	server	touches only ServerState fields	game/items/item_abilities_tests.rs
+item_actions	server	touches only ServerState fields	game/items/item_actions.rs
+item_attack_tests	game	touches neither ClientState nor ServerState fields	game/items/item_attack_tests.rs
+item_contact_tests	server	touches only ServerState fields	game/entities/item_contact_tests.rs
+item_draw	client	touches only ClientState fields	game/interface/item_draw.rs
+item_drop_state_tests	server	touches only ServerState fields	game/modding/item_drop_state_tests.rs
+item_durability	server	touches only ServerState fields	game/items/item_durability.rs
+item_entities	server	touches only ServerState fields	game/items/item_entities.rs
+item_entity_spawn	server	touches only ServerState fields	game/items/item_entity_spawn.rs
+item_hurt	server	touches only ServerState fields	game/entities/item_hurt.rs
+item_interact_mob_tests	game	touches both ClientState and ServerState fields	game/items/item_interact_mob_tests.rs
+item_menu_parts_tests	game	touches neither ClientState nor ServerState fields	game/items/item_menu_parts_tests.rs
+item_model_context	game	touches neither ClientState nor ServerState fields	game/modding/item_model_context.rs
+item_name_tests	game	touches neither ClientState nor ServerState fields	game/items/item_name_tests.rs
+item_particle_send	game	touches neither ClientState nor ServerState fields	game/modding/item_particle_send.rs
+item_particle_send_tests	game	touches neither ClientState nor ServerState fields	game/modding/item_particle_send_tests.rs
+item_particles	game	touches neither ClientState nor ServerState fields	game/items/item_particles.rs
+item_pickup_shape_tests	server	touches only ServerState fields	game/items/item_pickup_shape_tests.rs
+item_slot_command_tests	game	touches neither ClientState nor ServerState fields	game/interface/item_slot_command_tests.rs
+item_use	game	touches both ClientState and ServerState fields (opposite side in tests)	game/items/item_use.rs
+item_use_stacks	game	touches neither ClientState nor ServerState fields	game/items/item_use_stacks.rs
+item_void_tests	server	touches only ServerState fields	game/entities/item_void_tests.rs
+jigsaw_blocks	game	touches neither ClientState nor ServerState fields	game/administration/jigsaw_blocks.rs
+jigsaw_edit	game	touches neither ClientState nor ServerState fields	game/administration/jigsaw_edit.rs
+journal_level_write	server	touches only ServerState fields	game/modding/journal_level_write.rs
+jukebox	game	touches both ClientState and ServerState fields	game/blocks/jukebox.rs
+key_codes	game	touches neither ClientState nor ServerState fields	game/interface/key_codes.rs
+key_focus	game	touches neither ClientState nor ServerState fields	game/interface/key_focus.rs
+keymap_tests	game	touches neither ClientState nor ServerState fields	game/interface/keymap_tests.rs
+kill_die_cancel_tests	game	touches neither ClientState nor ServerState fields	game/entities/kill_die_cancel_tests.rs
+kill_die_vibration_tests	server	touches only ServerState fields	game/entities/kill_die_vibration_tests.rs
+knot_residency_tests	server	touches only ServerState fields	game/entities/knot_residency_tests.rs
+lan	server	touches only ServerState fields	game/network/lan/mod.rs
+lan_actions	game	touches both ClientState and ServerState fields	game/network/lan_actions/mod.rs
+lan_attributes	game	touches neither ClientState nor ServerState fields	game/network/lan_attributes.rs
+lan_camera	game	touches neither ClientState nor ServerState fields	game/network/lan_camera.rs
+lan_chat	server	touches only ServerState fields	game/network/lan_chat.rs
+lan_configuration_tasks	server	touches only ServerState fields	game/network/lan_configuration_tasks.rs
+lan_crafting	server	touches only ServerState fields	game/network/lan_crafting.rs
+lan_entities	server	touches only ServerState fields	game/network/lan_entities.rs
+lan_far	game	touches neither ClientState nor ServerState fields	game/network/lan_far.rs
+lan_menus	game	touches neither ClientState nor ServerState fields	game/network/lan_menus.rs
+lan_menus_tests	server	touches only ServerState fields	game/network/lan_menus_tests.rs
+lan_mobs	server	touches only ServerState fields	game/network/lan_mobs.rs
+lan_mount_menu	game	touches neither ClientState nor ServerState fields	game/network/lan_mount_menu.rs
+lan_op	game	touches neither ClientState nor ServerState fields	game/administration/lan_op.rs
+lan_particles	server	touches only ServerState fields	game/network/lan_particles.rs
+lan_pickup	game	touches neither ClientState nor ServerState fields	game/network/lan_pickup.rs
+lan_pvp	server	touches only ServerState fields	game/network/lan_pvp.rs
+lan_quiet	game	touches neither ClientState nor ServerState fields	game/network/lan_quiet.rs
+lan_screen	client	touches only ClientState fields	game/network/lan_screen.rs
+lan_stations	game	touches neither ClientState nor ServerState fields	game/network/lan_stations.rs
+lan_trade_decisions	server	touches only ServerState fields	game/network/lan_trade_decisions.rs
+lan_trade_decisions_tests	server	touches only ServerState fields	game/network/lan_trade_decisions_tests.rs
+lan_trading	server	touches only ServerState fields	game/network/lan_trading.rs
+lan_vehicles	game	touches both ClientState and ServerState fields	game/network/lan_vehicles.rs
+lan_waypoints	server	touches only ServerState fields	game/network/lan_waypoints.rs
+last_hurt_by_mob_tests	game	touches neither ClientState nor ServerState fields	game/mobs/last_hurt_by_mob_tests.rs
+launch_api	game	touches neither ClientState nor ServerState fields	game/runtime/launch_api.rs
+launch_options	game	touches neither ClientState nor ServerState fields	game/runtime/launch_options.rs
+launch_timeout	client	touches only ClientState fields	game/runtime/launch_timeout.rs
+leads	game	touches both ClientState and ServerState fields	game/entities/leads.rs
+level_access	game	touches neither ClientState nor ServerState fields	game/blocks/level_access.rs
+level_control_hooks	game	touches neither ClientState nor ServerState fields	game/modding/level_control_hooks.rs
+level_particles	server	touches only ServerState fields	game/interface/level_particles.rs
+level_sounds	server	touches only ServerState fields	game/interface/level_sounds.rs
+level_tick	server	touches only ServerState fields	game/world/level_tick.rs
+levels	server	touches only ServerState fields	game/world/levels.rs
+lightmap_expression_tests	client	touches only ClientState fields	game/interface/lightmap_expression_tests.rs
+lightning	game	touches both ClientState and ServerState fields	game/entities/lightning.rs
+lightning_bolt_uniform_tests	game	touches neither ClientState nor ServerState fields	game/entities/lightning_bolt_uniform_tests.rs
+lightning_item_tests	game	touches neither ClientState nor ServerState fields	game/entities/lightning_item_tests.rs
+living_attributes	server	touches only ServerState fields	game/mobs/living_attributes.rs
+llamas	server	touches only ServerState fields	game/mobs/llamas.rs
+load_conditions	game	touches neither ClientState nor ServerState fields	game/modding/load_conditions.rs
+loading_screen	client	touches only ClientState fields	game/runtime/loading_screen.rs
+loading_window	client	touches only ClientState fields	game/runtime/loading_window.rs
+location_world	game	touches neither ClientState nor ServerState fields	game/blocks/location_world.rs
+locator_bar	client	touches only ClientState fields	game/interface/locator_bar.rs
+look	client	touches only ClientState fields	game/interface/look.rs
+loom	client	touches only ClientState fields	game/blocks/loom.rs
+loot_kill_guest_tests	server	touches only ServerState fields	game/administration/loot_kill_guest_tests.rs
+loot_rolls	server	touches only ServerState fields	game/mobs/loot_rolls.rs
+loot_tags	game	touches neither ClientState nor ServerState fields	game/modding/loot_tags.rs
+loot_types	game	touches neither ClientState nor ServerState fields	game/modding/loot_types.rs
+mace	server	touches only ServerState fields	game/items/mace.rs
+machines	server	touches only ServerState fields	game/blocks/machines/mod.rs
+mannequin_save_tests	game	touches neither ClientState nor ServerState fields	game/entities/mannequin_save_tests.rs
+maps	game	touches both ClientState and ServerState fields	game/blocks/maps/mod.rs
+melee	server	touches only ServerState fields	game/entities/melee.rs
+memory	game	touches neither ClientState nor ServerState fields	game/runtime/memory.rs
+mending_pick_tests	server	touches only ServerState fields	game/items/mending_pick_tests.rs
+menu_clicks	client	touches only ClientState fields	game/interface/menu_clicks.rs
+minecart_moves	server	touches only ServerState fields	game/entities/minecart_moves.rs
+minecarts	game	touches both ClientState and ServerState fields	game/entities/minecarts.rs
+mining_component_tests	server	touches only ServerState fields	game/runtime/mining_component_tests.rs
+mob_blocks	client	touches only ClientState fields	game/mobs/mob_blocks.rs
+mob_discard_tests	game	touches neither ClientState nor ServerState fields	game/mobs/mob_discard_tests.rs
+mob_gear	server	touches only ServerState fields	game/mobs/mob_gear.rs
+mob_hurt_cooldown_tests	game	touches neither ClientState nor ServerState fields	game/world/mob_hurt_cooldown_tests.rs
+mob_landing_support_tests	game	touches neither ClientState nor ServerState fields	game/mobs/mob_landing_support_tests.rs
+mob_level	server	touches only ServerState fields	game/mobs/mob_level.rs
+mob_light	game	touches neither ClientState nor ServerState fields	game/mobs/mob_light.rs
+mob_looting	game	touches neither ClientState nor ServerState fields	game/mobs/mob_looting.rs
+mob_sounds	client	touches only ClientState fields	game/mobs/mob_sounds.rs
+mod_api_host	server	touches only ServerState fields	game/modding/mod_api_host.rs
+mod_browser	game	touches neither ClientState nor ServerState fields	game/interface/mod_browser.rs
+mod_container_openers	server	touches only ServerState fields	game/modding/mod_container_openers.rs
+mod_container_openers_tests	server	touches only ServerState fields	game/modding/mod_container_openers_tests.rs
+mod_crafting_commands	game	touches neither ClientState nor ServerState fields	game/modding/mod_crafting_commands.rs
+mod_menu_decisions_tests	client	touches only ClientState fields	game/modding/mod_menu_decisions_tests.rs
+mod_raycast_tests	game	touches neither ClientState nor ServerState fields	game/modding/mod_raycast_tests.rs
+mod_recipe_property_tests	game	touches neither ClientState nor ServerState fields	game/interface/mod_recipe_property_tests.rs
+mod_toasts	client	touches only ClientState fields	game/interface/mod_toasts.rs
+model_baking_completed_tests	game	touches neither ClientState nor ServerState fields	game/modding/model_baking_completed_tests.rs
+mods	game	touches both ClientState and ServerState fields	game/modding/mods/mod.rs
+motion_ids	game	touches neither ClientState nor ServerState fields	game/blocks/motion_ids.rs
+mount_menu	game	touches both ClientState and ServerState fields	game/interface/mount_menu.rs
+mounts	game	touches both ClientState and ServerState fields	game/mobs/mounts.rs
+move_gate	game	touches neither ClientState nor ServerState fields	game/entities/move_gate.rs
+moving_pistons	game	touches neither ClientState nor ServerState fields	game/blocks/moving_pistons.rs
+music	client	touches only ClientState fields	game/interface/music.rs
+names	game	touches both ClientState and ServerState fields	game/interface/names.rs
+narrator	client	touches only ClientState fields	game/interface/narrator.rs
+native_ai_pause	server	touches only ServerState fields	game/modding/native_ai_pause.rs
+native_audio_streams	game	touches neither ClientState nor ServerState fields	game/modding/native_audio_streams.rs
+native_biome_colors	game	touches neither ClientState nor ServerState fields	game/modding/native_biome_colors.rs
+native_biome_keys	game	touches neither ClientState nor ServerState fields	game/modding/native_biome_keys.rs
+native_biome_keys_tests	server	touches only ServerState fields	game/modding/native_biome_keys_tests.rs
+native_biome_source	game	touches neither ClientState nor ServerState fields	game/modding/native_biome_source.rs
+native_biome_tag_tests	game	touches neither ClientState nor ServerState fields	game/modding/native_biome_tag_tests.rs
+native_block_class_tests	game	touches neither ClientState nor ServerState fields	game/modding/native_block_class_tests.rs
+native_block_entity_draw	client	touches only ClientState fields	game/modding/native_block_entity_draw.rs
+native_block_entity_item_tests	server	touches only ServerState fields	game/modding/native_block_entity_item_tests.rs
+native_block_entity_refs	server	touches only ServerState fields	game/modding/native_block_entity_refs.rs
+native_block_entity_transform	game	touches neither ClientState nor ServerState fields	game/modding/native_block_entity_transform.rs
+native_block_entity_transform_tests	game	touches neither ClientState nor ServerState fields	game/modding/native_block_entity_transform_tests.rs
+native_block_extra_models	game	touches neither ClientState nor ServerState fields	game/modding/native_block_extra_models.rs
+native_block_sounds	server	touches only ServerState fields	game/modding/native_block_sounds.rs
+native_block_sprites	game	touches neither ClientState nor ServerState fields	game/modding/native_block_sprites.rs
+native_block_states	game	touches neither ClientState nor ServerState fields	game/modding/native_block_states.rs
+native_block_tables	game	touches neither ClientState nor ServerState fields	game/modding/native_block_tables.rs
+native_block_use_criteria_tests	game	touches neither ClientState nor ServerState fields	game/modding/native_block_use_criteria_tests.rs
+native_book_apply	game	touches neither ClientState nor ServerState fields	game/modding/native_book_apply.rs
+native_book_backings	game	touches neither ClientState nor ServerState fields	game/modding/native_book_backings.rs
+native_book_catalogue	game	touches neither ClientState nor ServerState fields	game/modding/native_book_catalogue.rs
+native_book_displays	game	touches neither ClientState nor ServerState fields	game/modding/native_book_displays.rs
+native_book_grid	game	touches neither ClientState nor ServerState fields	game/modding/native_book_grid.rs
+native_book_invalidation	server	touches only ServerState fields	game/modding/native_book_invalidation.rs
+native_book_net	game	touches neither ClientState nor ServerState fields	game/modding/native_book_net.rs
+native_book_placement	game	touches neither ClientState nor ServerState fields	game/modding/native_book_placement.rs
+native_book_receive	game	touches neither ClientState nor ServerState fields	game/modding/native_book_receive.rs
+native_book_scope	game	touches neither ClientState nor ServerState fields	game/modding/native_book_scope.rs
+native_book_settings	game	touches neither ClientState nor ServerState fields	game/modding/native_book_settings.rs
+native_book_transport	game	touches neither ClientState nor ServerState fields	game/modding/native_book_transport.rs
+native_boss_bar_refs	server	touches only ServerState fields	game/modding/native_boss_bar_refs.rs
+native_bots	server	touches only ServerState fields	game/modding/native_bots.rs
+native_capability_cache_tests	game	touches neither ClientState nor ServerState fields	game/modding/native_capability_cache_tests.rs
+native_cauldron_contents	game	touches neither ClientState nor ServerState fields	game/modding/native_cauldron_contents.rs
+native_chat_recipients	game	touches neither ClientState nor ServerState fields	game/modding/native_chat_recipients.rs
+native_chat_recipients_tests	server	touches only ServerState fields	game/modding/native_chat_recipients_tests.rs
+native_chunk_areas	game	touches neither ClientState nor ServerState fields	game/modding/native_chunk_areas.rs
+native_chunk_generator	game	touches neither ClientState nor ServerState fields	game/modding/native_chunk_generator.rs
+native_chunk_queries	game	touches neither ClientState nor ServerState fields	game/modding/native_chunk_queries.rs
+native_chunk_relight_tests	game	touches neither ClientState nor ServerState fields	game/modding/native_chunk_relight_tests.rs
+native_chunk_save	server	touches only ServerState fields	game/modding/native_chunk_save.rs
+native_claimed_items	client	touches only ClientState fields	game/modding/native_claimed_items.rs
+native_client_particles	game	touches neither ClientState nor ServerState fields	game/modding/native_client_particles.rs
+native_client_particles_fixture	game	touches neither ClientState nor ServerState fields	game/modding/native_client_particles_fixture.rs
+native_client_screens	client	touches only ClientState fields	game/interface/native_client_screens.rs
+native_client_services	client	touches only ClientState fields	game/modding/native_client_services.rs
+native_client_session	client	touches only ClientState fields	game/modding/native_client_session.rs
+native_colliders	server	touches only ServerState fields	game/modding/native_colliders.rs
+native_colliders_tests	server	touches only ServerState fields	game/modding/native_colliders_tests.rs
+native_collision_exclusions	server	touches only ServerState fields	game/modding/native_collision_exclusions.rs
+native_collision_shape	game	touches neither ClientState nor ServerState fields	game/modding/native_collision_shape.rs
+native_command_completion_tests	game	touches neither ClientState nor ServerState fields	game/modding/native_command_completion_tests.rs
+native_command_reads	game	touches neither ClientState nor ServerState fields	game/modding/native_command_reads.rs
+native_components	client	touches only ClientState fields	game/modding/native_components.rs
+native_config_files	server	touches only ServerState fields	game/modding/native_config_files.rs
+native_configs	game	touches neither ClientState nor ServerState fields	game/modding/native_configs.rs
+native_connection_groups	game	touches neither ClientState nor ServerState fields	game/modding/native_connection_groups.rs
+native_console	game	touches neither ClientState nor ServerState fields	game/modding/native_console.rs
+native_console_tests	server	touches only ServerState fields	game/modding/native_console_tests.rs
+native_content_items	game	touches neither ClientState nor ServerState fields	game/modding/native_content_items.rs
+native_criteria	game	touches neither ClientState nor ServerState fields	game/modding/native_criteria.rs
+native_custom_geometry	client	touches only ClientState fields	game/modding/native_custom_geometry.rs
+native_custom_stats	game	touches neither ClientState nor ServerState fields	game/modding/native_custom_stats.rs
+native_damage_tests	server	touches only ServerState fields	game/modding/native_damage_tests.rs
+native_data_bound	game	touches neither ClientState nor ServerState fields	game/modding/native_data_bound.rs
+native_data_maps	server	touches only ServerState fields	game/modding/native_data_maps.rs
+native_datafix	game	touches neither ClientState nor ServerState fields	game/modding/native_datafix.rs
+native_datafix_tests	game	touches neither ClientState nor ServerState fields	game/modding/native_datafix_tests.rs
+native_datapack_refs	game	touches neither ClientState nor ServerState fields	game/modding/native_datapack_refs.rs
+native_death_weapon	game	touches neither ClientState nor ServerState fields	game/modding/native_death_weapon.rs
+native_dimensions	game	touches neither ClientState nor ServerState fields	game/modding/native_dimensions.rs
+native_disconnect	game	touches neither ClientState nor ServerState fields	game/modding/native_disconnect.rs
+native_disconnect_tests	game	touches neither ClientState nor ServerState fields	game/modding/native_disconnect_tests.rs
+native_display_refs	game	touches neither ClientState nor ServerState fields	game/modding/native_display_refs.rs
+native_dragon_refs	server	touches only ServerState fields	game/modding/native_dragon_refs.rs
+native_dynamic_textures	client	touches only ClientState fields	game/modding/native_dynamic_textures.rs
+native_dynamic_textures_tests	game	touches neither ClientState nor ServerState fields	game/modding/native_dynamic_textures_tests.rs
+native_effect_category	game	touches neither ClientState nor ServerState fields	game/modding/native_effect_category.rs
+native_entities	server	touches only ServerState fields	game/modding/native_entities.rs
+native_entity_commands	server	touches only ServerState fields	game/modding/native_entity_commands.rs
+native_entity_data	server	touches only ServerState fields	game/modding/native_entity_data.rs
+native_entity_extinguish	game	touches neither ClientState nor ServerState fields	game/modding/native_entity_extinguish.rs
+native_entity_extinguish_tests	server	touches only ServerState fields	game/modding/native_entity_extinguish_tests.rs
+native_entity_index_parity_tests	game	touches neither ClientState nor ServerState fields	game/modding/native_entity_index_parity_tests.rs
+native_entity_invulnerable	server	touches only ServerState fields	game/modding/native_entity_invulnerable.rs
+native_entity_kind	game	touches neither ClientState nor ServerState fields	game/modding/native_entity_kind.rs
+native_entity_layers	game	touches neither ClientState nor ServerState fields	game/modding/native_entity_layers.rs
+native_entity_layers_tests	game	touches neither ClientState nor ServerState fields	game/modding/native_entity_layers_tests.rs
+native_entity_motion	game	touches both ClientState and ServerState fields	game/modding/native_entity_motion.rs
+native_entity_move_correction_tests	server	touches only ServerState fields	game/modding/native_entity_move_correction_tests.rs
+native_entity_move_player_tests	server	touches only ServerState fields	game/modding/native_entity_move_player_tests.rs
+native_entity_move_sweep_tests	server	touches only ServerState fields	game/modding/native_entity_move_sweep_tests.rs
+native_entity_move_tests	game	touches neither ClientState nor ServerState fields	game/modding/native_entity_move_tests.rs
+native_entity_moves	server	touches only ServerState fields	game/modding/native_entity_moves.rs
+native_entity_physics	game	touches neither ClientState nor ServerState fields	game/modding/native_entity_physics.rs
+native_entity_refs	server	touches only ServerState fields	game/modding/native_entity_refs.rs
+native_entity_remove	server	touches only ServerState fields	game/modding/native_entity_remove.rs
+native_entity_renderers	game	touches neither ClientState nor ServerState fields	game/modding/native_entity_renderers.rs
+native_entity_renderers_tests	game	touches neither ClientState nor ServerState fields	game/modding/native_entity_renderers_tests.rs
+native_entity_riding	server	touches only ServerState fields	game/modding/native_entity_riding.rs
+native_entity_selectors	game	touches neither ClientState nor ServerState fields	game/modding/native_entity_selectors.rs
+native_entity_sounds	server	touches only ServerState fields	game/modding/native_entity_sounds.rs
+native_entity_state	server	touches only ServerState fields	game/modding/native_entity_state.rs
+native_experience_orb_renderers_tests	game	touches neither ClientState nor ServerState fields	game/modding/native_experience_orb_renderers_tests.rs
+native_explosion_destroy	game	touches neither ClientState nor ServerState fields	game/modding/native_explosion_destroy.rs
+native_explosion_destroy_tests	game	touches neither ClientState nor ServerState fields	game/modding/native_explosion_destroy_tests.rs
+native_explosion_resistance	game	touches neither ClientState nor ServerState fields	game/modding/native_explosion_resistance.rs
+native_explosion_resistance_tests	game	touches neither ClientState nor ServerState fields	game/modding/native_explosion_resistance_tests.rs
+native_explosions	server	touches only ServerState fields	game/modding/native_explosions.rs
+native_explosions_tests	server	touches only ServerState fields	game/modding/native_explosions_tests.rs
+native_fake_disconnect_tests	server	touches only ServerState fields	game/modding/native_fake_disconnect_tests.rs
+native_falling	server	touches only ServerState fields	game/modding/native_falling.rs
+native_feature_types	game	touches neither ClientState nor ServerState fields	game/modding/native_feature_types.rs
+native_fire_odds_tests	game	touches neither ClientState nor ServerState fields	game/modding/native_fire_odds_tests.rs
+native_fishing_hook_refs	server	touches only ServerState fields	game/modding/native_fishing_hook_refs.rs
+native_fluid_render	client	touches only ClientState fields	game/modding/native_fluid_render.rs
+native_game_event_context	server	touches only ServerState fields	game/modding/native_game_event_context.rs
+native_game_event_keys	game	touches neither ClientState nor ServerState fields	game/modding/native_game_event_keys.rs
+native_game_event_keys_tests	server	touches only ServerState fields	game/modding/native_game_event_keys_tests.rs
+native_game_rules_read	game	touches neither ClientState nor ServerState fields	game/modding/native_game_rules_read.rs
+native_general_renderers_tests	client	touches only ClientState fields	game/modding/native_general_renderers_tests.rs
+native_give_stack	game	touches neither ClientState nor ServerState fields	game/modding/native_give_stack.rs
+native_give_stack_tests	game	touches neither ClientState nor ServerState fields	game/modding/native_give_stack_tests.rs
+native_goal_ticks	server	touches only ServerState fields	game/modding/native_goal_ticks/mod.rs
+native_ground	game	touches neither ClientState nor ServerState fields	game/modding/native_ground.rs
+native_guest_turn_tests	server	touches only ServerState fields	game/modding/native_guest_turn_tests.rs
+native_hanging	game	touches neither ClientState nor ServerState fields	game/modding/native_hanging.rs
+native_hanging_tests	server	touches only ServerState fields	game/modding/native_hanging_tests.rs
+native_harvest_queries	server	touches only ServerState fields	game/modding/native_harvest_queries.rs
+native_held_out_tests	game	touches neither ClientState nor ServerState fields	game/modding/native_held_out_tests.rs
+native_hit_attempt_tests	server	touches only ServerState fields	game/modding/native_hit_attempt_tests.rs
+native_hit_causer_tests	server	touches only ServerState fields	game/modding/native_hit_causer_tests.rs
+native_hit_effects	game	touches neither ClientState nor ServerState fields	game/modding/native_hit_effects.rs
+native_hit_sounds_tests	server	touches only ServerState fields	game/modding/native_hit_sounds_tests.rs
+native_hit_view_tests	server	touches only ServerState fields	game/modding/native_hit_view_tests.rs
+native_hooks	game	touches both ClientState and ServerState fields	game/native_hooks/mod.rs
+native_hotbar_slot	client	touches only ClientState fields	game/modding/native_hotbar_slot.rs
+native_hover_name_tests	game	touches neither ClientState nor ServerState fields	game/modding/native_hover_name_tests.rs
+native_humanoid_setup_anim_tests	game	touches neither ClientState nor ServerState fields	game/modding/native_humanoid_setup_anim_tests.rs
+native_ignited_by_lava_tests	game	touches neither ClientState nor ServerState fields	game/modding/native_ignited_by_lava_tests.rs
+native_instance_groups	client	touches only ClientState fields	game/modding/native_instance_groups.rs
+native_inventories	server	touches only ServerState fields	game/modding/native_inventories.rs
+native_invulnerability_check_tests	server	touches only ServerState fields	game/modding/native_invulnerability_check_tests.rs
+native_is_fire_source_tests	game	touches neither ClientState nor ServerState fields	game/modding/native_is_fire_source_tests.rs
+native_is_piglin_currency_tests	game	touches neither ClientState nor ServerState fields	game/modding/native_is_piglin_currency_tests.rs
+native_item_bundle	game	touches neither ClientState nor ServerState fields	game/modding/native_item_bundle.rs
+native_item_bundle_tests	game	touches both ClientState and ServerState fields	game/modding/native_item_bundle_tests.rs
+native_item_container	game	touches neither ClientState nor ServerState fields	game/modding/native_item_container.rs
+native_item_entity_refs	game	touches neither ClientState nor ServerState fields	game/modding/native_item_entity_refs.rs
+native_item_frame_renderers_tests	client	touches only ClientState fields	game/modding/native_item_frame_renderers_tests.rs
+native_item_menu_parts	game	touches neither ClientState nor ServerState fields	game/modding/native_item_menu_parts.rs
+native_item_particles	game	touches neither ClientState nor ServerState fields	game/modding/native_item_particles.rs
+native_item_places	server	touches only ServerState fields	game/modding/native_item_places.rs
+native_item_registry	game	touches neither ClientState nor ServerState fields	game/modding/native_item_registry.rs
+native_key_mappings	client	touches only ClientState fields	game/modding/native_key_mappings.rs
+native_key_mappings_tests	client	touches only ClientState fields	game/modding/native_key_mappings_tests.rs
+native_knockback_credit	server	touches only ServerState fields	game/modding/native_knockback_credit.rs
+native_knockback_credit_site_tests	game	touches neither ClientState nor ServerState fields	game/modding/native_knockback_credit_site_tests.rs
+native_knockback_tests	server	touches only ServerState fields	game/modding/native_knockback_tests.rs
+native_level_block_states_tests	game	touches neither ClientState nor ServerState fields	game/modding/native_level_block_states_tests.rs
+native_level_border	game	touches neither ClientState nor ServerState fields	game/modding/native_level_border.rs
+native_level_effects	game	touches neither ClientState nor ServerState fields	game/modding/native_level_effects.rs
+native_level_events	server	touches only ServerState fields	game/modding/native_level_events.rs
+native_level_items	server	touches only ServerState fields	game/modding/native_level_items.rs
+native_level_notify_tests	client	touches only ClientState fields	game/modding/native_level_notify_tests.rs
+native_level_placement_tests	server	touches only ServerState fields	game/modding/native_level_placement_tests.rs
+native_level_players	server	touches only ServerState fields	game/modding/native_level_players.rs
+native_level_refs	server	touches only ServerState fields	game/modding/native_level_refs.rs
+native_level_signals	server	touches only ServerState fields	game/modding/native_level_signals.rs
+native_level_sound_except_tests	server	touches only ServerState fields	game/modding/native_level_sound_except_tests.rs
+native_level_spawning	server	touches only ServerState fields	game/modding/native_level_spawning.rs
+native_level_ticking	game	touches neither ClientState nor ServerState fields	game/modding/native_level_ticking.rs
+native_level_weather	game	touches neither ClientState nor ServerState fields	game/modding/native_level_weather.rs
+native_level_world	server	touches only ServerState fields	game/modding/native_level_world.rs
+native_lifecycle	game	touches both ClientState and ServerState fields	game/modding/native_lifecycle.rs
+native_live_holder_tests	game	touches neither ClientState nor ServerState fields	game/modding/native_live_holder_tests.rs
+native_living_absorption	game	touches neither ClientState nor ServerState fields	game/modding/native_living_absorption.rs
+native_living_blocking	client	touches only ClientState fields	game/modding/native_living_blocking.rs
+native_living_body	server	touches only ServerState fields	game/modding/native_living_body.rs
+native_living_effects	game	touches both ClientState and ServerState fields (opposite side in tests)	game/modding/native_living_effects.rs
+native_living_flags	server	touches only ServerState fields	game/modding/native_living_flags.rs
+native_living_position	server	touches only ServerState fields	game/modding/native_living_position.rs
+native_living_refs	server	touches only ServerState fields	game/modding/native_living_refs.rs
+native_living_renderers_tests	game	touches neither ClientState nor ServerState fields	game/modding/native_living_renderers_tests.rs
+native_living_travel_sweep_tests	game	touches neither ClientState nor ServerState fields	game/modding/native_living_travel_sweep_tests.rs
+native_living_travel_tests	game	touches neither ClientState nor ServerState fields	game/modding/native_living_travel_tests.rs
+native_living_writes	game	touches both ClientState and ServerState fields (opposite side in tests)	game/modding/native_living_writes.rs
+native_local_player_writes	client	touches only ClientState fields	game/modding/native_local_player_writes.rs
+native_local_sounds	client	touches only ClientState fields	game/modding/native_local_sounds.rs
+native_makes_piglins_neutral_tests	game	touches neither ClientState nor ServerState fields	game/modding/native_makes_piglins_neutral_tests.rs
+native_mapping_presses	client	touches only ClientState fields	game/modding/native_mapping_presses.rs
+native_menu_inventory_tests	server	touches only ServerState fields	game/modding/native_menu_inventory_tests.rs
+native_menu_places	server	touches only ServerState fields	game/modding/native_menu_places.rs
+native_menu_refs	game	touches both ClientState and ServerState fields	game/modding/native_menu_refs.rs
+native_menu_slot_kinds	client	touches only ClientState fields	game/modding/native_menu_slot_kinds.rs
+native_menus	server	touches only ServerState fields	game/modding/native_menus.rs
+native_merchant_refs	game	touches neither ClientState nor ServerState fields	game/modding/native_merchant_refs.rs
+native_minecart_refs	server	touches only ServerState fields	game/modding/native_minecart_refs.rs
+native_mob_draw	game	touches neither ClientState nor ServerState fields	game/modding/native_mob_draw.rs
+native_mob_goals	server	touches only ServerState fields	game/modding/native_mob_goals.rs
+native_mob_navigation	game	touches neither ClientState nor ServerState fields	game/modding/native_mob_navigation.rs
+native_mob_navigation_flags_tests	game	touches neither ClientState nor ServerState fields	game/modding/native_mob_navigation_flags_tests.rs
+native_mob_refs	server	touches only ServerState fields	game/modding/native_mob_refs.rs
+native_mob_wanted_position	game	touches neither ClientState nor ServerState fields	game/modding/native_mob_wanted_position.rs
+native_mob_wanted_position_tests	server	touches only ServerState fields	game/modding/native_mob_wanted_position_tests.rs
+native_mobs	game	touches neither ClientState nor ServerState fields	game/modding/native_mobs.rs
+native_model_3d	client	touches only ClientState fields	game/modding/native_model_3d.rs
+native_motion	game	touches neither ClientState nor ServerState fields	game/modding/native_motion.rs
+native_mounts	server	touches only ServerState fields	game/modding/native_mounts.rs
+native_move_by_tests	server	touches only ServerState fields	game/modding/native_move_by_tests.rs
+native_namespaced_id	game	touches neither ClientState nor ServerState fields	game/modding/native_namespaced_id.rs
+native_net	client	touches only ClientState fields	game/modding/native_net.rs
+native_on_caught_fire_tests	game	touches neither ClientState nor ServerState fields	game/modding/native_on_caught_fire_tests.rs
+native_packet_builders	game	touches neither ClientState nor ServerState fields	game/modding/native_packet_builders.rs
+native_painting_renderers_tests	game	touches neither ClientState nor ServerState fields	game/modding/native_painting_renderers_tests.rs
+native_panel	client	touches only ClientState fields	game/modding/native_panel.rs
+native_panel_recipes	client	touches only ClientState fields	game/modding/native_panel_recipes.rs
+native_panel_wheel_tests	game	touches neither ClientState nor ServerState fields	game/modding/native_panel_wheel_tests.rs
+native_part_tables	game	touches neither ClientState nor ServerState fields	game/modding/native_part_tables.rs
+native_part_tables_tests	game	touches neither ClientState nor ServerState fields	game/modding/native_part_tables_tests.rs
+native_passage_cross	client	touches only ClientState fields	game/modding/native_passage_cross.rs
+native_passages	server	touches only ServerState fields	game/modding/native_passages.rs
+native_path_types_tests	server	touches only ServerState fields	game/modding/native_path_types_tests.rs
+native_pending_children	game	touches neither ClientState nor ServerState fields	game/modding/native_pending_children.rs
+native_place_feature	game	touches neither ClientState nor ServerState fields	game/modding/native_place_feature.rs
+native_place_feature_tests	game	touches neither ClientState nor ServerState fields	game/modding/native_place_feature_tests.rs
+native_placement_state_tests	game	touches neither ClientState nor ServerState fields	game/modding/native_placement_state_tests.rs
+native_player_attack	game	touches neither ClientState nor ServerState fields	game/modding/native_player_attack.rs
+native_player_break	server	touches only ServerState fields	game/modding/native_player_break.rs
+native_player_cooldowns	server	touches only ServerState fields	game/modding/native_player_cooldowns.rs
+native_player_death	game	touches neither ClientState nor ServerState fields	game/modding/native_player_death.rs
+native_player_destroyed_block_tests	server	touches only ServerState fields	game/modding/native_player_destroyed_block_tests.rs
+native_player_disconnect	game	touches neither ClientState nor ServerState fields	game/modding/native_player_disconnect.rs
+native_player_disconnect_tests	game	touches neither ClientState nor ServerState fields	game/modding/native_player_disconnect_tests.rs
+native_player_ender_chest	server	touches only ServerState fields	game/modding/native_player_ender_chest.rs
+native_player_ender_chest_tests	server	touches only ServerState fields	game/modding/native_player_ender_chest_tests.rs
+native_player_food	game	touches neither ClientState nor ServerState fields	game/modding/native_player_food.rs
+native_player_inventory	game	touches neither ClientState nor ServerState fields	game/modding/native_player_inventory.rs
+native_player_inventory_tests	game	touches neither ClientState nor ServerState fields	game/modding/native_player_inventory_tests.rs
+native_player_level_tests	server	touches only ServerState fields	game/modding/native_player_level_tests.rs
+native_player_modes	server	touches only ServerState fields	game/modding/native_player_modes.rs
+native_player_move_tests	server	touches only ServerState fields	game/modding/native_player_move_tests.rs
+native_player_moves	game	touches neither ClientState nor ServerState fields	game/modding/native_player_moves.rs
+native_player_persistent_data	game	touches neither ClientState nor ServerState fields	game/modding/native_player_persistent_data.rs
+native_player_persistent_data_tests	game	touches neither ClientState nor ServerState fields	game/modding/native_player_persistent_data_tests.rs
+native_player_place	game	touches neither ClientState nor ServerState fields	game/modding/native_player_place.rs
+native_player_place_tests	game	touches neither ClientState nor ServerState fields	game/modding/native_player_place_tests.rs
+native_player_reach	game	touches neither ClientState nor ServerState fields	game/modding/native_player_reach.rs
+native_player_respawn	server	touches only ServerState fields	game/modding/native_player_respawn.rs
+native_player_respawn_tests	game	touches neither ClientState nor ServerState fields	game/modding/native_player_respawn_tests.rs
+native_player_spectating_tests	game	touches neither ClientState nor ServerState fields	game/modding/native_player_spectating_tests.rs
+native_player_stats	server	touches only ServerState fields	game/modding/native_player_stats.rs
+native_player_visibility	server	touches only ServerState fields	game/modding/native_player_visibility.rs
+native_player_visibility_tests	server	touches only ServerState fields	game/modding/native_player_visibility_tests.rs
+native_pool_elements	game	touches neither ClientState nor ServerState fields	game/modding/native_pool_elements.rs
+native_portal_destination	game	touches neither ClientState nor ServerState fields	game/modding/native_portal_destination.rs
+native_profiles	game	touches neither ClientState nor ServerState fields	game/modding/native_profiles.rs
+native_projectile_launch	server	touches only ServerState fields	game/modding/native_projectile_launch.rs
+native_projectile_launch_tests	server	touches only ServerState fields	game/modding/native_projectile_launch_tests.rs
+native_projectile_refs	server	touches only ServerState fields	game/modding/native_projectile_refs.rs
+native_projectiles	server	touches only ServerState fields	game/modding/native_projectiles.rs
+native_quick_move	game	touches neither ClientState nor ServerState fields	game/modding/native_quick_move.rs
+native_raid_refs	server	touches only ServerState fields	game/modding/native_raid_refs.rs
+native_recipe_properties	game	touches neither ClientState nor ServerState fields	game/modding/native_recipe_properties.rs
+native_recipe_sync	game	touches neither ClientState nor ServerState fields	game/modding/native_recipe_sync.rs
+native_recipe_sync_tests	server	touches only ServerState fields	game/modding/native_recipe_sync_tests.rs
+native_recipes	game	touches neither ClientState nor ServerState fields	game/modding/native_recipes.rs
+native_registry_entries	game	touches neither ClientState nor ServerState fields	game/modding/native_registry_entries.rs
+native_registry_entries_tests	game	touches neither ClientState nor ServerState fields	game/modding/native_registry_entries_tests.rs
+native_registry_history_tests	game	touches neither ClientState nor ServerState fields	game/modding/native_registry_history_tests.rs
+native_registry_ids	game	touches neither ClientState nor ServerState fields	game/modding/native_registry_ids.rs
+native_registry_ids_tests	server	touches only ServerState fields	game/modding/native_registry_ids_tests.rs
+native_registry_processor_tests	game	touches neither ClientState nor ServerState fields	game/modding/native_registry_processor_tests.rs
+native_render_pair_tests	client	touches only ClientState fields	game/modding/native_render_pair_tests.rs
+native_render_visibility	game	touches neither ClientState nor ServerState fields	game/modding/native_render_visibility.rs
+native_requires_tool_tests	game	touches neither ClientState nor ServerState fields	game/modding/native_requires_tool_tests.rs
+native_resources	server	touches only ServerState fields	game/modding/native_resources.rs
+native_ride_player	game	touches neither ClientState nor ServerState fields	game/modding/native_ride_player.rs
+native_rotate	game	touches neither ClientState nor ServerState fields	game/modding/native_rotate.rs
+native_scene	client	touches only ClientState fields	game/modding/native_scene.rs
+native_scene_live	client	touches only ClientState fields	game/modding/native_scene_live.rs
+native_scene_live_tests	client	touches only ClientState fields	game/modding/native_scene_live_tests.rs
+native_scoreboard	server	touches only ServerState fields	game/modding/native_scoreboard.rs
+native_scoreboard_teams	game	touches neither ClientState nor ServerState fields	game/modding/native_scoreboard_teams.rs
+native_section_visibility	game	touches neither ClientState nor ServerState fields	game/modding/native_section_visibility.rs
+native_server	game	touches both ClientState and ServerState fields	game/modding/native_server.rs
+native_server_distances	game	touches neither ClientState nor ServerState fields	game/modding/native_server_distances.rs
+native_server_max_players	game	touches neither ClientState nor ServerState fields	game/modding/native_server_max_players.rs
+native_server_max_players_tests	game	touches neither ClientState nor ServerState fields	game/modding/native_server_max_players_tests.rs
+native_shaders	client	touches only ClientState fields	game/modding/native_shaders.rs
+native_shield_totem_tests	server	touches only ServerState fields	game/modding/native_shield_totem_tests.rs
+native_singleplayer_owner	server	touches only ServerState fields	game/modding/native_singleplayer_owner.rs
+native_singleplayer_owner_tests	server	touches only ServerState fields	game/modding/native_singleplayer_owner_tests.rs
+native_small_reads_tests	client	touches only ClientState fields	game/modding/native_small_reads_tests.rs
+native_smoke_source_tests	game	touches neither ClientState nor ServerState fields	game/modding/native_smoke_source_tests.rs
+native_sound_refs	server	touches only ServerState fields	game/modding/native_sound_refs.rs
+native_sound_seed_tests	game	touches neither ClientState nor ServerState fields	game/modding/native_sound_seed_tests.rs
+native_special_renderers	client	touches only ClientState fields	game/modding/native_special_renderers.rs
+native_spectator_shader_tests	client	touches only ClientState fields	game/modding/native_spectator_shader_tests.rs
+native_state_shapes	game	touches neither ClientState nor ServerState fields	game/modding/native_state_shapes.rs
+native_structure_placement	game	touches neither ClientState nor ServerState fields	game/modding/native_structure_placement.rs
+native_structure_types	game	touches neither ClientState nor ServerState fields	game/modding/native_structure_types.rs
+native_structures	game	touches neither ClientState nor ServerState fields	game/modding/native_structures.rs
+native_success_broadcast_tests	server	touches only ServerState fields	game/modding/native_success_broadcast_tests.rs
+native_surface	server	touches only ServerState fields	game/modding/native_surface.rs
+native_tags	game	touches neither ClientState nor ServerState fields	game/modding/native_tags.rs
+native_terrain_model	client	touches only ClientState fields	game/modding/native_terrain_model.rs
+native_text_json	game	touches neither ClientState nor ServerState fields	game/modding/native_text_json.rs
+native_text_legacy	game	touches neither ClientState nor ServerState fields	game/modding/native_text_legacy.rs
+native_text_nbt	game	touches neither ClientState nor ServerState fields	game/modding/native_text_nbt.rs
+native_tick_time	server	touches only ServerState fields	game/modding/native_tick_time.rs
+native_ticks	game	touches neither ClientState nor ServerState fields	game/modding/native_ticks.rs
+native_tnt_renderers_tests	game	touches neither ClientState nor ServerState fields	game/modding/native_tnt_renderers_tests.rs
+native_trapdoor_ladder	game	touches neither ClientState nor ServerState fields	game/modding/native_trapdoor_ladder.rs
+native_tree_grow	game	touches neither ClientState nor ServerState fields	game/modding/native_tree_grow.rs
+native_unspawned_mob	game	touches neither ClientState nor ServerState fields	game/modding/native_unspawned_mob.rs
+native_viewed_levels	game	touches neither ClientState nor ServerState fields	game/modding/native_viewed_levels.rs
+native_visuals	game	touches neither ClientState nor ServerState fields	game/modding/native_visuals.rs
+native_world_columns	game	touches neither ClientState nor ServerState fields	game/modding/native_world_columns.rs
+native_world_edit	game	touches neither ClientState nor ServerState fields	game/modding/native_world_edit.rs
+native_world_read	game	touches neither ClientState nor ServerState fields	game/modding/native_world_read.rs
+native_worldgen	game	touches neither ClientState nor ServerState fields	game/modding/native_worldgen.rs
+native_worldgen_parts	game	touches neither ClientState nor ServerState fields	game/modding/native_worldgen_parts.rs
+natural_spawning	server	touches only ServerState fields	game/mobs/natural_spawning.rs
+nautili	game	touches both ClientState and ServerState fields	game/mobs/nautili.rs
+neighbor_notify_tests	game	touches neither ClientState nor ServerState fields	game/interface/neighbor_notify_tests.rs
+neoforge_block_maps	game	touches neither ClientState nor ServerState fields	game/modding/neoforge_block_maps.rs
+neoforge_mob_maps	game	touches neither ClientState nor ServerState fields	game/modding/neoforge_mob_maps.rs
+net_harness	game	touches neither ClientState nor ServerState fields	game/network/net_harness.rs
+nether_portal	game	touches both ClientState and ServerState fields	game/blocks/nether_portal.rs
+no_resources	game	touches neither ClientState nor ServerState fields	game/runtime/no_resources.rs
+ominous_item_spawner	server	touches only ServerState fields	game/mobs/ominous_item_spawner/mod.rs
+options	client	touches only ClientState fields	game/interface/options.rs
+options_close_tests	client	touches only ClientState fields	game/interface/options_close_tests.rs
+orb_data_tests	server	touches only ServerState fields	game/entities/orb_data_tests.rs
+orb_merge_tests	game	touches neither ClientState nor ServerState fields	game/modding/orb_merge_tests.rs
+orb_score_store_tests	game	touches neither ClientState nor ServerState fields	game/entities/orb_score_store_tests.rs
+ordered_tick	server	touches only ServerState fields	game/world/ordered_tick.rs
+original_player	game	touches neither ClientState nor ServerState fields	game/modding/original_player.rs
+owner_link	server	touches only ServerState fields	game/world/owner_link.rs
+pack_clouds_frame_tests	client	touches only ClientState fields	game/interface/pack_clouds_frame_tests.rs
+pack_finders	server	touches only ServerState fields	game/modding/pack_finders/mod.rs
+pack_sources_tests	game	touches neither ClientState nor ServerState fields	game/interface/pack_sources_tests.rs
+packs	client	touches only ClientState fields	game/world/packs/mod.rs
+pad	game	touches both ClientState and ServerState fields	game/interface/pad/mod.rs
+pad_actions	client	touches only ClientState fields	game/interface/pad_actions.rs
+pad_craft	client	touches only ClientState fields	game/interface/pad_craft.rs
+pad_menu	client	touches only ClientState fields	game/interface/pad_menu.rs
+paintings	server	touches only ServerState fields	game/entities/paintings.rs
+pandas	server	touches only ServerState fields	game/mobs/pandas.rs
+parity_fixtures	game	touches neither ClientState nor ServerState fields	game/parity_fixtures.rs
+part_admission	game	touches neither ClientState nor ServerState fields	game/modding/part_admission.rs
+part_admission_tests	game	touches neither ClientState nor ServerState fields	game/modding/part_admission_tests.rs
+part_shearing	server	touches only ServerState fields	game/mobs/part_shearing.rs
+particle_culling	game	touches neither ClientState nor ServerState fields	game/interface/particle_culling.rs
+passengers	game	touches both ClientState and ServerState fields (opposite side in tests)	game/entities/passengers.rs
+payload_transport	client	touches only ClientState fields	game/modding/payload_transport.rs
+pending_births	server	touches only ServerState fields	game/mobs/pending_births.rs
+perf_link	game	touches neither ClientState nor ServerState fields	game/interface/perf_link.rs
+perf_remote	game	touches neither ClientState nor ServerState fields	game/interface/perf_remote.rs
+persist	server	touches only ServerState fields	game/world/persist.rs
+perspective	client	touches only ClientState fields	game/interface/perspective.rs
+pick_accumulator	client	touches only ClientState fields	game/entities/pick_accumulator.rs
+pick_entity	game	touches both ClientState and ServerState fields (opposite side in tests)	game/entities/pick_entity.rs
+pick_hotbar	game	touches neither ClientState nor ServerState fields	game/items/pick_hotbar.rs
+pickups	game	touches neither ClientState nor ServerState fields	game/entities/pickups.rs
+piglin_admire_tests	game	touches neither ClientState nor ServerState fields	game/mobs/piglin_admire_tests.rs
+piglin_conversion_tests	game	touches neither ClientState nor ServerState fields	game/mobs/piglin_conversion_tests.rs
+piglins	server	touches only ServerState fields	game/mobs/piglins.rs
+piston_carry	game	touches neither ClientState nor ServerState fields	game/blocks/piston_carry.rs
+piston_carry_state	game	touches both ClientState and ServerState fields	game/blocks/piston_carry_state.rs
+piston_nbt	game	touches neither ClientState nor ServerState fields	game/world/piston_nbt.rs
+piston_push	game	touches both ClientState and ServerState fields (opposite side in tests)	game/blocks/piston_push.rs
+place_feature_tests	server	touches only ServerState fields	game/blocks/place_feature_tests.rs
+play_input	client	touches only ClientState fields	game/interface/play_input.rs
+play_keys	game	touches both ClientState and ServerState fields (opposite side in tests)	game/interface/play_keys.rs
+play_ping_tests	server	touches only ServerState fields	game/interface/play_ping_tests.rs
+player_destroy	game	touches neither ClientState nor ServerState fields	game/blocks/player_destroy.rs
+player_destroy_item_tests	game	touches both ClientState and ServerState fields	game/items/player_destroy_item_tests.rs
+player_destroy_tests	server	touches only ServerState fields	game/blocks/player_destroy_tests.rs
+player_equip	server	touches only ServerState fields	game/entities/player_equip.rs
+player_equipment_change_tests	game	touches neither ClientState nor ServerState fields	game/modding/player_equipment_change_tests.rs
+player_hit_sources	game	touches neither ClientState nor ServerState fields	game/items/player_hit_sources.rs
+player_kill_credit_tests	game	touches neither ClientState nor ServerState fields	game/network/player_kill_credit_tests.rs
+player_residency	server	touches only ServerState fields	game/entities/player_residency.rs
+player_residency_tests	server	touches only ServerState fields	game/entities/player_residency_tests.rs
+player_save_projection_tests	server	touches only ServerState fields	game/world/player_save_projection_tests.rs
+player_spawn	game	touches both ClientState and ServerState fields	game/world/player_spawn.rs
+pointer_capture	game	touches both ClientState and ServerState fields	game/interface/pointer_capture.rs
+polytone_frame_tests	client	touches only ClientState fields	game/interface/polytone_frame_tests.rs
+portal_ticking_tests	game	touches neither ClientState nor ServerState fields	game/world/portal_ticking_tests.rs
+postprocess	game	touches neither ClientState nor ServerState fields	game/world/postprocess.rs
+potent_sulfur	server	touches only ServerState fields	game/blocks/potent_sulfur.rs
+potions	game	touches both ClientState and ServerState fields	game/items/potions.rs
+powder_snow	game	touches neither ClientState nor ServerState fields	game/blocks/powder_snow.rs
+primary_items	game	touches neither ClientState nor ServerState fields	game/items/primary_items.rs
+profile_capture	game	touches neither ClientState nor ServerState fields	game/interface/profile_capture.rs
+profile_lines	game	touches neither ClientState nor ServerState fields	game/interface/profile_lines.rs
+projectile_block_impacts	server	touches only ServerState fields	game/mobs/projectile_block_impacts.rs
+projectile_spawned	game	touches neither ClientState nor ServerState fields	game/items/projectile_spawned.rs
+projectile_spawned_tests	server	touches only ServerState fields	game/items/projectile_spawned_tests.rs
+projectile_spawned_validation	game	touches neither ClientState nor ServerState fields	game/items/projectile_spawned_validation.rs
+published_collision_mob_tests	game	touches neither ClientState nor ServerState fields	game/modding/published_collision_mob_tests.rs
+published_loops	game	touches neither ClientState nor ServerState fields	game/modding/published_loops.rs
+published_shape_game_tests	game	touches neither ClientState nor ServerState fields	game/modding/published_shape_game_tests.rs
+pumpkin	game	touches neither ClientState nor ServerState fields	game/blocks/pumpkin.rs
+pvp	client	touches only ClientState fields	game/entities/pvp.rs
+quick_actions	client	touches only ClientState fields	game/interface/quick_actions.rs
+raids	game	touches both ClientState and ServerState fields (opposite side in tests)	game/mobs/raids/mod.rs
+rail_parts_tests	server	touches only ServerState fields	game/entities/rail_parts_tests.rs
+random_order_tests	game	touches neither ClientState nor ServerState fields	game/blocks/random_order_tests.rs
+random_textures	game	touches neither ClientState nor ServerState fields	game/interface/random_textures.rs
+raw_backlog	game	touches neither ClientState nor ServerState fields	game/network/raw_backlog.rs
+recipe_book	client	touches only ClientState fields	game/items/recipe_book.rs
+recipe_book_variants_tests	server	touches only ServerState fields	game/interface/recipe_book_variants_tests.rs
+recipe_properties_tests	game	touches neither ClientState nor ServerState fields	game/interface/recipe_properties_tests.rs
+rectangular_recipe_remainder_tests	game	touches neither ClientState nor ServerState fields	game/modding/rectangular_recipe_remainder_tests.rs
+registration_capability_coverage	game	touches neither ClientState nor ServerState fields	game/modding/registration_capability_coverage.rs
+remote	game	touches both ClientState and ServerState fields	game/network/remote/mod.rs
+remote_block_writes	client	touches only ClientState fields	game/network/remote_block_writes.rs
+remote_camera	client	touches only ClientState fields	game/network/remote_camera.rs
+remote_chat	client	touches only ClientState fields	game/network/remote_chat.rs
+remote_chunks	game	touches neither ClientState nor ServerState fields	game/network/remote_chunks.rs
+remote_mob_data	game	touches neither ClientState nor ServerState fields	game/network/remote_mob_data.rs
+remote_mob_particles	game	touches neither ClientState nor ServerState fields	game/network/remote_mob_particles.rs
+remote_mob_use	game	touches neither ClientState nor ServerState fields	game/network/remote_mob_use.rs
+remote_mob_use_tests	game	touches neither ClientState nor ServerState fields	game/network/remote_mob_use_tests.rs
+remote_objects	client	touches only ClientState fields	game/network/remote_objects.rs
+remote_projectiles	game	touches both ClientState and ServerState fields	game/network/remote_projectiles.rs
+remote_removal	client	touches only ClientState fields	game/network/remote_removal.rs
+remote_save_tests	client	touches only ClientState fields	game/world/remote_save_tests.rs
+remote_stations	game	touches neither ClientState nor ServerState fields	game/network/remote_stations.rs
+remote_tags	game	touches neither ClientState nor ServerState fields	game/network/remote_tags.rs
+remote_vehicles	client	touches only ClientState fields	game/network/remote_vehicles.rs
+render_control	game	touches neither ClientState nor ServerState fields	game/interface/render_control.rs
+render_settings	client	touches only ClientState fields	game/interface/render_settings.rs
+render_tick	client	touches only ClientState fields	game/interface/render_tick.rs
+replay	client	touches only ClientState fields	game/runtime/replay.rs
+repro	game	touches both ClientState and ServerState fields	game/runtime/repro.rs
+residency_tick	game	touches neither ClientState nor ServerState fields	game/entities/residency_tick.rs
+resident_state	game	touches neither ClientState nor ServerState fields	game/entities/resident_state.rs
+resource_load	game	touches neither ClientState nor ServerState fields	game/runtime/resource_load.rs
+resource_loader	client	touches only ClientState fields	game/runtime/resource_loader.rs
+resource_tables	game	touches neither ClientState nor ServerState fields	game/runtime/resource_tables.rs
+respawn_anchor	server	touches only ServerState fields	game/blocks/respawn_anchor.rs
+respawn_position	game	touches neither ClientState nor ServerState fields	game/world/respawn_position.rs
+respawn_position_tests	game	touches neither ClientState nor ServerState fields	game/blocks/respawn_position_tests.rs
+rule_replacements	game	touches neither ClientState nor ServerState fields	game/modding/rule_replacements.rs
+runtime_levels	server	touches only ServerState fields	game/world/runtime_levels.rs
+runtime_levels_tests	server	touches only ServerState fields	game/world/runtime_levels_tests.rs
+runtime_reset_tests	game	touches neither ClientState nor ServerState fields	game/runtime/runtime_reset_tests.rs
+save_format_tests	game	touches neither ClientState nor ServerState fields	game/world/save_format_tests.rs
+save_load_pass_tests	game	touches neither ClientState nor ServerState fields	game/world/save_load_pass_tests.rs
+save_pass_tests	server	touches only ServerState fields	game/world/save_pass_tests.rs
+saves_control	game	touches neither ClientState nor ServerState fields	game/runtime/saves_control.rs
+saving	game	touches both ClientState and ServerState fields	game/world/saving.rs
+scheduled_tasks	game	touches neither ClientState nor ServerState fields	game/modding/scheduled_tasks.rs
+scoreboard	game	touches both ClientState and ServerState fields	game/interface/scoreboard/mod.rs
+screen_backgrounds	client	touches only ClientState fields	game/interface/screen_backgrounds.rs
+screen_build	client	touches only ClientState fields	game/interface/screen_build.rs
+screen_build_fixture	client	touches only ClientState fields	game/interface/screen_build_fixture.rs
+screen_info	game	touches neither ClientState nor ServerState fields	game/interface/screen_info.rs
+screen_render_phase_tests	client	touches only ClientState fields	game/interface/screen_render_phase_tests.rs
+screen_room	client	touches only ClientState fields	game/interface/screen_room.rs
+screen_widgets	client	touches only ClientState fields	game/interface/screen_widgets.rs
+screens	client	touches only ClientState fields	game/interface/screens.rs
+screenshot_sequence	client	touches only ClientState fields	game/runtime/screenshot_sequence.rs
+screenshot_writer	game	touches neither ClientState nor ServerState fields	game/interface/screenshot_writer.rs
+sculk	game	touches both ClientState and ServerState fields	game/blocks/sculk.rs
+sculk_fixture	server	touches only ServerState fields	game/blocks/sculk_fixture.rs
+seats	game	touches neither ClientState nor ServerState fields	game/entities/seats.rs
+server_lifecycle	server	touches only ServerState fields	game/world/server_lifecycle/mod.rs
+server_links	client	touches only ClientState fields	game/network/server_links.rs
+server_packs	client	touches only ClientState fields	game/world/server_packs.rs
+server_reload	server	touches only ServerState fields	game/world/server_reload/mod.rs
+server_travel	server	touches only ServerState fields	game/world/server_travel.rs
+setblock_order_tests	game	touches neither ClientState nor ServerState fields	game/administration/setblock_order_tests.rs
+shader_pack_switch_tests	client	touches only ClientState fields	game/interface/shader_pack_switch_tests.rs
+shader_packs	game	touches both ClientState and ServerState fields (opposite side in tests)	game/interface/shader_packs.rs
+shear_refind_tests	server	touches only ServerState fields	game/mobs/shear_refind_tests.rs
+sheep_dye	game	touches neither ClientState nor ServerState fields	game/mobs/sheep_dye.rs
+shelf	game	touches neither ClientState nor ServerState fields	game/blocks/shelf.rs
+shield	server	touches only ServerState fields	game/items/shield.rs
+shoulders	game	touches neither ClientState nor ServerState fields	game/mobs/shoulders.rs
+sign_chain_tests	game	touches neither ClientState nor ServerState fields	game/interface/tests/sign_chain_tests.rs
+sign_edit	game	touches both ClientState and ServerState fields	game/interface/sign_edit.rs
+sign_outline_tests	client	touches only ClientState fields	game/interface/tests/sign_outline_tests.rs
+sign_use_tests	game	touches neither ClientState nor ServerState fields	game/interface/tests/sign_use_tests.rs
+slot_changes	server	touches only ServerState fields	game/modding/slot_changes.rs
+slot_pickup_tests	game	touches neither ClientState nor ServerState fields	game/modding/slot_pickup_tests.rs
+slot_rules	game	touches neither ClientState nor ServerState fields	game/modding/slot_rules.rs
+slot_rules_tests	game	touches neither ClientState nor ServerState fields	game/modding/slot_rules_tests.rs
+slot_take_tests	game	touches neither ClientState nor ServerState fields	game/modding/slot_take_tests.rs
+slot_takes	game	touches neither ClientState nor ServerState fields	game/modding/slot_takes.rs
+smithing_icons	game	touches neither ClientState nor ServerState fields	game/interface/smithing_icons.rs
+sniffers	game	touches neither ClientState nor ServerState fields	game/mobs/sniffers.rs
+social	client	touches only ClientState fields	game/network/social.rs
+spawn_save_tests	game	touches neither ClientState nor ServerState fields	game/world/spawn_save_tests.rs
+spawn_yaw_tests	game	touches neither ClientState nor ServerState fields	game/mobs/spawn_yaw_tests.rs
+spawner	game	touches both ClientState and ServerState fields	game/mobs/spawner.rs
+spawner_client_tick_tests	game	touches neither ClientState nor ServerState fields	game/mobs/spawner_client_tick_tests.rs
+spear	server	touches only ServerState fields	game/items/spear.rs
+spear_players	server	touches only ServerState fields	game/items/spear_players.rs
+special_attack_fixture	server	touches only ServerState fields	game/items/special_attack_fixture.rs
+special_attacks	server	touches only ServerState fields	game/items/special_attacks.rs
+spectator	client	touches only ClientState fields	game/interface/spectator.rs
+spill	server	touches only ServerState fields	game/blocks/spill.rs
+splash_water	server	touches only ServerState fields	game/blocks/splash_water.rs
+stack_attribute_tooltip	game	touches neither ClientState nor ServerState fields	game/items/stack_attribute_tooltip.rs
+stacked_on_other	client	touches only ClientState fields	game/modding/stacked_on_other.rs
+stacked_on_other_tests	game	touches both ClientState and ServerState fields	game/modding/stacked_on_other_tests.rs
+stand_break_loot_tests	server	touches only ServerState fields	game/entities/stand_break_loot_tests.rs
+stand_command_hurt_tests	server	touches only ServerState fields	game/entities/stand_command_hurt_tests.rs
+stand_equipment_change_tests	game	touches neither ClientState nor ServerState fields	game/interface/stand_equipment_change_tests.rs
+stand_low_health_tests	game	touches neither ClientState nor ServerState fields	game/entities/stand_low_health_tests.rs
+start_riding_refusal_tests	game	touches neither ClientState nor ServerState fields	game/modding/start_riding_refusal_tests.rs
+startup_cpu_tests	game	touches neither ClientState nor ServerState fields	game/runtime/startup_cpu_tests.rs
+startup_menu	client	touches only ClientState fields	game/interface/startup_menu.rs
+startup_options	game	touches neither ClientState nor ServerState fields	game/interface/startup_options.rs
+startup_progress	game	touches neither ClientState nor ServerState fields	game/runtime/startup_progress.rs
+state_at_viewpoint_tests	game	touches neither ClientState nor ServerState fields	game/interface/state_at_viewpoint_tests.rs
+state_digest	server	touches only ServerState fields	game/world/state_digest.rs
+state_resolver	game	touches neither ClientState nor ServerState fields	game/modding/state_resolver.rs
+stateful_block_entity_tests	game	touches neither ClientState nor ServerState fields	game/runtime/stateful_block_entity_tests.rs
+station_control	client	touches only ClientState fields	game/runtime/station_control.rs
+stations	game	touches both ClientState and ServerState fields	game/blocks/stations.rs
+stats	server	touches only ServerState fields	game/interface/stats.rs
+stats_screen	client	touches only ClientState fields	game/interface/stats_screen.rs
+storage	game	touches both ClientState and ServerState fields	game/world/storage.rs
+storage_alias_tests	server	touches only ServerState fields	game/runtime/storage_alias_tests.rs
+structure_blocks	server	touches only ServerState fields	game/administration/structure_blocks.rs
+structure_edit	game	touches neither ClientState nor ServerState fields	game/administration/structure_edit.rs
+structures	game	touches neither ClientState nor ServerState fields	game/administration/structures.rs
+studio	client	touches only ClientState fields	game/interface/studio.rs
+subtitle_hud	client	touches only ClientState fields	game/interface/subtitle_hud.rs
+subtitles	game	touches neither ClientState nor ServerState fields	game/interface/subtitles.rs
+sulfur_bucket_tests	client	touches only ClientState fields	game/blocks/sulfur_bucket_tests.rs
+sulfur_cubes	server	touches only ServerState fields	game/mobs/sulfur_cubes.rs
+sulfur_prime_phase_tests	game	touches neither ClientState nor ServerState fields	game/mobs/sulfur_prime_phase_tests.rs
+swing_packet	game	touches neither ClientState nor ServerState fields	game/network/swing_packet.rs
+sync_background_tests	client	touches only ClientState fields	game/interface/sync_background_tests.rs
+table_enchant	game	touches neither ClientState nor ServerState fields	game/items/table_enchant.rs
+test_block_edit	game	touches neither ClientState nor ServerState fields	game/administration/test_block_edit.rs
+test_blocks	game	touches neither ClientState nor ServerState fields	game/administration/test_blocks.rs
+test_entities	game	touches neither ClientState nor ServerState fields	game/administration/test_entities.rs
+test_environments	game	touches neither ClientState nor ServerState fields	game/administration/test_environments.rs
+test_instance_edit	game	touches neither ClientState nor ServerState fields	game/administration/test_instance_edit.rs
+test_instances	game	touches both ClientState and ServerState fields	game/administration/test_instances.rs
+test_pos_guest_tests	server	touches only ServerState fields	game/runtime/test_pos_guest_tests.rs
+text_displays	client	touches only ClientState fields	game/entities/text_displays.rs
+text_expression_tests	client	touches only ClientState fields	game/interface/text_expression_tests.rs
+thrown_item_draw	game	touches neither ClientState nor ServerState fields	game/mobs/thrown_item_draw.rs
+tick_script	client	touches only ClientState fields	game/world/tick_script.rs
+titles	game	touches both ClientState and ServerState fields	game/interface/titles.rs
+tnt	server	touches only ServerState fields	game/entities/tnt.rs
+toast_manager	client	touches only ClientState fields	game/interface/toast_manager.rs
+tool_modification	game	touches neither ClientState nor ServerState fields	game/blocks/tool_modification.rs
+totem	game	touches both ClientState and ServerState fields	game/items/totem.rs
+trading	game	touches both ClientState and ServerState fields	game/items/trading.rs
+transaction_entities_tests	server	touches only ServerState fields	game/runtime/transaction_entities_tests.rs
+transactions	server	touches only ServerState fields	game/runtime/transactions.rs
+transient_blocks	client	touches only ClientState fields	game/blocks/transient_blocks.rs
+trial_spawner	server	touches only ServerState fields	game/mobs/trial_spawner.rs
+trial_visuals	game	touches neither ClientState nor ServerState fields	game/blocks/trial_visuals.rs
+trident	game	touches both ClientState and ServerState fields	game/items/trident.rs
+tutorial	game	touches both ClientState and ServerState fields	game/interface/tutorial.rs
+typed_payloads	game	touches neither ClientState nor ServerState fields	game/modding/typed_payloads.rs
+ui_control	client	touches only ClientState fields	game/runtime/ui_control.rs
+ui_core_shader_tests	game	touches neither ClientState nor ServerState fields	game/runtime/ui_core_shader_tests.rs
+upload_pace	game	touches neither ClientState nor ServerState fields	game/interface/upload_pace.rs
+use_hand	game	touches both ClientState and ServerState fields (opposite side in tests)	game/items/use_hand.rs
+use_same_item_tests	client	touches only ClientState fields	game/items/use_same_item_tests.rs
+use_stop_tests	server	touches only ServerState fields	game/items/use_stop_tests.rs
+using_item	client	touches only ClientState fields	game/items/using_item.rs
+vault	server	touches only ServerState fields	game/blocks/vault.rs
+vehicle_removal_tests	server	touches only ServerState fields	game/entities/vehicle_removal_tests.rs
+vehicle_teleport	server	touches only ServerState fields	game/entities/vehicle_teleport.rs
+vibration_source_tests	server	touches only ServerState fields	game/blocks/vibration_source_tests.rs
+vibration_tests	server	touches only ServerState fields	game/blocks/vibration_tests.rs
+view_pass	server	touches only ServerState fields	game/world/view_pass.rs
+viewed_worlds	game	touches neither ClientState nor ServerState fields	game/network/viewed_worlds/mod.rs
+villager_client	game	touches neither ClientState nor ServerState fields	game/network/villager_client.rs
+villager_professions	server	touches only ServerState fields	game/world/villager_professions.rs
+villagers	server	touches only ServerState fields	game/mobs/villagers.rs
+visibility_unwind_tests	server	touches only ServerState fields	game/world/visibility_unwind_tests.rs
+wake_time	game	touches neither ClientState nor ServerState fields	game/world/wake_time.rs
+wandering_trader	server	touches only ServerState fields	game/mobs/wandering_trader.rs
+waxing	game	touches neither ClientState nor ServerState fields	game/blocks/waxing.rs
+waxing_tests	game	touches neither ClientState nor ServerState fields	game/blocks/waxing_tests.rs
+weather	game	touches neither ClientState nor ServerState fields	game/world/weather.rs
+win	client	touches only ClientState fields	game/interface/win.rs
+wind	game	touches both ClientState and ServerState fields	game/interface/wind.rs
+window_handler	client	touches only ClientState fields	game/runtime/window_handler.rs
+window_title	client	touches only ClientState fields	game/runtime/window_title.rs
+wither	server	touches only ServerState fields	game/mobs/wither.rs
+wither_star_tests	server	touches only ServerState fields	game/mobs/wither_star_tests.rs
+world_entry	game	touches both ClientState and ServerState fields	game/world/world_entry.rs
+world_fluid_tests	game	touches neither ClientState nor ServerState fields	game/interface/world_fluid_tests.rs
+world_fluids	game	touches neither ClientState nor ServerState fields	game/blocks/world_fluids.rs
+world_fluids_tests	game	touches neither ClientState nor ServerState fields	game/blocks/world_fluids_tests.rs
+world_loading	server	touches only ServerState fields	game/world/world_loading.rs
+world_name_tag_tests	client	touches only ClientState fields	game/modding/world_name_tag_tests.rs
+world_rest	game	touches neither ClientState nor ServerState fields	game/world/world_rest.rs
+world_session	client	touches only ClientState fields	game/world/world_session.rs
+world_test_def_tests	server	touches only ServerState fields	game/blocks/world_test_def_tests.rs
+world_update	game	touches both ClientState and ServerState fields	game/world/world_update.rs
+worn_boots	game	touches neither ClientState nor ServerState fields	game/items/worn_boots.rs
+xp_orb_targeting	game	touches neither ClientState nor ServerState fields	game/mobs/xp_orb_targeting.rs
+xp_repair_ratio_tests	server	touches only ServerState fields	game/items/xp_repair_ratio_tests.rs
+zombie_reinforcements	server	touches only ServerState fields	game/mobs/zombie_reinforcements.rs
+zombie_villagers	game	touches neither ClientState nor ServerState fields	game/mobs/zombie_villagers.rs
