@@ -3,6 +3,7 @@
 sunrise-client game::advancements::icons::tests::advancement_icons_reach_local_and_remote_ui_surfaces lib daily game-boot
 sunrise-client game::api_values::loot_values::query_tests::queried_ability_parts_grant_and_deny lib daily game-boot
 sunrise-client game::api_values::read_stack_tests::draw_consumers_render_nonresident_stacks lib daily game-boot
+sunrise-client game::beacon_cull_tests::a_beam_draws_inside_the_render_distance_only_and_leaves_with_its_column lib daily resources
 sunrise-client game::boarding::tests::the_own_player_boards_behind_a_guest_and_a_pig lib daily resources
 sunrise-client game::boarding::tests::the_own_player_in_the_third_seat_of_a_happy_ghast_sits_there lib daily resources
 sunrise-client game::commands::modprofile::tests::modprofile_state_and_report_side_effects lib daily child-process
@@ -44,6 +45,7 @@ sunrise-client game::lan_actions::tick::equipment_tick_tests::a_new_slot_takes_i
 sunrise-client game::lan_actions::tick::equipment_tick_tests::gear_swapped_and_swapped_back_before_the_tick_keeps_its_modifiers lib daily resources
 sunrise-client game::launch_api::tests::developer_offline_never_consumes_inherited_sessions lib daily child-process
 sunrise-client game::maps::tests::map_on_banner_in_adventure_mode_honours_can_place_on lib daily game-boot
+sunrise-client game::mod_raycast_tests::mod_raycasts_hit_loaded_blocks_only_with_far_terrain_on_or_off lib daily resources
 sunrise-client game::mods::tests::a_shared_missing_jar_stops_native_load_and_refuses_each_content_mod_row lib daily child-process
 sunrise-client game::mods::tests::content_overlay_validates_dependencies_and_orders_layers lib daily child-process
 sunrise-client game::mods::tests::native_content_follows_the_build_and_misplaced_content_follows_its_selection lib daily child-process
@@ -237,5 +239,3 @@ sunrise-client game::wind::wind_charged_tests::a_mobs_burst_leaves_vehicles_alon
 sunrise-client game::wind::wind_charged_tests::a_silent_wind_charge_bursts_without_a_sound lib daily game-boot
 sunrise-client game::wind::wind_charged_tests::a_wind_charged_mob_bursts_with_the_breezes_sound_unless_it_is_silent lib daily game-boot
 sunrise-client game::wither_star_tests::a_withers_nether_star_lives_12000_ticks lib daily game-boot
-sunrise-client game::beacon_cull_tests::a_beam_draws_inside_the_render_distance_only_and_leaves_with_its_column lib daily resources
-sunrise-client game::mod_raycast_tests::mod_raycasts_hit_loaded_blocks_only_with_far_terrain_on_or_off lib daily resources

@@ -1140,8 +1140,8 @@ sunrise-client game::native_configs::storage_tests::a_mod_saves_its_config_throu
 sunrise-client game::native_configs::tests::config_permissions_and_once_per_side_survive_two_worlds lib daily child-process
 sunrise-client game::native_custom_geometry::tests::a_partial_tint_alpha_matches_on_tinted_faces_only lib daily resources
 sunrise-client game::native_custom_geometry::tests::draw_model_instances_bakes_overflow_after_the_instanced_prefix lib daily resources
-sunrise-client game::native_custom_geometry::tests::draw_model_instances_matches_cpu_pixels lib daily resources
 sunrise-client game::native_custom_geometry::tests::draw_model_instances_culls_skips_invalid_and_grows_past_initial_hint lib daily resources
+sunrise-client game::native_custom_geometry::tests::draw_model_instances_matches_cpu_pixels lib daily resources
 sunrise-client game::native_custom_geometry::tests::each_stage_is_asked_in_frame_order_and_its_lines_draw_there lib daily resources
 sunrise-client game::native_custom_geometry::tests::fill_world_geometry_commits_an_accepted_batch lib daily resources
 sunrise-client game::native_custom_geometry::tests::persistent_groups_cpu_routes_and_lifetime lib daily resources
