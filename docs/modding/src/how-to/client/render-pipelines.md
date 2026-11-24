@@ -208,3 +208,26 @@ naming `RenderPipeline::textured`.
 
 A pipeline cannot take values of its own from the mod, sample more than one texture, or replace the
 vertex stage.
+
+## Participating in translated shader packs
+
+To let an active Iris/OptiFine shader pack shade a pipeline's geometry with its own program, declare
+its `PipelineGeometryClass` on registration via `.geometry_class(...)`:
+
+```rust,ignore
+event.register(
+    RenderPipeline::new(id.clone(), id, PipelineBlend::Translucent, WorldDepth::Tested)
+        .geometry_class(PipelineGeometryClass::Terrain),
+);
+```
+
+Each geometry class selects a standard Iris/OptiFine program fallback chain (for example,
+`Terrain` resolves `gbuffers_terrain -> gbuffers_textured_lit -> gbuffers_textured -> gbuffers_basic`,
+and `Particles` resolves `gbuffers_particles -> gbuffers_textured_lit -> gbuffers_textured -> gbuffers_basic`).
+Pipelines that need pack-defined programs, preprocessor defines, an auxiliary depth target, or
+per-frame pack uniforms attach an optional `.pack_binding(PackBinding::new()...)`. Startup refuses
+invalid GLSL identifiers, reserved Iris/OptiFine sampler/image/uniform names, and cross-mod or
+namespace collisions across samplers, uniforms, defines, and depth-target IDs.
+
+To check whether a shader pack is currently loaded and rendering the world (always `false` on the
+title screen, matching `IrisApi.isShaderPackInUse()`), call `host.shader_pack_active()`.
