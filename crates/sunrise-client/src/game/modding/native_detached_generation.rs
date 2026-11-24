@@ -1,10 +1,10 @@
 //! Detached off-world chunk generation (`DetachedChunkGenerator`, #5236).
 //!
 //! Hands mods a `Send + Sync + 'static` handle backed by the level's `VanillaTerrain` generator
-//! and a bounded, idle-expiring `GeneratorWorker` pool (`Mutex<Vec<(Instant, GeneratorWorker)>>`).
-//! Executes purely in memory on the caller's thread without mutating `World`, `Streaming`, tickets,
-//! or `SaveDir`. On level close, the open flag flips to `false` and every pooled worker is
-//! immediately dropped.
+//! and a bounded `GeneratorWorker` pool (`Mutex<Vec<GeneratorWorker>>`). Executes purely in
+//! memory on the caller's thread without mutating `World`, `Streaming`, tickets, or `SaveDir`. On
+//! level close or `DetachedGenerators` drop, the open flag flips to `false` and every pooled
+//! worker is immediately dropped.
 use super::native_chunk_snapshot::EngineChunkSnapshot;
 use super::{Dim, Game};
 use mod_api::__private::DetachedGeneratorBackend;
@@ -14,22 +14,20 @@ use mod_api::{
 };
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, Weak};
-use std::time::{Duration, Instant};
 use sunrise_client::assets::Properties;
 use sunrise_client::biome::Biomes;
+use sunrise_client::chunk::LevelShape;
 use sunrise_client::light::LightTables;
 use sunrise_client::streaming::chunk_pos_is_valid;
 use sunrise_client::vanillagen::VanillaTerrain;
 use sunrise_world::worldgen::generator::GeneratorWorker;
 
-/// Pooled `GeneratorWorker`s idle longer than this are dropped on the next checkout/return so
-/// quiet threads never pin multi-MB generator scratch memory.
-const WORKER_IDLE_TTL: Duration = Duration::from_secs(5);
-/// Maximum idle workers retained per dimension pool; bounded by host CPU parallelism.
+/// Matches vanilla 26.3 `net.minecraft.util.Util.maxAllowedExecutorThreads()` (`Util.java:235-237`):
+/// `(Runtime.getRuntime().availableProcessors() - 1)` clamped to `1..=255`.
 fn max_pooled_workers() -> usize {
     std::thread::available_parallelism()
-        .map(|n| n.get())
-        .unwrap_or(4)
+        .map(|n| n.get().saturating_sub(1).clamp(1, 255))
+        .unwrap_or(1)
 }
 
 fn dim_of(key: DimensionKey) -> Dim {
@@ -52,13 +50,44 @@ fn panic_message(payload: Box<dyn std::any::Any + Send>) -> String {
 }
 
 /// Open detached chunk generators handed out by `LevelRef::detached_generator`, keyed by level.
-pub(super) type DetachedGenerators =
-    std::cell::RefCell<std::collections::HashMap<Dim, Arc<DetachedGeneratorState>>>;
+/// Dropping `Game` closes every remaining entry and releases its pooled `GeneratorWorker`s.
+#[derive(Default)]
+pub(super) struct DetachedGenerators(
+    std::cell::RefCell<std::collections::HashMap<Dim, Arc<DetachedGeneratorState>>>,
+);
+
+impl DetachedGenerators {
+    fn get_or_insert(&self, dim: Dim) -> Arc<DetachedGeneratorState> {
+        self.0
+            .borrow_mut()
+            .entry(dim)
+            .or_insert_with(|| Arc::new(DetachedGeneratorState::new()))
+            .clone()
+    }
+
+    fn close_dim(&self, dim: Dim) {
+        if let Some(state) = self.0.borrow_mut().remove(&dim) {
+            state.close();
+        }
+    }
+
+    fn close_all(&self) {
+        for (_, state) in self.0.borrow_mut().drain() {
+            state.close();
+        }
+    }
+}
+
+impl Drop for DetachedGenerators {
+    fn drop(&mut self) {
+        self.close_all();
+    }
+}
 
 /// Shared lifecycle + bounded idle-worker pool for one dimension's detached generator handles.
 pub(super) struct DetachedGeneratorState {
     open: AtomicBool,
-    workers: Mutex<Vec<(Instant, GeneratorWorker)>>,
+    workers: Mutex<Vec<GeneratorWorker>>,
 }
 
 impl DetachedGeneratorState {
@@ -84,21 +113,10 @@ impl DetachedGeneratorState {
     }
 
     fn checkout(&self, terrain: &VanillaTerrain) -> GeneratorWorker {
-        let now = Instant::now();
-        let mut stale = Vec::new();
         let reused = {
             let mut guard = self.workers.lock().unwrap_or_else(|e| e.into_inner());
-            let mut i = 0;
-            while i < guard.len() {
-                if now.saturating_duration_since(guard[i].0) > WORKER_IDLE_TTL {
-                    stale.push(guard.remove(i));
-                } else {
-                    i += 1;
-                }
-            }
-            guard.pop().map(|(_, worker)| worker)
+            guard.pop()
         };
-        drop(stale);
         reused.unwrap_or_else(|| terrain.new_worker())
     }
 
@@ -107,38 +125,25 @@ impl DetachedGeneratorState {
             return;
         }
         worker.release();
-        let now = Instant::now();
         let cap = max_pooled_workers();
-        let mut stale = Vec::new();
-        {
-            let mut guard = self.workers.lock().unwrap_or_else(|e| e.into_inner());
-            if !self.is_open() {
-                return;
-            }
-            let mut i = 0;
-            while i < guard.len() {
-                if now.saturating_duration_since(guard[i].0) > WORKER_IDLE_TTL {
-                    stale.push(guard.remove(i));
-                } else {
-                    i += 1;
-                }
-            }
-            if guard.len() < cap {
-                guard.push((now, worker));
-            }
+        let mut guard = self.workers.lock().unwrap_or_else(|e| e.into_inner());
+        if !self.is_open() {
+            return;
         }
-        drop(stale);
+        if guard.len() < cap {
+            guard.push(worker);
+        }
     }
 }
 
 struct EngineDetachedGenerator {
     terrain: Weak<VanillaTerrain>,
     state: Arc<DetachedGeneratorState>,
+    shape: LevelShape,
     states: Arc<super::api_values::block_state::Index>,
     biomes: Arc<Biomes>,
     properties: Properties,
     light_tables: Arc<LightTables>,
-    sky_light: bool,
 }
 
 impl EngineDetachedGenerator {
@@ -146,7 +151,13 @@ impl EngineDetachedGenerator {
         if !self.state.is_open() {
             return Err(GenerationError::Unavailable);
         }
-        self.terrain.upgrade().ok_or(GenerationError::Unavailable)
+        match self.terrain.upgrade() {
+            Some(terrain) => Ok(terrain),
+            None => {
+                self.state.close();
+                Err(GenerationError::Unavailable)
+            }
+        }
     }
 }
 
@@ -162,7 +173,13 @@ impl DetachedGeneratorBackend for EngineDetachedGenerator {
         }
         let mut worker = self.state.checkout(&terrain);
         let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            terrain.detached_chunk(&mut worker, pos, stage, &self.light_tables, self.sky_light)
+            terrain.detached_chunk(
+                &mut worker,
+                pos,
+                stage,
+                &self.light_tables,
+                self.shape.sky_light,
+            )
         }));
         match outcome {
             Ok(Ok((chunk, has_light))) => {
@@ -172,6 +189,7 @@ impl DetachedGeneratorBackend for EngineDetachedGenerator {
                 }
                 Ok(EngineChunkSnapshot::from_chunk(
                     &chunk,
+                    self.shape,
                     self.states.clone(),
                     self.biomes.clone(),
                     self.properties.clone(),
@@ -268,38 +286,29 @@ impl Game<'_> {
         let biomes = world_biomes!(self).clone();
         let properties = self.pack.assets.properties.clone();
         let light_tables = self.pack.context.light.clone();
-        let sky_light = world.shape.sky_light;
-        let state = self
-            .detached_generators
-            .borrow_mut()
-            .entry(dim)
-            .or_insert_with(|| Arc::new(DetachedGeneratorState::new()))
-            .clone();
+        let shape = world.shape;
+        let state = self.detached_generators.get_or_insert(dim);
         Some(DetachedChunkGenerator::from_backend(Arc::new(
             EngineDetachedGenerator {
                 terrain: Arc::downgrade(&terrain),
                 state,
+                shape,
                 states,
                 biomes,
                 properties,
                 light_tables,
-                sky_light,
             },
         )))
     }
 
     /// Close all `DetachedChunkGenerator` handles for `dim` and drop their pooled workers.
     pub(super) fn close_detached_generators_for_dim(&mut self, dim: Dim) {
-        if let Some(state) = self.detached_generators.borrow_mut().remove(&dim) {
-            state.close();
-        }
+        self.detached_generators.close_dim(dim);
     }
 
     /// Close all `DetachedChunkGenerator` handles across every dimension and drop pooled workers.
     pub(super) fn close_all_detached_generators(&mut self) {
-        for (_, state) in self.detached_generators.borrow_mut().drain() {
-            state.close();
-        }
+        self.detached_generators.close_all();
     }
 }
 
