@@ -1043,7 +1043,7 @@ fn paint_with<'a>(
                 src,
                 tex,
                 color,
-            } => batch.texture(atlas, id, [*x, *y, *w, *h], *uv, *src, *tex, abgr(*color)),
+            } => batch.texture(atlas, id, [*x, *y, *w, *h], *uv, [*src, *tex], abgr(*color)),
             GuiDraw::Item {
                 slot,
                 x,

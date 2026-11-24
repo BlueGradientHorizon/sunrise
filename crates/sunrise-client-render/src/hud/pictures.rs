@@ -153,15 +153,13 @@ impl HudBatch {
     /// `GuiGraphicsExtractor.blit` of the standalone texture `id` (see `GuiDraw::Texture`):
     /// `innerBlit`'s quad at `x, y, w, h`, sampling `uv / tex` to `(uv + src) / tex` unclamped,
     /// tinted `tint` (the batch's RGBA), at its place in the HUD's ordered runs.
-    #[allow(clippy::too_many_arguments)]
     pub fn texture(
         &mut self,
         atlas: &HudAtlas,
         id: &Identifier,
         [x, y, w, h]: [i32; 4],
         uv: [f32; 2],
-        src: [i32; 2],
-        tex: [i32; 2],
+        [src, tex]: [[i32; 2]; 2],
         tint: u32,
     ) {
         let picture = atlas.pictures.lock().unwrap().texture(id);

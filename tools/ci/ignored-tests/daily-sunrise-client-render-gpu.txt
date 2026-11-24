@@ -261,9 +261,7 @@ sunrise-client-render gfx::world_post::tests::culling_uses_the_next_taa_size_bef
 sunrise-client-render gfx::world_post::tests::world_post_pipelines_compile_or_fall_back lib daily gpu
 sunrise-client-render gfx::world_primitives::tests::depth_tested_primitives_hide_behind_walls_and_see_through_ones_do_not lib daily gpu
 sunrise-client-render gfx::world_primitives::tests::uploads_preserve_ranges_and_reuse_high_water_storage lib daily gpu
-sunrise-client-render hud::coverage_tests::a_held_picture_keeps_its_texture_between_frames_until_released lib daily gpu
 sunrise-client-render hud::coverage_tests::a_pack_text_shader_without_a_colour_output_is_dropped_not_wrapped lib daily gpu
-sunrise-client-render hud::coverage_tests::a_repeating_picture_past_u_2_draws_itself_not_a_glint lib daily gpu
 sunrise-client-render hud::coverage_tests::coverage_follows_hud_blends_discard_scissor_and_depth_without_changing_colour lib daily gpu
 sunrise-client-render hud::coverage_tests::coverage_preserves_each_cit_blend_and_its_destination_alpha lib daily gpu
 sunrise-client-render hud::coverage_tests::coverage_uses_pack_texts_final_alpha_and_discard lib daily gpu
