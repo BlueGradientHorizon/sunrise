@@ -46,6 +46,27 @@ fn a_new_collection_lists_this_repositorys_projects_and_waits_for_a_name_and_an_
             ("Zz91kLmN".to_owned(), "walls".to_owned())
         ]
     );
+    // Only a repository the registry has no file for is unregistered; a failed read says so.
+    let unlisted = |url: &str| -> Result<Option<String>, String> {
+        match url {
+            "https://api.github.com/repos/example/ports" => Ok(Some(r#"{"id":9}"#.into())),
+            _ => Ok(None),
+        }
+    };
+    assert_eq!(
+        registered_from(&unlisted, "git@github.com:example/ports.git").unwrap_err(),
+        NOT_REGISTERED
+    );
+    let down = |url: &str| -> Result<Option<String>, String> {
+        match url {
+            "https://api.github.com/repos/example/ports" => Ok(Some(r#"{"id":7}"#.into())),
+            _ => Err(format!("{url}: 503")),
+        }
+    };
+    assert_eq!(
+        registered_from(&down, "git@github.com:example/ports.git").unwrap_err(),
+        format!("{MOD_REGISTRY_METADATA}/repositories/7.toml: 503")
+    );
     let text = scaffold(&projects);
     // The ID is added on the next run, keeping the author's text and comments, and never replaced.
     let (text, id) = with_id(&text, &|| Ok("Qm4tZ81c".into())).unwrap().unwrap();

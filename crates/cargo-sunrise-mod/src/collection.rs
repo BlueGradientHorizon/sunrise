@@ -164,7 +164,7 @@ fn registered_from(fetch: Fetch<'_>, origin: &str) -> Result<Vec<(String, String
     let text = fetch(&url)?.ok_or(NOT_REGISTERED)?;
     let GitHubRepository { id } = serde_json::from_str(&text).map_err(|e| format!("{url}: {e}"))?;
     let file = format!("repositories/{id}.toml");
-    let text = author_release::registry_file(fetch, &file).map_err(|_| NOT_REGISTERED)?;
+    let text = fetch(&format!("{MOD_REGISTRY_METADATA}/{file}"))?.ok_or(NOT_REGISTERED)?;
     let repository: Repository =
         toml::from_str(&text).map_err(|e| format!("registry/{file}: {e}"))?;
     repository
