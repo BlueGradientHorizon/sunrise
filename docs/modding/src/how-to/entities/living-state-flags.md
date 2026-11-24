@@ -91,7 +91,7 @@ in the player's own level. It does not eat, update inventory, or award a used st
 `TriggerCriterionError::Stack` before firing; clients return `NotServer`. A stale, offline or
 nested-turn displaced player, or a player whose level cannot be entered, returns `PlayerUnavailable`.
 The generic `trigger_criterion` refuses this
-exact built-in key, not every identifier in the `minecraft` namespace. See [advancement triggers](../native-mods.md#advancement-triggers).
+exact built-in key, not every identifier in the `minecraft` namespace. See [advancement triggers](advancement-progress.md#advancement-triggers).
 
 ## Active effects and attributes
 
