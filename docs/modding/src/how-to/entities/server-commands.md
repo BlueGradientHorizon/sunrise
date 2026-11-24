@@ -165,6 +165,38 @@ executor's return value alone is the command's result.
 host.commands().feedback(Text::translate("mymod.team.disbanded", vec![team_name]), true)?;
 ```
 
+### The entity a command executes as
+
+`command.entity` is the `EntityRef` the command executes as (`CommandSourceStack.getEntity`),
+and `command.player()` is that entity when it is a player (`getPlayer`). `command.rotation`
+is the execution rotation in degrees as `[yaw, pitch]`, the order of a `rotation` argument;
+Java's `Vec2` holds pitch first. `execute as` and `on` change only the entity; `at` sets the
+level, position and rotation; `rotated` and `facing` set the rotation. Each fork of an `execute`
+has its own.
+
+| Source | `entity` | `rotation` |
+|---|---|---|
+| A player | the player | theirs |
+| The console | None | zero |
+| A command block | None | the direction it faces (`Direction.toYRot`), pitch zero |
+| A command-block minecart | the minecart | its yaw, pitch zero |
+| A function | its caller's | its caller's |
+
+An entity that no longer resolves when the executor runs, such as one killed earlier in the
+same function, is None, never another player. `source` stays the origin, and
+`host.players().acting_player()` the submitting player. A command that needs a player maps a
+`None` from `command.player()` to its own failure:
+
+```rust,ignore
+Command::new("party leave").executes(|host, _source, command| {
+    let Some(player) = command.player() else {
+        return Err(Text::translate("permissions.requires.player", Vec::new()).into());
+    };
+    leave_party(host, player);
+    Ok(1)
+})
+```
+
 ## Run a command as a player
 
 `player.entity().run_command_with_output(host, line, level, suppress_output)` runs a command as that
