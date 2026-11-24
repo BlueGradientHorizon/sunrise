@@ -840,3 +840,23 @@ fn refusal<T, E: fmt::Display>(translate: impl FnOnce() -> Result<T, E>) -> Opti
         )),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The cap is on the count itself: 20,000 expressions pass, one more is refused.
+    #[test]
+    fn the_expression_cap_is_exact() {
+        let file = "shaders/post.wgsl";
+        assert!(cost_problems((20_000, 64), file, "stage").is_empty());
+        let over = cost_problems((20_001, 65), file, "stage");
+        assert_eq!(
+            over.iter().map(Problem::to_string).collect::<Vec<_>>(),
+            [
+                format!("{file}: 20001 expressions; a stage may hold 20000"),
+                format!("{file}: 65 texture reads; a stage may write 64"),
+            ]
+        );
+    }
+}
