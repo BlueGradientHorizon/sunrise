@@ -936,6 +936,7 @@ impl Game<'_> {
             .cloned()
             .unwrap_or_else(|| Tag::Compound(Default::default()));
         self.put_last_hurt_by_mob(self.mob_at(object), &mut retained);
+        self.save_portal_cooldown(id, &mut retained);
         // `write_leash` may assign the holder a UUID. Other references retain
         // the lookup they had before that assignment.
         let holder = match self.mob_at(object).extra.leash {
