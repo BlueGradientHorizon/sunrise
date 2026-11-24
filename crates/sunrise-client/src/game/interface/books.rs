@@ -3,7 +3,9 @@
 //! pixels, 1024 characters, 100 pages), signing it into a written book,
 //! reading written books, and lecterns (placing a book, turning its pages
 //! with a redstone pulse, the comparator output and taking the book).
+#[allow(unused_imports)]
 use super::{Game, chat::PLAYER_NAME, screen_info};
+#[allow(unused_imports)]
 use sunrise_client::{
     containers::{BlockEntity, Lectern},
     first_person::Hand,
@@ -16,18 +18,23 @@ use sunrise_client::{
     ui,
     widgets::{self, Narratable, ScreenInfo},
 };
+#[allow(unused_imports)]
 use sunrise_core::nbt::Tag;
+#[allow(unused_imports)]
 use sunrise_core::position::BlockPos;
+#[allow(unused_imports)]
 use sunrise_protocol::packets::play::{self, Clientbound as C, Serverbound as S};
+#[allow(unused_imports)]
 use sunrise_world::level::flags as level_flags;
+#[allow(unused_imports)]
 use winit::keyboard::KeyCode;
 
-const BLACK: u32 = 0xFF00_0000;
-const PAGE_CHARS: usize = 1024;
-const MAX_PAGES: usize = 100;
-const LINES: usize = 14;
+pub(in crate::game) const BLACK: u32 = 0xFF00_0000;
+pub(in crate::game) const PAGE_CHARS: usize = 1024;
+pub(in crate::game) const MAX_PAGES: usize = 100;
+pub(in crate::game) const LINES: usize = 14;
 
-fn book_title_box() -> ui::EditBox {
+pub(in crate::game) fn book_title_box() -> ui::EditBox {
     let mut edit = ui::EditBox::new(0.0, 0.0, 114.0, 9.0);
     edit.bordered = false;
     edit.max_length = 15;
@@ -37,7 +44,7 @@ fn book_title_box() -> ui::EditBox {
     edit.focused = true;
     edit
 }
-fn book_page_box() -> ui::EditBox {
+pub(in crate::game) fn book_page_box() -> ui::EditBox {
     let mut edit = ui::EditBox::new(0.0, 0.0, 114.0, 9.0);
     edit.bordered = false;
     edit.multiline = true;
@@ -48,9 +55,9 @@ fn book_page_box() -> ui::EditBox {
 }
 
 /// Where a book's text is, from its top left corner, above its page buttons.
-const BOOK_TEXT: [f32; 4] = [36.0, 16.0, 120.0, 136.0];
+pub(in crate::game) const BOOK_TEXT: [f32; 4] = [36.0, 16.0, 120.0, 136.0];
 
-pub(super) enum BookScreen {
+pub(in crate::game) enum BookScreen {
     Edit {
         /// Inventory slot of the book (the selected hotbar slot).
         slot: usize,
@@ -70,7 +77,7 @@ pub(super) enum BookScreen {
     },
 }
 impl BookScreen {
-    fn begin_signing(&mut self) {
+    pub(in crate::game) fn begin_signing(&mut self) {
         if let Self::Edit {
             signing,
             title,
@@ -85,7 +92,7 @@ impl BookScreen {
     }
 
     /// The id the screen hooks see (`ScreenView.id`).
-    pub(super) fn id(&self) -> &'static str {
+    pub(in crate::game) fn id(&self) -> &'static str {
         match self {
             Self::Edit { signing: true, .. } => "book_sign",
             Self::Edit { .. } => "book_edit",
@@ -98,7 +105,7 @@ impl BookScreen {
 }
 /// The pages a book screen reads: a written book's components (so their
 /// click events stay), else a writable book's text.
-fn view_pages(data: Option<&StackData>) -> Vec<Text> {
+pub(in crate::game) fn view_pages(data: Option<&StackData>) -> Vec<Text> {
     let Some(data) = data else { return Vec::new() };
     let Some(w) = &data.written else {
         return data.writable_pages.iter().map(Text::untrusted).collect();
@@ -118,20 +125,28 @@ fn view_pages(data: Option<&StackData>) -> Vec<Text> {
         .collect()
 }
 impl Game<'_> {
-    fn book_lines(&self, page: &str) -> Vec<Text> {
+    pub(in crate::game) fn book_lines(&self, page: &str) -> Vec<Text> {
         self.page_lines(&Text::untrusted(page))
     }
-    fn page_lines(&self, page: &Text) -> Vec<Text> {
+    pub(in crate::game) fn page_lines(&self, page: &Text) -> Vec<Text> {
         self.gui.atlas.font.split(page, 114.0)
     }
     /// `BookViewScreen.mouseClicked`: the click event of the text under the
     /// cursor on the page.
-    fn book_link_at(&self, page: &Text, left: f32) -> Option<sunrise_client::text::ClickEvent> {
+    pub(in crate::game) fn book_link_at(
+        &self,
+        page: &Text,
+        left: f32,
+    ) -> Option<sunrise_client::text::ClickEvent> {
         self.book_style_at(page, left)?.click
     }
     /// `ActiveTextCollector` over the page: the style of the character
     /// under the cursor, for its click and hover events.
-    fn book_style_at(&self, page: &Text, left: f32) -> Option<sunrise_client::text::Style> {
+    pub(in crate::game) fn book_style_at(
+        &self,
+        page: &Text,
+        left: f32,
+    ) -> Option<sunrise_client::text::Style> {
         let (mx, my) = self.client.cursor;
         let row = ((my - 32.0) / 9.0).floor();
         if row < 0.0 || row >= LINES as f32 {
@@ -153,7 +168,7 @@ impl Game<'_> {
     }
     /// `BookViewScreen.handleClickEvent`: a page link turns to its page
     /// (`forcePage`), a web link goes through the confirm-link flow.
-    fn book_follow_link(
+    pub(in crate::game) fn book_follow_link(
         &mut self,
         link: sunrise_client::text::ClickEvent,
         count: usize,
@@ -214,45 +229,11 @@ impl Game<'_> {
             ClickEvent::SuggestCommand(_) | ClickEvent::OpenFile(_) | ClickEvent::Profiler(_) => {}
         }
     }
-    /// `WritableBookItem.use` / `WrittenBookItem.use` (`Player.openItemGui`).
-    /// A server's player writes in its own client's editor
-    /// (`LocalPlayer.openItemGui`), and reads on its own client once told to
-    /// (`ServerPlayer.openItemGui`'s ClientboundOpenBookPacket).
-    pub(super) fn use_book(&mut self, stack: &ItemStack) -> bool {
-        let written = match &*stack.item {
-            "minecraft:writable_book" => false,
-            "minecraft:written_book" => true,
-            _ => return false,
-        };
-        // `ServerPlayer.openItemGui` resolves a written book for the player
-        // opening it before the screen reads it.
-        let held;
-        let stack = if written && self.resolve_held_book() {
-            held = self.held().cloned();
-            held.as_ref().unwrap_or(stack)
-        } else {
-            stack
-        };
-        if self.server.lan_acting.is_some() {
-            if written {
-                let hand = i32::from(self.hand == Hand::Off);
-                self.server
-                    .guest_packets
-                    .push(C::OpenBook(play::OpenBook { hand }));
-            }
-        } else if let Some(screen) = self.book_screen(stack) {
-            self.open_book(screen);
-        }
-        // WritableBookItem.use / WrittenBookItem.use count every open.
-        self.award_stat("used", &stack.item, 1);
-        self.swing_arm();
-        true
-    }
     /// `ServerPlayer.openItemGui` -> `WrittenBookContent.resolveForItem`: the
     /// selectors and scores of the written book in the acting hand become
     /// their text for the player opening it, and the book is marked resolved
     /// (so it is never resolved again). True when the pages were rewritten.
-    fn resolve_held_book(&mut self) -> bool {
+    pub(in crate::game) fn resolve_held_book(&mut self) -> bool {
         let Some(mut book) = self
             .held()
             .and_then(|s| s.data())
@@ -297,7 +278,7 @@ impl Game<'_> {
     }
     /// The screen a book in hand opens: `BookEditScreen` for a book and
     /// quill, `BookViewScreen` for a written book.
-    fn book_screen(&self, stack: &ItemStack) -> Option<BookScreen> {
+    pub(in crate::game) fn book_screen(&self, stack: &ItemStack) -> Option<BookScreen> {
         Some(match &*stack.item {
             "minecraft:writable_book" => {
                 let mut pages = stack
@@ -329,7 +310,7 @@ impl Game<'_> {
     }
     /// `MultiPlayerGameMode.useItem`'s own use of a book and quill on a
     /// server's client: its editor opens here at once.
-    pub(super) fn remote_use_book(&mut self, stack: &ItemStack) -> bool {
+    pub(in crate::game) fn remote_use_book(&mut self, stack: &ItemStack) -> bool {
         if &*stack.item != "minecraft:writable_book" {
             return false;
         }
@@ -339,7 +320,7 @@ impl Game<'_> {
         true
     }
     /// `ClientPacketListener.handleOpenBook`: the written book in that hand.
-    pub(super) fn remote_open_book(&mut self, hand: i32) {
+    pub(in crate::game) fn remote_open_book(&mut self, hand: i32) {
         let hand = if hand == 1 { Hand::Off } else { Hand::Main };
         let screen = self.with_hand(hand, |g| {
             let stack = g.held().filter(|s| &*s.item == "minecraft:written_book")?;
@@ -350,7 +331,7 @@ impl Game<'_> {
         }
     }
     /// Opens `screen` (through `open_screen_overlay`: a mod may keep it shut).
-    pub(super) fn open_book(&mut self, screen: BookScreen) {
+    pub(in crate::game) fn open_book(&mut self, screen: BookScreen) {
         self.open_screen_overlay(screen.id(), |game| {
             game.client.book = Some(screen);
             game.clear_device_keys();
@@ -360,7 +341,7 @@ impl Game<'_> {
     }
     /// `BookEditScreen` to `BookSignScreen` and back, each a
     /// `Minecraft.setScreen` (through `open_screen_overlay`).
-    fn set_book_signing(&mut self, on: bool) {
+    pub(in crate::game) fn set_book_signing(&mut self, on: bool) {
         let id = if on { "book_sign" } else { "book_edit" };
         self.open_screen_overlay(id, |game| {
             if let Some(book @ BookScreen::Edit { .. }) = game.client.book.as_mut() {
@@ -372,7 +353,7 @@ impl Game<'_> {
             }
         });
     }
-    pub(super) fn close_book(&mut self) {
+    pub(in crate::game) fn close_book(&mut self) {
         // A server's lectern: LecternScreen's menu closes (closeContainer).
         if matches!(
             self.client.book,
@@ -392,7 +373,7 @@ impl Game<'_> {
     /// `BookEditScreen.saveChanges` and `BookSignScreen`'s Sign and Close:
     /// trailing empty pages dropped, the book in hand updated here and, on a
     /// server's client, sent (ServerboundEditBookPacket).
-    pub(super) fn save_book(&mut self, sign: bool) {
+    pub(in crate::game) fn save_book(&mut self, sign: bool) {
         let Some(BookScreen::Edit {
             slot, pages, title, ..
         }) = self.client.book.take()
@@ -415,97 +396,7 @@ impl Game<'_> {
         self.refresh_screen_widgets();
         self.capture(true);
     }
-    /// The book and quill at `slot` takes the pages, or with a title becomes
-    /// the written book its writer signed.
-    fn write_book(&mut self, slot: usize, pages: Vec<String>, title: Option<String>) {
-        let author = self
-            .server
-            .lan_acting_name
-            .clone()
-            .unwrap_or_else(|| super::chat::PLAYER_NAME.to_owned());
-        let Some(stack) = self
-            .stack_in_mut(slot)
-            .as_mut()
-            .filter(|s| &*s.item == "minecraft:writable_book")
-        else {
-            return;
-        };
-        if let Some(title) = title {
-            // `signBook` transmutes the carried stack, so a renamed book and
-            // quill stays renamed and keeps its other components.
-            let mut written = stack.transmute("minecraft:written_book", stack.count);
-            let data = written.data_mut();
-            data.writable_pages = Vec::new();
-            data.writable_filtered = Vec::new();
-            data.written = Some(WrittenBook {
-                title,
-                author,
-                generation: 0,
-                pages,
-                page_tags: Vec::new(),
-                // `signBook`'s `new WrittenBookContent(..., true)`: the pages
-                // are literals, so the content is already resolved.
-                resolved: true,
-            });
-            *stack = written;
-        } else {
-            let data = stack.data_mut();
-            // `updateBookContents`: new `Filterable` pages, unfiltered while no text filter runs.
-            data.writable_filtered = Vec::new();
-            data.writable_pages = if pages.iter().all(String::is_empty) {
-                Vec::new()
-            } else {
-                pages
-            };
-            stack.tidy();
-        }
-    }
-    /// `ServerGamePacketListenerImpl.handleEditBook`: a guest's book in a
-    /// hotbar slot or its off hand (`updateBookContents`, `signBook`).
-    pub(super) fn lan_edit_book(&mut self, conn: u32, p: play::EditBook) {
-        if !((0..9).contains(&p.slot) || p.slot == super::shield::OFFHAND_SLOT as i32) {
-            return;
-        }
-        let menu_slot = if p.slot == super::shield::OFFHAND_SLOT as i32 {
-            45
-        } else {
-            36 + p.slot as usize
-        };
-        let cancelled = self.as_guest(conn, |g| {
-            let mut cancel = false;
-            let writable = g
-                .stack_in(p.slot as usize)
-                .is_some_and(|stack| &*stack.item == "minecraft:writable_book");
-            if writable
-                && let (Some(player), Some(name)) =
-                    (g.server.lan_acting_uuid, g.server.lan_acting_name.clone())
-            {
-                g.native_player_edit_book(
-                    player,
-                    &name,
-                    p.pages.len() as i32,
-                    p.title.is_some(),
-                    &mut cancel,
-                );
-            }
-            if cancel {
-                return true;
-            }
-            g.write_book(p.slot as usize, p.pages, p.title);
-            false
-        });
-        // A cancelled edit leaves the client's own copy of the book: forget
-        // what was sent so the next broadcast resends the server's stack.
-        if cancelled == Some(true)
-            && let Some(host) = self.lan.as_mut()
-        {
-            let _ = host
-                .hub
-                .guests
-                .update_connection(conn, |g| g.menu_sent[menu_slot] = None);
-        }
-    }
-    pub(super) fn book_key(
+    pub(in crate::game) fn book_key(
         &mut self,
         key: KeyCode,
         shortcut: Option<sunrise_client::clipboard::EditShortcut>,
@@ -520,7 +411,7 @@ impl Game<'_> {
     }
     /// A key and the text it typed in the open book (the keyboard, or a
     /// controller's on-screen keyboard).
-    pub(super) fn book_input(&mut self, key: Option<KeyCode>, text: Option<&str>) -> bool {
+    pub(in crate::game) fn book_input(&mut self, key: Option<KeyCode>, text: Option<&str>) -> bool {
         match self.client.book.as_mut() {
             Some(BookScreen::View { .. }) => match key {
                 Some(KeyCode::Escape) => {
@@ -614,7 +505,7 @@ impl Game<'_> {
         }
     }
     /// Typing for `sunrise-ctl type` (`\n` is a line break).
-    pub(super) fn book_type(&mut self, text: &str) {
+    pub(in crate::game) fn book_type(&mut self, text: &str) {
         let text = text.replace("\\n", "\n");
         match self.client.book.as_mut() {
             Some(BookScreen::Edit { signing: true, .. }) => self.book_title_insert(&text),
@@ -623,7 +514,7 @@ impl Game<'_> {
         }
     }
     /// `BookSignScreen.keyPressed` on the title box.
-    fn book_title_key(&mut self, key: KeyCode) -> bool {
+    pub(in crate::game) fn book_title_key(&mut self, key: KeyCode) -> bool {
         let (ctrl, shift) = (self.has_control_down(), self.has_shift_down());
         let Some(BookScreen::Edit {
             title, title_edit, ..
@@ -637,7 +528,7 @@ impl Game<'_> {
         title.clone_from(&title_edit.value);
         true
     }
-    fn book_title_insert(&mut self, text: &str) {
+    pub(in crate::game) fn book_title_insert(&mut self, text: &str) {
         let Some(BookScreen::Edit {
             title, title_edit, ..
         }) = self.client.book.as_mut()
@@ -648,7 +539,7 @@ impl Game<'_> {
         title.clone_from(&title_edit.value);
     }
     /// `BookEditScreen.keyPressed` on the page, apart from the line moves.
-    fn book_page_key(&mut self, key: KeyCode) -> bool {
+    pub(in crate::game) fn book_page_key(&mut self, key: KeyCode) -> bool {
         let (ctrl, shift) = (self.has_control_down(), self.has_shift_down());
         let before = match self.client.book.as_ref() {
             Some(BookScreen::Edit { page_edit, .. }) => Some((
@@ -669,13 +560,16 @@ impl Game<'_> {
         handled
     }
     /// One character at a time, so a page stops at the last character that fits.
-    fn page_insert(&mut self, text: &str) {
+    pub(in crate::game) fn page_insert(&mut self, text: &str) {
         for c in text.chars() {
             self.page_change(|edit| edit.insert_text(&c.to_string()));
         }
     }
     /// Ctrl+A/C/V/X: the title box while signing, else the page.
-    pub(super) fn book_shortcut(&mut self, shortcut: sunrise_client::clipboard::EditShortcut) {
+    pub(in crate::game) fn book_shortcut(
+        &mut self,
+        shortcut: sunrise_client::clipboard::EditShortcut,
+    ) {
         let signing = matches!(
             self.client.book,
             Some(BookScreen::Edit { signing: true, .. })
@@ -704,7 +598,7 @@ impl Game<'_> {
         self.page_keep(before);
     }
     /// Edit the page box, then keep it only within 14 lines and 1024 characters.
-    fn page_change(&mut self, f: impl FnOnce(&mut ui::EditBox)) -> bool {
+    pub(in crate::game) fn page_change(&mut self, f: impl FnOnce(&mut ui::EditBox)) -> bool {
         let before = match self.client.book.as_ref() {
             Some(BookScreen::Edit { page_edit, .. }) => Some((
                 page_edit.value.clone(),
@@ -722,7 +616,7 @@ impl Game<'_> {
         ran && self.page_keep(before)
     }
     /// Write the page, or put the previous text back when it no longer fits.
-    fn page_keep(&mut self, before: Option<(String, usize, usize)>) -> bool {
+    pub(in crate::game) fn page_keep(&mut self, before: Option<(String, usize, usize)>) -> bool {
         let next = match self.client.book.as_ref() {
             Some(BookScreen::Edit { page_edit, .. }) => page_edit.value.clone(),
             _ => return false,
@@ -747,7 +641,7 @@ impl Game<'_> {
         ok
     }
     /// ArrowUp and ArrowDown move a visual line, keeping the column.
-    fn book_move_line(&mut self, dir: isize) {
+    pub(in crate::game) fn book_move_line(&mut self, dir: isize) {
         let shift = self.has_shift_down();
         let (text, cursor) = match self.client.book.as_ref() {
             Some(BookScreen::Edit {
@@ -772,7 +666,7 @@ impl Game<'_> {
     }
     /// Home and End: the start or end of the visual line holding the caret
     /// (`getCursorLineView`'s beginIndex and endIndex).
-    fn book_line_edge(&mut self, end: bool) {
+    pub(in crate::game) fn book_line_edge(&mut self, end: bool) {
         let shift = self.has_shift_down();
         let (text, cursor) = match self.client.book.as_ref() {
             Some(BookScreen::Edit {
@@ -791,7 +685,7 @@ impl Game<'_> {
         }
     }
     /// Wrapped rows of a page as character ranges, the same breaks as `font.split`.
-    fn page_rows(&self, page: &str) -> Vec<(usize, usize)> {
+    pub(in crate::game) fn page_rows(&self, page: &str) -> Vec<(usize, usize)> {
         let font = &self.gui.atlas.font;
         let chars: Vec<char> = page.chars().collect();
         let mut rows = Vec::new();
@@ -836,7 +730,12 @@ impl Game<'_> {
         rows
     }
     /// GUI x of the caret and the row it sits on.
-    fn caret_on(&self, page: &str, rows: &[(usize, usize)], cursor: usize) -> (f32, usize) {
+    pub(in crate::game) fn caret_on(
+        &self,
+        page: &str,
+        rows: &[(usize, usize)],
+        cursor: usize,
+    ) -> (f32, usize) {
         let chars: Vec<char> = page.chars().collect();
         for (i, &(start, end)) in rows.iter().enumerate() {
             if cursor <= end || i + 1 == rows.len() {
@@ -847,7 +746,7 @@ impl Game<'_> {
         }
         (0.0, 0)
     }
-    fn page_index_at(&self, page: &str, local_x: f32, local_y: f32) -> usize {
+    pub(in crate::game) fn page_index_at(&self, page: &str, local_x: f32, local_y: f32) -> usize {
         let rows = self.page_rows(page);
         let line = (local_y / 9.0).floor().max(0.0) as usize;
         let line = line.min(rows.len().saturating_sub(1));
@@ -857,7 +756,7 @@ impl Game<'_> {
         start + self.gui.atlas.font.fit(&slice, local_x.max(0.0))
     }
     /// A click on the centred title (`EditBox.onClick`).
-    fn book_title_click(&mut self, field_x: f32, mx: f32) {
+    pub(in crate::game) fn book_title_click(&mut self, field_x: f32, mx: f32) {
         let shift = self.has_shift_down();
         let Some(BookScreen::Edit {
             title, title_edit, ..
@@ -872,7 +771,14 @@ impl Game<'_> {
     }
     /// A click on the open page (`MultiLineEditBox.onClick`): a double click
     /// selects the word before the cursor and leaves the cursor where it is.
-    fn book_page_click(&mut self, origin_x: f32, origin_y: f32, mx: f32, my: f32, double: bool) {
+    pub(in crate::game) fn book_page_click(
+        &mut self,
+        origin_x: f32,
+        origin_y: f32,
+        mx: f32,
+        my: f32,
+        double: bool,
+    ) {
         if double {
             if let Some(BookScreen::Edit { page_edit, .. }) = self.client.book.as_mut() {
                 page_edit.select_word_at_cursor();
@@ -890,7 +796,7 @@ impl Game<'_> {
         }
     }
     /// The page buttons (`pageForward` adds a page while editing).
-    fn turn_page(&mut self, forward: bool) {
+    pub(in crate::game) fn turn_page(&mut self, forward: bool) {
         let mut lectern_page = None;
         match self.client.book.as_mut() {
             Some(BookScreen::Edit {
@@ -937,7 +843,7 @@ impl Game<'_> {
             .0
             .play("minecraft:item.book.page_turn", None, 1.0, 1.0);
     }
-    fn set_lectern_powered(&mut self, key: (i32, i32, i32), powered: bool) {
+    pub(in crate::game) fn set_lectern_powered(&mut self, key: (i32, i32, i32), powered: bool) {
         self.set_lectern_property(key, "powered", powered);
         let p = BlockPos::new(key.0, key.1, key.2);
         let state = self.world.block(key.0, key.1, key.2);
@@ -946,7 +852,12 @@ impl Game<'_> {
         });
     }
     /// `LecternBlock.resetBookState`: the property with the block change event.
-    fn set_lectern_has_book(&mut self, key: (i32, i32, i32), has_book: bool, who: Option<Who>) {
+    pub(in crate::game) fn set_lectern_has_book(
+        &mut self,
+        key: (i32, i32, i32),
+        has_book: bool,
+        who: Option<Who>,
+    ) {
         // `LecternBlock.resetBookState`: `setBlockAndUpdate` writes the state and
         // the `block_change` post follows unconditionally, not only when the
         // state differs.
@@ -959,7 +870,12 @@ impl Game<'_> {
             Some(after),
         );
     }
-    fn set_lectern_property(&mut self, key: (i32, i32, i32), name: &str, value: bool) {
+    pub(in crate::game) fn set_lectern_property(
+        &mut self,
+        key: (i32, i32, i32),
+        name: &str,
+        value: bool,
+    ) {
         let state = self.world.block(key.0, key.1, key.2);
         let registry = self.pack.assets.registry;
         let Some(mut s) = registry.state(state).cloned() else {
@@ -976,77 +892,8 @@ impl Game<'_> {
             });
         }
     }
-    /// The 2-tick pulses of turned lecterns.
-    pub(super) fn tick_lecterns(&mut self) {
-        self.follow_lectern();
-        let mut done = Vec::new();
-        for (key, left) in &mut self.server.lectern_pulses {
-            *left -= 1;
-            if *left <= 0 {
-                done.push(*key);
-            }
-        }
-        self.server.lectern_pulses.retain(|(_, left)| *left > 0);
-        for key in done {
-            self.set_lectern_powered(key, false);
-        }
-    }
-    /// `LecternBlock.useItemOn`: a book goes onto an empty lectern.
-    pub(super) fn use_lectern(&mut self, pos: [i32; 3], held: Option<&ItemStack>) -> bool {
-        let key = (pos[0], pos[1], pos[2]);
-        if &*self
-            .res
-            .facts()
-            .get(self.world.block(pos[0], pos[1], pos[2]))
-            .name
-            != "minecraft:lectern"
-        {
-            return false;
-        }
-        let has_book = matches!(self.world.block_entities.get(&key), Some(BlockEntity::Lectern(l)) if l.book.is_some());
-        // `LecternBlock.useItemOn`: `ItemTags.LECTERN_BOOKS`, which a data
-        // pack can add its own books to, not only the two vanilla items.
-        let Some(book) = held.filter(|h| {
-            world_items!(self)
-                .item_tags
-                .get("minecraft:lectern_books")
-                .is_some_and(|books| books.contains(&*h.item))
-        }) else {
-            return false;
-        };
-        if has_book {
-            return false;
-        }
-        let mut one = book.clone();
-        one.count = 1;
-        self.world.block_entities.insert(
-            key,
-            BlockEntity::Lectern(Lectern {
-                book: Some(one),
-                page: 0,
-            }),
-        );
-        self.set_lectern_has_book(key, true, self.remote.is_none().then_some(Who::Player));
-        if !self.creative {
-            self.consume_held();
-        }
-        let at = [
-            f64::from(pos[0]) + 0.5,
-            f64::from(pos[1]) + 0.5,
-            f64::from(pos[2]) + 0.5,
-        ];
-        self.client_audio_play("minecraft:item.book.put", Some(at), 1.0, 1.0);
-        self.container_changed(key);
-        if let (Some(player), Some(name)) = (
-            self.server.lan_acting_uuid,
-            self.server.lan_acting_name.clone(),
-        ) {
-            self.native_player_insert_lectern_book(player, &name, pos, &book.item);
-        }
-        true
-    }
     /// `LecternBlock.openScreen`: reading the lectern's book.
-    pub(super) fn open_lectern(&mut self, pos: [i32; 3]) -> bool {
+    pub(in crate::game) fn open_lectern(&mut self, pos: [i32; 3]) -> bool {
         let key = (pos[0], pos[1], pos[2]);
         let Some(BlockEntity::Lectern(l)) = self.world.block_entities.get(&key) else {
             return false;
@@ -1065,7 +912,7 @@ impl Game<'_> {
     /// A `LecternMenu` button of the open lectern screen: on a server it is
     /// sent (`handleInventoryButtonClick`); here the lectern's menu takes it
     /// with the player's inventory, and the screen follows the block entity.
-    fn lectern_button(&mut self, key: (i32, i32, i32), id: i32) {
+    pub(in crate::game) fn lectern_button(&mut self, key: (i32, i32, i32), id: i32) {
         if self.remote.is_some() {
             let _ = self.remote_button_click(id);
             return;
@@ -1103,32 +950,9 @@ impl Game<'_> {
             })
         )
     }
-    /// LecternScreen's Take Book: the menu's button 3. The book leaves the
-    /// lectern, so the screen closes (the server closes the menu once the
-    /// book is gone; a server's client closes at once rather than wait).
-    fn take_lectern_book(&mut self, key: (i32, i32, i32)) {
-        let before = match self.world.block_entities.get(&key) {
-            Some(BlockEntity::Lectern(l)) => l.book.clone(),
-            _ => None,
-        };
-        self.lectern_button(key, 3);
-        if let (Some(book), Some(player), Some(name)) = (
-            before.filter(|_| {
-                matches!(self.world.block_entities.get(&key),
-                Some(BlockEntity::Lectern(l)) if l.book.is_none())
-            }),
-            self.server.lan_acting_uuid,
-            self.server.lan_acting_name.clone(),
-        ) {
-            self.native_player_take_lectern_book(player, &name, [key.0, key.1, key.2], &book.item);
-        }
-        if self.may_build() && self.lectern_book_open() {
-            self.close_book();
-        }
-    }
     /// The `book` control command: a button of the open book or lectern
     /// screen (the page arrows, Take Book, Done), then its page.
-    pub(super) fn book_control(
+    pub(in crate::game) fn book_control(
         &mut self,
         action: Option<&str>,
     ) -> sunrise_client::Result<serde_json::Value> {
@@ -1181,7 +1005,7 @@ impl Game<'_> {
     }
     /// A server's `minecraft:lectern` menu: LecternScreen, its book and
     /// page to come (`remote_lectern_book`, `remote_lectern_page`).
-    pub(super) fn remote_open_lectern(&mut self, key: (i32, i32, i32)) {
+    pub(in crate::game) fn remote_open_lectern(&mut self, key: (i32, i32, i32)) {
         self.open_book(BookScreen::View {
             pages: Vec::new(),
             page: 0,
@@ -1189,7 +1013,7 @@ impl Game<'_> {
         });
     }
     /// `LecternScreen.bookChanged`: the menu's book slot.
-    pub(super) fn remote_lectern_book(&mut self, book: Option<ItemStack>) {
+    pub(in crate::game) fn remote_lectern_book(&mut self, book: Option<ItemStack>) {
         if let Some(BookScreen::View {
             lectern: Some(_),
             pages,
@@ -1201,7 +1025,7 @@ impl Game<'_> {
         }
     }
     /// `LecternScreen.pageChanged`: the menu's page data slot.
-    pub(super) fn remote_lectern_page(&mut self, value: i32) {
+    pub(in crate::game) fn remote_lectern_page(&mut self, value: i32) {
         if let Some(BookScreen::View {
             lectern: Some(_),
             pages,
@@ -1213,7 +1037,7 @@ impl Game<'_> {
     }
     /// `LecternMenu` over the lectern at `key` (the menu engine, for the
     /// local player and LAN guests alike): its book and page.
-    pub(super) fn lectern_menu(&self, key: (i32, i32, i32)) -> Option<Menu> {
+    pub(in crate::game) fn lectern_menu(&self, key: (i32, i32, i32)) -> Option<Menu> {
         let Some(BlockEntity::Lectern(l)) = self.world.block_entities.get(&key) else {
             return None;
         };
@@ -1223,42 +1047,10 @@ impl Game<'_> {
         menu.data[0] = l.page;
         Some(menu)
     }
-    /// The lectern menu's book and page back in the block entity: a new page
-    /// is `LecternBlock.signalPageChange` (the 2-tick pulse, level event
-    /// 1043), a book gone `onBookItemRemove` (`resetBookState`).
-    pub(super) fn lectern_menu_done(&mut self, key: (i32, i32, i32), menu: &Menu) {
-        let Some(BlockEntity::Lectern(l)) = self.world.block_entities.get_mut(&key) else {
-            return;
-        };
-        let (had, before) = (l.book.is_some(), l.page);
-        l.book = menu.slot(0).cloned();
-        l.page = menu.data[0];
-        if had && l.book.is_none() {
-            self.set_lectern_powered(key, false);
-            self.set_lectern_has_book(key, false, None);
-            self.container_changed(key);
-        } else if menu.data[0] != before {
-            self.set_lectern_powered(key, true);
-            self.server.lectern_pulses.push((key, 2));
-            self.level_event_at(1043, [key.0, key.1, key.2], 0);
-            self.container_changed(key);
-            if let (Some(player), Some(name)) = (
-                self.server.lan_acting_uuid,
-                self.server.lan_acting_name.clone(),
-            ) {
-                self.native_player_lectern_page_change(
-                    player,
-                    &name,
-                    [key.0, key.1, key.2],
-                    menu.data[0],
-                );
-            }
-        }
-    }
     /// The open lectern screen follows its block entity (`LecternScreen`'s
     /// menu listener): the page, and closing once the book is gone or the
     /// player is out of `LecternMenu.stillValid`'s reach.
-    pub(super) fn follow_lectern(&mut self) {
+    pub(in crate::game) fn follow_lectern(&mut self) {
         let Some(BookScreen::View {
             lectern: Some(key), ..
         }) = self.client.book.as_ref()
@@ -1294,7 +1086,7 @@ impl Game<'_> {
             *page = (l.page.max(0) as usize).min(pages.len().saturating_sub(1));
         }
     }
-    pub(super) fn book_click(&mut self, size: [u32; 2]) -> bool {
+    pub(in crate::game) fn book_click(&mut self, size: [u32; 2]) -> bool {
         let b = HudBatch::new(size, self.settings.gui_scale_inputs());
         let (w, left) = (b.width, ((b.width - 192.0) / 2.0).floor());
         let (mx, my) = self.client.cursor;
@@ -1389,7 +1181,7 @@ impl Game<'_> {
         }
         false
     }
-    pub(super) fn draw_book(&mut self, batch: &mut HudBatch) {
+    pub(in crate::game) fn draw_book(&mut self, batch: &mut HudBatch) {
         let mut hovered = None;
         let Some(book) = &self.client.book else {
             return;
@@ -1756,9 +1548,10 @@ impl Game<'_> {
         }
     }
 }
-pub(super) use sunrise_gameplay::lectern::lectern_signal;
+#[allow(unused_imports)]
+pub(in crate::game) use sunrise_gameplay::lectern::lectern_signal;
 #[cfg(test)]
-mod title_box_tests {
+pub(in crate::game) mod title_box_tests {
     use super::book_title_box;
 
     /// `BookSignScreen` sets its 15 character title box centred and unbordered.
@@ -1771,82 +1564,23 @@ mod title_box_tests {
     }
 }
 #[cfg(test)]
-mod lectern_books_tag_tests {
+pub(in crate::game) mod lectern_books_tag_tests {
+    #[allow(unused_imports)]
     use super::super::game_tests::tests::server_game;
+    #[allow(unused_imports)]
     use sunrise_client::{containers::BlockEntity, items::ItemStack};
-
-    /// `LecternBlock.useItemOn` checks `ItemTags.LECTERN_BOOKS`; a world's
-    /// data pack adds its own book to that tag, and the lectern takes it.
-    #[test]
-    #[ignore = "daily"]
-    fn a_packs_lectern_books_entry_goes_onto_the_lectern() {
-        let mut resources = None;
-        let mut game = server_game(&mut resources);
-        let dir =
-            std::env::temp_dir().join(format!("sunrise-lectern-books-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&dir);
-        let tags = dir.join("datapacks/books/data/minecraft/tags/item");
-        std::fs::create_dir_all(&tags).unwrap();
-        std::fs::write(
-            dir.join("datapacks/books/pack.mcmeta"),
-            r#"{"pack":{"description":"fixture"}}"#,
-        )
-        .unwrap();
-        std::fs::write(
-            tags.join("lectern_books.json"),
-            r#"{"values":["minecraft:written_book","minecraft:writable_book","minecraft:book"]}"#,
-        )
-        .unwrap();
-        std::fs::write(
-            dir.join("datapacks.json"),
-            r#"{"enabled":["file/books"],"disabled":[]}"#,
-        )
-        .unwrap();
-        game.server.world_root = dir;
-        let stack = game.reload_datapacks(false, &[]).unwrap();
-        let root = game.options.resources.clone();
-        game.world_tables.0 = game
-            .stage_world_tables(&stack, false, &root)
-            .unwrap()
-            .tables;
-
-        let state = game
-            .pack
-            .assets
-            .registry
-            .default_state("minecraft:lectern")
-            .unwrap();
-        let key = (8, 64, 8);
-        game.world.set(key.0, key.1, key.2, state).unwrap();
-
-        // A book the pack put in the tag is placed; one it did not is not.
-        let stone = ItemStack::new("minecraft:stone", 1);
-        assert!(!game.use_lectern([8, 64, 8], Some(&stone)));
-        let book = ItemStack::new("minecraft:book", 1);
-        assert!(
-            game.use_lectern([8, 64, 8], Some(&book)),
-            "the pack's `#minecraft:lectern_books` entry was refused"
-        );
-        let Some(BlockEntity::Lectern(lectern)) = game.world.block_entities.get(&key) else {
-            panic!("no lectern block entity");
-        };
-        assert_eq!(
-            lectern.book.as_ref().map(|b| &*b.item),
-            Some("minecraft:book")
-        );
-    }
 }
 
 #[cfg(test)]
 #[path = "tests/book_escape_tests.rs"]
-mod book_escape_tests;
+pub(in crate::game) mod book_escape_tests;
 
 #[cfg(test)]
 #[path = "tests/lectern_tests.rs"]
-mod lectern_tests;
+pub(in crate::game) mod lectern_tests;
 
 #[cfg(test)]
-mod lectern_signal_tests {
+pub(in crate::game) mod lectern_signal_tests {
     use super::super::game_tests::tests::server_game;
     use super::lectern_signal;
     use sunrise_client::{
@@ -1978,7 +1712,7 @@ impl BookScreen {
     /// overrides it false, so the same pages read on a lectern leave the
     /// world ticking (its menu is an `AbstractContainerScreen`, which does
     /// not pause either).
-    pub(super) fn pauses_world(&self) -> bool {
+    pub(in crate::game) fn pauses_world(&self) -> bool {
         !matches!(
             self,
             Self::View {
@@ -1990,7 +1724,7 @@ impl BookScreen {
 }
 
 #[cfg(test)]
-mod pause_tests {
+pub(in crate::game) mod pause_tests {
     use super::BookScreen;
     use sunrise_client::{text::Text, ui};
 
@@ -2028,7 +1762,7 @@ mod pause_tests {
 }
 
 #[cfg(test)]
-mod lectern_book_removal_tests {
+pub(in crate::game) mod lectern_book_removal_tests {
     use super::*;
     use crate::game::game_tests::tests::server_game;
 
@@ -2085,7 +1819,7 @@ mod lectern_book_removal_tests {
 }
 
 #[cfg(test)]
-mod lectern_reach_tests {
+pub(in crate::game) mod lectern_reach_tests {
     use crate::game::game_tests::tests::server_game;
     use sunrise_client::{
         containers::{BlockEntity, Lectern},
@@ -2136,7 +1870,7 @@ mod lectern_reach_tests {
 }
 
 #[cfg(test)]
-mod sign_tests {
+pub(in crate::game) mod sign_tests {
     use super::{BookScreen, book_page_box, book_title_box};
 
     /// `BookSignScreen`'s constructor sets its title box to `titleValue`, what
@@ -2180,16 +1914,18 @@ mod sign_tests {
 
 #[cfg(test)]
 #[path = "tests/sign_book_tests.rs"]
-mod sign_book_tests;
+pub(in crate::game) mod sign_book_tests;
 
-fn link_cursor(style: &sunrise_client::text::Style) -> Option<sunrise_client::widgets::Cursor> {
+pub(in crate::game) fn link_cursor(
+    style: &sunrise_client::text::Style,
+) -> Option<sunrise_client::widgets::Cursor> {
     style
         .click
         .is_some()
         .then_some(sunrise_client::widgets::Cursor::PointingHand)
 }
 #[cfg(test)]
-mod link_cursor_tests {
+pub(in crate::game) mod link_cursor_tests {
     use super::link_cursor;
     use sunrise_client::text::{ClickEvent, Style, Text};
     use sunrise_client::widgets::Cursor;

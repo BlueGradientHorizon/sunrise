@@ -13,7 +13,7 @@ impl Game<'_> {
     /// its tint source and whether it is cut out, translucent or animated; its particle sprite; whether it is a plain
     /// cube. None for a block the game does not know. The model is the state's first random variant. API
     /// 380.
-    pub(super) fn block_sprites(
+    pub(in crate::game) fn block_sprites(
         &self,
         blocks: &[sunrise_world::registry::BlockStateId],
     ) -> Vec<Option<BlockSprites>> {
@@ -28,7 +28,7 @@ impl Game<'_> {
     }
     /// For a client mod: each texture's sprite by name (`minecraft:block/stone`, `block/stone`), none for one no
     /// model uses. API 380.
-    pub(super) fn texture_sprites(&self, textures: &[&str]) -> Vec<Option<SpriteRef>> {
+    pub(in crate::game) fn texture_sprites(&self, textures: &[&str]) -> Vec<Option<SpriteRef>> {
         let atlas = self
             .stitching_block_atlas
             .0
@@ -45,7 +45,7 @@ impl Game<'_> {
             .collect()
     }
     /// `ClientLevel.getBlockTint(pos, resolver)`, without consulting block or fluid tint sources.
-    pub(super) fn biome_tint(
+    pub(in crate::game) fn biome_tint(
         &self,
         pos: [i32; 3],
         resolver: ColorResolver,
@@ -69,7 +69,7 @@ impl Game<'_> {
     /// (`block_sprites::fluid_faces`: water at tint index 0) takes the water colour the fluid
     /// mesher gives it (`MeshTables::water_tint`, the packs' water colormap included). Both read the
     /// mesher's current biome colours, including after `refresh_biome_colors`.
-    pub(super) fn block_tint_color(
+    pub(in crate::game) fn block_tint_color(
         &self,
         state: BlockStateId,
         tint_index: i32,
@@ -122,7 +122,7 @@ impl Game<'_> {
 
     /// For a client mod: changes each time the resources load (a resource pack turned on or off can move every
     /// sprite): ask `block_sprites` again then. API 380.
-    pub(super) fn block_sprites_version(&self) -> u64 {
+    pub(in crate::game) fn block_sprites_version(&self) -> u64 {
         self.stitching_block_atlas
             .0
             .as_ref()
@@ -132,7 +132,7 @@ impl Game<'_> {
     /// For a client mod: where GUI sprite `sprite` lies in the GUI atlas and its size, none for one the atlas lacks
     /// or whose entry its definition removed (a server's metrics-only atlas lacks them all). The atlas names its
     /// sprites by GUI id: `container/slot` or `minecraft:container/slot`, a mod's `mymod:panel`.
-    pub(super) fn gui_sprite(&self, sprite: &Identifier) -> Option<AtlasRegion> {
+    pub(in crate::game) fn gui_sprite(&self, sprite: &Identifier) -> Option<AtlasRegion> {
         let found = if sprite.namespace() == "minecraft" {
             self.gui.atlas.gui_lookup(sprite.path())
         } else {
@@ -331,7 +331,7 @@ mod texture_atlas_stitched_tests {
 
         // Both resource loads need the source type, whose registry is process-wide.
         if super::super::native_entity_refs::tests::run_fresh_cases(
-            "game::native_block_sprites::texture_atlas_stitched_tests::a_sprite_source_publishes_its_sprites_by_atlas_and_id_through_the_host",
+            "game::client_side::native_block_sprites::texture_atlas_stitched_tests::a_sprite_source_publishes_its_sprites_by_atlas_and_id_through_the_host",
             "SUNRISE_SPRITE_SOURCE_ATLAS_TEST_CHILD",
             &["atlas"],
         ) {

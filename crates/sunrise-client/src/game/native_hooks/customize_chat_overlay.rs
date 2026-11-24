@@ -1,3 +1,4 @@
+#[allow(unused_imports)]
 use super::*;
 
 /// The hook points. Each does nothing in Sunrise.
@@ -17,18 +18,24 @@ impl Game<'_> {
 }
 
 #[cfg(test)]
-mod customize_chat_overlay_tests {
+pub(in crate::game) mod customize_chat_overlay_tests {
+    #[allow(unused_imports)]
     use crate::game::native_entity_refs::tests::with_client_game;
+    #[allow(unused_imports)]
     use mod_api::{ClientHost, CustomizeChatOverlayEvent, Hooks, ModEntry};
+    #[allow(unused_imports)]
     use mod_platform::testing::with_mods;
+    #[allow(unused_imports)]
     use std::sync::{Arc, Mutex};
+    #[allow(unused_imports)]
     use sunrise_client::hud::HudBatch;
+    #[allow(unused_imports)]
     use sunrise_client::text::Text;
 
-    type Seen = Arc<Mutex<Vec<(i32, i32, bool, i32, i32)>>>;
+    pub(in crate::game) type Seen = Arc<Mutex<Vec<(i32, i32, bool, i32, i32)>>>;
 
     /// Lifts the chat 100 GUI pixels, logging what it was told.
-    struct Lift(Seen);
+    pub(in crate::game) struct Lift(pub(in crate::game) Seen);
     #[mod_api::__subscriptions]
     impl Hooks for Lift {
         fn customize_chat_overlay(
@@ -46,54 +53,10 @@ mod customize_chat_overlay_tests {
     }
 
     /// The top of what the chat draws, in GUI pixels, and the batch's GUI scale.
-    fn chat_top(game: &mut super::Game<'_>) -> (Option<f32>, f32) {
+    pub(in crate::game) fn chat_top(game: &mut super::Game<'_>) -> (Option<f32>, f32) {
         let mut batch = HudBatch::scratch([1280, 720]);
         game.draw_chat(&mut batch);
         let top = batch.vertices.iter().map(|v| v.pos[1]).reduce(f32::min);
         (top, batch.scale)
-    }
-
-    /// `CustomizeGuiOverlayEvent.Chat`: the mod gets vanilla's place (0, GUI height - 40) and the
-    /// GUI size, focused or not, and the chat is drawn where it moved it. With the chat hidden
-    /// (F1, chat closed) nothing is asked.
-    #[test]
-    #[ignore = "daily"]
-    fn a_client_mod_moves_the_chat() {
-        let message = Text::literal("hello from the chat test");
-        let mut plain = None;
-        with_client_game(|game| {
-            game.system_message(message.clone());
-            plain = chat_top(game).0;
-        });
-        let plain = plain.expect("the message is drawn");
-        let seen = Seen::default();
-        let mods: mod_api::Mods =
-            vec![ModEntry::new("lift", Box::new(Lift(Arc::clone(&seen))))].into();
-        with_mods(mods, || {
-            with_client_game(|game| {
-                game.system_message(message.clone());
-                let (moved, scale) = chat_top(game);
-                let moved = moved.expect("the message is drawn");
-                assert!(
-                    (plain - moved - 100.0).abs() < 0.5,
-                    "lifted by 100 GUI pixels: {plain} -> {moved} at scale {scale}"
-                );
-                let (w, h) = {
-                    let b = HudBatch::scratch([1280, 720]);
-                    (b.width as i32, b.height as i32)
-                };
-                assert_eq!(*seen.lock().unwrap(), [(w, h, false, 0, h - 40)]);
-                // Hidden: F1 with the chat closed asks nothing.
-                game.ui.hide_gui = true;
-                chat_top(game);
-                assert_eq!(seen.lock().unwrap().len(), 1);
-                // Focused, the chat shows under F1 and is asked again.
-                game.client.screen = super::Screen::Chat;
-                chat_top(game);
-                let seen = seen.lock().unwrap();
-                assert_eq!(seen.len(), 2);
-                assert!(seen[1].2, "focused");
-            });
-        });
     }
 }

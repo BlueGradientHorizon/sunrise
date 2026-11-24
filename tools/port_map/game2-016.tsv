@@ -48,14 +48,14 @@ TargetBlock.tick	port	crates/sunrise-world/src/level/tick.rs::Sim::tick_block	Ta
 TargetBlock.onPlace	port	crates/sunrise-world/src/level/hooks.rs::Sim::on_place	Target arm: power reset on a new placement.
 TntBlock.onPlace	port	crates/sunrise-world/src/level/redstone.rs::Sim::tnt_check	Tnt arm of on_place: primes and removes TNT when powered.
 TntBlock.neighborChanged	port	crates/sunrise-world/src/level/redstone.rs::Sim::tnt_check	Tnt arm of neighbor_changed.
-TntBlock.onProjectileHit	port	crates/sunrise-client/src/game/mobs/creatures/mod.rs::Game::arrow_event	gap: minor: only the burning-arrow case reaches TNT here (BlockReaction::PrimeTnt in arrows.rs).
+TntBlock.onProjectileHit	port	crates/sunrise-client/src/game/mobs/creatures/mod_client.rs::Game::arrow_event	gap: minor: only the burning-arrow case reaches TNT here (BlockReaction::PrimeTnt in arrows.rs).
 TrialSpawnerBlock.createBlockStateDefinition	skip:data		block state definition is data (blocks table in sunrise-items)
 TrialSpawnerBlock.getTicker	port	crates/sunrise-client/src/game/mobs/trial_spawner.rs::Game::tick_trial_spawner	the per-tick trial spawner update
 TripWireBlock.getStateForPlacement	port	crates/sunrise-world/src/level/place.rs::Sim::placement_class	TripWire arm connects to neighbours.
 TripWireBlock.updateShape	port	crates/sunrise-world/src/level/shapes.rs::Sim::update_shape_class	TripWire arm: horizontal connections.
 TripWireBlock.onPlace	port	crates/sunrise-world/src/level/hooks.rs::Sim::on_place	TripWire arm: updates the source hooks.
 TripWireBlock.affectNeighborsAfterRemoval	port	crates/sunrise-world/src/level/hooks.rs::Sim::affect_neighbors_after_removal	TripWire arm: source update with the wire powered.
-TripWireBlock.playerWillDestroy	port	crates/sunrise-client/src/game.rs::Game::break_block_as_player	shears disarm the string first (flags 260), so the hooks stay quiet
+TripWireBlock.playerWillDestroy	port	crates/sunrise-client/src/game/game_server.rs::Game::break_block_as_player	shears disarm the string first (flags 260), so the hooks stay quiet
 TripWireBlock.entityInside	port	crates/sunrise-world/src/level/hooks.rs::Sim::entity_inside	TripWire arm: tripwire_check_pressed counts the entities in the box (EntityQuery::Everything) and the game's count skips the ones that ignore block triggers (Entity::triggers_blocks: a bat, a marker armor stand), as checkPressed does; Marker, Interaction, Display and OminousItemSpawner, the other vanilla overrides, are not among Sunrise's Entity implementations
 TripWireBlock.tick	port	crates/sunrise-world/src/level/tick.rs::Sim::tick_block	TripWire arm: tripwire_tick re-checks while powered.
 TripWireBlock.rotate	port	crates/sunrise-world/src/worldgen/structure.rs::StateTransforms::rotate
@@ -73,7 +73,7 @@ TurtleEggBlock.destroyEgg	port	crates/sunrise-world/src/block_landing.rs::BlockL
 TurtleEggBlock.decreaseEggs	inline	crates/sunrise-world/src/block_landing.rs::BlockLandingRegistry::fall_on	One egg fewer, or the block removed, inside the TurtleEgg rule.
 TurtleEggBlock.onPlace	port	crates/sunrise-world/src/level/hooks.rs::Sim::on_place	TurtleEgg arm: crack level event on sand.
 TurtleEggBlock.shouldUpdateHatchLevel	inline	crates/sunrise-world/src/level/timeline.rs::Sim::turtle_egg_tick	The hatch chance check opens turtle_egg_tick.
-TurtleEggBlock.playerDestroy	port	crates/sunrise-client/src/game.rs::break_block_as_player	ticked in #3516; `TurtleEggBlock.playerDestroy` is cited at crates/sunrise-client/src/game.rs:5143 (in a comment, so `where` names the enclosing fn)
+TurtleEggBlock.playerDestroy	port	crates/sunrise-client/src/game/game_server.rs::break_block_as_player	ticked in #3516; `TurtleEggBlock.playerDestroy` is cited at crates/sunrise-client/src/game.rs:5143 (in a comment, so `where` names the enclosing fn)
 TurtleEggBlock.canBeReplaced	port	crates/sunrise-world/src/level/place.rs::Sim::can_be_replaced	TurtleEgg arm: adds an egg to a stack below 4.
 TurtleEggBlock.getStateForPlacement	port	crates/sunrise-world/src/level/place.rs::Sim::placement_class	TurtleEgg arm adds an egg to a stack.
 TurtleEggBlock.getShape	port	crates/sunrise-world/src/interaction_shapes.rs::InteractionShapes::shape	shape per egg count from the table

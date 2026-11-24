@@ -2,7 +2,7 @@
 use super::Game;
 use sunrise_client::graphics::ParticleCullingMode;
 use sunrise_client_gameplay::particle_culling::state_is_opaque;
-pub(super) use sunrise_client_gameplay::particle_culling::{
+pub(in crate::game) use sunrise_client_gameplay::particle_culling::{
     ParticleAsyncState, ParticleOcclusionContext,
 };
 
@@ -18,10 +18,10 @@ macro_rules! section_scene {
         }
     };
 }
-pub(super) use section_scene;
+pub(in crate::game) use section_scene;
 
 impl Game<'_> {
-    pub(super) fn particle_occlusion_context(
+    pub(in crate::game) fn particle_occlusion_context(
         &self,
         camera: glam::DVec3,
     ) -> ParticleOcclusionContext<'_> {
@@ -42,7 +42,7 @@ impl Game<'_> {
         )
     }
 
-    pub(super) fn finish_async_particle_culling(&self) {
+    pub(in crate::game) fn finish_async_particle_culling(&self) {
         self.async_particle_culler
             .0
             .borrow_mut()

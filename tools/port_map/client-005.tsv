@@ -3,7 +3,7 @@ VillagerRenderer.extractRenderState	port	crates/sunrise-client/src/mobs/villager
 WanderingTraderRenderer.extractRenderState	port	crates/sunrise-client/src/mobs/render.rs::render_with	the trader's unhappy counter is never ticked in vanilla (only Villager ticks it), so nothing is read
 WardenRenderer.<init>	port	crates/sunrise-client/src/mobs/warden.rs::emissive_layers	the four emissive layers: bioluminescent, pulsating spots, tendrils, heart
 WardenRenderer.extractRenderState	port	crates/sunrise-client/src/mobs/warden.rs::anim	tendril and heart clocks and the animation states (roar, sniff, emerge, dig, attack, sonic boom)
-WindChargeRenderer.submit	port	crates/sunrise-client/src/game/interface/wind.rs::Game::wind_charge_geometry	the wind texture scrolls (render::draw_scrolled, WIND_CHARGE_SCROLL)
+WindChargeRenderer.submit	port	crates/sunrise-client/src/game/interface/wind_client.rs::Game::wind_charge_geometry	the wind texture scrolls (render::draw_scrolled, WIND_CHARGE_SCROLL)
 WitchRenderer.extractRenderState	port	crates/sunrise-client/src/mobs/witch.rs::anim	nose wobble; the held potion is drawn at the nose (render::held_item_transform, WitchItemLayer.applyTranslation)
 WitherBossRenderer.getTextureLocation	port	crates/sunrise-client/src/mobs/wither.rs::texture	invulnerable blink texture
 WitherBossRenderer.extractRenderState	port	crates/sunrise-client/src/mobs/wither.rs::anim	invulnerable clock feeds the texture and scale; the powered glow is render.rs::energy_swirl
@@ -33,7 +33,7 @@ Deadmau5EarsLayer.submit	port	crates/sunrise-client/src/mobs/render.rs::ears	two
 DolphinCarryingItemLayer.submit	inline	crates/sunrise-client/src/mobs/render.rs::held_item_transform	the dolphin branch: the main hand's item at the snout, lifted and pulled in as it pitches
 DrownedOuterLayer.submit	port	crates/sunrise-client/src/mobs/render.rs::layers	drowned outer layer, adult and baby
 EnergySwirlLayer.submit	port	crates/sunrise-client/src/mobs/render.rs::energy_swirl	charged creeper and powered wither swirl, drawn in render_visible
-EquipmentLayerRenderer.renderLayers	port	crates/sunrise-client/src/game/entities/armor_stands.rs::Game::armor_layers	draws all humanoid layers of the equipment asset, including leather overlay
+EquipmentLayerRenderer.renderLayers	port	crates/sunrise-client/src/game/entities/armor_stands_client.rs::Game::armor_layers	draws all humanoid layers of the equipment asset, including leather overlay
 EquipmentLayerRenderer.getColorForLayer	port	crates/sunrise-client/src/game/entities/armor_stands.rs::layer_color	the stack's dyed colour when it has one, else the layer's undyed colour (red and blue swapped for the draw); -1 for a layer that is not dyeable
 EquipmentLayerRenderer.TrimTextureKey.createTextureWithNoPalette	port	crates/sunrise-client-render/src/trims.rs::TrimTexture::generate	a trim with no palette is used as its own texture
 EyesLayer.submit	port	crates/sunrise-client/src/mobs/render.rs::layers	spider, enderman and phantom eyes
@@ -93,7 +93,7 @@ AvatarRenderer.isEntityUpsideDown	port	crates/sunrise-client/src/mobs/render.rs:
 ArmedEntityRenderState.getArmPose	port	crates/sunrise-client/src/mobs/anim.rs::setup	arm poses are chosen per species and hand inside setup
 ArmedEntityRenderState.extractArmedEntityRenderState	port	crates/sunrise-client/src/mobs/anim.rs::state	swing and main arm; the held items are read in Game::held_item_geometry
 AvatarRenderState.fallFlyingScale	port	crates/sunrise-client/src/mobs/render.rs::base_transform_at	glide scale: ticks squared over 100, clamped to 1
-EnderDragonRenderState.getHeadPartYOffset	port	crates/sunrise-client/src/game/mobs/dragon.rs::Game::dragon_geometry	sitting, landing and the part 6 cases
+EnderDragonRenderState.getHeadPartYOffset	port	crates/sunrise-client/src/game/mobs/dragon_client.rs::Game::dragon_geometry	sitting, landing and the part 6 cases
 EntityRenderState.fillCrashReportCategory	skip:debug		crash report detail only
 HumanoidRenderState.ticksUsingItem	port	crates/sunrise-client/src/game/mobs/mob_blocks.rs::Game::held_item_geometry	use time for the hand that is using an item
 ItemClusterRenderState.extractItemGroupRenderState	port	crates/sunrise-client/src/item_render.rs::rendered_amount	rendered count of the stack; the seed is taken in cluster_poses

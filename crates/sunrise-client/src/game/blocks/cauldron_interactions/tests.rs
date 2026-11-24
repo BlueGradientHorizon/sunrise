@@ -1,22 +1,27 @@
+#[allow(unused_imports)]
 use super::*;
+#[allow(unused_imports)]
 use crate::game::native_entity_refs::tests::{bind_local_player, run_fresh_cases, with_game_at};
+#[allow(unused_imports)]
 use mod_api::{
     BlockUpdateFlags, CauldronDecision, CauldronUse, Hooks, ItemPlace, ItemResource, ServerHost,
     StatType,
 };
+#[allow(unused_imports)]
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+#[allow(unused_imports)]
 use sunrise_client::cauldron::{Outcome, interactions::Entry};
 
-const POS: [i32; 3] = [0, 64, 0];
+pub(in crate::game) const POS: [i32; 3] = [0, 64, 0];
 #[derive(Default)]
-struct Seen {
-    fail_preparation: AtomicBool,
-    calls: AtomicUsize,
-    actor: AtomicUsize,
-    drops: AtomicUsize,
+pub(in crate::game) struct Seen {
+    pub(in crate::game) fail_preparation: AtomicBool,
+    pub(in crate::game) calls: AtomicUsize,
+    pub(in crate::game) actor: AtomicUsize,
+    pub(in crate::game) drops: AtomicUsize,
 }
-struct Syrup {
-    seen: Arc<Seen>,
+pub(in crate::game) struct Syrup {
+    pub(in crate::game) seen: Arc<Seen>,
 }
 impl mod_api::Interaction for Syrup {
     fn interact(&self, host: &mut dyn ServerHost, input: &CauldronUse) -> CauldronDecision {
@@ -76,9 +81,9 @@ impl mod_api::Interaction for Syrup {
         CauldronDecision::Success
     }
 }
-struct TestMod {
-    seen: Arc<Seen>,
-    dye: bool,
+pub(in crate::game) struct TestMod {
+    pub(in crate::game) seen: Arc<Seen>,
+    pub(in crate::game) dye: bool,
 }
 #[mod_api::__subscriptions]
 impl Hooks for TestMod {
@@ -268,7 +273,7 @@ fn a_panicking_cauldron_registrar_leaves_no_exact_tag_or_all_entries() {
     );
 }
 
-fn fixture_mods(mods: mod_api::Mods, test: impl FnOnce(&mut Game<'_>)) {
+pub(in crate::game) fn fixture_mods(mods: mod_api::Mods, test: impl FnOnce(&mut Game<'_>)) {
     mod_platform::__private::install(mods.clone());
     crate::game::api_values::install_parts(&mods).unwrap();
     let base = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
@@ -278,7 +283,7 @@ fn fixture_mods(mods: mod_api::Mods, test: impl FnOnce(&mut Game<'_>)) {
         .to_path_buf();
     with_game_at(root, test);
 }
-fn fixture(dye: bool, test: impl FnOnce(&mut Game<'_>, &Arc<Seen>)) {
+pub(in crate::game) fn fixture(dye: bool, test: impl FnOnce(&mut Game<'_>, &Arc<Seen>)) {
     let seen = Arc::new(Seen::default());
     let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
         "test",
@@ -293,7 +298,13 @@ fn fixture(dye: bool, test: impl FnOnce(&mut Game<'_>, &Arc<Seen>)) {
         test(game, &seen);
     });
 }
-fn setup(game: &mut Game<'_>, block: &str, level: Option<&str>, item: &str, count: u32) {
+pub(in crate::game) fn setup(
+    game: &mut Game<'_>,
+    block: &str,
+    level: Option<&str>,
+    item: &str,
+    count: u32,
+) {
     game.world
         .chunks
         .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
@@ -325,7 +336,7 @@ fn setup(game: &mut Game<'_>, block: &str, level: Option<&str>, item: &str, coun
     game.audio.0.capture = Some(Vec::new());
     crate::game::sculk::TEST_POSTED_EVENTS.with(|events| *events.borrow_mut() = Some(Vec::new()));
 }
-fn state(game: &Game<'_>) -> (String, Option<String>) {
+pub(in crate::game) fn state(game: &Game<'_>) -> (String, Option<String>) {
     let state = game
         .pack
         .assets
@@ -334,10 +345,10 @@ fn state(game: &Game<'_>) -> (String, Option<String>) {
         .unwrap();
     (state.name.clone(), state.properties.get("level").cloned())
 }
-fn events() -> usize {
+pub(in crate::game) fn events() -> usize {
     crate::game::sculk::TEST_POSTED_EVENTS.with(|events| events.borrow().as_ref().unwrap().len())
 }
-fn unchanged(game: &Game<'_>, seen: &Seen) {
+pub(in crate::game) fn unchanged(game: &Game<'_>, seen: &Seen) {
     assert_eq!(state(game), ("minecraft:cauldron".into(), None));
     let held = game.inventory[0].as_ref().unwrap();
     assert_eq!((&*held.item, held.count), ("test:syrup_bottle", 2));
@@ -352,7 +363,7 @@ fn unchanged(game: &Game<'_>, seen: &Seen) {
         0
     );
 }
-fn bottles(game: &Game<'_>) -> u32 {
+pub(in crate::game) fn bottles(game: &Game<'_>) -> u32 {
     game.inventory
         .iter()
         .flatten()
@@ -429,34 +440,6 @@ fn cauldron_syrup_applies_once() {
 }
 #[test]
 #[ignore = "daily"]
-fn cauldron_outer_abort_discards_effects_and_drops() {
-    if run_fresh_cases(
-        "game::server_side::cauldron_interactions::tests::cauldron_outer_abort_discards_effects_and_drops",
-        "SUNRISE_CAULDRON_CASE",
-        &["run"],
-    ) {
-        return;
-    }
-    fixture(false, |game, seen| {
-        crate::game::native_item_places::tests::open_to_lan(game);
-        for slot in game.inventory.iter_mut().skip(1) {
-            *slot = Some(ItemStack::new("minecraft:stone", 64));
-        }
-        game.storage_scope(|game, _| {
-            assert_eq!(game.use_on_cauldron(POS).unwrap(), Outcome::Success);
-            assert_eq!(events(), 0);
-            assert!(game.creatures.lan_sounds.is_empty());
-            assert!(game.audio.0.capture.as_ref().unwrap().is_empty());
-            ((), false)
-        });
-        unchanged(game, seen);
-        assert_eq!(events(), 0);
-        assert!(game.creatures.lan_sounds.is_empty());
-        assert!(game.audio.0.capture.as_ref().unwrap().is_empty());
-    });
-}
-#[test]
-#[ignore = "daily"]
 fn cauldron_dye_tag_shadows_exact_handler_even_on_pass() {
     if run_fresh_cases(
         "game::server_side::cauldron_interactions::tests::cauldron_dye_tag_shadows_exact_handler_even_on_pass",
@@ -519,54 +502,6 @@ fn cauldron_transfer_awards_two_statistics_once() {
         );
         assert_eq!(game.stats.get("custom", "minecraft:use_cauldron"), 1);
         assert_eq!(game.stats.get("used", "test:syrup_bottle"), 1);
-    });
-}
-#[test]
-#[ignore = "daily"]
-fn cauldron_client_skips_custom_prediction() {
-    if run_fresh_cases(
-        "game::server_side::cauldron_interactions::tests::cauldron_client_skips_custom_prediction",
-        "SUNRISE_CAULDRON_CASE",
-        &["run"],
-    ) {
-        return;
-    }
-    fixture(false, |game, seen| {
-        game.options.execution_role = crate::game::execution_role::ExecutionRole::Client;
-        let _server = crate::game::native_client_session::tests::logged_client(game);
-        setup(game, "minecraft:cauldron", None, "test:syrup_bottle", 2);
-        let held = game.inventory[0].clone();
-        let (outcome, proposed) = game.client_cauldron_prediction(POS, held.as_ref());
-        assert_eq!(outcome, Outcome::Pass);
-        assert!(proposed.0.is_empty());
-        assert!(proposed.1.is_empty());
-        assert_eq!(seen.calls.load(Ordering::SeqCst), 0);
-        assert_eq!(game.cauldron_outcome(POS, held.as_ref()), Outcome::Pass);
-        assert_eq!(seen.calls.load(Ordering::SeqCst), 0);
-        let hit = Hit {
-            pos: POS,
-            face: [0, 1, 0],
-            point: [0.5, 65.0, 0.5],
-            inside: false,
-        };
-        assert!(game.remote_cauldron_reacts(&hit, held.as_ref()).is_none());
-        assert_eq!(seen.calls.load(Ordering::SeqCst), 0);
-        assert_eq!(seen.actor.load(Ordering::SeqCst), 0);
-        unchanged(game, seen);
-        assert_eq!(game.audio.0.capture.as_ref().unwrap().len(), 0);
-        assert_eq!(events(), 0);
-        setup(
-            game,
-            "minecraft:cauldron",
-            None,
-            "minecraft:water_bucket",
-            1,
-        );
-        let held = game.inventory[0].clone();
-        let (outcome, proposed) = game.client_cauldron_prediction(POS, held.as_ref());
-        assert_eq!(outcome, Outcome::Success);
-        assert_eq!(proposed.0.len(), 1);
-        assert_eq!(seen.calls.load(Ordering::SeqCst), 0);
     });
 }
 

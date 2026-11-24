@@ -47,11 +47,11 @@ impl Game<'_> {
 }
 
 // All raw file access goes through the registered owner/key boundary.
-pub(super) fn read_raw(dir: &Path, owner: &str, key: &str) -> Option<String> {
+pub(in crate::game) fn read_raw(dir: &Path, owner: &str, key: &str) -> Option<String> {
     mod_api::__private::setting(owner, key)?;
     sunrise_world::native_load_context::read_setting(dir, key)
 }
-pub(super) fn store(dir: &Path, owner: &str, key: &str, value: &str) -> bool {
+pub(in crate::game) fn store(dir: &Path, owner: &str, key: &str, value: &str) -> bool {
     if mod_api::__private::setting(owner, key).is_none() {
         return false;
     }

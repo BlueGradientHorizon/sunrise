@@ -1,6 +1,8 @@
 //! Dropped items and experience orbs: their tick (`tick_items`, `tick_dropped_items`,
 //! `tick_experience`), the stacks a destroyed container lets fall, and spawning and merging orbs.
+#[allow(unused_imports)]
 use super::*;
+#[allow(unused_imports)]
 use crate::game::collision_source::Mover;
 
 /// A dropped item's `bobOffs` (its bob and spin phase) from its random's draw `drawn`, or under
@@ -18,10 +20,10 @@ pub(in crate::game) fn bob_offset(position: Vec3, drawn: f32, still: bool) -> f3
 
 /// The items `give_items_back` takes again, where the item the loop was at now is (none once it
 /// is gone), and the index the loop goes on from.
-struct GivenBack {
-    items: sunrise_client::join_seq::JoinList<ItemEntity>,
-    at: Option<usize>,
-    next: usize,
+pub(in crate::game) struct GivenBack {
+    pub(in crate::game) items: sunrise_client::join_seq::JoinList<ItemEntity>,
+    pub(in crate::game) at: Option<usize>,
+    pub(in crate::game) next: usize,
 }
 
 impl Game<'_> {
@@ -424,7 +426,7 @@ impl Game<'_> {
     /// list's write stamp didn't move), the list comes back as it went and `removed` and `cells`
     /// stay as they are; otherwise they are rebuilt for the list taken back. The loop goes on
     /// right after item `i`, or, when it is gone, after where it stood in the list's join order.
-    fn give_items_back(
+    pub(in crate::game) fn give_items_back(
         &mut self,
         mut items: sunrise_client::join_seq::JoinList<ItemEntity>,
         removed: &mut Vec<bool>,
@@ -548,7 +550,13 @@ impl Game<'_> {
     }
     /// Puts back what a merge hook may have written to the orb `join`: a refused merge
     /// leaves both orbs as they were.
-    fn restore_orb(&mut self, join: crate::join_seq::JoinSeq, value: i32, count: u32, age: i32) {
+    pub(in crate::game) fn restore_orb(
+        &mut self,
+        join: crate::join_seq::JoinSeq,
+        value: i32,
+        count: u32,
+        age: i32,
+    ) {
         if let Some(i) = self.orbs.locate(join) {
             let orb = &mut self.orbs[i];
             (orb.value, orb.count, orb.age) = (value, count, age);
@@ -1068,7 +1076,7 @@ impl Game<'_> {
 }
 
 #[cfg(test)]
-mod destroyed_contents_tests {
+pub(in crate::game) mod destroyed_contents_tests {
     use super::*;
     use crate::game::game_tests::tests::server_game;
     use sunrise_client::items::ItemStack;
@@ -1164,7 +1172,7 @@ mod destroyed_contents_tests {
 }
 
 #[cfg(test)]
-mod escape_tests {
+pub(in crate::game) mod escape_tests {
     use crate::game::game_tests::tests::server_game;
     use sunrise_client::items::ItemStack;
     use sunrise_core::random::RandomSource;
@@ -1212,7 +1220,7 @@ mod escape_tests {
 pub(in crate::game) mod thrown_items_tests;
 
 #[cfg(test)]
-mod bob_tests {
+pub(in crate::game) mod bob_tests {
     use sunrise_core::geometry::Vec3;
     use sunrise_core::random::RandomSource;
 

@@ -40,7 +40,7 @@ Armadillo.onSyncedDataUpdated	port	crates/sunrise-client/src/mobs/armadillo.rs::
 Armadillo.addAdditionalSaveData	inline	crates/sunrise-client/src/entity_nbt.rs::mob_to_nbt	state is written as its ArmadilloState name, always, beside scute_time
 Armadillo.readAdditionalSaveData	inline	crates/sunrise-client/src/entity_nbt/mob_load.rs::mob_from_nbt	state goes through switchToState, idle when the save names none; scute_time keeps the constructor's value when absent
 Armadillo.checkArmadilloSpawnRules	port	crates/sunrise-client/src/mobs/spawn_rules.rs::check_spawn_rules
-Armadillo.brushOffScute	port	crates/sunrise-client/src/game/mobs/creatures/mod.rs::Game::interact_armadillo	brush use; dispenser.rs dispense_brush does the same for a dispenser
+Armadillo.brushOffScute	port	crates/sunrise-client/src/game/mobs/creatures/mod_client.rs::Game::interact_armadillo	brush use; dispenser.rs dispense_brush does the same for a dispenser
 ArmadilloAi.initCoreActivity	inline	crates/sunrise-client/src/mobs/armadillo.rs::register	float and panic goals; rolling out is in server_ai_step
 ArmadilloAi.initIdleActivity	inline	crates/sunrise-client/src/mobs/armadillo.rs::register	gap: only look, stroll and random look; no AnimalMakeLove, FollowTemptation or BabyFollowAdult, so armadillos never seek a partner, follow food or have babies follow adults
 ArmadilloAi.initScaredActivity	inline	crates/sunrise-client/src/mobs/armadillo.rs::server_ai_step	the PANIC activity and ArmadilloBallUp
@@ -56,7 +56,7 @@ Axolotl.tickAdultAnimations	inline	crates/sunrise-client/src/mobs/axolotl.rs::An
 Axolotl.rehydrate	port	crates/sunrise-client/src/game/blocks/splash_water.rs::Game::affect_entities_around	water potion on #rehydrates_axolotls: 1800 more air up to MAX_AIR (6000)
 Axolotl.get	port	crates/sunrise-client/src/entity_nbt.rs::bucket_components	axolotl/variant component written to the bucket
 Axolotl.applyImplicitComponent	port	crates/sunrise-client/src/entity_nbt.rs::apply_item_components	axolotl/variant read from the bucket or spawn egg
-Axolotl.getBreedOffspring	port	crates/sunrise-client/src/game/mobs/creatures/mod.rs::Game::breed	gap: baby takes the first parent's colour; no random parent, no 1-in-1200 blue, not set persistent
+Axolotl.getBreedOffspring	port	crates/sunrise-client/src/game/mobs/creatures/mod_server.rs::Game::breed	gap: baby takes the first parent's colour; no random parent, no 1-in-1200 blue, not set persistent
 Axolotl.createAttributes	skip:data		attributes come from entity-types.json
 Axolotl.mobInteract	port	crates/sunrise-client/src/game/mobs/creatures/mod.rs::Game::interact_mob	a water bucket scoops it up (bucketable)
 Axolotl.playAttackSound	port	crates/sunrise-client/src/mobs/combat.rs::do_hurt_target	AXOLOTL_ATTACK at 1.0/1.0 after the blow lands, skipped for a silent mob
@@ -107,7 +107,7 @@ Camel.getRiddenSpeed	inline	crates/sunrise-client/src/mobs/equine.rs::ridden_ste
 Camel.getRiddenRotation	port	crates/sunrise-client/src/mobs/equine.rs::Goal::ridden_step	ticked in #3512; `Camel.getRiddenRotation` is cited at crates/sunrise-client/src/mobs/equine.rs:589 (in a comment, so `where` names the enclosing fn)
 Camel.onPlayerJump	inline	crates/sunrise-client/src/mobs/camel.rs::dash	the cooldown, ground and refuse_to_move gates
 Camel.handleStartJump	port	crates/sunrise-client/src/mobs/camel.rs::dash	dash sound and dashing flag; no entity_action game event
-Camel.mobInteract	port	crates/sunrise-client/src/game/mobs/mounts.rs::Game::interact_mount	inventory on sneak, feeding, riding
+Camel.mobInteract	port	crates/sunrise-client/src/game/mobs/mounts_client.rs::Game::interact_mount	inventory on sneak, feeding, riding
 Camel.onElasticLeashPull	port	crates/sunrise-client/src/mobs/camel.rs::on_elastic_leash_pull
 Camel.canMate	port	crates/sunrise-client/src/mobs/goals.rs::Breed::can_use	both sides need AbstractHorse.canParent (not ridden and at full health; a camel is always tame), and only camels pair
 Camel.getBodyAnchorAnimationYOffset	port	crates/sunrise-client/src/game/mobs/mounts.rs::Game::position_rider	gap: sitting or standing height only, no sit/stand transition interpolation
@@ -125,7 +125,7 @@ Chicken.isFlapping	port	crates/sunrise-client/src/mobs/farm.rs::chicken_process_
 Chicken.onFlap	port	crates/sunrise-client/src/mobs/farm.rs::chicken_process_flapping	nextFlap = flyDist + flapSpeed / 2, no sound
 Chicken.registerGoals	port	crates/sunrise-client/src/mobs/farm.rs::register
 Chicken.getSoundSet	inline	crates/sunrise-client/src/mobs/ai.rs::voice_sounds	gap: baby sets only; the picky sound variant is stored but never used
-Chicken.getBreedOffspring	port	crates/sunrise-client/src/game/mobs/creatures/mod.rs::Game::breed	gap: baby copies the first parent's variant, no random parent
+Chicken.getBreedOffspring	port	crates/sunrise-client/src/game/mobs/creatures/mod_server.rs::Game::breed	gap: baby copies the first parent's variant, no random parent
 Chicken.finalizeSpawn	port	crates/sunrise-client/src/mobs/finalize.rs::Ctx::finalize	variant by biome and a random sound variant
 Chicken.defineSynchedData	port	crates/sunrise-client/src/game/network/lan/mod.rs::mob_meta	gap: variant is synced, sound variant is not
 Chicken.readAdditionalSaveData	port	crates/sunrise-client/src/entity_nbt/mob_load.rs::mob_from_nbt	EggLayTime, variant, sound_variant; jockey in riders.rs
@@ -140,7 +140,7 @@ AbstractCow.mobInteract	port	crates/sunrise-client/src/game/mobs/creatures/mod.r
 Cow.defineSynchedData	port	crates/sunrise-client/src/game/network/lan/mod.rs::mob_meta	gap: variant is synced, sound variant is not
 Cow.addAdditionalSaveData	port	crates/sunrise-client/src/entity_nbt.rs::mob_to_nbt
 Cow.readAdditionalSaveData	port	crates/sunrise-client/src/entity_nbt/mob_load.rs::mob_from_nbt
-Cow.getBreedOffspring	port	crates/sunrise-client/src/game/mobs/creatures/mod.rs::Game::breed	gap: baby copies the first parent's variant, no random parent
+Cow.getBreedOffspring	port	crates/sunrise-client/src/game/mobs/creatures/mod_server.rs::Game::breed	gap: baby copies the first parent's variant, no random parent
 Cow.finalizeSpawn	port	crates/sunrise-client/src/mobs/finalize.rs::Ctx::finalize	variant by biome and a random sound variant
 CowVariants	skip:data		cow variants come from the registry data files
 MushroomCow.getWalkTargetValue	port	crates/sunrise-client/src/mobs/ai/walk_target.rs::walk_target_value	mycelium 10, anything else by the light: its own override replaces Animal's grass rule, in the stroll's score and the spawn check
@@ -153,7 +153,7 @@ MushroomCow.readAdditionalSaveData	port	crates/sunrise-client/src/entity_nbt/mob
 MushroomCow.getEffectsFromItemStack	port	crates/sunrise-items/src/items.rs::Items::suspicious_stew_effects	the flower block's one entry, floor(seconds * 20)
 MushroomCow.get	port	crates/sunrise-client/src/mobs/finalize.rs::species_variant_component	the variant component, red (0) or brown (1)
 MushroomCow.applyImplicitComponent	port	crates/sunrise-client/src/entity_nbt.rs::apply_item_components	an egg's mooshroom/variant sets the colour
-MushroomCow.getBreedOffspring	port	crates/sunrise-client/src/game/mobs/creatures/mod.rs::Game::breed	see getOffspringVariant
-MushroomCow.getOffspringVariant	port	crates/sunrise-client/src/game/mobs/creatures/mod.rs::breed	ticked in #3512; `MushroomCow.getOffspringVariant` is cited at crates/sunrise-client/src/game/mobs/creatures/mod.rs:2566 (in a comment, so `where` names the enclosing fn)
+MushroomCow.getBreedOffspring	port	crates/sunrise-client/src/game/mobs/creatures/mod_server.rs::Game::breed	see getOffspringVariant
+MushroomCow.getOffspringVariant	port	crates/sunrise-client/src/game/mobs/creatures/mod_server.rs::breed	ticked in #3512; `MushroomCow.getOffspringVariant` is cited at crates/sunrise-client/src/game/mobs/creatures/mod.rs:2566 (in a comment, so `where` names the enclosing fn)
 Tadpole.fromBucket	inline	crates/sunrise-client/src/entity_nbt.rs::mob_to_nbt	saved FromBucket is always true
 CamelHusk.canBeABaby	port	crates/sunrise-client/src/mobs/species.rs::can_be_a_baby	the false arm: a camel husk inherits Camel's age but never its baby box

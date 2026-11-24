@@ -30,7 +30,7 @@ Block.dropFromLootTable	inline	crates/sunrise-client/src/game/blocks/spill.rs::G
 Block.popExperience	port	crates/sunrise-client/src/game.rs::Game::spawn_orbs	gap: minor: popExperience checks the block_drops rule, and the ore XP in break_block_as_player does not.
 Block.fallOn	port	crates/sunrise-world/src/block_landing.rs::BlockLandingRegistry::fall_on	Default and hay rules apply fall damage with the block's reduction.
 Block.getShapeForEachState	skip:java		Shape lookup cache over the state table; Sunrise precomputes shapes per state.
-Block.tryDropExperience	inline	crates/sunrise-client/src/game.rs::Game::break_block_as_player	Sampled block XP and pop folded into the break path; silk touch zeroes it as in vanilla (hard-coded check).
+Block.tryDropExperience	inline	crates/sunrise-client/src/game/game_server.rs::Game::break_block_as_player	Sampled block XP and pop folded into the break path; silk touch zeroes it as in vanilla (hard-coded check).
 Block.ShapePairKey.equals	skip:java		Hash key for the shape cache.
 Blocks.ocelotOrParrot	port	crates/sunrise-client/src/mobs/spawn_rules.rs::is_valid_spawn	Leaves spawn rule for ocelots and parrots (VALID_SPAWN_LEAVES).
 Blocks.logProperties	skip:data		Block.Properties builder; the values come from extracted block data.
@@ -78,14 +78,14 @@ CandleCakeBlock.useItemOn	port	crates/sunrise-world/src/level/interact.rs::Sim::
 CandleCakeBlock.useWithoutItem	port	crates/sunrise-world/src/level/interact.rs::Sim::use_without_item	CandleCake arm eats the cake and drops the candle.
 CandleCakeBlock.candleHit	inline	crates/sunrise-world/src/level/interact.rs::Sim::use_item_on	the hit.y - pos.y > 0.5 test inside the CandleCakeBlock.useItemOn arm, which now snuffs the candle
 CandleCakeBlock.updateShape	port	crates/sunrise-world/src/level/shapes.rs::Sim::update_shape_class	Candle cake drops to air when unsupported below.
-CarvedPumpkinBlock.getWeatherStateFromPattern	inline	crates/sunrise-client/src/game/mobs/golems.rs::Game::try_spawn_copper_golem	Weathering comes from the copper block below; waxed blocks count as unwaxed.
+CarvedPumpkinBlock.getWeatherStateFromPattern	inline	crates/sunrise-client/src/game/mobs/golems_client.rs::Game::try_spawn_copper_golem	Weathering comes from the copper block below; waxed blocks count as unwaxed.
 CarvedPumpkinBlock.getOrCreateSnowGolemBase	inline	crates/sunrise-client/src/game/mobs/golems.rs::Game::find_golem	the pattern is block_pattern::SNOW_GOLEM_BASE (a space where the head goes), matched by BlockPattern::find; the lazy pattern cache is not needed.
 CarvedPumpkinBlock.getOrCreateSnowGolemFull	inline	crates/sunrise-client/src/game/mobs/golems.rs::Game::find_golem	the pattern is block_pattern::SNOW_GOLEM_FULL, a pumpkin head on the snow column.
 CarvedPumpkinBlock.getOrCreateIronGolemBase	inline	crates/sunrise-client/src/game/mobs/golems.rs::Game::find_golem	the pattern is block_pattern::IRON_GOLEM_BASE, air beside the arms and body under the head.
 CarvedPumpkinBlock.getOrCreateIronGolemFull	inline	crates/sunrise-client/src/game/mobs/golems.rs::Game::find_golem	the pattern is block_pattern::IRON_GOLEM_FULL, with its air cells.
 CarvedPumpkinBlock.getOrCreateCopperGolemBase	port	crates/sunrise-client/src/game/mobs/golems.rs::Game::copper_golem_base	Copper block under the head.
-CarvedPumpkinBlock.getOrCreateCopperGolemFull	inline	crates/sunrise-client/src/game/mobs/golems.rs::Game::try_spawn_copper_golem	Copper golem spawn with the pumpkin head; the head check is in is_golem_head.
-CarvedPumpkinBlock.replaceCopperBlockWithChest	inline	crates/sunrise-client/src/game/mobs/golems.rs::Game::try_spawn_copper_golem	Copper block becomes its chest with flag 2 through copper_chest_from_block.
+CarvedPumpkinBlock.getOrCreateCopperGolemFull	inline	crates/sunrise-client/src/game/mobs/golems_client.rs::Game::try_spawn_copper_golem	Copper golem spawn with the pumpkin head; the head check is in is_golem_head.
+CarvedPumpkinBlock.replaceCopperBlockWithChest	inline	crates/sunrise-client/src/game/mobs/golems_client.rs::Game::try_spawn_copper_golem	Copper block becomes its chest with flag 2 through copper_chest_from_block.
 CauldronBlock.shouldHandlePrecipitation	inline	crates/sunrise-world/src/level/tick.rs::Sim::precipitation_tick	The 5 percent rain and 10 percent snow chances are inside the precipitation tick.
 CauldronBlock.handlePrecipitation	port	crates/sunrise-world/src/level/tick.rs::Sim::precipitation_tick	Rain fills to water cauldron, snow to powder snow cauldron.
 CauldronBlock.receiveStalactiteDrip	port	crates/sunrise-world/src/level/speleothem.rs::Sim::cauldron_tick	Water and lava drips fill the cauldron with level events 1047 and 1046.
@@ -148,4 +148,4 @@ ChestBlock.isCatSittingOnChest	port	crates/sunrise-client/src/game/world/storage
 ChestBlock.rotate	skip:data		Rotation is a precomputed table from extracted data.
 ChestBlock.createBlockStateDefinition	skip:data		Block state properties come from extracted data.
 ComparatorBlockEntity.saveAdditional	port	crates/sunrise-client/src/game/administration/commands/data.rs::Game::comparator_data	Command NBT reads the live LevelTicks comparator output; gap: major: chunk save/reopen and components are not bridged here.
-ComparatorBlockEntity.loadAdditional	port	crates/sunrise-client/src/game/administration/commands/data.rs::Game::set_data_of	Command NBT uses the existing canonical getIntOr codec and updates the live LevelTicks output; gap: major: chunk loading and components are not bridged here.
+ComparatorBlockEntity.loadAdditional	port	crates/sunrise-client/src/game/administration/commands/data_server.rs::Game::set_data_of	Command NBT uses the existing canonical getIntOr codec and updates the live LevelTicks output; gap: major: chunk loading and components are not bridged here.

@@ -7,27 +7,45 @@
 //! `Game` end. The walk allocates nothing and dispatch is static: hot paths pay
 //! no vtable. A new kind is one line in `entity_lists!` and one `impl Entity`.
 
+#[allow(unused_imports)]
 use super::commands::Target;
+#[allow(unused_imports)]
 use super::persist::ChunkKey;
+#[allow(unused_imports)]
 use super::{FallingBlock, Game, general::GeneralRow};
+#[allow(unused_imports)]
 use super::{
     boats::Boat, fireworks::Rocket, minecarts::Minecart, tnt::PrimedTnt, trident::ThrownTrident,
 };
+#[allow(unused_imports)]
 use std::borrow::Cow;
+#[allow(unused_imports)]
 use std::collections::{HashMap, HashSet};
+#[allow(unused_imports)]
 use sunrise_client::collisions::{PowderSnowSubject, SceneCollisions};
+#[allow(unused_imports)]
 use sunrise_client::entities::{
     ArmorStand, Cushion, ExperienceOrb, ItemEntity, ItemFrame, Painting,
 };
+#[allow(unused_imports)]
 use sunrise_client::entity_rules::EntityRules;
+#[allow(unused_imports)]
 use sunrise_client::join_seq::JoinSeq;
+#[allow(unused_imports)]
 use sunrise_client::join_seq::Joined as _;
+#[allow(unused_imports)]
 use sunrise_client::mobs::{Mob, Species};
+#[allow(unused_imports)]
 use sunrise_client::projectiles::{Projectile, ProjectileKind};
+#[allow(unused_imports)]
 use sunrise_core::geometry::{Aabb, Direction, Vec3};
+#[allow(unused_imports)]
 use sunrise_core::nbt::Tag;
+#[allow(unused_imports)]
 use sunrise_core::position::BlockPos;
+#[allow(unused_imports)]
 use sunrise_core::random::RandomSource as _;
+#[allow(unused_imports)]
 use sunrise_world::{
     block_collision_scan::CollisionScanError, collision_context::CollisionContext,
     ground_support::GroundState, level::data::PushReaction, move_gate::MoveGate, piston_push,
@@ -73,7 +91,7 @@ pub(in crate::game) struct Blast {
 }
 
 /// `EntityType.TRIDENT.getDimensions()`: width, height and eye height.
-const THROWN_TRIDENT_DIMENSIONS: [f32; 3] = [0.5, 0.5, 0.13];
+pub(in crate::game) const THROWN_TRIDENT_DIMENSIONS: [f32; 3] = [0.5, 0.5, 0.13];
 
 pub(in crate::game) trait Entity: EntityRules {
     /// The kind's serializer overlays its object-owned attachments itself (for
@@ -573,7 +591,7 @@ impl RenderEntityBounds for Minecart {
     }
 }
 
-fn aabb_from_extents(bounds: ([f64; 3], [f64; 3])) -> Aabb {
+pub(in crate::game) fn aabb_from_extents(bounds: ([f64; 3], [f64; 3])) -> Aabb {
     Aabb::new(
         Vec3::new(bounds.0[0], bounds.0[1], bounds.0[2]),
         Vec3::new(bounds.1[0], bounds.1[1], bounds.1[2]),
@@ -622,7 +640,7 @@ impl RenderEntityBounds for Cushion {
 /// Whether this projectile still lives its list's tick: an arrow's state was
 /// not removed. A thrown projectile leaves its list through the batch's own
 /// keep flags, not a field of its own.
-fn shot_alive(shot: &Projectile) -> bool {
+pub(in crate::game) fn shot_alive(shot: &Projectile) -> bool {
     shot.arrow.as_ref().is_none_or(|a| !a.removed)
 }
 
@@ -738,7 +756,7 @@ impl sunrise_client::block_contact::InsideWalk for ProjectileInside<'_, '_> {
     }
 }
 #[cfg(test)]
-mod render_bounds_tests {
+pub(in crate::game) mod render_bounds_tests {
     use super::*;
 
     #[test]
@@ -835,6 +853,8 @@ macro_rules! stored_size {
         }
     };
 }
+#[allow(unused_imports)]
+pub(in crate::game) use stored_size;
 
 /// The common retained support owned by moving bodies.
 macro_rules! stored_ground {
@@ -853,6 +873,8 @@ macro_rules! stored_ground {
         }
     };
 }
+#[allow(unused_imports)]
+pub(in crate::game) use stored_ground;
 
 /// The fields every kind stores under the same names.
 macro_rules! stored_motion {
@@ -877,6 +899,8 @@ macro_rules! stored_motion {
         }
     };
 }
+#[allow(unused_imports)]
+pub(in crate::game) use stored_motion;
 
 /// Apply the common non-damage `Entity` writes to the state the mover actually owns.
 /// An absent field means this mover does not track that effect.
@@ -916,31 +940,6 @@ pub(in crate::game) fn apply_contact_writes(
 }
 
 impl Game<'_> {
-    /// `Block.fallOn` effects for bodies whose `causeFallDamage` does nothing.
-    pub(in crate::game) fn nonliving_fall_on(
-        &mut self,
-        id: u32,
-        feet: Vec3,
-        contact: sunrise_client::motion::BodyContact,
-    ) {
-        // FarmlandBlock draws the level's float before checking LivingEntity.
-        match &*self.res.facts().get(contact.state).name {
-            "minecraft:farmland" => {
-                self.world.random.next_float();
-            }
-            "minecraft:honey_block" => {
-                let at = [feet.x, feet.y, feet.z];
-                if !self.entity_silent(id) {
-                    self.audio
-                        .0
-                        .play("minecraft:block.honey_block.slide", Some(at), 1.0, 1.0);
-                }
-                self.lan_entity_event(id as i32, 54, at);
-            }
-            _ => {}
-        }
-    }
-
     /// Finish a body bounce before the caller changes the live entity's delta movement.
     pub(in crate::game) fn finish_body_restitution(
         &mut self,
@@ -1046,7 +1045,11 @@ impl Game<'_> {
 
     /// Apply a contact Part's write to the moving item. Items hold a multiplier
     /// for the next move (`makeStuckInBlock`), but keep no active effects.
-    fn apply_item_write(&mut self, item: &mut ItemEntity, write: mod_api::EntityWrite) {
+    pub(in crate::game) fn apply_item_write(
+        &mut self,
+        item: &mut ItemEntity,
+        write: mod_api::EntityWrite,
+    ) {
         let triple = |v: [f64; 3]| Vec3::new(v[0], v[1], v[2]);
         match write {
             mod_api::EntityWrite::Push(v) => {
@@ -1124,7 +1127,11 @@ impl Game<'_> {
     /// projectile takes no effects, no damage table and keeps no stuck
     /// multiplier: `Hurt` and `AddEffect` are skipped, `StuckIn` scales the
     /// movement once, as vanilla's projectiles keep none of the three.
-    fn apply_projectile_write(&mut self, shot: &mut Projectile, write: mod_api::EntityWrite) {
+    pub(in crate::game) fn apply_projectile_write(
+        &mut self,
+        shot: &mut Projectile,
+        write: mod_api::EntityWrite,
+    ) {
         let triple = |v: [f64; 3]| Vec3::new(v[0], v[1], v[2]);
         match write {
             mod_api::EntityWrite::Push(v) => {
@@ -1378,6 +1385,7 @@ macro_rules! entity_lists {
         }
     };
 }
+#[allow(unused_imports)]
 pub(crate) use entity_lists;
 
 macro_rules! direct_entity_edit {
@@ -1397,6 +1405,7 @@ macro_rules! direct_entity_edit {
         true
     };
 }
+#[allow(unused_imports)]
 pub(crate) use direct_entity_edit;
 
 macro_rules! define_entity_handles {
@@ -1563,6 +1572,7 @@ macro_rules! define_entity_handles {
         }
     };
 }
+#[allow(unused_imports)]
 pub(crate) use define_entity_handles;
 
 /// Why [`EntityLists::walk_in_join_order`] stopped.
@@ -1610,7 +1620,7 @@ pub(in crate::game) struct DrawRun {
 impl DrawFamily {
     /// The drawn family of an entity and its index in that family's list; `None` for the
     /// entities the pass does not draw.
-    fn of(handle: EntityHandle) -> Option<(Self, usize)> {
+    pub(in crate::game) fn of(handle: EntityHandle) -> Option<(Self, usize)> {
         use EntityHandle as H;
         Some(match handle {
             H::Mob(i) => (Self::Mob, i),
@@ -1630,16 +1640,20 @@ impl DrawFamily {
 
 /// Draw sources that the shared `EntityLists` walk does not own.
 #[derive(Default)]
-struct DrawExtras<'a> {
-    local_player: Option<JoinSeq>,
-    dragon: Option<JoinSeq>,
-    crystals: &'a [super::dragon::Crystal],
-    general: Option<&'a super::remote::general::RemoteGenerals>,
+pub(in crate::game) struct DrawExtras<'a> {
+    pub(in crate::game) local_player: Option<JoinSeq>,
+    pub(in crate::game) dragon: Option<JoinSeq>,
+    pub(in crate::game) crystals: &'a [super::dragon::Crystal],
+    pub(in crate::game) general: Option<&'a super::remote::general::RemoteGenerals>,
 }
 
 /// The drawn entities as runs in the order they joined the level. Keep the next draw-only
 /// entity cached, so the existing body walk only compares its join with that one head.
-fn draw_runs(lists: EntityLists<'_>, mut extra: DrawExtras<'_>, runs: &mut Vec<DrawRun>) {
+pub(in crate::game) fn draw_runs(
+    lists: EntityLists<'_>,
+    mut extra: DrawExtras<'_>,
+    runs: &mut Vec<DrawRun>,
+) {
     use DrawFamily as F;
     enum Head {
         LocalPlayer,
@@ -1762,6 +1776,7 @@ macro_rules! entity_access {
         $list.update($index, |$entity| $body)
     };
 }
+#[allow(unused_imports)]
 pub(crate) use entity_access;
 
 macro_rules! match_entity {
@@ -1774,6 +1789,7 @@ macro_rules! match_entity {
         }
     };
 }
+#[allow(unused_imports)]
 pub(crate) use match_entity;
 
 /// Runs `$body` with `$entity` bound to the handle's entity, as its own type:
@@ -1783,11 +1799,14 @@ macro_rules! with_entity {
         $crate::game::entity::entity_lists!(match_entity, shared, $entity, $game, $handle, $body)
     };
 }
+#[allow(unused_imports)]
 pub(in crate::game) use with_entity;
 
 #[path = "entity/list_borrows.rs"]
-mod list_borrows;
+pub(in crate::game) mod list_borrows;
+#[allow(unused_imports)]
 pub(in crate::game) use list_borrows::entity_lists_of;
+#[allow(unused_imports)]
 pub(crate) use list_borrows::{borrow_level_list, borrow_lists};
 /// What a hit lends its listeners besides the level ([`sunrise_client::health::HitEffects`]):
 /// the level sound queue and sound-seed stream, and the entity the site lends (`$lend`: an
@@ -1836,6 +1855,7 @@ macro_rules! hit_reads_of {
             })
     };
 }
+#[allow(unused_imports)]
 pub(in crate::game) use hit_reads_of;
 /// A hit's one decision about its causing entity `$causing` (an entity id, 0 for none), taken
 /// before the site borrows the game's fields for the hit: whether a `HitHost` hook listens,
@@ -1860,6 +1880,7 @@ macro_rules! causer_decision {
         (causing, listened, mob, parked)
     }};
 }
+#[allow(unused_imports)]
 pub(in crate::game) use causer_decision;
 /// The causing entity `$causing` a hit on the mob at `$index` of `$game.mobs` lends its
 /// listeners, beside that victim, as `$decision` ([`causer_decision`]) decided: another mob of
@@ -1901,6 +1922,7 @@ macro_rules! victim_and_causer {
         }
     }};
 }
+#[allow(unused_imports)]
 pub(in crate::game) use victim_and_causer;
 /// The causing entity a hit on the player in place lends its listeners, as `$decision`
 /// ([`causer_decision`]) decided: a mob of `$game.mobs`, or a parked guest's record. The player
@@ -1925,6 +1947,7 @@ macro_rules! player_victim_causer {
         }
     }};
 }
+#[allow(unused_imports)]
 pub(in crate::game) use player_victim_causer;
 /// The level `$game` ticks, lent to a hit's damage hooks with its block registry and merged
 /// tag tables, so a mob or the player beside them can take the hit. `$attack` is the
@@ -1965,6 +1988,7 @@ macro_rules! damage_level_of {
         .with_reads(crate::game::entity::hit_reads_of!($game))
     };
 }
+#[allow(unused_imports)]
 pub(in crate::game) use damage_level_of;
 /// `$game`'s [`PlayerResolver`](sunrise_client::health::PlayerResolver),
 /// borrowing only the fields it reads (`Game::acting_uuid`'s).
@@ -1983,7 +2007,9 @@ macro_rules! player_resolver {
         }
     };
 }
+#[allow(unused_imports)]
 pub(in crate::game) use hit_effects_of;
+#[allow(unused_imports)]
 pub(in crate::game) use player_resolver;
 
 macro_rules! walk_lists {
@@ -1992,6 +2018,7 @@ macro_rules! walk_lists {
         $(for $entity in $lists.$field $body)*
     };
 }
+#[allow(unused_imports)]
 pub(crate) use walk_lists;
 
 /// Runs `$body` for every entity, with `$entity` as a reference to its own
@@ -2003,6 +2030,7 @@ macro_rules! for_each_entity {
         $crate::game::entity::entity_lists!(walk_lists, $lists, $entity, $body)
     };
 }
+#[allow(unused_imports)]
 pub(in crate::game) use for_each_entity;
 
 macro_rules! walk_lists_mut {
@@ -2011,6 +2039,7 @@ macro_rules! walk_lists_mut {
         $($lists.$field.for_each_mut(|$entity| $body);)*
     };
 }
+#[allow(unused_imports)]
 pub(crate) use walk_lists_mut;
 
 /// [`for_each_entity`] over [`TakenEntities`], with the entity mutable.
@@ -2019,6 +2048,7 @@ macro_rules! for_each_entity_mut {
         $crate::game::entity::entity_lists!(walk_lists_mut, $lists, $entity, $body)
     };
 }
+#[allow(unused_imports)]
 pub(in crate::game) use for_each_entity_mut;
 
 /// [`with_entity`], with the entity mutable.
@@ -2027,6 +2057,7 @@ macro_rules! with_entity_mut {
         $crate::game::entity::entity_lists!(match_entity, exclusive, $entity, $game, $handle, $body)
     };
 }
+#[allow(unused_imports)]
 pub(in crate::game) use with_entity_mut;
 
 macro_rules! save_lists {
@@ -2045,6 +2076,7 @@ macro_rules! save_lists {
         })*
     };
 }
+#[allow(unused_imports)]
 pub(crate) use save_lists;
 
 /// Saves every entity of every list in `entity_lists!` into `$out` by chunk,
@@ -2057,6 +2089,8 @@ macro_rules! save_entities_of_every_kind {
         $crate::game::entity::entity_lists!(save_lists, $game, $keys, $out, $include_transient)
     };
 }
+#[allow(unused_imports)]
+pub(in crate::game) use save_entities_of_every_kind;
 
 /// A matched kind consumes only its own explicit token; failed kind probes never do.
 macro_rules! load_with_transfer {
@@ -2068,6 +2102,8 @@ macro_rules! load_with_transfer {
         }
     }};
 }
+#[allow(unused_imports)]
+pub(in crate::game) use load_with_transfer;
 
 macro_rules! load_lists {
     (($game:expr, $kind:expr, $uuid:expr, $player:expr, $tag:expr, $transferred:expr)
@@ -2080,6 +2116,7 @@ macro_rules! load_lists {
         Err(tag)
     }};
 }
+#[allow(unused_imports)]
 pub(crate) use load_lists;
 
 /// Loads a saved entity as the first kind in `entity_lists!` that claims its
@@ -2101,23 +2138,25 @@ macro_rules! load_entity_of_any_kind {
         )
     };
 }
+#[allow(unused_imports)]
+pub(in crate::game) use load_entity_of_any_kind;
 
 /// The type ids the minecart kind loads.
-fn loads_as_cart(kind: &str) -> bool {
+pub(in crate::game) fn loads_as_cart(kind: &str) -> bool {
     super::minecarts::CartKind::from_id(kind).is_some()
 }
 /// The type id the primed TNT kind loads.
-fn loads_as_tnt(kind: &str) -> bool {
+pub(in crate::game) fn loads_as_tnt(kind: &str) -> bool {
     kind == "minecraft:tnt"
 }
 
 impl Game<'_> {
     /// The type ids the mob kind loads.
-    fn loads_as_mob(&self, kind: &str) -> bool {
+    pub(in crate::game) fn loads_as_mob(&self, kind: &str) -> bool {
         self.res.mob_types().contains_key(kind)
     }
     /// The type ids the boat kind loads.
-    fn loads_as_boat(&self, kind: &str) -> bool {
+    pub(in crate::game) fn loads_as_boat(&self, kind: &str) -> bool {
         super::boats::registered_boat(kind, &self.res.items().component_registry).is_some()
     }
     /// Whether `load_listed` loads `kind` as a vehicle that takes its mob
@@ -3492,7 +3531,7 @@ impl EntityRules for FallingBlock {
 }
 
 #[cfg(test)]
-mod no_gravity_stand_tests {
+pub(in crate::game) mod no_gravity_stand_tests {
     use super::Entity as _;
     use sunrise_client::entities::ArmorStand;
     use sunrise_core::geometry::Vec3;
@@ -3512,7 +3551,7 @@ mod no_gravity_stand_tests {
 }
 
 #[cfg(test)]
-mod load_claim_tests {
+pub(in crate::game) mod load_claim_tests {
     /// `Mob` is first in `entity_lists!` and claims every id in `mob_types`;
     /// the old load tried every other kind first. Both agree only while no
     /// mob species shares an id with another kind, which this checks.
@@ -3559,7 +3598,7 @@ mod load_claim_tests {
 }
 
 #[cfg(test)]
-mod trident_selector_tests {
+pub(in crate::game) mod trident_selector_tests {
     use super::Entity as _;
     use crate::game::{commands::Target, trident::ThrownTrident};
     use sunrise_core::geometry::Vec3;
@@ -3575,10 +3614,10 @@ mod trident_selector_tests {
 
 #[cfg(test)]
 #[path = "entity/restore_tests.rs"]
-mod restore_tests;
+pub(in crate::game) mod restore_tests;
 
 #[cfg(test)]
-mod join_order_tests {
+pub(in crate::game) mod join_order_tests {
     use super::{DrawFamily, EntityHandle, EntityLists, JoinOrderError};
     use crate::game::{
         boats::Boat, creatures::render_fixture::mob, fireworks::Rocket, trident::ThrownTrident,
@@ -3810,7 +3849,7 @@ mod join_order_tests {
 }
 
 #[cfg(test)]
-mod set_rotation_tests {
+pub(in crate::game) mod set_rotation_tests {
     use super::Entity as _;
     use sunrise_client::entities::ExperienceOrb;
 
@@ -3847,7 +3886,7 @@ mod set_rotation_tests {
 }
 
 #[cfg(test)]
-mod scoped_edit_tests {
+pub(in crate::game) mod scoped_edit_tests {
     use super::*;
 
     #[test]

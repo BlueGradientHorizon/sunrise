@@ -4,7 +4,7 @@ use sunrise_client::mobs::Species;
 use sunrise_core::random::RandomSource;
 
 impl Game<'_> {
-    pub(super) fn mob_pushes_player(
+    pub(in crate::game) fn mob_pushes_player(
         &mut self,
         power: f64,
         x: f64,
@@ -52,7 +52,7 @@ impl Game<'_> {
         };
         self.knock_back_player(power, x, z, source, &attack, 0.0);
     }
-    pub(super) fn bred_wolf_voice(&mut self, parent: u32) -> Option<u8> {
+    pub(in crate::game) fn bred_wolf_voice(&mut self, parent: u32) -> Option<u8> {
         let voices = sunrise_client::mobs::finalize::sound_variants(Species::Wolf);
         self.mobs
             .iter_mut()

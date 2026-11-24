@@ -8,15 +8,20 @@
 //! waypoint (`Waypoint.Icon`). Reads return None and writes false for a stale
 //! handle, on a client, and for a kind Sunrise keeps no such state for (each
 //! doc says which).
+#[allow(unused_imports)]
 use super::{Game, commands::Target};
+#[allow(unused_imports)]
 use mod_api::{Identifier, LivingRef};
+#[allow(unused_imports)]
 use sunrise_client::first_person::{Hand, SwingAnimation};
+#[allow(unused_imports)]
 use sunrise_client::lan::waypoints::Icon;
+#[allow(unused_imports)]
 use sunrise_client::mobs::{spear_use, stuck::Stuck};
 
 impl Game<'_> {
     /// The UUID of the player a living handle names.
-    fn native_living_player(&mut self, living: LivingRef) -> Option<u128> {
+    pub(in crate::game) fn native_living_player(&mut self, living: LivingRef) -> Option<u128> {
         match self.native_living_target(living)? {
             Target::Player => Some(self.native_acting_id()),
             Target::Guest(conn) => self.command_guest(conn).map(|g| g.uuid),
@@ -24,7 +29,7 @@ impl Game<'_> {
         }
     }
     /// Runs `f` with the player a handle names acting, None when it didn't run.
-    fn native_living_as_player<T>(
+    pub(in crate::game) fn native_living_as_player<T>(
         &mut self,
         living: LivingRef,
         f: impl FnOnce(&mut Self) -> T,
@@ -35,7 +40,7 @@ impl Game<'_> {
         out
     }
     /// What is stuck in the player or the mob a handle names.
-    fn native_living_stuck(&mut self, living: LivingRef) -> Option<&mut Stuck> {
+    pub(in crate::game) fn native_living_stuck(&mut self, living: LivingRef) -> Option<&mut Stuck> {
         match self.native_living_target(living)? {
             Target::Player => Some(&mut self.combat.0.stuck),
             Target::Guest(conn) => Some(&mut self.guest_combat.0.entry(conn).or_default().stuck),
@@ -55,7 +60,7 @@ impl Game<'_> {
     /// `send_to_self`. True when a swing started. Mobs and players; false
     /// for armor stands and the dragon, and for a player other than the
     /// acting one while another player acts.
-    pub(super) fn living_swing(
+    pub(in crate::game) fn living_swing(
         &mut self,
         living: LivingRef,
         hand: Hand,
@@ -101,24 +106,32 @@ impl Game<'_> {
     /// `LivingEntity.getArrowCount`: the arrows stuck in a player or a mob.
     /// None for armor stands and the dragon, which Sunrise keeps no count
     /// for.
-    pub(super) fn living_arrow_count(&mut self, living: LivingRef) -> Option<i32> {
+    pub(in crate::game) fn living_arrow_count(&mut self, living: LivingRef) -> Option<i32> {
         Some(self.native_living_stuck(living)?.arrows)
     }
     /// `LivingEntity.setArrowCount`: players around see the arrows (vanilla
     /// does not limit the count). False for armor stands and the dragon.
-    pub(super) fn living_set_arrow_count(&mut self, living: LivingRef, count: i32) -> bool {
+    pub(in crate::game) fn living_set_arrow_count(
+        &mut self,
+        living: LivingRef,
+        count: i32,
+    ) -> bool {
         self.native_living_stuck(living)
             .map(|s| s.arrows = count)
             .is_some()
     }
     /// `LivingEntity.getStingerCount`: the bee stingers stuck in a player or
     /// a mob. None for armor stands and the dragon.
-    pub(super) fn living_stinger_count(&mut self, living: LivingRef) -> Option<i32> {
+    pub(in crate::game) fn living_stinger_count(&mut self, living: LivingRef) -> Option<i32> {
         Some(self.native_living_stuck(living)?.stingers)
     }
     /// `LivingEntity.setStingerCount`: players around see the stingers. False
     /// for armor stands and the dragon.
-    pub(super) fn living_set_stinger_count(&mut self, living: LivingRef, count: i32) -> bool {
+    pub(in crate::game) fn living_set_stinger_count(
+        &mut self,
+        living: LivingRef,
+        count: i32,
+    ) -> bool {
         self.native_living_stuck(living)
             .map(|s| s.stingers = count)
             .is_some()
@@ -126,14 +139,18 @@ impl Game<'_> {
     /// `LivingEntity.removeArrowTime`: the ticks until the next arrow falls
     /// out of a player or a mob; at 0 or less it restarts at
     /// `20 * (30 - arrows)`. False for armor stands and the dragon.
-    pub(super) fn living_set_arrow_removal_ticks(&mut self, living: LivingRef, ticks: i32) -> bool {
+    pub(in crate::game) fn living_set_arrow_removal_ticks(
+        &mut self,
+        living: LivingRef,
+        ticks: i32,
+    ) -> bool {
         self.native_living_stuck(living)
             .map(|s| s.remove_arrow_time = ticks)
             .is_some()
     }
     /// `LivingEntity.removeStingerTime`, as `set_arrow_removal_ticks` for the
     /// stingers.
-    pub(super) fn living_set_stinger_removal_ticks(
+    pub(in crate::game) fn living_set_stinger_removal_ticks(
         &mut self,
         living: LivingRef,
         ticks: i32,
@@ -147,7 +164,7 @@ impl Game<'_> {
     /// player or a mob uses, 0 when it uses none. A mob's is the item's use
     /// duration less the ticks its use counter has run. None for armor stands
     /// and the dragon.
-    pub(super) fn living_item_use_remaining(&self, living: LivingRef) -> Option<i32> {
+    pub(in crate::game) fn living_item_use_remaining(&self, living: LivingRef) -> Option<i32> {
         match self.native_living_target(living)? {
             Target::Player => Some(super::item_use::remaining_of(self.using, self.use_duration)),
             Target::Guest(conn) => Some(self.lan.as_ref()?.play.get(&conn)?.use_remaining()),
@@ -167,7 +184,11 @@ impl Game<'_> {
     /// `ticks` are left; what reads the counter (a spear's stabs, a bow's draw)
     /// follows it. False when the entity uses nothing, and for armor stands and
     /// the dragon.
-    pub(super) fn living_set_item_use_remaining(&mut self, living: LivingRef, ticks: i32) -> bool {
+    pub(in crate::game) fn living_set_item_use_remaining(
+        &mut self,
+        living: LivingRef,
+        ticks: i32,
+    ) -> bool {
         match self.native_living_target(living) {
             Some(Target::Mob(id)) => self.mob_set_item_use_remaining(id, ticks),
             Some(Target::Player) => {
@@ -274,7 +295,7 @@ impl Game<'_> {
     /// `/waypoint modify <entity> style`: `edit` changes the icon of the
     /// waypoint a handle names, which is then tracked again. False for the
     /// dragon.
-    fn native_edit_waypoint_icon(
+    pub(in crate::game) fn native_edit_waypoint_icon(
         &mut self,
         living: LivingRef,
         edit: impl FnOnce(&mut Icon),
@@ -313,50 +334,61 @@ impl Game<'_> {
 }
 
 #[cfg(test)]
-mod tests {
+pub(in crate::game) mod tests {
+    #[allow(unused_imports)]
     use super::super::native_entity_refs::tests::with_game;
+    #[allow(unused_imports)]
     use super::super::native_living_flags::tests::{guest, guest_server, packets, sync_guests};
+    #[allow(unused_imports)]
     use super::super::native_living_position::tests::floor_and_zombies;
+    #[allow(unused_imports)]
     use super::Stuck;
+    #[allow(unused_imports)]
     use mod_api::client::first_person::Hand;
+    #[allow(unused_imports)]
     use mod_api::{
         EntityRef, Flow, Hooks, HostSide, Identifier, ItemPart, LivingEntityUseItemFinishEvent,
         LivingEntityUseItemStartEvent, LivingEntityUseItemStopEvent, LivingEntityUseItemTickEvent,
         LivingRef, ModEntry, Mods, OnUseTickEvent, Registrar, ReleaseUsingEvent, WorldEpoch,
     };
+    #[allow(unused_imports)]
     use std::sync::{Arc, Mutex};
+    #[allow(unused_imports)]
     use sunrise_client::items::ItemStack;
+    #[allow(unused_imports)]
     use sunrise_client::lan::waypoints::Icon;
+    #[allow(unused_imports)]
     use sunrise_client::mobs::Mob;
+    #[allow(unused_imports)]
     use sunrise_core::geometry::Vec3;
 
     /// What a mod heard of item uses, and what it does back.
     #[derive(Default)]
-    struct Uses {
-        stops: Vec<(Option<i32>, Hand, i32)>,
-        releases: Vec<(Option<i32>, i32)>,
+    pub(in crate::game) struct Uses {
+        pub(in crate::game) stops: Vec<(Option<i32>, Hand, i32)>,
+        pub(in crate::game) releases: Vec<(Option<i32>, i32)>,
         /// Refuses every Start.
-        refuse: bool,
-        start_duration: Option<i32>,
-        tick_duration: Option<i32>,
-        cancel_tick: bool,
-        cancel_stop: bool,
-        finishes: usize,
-        clear_finish_result: bool,
-        effects: usize,
-        tick_remaining: Vec<i32>,
+        pub(in crate::game) refuse: bool,
+        pub(in crate::game) start_duration: Option<i32>,
+        pub(in crate::game) tick_duration: Option<i32>,
+        pub(in crate::game) cancel_tick: bool,
+        pub(in crate::game) cancel_stop: bool,
+        pub(in crate::game) finishes: usize,
+        pub(in crate::game) clear_finish_result: bool,
+        pub(in crate::game) effects: usize,
+        pub(in crate::game) tick_remaining: Vec<i32>,
         /// Who to release from a Tick hook, and from an `Item.onUseTick`.
-        release_on_tick: Option<LivingRef>,
-        release_on_use_tick: Option<LivingRef>,
-        remaining_on_use_tick: Option<(LivingRef, i32)>,
+        pub(in crate::game) release_on_tick: Option<LivingRef>,
+        pub(in crate::game) release_on_use_tick: Option<LivingRef>,
+        pub(in crate::game) remaining_on_use_tick: Option<(LivingRef, i32)>,
         /// Who to release once more from the Stop hook, and what that answered.
-        release_on_stop: Option<LivingRef>,
-        released_again: Vec<bool>,
+        pub(in crate::game) release_on_stop: Option<LivingRef>,
+        pub(in crate::game) released_again: Vec<bool>,
     }
-    type Shared = Arc<Mutex<Uses>>;
+    pub(in crate::game) type Shared = Arc<Mutex<Uses>>;
 
     #[derive(Clone)]
-    struct UsePart(Shared);
+    pub(in crate::game) struct UsePart(pub(in crate::game) Shared);
     #[mod_api::sunrise_part]
     impl ItemPart for UsePart {
         fn on_use_tick(&self, host: HostSide, _: &mut OnUseTickEvent<'_>) {
@@ -379,7 +411,7 @@ mod tests {
             uses.releases.push((event.entity, event.time_left));
         }
     }
-    struct UseMod(Shared);
+    pub(in crate::game) struct UseMod(pub(in crate::game) Shared);
     #[mod_api::__subscriptions]
     impl Hooks for UseMod {
         fn register(&self, r: &mut dyn Registrar, _: &mod_api::RegistrationContext) {
@@ -462,26 +494,8 @@ mod tests {
         }
     }
 
-    /// Runs `test` on a game whose acting player stands at the origin, the use
-    /// button down, under a mod that fills the returned record.
-    fn with_uses(test: impl FnOnce(&mut super::Game<'_>, &Shared, LivingRef)) {
-        let uses = Shared::default();
-        let mods: Mods = vec![ModEntry::new("uses", Box::new(UseMod(uses.clone())))].into();
-        crate::game::api_values::install_parts(&mods).unwrap();
-        mod_platform::testing::with_mods(mods, || {
-            with_game(|game| {
-                crate::game::native_entity_refs::tests::resolve_parts(game).unwrap();
-                game.player = Some(
-                    sunrise_client::motion::PlayerMotion::new(game.motion, Vec3::ZERO).unwrap(),
-                );
-                crate::game::native_entity_refs::tests::bind_local_player(game, 20, 123);
-                game.client.screen = super::super::Screen::Playing;
-                game.set_mapping_held("key.use", true);
-                let player = game.living(game.entity(20).unwrap()).unwrap();
-                test(game, &uses, player);
-            });
-        });
-    }
+    #[allow(unused_imports)]
+    pub(in crate::game) use crate::game::client_side::native_living_writes_client::tests::with_uses;
 
     #[test]
     #[ignore = "daily"]

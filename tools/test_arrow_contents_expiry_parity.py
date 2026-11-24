@@ -22,7 +22,7 @@ except ImportError:
     import lab
     import test_rust_parity as artifacts
 
-TEST = 'game::potions::arrow_contents::actual_arrow_contents_match_pinned_methods'
+TEST = 'game::client_side::potions::arrow_contents::actual_arrow_contents_match_pinned_methods'
 ORACLE = 'VanillaArrowContentsExpiryOracle'
 PRODUCTION = [
     'crates/sunrise-client-render/src/brewing.rs',

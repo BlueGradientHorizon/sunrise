@@ -5,7 +5,7 @@ use sunrise_core::nbt::Tag;
 
 /// `MinMaxBounds.Ints.matches` on the stack count: an exact Int, or a
 /// compound with optional Int `min` and `max`.
-pub(super) fn matches(count: impl Into<i64>, want: &Tag) -> bool {
+pub(in crate::game) fn matches(count: impl Into<i64>, want: &Tag) -> bool {
     let n = count.into();
     match want {
         Tag::Compound(_) => {

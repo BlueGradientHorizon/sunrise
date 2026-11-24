@@ -31,7 +31,7 @@ fn render_state(id: u32, row: &RemoteGeneral, partial: f32) -> mod_api::EntityRe
     .into()
 }
 
-pub(super) struct GeneralDrawFrame<'a> {
+pub(in crate::game) struct GeneralDrawFrame<'a> {
     rows: &'a indexmap::map::Slice<i32, RemoteGeneral>,
     renderers: Arc<EntityRendererTable>,
     camera: DVec3,
@@ -41,7 +41,7 @@ pub(super) struct GeneralDrawFrame<'a> {
 }
 
 impl Game<'_> {
-    pub(super) fn begin_general_geometry(
+    pub(in crate::game) fn begin_general_geometry(
         &self,
         camera: DVec3,
         alpha: f64,
@@ -60,7 +60,7 @@ impl Game<'_> {
         })
     }
 
-    pub(super) fn general_run_geometry(
+    pub(in crate::game) fn general_run_geometry(
         &self,
         frame: &GeneralDrawFrame<'_>,
         range: std::ops::Range<usize>,

@@ -1,17 +1,23 @@
 //! Client ticks of mod block entities (`ClientLevel.tickBlockEntities`): the client's own
 //! ticker list, made from `native_block_entity_client_ticks`.
+#[allow(unused_imports)]
 use super::*;
+#[allow(unused_imports)]
 use crate::game::api_values::TryIntoApi;
+#[allow(unused_imports)]
 use mod_api::{
     BlockEntityClientAccess, BlockEntityClientScope, BlockEntityReadView, BlockEntityRef,
     ClientHost, ResidentBlockEntityReadOnly,
 };
+#[allow(unused_imports)]
 use sunrise_client::animate_tick::campfire_particle_tick;
+#[allow(unused_imports)]
 use sunrise_client::{block_entities::Ticking, containers::BlockEntity};
+#[allow(unused_imports)]
 use sunrise_core::nbt::Compound;
 
 /// Shared read-only resident view backing for client and level-load block-entity scopes.
-pub(super) struct ResidentReadBlockEntity<'a> {
+pub(in crate::game) struct ResidentReadBlockEntity<'a> {
     pub entity: &'a EngineBlockEntity,
     pub slot_count: usize,
 }
@@ -48,7 +54,7 @@ impl ResidentBlockEntityReadOnly for ResidentReadBlockEntity<'_> {
 }
 
 /// Shared sequential client block-entity view + mutable `ClientHost` backend.
-pub(super) struct ClientBlockEntityAccess<'g, 'w> {
+pub(in crate::game) struct ClientBlockEntityAccess<'g, 'w> {
     pub game: &'g mut Game<'w>,
     pub subject: BlockEntityRef,
 }
@@ -179,25 +185,13 @@ impl Game<'_> {
         self.finish_block_entity_anims();
         self.forget_spawner_displays();
     }
-    /// `CampfireBlockEntity.particleTick` of the campfire at `key`.
-    fn client_tick_campfire(&mut self, (x, y, z): (i32, i32, i32)) {
-        let cooking = match self.world.block_entities.get(&(x, y, z)) {
-            Some(BlockEntity::Campfire(c)) => c.items.each_ref().map(Option::is_some),
-            _ => return,
-        };
-        let state = self.world.block(x, y, z).0;
-        campfire_particle_tick(
-            self.res.animate(),
-            &mut self.particles.0,
-            self.pack.assets.registry,
-            [x, y, z],
-            state,
-            cooking,
-        );
-    }
 
     /// The client tick of the resident mod copy at `pos`, lending its storage directly.
-    fn client_tick_mod_block_entity(&mut self, level: mod_api::LevelRef, pos: (i32, i32, i32)) {
+    pub(in crate::game) fn client_tick_mod_block_entity(
+        &mut self,
+        level: mod_api::LevelRef,
+        pos: (i32, i32, i32),
+    ) {
         let (x, y, z) = pos;
         let block_entities = &self.world.block_entities;
         let (Some(BlockEntity::Mod(entity)), Some(generation)) =
@@ -230,7 +224,7 @@ impl Game<'_> {
     /// `BlockState.getTicker` with the client level, for every block state: spawners, trial
     /// spawners, vaults, beacons, the animated block entities, lit campfires and non-dry potent
     /// sulfur. Mod blocks opt in once per block for all of their states.
-    fn client_ticking_states(&self) -> Vec<Ticking> {
+    pub(in crate::game) fn client_ticking_states(&self) -> Vec<Ticking> {
         let registry = self.pack.assets.registry;
         let mod_ticks = mod_api::__private::has_part_hook(mod_api::HookId::BlockEntityClientTick);
         let mut asked: std::collections::HashMap<&str, bool> = std::collections::HashMap::new();

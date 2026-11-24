@@ -2,21 +2,25 @@
 //! `CrafterScreen`): redstone-triggered crafting of its 3x3 grid, ejecting
 //! the result and remainders into the container in front or as items, the
 //! crafting animation ticks, and the menu with its toggleable slots.
+#[allow(unused_imports)]
 use super::*;
+#[allow(unused_imports)]
 use serde_json::Value;
+#[allow(unused_imports)]
 use sunrise_client::{
     advancements as adv,
     containers::Crafter,
     hud::{HudBatch, rgba},
     menu::{Maps as _, Menu},
 };
+#[allow(unused_imports)]
 use sunrise_protocol::packets::play::{self, Serverbound as S};
 
 /// `CrafterBlock`'s crafting animation length.
-const CRAFTING_TICKS: i32 = 6;
-const RESULT_SLOT: usize = 309;
+pub(in crate::game) const CRAFTING_TICKS: i32 = 6;
+pub(in crate::game) const RESULT_SLOT: usize = 309;
 
-fn center(pos: Pos) -> [f64; 3] {
+pub(in crate::game) fn center(pos: Pos) -> [f64; 3] {
     [
         f64::from(pos.0) + 0.5,
         f64::from(pos.1) + 0.5,
@@ -24,7 +28,7 @@ fn center(pos: Pos) -> [f64; 3] {
     ]
 }
 /// Whether an advancement condition's `recipes` entry names the recipe.
-fn recipe_matches(condition: &Value, id: &str) -> bool {
+pub(in crate::game) fn recipe_matches(condition: &Value, id: &str) -> bool {
     match condition {
         Value::String(s) => s == id,
         Value::Array(list) => list.iter().any(|v| v.as_str() == Some(id)),
@@ -52,7 +56,7 @@ impl Game<'_> {
         });
         let _ = self.process_level_events();
     }
-    fn crafter_at(&self, pos: Pos) -> Option<&Crafter> {
+    pub(in crate::game) fn crafter_at(&self, pos: Pos) -> Option<&Crafter> {
         match self.world.block_entities.get(&pos)? {
             BlockEntity::Crafter(c) => Some(c),
             _ => None,
@@ -87,7 +91,11 @@ impl Game<'_> {
         }
     }
     /// `CrafterBlock.dispenseFrom` (the scheduled tick after a redstone pulse).
-    pub(super) fn crafter_dispense(&mut self, pos: BlockPos, state: BlockStateId) -> Result<()> {
+    pub(in crate::game) fn crafter_dispense(
+        &mut self,
+        pos: BlockPos,
+        state: BlockStateId,
+    ) -> Result<()> {
         let key = (pos.x, pos.y, pos.z);
         let Some(crafter) = self.crafter_at(key) else {
             return Ok(());
@@ -159,7 +167,13 @@ impl Game<'_> {
         Ok(())
     }
     /// `CrafterBlock.dispenseItem`: into the container in front, else out as an item.
-    fn crafter_eject(&mut self, pos: Pos, facing: Direction, stack: ItemStack, recipe: &str) {
+    pub(in crate::game) fn crafter_eject(
+        &mut self,
+        pos: Pos,
+        facing: Direction,
+        stack: ItemStack,
+        recipe: &str,
+    ) {
         let target = offset(pos, facing);
         let mut rest = stack;
         let side = facing.opposite();
@@ -194,7 +208,12 @@ impl Game<'_> {
         self.crafter_crafted_notice(pos, facing, recipe);
     }
     /// The trigger and the sound and particle events after an ejected result.
-    fn crafter_crafted_notice(&mut self, pos: Pos, facing: Direction, recipe: &str) {
+    pub(in crate::game) fn crafter_crafted_notice(
+        &mut self,
+        pos: Pos,
+        facing: Direction,
+        recipe: &str,
+    ) {
         // CrafterRecipeCraftedTrigger: every player whose box meets the 17-block
         // box around the crafter's centre (8.5 from the centre to a face: the
         // player's own width and height reach into it, not its eye point).
@@ -228,7 +247,7 @@ impl Game<'_> {
     /// The two insert loops of `dispenseItem`: one item at a time when the
     /// container holds fewer than the stack (`Container.getMaxStackSize`) or is
     /// a crafter, else the whole stack; what is left stays in `rest`.
-    fn crafter_insert(
+    pub(in crate::game) fn crafter_insert(
         &mut self,
         into: &View,
         rest: &mut ItemStack,
@@ -354,69 +373,10 @@ impl Game<'_> {
         self.click_open_inventory(Some(slot), i32::from(right), input);
         true
     }
-    /// `CrafterScreen.slotClicked`: an empty grid slot is enabled by a click
-    /// (or a number key with a hotbar item) when disabled, and disabled by a
-    /// click with nothing carried; the menu then gets the click itself.
-    pub(in crate::game) fn crafter_slot_clicked(
-        &mut self,
-        slot: usize,
-        button: i32,
-        input: sunrise_client::menu::Input,
-    ) {
-        use sunrise_client::menu::Input;
-        if !self.crafter_open() || !(300..309).contains(&slot) || self.spectator() {
-            return;
-        }
-        let i = slot - 300;
-        let Some(c) = self.container.and_then(|k| self.crafter_at(k)) else {
-            return;
-        };
-        if c.items[i].is_some() {
-            return;
-        }
-        let disabled = c.disabled[i];
-        let enable = match input {
-            Input::Pickup if disabled => Some(true),
-            Input::Pickup if self.carried.is_none() => Some(false),
-            Input::Swap if disabled => usize::try_from(button)
-                .ok()
-                .and_then(|b| {
-                    if b == 40 {
-                        Some(&self.offhand)
-                    } else {
-                        self.inventory.get(b)
-                    }
-                })
-                .is_some_and(Option::is_some)
-                .then_some(true),
-            _ => None,
-        };
-        let Some(enabled) = enable else {
-            return;
-        };
-        // ServerboundContainerSlotStateChangedPacket: CrafterBlockEntity.setSlotState.
-        self.menu_session(|menu, _, _| {
-            menu.set_slot_state(i, enabled);
-            Some(true)
-        });
-        if let Some((container, _)) = self.remote.as_ref().and_then(|r| r.menu.as_ref().cloned()) {
-            self.send(S::ContainerSlotStateChanged(
-                play::ContainerSlotStateChanged {
-                    slot: i as i32,
-                    container,
-                    enabled,
-                },
-            ));
-        }
-        let pitch = if enabled { 1.0 } else { 0.75 };
-        self.audio
-            .0
-            .play("minecraft:ui.button.click", None, 0.4, pitch);
-    }
 }
 
 #[cfg(test)]
-mod tests {
+pub(in crate::game) mod tests {
     use super::*;
 
     fn stack(item: &str, count: u32) -> Option<ItemStack> {
@@ -579,7 +539,7 @@ mod tests {
 }
 
 #[cfg(test)]
-mod part_remainder_tests {
+pub(in crate::game) mod part_remainder_tests {
     use super::*;
     struct Milk;
     #[mod_api::sunrise_part]

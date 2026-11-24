@@ -3,7 +3,9 @@
 //! stops the fall, cancels its damage and knocks the creatures around the
 //! target away. The rest of a weapon hit (`Player.itemAttackInteraction`)
 //! is here too: `hurtEnemy`, the post-attack enchantments and `postHurtEnemy`.
+#[allow(unused_imports)]
 use super::Game;
+#[allow(unused_imports)]
 use sunrise_client::{
     enchant::{EffectContext, Enchantments},
     health::ArmorWeapon,
@@ -11,6 +13,7 @@ use sunrise_client::{
     mobs::{Damage, DamageKind, Mob, MobEvent, Species},
     particles::{ParticleOptions, ParticleType},
 };
+#[allow(unused_imports)]
 use sunrise_core::{
     geometry::{Aabb, Vec3},
     position::BlockPos,
@@ -19,7 +22,7 @@ use sunrise_core::{
 
 #[cfg(test)]
 #[path = "tests/player_armor_weapon_tests.rs"]
-mod player_armor_weapon_tests;
+pub(in crate::game) mod player_armor_weapon_tests;
 
 /// `CombatRules.getDamageAfterAbsorb`: the attacking weapon's armor effectiveness.
 pub(in crate::game) fn breach_modifier<'a>(
@@ -55,13 +58,13 @@ pub(in crate::game) fn breach_modifier<'a>(
 }
 
 /// `MaceItem.SMASH_ATTACK_FALL_THRESHOLD`.
-const FALL_THRESHOLD: f64 = 1.5;
+pub(in crate::game) const FALL_THRESHOLD: f64 = 1.5;
 /// `MaceItem.SMASH_ATTACK_HEAVY_THRESHOLD`.
-const HEAVY_THRESHOLD: f64 = 5.0;
+pub(in crate::game) const HEAVY_THRESHOLD: f64 = 5.0;
 /// `MaceItem.SMASH_ATTACK_KNOCKBACK_RADIUS`.
-const KNOCKBACK_RADIUS: f64 = 3.5;
+pub(in crate::game) const KNOCKBACK_RADIUS: f64 = 3.5;
 /// `MaceItem.SMASH_ATTACK_KNOCKBACK_POWER`.
-const KNOCKBACK_POWER: f32 = 0.7;
+pub(in crate::game) const KNOCKBACK_POWER: f32 = 0.7;
 
 /// `Entity.isAlliedTo` between the player (`player` its UUID) and a mob
 /// without teams: `TamableAnimal.considersEntityAsAlly` (a pet it tamed) and
@@ -92,20 +95,26 @@ pub(in crate::game) enum Spared {
 
 /// `Player.doSweepAttack`'s `1 + ratio * f`, where `f` is the attack damage
 /// after `baseDamageScaleFactor` (0.2 + strength^2 * 0.8).
-fn sweep_base_damage(ratio: f32, attack_damage: f32, scale: f32) -> f32 {
+pub(in crate::game) fn sweep_base_damage(ratio: f32, attack_damage: f32, scale: f32) -> f32 {
     1.0 + ratio * attack_damage * (0.2 + scale * scale * 0.8)
 }
 /// A smash's knockback on the players, put off while a guest's turn holds
 /// the other players.
 pub(in crate::game) struct SmashPush {
-    center: Vec3,
-    heavy: f64,
-    attacker: Option<u32>,
-    team: Option<sunrise_client::scoreboard::Team>,
+    pub(in crate::game) center: Vec3,
+    pub(in crate::game) heavy: f64,
+    pub(in crate::game) attacker: Option<u32>,
+    pub(in crate::game) team: Option<sunrise_client::scoreboard::Team>,
 }
 /// `MaceItem.getKnockbackPower` and the push of one entity at `at`, `heavy`
 /// being 2 after a fall of more than five blocks.
-fn smash_push(center: Vec3, heavy: f64, at: Vec3, velocity: &mut Vec3, resistance: f64) {
+pub(in crate::game) fn smash_push(
+    center: Vec3,
+    heavy: f64,
+    at: Vec3,
+    velocity: &mut Vec3,
+    resistance: f64,
+) {
     let d = [at.x - center.x, at.y - center.y, at.z - center.z];
     let distance_sqr = d[0] * d[0] + d[1] * d[1] + d[2] * d[2];
     if distance_sqr > KNOCKBACK_RADIUS.powi(2) {
@@ -183,13 +192,13 @@ impl Game<'_> {
             "minecraft:mob_attack".into()
         }
     }
-    fn holds_mace(&self) -> bool {
+    pub(in crate::game) fn holds_mace(&self) -> bool {
         self.inventory[self.selected]
             .as_ref()
             .is_some_and(|s| &*s.item == "minecraft:mace")
     }
     /// `MaceItem.canSmashAttack` for the player: falling and not gliding.
-    fn can_smash_attack(&self) -> bool {
+    pub(in crate::game) fn can_smash_attack(&self) -> bool {
         self.player
             .as_ref()
             .is_some_and(|p| can_smash(p.fall_distance, p.fall_flying))
@@ -466,43 +475,12 @@ impl Game<'_> {
     /// `MaceItem.hurtEnemy` for a smash: the fall stops and its damage is
     /// waived from where the hit landed, the ground or air smash sounds, and
     /// the knockback around the target.
-    fn mace_hurt_enemy(&mut self, index: usize) {
+    pub(in crate::game) fn mace_hurt_enemy(&mut self, index: usize) {
         let target_on_ground = self.mobs[index].ground.on_ground;
         if let Some(fall) = self.mace_smash_self(target_on_ground) {
             let target = &self.mobs[index];
             self.smash_knockback(target.position, Spared::Mob(target.id), fall);
         }
-    }
-    /// The attacker's side of `MaceItem.hurtEnemy` for a smash: the fall
-    /// stops, its damage is waived from where the hit landed, and the ground
-    /// or air smash sound plays. The fall distance it was, if there is a
-    /// player.
-    fn mace_smash_self(&mut self, target_on_ground: bool) -> Option<f64> {
-        let p = self.player.as_mut()?;
-        p.velocity = Vec3::new(p.velocity.x, f64::from(0.01f32), p.velocity.z);
-        // A server player's client is told (ClientboundSetEntityMotionPacket): it moves by
-        // itself, so without it a Wind Burst's push would add to the speed of the fall.
-        p.health.sync_velocity = true;
-        // calculateImpactPosition: an earlier impact below the player stays.
-        let impact = match p.impulse.impact_position {
-            Some(at) if at.y <= p.position.y => at,
-            _ => p.position,
-        };
-        p.impulse.set_ignore_fall_damage(true, Some(impact));
-        let fall = p.fall_distance;
-        let feet = [p.position.x, p.position.y, p.position.z];
-        let sound = if target_on_ground {
-            p.spawn_extra_particles_on_fall = true;
-            if fall > HEAVY_THRESHOLD {
-                "minecraft:item.mace.smash_ground_heavy"
-            } else {
-                "minecraft:item.mace.smash_ground"
-            }
-        } else {
-            "minecraft:item.mace.smash_air"
-        };
-        self.audio.0.play(sound, Some(feet), 1.0, 1.0);
-        Some(fall)
     }
     /// What a server's guest does after their hit landed on another player:
     /// the weapon's side, the exhaustion and the sprint a knockback stops.
@@ -581,7 +559,7 @@ impl Game<'_> {
     /// pets and the allays that like it), marker armor stands and creative
     /// flyers are spared; the predicate's own tamed-animal test asks whether
     /// the target owns the animal, which a mob never does.
-    fn smash_knockback(&mut self, center: Vec3, target: Spared, fall: f64) {
+    pub(in crate::game) fn smash_knockback(&mut self, center: Vec3, target: Spared, fall: f64) {
         // Entity.getOnPos without a supporting block.
         let on_pos = [
             center.x.floor() as i32,
@@ -620,7 +598,7 @@ impl Game<'_> {
     }
     /// `MaceItem.knockback` on the players but the attacker: the host unless
     /// it attacked, and every guest but the attacker.
-    fn smash_push_players(&mut self, push: &SmashPush) {
+    pub(in crate::game) fn smash_push_players(&mut self, push: &SmashPush) {
         if push.attacker.is_some() {
             self.smash_push_player(push);
         }
@@ -635,7 +613,7 @@ impl Game<'_> {
     /// `MaceItem.knockback` on the player here (the host, or the guest swapped
     /// in): not a spectator, an ally of the attacker (`isAlliedTo`: the same
     /// team) or a creative player flying.
-    fn smash_push_player(&mut self, push: &SmashPush) {
+    pub(in crate::game) fn smash_push_player(&mut self, push: &SmashPush) {
         if self.spectator()
             || sunrise_client::scoreboard::teams_allied(push.team.as_ref(), self.player_team())
         {
@@ -798,53 +776,10 @@ impl Game<'_> {
         };
         self.sweep_other_players(sweep);
     }
-    /// Level event 2013 (`ParticleUtils.spawnSmashAttackParticles`): dust
-    /// pillars of the block at `pos`, a cluster over it and a ring 3.5 out.
-    pub(in crate::game) fn smash_dust(&mut self, pos: BlockPos, count: i32) {
-        let state = self.world.block(pos.x, pos.y, pos.z);
-        let Some((sprite, tint)) = self.particle_sprite(state, [pos.x, pos.y, pos.z]) else {
-            return;
-        };
-        let options = ParticleOptions::block(ParticleType::DustPillar, sprite, tint);
-        let center = [
-            f64::from(pos.x) + 0.5,
-            f64::from(pos.y) + 1.0,
-            f64::from(pos.z) + 0.5,
-        ];
-        let near = f64::from(0.2f32);
-        let mut i = 0;
-        while (i as f32) < count as f32 / 3.0 {
-            let r = self.particles.0.random();
-            let x = center[0] + r.next_gaussian() / 2.0;
-            let z = center[2] + r.next_gaussian() / 2.0;
-            let v = [
-                r.next_gaussian() * near,
-                r.next_gaussian() * near,
-                r.next_gaussian() * near,
-            ];
-            self.particles.0.add(&options, [x, center[1], z], v);
-            i += 1;
-        }
-        let far = f64::from(0.05f32);
-        let mut i = 0;
-        while (i as f32) < count as f32 / 1.5 {
-            let r = self.particles.0.random();
-            let angle = f64::from(i);
-            let x = center[0] + KNOCKBACK_RADIUS * angle.cos() + r.next_gaussian() / 2.0;
-            let z = center[2] + KNOCKBACK_RADIUS * angle.sin() + r.next_gaussian() / 2.0;
-            let v = [
-                r.next_gaussian() * far,
-                r.next_gaussian() * far,
-                r.next_gaussian() * far,
-            ];
-            self.particles.0.add(&options, [x, center[1], z], v);
-            i += 1;
-        }
-    }
 }
 
 #[cfg(test)]
-mod tests {
+pub(in crate::game) mod tests {
     use super::*;
 
     #[test]

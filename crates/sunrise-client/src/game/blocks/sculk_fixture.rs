@@ -4,13 +4,16 @@
 //! game events and block changes) through its own sculk code on a fresh
 //! headless world, ticking in `ServerLevel.tick`'s order, and prints what
 //! changed after every tick in the format of `VanillaSculkOracle`.
+#[allow(unused_imports)]
 use super::{Game, dispense_fixture};
+#[allow(unused_imports)]
 use std::{
     collections::{BTreeMap, HashMap, HashSet},
     fmt::Write as _,
     io::Write as _,
     sync::Arc,
 };
+#[allow(unused_imports)]
 use sunrise_client::{
     Result,
     chunk::{Chunk, MIN_Y},
@@ -20,42 +23,45 @@ use sunrise_client::{
     motion::PlayerMotion,
     sculk::{Info, SculkKind, WardenSpawnTracker},
 };
+#[allow(unused_imports)]
 use sunrise_core::{
     geometry::{Direction, Vec3},
     position::BlockPos,
     random::RandomSource,
 };
+#[allow(unused_imports)]
 use sunrise_world::{chunk::BlockState, level::Ticks, registry::BlockStateId};
+#[allow(unused_imports)]
 use winit::keyboard::KeyCode;
 
-struct MobSpec {
-    kind: String,
-    pos: [f64; 3],
-    yaw: f32,
-    seed: i64,
-    flags: Vec<String>,
+pub(in crate::game) struct MobSpec {
+    pub(in crate::game) kind: String,
+    pub(in crate::game) pos: [f64; 3],
+    pub(in crate::game) yaw: f32,
+    pub(in crate::game) seed: i64,
+    pub(in crate::game) flags: Vec<String>,
 }
 #[derive(Default)]
-struct Scenario {
-    name: String,
-    ticks: i32,
-    trace_events: bool,
-    origin: [i32; 2],
-    level_seed: i64,
-    difficulty: String,
-    wardens: bool,
-    blocks: Vec<Vec<String>>,
-    player: Option<[f64; 3]>,
-    mode: String,
-    sneak: bool,
-    warning: Option<i32>,
-    mobs: Vec<MobSpec>,
-    watch: Vec<[i32; 3]>,
-    regions: Vec<[i32; 6]>,
-    actions: Vec<(i32, Vec<String>)>,
+pub(in crate::game) struct Scenario {
+    pub(in crate::game) name: String,
+    pub(in crate::game) ticks: i32,
+    pub(in crate::game) trace_events: bool,
+    pub(in crate::game) origin: [i32; 2],
+    pub(in crate::game) level_seed: i64,
+    pub(in crate::game) difficulty: String,
+    pub(in crate::game) wardens: bool,
+    pub(in crate::game) blocks: Vec<Vec<String>>,
+    pub(in crate::game) player: Option<[f64; 3]>,
+    pub(in crate::game) mode: String,
+    pub(in crate::game) sneak: bool,
+    pub(in crate::game) warning: Option<i32>,
+    pub(in crate::game) mobs: Vec<MobSpec>,
+    pub(in crate::game) watch: Vec<[i32; 3]>,
+    pub(in crate::game) regions: Vec<[i32; 6]>,
+    pub(in crate::game) actions: Vec<(i32, Vec<String>)>,
 }
 
-fn parse(text: &str) -> Vec<Scenario> {
+pub(in crate::game) fn parse(text: &str) -> Vec<Scenario> {
     let mut out = Vec::new();
     let mut cur: Option<Scenario> = None;
     for line in text.lines() {
@@ -134,21 +140,21 @@ fn parse(text: &str) -> Vec<Scenario> {
 /// An entity's own random is unseeded in vanilla, and so are its sensors'
 /// first delays and its brain's `RunOne` shuffles: the oracle seeds what
 /// appeared, and so does this.
-fn seed_fresh(m: &mut Mob, seed: i64) {
+pub(in crate::game) fn seed_fresh(m: &mut Mob, seed: i64) {
     m.random.set_seed(seed);
     sunrise_client::mobs::warden::init_brain(m, seed);
 }
-fn d(v: f64) -> String {
+pub(in crate::game) fn d(v: f64) -> String {
     format!("{:x}", v.to_bits())
 }
-fn f(v: f32) -> String {
+pub(in crate::game) fn f(v: f32) -> String {
     format!("{:x}", v.to_bits())
 }
 
 /// Sounds the client plays for level events (3006 sculk charge, 3007
 /// shriek) and for itself (the warden's heartbeat): vanilla's server never
 /// sends them.
-const CLIENT_SOUNDS: &[&str] = &[
+pub(in crate::game) const CLIENT_SOUNDS: &[&str] = &[
     "minecraft:block.sculk_shrieker.shriek",
     "minecraft:block.sculk.charge",
     "minecraft:entity.warden.heartbeat",
@@ -180,7 +186,7 @@ impl Game<'_> {
     }
 
     /// `minecraft:name[key=value,...]` to a state.
-    fn fixture_state(&self, text: &str) -> Result<BlockStateId> {
+    pub(in crate::game) fn fixture_state(&self, text: &str) -> Result<BlockStateId> {
         let (name, props) = match text.split_once('[') {
             Some((n, rest)) => (n, rest.trim_end_matches(']')),
             None => (text, ""),
@@ -204,7 +210,7 @@ impl Game<'_> {
     }
 
     /// `BlockStateParser.serialize`.
-    fn fixture_state_text(&self, state: BlockStateId) -> String {
+    pub(in crate::game) fn fixture_state_text(&self, state: BlockStateId) -> String {
         let Some(s) = self.pack.assets.registry.state(state) else {
             return "?".into();
         };
@@ -217,7 +223,11 @@ impl Game<'_> {
         format!("{}[{}]", s.name, props.join(","))
     }
 
-    fn fixture_who(&self, who: Option<Who>, names: &HashMap<u32, String>) -> String {
+    pub(in crate::game) fn fixture_who(
+        &self,
+        who: Option<Who>,
+        names: &HashMap<u32, String>,
+    ) -> String {
         match who {
             None => "none".into(),
             Some(Who::Player) => "player".into(),
@@ -225,7 +235,11 @@ impl Game<'_> {
         }
     }
 
-    fn fixture_info(&self, info: Option<&Info>, names: &HashMap<u32, String>) -> String {
+    pub(in crate::game) fn fixture_info(
+        &self,
+        info: Option<&Info>,
+        names: &HashMap<u32, String>,
+    ) -> String {
         let Some(i) = info else {
             return "-".into();
         };
@@ -253,7 +267,11 @@ impl Game<'_> {
         )
     }
 
-    fn sculk_describe(&self, p: [i32; 3], names: &HashMap<u32, String>) -> String {
+    pub(in crate::game) fn sculk_describe(
+        &self,
+        p: [i32; 3],
+        names: &HashMap<u32, String>,
+    ) -> String {
         let state = self.world.block(p[0], p[1], p[2]);
         let mut line = self.fixture_state_text(state);
         if let Some(BlockEntity::Sculk(e)) = self.world.block_entities.get(&(p[0], p[1], p[2])) {
@@ -317,7 +335,7 @@ impl Game<'_> {
         line
     }
 
-    fn sculk_fixture_reset(&mut self, s: &Scenario) -> Result<()> {
+    pub(in crate::game) fn sculk_fixture_reset(&mut self, s: &Scenario) -> Result<()> {
         self.world = Game::world_for_mods(self.res.facts().air, 0);
         let plains = u32::from(world_biomes!(self).id("minecraft:plains"));
         let layers = [
@@ -400,7 +418,7 @@ impl Game<'_> {
         Ok(())
     }
 
-    fn sculk_scenario(&mut self, s: &Scenario) -> Result<String> {
+    pub(in crate::game) fn sculk_scenario(&mut self, s: &Scenario) -> Result<String> {
         self.sculk_fixture_reset(s)?;
         let at = s.player.unwrap_or([
             f64::from(s.origin[0]) + 0.5,
@@ -663,20 +681,8 @@ impl Game<'_> {
         Ok(out)
     }
 
-    #[inline(always)]
-    pub(in crate::game) fn sculk_scenario_set_capture_client(&mut self, enabled: bool) {
-        self.audio.0.capture = enabled.then(Vec::new);
-    }
-
-    #[inline(always)]
-    pub(in crate::game) fn sculk_scenario_drain_capture_client(
-        &mut self,
-    ) -> Vec<sunrise_client::audio::CapturedSound> {
-        self.audio.0.capture.replace(Vec::new()).unwrap_or_default()
-    }
-
     /// One `ServerLevel.tick` of a scenario.
-    fn sculk_fixture_tick(
+    pub(in crate::game) fn sculk_fixture_tick(
         &mut self,
         t: i32,
         s: &Scenario,
@@ -840,7 +846,7 @@ impl Game<'_> {
 }
 
 #[cfg(test)]
-mod tests {
+pub(in crate::game) mod tests {
     #[test]
     #[ignore = "daily"]
     fn fixture_death_outside_catalyst_range_drops_experience() {

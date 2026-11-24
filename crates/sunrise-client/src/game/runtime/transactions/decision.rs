@@ -22,7 +22,7 @@ pub(in crate::game) use menu_owner::{MenuOwner, OwnerStamp};
 #[path = "decision_engine.rs"]
 pub(in crate::game) mod engine;
 pub(in crate::game) use storage::{ActionHost, GameHost};
-pub(super) use storage::{ActiveAction, Journal};
+pub(in crate::game) use storage::{ActiveAction, Journal};
 
 /// Fail closed on exhaustion: a generation must never wrap back to an old one.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]

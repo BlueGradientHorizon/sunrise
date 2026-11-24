@@ -1,10 +1,10 @@
-BuildContexts.Continuation.execute	inline	crates/sunrise-client/src/game/administration/commands/execute.rs::Game::run_execute	the rest of a modifier chain runs as a loop over the sources in run_execute, not as a queued continuation
+BuildContexts.Continuation.execute	inline	crates/sunrise-client/src/game/administration/commands/execute_server.rs::Game::run_execute	the rest of a modifier chain runs as a loop over the sources in run_execute, not as a queued continuation
 BuildContexts.TopLevel.execute	port	crates/sunrise-client/src/game/administration/commands/execute.rs::Game::execute_line	gap: minor: no trace-start event (only the /debug tracer uses it)
 BuildContexts.Unbound.execute	port	crates/sunrise-client/src/game/administration/commands/execute.rs::Game::execute_line	gap: minor: no trace-start event (only the /debug tracer uses it)
 CallFunction.execute	port	crates/sunrise-client/src/game/administration/functions.rs::Game::run_function	gap: minor: the lines run in one loop, not through the command queue; no tracer onCall
-ContinuationTask.execute	inline	crates/sunrise-client/src/game/administration/commands/execute.rs::Game::run_execute	the one-source-at-a-time task queue is the loop over sources in run_execute
-ContinuationTask.schedule	inline	crates/sunrise-client/src/game/administration/commands/execute.rs::Game::run_execute	no queue of continuation tasks: run_execute walks the sources in a loop
-net/minecraft/commands/execution/tasks/ExecuteCommand#execute	port	crates/sunrise-client/src/game/administration/commands/execute.rs::Game::run_execute	gap: minor: profiler and tracer.onReturn are not reported; forked errors are silenced in the run branch
+ContinuationTask.execute	inline	crates/sunrise-client/src/game/administration/commands/execute_server.rs::Game::run_execute	the one-source-at-a-time task queue is the loop over sources in run_execute
+ContinuationTask.schedule	inline	crates/sunrise-client/src/game/administration/commands/execute_server.rs::Game::run_execute	no queue of continuation tasks: run_execute walks the sources in a loop
+net/minecraft/commands/execution/tasks/ExecuteCommand#execute	port	crates/sunrise-client/src/game/administration/commands/execute_server.rs::Game::run_execute	gap: minor: profiler and tracer.onReturn are not reported; forked errors are silenced in the run branch
 IsolatedCall.execute	inline	crates/sunrise-client/src/game/administration/functions.rs::Game::run_function	the new depth and the isolated return slot are set up in run_function; if function reaches it through call_function_ref
 CommandFunction.shouldConcatenateNextLine	inline	crates/sunrise-client-render/src/datapack.rs::parse_function	the trailing-backslash join is the continuation loop in parse_function
 CommandFunction.checkCommandLineLength	missing		minor: no 2,000,000-character limit on a command line; a longer line is not refused

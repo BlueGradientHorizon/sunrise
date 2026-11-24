@@ -15,7 +15,7 @@ use sunrise_client::command::{
 /// The argument kinds a native usage may name, each with a [`parser`]; `resource:<registry>`,
 /// the bounded `integer(min,max)` and `long(min,max)` ([`bounded_parser`]) and `mod_id` come on
 /// top.
-pub(super) const KINDS: [&str; 20] = [
+pub(in crate::game) const KINDS: [&str; 20] = [
     "word",
     "string",
     "text",
@@ -40,15 +40,15 @@ pub(super) const KINDS: [&str; 20] = [
 
 /// The tree property marking `vec3_uncentered`: vanilla's `vec3(false)` has the same parser id
 /// and properties as `vec3()`, so the report format cannot tell them apart.
-pub(super) const UNCENTERED: &str = "uncentered";
+pub(in crate::game) const UNCENTERED: &str = "uncentered";
 
 /// The custom argument types the mods registered, by namespaced id, for the command tree being
 /// built and its server dispatcher.
-pub(in super::super) type CommandArguments = HashMap<String, Arc<dyn mod_api::CommandArgumentType>>;
+pub(in crate::game) type CommandArguments = HashMap<String, Arc<dyn mod_api::CommandArgumentType>>;
 
 /// The argument types the installed mods registered at startup, and the built-in `mod_id`:
 /// NeoForge's `ModIdArgument`, one of the loaded package ids, delivered as a string.
-pub(in super::super) fn command_arguments() -> CommandArguments {
+pub(in crate::game) fn command_arguments() -> CommandArguments {
     let mod_ids = mod_api::__private::loaded_mods()
         .ids()
         .map(str::to_owned)
@@ -63,7 +63,7 @@ pub(in super::super) fn command_arguments() -> CommandArguments {
 
 /// The built-in kind whose value is a loaded package id. Mods' kinds are namespaced, so it
 /// never meets one.
-pub(super) const MOD_ID: &str = "mod_id";
+pub(in crate::game) const MOD_ID: &str = "mod_id";
 
 /// The most distinct registries native usages may name. Vanilla has about a hundred, so this
 /// leaves mods room while keeping the names kept for the game's life bounded.
@@ -75,7 +75,7 @@ const MAX_REGISTRY_NAME: usize = 256;
 /// wire, so vanilla clients complete it, and `ResourceArgument` on the server, which refuses an id
 /// the registry lacks before the mod runs. A name that is not a resource location, or a registry
 /// past the budget, refuses the usage with the reason.
-pub(super) fn resource_parser(name: &str) -> Result<(&'static str, Value), String> {
+pub(in crate::game) fn resource_parser(name: &str) -> Result<(&'static str, Value), String> {
     let registry = registry(name)?;
     Ok(("minecraft:resource_key", json!({ "registry": registry })))
 }
@@ -114,7 +114,7 @@ fn registry_in(names: &mut HashSet<&'static str>, name: &str) -> Result<&'static
 
 /// What a mod receives for a custom argument: `mod_id` as the plain package id, a mod's own type
 /// with its id.
-pub(super) fn custom_value(kind: &str, value: String) -> mod_api::CommandArgumentValue {
+pub(in crate::game) fn custom_value(kind: &str, value: String) -> mod_api::CommandArgumentValue {
     if kind == MOD_ID {
         mod_api::CommandArgumentValue::String(value)
     } else {
@@ -128,7 +128,7 @@ pub(super) fn custom_value(kind: &str, value: String) -> mod_api::CommandArgumen
 /// Whether `word` is a usage's literal word: lowercase letters, digits, `_` and `-`. The first
 /// word may also start with one `/`, so a mod can register WorldEdit-style `//set` (typed with the
 /// chat slash): the node keeps the slash, and the client completes `//set ` against it.
-pub(super) fn command_word(word: &str, first: bool) -> bool {
+pub(in crate::game) fn command_word(word: &str, first: bool) -> bool {
     let word = match first {
         true => word.strip_prefix('/').unwrap_or(word),
         false => word,
@@ -141,7 +141,7 @@ pub(super) fn command_word(word: &str, first: bool) -> bool {
 
 /// The brigadier parser of a built-in argument kind, its properties and its dispatcher type.
 /// `EntityArgument.entity` / `entities` / `player` / `players` share the vanilla parser.
-pub(super) fn parser(kind: &str) -> Option<(&'static str, Value, ArgType)> {
+pub(in crate::game) fn parser(kind: &str) -> Option<(&'static str, Value, ArgType)> {
     Some(match kind {
         "word" => ("brigadier:string", json!({"type": "word"}), ArgType::Word),
         // `StringArgumentType.string()`: `StringArgumentSerializer` writes `QUOTABLE_PHRASE`.
@@ -222,7 +222,7 @@ pub(super) fn parser(kind: &str) -> Option<(&'static str, Value, ArgType)> {
 /// where either bound may be left empty (`integer(0,)`): Brigadier's
 /// `IntegerArgumentType.integer(min, max)` and `LongArgumentType.longArg(min, max)`. `None` for
 /// any other kind; the reason for one that names `integer(` or `long(` but does not parse.
-pub(super) fn bounded_parser(kind: &str) -> Option<Result<(&'static str, Value), String>> {
+pub(in crate::game) fn bounded_parser(kind: &str) -> Option<Result<(&'static str, Value), String>> {
     let (name, bounds) = kind.strip_suffix(')')?.split_once('(')?;
     let integer = match name {
         "integer" => true,
@@ -289,7 +289,9 @@ fn number_properties(integer: bool, min: Option<i64>, max: Option<i64>) -> Value
 
 /// The parser and properties a mod's argument type goes to clients as, from its declared kind.
 /// `None` for a kind this build cannot read.
-pub(super) fn custom_parser(kind: mod_api::CommandArgumentKind) -> Option<(&'static str, Value)> {
+pub(in crate::game) fn custom_parser(
+    kind: mod_api::CommandArgumentKind,
+) -> Option<(&'static str, Value)> {
     use mod_api::CommandArgumentKind as Kind;
     Some(match kind {
         Kind::Word => ("brigadier:string", json!({"type": "word"})),
@@ -326,7 +328,7 @@ fn long_bounds(node: &Value) -> (i64, i64) {
 
 /// The type of the argument node that parsed `range`: the parsed node, not the value, says which
 /// kind a position, id or string is.
-pub(super) fn parsed_type(
+pub(in crate::game) fn parsed_type(
     dispatcher: &Dispatcher,
     parsed_nodes: &[(usize, Range)],
     range: Range,
@@ -344,7 +346,7 @@ pub(super) fn parsed_type(
 
 /// What a `vec3`, `vec3_uncentered`, `column_pos`, `rotation` or `block_pos` argument delivers:
 /// `position` is `coordinates` resolved against the source, `rotation` the source's yaw and pitch.
-pub(super) fn positional_value(
+pub(in crate::game) fn positional_value(
     ty: Option<&ArgType>,
     coordinates: &Coordinates,
     position: [f64; 3],
@@ -363,7 +365,7 @@ pub(super) fn positional_value(
 
 /// `DimensionArgument.getDimension`: the level of a dimension the world has loaded, or
 /// `argument.dimension.invalid`.
-pub(super) fn dimension_value(
+pub(in crate::game) fn dimension_value(
     id: &str,
     level: impl FnOnce(&str) -> Option<mod_api::LevelRef>,
 ) -> Result<mod_api::CommandArgumentValue, CommandError> {
@@ -373,7 +375,9 @@ pub(super) fn dimension_value(
 }
 
 /// An `nbt` argument's compound, from the SNBT the dispatcher accepted.
-pub(super) fn nbt_value(text: &str) -> Result<mod_api::CommandArgumentValue, CommandError> {
+pub(in crate::game) fn nbt_value(
+    text: &str,
+) -> Result<mod_api::CommandArgumentValue, CommandError> {
     let mut reader = Reader::new(text);
     snbt::parse_compound_argument(&mut reader).map(mod_api::CommandArgumentValue::Nbt)
 }
@@ -459,7 +463,7 @@ fn provider_suggestions(
 
 /// The dispatcher type of one validated tree node: a vanilla kind, or the mod's registered
 /// argument type with its parser and suggestions.
-pub(super) fn argument_type(node: &Value, arguments: &CommandArguments) -> ArgType {
+pub(in crate::game) fn argument_type(node: &Value, arguments: &CommandArguments) -> ArgType {
     if node["parser"] == "minecraft:resource_key" {
         let registry = node["properties"]["registry"].as_str().unwrap_or_default();
         return ArgType::Res(

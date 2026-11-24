@@ -28,7 +28,7 @@ pub(in crate::game) type KeptAnon = (
 
 /// What a transaction did to entities, for its close.
 #[derive(Default)]
-pub(super) struct EntityJournal {
+pub(in crate::game) struct EntityJournal {
     /// Below the join number of every entity added in the transaction (`JoinSeq::upcoming` as
     /// it opened).
     mark: JoinSeq,
@@ -95,7 +95,7 @@ impl Step {
 /// queued behind what is being told, so no flush a listener starts sees the commit's
 /// half-told batches: the entities the transaction added and removed are never announced,
 /// and each batch keeps its `loaded_from_disk` and bound.
-pub(super) struct Committing {
+pub(in crate::game) struct Committing {
     dimension: Dim,
     /// The entities the transaction added and removed: never told to join.
     removed: Vec<u32>,
@@ -130,7 +130,7 @@ fn committing_in(commits: &mut [Committing], dimension: Dim) -> Option<&mut Comm
         .find(|commit| commit.dimension == dimension)
 }
 
-pub(super) fn is_committing(commits: &[Committing], dimension: Dim) -> bool {
+pub(in crate::game) fn is_committing(commits: &[Committing], dimension: Dim) -> bool {
     commits.iter().any(|commit| commit.dimension == dimension)
 }
 
@@ -138,7 +138,7 @@ pub(super) fn is_committing(commits: &[Committing], dimension: Dim) -> bool {
 /// whatever other levels' transactions are open inside it (a command run `in` another level can
 /// open one). What happens in a level with none open (a command run `in` it from another
 /// level's transaction) is not journaled.
-pub(super) fn open_in(transactions: &mut [Level], dimension: Dim) -> Option<&mut Level> {
+pub(in crate::game) fn open_in(transactions: &mut [Level], dimension: Dim) -> Option<&mut Level> {
     transactions
         .iter_mut()
         .rev()
@@ -147,7 +147,7 @@ pub(super) fn open_in(transactions: &mut [Level], dimension: Dim) -> Option<&mut
 
 impl EntityJournal {
     /// A nested commit: the parent's mark is earlier and stays.
-    pub(super) fn merge(&mut self, child: Self) {
+    pub(in crate::game) fn merge(&mut self, child: Self) {
         self.arrivals.extend(child.arrivals);
         self.removals.extend(child.removals);
         for (id, was) in child.mob_removed {
@@ -161,7 +161,7 @@ impl EntityJournal {
         }
     }
     /// A nested abort: its arrivals stay out of the parent's abort too.
-    pub(super) fn keep_arrivals(&mut self, arrivals: HashSet<u32>) {
+    pub(in crate::game) fn keep_arrivals(&mut self, arrivals: HashSet<u32>) {
         self.arrivals.extend(arrivals);
     }
     /// Keeps the first record each key had: a later spawn there wrote over this one's.
@@ -191,7 +191,7 @@ impl EntityJournal {
 
 impl Game<'_> {
     /// The journal a transaction opening now starts with.
-    pub(super) fn entity_journal_open(&self) -> EntityJournal {
+    pub(in crate::game) fn entity_journal_open(&self) -> EntityJournal {
         EntityJournal {
             mark: JoinSeq::upcoming(),
             potions: self.potions.thrown.len(),
@@ -298,7 +298,7 @@ impl Game<'_> {
     /// running commit too.
     /// `effects` is what the root transaction's other deferred effects do (`root_commit`): it runs
     /// with the commit in place, so a join it causes waits behind the commit's own batches.
-    pub(super) fn commit_entity_journal(
+    pub(in crate::game) fn commit_entity_journal(
         &mut self,
         journal: EntityJournal,
         effects: impl FnOnce(&mut Self),
@@ -429,7 +429,10 @@ impl Game<'_> {
     }
     /// Undoes `journal`'s entity changes, after the rest of its transaction rolled back: the
     /// removed mobs back, the entities it added out. Its arrivals come back.
-    pub(super) fn roll_back_entity_journal(&mut self, journal: EntityJournal) -> HashSet<u32> {
+    pub(in crate::game) fn roll_back_entity_journal(
+        &mut self,
+        journal: EntityJournal,
+    ) -> HashSet<u32> {
         for (id, was) in journal.mob_removed {
             for mob in self.mobs.iter_mut().filter(|m| m.id == id) {
                 mob.removed = was;
@@ -512,7 +515,7 @@ pub(in crate::game) type ArrivalRollback =
 /// The index registration of an entity that left this level inside a transaction, with its
 /// lifetime slot: both retire when the root closes, committed or not, since travel is not
 /// undone. Until then the source level's index keeps the rows it had at the take.
-pub(super) struct Departure {
+pub(in crate::game) struct Departure {
     lifetime: sunrise_mod_runtime::attachments::AttachmentLifetime,
     registration: Option<sunrise_mod_runtime::attachments::AttachmentRegistration>,
 }
@@ -581,7 +584,7 @@ impl Game<'_> {
     /// An abort of `level` before its in-flight entities arrived: each one's kept map goes to its
     /// arrival's slot, not under an id that names no entity. An enclosing transaction takes the
     /// slots on, so its own abort can put back what it kept, which is older.
-    pub(super) fn roll_back_in_flight(&mut self, level: &mut Level) {
+    pub(in crate::game) fn roll_back_in_flight(&mut self, level: &mut Level) {
         for (id, slot) in std::mem::take(&mut level.in_flight) {
             // 🤖 Agent: as in `journal_travel`, both are consumed and the travelled one, kept
             // before the entity arrived under `id`, is the older and the one put back.
@@ -612,7 +615,10 @@ impl Game<'_> {
     }
     /// An abort's way back for the maps that travelled: their contents as the transaction first
     /// reached them, wherever their entity is now.
-    pub(super) fn restore_travelled(&mut self, travelled: HashMap<u32, super::KeptAttachments>) {
+    pub(in crate::game) fn restore_travelled(
+        &mut self,
+        travelled: HashMap<u32, super::KeptAttachments>,
+    ) {
         for (id, kept) in travelled {
             if let Some(map) = self.entity_attachments.get_mut(&id) {
                 map.replace_contents(kept.contents);
@@ -620,7 +626,7 @@ impl Game<'_> {
         }
     }
     /// A closed transaction's departures go to the one around it, or retire at the root.
-    pub(super) fn close_departures(&mut self, departed: Vec<Departure>) {
+    pub(in crate::game) fn close_departures(&mut self, departed: Vec<Departure>) {
         if let Some(outer) = self.transactions.last_mut() {
             outer.departed.extend(departed);
         }

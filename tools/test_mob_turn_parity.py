@@ -29,7 +29,7 @@ LIB_TESTS = [
     'mobs::dolphin::jump_turn_tests::the_jump_turn_matches_the_pinned_oracle',
 ]
 CLIENT_TESTS = [
-    'game::dragon::tests::the_scanning_turn_matches_the_pinned_oracle',
+    'game::server_side::dragon::tests::the_scanning_turn_matches_the_pinned_oracle',
     'game::remote::tests::client_read_tests::look_at_matches_the_pinned_oracle',
 ]
 

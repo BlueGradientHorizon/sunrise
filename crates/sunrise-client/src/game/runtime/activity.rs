@@ -6,7 +6,7 @@ use sunrise_hooks::{Activity, Client, Dimension, Play};
 
 /// At startup, for a game window (never a dedicated server's): the player's first activity, then
 /// `Hooks::client_started`.
-pub(super) fn client_started(options: &Options) {
+pub(in crate::game) fn client_started(options: &Options) {
     if options.dedicated.is_some() {
         return;
     }
@@ -20,7 +20,7 @@ pub(super) fn client_started(options: &Options) {
 
 impl Game<'_> {
     /// Each frame: only a change reaches the hooks.
-    pub(super) fn report_activity(&self) {
+    pub(in crate::game) fn report_activity(&self) {
         sunrise_hooks::engine::activity(self.activity());
     }
     fn activity(&self) -> Activity {

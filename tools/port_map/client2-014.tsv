@@ -10,7 +10,7 @@ ConfirmScreen.tick	inline	crates/sunrise-client/src/confirm_screen.rs::Confirm::
 ConnectScreen.connect	port	crates/sunrise-client/src/net.rs::Session::connect	background connect on its own thread (Session::start)
 ConnectScreen.tick	port	crates/sunrise-client/src/game/network/remote/tick.rs::Game::tick_remote	ticks the pending session while it opens; game.rs tick sends remote sessions here
 ConnectScreen.init	port	crates/sunrise-client-render/src/level_loading.rs::draw_connecting	the status centred at (width / 2, height / 2 - 50) and Cancel at `connect_cancel`'s corner while the connection can still be cancelled; unsure whether Escape aborts the join
-ConnectScreen.extractRenderState	port	crates/sunrise-client/src/game/network/remote/ui.rs::Game::remote_overlay	gap: minor: also draws the address line, vanilla draws only the status
+ConnectScreen.extractRenderState	port	crates/sunrise-client/src/game/network/remote/ui_client.rs::Game::remote_overlay	gap: minor: also draws the address line, vanilla draws only the status
 CreateBuffetWorldScreen.init	port	crates/sunrise-client/src/title/buffet.rs::State::new	title, the 200x15 search box, the biome list and the footer's Done and Cancel; the list is drawn each frame
 CreateBuffetWorldScreen.repositionElements	skip:ui		layout only; the list is laid out each frame in buffet.rs::list_area
 CreateBuffetWorldScreen.updateButtonValidity	inline	crates/sunrise-client/src/title/buffet.rs::buttons	Done needs a selected biome, that is one the search text still shows
@@ -73,7 +73,7 @@ InBedChatScreen.onPlayerWokeUp	port	crates/sunrise-client/src/game/interface/cha
 LevelLoadingScreen.updateNarratedWidget	port	crates/sunrise-client/src/game/interface/screen_info.rs::level_loading	loading.progress with the server progress floored to a percent, in the title's place, said again every 2 s
 LevelLoadingScreen.extractChunksForRendering	port	crates/sunrise-client-render/src/level_loading.rs::draw	chunk status colours; gap: minor: the debug red centre square is not drawn
 LevelLoadingScreen.getNetherPortalSprite	port	crates/sunrise-client-render/src/hud_overlays.rs::portal_overlay	draws the block/nether_portal sprite
-LoadingOverlay.extractRenderState	port	crates/sunrise-client/src/game.rs::Game::render	the reload screen's progress bar; gap: player: no Mojang logo and no fade in or out
+LoadingOverlay.extractRenderState	port	crates/sunrise-client/src/game/game_client.rs::Game::render	the reload screen's progress bar; gap: player: no Mojang logo and no fade in or out
 LoadingOverlay.tick	port	crates/sunrise-client/src/game/world/server_packs.rs::Game::tick_server_packs	finishes the reload; gap: minor: no fade-out before it finishes
 LoadingOverlay.isReadyToFadeOut	missing		minor: no one-second fade-in before the reload can finish
 LoadingOverlay.extractProgressBar	port	crates/sunrise-client-render/src/level_loading.rs::draw_progress	200 by 2 bar; gap: minor: no fade alpha
@@ -112,14 +112,14 @@ PresetFlatWorldScreen.PresetsList.Entry.blitSlot	port	crates/sunrise-client/src/
 PrivacyConfirmLinkScreen.init	skip:service		privacy link confirm from the friends and online settings (social)
 PrivacyConfirmLinkScreen.addAdditionalText	skip:service		privacy link confirm from the friends and online settings (social)
 PrivacyConfirmLinkScreen.confirmLinkNow	skip:service		opens privacy links from the friends and online settings (social)
-ProgressScreen.extractRenderState	port	crates/sunrise-client/src/game/world/saving.rs::Game::render_closing_save	stage line and bar while the world saves; gap: minor: no header or percent text
+ProgressScreen.extractRenderState	port	crates/sunrise-client/src/game/world/saving_client.rs::Game::render_closing_save	stage line and bar while the world saves; gap: minor: no header or percent text
 RecoverWorldDataScreen.<init>	port	crates/sunrise-client/src/title.rs::Title::open_recover	opening a world whose level.dat does not read switches to Mode::Recover: the level.dat and level.dat_old entries with their buildInfo lines, Restore, and Back
 RecoverWorldDataScreen.attemptRestore	port	crates/sunrise-client/src/title.rs::Title::attempt_restore	takes level.dat_old in level.dat's place only when level.dat still reads broken and level.dat_old reads clean; anything else is Recovered { success: false }
 RecoverWorldDataScreen.buildInfo	port	crates/sunrise-client/src/title.rs::recover_info	"State from <date>: " and the issue, green No issues / red Missing file or the read error; nothing for a level.dat_old that is just missing
 RecoverWorldDataScreen.collectIssue	port	crates/sunrise-client/src/title.rs::recover_issues	the level.dat and level.dat_old issues the screen and the restore both read (save::level_dat_issue)
 RecoverWorldDataScreen.repositionElements	port	crates/sunrise-client/src/title.rs::recover_buttons_top	the column of title, message, issues, the restore row and Back, 8 apart, centred; the widgets themselves are built in Title::buttons
 RecoverWorldDataScreen.getNarrationMessage	port	crates/sunrise-client/src/title.rs::Title::narration	Mode::Recover: recover_world.title then recover_world.message with the folder name
-Screen.extractRenderStateWithTooltipAndSubtitles	port	crates/sunrise-client/src/game.rs::Game::hud_layers	draws the current screen's layer and tooltips; unsure about subtitles
+Screen.extractRenderStateWithTooltipAndSubtitles	port	crates/sunrise-client/src/game/game_client.rs::Game::hud_layers	draws the current screen's layer and tooltips; unsure about subtitles
 Screen.setInitialFocus	skip:ui		keyboard focus starts on the first widget; Sunrise draws its own focus
 Screen.isInputCaptured	port	crates/sunrise-client/src/title.rs::Title::has_caret_field	gap: minor: only the title screen's text fields
 Screen.addWidget	skip:ui		widget list plumbing; Sunrise draws each screen from its own state

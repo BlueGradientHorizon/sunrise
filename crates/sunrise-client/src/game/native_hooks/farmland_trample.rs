@@ -1,4 +1,6 @@
+#[allow(unused_imports)]
 use super::*;
+#[allow(unused_imports)]
 use sunrise_world::block_landing::FarmlandTrample;
 
 /// The hook point. It does nothing in Sunrise.
@@ -21,66 +23,7 @@ impl Game<'_> {
 }
 
 impl Game<'_> {
-    /// Apply the owning-host decision inside `FarmlandBlock.fallOn`, while the
-    /// landing is paused. The caller resumes fall damage even when this refuses.
-    pub(in crate::game) fn trample_farmland(
-        &mut self,
-        entity: u32,
-        player: bool,
-        trample: FarmlandTrample,
-    ) {
-        let FarmlandTrample {
-            position: pos,
-            state,
-            base,
-            distance,
-            ..
-        } = trample;
-        let at = [pos.x, pos.y, pos.z];
-        let dimension = self.dim;
-        let still = |game: &Self| {
-            game.dim == dimension
-                && !game.server.world_debug
-                && game.world.is_loaded_at(pos.x, pos.y, pos.z)
-                && !game.world.carrier_fences.locks_cell(&at)
-                && game.world.block(pos.x, pos.y, pos.z) == state
-        };
-        if !still(self) {
-            return;
-        }
-        let applied = if mod_api::__private::listened(mod_api::HookId::FarmlandTrample) {
-            let Some(living) = self.entity(entity).and_then(|e| self.living(e)) else {
-                return;
-            };
-            self.storage_transaction(|game, _| {
-                let mut cancel = false;
-                game.native_farmland_trample(living, pos, state, distance, &mut cancel);
-                let valid =
-                    |game: &Self| game.entity(entity) == Some(living.entity()) && still(game);
-                (!cancel && game.apply_farmland_trample(player, trample, valid, true))
-                    .then_some(())
-                    .ok_or(())
-            })
-            .is_ok()
-        } else {
-            self.apply_farmland_trample(player, trample, still, false)
-        };
-        if applied {
-            let who = if player {
-                Who::Player
-            } else {
-                Who::Mob(entity)
-            };
-            self.after_commit(crate::game::transactions::After::BlockGameEvent(
-                "minecraft:block_change",
-                at,
-                who,
-                base,
-            ));
-        }
-    }
-
-    fn apply_farmland_trample(
+    pub(in crate::game) fn apply_farmland_trample(
         &mut self,
         player: bool,
         trample: FarmlandTrample,
@@ -121,27 +64,35 @@ impl Game<'_> {
 }
 
 #[cfg(test)]
-mod tests {
+pub(in crate::game) mod tests {
+    #[allow(unused_imports)]
     use super::*;
+    #[allow(unused_imports)]
     use crate::game::native_entity_refs::tests::with_game;
+    #[allow(unused_imports)]
     use crate::game::native_item_places::tests::{guest, open_to_lan};
+    #[allow(unused_imports)]
     use mod_api::*;
+    #[allow(unused_imports)]
     use std::sync::{Arc, Mutex};
+    #[allow(unused_imports)]
     use sunrise_client::{chunk::Chunk, lan::guest::InboxItem, motion::PlayerMotion};
+    #[allow(unused_imports)]
     use sunrise_core::geometry::Vec3;
+    #[allow(unused_imports)]
     use sunrise_protocol::packets::{Empty, play, play::Serverbound as S};
 
-    const FIELD: [i32; 3] = [1, 63, 1];
-    const LISTENER_WRITE: [i32; 3] = [3, 63, 3];
-    const HEALTHY_WRITE: [i32; 3] = [4, 63, 4];
-    const LANDING_Y: f64 = 63.9375;
-    const LANDING: u32 = 20;
-    const OTHER: u32 = 72;
-    const OUTSIDE: u32 = 73;
-    const WALKING: Body = Body::Guest { sneaking: false };
+    pub(in crate::game) const FIELD: [i32; 3] = [1, 63, 1];
+    pub(in crate::game) const LISTENER_WRITE: [i32; 3] = [3, 63, 3];
+    pub(in crate::game) const HEALTHY_WRITE: [i32; 3] = [4, 63, 4];
+    pub(in crate::game) const LANDING_Y: f64 = 63.9375;
+    pub(in crate::game) const LANDING: u32 = 20;
+    pub(in crate::game) const OTHER: u32 = 72;
+    pub(in crate::game) const OUTSIDE: u32 = 73;
+    pub(in crate::game) const WALKING: Body = Body::Guest { sneaking: false };
 
     #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-    enum Choice {
+    pub(in crate::game) enum Choice {
         Absent,
         Allow,
         Trap,
@@ -153,14 +104,14 @@ mod tests {
     }
 
     #[derive(Clone, Copy)]
-    enum Body {
+    pub(in crate::game) enum Body {
         Guest { sneaking: bool },
         Pig,
         Cat { crouching: bool },
     }
 
     #[derive(Debug, PartialEq)]
-    enum Moment {
+    pub(in crate::game) enum Moment {
         Hook { y: f64, health: f32 },
         CropRemoved(mod_api::BlockState),
         Lift(u32, f64, Option<mod_api::BlockState>),
@@ -169,11 +120,11 @@ mod tests {
         Fall(f32, f64, mod_api::BlockState),
     }
 
-    type Trace = Arc<Mutex<Vec<Moment>>>;
+    pub(in crate::game) type Trace = Arc<Mutex<Vec<Moment>>>;
 
     // This observer listens to the effects, not to farmland_trample. It can be
     // installed on both sides of the allow/no-listener comparison.
-    struct Observe(Trace, Choice);
+    pub(in crate::game) struct Observe(pub(in crate::game) Trace, pub(in crate::game) Choice);
     #[mod_api::__subscriptions]
     impl Hooks for Observe {
         fn entity_entering_section(
@@ -255,7 +206,7 @@ mod tests {
         }
     }
 
-    struct Gardener(Choice, Trace);
+    pub(in crate::game) struct Gardener(pub(in crate::game) Choice, pub(in crate::game) Trace);
     #[mod_api::__subscriptions]
     impl Hooks for Gardener {
         fn farmland_trample(
@@ -321,7 +272,7 @@ mod tests {
         }
     }
 
-    struct AfterTrap;
+    pub(in crate::game) struct AfterTrap;
     #[mod_api::__subscriptions]
     impl Hooks for AfterTrap {
         fn farmland_trample(
@@ -344,11 +295,15 @@ mod tests {
         }
     }
 
-    fn land(body: Body, choice: Choice) -> Vec<Moment> {
+    pub(in crate::game) fn land(body: Body, choice: Choice) -> Vec<Moment> {
         land_with_later_packet(body, choice, None)
     }
 
-    fn land_with_later_packet(body: Body, choice: Choice, later: Option<S>) -> Vec<Moment> {
+    pub(in crate::game) fn land_with_later_packet(
+        body: Body,
+        choice: Choice,
+        later: Option<S>,
+    ) -> Vec<Moment> {
         let player = matches!(body, Body::Guest { .. });
         let cancelled = choice == Choice::Cancel
             || (choice == Choice::AvoidSneak
@@ -699,126 +654,6 @@ mod tests {
                 for crouching in [true, false] {
                     land(Body::Cat { crouching }, Choice::AvoidSneak);
                 }
-            },
-        );
-    }
-
-    #[test]
-    #[ignore = "daily"]
-    fn ordinary_moves_and_short_farmland_landings_do_not_pause() {
-        crate::game::in_own_process(
-            "game::native_hooks::farmland_trample::tests::ordinary_moves_and_short_farmland_landings_do_not_pause",
-            || {
-                use sunrise_client::{
-                    health::{DamageLevel, LentLevel},
-                    mobs::{Mob, ai},
-                    motion::MotionWorld,
-                };
-
-                let trace = Trace::default();
-                mod_platform::testing::with_mods(
-                    vec![ModEntry::new(
-                        "gardener",
-                        Box::new(Gardener(Choice::Allow, trace.clone())),
-                    )]
-                    .into(),
-                    || {
-                        with_game(|game| {
-                            game.options.dedicated = Some(Vec::new());
-                            game.streaming
-                                .insert_remote(&mut game.world, Chunk::empty(0, 0));
-                            let registry = game.pack.assets.registry;
-                            let farmland = registry.default_state("minecraft:farmland").unwrap();
-                            let [x, y, z] = FIELD;
-                            game.world.set(x, y, z, farmland).unwrap();
-                            let pig = game.res.mob_types().get("minecraft:pig").unwrap().clone();
-                            let mut lent = LentLevel::take(&mut game.world);
-                            {
-                                let view = game.mob_world_base(&[]);
-                                let mut level = DamageLevel::lent(
-                                    &game.world,
-                                    registry,
-                                    &mut lent,
-                                    Some(game.items()),
-                                    Some(&game.pack.block_registries),
-                                    &game.damage_hooks,
-                                );
-                                for walking in [false, true] {
-                                    let (start_y, velocity) = if walking {
-                                        (LANDING_Y, Vec3::new(0.125, -0.08, 0.0))
-                                    } else {
-                                        // Even the smallest random draw cannot pass this short fall.
-                                        (64.125, Vec3::new(0.0, -0.5, 0.0))
-                                    };
-                                    let mut mob = Mob::new(
-                                        LANDING,
-                                        pig.clone(),
-                                        Vec3::new(1.5, start_y, 1.5),
-                                        0.0,
-                                    );
-                                    mob.ai.goals = Default::default();
-                                    mob.ai.targets = Default::default();
-                                    mob.ground.on_ground = walking;
-                                    mob.velocity = velocity;
-                                    let mut trample = None;
-                                    let progress = ai::tick_until_consumption(
-                                        &mut mob,
-                                        &view,
-                                        &mut level,
-                                        &mut Vec::new(),
-                                        &mut trample,
-                                    );
-                                    assert!(trample.is_none());
-                                    assert!(
-                                        matches!(progress, ai::TickProgress::Complete(true)),
-                                        "walking={walking}: {progress:?}"
-                                    );
-                                    assert!(mob.ground.on_ground);
-                                    assert_eq!(mob.position.y, LANDING_Y);
-                                    assert_eq!(mob.fall_distance, 0.0);
-                                    assert_eq!(mob.position.x > 1.5, walking);
-                                }
-                            }
-                            lent.give_back(&mut game.world);
-
-                            // The guest motion pass finishes a short fall by itself:
-                            // `None` means no continuation and no return to the owning host.
-                            let mut guest =
-                                PlayerMotion::new(game.motion, Vec3::new(1.5, LANDING_Y, 1.5))
-                                    .unwrap();
-                            guest.fall_distance = 0.125;
-                            let side = game_side!(game);
-                            let mut motion = MotionWorld {
-                                side: &side,
-                                entities: &[],
-                                player: &mut guest,
-                                scene: &mut game.world,
-                                assets: &game.pack.assets,
-                                collision_binding: game.collision,
-                                resources: game.motion,
-                                health: &game.health_resources,
-                                tag_items: Some(world_items!(game)),
-                                loop_context: &game.loop_context,
-                                damage_hooks: &game.damage_hooks,
-                                block_registries: Some(&game.pack.block_registries),
-                            };
-                            assert!(
-                                motion
-                                    .check_guest_fall_damage(
-                                        -0.125,
-                                        true,
-                                        farmland,
-                                        BlockPos::new(x, y, z)
-                                    )
-                                    .unwrap()
-                                    .is_none()
-                            );
-                            assert_eq!(guest.fall_distance, 0.0);
-                            assert_eq!(game.world.block(x, y, z), farmland);
-                            assert!(trace.lock().unwrap().is_empty());
-                        });
-                    },
-                );
             },
         );
     }

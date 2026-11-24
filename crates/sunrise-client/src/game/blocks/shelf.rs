@@ -22,7 +22,7 @@ fn accepts(limit: Option<u32>, stack: Option<&sunrise_client::items::ItemStack>)
 
 impl Game<'_> {
     /// Slot and facing for a click on a shelf's front face.
-    pub(super) fn shelf_hit(&self, hit: &Hit) -> Option<(usize, Direction, bool)> {
+    pub(in crate::game) fn shelf_hit(&self, hit: &Hit) -> Option<(usize, Direction, bool)> {
         let p = hit.pos;
         if !matches!(
             self.world.block_entities.get(&(p[0], p[1], p[2])),
@@ -110,7 +110,7 @@ impl Game<'_> {
     }
 
     /// `ShelfBlock.useItemOn`: a single swap, or a connected hotbar swap while powered.
-    pub(super) fn use_shelf(&mut self, hit: &Hit) -> Option<bool> {
+    pub(in crate::game) fn use_shelf(&mut self, hit: &Hit) -> Option<bool> {
         use mod_api::client::first_person::Hand;
         if self.hand != Hand::Main {
             return None;
@@ -217,14 +217,18 @@ impl Game<'_> {
     }
 
     /// `ShelfRenderer`: three items face out, aligned to the bottom or centre.
-    pub(super) fn shelf_geometry(&self, camera: glam::DVec3, out: &mut Vec<Vertex>) {
+    pub(in crate::game) fn shelf_geometry(&self, camera: glam::DVec3, out: &mut Vec<Vertex>) {
         self.shelf_items(camera, |d| {
             self.submit_item_world(d.state, d.pose, d.light, out);
         });
     }
 
     /// The items [`Self::shelf_geometry`] draws, slot by slot.
-    pub(super) fn shelf_items(&self, camera: glam::DVec3, mut draw: impl FnMut(BlockItemDraw)) {
+    pub(in crate::game) fn shelf_items(
+        &self,
+        camera: glam::DVec3,
+        mut draw: impl FnMut(BlockItemDraw),
+    ) {
         let _items = sunrise_client::spans::raw_flight_guard("block_entity_items");
         let reach = Reach::Default;
         sunrise_client::spans::note_block_entity_item_visits(|| {

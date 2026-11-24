@@ -4,20 +4,25 @@
 //! `clearthat`/`these`/`all` and `stop`, with `TestFinder`'s searches.
 //!
 //! Retries are `RetryOptions(numberOfTimes, untilFailed)`.
+#[allow(unused_imports)]
 use super::{Arg, Context, Game, R, err};
+#[allow(unused_imports)]
 use crate::game::{
     Dim,
     game_tests::{Grid, Info, Retry, RunnerOptions, verify_batches},
     test_instances::TestDef,
 };
+#[allow(unused_imports)]
 use sunrise_client::text::{self, Text};
+#[allow(unused_imports)]
 use sunrise_core::bounding_box::BoundingBox;
+#[allow(unused_imports)]
 use sunrise_world::worldgen::structure::Rotation;
 
-type Pos = (i32, i32, i32);
+pub(in crate::game) type Pos = (i32, i32, i32);
 
 /// `TestFinder.Builder`'s finders that the command picks.
-enum Finder {
+pub(in crate::game) enum Finder {
     /// `radius(c, r)`.
     Radius(i32),
     /// `nearest(c)`.
@@ -33,24 +38,16 @@ enum Finder {
 }
 
 /// `StructureUtils.getRotationForRotationSteps`.
-fn rotation_for_steps(steps: i32) -> Option<Rotation> {
+pub(in crate::game) fn rotation_for_steps(steps: i32) -> Option<Rotation> {
     usize::try_from(steps)
         .ok()
         .and_then(|i| Rotation::ALL.get(i).copied())
 }
 
 impl Game<'_> {
-    /// `CommandSourceStack.sendFailure`.
-    fn test_failure(&mut self, message: Text) {
-        if self.server.command_source.is_some_and(|s| s.silent) {
-            return;
-        }
-        self.system_message(message.with_color(text::RED));
-    }
-
     /// `StructureUtils.findTestBlocks`: the test instance blocks within
     /// `radius` of `center` (the POI search is a sphere).
-    pub(super) fn find_test_instance_blocks(&self, center: Pos, radius: i32) -> Vec<Pos> {
+    pub(in crate::game) fn find_test_instance_blocks(&self, center: Pos, radius: i32) -> Vec<Pos> {
         let limit = i64::from(radius) * i64::from(radius);
         let mut found: Vec<Pos> = self
             .world
@@ -73,7 +70,7 @@ impl Game<'_> {
     }
 
     /// The block of the source's position (`BlockPos.containing`).
-    pub(super) fn test_source_block(&self) -> Pos {
+    pub(in crate::game) fn test_source_block(&self) -> Pos {
         let p = self.source_position();
         (
             p[0].floor() as i32,
@@ -84,7 +81,7 @@ impl Game<'_> {
 
     /// `StructureUtils.lookedAtTestPos`: the test whose box the player's
     /// view ray (250 blocks) meets, the nearest to the source.
-    fn looked_at_test(&self, center: Pos) -> Option<Pos> {
+    pub(in crate::game) fn looked_at_test(&self, center: Pos) -> Option<Pos> {
         let player = self.player.as_ref()?;
         let eye = [
             player.position.x,
@@ -117,7 +114,7 @@ impl Game<'_> {
     }
 
     /// The test instance blocks a finder gives (`findTestPos`).
-    fn finder_positions(&self, finder: &Finder) -> Vec<Pos> {
+    pub(in crate::game) fn finder_positions(&self, finder: &Finder) -> Vec<Pos> {
         let center = self.test_source_block();
         match finder {
             Finder::Radius(radius) => self.find_test_instance_blocks(center, *radius),
@@ -135,29 +132,8 @@ impl Game<'_> {
         }
     }
 
-    /// The tests a finder gives (`findTests`), by id.
-    fn finder_tests(&self, finder: &Finder) -> Vec<(String, TestDef)> {
-        let keys: Vec<String> = match finder {
-            Finder::Failed(only_required) => self
-                .game_tests
-                .0
-                .failed
-                .iter()
-                .filter(|k| !only_required || self.test_def(k).is_some_and(|def| def.required))
-                .cloned()
-                .collect(),
-            Finder::Selection { tests, copies } => {
-                (0..*copies).flat_map(|_| tests.iter().cloned()).collect()
-            }
-            _ => Vec::new(),
-        };
-        keys.into_iter()
-            .filter_map(|k| self.test_def(&k).map(|def| (k, def)))
-            .collect()
-    }
-
     /// `verifyStructureExists`.
-    fn verify_test_structure(&mut self, structure: &str) -> bool {
+    pub(in crate::game) fn verify_test_structure(&mut self, structure: &str) -> bool {
         if self.template_entry(structure).is_some() {
             return true;
         }
@@ -168,73 +144,8 @@ impl Game<'_> {
         false
     }
 
-    /// `createGameTestInfo`: the test of a test instance block.
-    fn test_info_at(&mut self, pos: Pos, retry: Retry) -> Option<Info> {
-        let key = self.test_instance_at(pos).and_then(|b| b.data.test.clone());
-        if self.test_instance_at(pos).is_none() {
-            self.test_failure(Text::translate(
-                "commands.test.error.test_instance_not_found.position",
-                &[pos.0, pos.1, pos.2].map(|v| Text::literal(v.to_string())),
-            ));
-            return None;
-        }
-        let Some(def) = key.as_deref().and_then(|k| self.test_def(k)) else {
-            let name = self.test_name(pos);
-            self.test_failure(Text::translate(
-                "commands.test.error.non_existant_test",
-                &[name],
-            ));
-            return None;
-        };
-        let key = key.unwrap_or_default();
-        let key = if key.contains(':') {
-            key
-        } else {
-            format!("minecraft:{key}")
-        };
-        if !self.verify_test_structure(&def.structure) {
-            return None;
-        }
-        let rotation = self.test_rotation(pos);
-        let id = self.game_tests.0.next_id();
-        Some(Info::new(id, key, def, Some(pos), self.dim, rotation).with_retry(retry))
-    }
-
-    /// `toGameTestInfo`: a test without a block, in the level in place.
-    fn test_info_for(
-        &mut self,
-        key: String,
-        def: TestDef,
-        steps: i32,
-        retry: Retry,
-    ) -> R<Option<Info>> {
-        if !self.verify_test_structure(&def.structure) {
-            return Ok(None);
-        }
-        // `server.getLevel(dimension)`: the server's levels.
-        let dim = match def.dimension.as_str() {
-            "minecraft:overworld" | "minecraft:the_nether" | "minecraft:the_end" => {
-                Some(Dim::from_id(&def.dimension))
-            }
-            _ => None,
-        }
-        .filter(|d| *d == self.dim || !self.options.execution_role.is_client());
-        let Some(dim) = dim else {
-            self.test_failure(Text::literal(format!(
-                "Could not resolve level for dimension: {}",
-                def.dimension
-            )));
-            return Ok(None);
-        };
-        let rotation = rotation_for_steps(steps).ok_or_else(|| err("command.failed", &[]))?;
-        let id = self.game_tests.0.next_id();
-        Ok(Some(
-            Info::new(id, key, def, None, dim, rotation).with_retry(retry),
-        ))
-    }
-
     /// The column `createTestPositionAround` starts from: the source's.
-    pub(super) fn test_around(&self) -> (i32, i32) {
+    pub(in crate::game) fn test_around(&self) -> (i32, i32) {
         let p = self.source_position();
         (p[0].floor() as i32, p[2].floor() as i32)
     }
@@ -250,65 +161,13 @@ impl Game<'_> {
     }
 
     /// `createTestPositionAround` in the level in place.
-    pub(super) fn test_position_around(&mut self) -> Pos {
+    pub(in crate::game) fn test_position_around(&mut self) -> Pos {
         let around = self.test_around();
         self.test_position_in_level(around)
     }
 
-    /// `TestCommand.run`.
-    fn run_tests(&mut self, finder: &Finder, retry: Retry, steps: i32, per_row: i32) -> R<i32> {
-        self.clear_game_tests();
-        let mut infos = Vec::new();
-        for pos in self.finder_positions(finder) {
-            infos.extend(self.test_info_at(pos, retry));
-        }
-        for (key, def) in self.finder_tests(finder) {
-            infos.extend(self.test_info_for(key, def, steps, retry)?);
-        }
-        if infos.is_empty() {
-            self.feedback_unbroadcast(Text::translate("commands.test.no_tests", &[]));
-            return Ok(0);
-        }
-        self.game_tests.0.failed.clear();
-        self.feedback_unbroadcast(Text::translate(
-            "commands.test.run.running",
-            &[Text::literal(infos.len().to_string())],
-        ));
-        let grid = Grid::new(self.test_around(), per_row);
-        self.track_and_start_command_runner(infos, grid);
-        Ok(1)
-    }
-
-    /// `TestCommand.verify`.
-    pub(super) fn test_verify(&mut self, ctx: &Context) -> R<i32> {
-        self.clear_game_tests();
-        let tests = match ctx.get("tests") {
-            Some(Arg::Str(pattern)) => sunrise_client::command::args::select_resources(
-                self.ui.registries.ids("minecraft:test_instance"),
-                pattern,
-            )
-            .into_iter()
-            .cloned()
-            .collect(),
-            _ => Vec::new(),
-        };
-        let finder = Finder::Selection { tests, copies: 1 };
-        let mut infos = Vec::new();
-        for pos in self.finder_positions(&finder) {
-            infos.extend(self.test_info_at(pos, Retry::none()));
-        }
-        for (key, def) in self.finder_tests(&finder) {
-            infos.extend(self.test_info_for(key, def, 0, Retry::none())?);
-        }
-        self.game_tests.0.failed.clear();
-        let batches = verify_batches(&infos, || self.game_tests.0.next_id());
-        let grid = Grid::new(self.test_around(), 10).clearing();
-        self.track_and_start_batches(batches, RunnerOptions::verify(grid));
-        Ok(1)
-    }
-
     /// `TestCommand.reset`.
-    fn reset_tests(&mut self, finder: &Finder) -> R<i32> {
+    pub(in crate::game) fn reset_tests(&mut self, finder: &Finder) -> R<i32> {
         self.clear_game_tests();
         let mut count = 0;
         for pos in self.finder_positions(finder) {
@@ -329,7 +188,7 @@ impl Game<'_> {
     }
 
     /// `TestCommand.clear`.
-    fn clear_tests(&mut self, finder: &Finder) -> R<i32> {
+    pub(in crate::game) fn clear_tests(&mut self, finder: &Finder) -> R<i32> {
         self.clear_game_tests();
         let tests = self.finder_positions(finder);
         for &pos in &tests {
@@ -355,7 +214,7 @@ impl Game<'_> {
     }
 
     /// The `/test` subcommands that run, reset and clear tests.
-    pub(super) fn cmd_test_runs(&mut self, id: &str, ctx: &Context) -> R<i32> {
+    pub(in crate::game) fn cmd_test_runs(&mut self, id: &str, ctx: &Context) -> R<i32> {
         let int = |name: &str| match ctx.get(name) {
             Some(Arg::Int(v)) => Some(*v),
             _ => None,
@@ -446,7 +305,12 @@ impl Game<'_> {
 }
 
 /// `AABB.clip(from, to).isPresent()`: the segment meets the box.
-fn ray_hits_box(from: [f64; 3], to: [f64; 3], min: [f64; 3], max: [f64; 3]) -> bool {
+pub(in crate::game) fn ray_hits_box(
+    from: [f64; 3],
+    to: [f64; 3],
+    min: [f64; 3],
+    max: [f64; 3],
+) -> bool {
     let (mut near, mut far) = (0.0f64, 1.0f64);
     for i in 0..3 {
         let d = to[i] - from[i];
@@ -468,7 +332,7 @@ fn ray_hits_box(from: [f64; 3], to: [f64; 3], min: [f64; 3], max: [f64; 3]) -> b
 }
 
 #[cfg(test)]
-mod tests {
+pub(in crate::game) mod tests {
     use super::*;
 
     #[test]

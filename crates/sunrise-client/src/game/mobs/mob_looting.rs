@@ -45,7 +45,7 @@ impl LootingLevel for Game<'_> {
 
 impl Game<'_> {
     /// `Mob.aiStep`'s looting block, once per mob per tick.
-    pub(super) fn tick_mob_looting(&mut self) {
+    pub(in crate::game) fn tick_mob_looting(&mut self) {
         sunrise_gameplay::mob_looting::tick_mob_looting(self);
     }
 
@@ -57,7 +57,7 @@ impl Game<'_> {
 
     /// The numbers `Mob.compareArmor` and `compareWeapons` read off `stack`
     /// in `slot` for the mob `m`.
-    pub(super) fn stack_facts(&self, m: &Mob, stack: &ItemStack, slot: Slot) -> Facts {
+    pub(in crate::game) fn stack_facts(&self, m: &Mob, stack: &ItemStack, slot: Slot) -> Facts {
         let (armor, toughness, attack) = self.attributes(m, stack, slot);
         Facts {
             armor,
@@ -96,7 +96,7 @@ impl Game<'_> {
 
     /// `LivingEntity.onItemPickup`: the advancement of whoever threw the item,
     /// whichever mob took it.
-    pub(super) fn mob_item_pickup_trigger(&mut self, index: usize, e: &ItemEntity) {
+    pub(in crate::game) fn mob_item_pickup_trigger(&mut self, index: usize, e: &ItemEntity) {
         let Some(owner) = e.thrower else {
             return;
         };

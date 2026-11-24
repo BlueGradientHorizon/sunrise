@@ -1,0 +1,125 @@
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use super::super::Received;
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use super::{
+    connect_play_test, finish_play_test, offer_test_payloads, spawn_menu_test,
+};
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::remote::tests::play_bundle_tests::DRAIN_LEN;
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::remote::tests::play_bundle_tests::DROPPABLE;
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::remote::tests::play_bundle_tests::Handler;
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::remote::tests::play_bundle_tests::MAIN;
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::remote::tests::play_bundle_tests::NETWORK;
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::remote::tests::play_bundle_tests::Probe;
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::remote::tests::play_bundle_tests::SERVER_ONLY;
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::remote::tests::play_bundle_tests::Witness;
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::remote::tests::play_bundle_tests::Work;
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::remote::tests::play_bundle_tests::accept_tcp;
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::remote::tests::play_bundle_tests::accept_transfer_login;
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::remote::tests::play_bundle_tests::connect_probe;
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::remote::tests::play_bundle_tests::login_cookie;
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::remote::tests::play_bundle_tests::transfer_to;
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::remote::tests::play_bundle_tests::wait_for_bundle;
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::remote::tests::play_bundle_tests::with_probe;
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::remote::tests::play_bundle_tests::*;
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::{
+    native_entity_refs::tests::{run_fresh_cases, with_client_game},
+    viewed_worlds::tests::column,
+};
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use mod_api::{
+    HandlerThread, Hooks, IPayloadContext, IPayloadHandler, ModEntry, PayloadBytes,
+    PayloadContextError, PayloadHandleError, PayloadId, PayloadSendError, PayloadWork,
+    PayloadWorkStatus, Registrar,
+};
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use std::{
+    sync::{Arc, Mutex, mpsc},
+    thread::{self, JoinHandle, ThreadId},
+    time::{Duration, Instant},
+};
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use sunrise_client::{net::Event, raw_payloads};
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use sunrise_protocol::{
+    connection::ConnReader,
+    connection_groups::{self, Cell, Entry, Section},
+    packets::{
+        Empty, configuration as cfg,
+        custom_payload::CustomPayload,
+        handshake, login,
+        play::{self, Clientbound as C, Serverbound as S},
+    },
+};
+
+#[test]
+#[ignore = "daily"]
+fn a_split_frame_group_bundle_refuses_a_mismatched_companion() {
+    with_probe(|game, _| {
+        let (local, _reader, mut writer) = connect_probe(game);
+        game.handle_packet(column(0, 0)).unwrap();
+        let pos = [3, 70, 5];
+        let original = game.world.block(pos[0], pos[1], pos[2]);
+        assert_ne!(original.0, 0);
+        let delimiter = C::BundleDelimiter(Empty).encode();
+        writer.send(&delimiter).unwrap();
+        writer
+            .send(&C::BlockUpdate(play::BlockUpdate { pos, state: 0 }).encode())
+            .unwrap();
+        let companion = C::CustomPayload(CustomPayload {
+            channel: connection_groups::CHANNEL.into(),
+            data: Section {
+                pos: [0, 4, 0],
+                entries: vec![Entry {
+                    cell: Cell::of([4, 70, 5]),
+                    group: Some(7),
+                }],
+            }
+            .encode()
+            .unwrap(),
+        });
+        let body = companion
+            .try_encode_with_payload_codecs(&local.codecs)
+            .unwrap();
+        let mut frame = Vec::new();
+        writer.frame_into(&writer.contents(&body).unwrap(), &mut frame);
+        let (prefix, suffix) = frame.split_at(frame.len() - 1);
+        writer.write_raw(prefix).unwrap();
+        game.poll_remote_events(false).unwrap();
+        assert_eq!(game.world.block(pos[0], pos[1], pos[2]), original);
+        assert!(game.remote.is_some());
+        writer.write_raw(suffix).unwrap();
+        writer.send(&delimiter).unwrap();
+        wait_for_bundle(game);
+        game.poll_remote_events(true).unwrap();
+        assert!(game.remote.is_none());
+        let Some(sunrise_client::title::Mode::Multiplayer(
+            sunrise_client::multiplayer::Screen::Disconnected { reason, .. },
+        )) = game.title.0.as_ref().map(|title| &title.mode)
+        else {
+            panic!("expected the multiplayer refusal screen");
+        };
+        assert!(
+            reason
+                .plain()
+                .contains("connection groups: group cell not in block update")
+        );
+    });
+}

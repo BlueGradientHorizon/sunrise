@@ -1,14 +1,21 @@
+#[allow(unused_imports)]
 use super::{DataRef, Target};
+#[allow(unused_imports)]
 use crate::game::native_entity_refs::tests::{
     bind_local_player, prepare_entity_ticking_neighborhood, with_game,
 };
+#[allow(unused_imports)]
 use std::collections::HashSet;
+#[allow(unused_imports)]
 use sunrise_client::motion::PlayerMotion;
+#[allow(unused_imports)]
 use sunrise_core::geometry::Vec3;
+#[allow(unused_imports)]
 use sunrise_core::nbt::Tag;
+#[allow(unused_imports)]
 use sunrise_core::position::ChunkPos;
 
-fn read_witness() -> String {
+pub(in crate::game) fn read_witness() -> String {
     let raw = std::env::var_os("SUNRISE_ENTITY_FIRE_TICKS_WITNESS").unwrap_or_else(|| {
         panic!(
             "SUNRISE_ENTITY_FIRE_TICKS_WITNESS is unset; run through tools/test_entity_fire_ticks_parity.py, which records the 26.3 witness"
@@ -28,34 +35,26 @@ fn read_witness() -> String {
     })
 }
 
-struct WitnessRow<'a> {
-    kind: &'a str,
-    initial_fire: &'a str,
-    nbt: &'a str,
-    ticks: usize,
-    expected: Option<Tag>,
+pub(in crate::game) struct WitnessRow<'a> {
+    pub(in crate::game) kind: &'a str,
+    pub(in crate::game) initial_fire: &'a str,
+    pub(in crate::game) nbt: &'a str,
+    pub(in crate::game) ticks: usize,
+    pub(in crate::game) expected: Option<Tag>,
 }
 
-struct Active<'a> {
-    kind: &'a str,
-    initial_fire: &'a str,
-    nbt: &'a str,
-    target: Target,
-    elapsed: usize,
+pub(in crate::game) struct Active<'a> {
+    pub(in crate::game) kind: &'a str,
+    pub(in crate::game) initial_fire: &'a str,
+    pub(in crate::game) nbt: &'a str,
+    pub(in crate::game) target: Target,
+    pub(in crate::game) elapsed: usize,
 }
 
-fn target_exists(game: &crate::game::Game<'_>, target: Target) -> bool {
-    match target {
-        Target::Other(id) => game.others.0.iter().any(|o| o.id == id),
-        Target::Fangs(id) => game.fangs.list.iter().any(|f| f.id == id),
-        Target::Spawner(id) => game.ominous_spawners.iter().any(|s| s.id == id),
-        Target::Cloud(id) => game.breath_clouds.iter().any(|c| c.id == id),
-        Target::Projectile(id) => game.creatures.projectiles.iter().any(|p| p.id == id),
-        _ => false,
-    }
-}
+#[allow(unused_imports)]
+pub(in crate::game) use crate::game::server_side::commands_server::data::fire_tests::target_exists;
 
-fn summon_target_at(
+pub(in crate::game) fn summon_target_at(
     game: &mut crate::game::Game<'_>,
     kind: &str,
     pos: [f64; 3],
@@ -69,16 +68,10 @@ fn summon_target_at(
     }
 }
 
-fn tick_fire_entities(game: &mut crate::game::Game<'_>) {
-    game.server.ticked_entities_through = u32::MAX;
-    game.tick_summoned_eyes();
-    game.tick_fangs();
-    game.tick_ominous_item_spawners();
-    game.tick_potion_clouds();
-    game.tick_projectiles_now().unwrap();
-}
+#[allow(unused_imports)]
+pub(in crate::game) use crate::game::server_side::commands_server::data::fire_tests::tick_fire_entities;
 
-fn parse_witness_26_3(witness: &str) -> Vec<WitnessRow<'_>> {
+pub(in crate::game) fn parse_witness_26_3(witness: &str) -> Vec<WitnessRow<'_>> {
     assert!(
         witness.starts_with("# vanilla 26.3 witness "),
         "witness must be tagged with vanilla 26.3"

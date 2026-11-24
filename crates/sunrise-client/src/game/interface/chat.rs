@@ -2,14 +2,17 @@
 //! (game rules, the world clock, difficulty), bound to the game.
 #[cfg(test)]
 #[path = "chat/suggestion_completion_tests.rs"]
-mod suggestion_completion_tests;
+pub(in crate::game) mod suggestion_completion_tests;
 
+#[allow(unused_imports)]
 use super::{Game, Screen};
+#[allow(unused_imports)]
 use std::{
     collections::BTreeMap,
     path::{Path, PathBuf},
     sync::{Arc, Mutex},
 };
+#[allow(unused_imports)]
 use sunrise_client::{
     chat::{
         Chat, ChatAbilities, ChatAction, ChatScreen, ChatSource, ChatVisibility, Commands,
@@ -21,12 +24,13 @@ use sunrise_client::{
     screen_draw::Measure,
     text::{ClickEvent, Style, Text},
 };
+#[allow(unused_imports)]
 use sunrise_world::registry::{BlockRegistry, BlockStateId};
 
 /// The tree the chat parses and completes with: `Remote::chat_tree`, which is
 /// a server's, once it has sent one (ClientPacketListener.commands), else the
 /// game's own, plus the commands native mods own (`chat_tree_for`).
-pub(super) fn chat_tree(
+pub(in crate::game) fn chat_tree(
     remote: &Option<super::remote::Remote>,
 ) -> &sunrise_client::command::Dispatcher {
     match remote.as_ref() {
@@ -35,7 +39,7 @@ pub(super) fn chat_tree(
     }
 }
 /// The arguments of a typed `/profiler` the client answers itself: only when the chat tree's `profiler` is Sunrise's, else the server or mod that owns the name runs it.
-fn sunrise_profiler_args<'a>(
+pub(in crate::game) fn sunrise_profiler_args<'a>(
     message: &'a str,
     server_tree: Option<&sunrise_client::command::Dispatcher>,
 ) -> Option<&'a str> {
@@ -46,12 +50,13 @@ fn sunrise_profiler_args<'a>(
         .is_none_or(|tree| tree.has_sunrise_profiler())
         .then_some(args)
 }
+#[allow(unused_imports)]
 use winit::keyboard::KeyCode;
 
 /// `base` with extra client-local commands added: each a literal taking the
 /// rest of the line as typed (`Dispatcher::with_mod_commands`), so the chat
 /// box colours and completes them as it does the game's own.
-pub(super) fn with_native_commands(
+pub(in crate::game) fn with_native_commands(
     base: &sunrise_client::command::Dispatcher,
     names: &[&str],
 ) -> sunrise_client::command::Dispatcher {
@@ -67,7 +72,7 @@ pub(super) fn with_native_commands(
 /// Add Studio's local command grammar to the suggestion tree. Commands are
 /// still dispatched by `studio_command`; this tree supplies coloring,
 /// completion, and Tab acceptance in chat.
-fn with_studio_commands(base: &Dispatcher) -> Dispatcher {
+pub(in crate::game) fn with_studio_commands(base: &Dispatcher) -> Dispatcher {
     fn literal(d: &mut Dispatcher, parent: usize, name: &str) -> usize {
         let node = d.literal(parent, name);
         d.executes(node, MOD_COMMAND);
@@ -154,7 +159,7 @@ impl Game<'_> {
     /// world's connection: `base`, the tree the server sent, or the game's own
     /// before it does. Built where that base changes — once per connection —
     /// rather than at each keystroke, and asking the mods then, not per key.
-    pub(super) fn chat_tree_for(
+    pub(in crate::game) fn chat_tree_for(
         &mut self,
         base: Option<&sunrise_client::command::Dispatcher>,
     ) -> sunrise_client::command::Dispatcher {
@@ -197,7 +202,9 @@ impl Game<'_> {
 /// The local player's name (offline single player).
 pub const PLAYER_NAME: &str = "Player";
 
+#[allow(unused_imports)]
 pub(in crate::game) use sunrise_gameplay::world_clock::OVERWORLD_CLOCK;
+#[allow(unused_imports)]
 pub use sunrise_gameplay::world_clock::{TimeMarker, WorldClock};
 /// `ChatComponent.Draft`: the text the chat box kept, and whether it was a command.
 pub struct ChatDraft {
@@ -206,7 +213,7 @@ pub struct ChatDraft {
 }
 /// `ChatScreen.ExitReason`: why the chat screen went away.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub(super) enum ChatExit {
+pub(in crate::game) enum ChatExit {
     /// Another screen replaced it (death, a container, a disconnect).
     Interrupted,
     /// The player closed it (Escape).
@@ -215,7 +222,7 @@ pub(super) enum ChatExit {
     Done,
 }
 /// `ChatScreen.shouldDiscardDraft`.
-fn should_discard_draft(reason: ChatExit, save_chat_drafts: bool) -> bool {
+pub(in crate::game) fn should_discard_draft(reason: ChatExit, save_chat_drafts: bool) -> bool {
     reason != ChatExit::Interrupted && (reason != ChatExit::Intentional || !save_chat_drafts)
 }
 /// An owned command tree, initialized even before a world is opened.
@@ -262,7 +269,7 @@ pub struct UiState {
     /// Effective HUD visibility, which native mods can change.
     pub hide_gui: bool,
     /// The player's F1 preference, independent of native HUD mode changes.
-    pub(super) player_hides_gui: bool,
+    pub(in crate::game) player_hides_gui: bool,
     /// Native HUD mode: keep hands visible while the HUD is hidden.
     pub show_hand_when_hidden: bool,
     /// Death message key set by the cause of death (e.g. /kill).
@@ -319,7 +326,7 @@ impl UiState {
         !spectator && !self.hand_hidden() && !sleeping && first_person && alive && !dead_screen
     }
 
-    fn toggle_hide_gui(&mut self) {
+    pub(in crate::game) fn toggle_hide_gui(&mut self) {
         use mod_api::HudMode;
         self.player_hides_gui = !self.player_hides_gui;
         self.set_hud_mode(if self.player_hides_gui {
@@ -341,7 +348,7 @@ impl UiState {
 }
 
 #[cfg(test)]
-mod hud_mode_tests {
+pub(in crate::game) mod hud_mode_tests {
     use super::UiState;
     use mod_api::HudMode;
 
@@ -394,23 +401,24 @@ mod hud_mode_tests {
 /// The ids `build_registries` lists from the prepared resources' folders.
 /// The folders don't change while the game runs, so each root is read once
 /// instead of at every world opening (thousands of files).
-struct ResourceIds {
-    recipes: Vec<String>,
-    templates: Vec<String>,
+pub(in crate::game) struct ResourceIds {
+    pub(in crate::game) recipes: Vec<String>,
+    pub(in crate::game) templates: Vec<String>,
     /// `entity-types.json`'s keys, sorted (empty when the file is missing).
-    entity_types: Vec<String>,
-    enchantments: Vec<String>,
-    structures: Vec<String>,
-    biomes: Vec<String>,
-    clocks: Vec<String>,
+    pub(in crate::game) entity_types: Vec<String>,
+    pub(in crate::game) enchantments: Vec<String>,
+    pub(in crate::game) structures: Vec<String>,
+    pub(in crate::game) biomes: Vec<String>,
+    pub(in crate::game) clocks: Vec<String>,
     /// The overworld clock's timelines, their periods and time markers.
-    timelines: Vec<(String, Option<i64>)>,
-    markers: Vec<(String, TimeMarker)>,
+    pub(in crate::game) timelines: Vec<(String, Option<i64>)>,
+    pub(in crate::game) markers: Vec<(String, TimeMarker)>,
 }
-static RESOURCE_IDS: Mutex<Vec<(PathBuf, Arc<ResourceIds>)>> = Mutex::new(Vec::new());
+pub(in crate::game) static RESOURCE_IDS: Mutex<Vec<(PathBuf, Arc<ResourceIds>)>> =
+    Mutex::new(Vec::new());
 
 /// The `minecraft:` ids of the `.json` files directly in `dir`, sorted.
-fn json_ids_in(dir: &Path) -> Vec<String> {
+pub(in crate::game) fn json_ids_in(dir: &Path) -> Vec<String> {
     let mut out: Vec<String> = std::fs::read_dir(dir)
         .into_iter()
         .flatten()
@@ -428,7 +436,9 @@ fn json_ids_in(dir: &Path) -> Vec<String> {
 
 /// The overworld clock's timelines (with their periods) and their time
 /// markers, read from `data/minecraft/timeline`.
-fn overworld_timelines(root: &Path) -> (Vec<(String, Option<i64>)>, Vec<(String, TimeMarker)>) {
+pub(in crate::game) fn overworld_timelines(
+    root: &Path,
+) -> (Vec<(String, Option<i64>)>, Vec<(String, TimeMarker)>) {
     let dir = root.join("data/minecraft/timeline");
     let (mut timelines, mut markers) = (Vec::new(), Vec::new());
     for name in json_ids_in(&dir) {
@@ -464,7 +474,7 @@ fn overworld_timelines(root: &Path) -> (Vec<(String, Option<i64>)>, Vec<(String,
     (timelines, markers)
 }
 
-fn resource_ids(root: &Path) -> Arc<ResourceIds> {
+pub(in crate::game) fn resource_ids(root: &Path) -> Arc<ResourceIds> {
     let mut cache = RESOURCE_IDS.lock().unwrap_or_else(|e| e.into_inner());
     if let Some((_, ids)) = cache.iter().find(|(cached, _)| cached == root) {
         return ids.clone();
@@ -490,13 +500,14 @@ fn resource_ids(root: &Path) -> Arc<ResourceIds> {
 }
 
 /// Every block's properties and their values, as `/setblock` completes them.
-pub(super) type BlockProperties = BTreeMap<String, Vec<(String, Vec<String>)>>;
-static BLOCK_PROPERTIES: Mutex<Vec<(usize, Arc<BlockProperties>)>> = Mutex::new(Vec::new());
+pub(in crate::game) type BlockProperties = BTreeMap<String, Vec<(String, Vec<String>)>>;
+pub(in crate::game) static BLOCK_PROPERTIES: Mutex<Vec<(usize, Arc<BlockProperties>)>> =
+    Mutex::new(Vec::new());
 
 /// `BlockProperties` of a block registry, listed once: a registry never
 /// changes once built, and walking its tens of thousands of states took
 /// about 30 ms of every world opening.
-pub(super) fn block_properties(registry: &BlockRegistry) -> Arc<BlockProperties> {
+pub(in crate::game) fn block_properties(registry: &BlockRegistry) -> Arc<BlockProperties> {
     // The payload is retained for the process, so equal data shares one table whatever borrows it.
     let key = registry.payload_identity();
     let mut cache = BLOCK_PROPERTIES.lock().unwrap_or_else(|e| e.into_inner());
@@ -526,14 +537,15 @@ pub(super) fn block_properties(registry: &BlockRegistry) -> Arc<BlockProperties>
     properties
 }
 
-static COMMAND_EXPORTS: Mutex<Vec<(PathBuf, Option<Arc<Registries>>)>> = Mutex::new(Vec::new());
+pub(in crate::game) static COMMAND_EXPORTS: Mutex<Vec<(PathBuf, Option<Arc<Registries>>)>> =
+    Mutex::new(Vec::new());
 
 /// What the registries take from a folder's `command-registries.json`
 /// (vanilla's built-in registries), read once like the resource ids: parsing
 /// its 1.6 MB again took about 15 ms of every world opening. Only the part
 /// the registries fill from stays, not the parsed export (4.2 MB, against
 /// 2.2 MB). A dedicated server opens its world once and keeps nothing.
-pub(super) fn command_export(dir: &Path, keep: bool) -> Option<Arc<Registries>> {
+pub(in crate::game) fn command_export(dir: &Path, keep: bool) -> Option<Arc<Registries>> {
     let mut cache = COMMAND_EXPORTS.lock().unwrap_or_else(|e| e.into_inner());
     if let Some((_, export)) = cache.iter().find(|(cached, _)| cached == dir) {
         return export.clone();
@@ -550,7 +562,7 @@ pub(super) fn command_export(dir: &Path, keep: bool) -> Option<Arc<Registries>> 
 
 /// The ids of the `.json` files in `data/<namespace>/<kind>` of every
 /// namespace of `root` (vanilla's and the content mods'), sorted.
-fn json_ids_of_every_namespace(root: &Path, kind: &str) -> Vec<String> {
+pub(in crate::game) fn json_ids_of_every_namespace(root: &Path, kind: &str) -> Vec<String> {
     let data = root.join("data");
     let mut namespaces: std::collections::BTreeSet<String> = std::fs::read_dir(&data)
         .into_iter()
@@ -577,7 +589,7 @@ fn json_ids_of_every_namespace(root: &Path, kind: &str) -> Vec<String> {
 
 /// The templates of every namespace folder under `root` (vanilla's and the
 /// content mods'), as `namespace:path`, sorted.
-fn templates_under(root: &Path) -> Vec<String> {
+pub(in crate::game) fn templates_under(root: &Path) -> Vec<String> {
     let Ok(namespaces) = std::fs::read_dir(root) else {
         return Vec::new();
     };
@@ -591,7 +603,7 @@ fn templates_under(root: &Path) -> Vec<String> {
 }
 
 /// The `namespace:` ids of the `extension` files under `root`, sorted.
-fn ids_in(root: &Path, extension: &str, namespace: &str) -> Vec<String> {
+pub(in crate::game) fn ids_in(root: &Path, extension: &str, namespace: &str) -> Vec<String> {
     let suffix = format!(".{extension}");
     // A prepared root's folder: from its data file, without listing the disk.
     if let Some(files) = sunrise_core::prepared_files::files_under(root) {
@@ -635,7 +647,7 @@ fn ids_in(root: &Path, extension: &str, namespace: &str) -> Vec<String> {
 
 /// `SuggestionProviders.SUMMONABLE_ENTITIES`: Entity types available for
 /// `/summon` autocomplete, filtering out types that cannot be summoned.
-pub(super) fn summonable_entities(
+pub(in crate::game) fn summonable_entities(
     entity_types: &[String],
     mob_types: impl IntoIterator<Item = impl AsRef<str>>,
 ) -> Vec<String> {
@@ -684,7 +696,7 @@ impl Game<'_> {
     /// thread while the title screen is up: the first world opened or server joined
     /// built them in its frame (20 ms of the Join click on an M4 Pro). Whoever needs one
     /// before it is done waits for it, as before.
-    pub(super) fn preload_registries(&self) {
+    pub(in crate::game) fn preload_registries(&self) {
         if self.options.dedicated.is_some() {
             return;
         }
@@ -708,17 +720,17 @@ impl Game<'_> {
         }
     }
     /// `PlayerList.isOp` for the single-player owner: the world's Allow Commands.
-    pub(super) fn allow_commands(&self) -> bool {
+    pub(in crate::game) fn allow_commands(&self) -> bool {
         self.level.allow_commands == Some(true)
     }
     /// `IntegratedServer.setWorldAllowCommands`, then `updatePermissions`.
-    pub(super) fn set_allow_commands(&mut self, allow: bool) {
+    pub(in crate::game) fn set_allow_commands(&mut self, allow: bool) {
         self.level.allow_commands = Some(allow);
         self.ui.registries.permission = owner_permission(allow);
     }
     /// Commands the game issues itself (the server console, harnesses, the
     /// control socket) run at the owner's level whatever Allow Commands says.
-    pub(super) fn as_console<T>(&mut self, f: impl FnOnce(&mut Self) -> T) -> T {
+    pub(in crate::game) fn as_console<T>(&mut self, f: impl FnOnce(&mut Self) -> T) -> T {
         let level = std::mem::replace(&mut self.ui.registries.permission, 4);
         let out = f(self);
         self.ui.registries.permission = level;
@@ -740,7 +752,7 @@ impl Game<'_> {
         self.ui.registries.loot_tables = ids;
     }
     /// Registry contents for argument parsing (built when a world opens).
-    pub(super) fn build_registries(&mut self) {
+    pub(in crate::game) fn build_registries(&mut self) {
         let permission = owner_permission(self.allow_commands());
         let reg = &mut self.ui.registries;
         reg.permission = permission;
@@ -927,7 +939,7 @@ impl Game<'_> {
     /// `ClientSuggestionProvider.getRelevantCoordinates` and
     /// `getAbsoluteCoordinates` read `Minecraft.hitResult` only when it is a
     /// block: an entity in front of the block leaves the `~` defaults.
-    fn refresh_dynamic_registries(&mut self) {
+    pub(in crate::game) fn refresh_dynamic_registries(&mut self) {
         let hit = if self.pick_entity_hit().is_some() {
             None
         } else {
@@ -967,7 +979,7 @@ impl Game<'_> {
     /// `ChatComponent.createScreen`: T or / opens the chat with the draft kept
     /// last time, when this method can restore it (a command draft only for
     /// /), else with its prefix.
-    pub(super) fn open_chat_method(&mut self, prefix: &str) {
+    pub(in crate::game) fn open_chat_method(&mut self, prefix: &str) {
         let command = prefix == "/";
         let draft = self
             .ui
@@ -981,7 +993,7 @@ impl Game<'_> {
     /// Open the chat box on `initial`; `is_draft` when that text is the saved
     /// draft (`ChatComponent.createScreen`), which draws grey italic until it
     /// is edited.
-    pub(super) fn begin_chat_screen(&mut self, initial: &str, is_draft: bool) {
+    pub(in crate::game) fn begin_chat_screen(&mut self, initial: &str, is_draft: bool) {
         if self.player.is_none() {
             return;
         }
@@ -1014,7 +1026,7 @@ impl Game<'_> {
         self.set_screen(Screen::Chat);
         self.capture(false);
     }
-    pub(super) fn close_chat(&mut self, reason: ChatExit) {
+    pub(in crate::game) fn close_chat(&mut self, reason: ChatExit) {
         // InBedChatScreen.onClose: leaving the screen means getting up; the
         // screen goes once the player has woken (`tick_in_bed_chat`).
         if self.ui.in_bed_chat && self.sleeping.is_some() {
@@ -1039,7 +1051,7 @@ impl Game<'_> {
     /// `shouldDiscardDraft` (closed on purpose without Save Chat Drafts, or
     /// sent); blank text discards the draft. A draft still shown unchanged
     /// stays as it is.
-    fn keep_chat_draft(&mut self, text: &str, reason: ChatExit) {
+    pub(in crate::game) fn keep_chat_draft(&mut self, text: &str, reason: ChatExit) {
         // During PvP & HUD's chat search the box holds the query: the draft is the text the
         // search put aside, whichever way the chat closed.
         let aside;
@@ -1064,7 +1076,7 @@ impl Game<'_> {
         }
     }
     /// `ChatScreen.removed` after another screen interrupted chat.
-    pub(super) fn remove_chat_screen(&mut self) {
+    pub(in crate::game) fn remove_chat_screen(&mut self) {
         if let Some(chat) = self.ui.chat_screen.take() {
             self.keep_chat_draft(chat.value(), ChatExit::Interrupted);
             self.ui.chat_draft_shown = false;
@@ -1076,7 +1088,7 @@ impl Game<'_> {
     /// `Gui.tick`: a sleeper gets `InBedChatScreen`; when the player has
     /// woken (`onPlayerWokeUp`) it closes, or turns into the plain chat
     /// screen if something was typed.
-    pub(super) fn tick_in_bed_chat(&mut self) {
+    pub(in crate::game) fn tick_in_bed_chat(&mut self) {
         if self.client.screen != Screen::Chat {
             self.remove_chat_screen();
         }
@@ -1102,13 +1114,13 @@ impl Game<'_> {
     }
     /// The Leave Bed button of `InBedChatScreen`: its bounds, laid out once
     /// per build (`ChatLayout`).
-    pub(super) fn leave_bed_button(width: f32, height: f32) -> (i32, i32, i32, i32) {
+    pub(in crate::game) fn leave_bed_button(width: f32, height: f32) -> (i32, i32, i32, i32) {
         (width as i32 / 2 - 100, height as i32 - 40, 200, 20)
     }
     /// The Leave Bed button's draws. It registers as a button
     /// (`widgets::record`), so the pad's and the keyboard's focus reach it (the
     /// pad's starts on it) and `sunrise-ctl click-button` finds it.
-    fn leave_bed_draws(
+    pub(in crate::game) fn leave_bed_draws(
         m: &Measure,
         mouse: (i32, i32),
         (x, y, w, h): (i32, i32, i32, i32),
@@ -1138,23 +1150,8 @@ impl Game<'_> {
         button
     }
     /// `Minecraft.computeChatAbilities` from the Chat option.
-    pub(super) fn chat_abilities(&self) -> ChatAbilities {
+    pub(in crate::game) fn chat_abilities(&self) -> ChatAbilities {
         ChatAbilities::new(ChatVisibility::from_option(self.settings.chat_visibility))
-    }
-    /// A chat message from the game (ChatComponent.addServerSystemMessage).
-    pub(super) fn system_message(&mut self, text: Text) {
-        if let Some(capture) = self.server.chat_capture.as_mut() {
-            capture.push(text);
-            return;
-        }
-        // Connected to a server (single player's own included), the chat on
-        // screen is the connection's: the game's own messages join it.
-        if self.remote.is_some() {
-            self.add_chat_line(text, ChatSource::Server);
-            return;
-        }
-        // The Chat option's Hidden level takes the server's messages too.
-        self.local_chat_line(text, Some(SYSTEM_INDICATOR), ChatSource::Server);
     }
     /// `ChatComponent.addClientSystemMessage`: a line the client adds itself.
     /// It joins the connection's chat and its history, with the system
@@ -1162,32 +1159,21 @@ impl Game<'_> {
     /// (`GuiMessageSource.SYSTEM_CLIENT`). Vanilla fires
     /// `ClientChatReceivedEvent` from `ChatListener` for the lines the server
     /// sent, so this path does not tell `client_chat_received`.
-    pub(super) fn chat_line(&mut self, text: Text) {
+    pub(in crate::game) fn chat_line(&mut self, text: Text) {
         if self.remote.is_some() {
             self.add_chat_line(text, ChatSource::Client);
         } else {
             self.local_chat_line(text, Some(SYSTEM_INDICATOR), ChatSource::Client);
         }
     }
-    /// A player's chat line on the window's own chat: a guest's message on
-    /// the server's own chat (`HostEvent::Chat`). `ChatListener`
-    /// checks `canReceivePlayerMessages` for these, so Commands Only and
-    /// Hidden drop them; command feedback (`/list`, `/tp`) is a system
-    /// message and takes the system-message permission instead.
-    pub(super) fn player_message(&mut self, text: Text) {
-        if let Some(capture) = self.server.chat_capture.as_mut() {
-            capture.push(text);
-            return;
-        }
-        // A server's client receives the line as a packet (PlayerChat or
-        // DisguisedChat) and filters it there.
-        if self.remote.is_none() {
-            self.local_chat_line(text, None, ChatSource::Player);
-        }
-    }
     /// A line on the window's own chat when the Chat option lets `source`
     /// through.
-    fn local_chat_line(&mut self, text: Text, indicator: Option<u32>, source: ChatSource) {
+    pub(in crate::game) fn local_chat_line(
+        &mut self,
+        text: Text,
+        indicator: Option<u32>,
+        source: ChatSource,
+    ) {
         if !self.ui.chat.shows(source) {
             return;
         }
@@ -1202,7 +1188,7 @@ impl Game<'_> {
         );
     }
     /// Keys while the chat screen is open.
-    pub(super) fn chat_key(
+    pub(in crate::game) fn chat_key(
         &mut self,
         key: KeyCode,
         shortcut: Option<sunrise_client::clipboard::EditShortcut>,
@@ -1222,7 +1208,11 @@ impl Game<'_> {
         self.chat_key_code(key, None)
     }
     /// A key (and the text it typed) while the chat screen is open.
-    pub(super) fn chat_key_code(&mut self, key: KeyCode, typed_text: Option<&str>) -> bool {
+    pub(in crate::game) fn chat_key_code(
+        &mut self,
+        key: KeyCode,
+        typed_text: Option<&str>,
+    ) -> bool {
         // The live modifiers, not `self.keys`: every ModifiersChanged runs
         // sync_toggle, which drops ShiftLeft and ControlLeft from `self.keys`
         // while a screen is open.
@@ -1301,7 +1291,7 @@ impl Game<'_> {
         self.notify_chat_suggestion_completion();
         handled
     }
-    fn notify_chat_suggestion_completion(&mut self) {
+    pub(in crate::game) fn notify_chat_suggestion_completion(&mut self) {
         if let Some(completion) = self
             .ui
             .chat_screen
@@ -1319,7 +1309,7 @@ impl Game<'_> {
     }
     /// The server's completions for an `ask_server` request
     /// (ClientPacketListener.handleCommandSuggestions).
-    pub(super) fn chat_server_suggestions(
+    pub(in crate::game) fn chat_server_suggestions(
         &mut self,
         id: i32,
         range: (usize, usize),
@@ -1335,7 +1325,7 @@ impl Game<'_> {
         }
     }
     /// Text typed into the chat box (control socket `chat`).
-    pub(super) fn chat_type(&mut self, text: &str) {
+    pub(in crate::game) fn chat_type(&mut self, text: &str) {
         let m = Measure(&self.gui.atlas.font);
         let c = Commands {
             dispatcher: chat_tree(&self.remote),
@@ -1350,7 +1340,7 @@ impl Game<'_> {
     /// 256 UTF-16 units the packet holds), into history, then as a command or
     /// a chat line. The Chat option's restrictions stop the message here too,
     /// so a control-socket `chat` cannot send what the player's setting hides.
-    pub(super) fn handle_chat_input(&mut self, message: &str) {
+    pub(in crate::game) fn handle_chat_input(&mut self, message: &str) {
         let message = normalize_chat_message(message);
         if message.is_empty() || !self.chat_abilities().allows(&message) {
             return;
@@ -1397,7 +1387,7 @@ impl Game<'_> {
             );
         }
     }
-    pub(super) fn chat_scroll(&mut self, amount: f32) {
+    pub(in crate::game) fn chat_scroll(&mut self, amount: f32) {
         let cursor = self.client.cursor;
         let mouse = (cursor.0.floor() as i32, cursor.1.floor() as i32);
         if let Some(screen) = self.ui.chat_screen.as_mut()
@@ -1410,7 +1400,7 @@ impl Game<'_> {
         let amount = amount.clamp(-1.0, 1.0) * if shift { 1.0 } else { 7.0 };
         self.ui.chat.scroll_by(amount as i32, true);
     }
-    pub(super) fn chat_click(&mut self) -> bool {
+    pub(in crate::game) fn chat_click(&mut self) -> bool {
         let cursor = self.client.cursor;
         let height = self.renderer.0.as_ref().map_or(720.0, |r| {
             HudBatch::new(
@@ -1561,7 +1551,7 @@ impl Game<'_> {
     }
     /// `Screen.clickUrlAction`: nothing with Web Links off, else the link
     /// opens, after the confirmation unless Prompt on Links is off.
-    pub(super) fn click_url(&mut self, url: String) {
+    pub(in crate::game) fn click_url(&mut self, url: String) {
         if !self.settings.chat_links {
             return;
         }
@@ -1573,7 +1563,7 @@ impl Game<'_> {
     }
     /// `ConfirmLinkScreen` (untrusted): the link and its warning over the
     /// chat, answered yes to open it.
-    fn link_prompt_layout(
+    pub(in crate::game) fn link_prompt_layout(
         &self,
         url: &str,
         size: (f32, f32),
@@ -1592,7 +1582,7 @@ impl Game<'_> {
             100.0,
         )
     }
-    pub(super) fn draw_link_prompt(&self, batch: &mut HudBatch) {
+    pub(in crate::game) fn draw_link_prompt(&self, batch: &mut HudBatch) {
         let Some(url) = &self.client.link_prompt else {
             return;
         };
@@ -1620,7 +1610,7 @@ impl Game<'_> {
         self.draw_overlay_mounted_widgets(batch, "link_prompt");
     }
     /// The prompt's answer: the link opens on yes; either way the chat is back.
-    pub(super) fn answer_link_prompt(&mut self, yes: bool) {
+    pub(in crate::game) fn answer_link_prompt(&mut self, yes: bool) {
         let Some(url) = self.client.link_prompt.take() else {
             return;
         };
@@ -1629,7 +1619,7 @@ impl Game<'_> {
             super::packs::open_uri(&url);
         }
     }
-    pub(super) fn link_prompt_click(&mut self) -> bool {
+    pub(in crate::game) fn link_prompt_click(&mut self) -> bool {
         let Some(url) = self.client.link_prompt.clone() else {
             return false;
         };
@@ -1651,7 +1641,7 @@ impl Game<'_> {
     /// without adding it to the chat history. A client mod's command goes
     /// first, as `ClientPacketListener.sendUnattendedCommand` lets client
     /// commands take it.
-    pub(super) fn click_command(&mut self, command: &str) {
+    pub(in crate::game) fn click_command(&mut self, command: &str) {
         let command = command.strip_prefix('/').unwrap_or(command);
         if self.client_mod_command(command) {
             return;
@@ -1664,7 +1654,7 @@ impl Game<'_> {
     }
     /// PvP & HUD's chat search on or off. The box holds the query: what was typed is put aside
     /// when the search starts and comes back when it stops.
-    fn toggle_chat_search(&mut self) {
+    pub(in crate::game) fn toggle_chat_search(&mut self) {
         let typed = self.ui.chat_screen.as_ref().map(|s| s.value().to_owned());
         let next = if self.client.pvp.chat_search {
             std::mem::take(&mut self.client.pvp.chat_search_aside)
@@ -1683,7 +1673,7 @@ impl Game<'_> {
         }
     }
     /// Chat lines over the HUD (focused while the chat screen is open).
-    pub(super) fn draw_chat(&mut self, batch: &mut HudBatch) {
+    pub(in crate::game) fn draw_chat(&mut self, batch: &mut HudBatch) {
         let focused = self.client.screen == Screen::Chat;
         let options = self.pvp_chat();
         self.ui.chat.set_qol(&self.gui.atlas, options.qol());
@@ -1735,7 +1725,7 @@ impl Game<'_> {
     }
     /// `HoverEvent.EntityTooltipInfo.getTooltipLines`: the name when the
     /// event has one, the entity type and the UUID.
-    fn entity_tooltip_lines(entity: &serde_json::Value) -> Vec<(Text, u32)> {
+    pub(in crate::game) fn entity_tooltip_lines(entity: &serde_json::Value) -> Vec<(Text, u32)> {
         let mut lines = Vec::new();
         if let Some(name) = entity.get("name") {
             let name = sunrise_client::component::to_text(name, &mut |s| Text::literal(s));
@@ -1757,7 +1747,7 @@ impl Game<'_> {
     }
     /// The UUID of a ShowEntity event: its string, or the int array
     /// `UUIDUtil.CODEC` writes (most significant word first).
-    fn hover_event_entity_uuid(v: &serde_json::Value) -> Option<String> {
+    pub(in crate::game) fn hover_event_entity_uuid(v: &serde_json::Value) -> Option<String> {
         if let Some(s) = v.as_str() {
             return Some(s.to_owned());
         }
@@ -1768,7 +1758,7 @@ impl Game<'_> {
         }
         Some(sunrise_protocol::crypto::uuid_string(bits))
     }
-    pub(super) fn draw_chat_screen(&mut self, batch: &mut HudBatch) {
+    pub(in crate::game) fn draw_chat_screen(&mut self, batch: &mut HudBatch) {
         self.draw_screen_phase(batch, sunrise_client::screen_draw::RenderPhase::Background);
         // ChatScreen extracts focused chat separately, outside the HUD chat slot.
         self.draw_chat(batch);
@@ -1858,7 +1848,7 @@ impl Game<'_> {
     /// first and may cancel it. Then a text hover is split at half the screen's width (at
     /// least 200), an item hover draws its stack's tooltip, and an entity hover its name, type
     /// and UUID while advanced tooltips are on.
-    pub(super) fn component_hover_effect(
+    pub(in crate::game) fn component_hover_effect(
         &mut self,
         batch: &mut HudBatch,
         style: &sunrise_client::text::Style,
@@ -1889,7 +1879,7 @@ impl Game<'_> {
         }
     }
     /// `component_hover`, only while a mod listens: true when a mod cancelled the hover.
-    fn component_hover_canceled(
+    pub(in crate::game) fn component_hover_canceled(
         &self,
         batch: &mut HudBatch,
         style: &sunrise_client::text::Style,
@@ -1913,7 +1903,7 @@ impl Game<'_> {
         cancel
     }
     /// `Font.split`: a tooltip text wrapped at `width`, one white row per line.
-    pub(super) fn wrapped_rows(&self, text: &Text, width: i32) -> Vec<(Text, u32)> {
+    pub(in crate::game) fn wrapped_rows(&self, text: &Text, width: i32) -> Vec<(Text, u32)> {
         let split = self
             .gui
             .atlas
@@ -1921,15 +1911,10 @@ impl Game<'_> {
             .split(&text.resolve_legacy(), width as f32);
         split.into_iter().map(|row| (row, u32::MAX)).collect()
     }
-    /// Command suggestions include the world's currently named random sequences.
-    pub(super) fn suggestion_registries(&mut self) -> &mut Registries {
-        self.ui.registries.random_sequences = self.server.rand_sequences.ids();
-        &mut self.ui.registries
-    }
     /// Advance every clock of the world's `minecraft:world_clock` registry, the mods' own included,
     /// and every other clock the world has met (ServerClockManager.tick) when `advance_time`
     /// allows it: each at its own rate, unless paused. The active clock's total is World.day_time.
-    pub(super) fn advance_clock(&mut self) {
+    pub(in crate::game) fn advance_clock(&mut self) {
         if !self
             .ui
             .rules
@@ -2090,7 +2075,7 @@ impl Game<'_> {
     /// `ServerClockInstance.packNetworkState`: the rate players' clients
     /// advance the overworld clock at, 0 while it is paused (`/time pause`)
     /// or `advance_time` is off.
-    pub(super) fn network_clock_rate(&self) -> f32 {
+    pub(in crate::game) fn network_clock_rate(&self) -> f32 {
         if self
             .ui
             .rules
@@ -2103,7 +2088,7 @@ impl Game<'_> {
         }
     }
     /// The engine-side rule values (block behaviour and health).
-    pub(super) fn level_rules(&self) -> sunrise_world::level::GameRules {
+    pub(in crate::game) fn level_rules(&self) -> sunrise_world::level::GameRules {
         let r = &self.ui.rules;
         sunrise_world::level::GameRules {
             water_source_conversion: r
@@ -2123,7 +2108,7 @@ impl Game<'_> {
         }
     }
     /// Apply rules mirrored in other state (natural regeneration, difficulty).
-    pub(super) fn sync_rules(&mut self) {
+    pub(in crate::game) fn sync_rules(&mut self) {
         self.world.health_rules.natural_regeneration = self
             .ui
             .rules
@@ -2158,146 +2143,12 @@ impl Game<'_> {
             _ => Difficulty::Normal,
         };
     }
-    /// `ServerClockManager.ServerClockInstance.loadFrom`: restore the existing
-    /// Overworld state when a world opens; clear the other command-state cache.
-    /// The carrier store's open-time state settles here too, before the
-    /// first tick and any player: a refusal fails the open.
-    pub(super) fn load_world_state(&mut self) -> crate::Result<()> {
-        self.ui.dispatcher = SessionDispatcher(Arc::new(
-            sunrise_client::command::vanilla::session_dispatcher(
-                &self.level.rule_registry,
-                &self.level.enabled_features,
-            ),
-        ));
-        self.restore_native_commands();
-        self.ui.clock = WorldClock::default();
-        self.ui.end_clock = WorldClock::default();
-        self.ui.command_clocks.clear();
-        // PrimaryLevelData: the difficulty comes back from level.dat's difficulty_settings.
-        self.ui.difficulty = self.level.difficulty_id();
-        self.ui.active_clock = OVERWORLD_CLOCK.to_owned();
-        if let Ok(bytes) = std::fs::read(
-            self.server
-                .world_root
-                .join("data/minecraft/world_clocks.dat"),
-        ) && let Ok(raw) = sunrise_world::compression::Compression::Gzip.decode(&bytes, 1 << 20)
-            && let Ok((root, _)) =
-                sunrise_core::nbt::read_named(&raw, sunrise_core::nbt::Limits::default())
-            && let Some(sunrise_core::nbt::Tag::Compound(clocks)) = root.tag.get("data")
-        {
-            use sunrise_core::nbt::Tag;
-            for (name, c) in clocks {
-                let mut state = WorldClock::default();
-                if let Some(Tag::Float(r)) = c.get("rate") {
-                    state.rate = f32::from_bits(*r);
-                }
-                if let Some(Tag::Float(p)) = c.get("partial_tick") {
-                    state.partial = f32::from_bits(*p);
-                }
-                if let Some(Tag::Byte(p)) = c.get("paused") {
-                    state.paused = *p != 0;
-                }
-                let total = match c.get("total_ticks") {
-                    Some(Tag::Long(t)) => *t,
-                    _ => 0,
-                };
-                let name = name.to_string_lossy();
-                if name == OVERWORLD_CLOCK {
-                    self.ui.clock = state;
-                } else if name == "minecraft:the_end" {
-                    self.ui.end_clock = state;
-                } else {
-                    self.ui.command_clocks.insert(name, (total, state));
-                }
-            }
-        }
-        // The level the world opens in follows its own default clock; the Overworld's total
-        // (level.dat's day time, already in World.day_time) goes to the table.
-        let clock = self.level_clock_name(self.dim);
-        self.world.day_time = self.switch_clock(&clock);
-        self.ui.chat.clear();
-        self.build_registries();
-        // The world opens with its test instances (`Registries.TEST_INSTANCE`).
-        self.snapshot_test_defs();
-        self.sync_rules();
-        self.carrier_world_opened()
-    }
-    /// Save the clock beside level.dat (Level.write saves the game rules: a
-    /// second writer of game_rules.dat could leave it with the rules loaded
-    /// when the world opened).
-    pub(super) fn save_world_state(&mut self) {
-        if self.server.world_root.as_os_str().is_empty() {
-            return;
-        }
-        use sunrise_core::nbt::Tag;
-        // Every clock the world has met is saved; the fields of a clock Sunrise does not model
-        // stay as saved, and (like vanilla's codec) rate, partial tick and pause are omitted
-        // while they have their defaults.
-        let path = self
-            .server
-            .world_root
-            .join("data/minecraft/world_clocks.dat");
-        let existing = sunrise_client::save::read_dat(&path);
-        let mut data = match existing.as_ref().and_then(|r| r.get("data")) {
-            Some(d @ Tag::Compound(_)) => d.clone(),
-            _ => Tag::Compound(Default::default()),
-        };
-        let mut clocks = vec![(
-            OVERWORLD_CLOCK.to_owned(),
-            self.command_clock_time(OVERWORLD_CLOCK),
-            self.ui.clock,
-        )];
-        clocks.push((
-            "minecraft:the_end".to_owned(),
-            self.command_clock_time("minecraft:the_end"),
-            self.ui.end_clock,
-        ));
-        for (name, (_, state)) in &self.ui.command_clocks {
-            if name != OVERWORLD_CLOCK && name != "minecraft:the_end" {
-                clocks.push((name.clone(), self.command_clock_time(name), *state));
-            }
-        }
-        for (name, total, c) in clocks {
-            let mut clock = match data.get(&name) {
-                Some(c @ Tag::Compound(_)) => c.clone(),
-                _ => Tag::Compound(Default::default()),
-            };
-            if let Tag::Compound(map) = &mut clock {
-                map.insert("total_ticks".into(), Tag::Long(total));
-                for (key, value, default) in [
-                    (
-                        "partial_tick",
-                        Tag::Float(c.partial.to_bits()),
-                        c.partial == 0.0,
-                    ),
-                    ("rate", Tag::Float(c.rate.to_bits()), c.rate == 1.0),
-                    ("paused", Tag::Byte(i8::from(c.paused)), !c.paused),
-                ] {
-                    if default {
-                        map.remove(&key.into());
-                    } else {
-                        map.insert(key.into(), value);
-                    }
-                }
-            }
-            if let Tag::Compound(map) = &mut data {
-                map.insert(name.as_str().into(), clock);
-            }
-        }
-        let root = Tag::compound([
-            ("data", data),
-            ("DataVersion", Tag::Int(sunrise_world::DATA_VERSION)),
-        ]);
-        if let Err(e) = sunrise_client::save::write_dat(&path, root) {
-            log::warn!("the world clocks were not written: {e}");
-        }
-    }
     /// F1 hides the HUD (see `hud`); the screenshot key still works.
-    pub(super) fn toggle_hide_gui(&mut self) {
+    pub(in crate::game) fn toggle_hide_gui(&mut self) {
         self.ui.toggle_hide_gui();
     }
     /// F2: ScreenShot.grab into `screenshots/` with vanilla's file name.
-    pub(super) fn take_screenshot(&mut self) -> Option<std::path::PathBuf> {
+    pub(in crate::game) fn take_screenshot(&mut self) -> Option<std::path::PathBuf> {
         if self.screenshot_sequence.0.is_some() {
             return None;
         }
@@ -2325,7 +2176,7 @@ impl Game<'_> {
     /// `Minecraft.handleGlobalKeyPress`'s screenshot branch: the
     /// `key.screenshot` mapping (F2 by default) takes the picture before a
     /// screen or a text box sees the key, and the debug modifier suppresses it.
-    pub(super) fn screenshot_shortcut(&mut self, key: KeyCode, repeat: bool) -> bool {
+    pub(in crate::game) fn screenshot_shortcut(&mut self, key: KeyCode, repeat: bool) -> bool {
         if repeat
             || sunrise_client::keybinds::key_name(key)
                 != Some(self.settings.keys.get("key.screenshot"))
@@ -2336,7 +2187,7 @@ impl Game<'_> {
     }
     /// key.screenshot from any device: not while F3 is down, where F3+F2 is a
     /// debug key.
-    pub(super) fn screenshot_action(&mut self) -> bool {
+    pub(in crate::game) fn screenshot_action(&mut self) -> bool {
         if self.client.debug_keys.modifier_down {
             return false;
         }
@@ -2344,7 +2195,7 @@ impl Game<'_> {
         true
     }
     /// Readback is complete: fire the client hook, then save the image it left.
-    pub(super) fn save_screenshot(
+    pub(in crate::game) fn save_screenshot(
         &mut self,
         mut pending: sunrise_client::gfx::PendingScreenshot,
     ) -> Option<std::result::Result<[u32; 2], String>> {
@@ -2396,7 +2247,7 @@ impl Game<'_> {
         None
     }
     /// After a frame: report a finished F2 screenshot in chat.
-    pub(super) fn finish_screenshot(
+    pub(in crate::game) fn finish_screenshot(
         &mut self,
         result: &std::result::Result<[u32; 2], String>,
         message: Option<Text>,
@@ -2424,7 +2275,7 @@ impl Game<'_> {
         self.post_screenshot_chat(message);
     }
 
-    fn post_screenshot_chat(&mut self, message: Text) {
+    pub(in crate::game) fn post_screenshot_chat(&mut self, message: Text) {
         let focused = self.client.screen == Screen::Chat;
         self.ui.chat.add(
             &self.gui.atlas,
@@ -2438,7 +2289,7 @@ impl Game<'_> {
 }
 
 /// `ScreenshotEvent.getCancelMessage`: the listener's line, or the default reason.
-pub(super) fn screenshot_cancel_line(message: Option<Text>) -> Text {
+pub(in crate::game) fn screenshot_cancel_line(message: Option<Text>) -> Text {
     message.unwrap_or_else(|| {
         Text::translate(
             "screenshot.failure",
@@ -2467,16 +2318,16 @@ pub fn screenshot_name(dir: &std::path::Path, pending: &[std::path::PathBuf]) ->
 
 /// `IntegratedServer.getProfilePermissions` for the owner: `OWNER` (4) when
 /// commands are allowed, else `ALL` (0).
-fn owner_permission(allow_commands: bool) -> u8 {
+pub(in crate::game) fn owner_permission(allow_commands: bool) -> u8 {
     if allow_commands { 4 } else { 0 }
 }
 
 /// `ConfirmLinkScreen`'s buttons, left to right: yes, copy, no.
-const LINK_YES: usize = 0;
-const LINK_COPY: usize = 1;
+pub(in crate::game) const LINK_YES: usize = 0;
+pub(in crate::game) const LINK_COPY: usize = 1;
 
 #[cfg(test)]
-mod tests {
+pub(in crate::game) mod tests {
     use super::*;
 
     #[test]
@@ -3065,247 +2916,17 @@ mod tests {
 }
 
 #[cfg(test)]
-mod enchantment_snapshot_tests {
+pub(in crate::game) mod enchantment_snapshot_tests {
+    #[allow(unused_imports)]
     use crate::game::{Audio, Game, Options, Progress, Settings, load_resources};
-
-    #[test]
-    #[ignore = "daily"]
-    fn synchronized_definitions_refresh_existing_enchantment_views() {
-        let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
-        let settings = Settings::default();
-        let loaded = load_resources(
-            sunrise_assets::resource_source::ResourceRoot::directory(root.clone()),
-            Vec::new(),
-            None,
-            &root,
-            &settings,
-            std::time::Instant::now(),
-            false,
-            crate::game::execution_role::ExecutionRole::IntegratedServer,
-            &Progress::new(),
-            &mut |_, _| unreachable!(),
-        )
-        .unwrap();
-        let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
-        options.resources = root.clone();
-        options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
-        let mut game = Game::new(
-            &loaded.resources,
-            loaded.pack,
-            loaded.gui.unwrap(),
-            options,
-            settings,
-            Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
-                root.clone(),
-            )),
-            None,
-        )
-        .unwrap();
-        game.build_registries();
-
-        let dir = std::env::temp_dir().join(format!("sunrise-h024-model-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&dir);
-        let pack = dir.join("datapacks/model");
-        let tags = pack.join("data/h024/tags/enchantment");
-        std::fs::create_dir_all(&tags).unwrap();
-        std::fs::write(
-            pack.join("pack.mcmeta"),
-            r#"{"pack":{"description":"fixture"}}"#,
-        )
-        .unwrap();
-        std::fs::write(tags.join("empty.json"), r#"{"values":[]}"#).unwrap();
-        std::fs::write(
-            dir.join("datapacks.json"),
-            r#"{"enabled":["file/model"],"disabled":[]}"#,
-        )
-        .unwrap();
-        game.server.world_root = dir;
-        let stack = game.reload_datapacks(false, &[]).unwrap();
-        let root = game.options.resources.clone();
-        game.world_tables.0 = game
-            .stage_world_tables(&stack, false, &root)
-            .unwrap()
-            .tables;
-        assert!(
-            game.world_tables.0.is_some(),
-            "the real active table container must be available"
-        );
-        let base = game.stations().enchantments.clone();
-        assert!(base.get("minecraft:sharpness").is_some());
-        // Same definition independently admitted by fresh Java. This is controlled
-        // synchronized model input, NOT a world-pack or packet-delivery claim.
-        let definition = serde_json::json!({"description":"H024 audit","supported_items":"minecraft:diamond_sword",
-            "weight":1,"max_level":1,"min_cost":{"base":1,"per_level_above_first":0},
-            "max_cost":{"base":1,"per_level_above_first":0},"anvil_cost":1,"slots":["mainhand"],"effects":{}});
-        let synced = std::sync::Arc::new(
-            base.with_entries([("h024:audit", &definition)])
-                .unwrap()
-                .unwrap(),
-        );
-        game.world_tables.0.as_mut().unwrap().stations.enchantments = synced.clone();
-        std::sync::Arc::make_mut(&mut game.world_tables.0.as_mut().unwrap().items).enchantments =
-            synced;
-        assert!(
-            game.active_enchantment_definitions()
-                .get("h024:audit")
-                .is_some(),
-            "actual authority adopts the definition first"
-        );
-        let tags = vec!["h024:retained_tag".to_owned()];
-        game.ui
-            .registries
-            .by_registry
-            .entry("minecraft:enchantment".into())
-            .or_default()
-            .tags = tags.clone();
-        let item_ids = game.ui.registries.ids("minecraft:item").to_vec();
-        let effects = game.ui.registries.effects.clone();
-        game.sync_function_registries(&stack);
-        for phase in [0, 1] {
-            if phase == 1 {
-                game.build_registries();
-            }
-            let reg = &game.ui.registries;
-            assert!(
-                reg.ids("minecraft:enchantment")
-                    .contains(&"h024:audit".to_owned()),
-                "active custom ID reaches actual Game sync/build snapshot"
-            );
-            assert!(
-                reg.ids("minecraft:enchantment")
-                    .contains(&"minecraft:sharpness".to_owned())
-            );
-            assert!(
-                !reg.ids("minecraft:enchantment")
-                    .contains(&"h024:missing".to_owned())
-            );
-            assert_eq!(
-                reg.ids("minecraft:enchantment"),
-                reg.enchantments.as_slice()
-            );
-            assert_eq!(reg.by_registry["minecraft:enchantment"].tags, tags);
-            assert_eq!(reg.ids("minecraft:item"), item_ids);
-            assert_eq!(reg.effects, effects);
-        }
-        game.world_tables.0.as_mut().unwrap().stations.enchantments = base.clone();
-        std::sync::Arc::make_mut(&mut game.world_tables.0.as_mut().unwrap().items).enchantments =
-            base;
-        assert!(
-            game.active_enchantment_definitions()
-                .get("h024:audit")
-                .is_none()
-        );
-        game.sync_function_registries(&stack);
-        assert!(
-            !game
-                .ui
-                .registries
-                .ids("minecraft:enchantment")
-                .contains(&"h024:audit".to_owned()),
-            "refresh replaces rather than accumulating stale IDs"
-        );
-        assert_eq!(
-            game.ui.registries.ids("minecraft:enchantment"),
-            game.ui.registries.enchantments.as_slice()
-        );
-        assert_eq!(
-            game.ui.registries.by_registry["minecraft:enchantment"].tags,
-            tags
-        );
-    }
 }
 
 #[cfg(test)]
-mod damage_type_registry_tests {
+pub(in crate::game) mod damage_type_registry_tests {
+    #[allow(unused_imports)]
     use crate::game::{Audio, Game, Options, Progress, Settings, load_resources};
-
-    /// A world pack's damage type is a `/damage` type once the world opens,
-    /// beside vanilla's, and the registry keeps vanilla's tags.
-    #[test]
-    #[ignore = "daily"]
-    fn a_world_packs_damage_type_parses_in_damage() {
-        let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
-        let settings = Settings::default();
-        let loaded = load_resources(
-            sunrise_assets::resource_source::ResourceRoot::directory(root.clone()),
-            Vec::new(),
-            None,
-            &root,
-            &settings,
-            std::time::Instant::now(),
-            false,
-            crate::game::execution_role::ExecutionRole::IntegratedServer,
-            &Progress::new(),
-            &mut |_, _| unreachable!(),
-        )
-        .unwrap();
-        let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
-        options.resources = root.clone();
-        options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
-        let mut game = Game::new(
-            &loaded.resources,
-            loaded.pack,
-            loaded.gui.unwrap(),
-            options,
-            settings,
-            Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
-                root.clone(),
-            )),
-            None,
-        )
-        .unwrap();
-
-        let dir = std::path::PathBuf::from(std::env::var_os("SUNRISE_HOME").unwrap())
-            .join("damage-type-ids");
-        let pack = dir.join("datapacks/model");
-        let types = pack.join("data/example/damage_type");
-        std::fs::create_dir_all(&types).unwrap();
-        std::fs::write(
-            pack.join("pack.mcmeta"),
-            r#"{"pack":{"description":"test","pack_format":121}}"#,
-        )
-        .unwrap();
-        std::fs::write(
-            types.join("test.json"),
-            r#"{"message_id":"example.test","scaling":"never","exhaustion":0.0}"#,
-        )
-        .unwrap();
-        std::fs::write(
-            dir.join("datapacks.json"),
-            r#"{"enabled":["file/model"],"disabled":[]}"#,
-        )
-        .unwrap();
-        game.server.world_root = dir;
-        let stack = game.reload_datapacks(false, &[]).unwrap();
-        let staged = game.stage_world_tables(&stack, false, &root).unwrap();
-        game.world_tables.0 = staged.tables;
-        game.health_resources = staged.health;
-        game.level.allow_commands = Some(true);
-        game.build_registries();
-
-        let reg = &game.ui.registries;
-        assert!(
-            reg.damage_types.contains(&"example:test".to_owned()),
-            "the damage catalog holds the pack's type"
-        );
-        let parse = |input: &str| {
-            sunrise_client::command::vanilla::dispatcher()
-                .parse(input, reg)
-                .executable()
-                .map(|_| ())
-                .map_err(|e| format!("{e:?}"))
-        };
-        assert_eq!(parse("damage @s 1 example:test"), Ok(()));
-        assert_eq!(parse("damage @s 1 minecraft:magic"), Ok(()));
-        assert!(parse("damage @s 1 example:missing").is_err());
-        assert!(
-            reg.tags("minecraft:damage_type")
-                .contains(&"minecraft:is_fire".to_owned()),
-            "vanilla's damage type tags stay"
-        );
-    }
 }
 
 #[cfg(test)]
 #[path = "tests/end_clock_tests.rs"]
-mod end_clock_tests;
+pub(in crate::game) mod end_clock_tests;

@@ -22,7 +22,7 @@ use sunrise_world::{
 };
 
 /// A change `World::edit_runs` reported: position, previous and new state.
-pub(super) type Tracked = ((i32, i32, i32), u32, u32);
+pub(in crate::game) type Tracked = ((i32, i32, i32), u32, u32);
 
 impl Game<'_> {
     /// Make a mod's block edit; how many blocks changed, or why none did.
@@ -31,7 +31,7 @@ impl Game<'_> {
     /// a run naming a palette entry
     /// or filter past the end, or more than 65536 filters, and nothing is
     /// made.
-    pub(super) fn apply_block_edit(&mut self, edit: &BlockEdit) -> Result<u64, String> {
+    pub(in crate::game) fn apply_block_edit(&mut self, edit: &BlockEdit) -> Result<u64, String> {
         let super::api_values::block_edit::PreparedBlockEdit { palette, filters } =
             super::api_values::block_edit::prepare(edit)?;
         let runs = resolve_runs(edit, &palette, filters.len(), |h, x, z| {
@@ -152,7 +152,7 @@ impl Game<'_> {
         Ok(out.changed)
     }
 
-    pub(super) fn publish_bulk_edit(
+    pub(in crate::game) fn publish_bulk_edit(
         &mut self,
         publication: BulkPublication,
         tracked: Vec<Tracked>,
@@ -168,7 +168,7 @@ impl Game<'_> {
     }
 
     /// Each column's height on `h` as `edit_height` reads it, none where its chunk is not loaded.
-    pub(super) fn loaded_column_heights(
+    pub(in crate::game) fn loaded_column_heights(
         &self,
         columns: &[(i32, i32)],
         h: Heightmap,
@@ -181,7 +181,7 @@ impl Game<'_> {
     /// full states seen, with each column's biome JSON water colour at the column's top (`0xRRGGBB`, `0` where it is
     /// not loaded). `Err`, reading nothing, when `below + above` is 0 or more than the level's height, or the read
     /// would be more than `MAX_READ` blocks.
-    pub(super) fn read_loaded_block_columns(
+    pub(in crate::game) fn read_loaded_block_columns(
         &self,
         columns: &[(i32, i32)],
         h: Heightmap,
@@ -229,9 +229,9 @@ impl Game<'_> {
 
 /// The most blocks one `read_columns` reads (2 MiB of indices): it runs on the
 /// server tick, so a mod reads a big area in pieces.
-pub(super) const MAX_READ: usize = 1 << 20;
+pub(in crate::game) const MAX_READ: usize = 1 << 20;
 /// The most columns one `surface_heights` reads.
-pub(super) const MAX_COLUMNS: usize = 1 << 16;
+pub(in crate::game) const MAX_COLUMNS: usize = 1 << 16;
 
 /// The blocks a column read of `columns` columns, `below` + `above` each,
 /// reads, or why it can't: a span of 0 or more than `height` (the level's),

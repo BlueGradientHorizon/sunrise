@@ -4,7 +4,7 @@
 //! descending-slot iteration (with the zero key first). No Mojang implementation
 //! is used here.
 #[derive(Debug)]
-pub(super) struct DragonPartsTable {
+pub(in crate::game) struct DragonPartsTable {
     slots: Vec<Option<u32>>,
     zero: bool,
     size: usize,
@@ -23,7 +23,7 @@ impl DragonPartsTable {
         let h = key.wrapping_mul(0x9e3779b9);
         ((h ^ (h >> 16)) as usize) & mask
     }
-    pub(super) fn insert(&mut self, key: u32) {
+    pub(in crate::game) fn insert(&mut self, key: u32) {
         if key == 0 {
             if self.zero {
                 return;
@@ -54,7 +54,7 @@ impl DragonPartsTable {
             }
         }
     }
-    pub(super) fn remove(&mut self, key: u32) {
+    pub(in crate::game) fn remove(&mut self, key: u32) {
         if key == 0 {
             if self.zero {
                 self.zero = false;
@@ -220,7 +220,7 @@ impl DragonSlot {
         }
     }
     // Return a copy so the caller never runs a visitor under the table borrow.
-    pub(super) fn next_part(&self, cursor: &mut Option<usize>) -> Option<u32> {
+    pub(in crate::game) fn next_part(&self, cursor: &mut Option<usize>) -> Option<u32> {
         self.table.borrow().next_part(cursor)
     }
     #[cfg(test)]

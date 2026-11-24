@@ -51,7 +51,7 @@ DeltaTracker.Timer.unPause	port	crates/sunrise-client/src/clock.rs::Timer::updat
 GameNarrator	home	crates/sunrise-narrator/src/lib.rs,crates/sunrise-client/src/game/interface/narrator.rs	the struct with its say_* methods in lib.rs; the game-side glue (start, option sync, Ctrl+B, the toast) in game/interface/narrator.rs
 HotbarManager.get	port	crates/sunrise-client/src/hotbar.rs::load	file loaded when the creative hotbar opens (creative_hotbar.rs)
 KeyMapping.forAllKeyMappings	port	crates/sunrise-client-input/src/keybinds.rs::KeyBinds::mappings_for	one key drives every mapping bound to it
-KeyMapping.setAll	port	crates/sunrise-client/src/game.rs::handle_window_event_inner	WindowEvent::Focused(false) drops every held key and mouse button, so nothing sticks across alt-tab; ModifiersChanged reconciles the rest
+KeyMapping.setAll	port	crates/sunrise-client/src/game/game_client.rs::handle_window_event_inner	WindowEvent::Focused(false) drops every held key and mouse button, so nothing sticks across alt-tab; ModifiersChanged reconciles the rest
 KeyMapping.resetMapping	skip:other		no lookup table to rebuild; mappings_for reads the current keys
 KeyMapping.compareTo	skip:ui		controls list order is the MAPPINGS table order in keybinds.rs
 KeyMapping.createNameSupplier	skip:ui		key label supplier
@@ -79,8 +79,8 @@ Minecraft.saveReport	port	crates/sunrise-client-render/src/crash.rs::Report::sav
 Minecraft.saveReportAndShutdownSoundManager	port	crates/sunrise-client-render/src/crash.rs::Report::save	gap: minor: sound shutdown is not part of Report::save
 Minecraft.selfTest	skip:debug		dev self-test, disabled in vanilla (the IS_RUNNING_IN_IDE && false check)
 Minecraft.exitWorldAndClose	port	crates/sunrise-client/src/game/world/world_session.rs::Game::close_world
-Minecraft.close	port	crates/sunrise-client/src/game.rs::Game::finish_close_world	shutdown of the session
-Minecraft.renderFrame	port	crates/sunrise-client/src/game.rs::Game::render
+Minecraft.close	port	crates/sunrise-client/src/game/game_client.rs::Game::finish_close_world	shutdown of the session
+Minecraft.renderFrame	port	crates/sunrise-client/src/game/game_client.rs::Game::render
 Minecraft.pauseIfInactive	port	crates/sunrise-client/src/game/runtime/window_handler.rs::Game::window_event	gap: minor: pauses at the focus-lost event, not after 500 ms without focus
 Minecraft.constructProfiler	skip:debug		profiler plumbing
 Minecraft.finishProfilers	skip:debug		profiler plumbing

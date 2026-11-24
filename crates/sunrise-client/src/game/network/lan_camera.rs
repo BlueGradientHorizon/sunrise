@@ -4,7 +4,9 @@
 //! spectator mode.
 use super::{Game, commands::Target};
 use sunrise_core::geometry::{Aabb, Vec3};
-pub(super) use sunrise_gameplay::lan::guest_rules::{CameraExtra, GuestCamera, camera_ends};
+pub(in crate::game) use sunrise_gameplay::lan::guest_rules::{
+    CameraExtra, GuestCamera, camera_ends,
+};
 use sunrise_protocol::packets::play::{self, Clientbound as C};
 
 impl Game<'_> {
@@ -37,7 +39,7 @@ impl Game<'_> {
     /// blocks (`isPickable` is `!isRemoved`) and `EnderDragonPart`s
     /// (`ServerLevel.getEntityOrPart`; `isPickable` is `true`, and a part
     /// never turns).
-    pub(super) fn camera_extra(&self, id: i32) -> Option<CameraExtra> {
+    pub(in crate::game) fn camera_extra(&self, id: i32) -> Option<CameraExtra> {
         let id = u32::try_from(id).ok().filter(|&id| id != 0)?;
         let at = |v: Vec3| [v.x, v.y, v.z];
         if let Some(t) = self.tnts.iter().find(|t| t.id == id) {
@@ -102,7 +104,7 @@ impl Game<'_> {
     }
 
     /// `ServerGamePacketListenerImpl.handleSpectatorAction`.
-    pub(super) fn guest_spectator_action(&mut self, gi: usize, target: Option<i32>) {
+    pub(in crate::game) fn guest_spectator_action(&mut self, gi: usize, target: Option<i32>) {
         let Some(host) = self.lan.as_ref() else {
             return;
         };
@@ -141,7 +143,7 @@ impl Game<'_> {
 
     /// `ServerPlayer.setCamera`: the view moves to the new camera, which
     /// the client is told, or back to the player (`None`).
-    pub(super) fn guest_set_camera(&mut self, gi: usize, camera: Option<i32>) {
+    pub(in crate::game) fn guest_set_camera(&mut self, gi: usize, camera: Option<i32>) {
         let Some(host) = self.lan.as_ref() else {
             return;
         };
@@ -221,7 +223,7 @@ impl Game<'_> {
 
     /// The camera part of `ServerPlayer.tick` for every guest, after the
     /// `/spectate` requests commands queued.
-    pub(super) fn tick_guest_cameras(&mut self) {
+    pub(in crate::game) fn tick_guest_cameras(&mut self) {
         for (conn, id) in std::mem::take(&mut self.cmds.0.camera_requests) {
             if let Some(gi) = self
                 .lan

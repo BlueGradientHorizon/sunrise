@@ -78,12 +78,12 @@ StructureRenderer	missing		minor: F3 structure bounding box view fed by debug su
 SupportBlockRenderer	missing		minor: the visualize_entity_supporting_blocks entry is listed but draws nothing: Entity.mainSupportingBlockPos is not kept
 VillageSectionsDebugRenderer	missing		minor: F3 village section view; not drawn
 WaterDebugRenderer	home	crates/sunrise-client/src/game/interface/debug_renderers.rs	Game::water_level_shapes fills each water block within 10 of the feet to its height and prints its amount over it (visualize_water_levels)
-LevelExtractor.extract	port	crates/sunrise-client/src/game.rs::Game::render	the frame's extraction and draw; gap: minor: no separate render state, the frame is built and drawn in one fn
+LevelExtractor.extract	port	crates/sunrise-client/src/game/game_client.rs::Game::render	the frame's extraction and draw; gap: minor: no separate render state, the frame is built and drawn in one fn
 LevelExtractor.drainTransientBlockQueue	port	crates/sunrise-client/src/game/blocks/transient_blocks.rs::Game::drain_transient_block_queue	ClientboundAddTransientBlock's blocks are drawn as moving blocks until a section mesh compiled after them is uploaded
-LevelExtractor.extractVisibleBlockEntities	inline	crates/sunrise-client/src/game.rs::Game::render	block entities of the visible sections; gap: minor: no 0.3 visibility gate, see RenderSection.getVisibility
+LevelExtractor.extractVisibleBlockEntities	inline	crates/sunrise-client/src/game/game_client.rs::Game::render	block entities of the visible sections; gap: minor: no 0.3 visibility gate, see RenderSection.getVisibility
 LevelExtractor.extractBlockDestroyAnimation	port	crates/sunrise-client/src/game.rs::Game::destroy_block_progress	keeps the crumbling progress per breaker for 400 ticks; gap: minor: no 32-block distance cut here
 LevelExtractor.extractGizmos	port	crates/sunrise-client/src/game/interface/debug_keys.rs::Game::debug_gizmos	the frame's debug gizmos
-LevelExtractor.extractPlayerState	inline	crates/sunrise-client/src/game.rs::Game::render	player and hands read from the game state at draw time
+LevelExtractor.extractPlayerState	inline	crates/sunrise-client/src/game/game_client.rs::Game::render	player and hands read from the game state at draw time
 LevelExtractor.applyFrustum	port	crates/sunrise-client-render/src/gfx/resident.rs::Resident::visible	the frustum decides which sections are visible
 LevelExtractor.setLevel	inline	crates/sunrise-client/src/game/render_settings.rs::Game::all_sections_changed	a new level rebuilds every loaded section (allChanged); the null-level branch is not separate
 LevelExtractor.blockChanged	port	crates/sunrise-client-render/src/world.rs::World::set	a block edit marks its 3x3x3 neighbourhood; gap: minor: the player-changed flag (update bit 8) is not kept

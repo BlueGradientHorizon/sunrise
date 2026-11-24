@@ -1,25 +1,8 @@
 //! The client nonce is tied to the actual shown mod screen, not just its menu type.
+#[allow(unused_imports)]
 use super::*;
 impl Game<'_> {
-    pub(in crate::game) fn apply_screen_with_mod_book(
-        &mut self,
-        screen: Screen,
-        owner: Option<&str>,
-    ) {
-        // Publish the accepted native screen before building its layout. A
-        // staged screen is not shown, even on an in-place Inventory open.
-        if screen == Screen::Inventory
-            && let Some(native) = self.mod_screen.0.as_mut()
-        {
-            native.shown = true;
-        }
-        self.apply_screen(screen, owner);
-        if self.native_screen_shown() {
-            self.begin_mod_book_placement();
-            self.ensure_mod_book_catalog();
-        }
-    }
-    fn native_book_placement_scope_matches(
+    pub(in crate::game) fn native_book_placement_scope_matches(
         &self,
         window: i32,
         nonce: u64,

@@ -1,12 +1,14 @@
 //! Test instance blocks on the server: `handleTestInstanceBlockAction` and
 //! the `TestInstanceBlockEntity` operations behind it (reset, save, export,
 //! the structure's placement), over the game tests the registry holds.
+#[allow(unused_imports)]
 use super::{
     Game,
     game_tests::Info,
     structure_blocks::{create_seed, template_size},
     test_entities::{aabb_of, inflate},
 };
+#[allow(unused_imports)]
 use sunrise_client::{
     block_entity_render::vertex_light,
     component::name_text,
@@ -17,9 +19,13 @@ use sunrise_client::{
     test_instance_block::{Data, Status, TestInstanceBlock},
     text::{self, Text},
 };
+#[allow(unused_imports)]
 use sunrise_client_render::block_entity_reach::Reach;
+#[allow(unused_imports)]
 use sunrise_core::{position::BlockPos, ticks::TickArea};
+#[allow(unused_imports)]
 use sunrise_protocol::packets::play::{self, Clientbound as C};
+#[allow(unused_imports)]
 use {
     sunrise_core::bounding_box::BoundingBox,
     sunrise_world::{
@@ -28,23 +34,24 @@ use {
     },
 };
 
-type Pos = (i32, i32, i32);
+pub(in crate::game) type Pos = (i32, i32, i32);
 
 /// `GameTestBlockHighlightRenderer.highlightPos`'s colour, 1610678016: ARGB 0x6000FF00.
-const HIGHLIGHT_FILL: u32 = 0x6000_FF00;
+pub(in crate::game) const HIGHLIGHT_FILL: u32 = 0x6000_FF00;
 
 /// `ServerboundTestInstanceBlockActionPacket.Action`.
-const INIT: i32 = 0;
-const QUERY: i32 = 1;
-const RESET: i32 = 3;
-const SAVE: i32 = 4;
-const EXPORT: i32 = 5;
-const RUN: i32 = 6;
+pub(in crate::game) const INIT: i32 = 0;
+pub(in crate::game) const QUERY: i32 = 1;
+pub(in crate::game) const RESET: i32 = 3;
+pub(in crate::game) const SAVE: i32 = 4;
+pub(in crate::game) const EXPORT: i32 = 5;
+pub(in crate::game) const RUN: i32 = 6;
 
-pub(super) use sunrise_gameplay::test_instances::{TestDef, parse_test_def};
+#[allow(unused_imports)]
+pub(in crate::game) use sunrise_gameplay::test_instances::{TestDef, parse_test_def};
 
 #[cfg(test)]
-pub(super) trait TestDefSample {
+pub(in crate::game) trait TestDefSample {
     fn sample(block_based: bool, max_ticks: i32, setup_ticks: i32) -> Self;
 }
 
@@ -72,14 +79,14 @@ impl TestDefSample for TestDef {
     }
 }
 
-fn red(key: &str, args: &[Text]) -> Text {
+pub(in crate::game) fn red(key: &str, args: &[Text]) -> Text {
     Text::translate(key, args).with_color(text::RED)
 }
 
 impl Game<'_> {
     /// `registryAccess().get(testKey)`: the test instance from the game's
     /// data (`data/<namespace>/test_instance/<path>.json`).
-    pub(super) fn test_def(&self, id: &str) -> Option<TestDef> {
+    pub(in crate::game) fn test_def(&self, id: &str) -> Option<TestDef> {
         if let Some(known) = self.test_defs.0.borrow().get(id) {
             return known.clone();
         }
@@ -100,7 +107,7 @@ impl Game<'_> {
     /// enabled, later packs overriding earlier ones. The set stays as it is
     /// until the next world opens; `/reload` and `/datapack` do not change it.
     /// It replaces the previous world's definitions and selector ids.
-    pub(super) fn snapshot_test_defs(&mut self) {
+    pub(in crate::game) fn snapshot_test_defs(&mut self) {
         let stack = super::functions::pack_stack(
             &self.server.world_root,
             &self.options.resources,
@@ -156,7 +163,7 @@ impl Game<'_> {
         *self.test_defs.0.borrow_mut() = defs;
         self.server.test_defs_snapshot = true;
     }
-    fn read_test_def(&self, id: &str) -> Option<TestDef> {
+    pub(in crate::game) fn read_test_def(&self, id: &str) -> Option<TestDef> {
         let (ns, path) = id.split_once(':').unwrap_or(("minecraft", id));
         let file = self
             .options
@@ -169,14 +176,17 @@ impl Game<'_> {
         parse_test_def(&json)
     }
 
-    pub(super) fn test_instance_at(&self, pos: Pos) -> Option<&TestInstanceBlock> {
+    pub(in crate::game) fn test_instance_at(&self, pos: Pos) -> Option<&TestInstanceBlock> {
         match self.world.block_entities.get(&pos)? {
             BlockEntity::TestInstanceBlock(b) => Some(b),
             _ => None,
         }
     }
 
-    pub(super) fn test_instance_mut(&mut self, pos: Pos) -> Option<&mut TestInstanceBlock> {
+    pub(in crate::game) fn test_instance_mut(
+        &mut self,
+        pos: Pos,
+    ) -> Option<&mut TestInstanceBlock> {
         match self.world.block_entities.get_mut(&pos)? {
             BlockEntity::TestInstanceBlock(b) => Some(b),
             _ => None,
@@ -184,119 +194,18 @@ impl Game<'_> {
     }
 
     /// `getTestHolder`.
-    pub(super) fn test_holder(&self, pos: Pos) -> Option<TestDef> {
+    pub(in crate::game) fn test_holder(&self, pos: Pos) -> Option<TestDef> {
         let key = self.test_instance_at(pos)?.data.test.clone()?;
         self.test_def(&key)
     }
 
     /// The padding of the block's test, 0 without one.
-    pub(super) fn test_holder_padding(&self, pos: Pos) -> i32 {
+    pub(in crate::game) fn test_holder_padding(&self, pos: Pos) -> i32 {
         self.test_holder(pos).map_or(0, |t| t.padding)
     }
 
-    /// `ClientPacketListener.handleGameTestHighlightPos`:
-    /// `GameTestBlockHighlightRenderer.highlightPos` shows the block for ten
-    /// seconds with its position relative to the test.
-    pub(super) fn highlight_test_pos(&mut self, absolute: [i32; 3], relative: [i32; 3]) {
-        let text = format!("{}, {}, {}", relative[0], relative[1], relative[2]);
-        let until = std::time::Instant::now() + std::time::Duration::from_millis(10_000);
-        self.client
-            .test_highlights
-            .insert((absolute[0], absolute[1], absolute[2]), (text, until));
-    }
-
-    /// `TestInstanceRenderer.submit`'s error markers, for any player within
-    /// the beacon's view distance of the block: each marked block in a
-    /// translucent red box (`out`, blending) and its text as a billboard over
-    /// everything (`see_through`).
-    pub(super) fn test_instance_marker_geometry(
-        &mut self,
-        camera: glam::DVec3,
-        out: &mut Vec<Vertex>,
-        see_through: &mut super::text_displays::SeeThroughCollector,
-    ) {
-        use sunrise_client::gizmos as g;
-        // `GameTestBlockHighlightRenderer.emitGizmos`: expired highlights go,
-        // the rest are a green box with the relative position over it.
-        let now = std::time::Instant::now();
-        self.client
-            .test_highlights
-            .retain(|_, (_, until)| now <= *until);
-        let mut markers: Vec<(_, _, u32)> = self
-            .client
-            .test_highlights
-            .iter()
-            .map(|(&pos, (text, _))| ([pos.0, pos.1, pos.2], text.clone(), HIGHLIGHT_FILL))
-            .collect();
-        let render_distance = self.effective_render_distance();
-        // Test instance blocks show a box: `boxes` lists them without a scan of every block entity.
-        for (pos, entity) in self.world.block_entities.boxes() {
-            let BlockEntity::TestInstanceBlock(b) = entity else {
-                continue;
-            };
-            if !Reach::TestInstance.should_render([pos.0, pos.1, pos.2], camera, render_distance) {
-                continue;
-            }
-            for marker in &b.error_markers {
-                markers.push((
-                    marker.pos,
-                    name_text(&marker.text).plain(),
-                    g::ERROR_MARKER_FILL,
-                ));
-            }
-        }
-        if markers.is_empty() {
-            return;
-        }
-        let light = vertex_light(0xFF);
-        self.mark_translucent_entity(out.len(), "minecraft:test_instance_block");
-        let mut patches = Vec::new();
-        for (pos, text, color) in markers {
-            // A plain colour: the atlas's white pixel at the fill's colour.
-            let mut fill = HudBatch::scratch([1, 1]);
-            fill.fill(&self.gui.atlas, 0.0, 0.0, 1.0, 1.0, color);
-            let Some(v) = fill.vertices.first().copied() else {
-                continue;
-            };
-            let (min, max, text_at) = g::error_marker_shape(pos);
-            for quad in g::cuboid_fill_quads(min, max) {
-                for corner in quad {
-                    out.push(Vertex {
-                        normal: [0; 4],
-                        pos: (glam::DVec3::from_array(corner) - camera)
-                            .as_vec3()
-                            .to_array(),
-                        uv: v.uv,
-                        layer: 0,
-                        color: v.color,
-                        light,
-                        glint_uv: [0.0, 0.0],
-                    });
-                }
-            }
-            // `Gizmos.billboardText(..).setAlwaysOnTop()`: white, centred,
-            // without a background.
-            let o = glam::DVec3::from_array(text_at) - camera;
-            let st_start = see_through.start();
-            patches.extend(self.name_tag_quads(
-                o,
-                &[(Text::literal(text), 0.0)],
-                0xFF,
-                false,
-                2,
-                0,
-                g::billboard_text_unit(g::ERROR_MARKER_TEXT_SCALE),
-                see_through.buffer_mut(),
-            ));
-            let dist_sq =
-                super::text_displays::submit_distance_sq(o.x as f32, o.y as f32, o.z as f32);
-            see_through.finish(st_start, dist_sq);
-        }
-        self.client.map_patches.extend(patches);
-    }
-
     /// `getRotation`: the test's rotation turned by the block's.
-    pub(super) fn test_rotation(&self, pos: Pos) -> Rotation {
+    pub(in crate::game) fn test_rotation(&self, pos: Pos) -> Rotation {
         let own = self
             .test_instance_at(pos)
             .map_or(Rotation::None, |b| b.data.rotation);
@@ -306,7 +215,7 @@ impl Game<'_> {
     }
 
     /// `getTestName`.
-    pub(super) fn test_name(&self, pos: Pos) -> Text {
+    pub(in crate::game) fn test_name(&self, pos: Pos) -> Text {
         match self.test_instance_at(pos).and_then(|b| b.data.test.clone()) {
             Some(key) => Text::literal(key),
             None => Text::translate("test_instance_block.invalid_test", &[]),
@@ -316,7 +225,11 @@ impl Game<'_> {
     /// `ServerGamePacketListenerImpl.handleTestInstanceBlockAction` for a
     /// guest: only a creative player with game master commands. A query or
     /// the screen's first look answers with a status packet.
-    pub(super) fn lan_test_instance_action(&mut self, conn: u32, p: play::TestInstanceBlockAction) {
+    pub(in crate::game) fn lan_test_instance_action(
+        &mut self,
+        conn: u32,
+        p: play::TestInstanceBlockAction,
+    ) {
         let Some(g) = self.lan.as_ref().and_then(|host| host.hub.guest(conn)) else {
             return;
         };
@@ -341,7 +254,7 @@ impl Game<'_> {
         }
     }
 
-    fn apply_test_instance_action(
+    pub(in crate::game) fn apply_test_instance_action(
         &mut self,
         p: &play::TestInstanceBlockAction,
     ) -> Option<(Text, Option<[i32; 3]>)> {
@@ -395,7 +308,7 @@ impl Game<'_> {
     }
 
     /// `getStructureBoundingBox`.
-    pub(super) fn test_structure_box(&self, pos: Pos) -> Option<BoundingBox> {
+    pub(in crate::game) fn test_structure_box(&self, pos: Pos) -> Option<BoundingBox> {
         let padding = self.test_holder(pos).map_or(0, |t| t.padding);
         let rotation = self.test_rotation(pos);
         Some(
@@ -406,7 +319,7 @@ impl Game<'_> {
 
     /// `processStructureBoundary`: the floor and walls (and the ceiling,
     /// unless the test has sky access) of the box around the structure.
-    pub(super) fn structure_boundary(&self, pos: Pos) -> Vec<Pos> {
+    pub(in crate::game) fn structure_boundary(&self, pos: Pos) -> Vec<Pos> {
         let Some(bounds) = self.test_structure_box(pos) else {
             return Vec::new();
         };
@@ -430,7 +343,7 @@ impl Game<'_> {
     }
 
     /// `setBlockAndUpdate(pos, state)`.
-    pub(super) fn set_test_block_state(&mut self, at: Pos, name: &str, flags: i32) {
+    pub(in crate::game) fn set_test_block_state(&mut self, at: Pos, name: &str, flags: i32) {
         let Some(id) = self.pack.assets.registry.default_state(name) else {
             return;
         };
@@ -439,7 +352,7 @@ impl Game<'_> {
     }
 
     /// `removeBarriers`.
-    pub(super) fn remove_test_barriers(&mut self, pos: Pos) {
+    pub(in crate::game) fn remove_test_barriers(&mut self, pos: Pos) {
         let barrier = self.pack.assets.registry.default_state("minecraft:barrier");
         for at in self.structure_boundary(pos) {
             if Some(self.world.block(at.0, at.1, at.2)) == barrier {
@@ -450,7 +363,7 @@ impl Game<'_> {
     }
 
     /// `clearErrorMarkers`.
-    pub(super) fn clear_error_markers(&mut self, pos: Pos) {
+    pub(in crate::game) fn clear_error_markers(&mut self, pos: Pos) {
         if let Some(b) = self.test_instance_mut(pos)
             && !b.error_markers.is_empty()
         {
@@ -459,7 +372,7 @@ impl Game<'_> {
     }
 
     /// `resetTest`.
-    pub(super) fn reset_test(&mut self, pos: Pos) {
+    pub(in crate::game) fn reset_test(&mut self, pos: Pos) {
         self.remove_test_barriers(pos);
         self.clear_error_markers(pos);
         if self.place_test_structure(pos) {
@@ -477,7 +390,7 @@ impl Game<'_> {
     }
 
     /// `placeStructure()`: the test's structure, cleared space first.
-    pub(super) fn place_test_structure(&mut self, pos: Pos) -> bool {
+    pub(in crate::game) fn place_test_structure(&mut self, pos: Pos) -> bool {
         let Some(def) = self.test_holder(pos) else {
             return false;
         };
@@ -525,7 +438,7 @@ impl Game<'_> {
 
     /// `StructureUtils.clearSpaceForStructure`'s blocks: air in the box (stone
     /// below the ground height, which no row of the box is).
-    pub(super) fn clear_test_space(&mut self, area: &BoundingBox) {
+    pub(in crate::game) fn clear_test_space(&mut self, area: &BoundingBox) {
         let ground = area.min[1] - 1;
         for y in area.min[1]..=area.max[1] {
             for z in area.min[2]..=area.max[2] {
@@ -546,7 +459,7 @@ impl Game<'_> {
     }
 
     /// `getBlockTicks().clearArea(bounds)` and `clearBlockEvents(bounds)`.
-    pub(super) fn clear_test_ticks(&mut self, bounds: &BoundingBox) {
+    pub(in crate::game) fn clear_test_ticks(&mut self, bounds: &BoundingBox) {
         let area = TickArea::new(
             BlockPos::new(bounds.min[0], bounds.min[1], bounds.min[2]),
             BlockPos::new(bounds.max[0], bounds.max[1], bounds.max[2]),
@@ -560,7 +473,7 @@ impl Game<'_> {
     }
 
     /// `saveTest`: the test's structure id, saved from the world.
-    fn save_test(&mut self, pos: Pos) -> Option<String> {
+    pub(in crate::game) fn save_test(&mut self, pos: Pos) -> Option<String> {
         let id = self
             .test_holder(pos)
             .map(|t| t.structure)
@@ -591,7 +504,7 @@ impl Game<'_> {
 
     /// `exportTest`: saves, then writes to the test template folder, which
     /// only a development build has.
-    fn export_test(&mut self, pos: Pos) {
+    pub(in crate::game) fn export_test(&mut self, pos: Pos) {
         if self.save_test(pos).is_some() {
             self.system_message(
                 Text::literal("Test structure exporting is disabled").with_color(text::RED),
@@ -600,7 +513,7 @@ impl Game<'_> {
     }
 
     /// `runTest`: the checks, the structure's placement and the test.
-    fn run_test(&mut self, pos: Pos) {
+    pub(in crate::game) fn run_test(&mut self, pos: Pos) {
         let coordinates = [pos.0, pos.1, pos.2].map(|v| Text::literal(v.to_string()));
         let Some(def) = self.test_holder(pos) else {
             self.system_message(red("test_instance_block.error.no_test", &coordinates));

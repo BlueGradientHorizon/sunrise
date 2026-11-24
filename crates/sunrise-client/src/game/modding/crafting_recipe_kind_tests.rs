@@ -1,18 +1,21 @@
 //! A custom crafting remainder reaches the normal server toss moment.
+#[allow(unused_imports)]
 use super::*;
+#[allow(unused_imports)]
 use std::result::Result;
+#[allow(unused_imports)]
 use std::sync::{
     Arc,
     atomic::{AtomicBool, AtomicUsize, Ordering},
 };
-struct Probe {
-    tosses: Arc<AtomicUsize>,
-    bad_recipe: Arc<AtomicBool>,
+pub(in crate::game) struct Probe {
+    pub(in crate::game) tosses: Arc<AtomicUsize>,
+    pub(in crate::game) bad_recipe: Arc<AtomicBool>,
 }
-struct Kind {
-    stick: mod_api::ItemKey,
-    diamond: mod_api::ItemKey,
-    bucket: mod_api::ItemKey,
+pub(in crate::game) struct Kind {
+    pub(in crate::game) stick: mod_api::ItemKey,
+    pub(in crate::game) diamond: mod_api::ItemKey,
+    pub(in crate::game) bucket: mod_api::ItemKey,
 }
 impl mod_api::CraftingRecipeKind for Kind {
     type Value = u32;
@@ -209,53 +212,6 @@ fn registered_crafting_remainder_drops_through_server_item_toss() {
             );
             assert_eq!(game.slot_mut(100).as_ref().map(|s| s.count), Some(1));
             assert_eq!(tosses.load(Ordering::Relaxed), 1);
-        });
-    });
-}
-
-#[test]
-#[ignore = "daily"]
-fn unregistered_serializer_failed_reload_preserves_previous_recipes() {
-    let bad_recipe = Arc::new(AtomicBool::new(false));
-    let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
-        "recipe_probe",
-        Box::new(Probe {
-            tosses: Arc::new(AtomicUsize::new(0)),
-            bad_recipe: bad_recipe.clone(),
-        }),
-    )]
-    .into();
-    super::api_values::install_parts(&mods).unwrap();
-    mod_platform::testing::with_mods(mods, || {
-        super::native_entity_refs::tests::with_game(|game| {
-            let scratch = tempfile::tempdir().unwrap();
-            game.server.world_root = scratch.path().to_path_buf();
-            let recipes = sunrise_client::crafting::Recipes::from_sources(
-                &game.options.resources,
-                game.items(),
-                &sunrise_world::loot::PackOverlay::NONE,
-                vec![(
-                    "recipe_probe:literal".into(),
-                    serde_json::json!({"type":"recipe_probe:literal"}),
-                )],
-                game.res.core.item_data.context(),
-            )
-            .unwrap();
-            game.world_tables.0 = None;
-            game.recipe_tables.install_test_recipes(recipes);
-            assert!(game.recipes().recipe("recipe_probe:literal").is_some());
-            bad_recipe.store(true, Ordering::Relaxed);
-            let error = game
-                .reload_datapacks(true, &game.level.enabled_features.clone())
-                .err()
-                .expect("unknown serializer must fail reload");
-            let text = format!("{error:?}");
-            assert!(
-                text.contains("bad.json") && text.contains("missing:serializer"),
-                "{text}"
-            );
-            assert!(game.recipes().recipe("recipe_probe:literal").is_some());
-            assert!(game.recipes().recipe("recipe_probe:bad").is_none());
         });
     });
 }

@@ -1,9 +1,11 @@
+#[allow(unused_imports)]
 use super::{Game, ItemStack};
+#[allow(unused_imports)]
 use sunrise_protocol::item::Stack;
 
 impl Game<'_> {
     /// `DisplayInfo.fromNetwork`: convert the template once, not while drawing it.
-    pub(super) fn remote_advancement_icon(&self, mut icon: Stack) -> ItemStack {
+    pub(in crate::game) fn remote_advancement_icon(&self, mut icon: Stack) -> ItemStack {
         let remote = self.remote.as_ref().expect("remote advancement");
         if !sunrise_protocol::item::custom::permitted_with_names(
             &icon,
@@ -26,4 +28,4 @@ impl Game<'_> {
 }
 
 #[cfg(test)]
-mod tests;
+pub(in crate::game) mod tests;

@@ -25,7 +25,8 @@ use sunrise_protocol::{
     },
 };
 
-const TEST: &str = "game::mounts::steerable_boarding_tests::interact_with_a_pig_or_strider";
+const TEST: &str =
+    "game::server_side::mounts::steerable_boarding_tests::interact_with_a_pig_or_strider";
 const CHILD: &str = "SUNRISE_STEERABLE_BOARDING_CHILD";
 const VEHICLE: u32 = 42;
 const MOB_RIDER: u32 = 43;

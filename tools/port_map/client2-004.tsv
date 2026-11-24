@@ -14,9 +14,9 @@ ItemFeatureRenderer.prepareSubmit	port	crates/sunrise-client/src/item_render.rs:
 ItemFeatureRenderer.prepareOutlineSubmit	port	crates/sunrise-client/src/game/entities/glowing.rs::Game::mark_outline	gap: minor: outline colour is only applied to dropped items (item_draw.rs dropped_item_geometry); held-item outlines not checked
 ItemFeatureRenderer.computeFoilDecalPose	missing		minor: unsure: the 0.5 GUI and 0.75 first-person foil decal scale is not found; glint scale is per context in item_render.rs Glint
 ItemFeatureRenderer.getLayerColorSafe	port	crates/sunrise-client/src/item_render.rs::submit_quads	tint index past the tints draws white, both overloads
-LeashFeatureRenderer.buildGroup	port	crates/sunrise-client/src/game/entities/leads.rs::Game::leash_geometry	loop over leash submits
-LeashFeatureRenderer.prepare	port	crates/sunrise-client/src/game/entities/leads.rs::Game::leash_geometry	gap: player: rope never sags when slack (vanilla droops the rope); no slack state in the leash render
-LeashFeatureRenderer.addVertexPair	inline	crates/sunrise-client/src/game/entities/leads.rs::Game::leash_geometry	vertex pair with block and sky light lerp folded into leash_geometry
+LeashFeatureRenderer.buildGroup	port	crates/sunrise-client/src/game/entities/leads_client.rs::Game::leash_geometry	loop over leash submits
+LeashFeatureRenderer.prepare	port	crates/sunrise-client/src/game/entities/leads_client.rs::Game::leash_geometry	gap: player: rope never sags when slack (vanilla droops the rope); no slack state in the leash render
+LeashFeatureRenderer.addVertexPair	inline	crates/sunrise-client/src/game/entities/leads_client.rs::Game::leash_geometry	vertex pair with block and sky light lerp folded into leash_geometry
 ModelFeatureRenderer.buildGroup	port	crates/sunrise-client/src/mobs.rs::render_model	loop over model submits
 ModelFeatureRenderer.prepareModel	port	crates/sunrise-client/src/mobs.rs::render_model	gap: minor: setupAnim is done by the mob code, and the sheeted decal and uv wrap are not checked
 MovingBlockFeatureRenderer.buildGroup	port	crates/sunrise-client/src/game/blocks/moving_pistons.rs::Game::moving_piston_geometry	moving piston block and base geometry
@@ -53,7 +53,7 @@ DrawableGizmoPrimitives.addLine	port	crates/sunrise-client/src/gizmos.rs::Gizmos
 DrawableGizmoPrimitives.addTriangleFan	missing		minor: debug triangle fans are not drawn
 DrawableGizmoPrimitives.addQuad	inline	crates/sunrise-client/src/gizmos.rs::cuboid_fill_quads	a cuboid's six fill quads, which the debug renderers push into their fill list; there is no general quad kind
 DrawableGizmoPrimitives.addText	inline	crates/sunrise-client/src/gizmos.rs::billboard_text_unit	one font pixel's world size for a text scale, which the debug renderers' and game-test markers' billboard text quads are built at (name_tag_quads)
-DrawableGizmoPrimitives.submit	port	crates/sunrise-client/src/game.rs::Game::render	gap: minor: lines of both lists go to camera_relative in Game::render; the fills and texts of the debug renderers are built as vertices in debug_renderers::Game::debug_renderer_geometry instead
+DrawableGizmoPrimitives.submit	port	crates/sunrise-client/src/game/game_client.rs::Game::render	gap: minor: lines of both lists go to camera_relative in Game::render; the fills and texts of the debug renderers are built as vertices in debug_renderers::Game::debug_renderer_geometry instead
 BundleSelectedItemSpecialRenderer.update	port	crates/sunrise-assets/src/item_model.rs::Resolve::node	bundle selected item layers via the BundleSelectedItem arm
 CompositeModel.update	port	crates/sunrise-assets/src/item_model.rs::Resolve::node	composite arm: each child in order
 CompositeModel.Unbaked.resolveDependencies	port	crates/sunrise-assets/src/item_model.rs::ItemModelNode::dependencies

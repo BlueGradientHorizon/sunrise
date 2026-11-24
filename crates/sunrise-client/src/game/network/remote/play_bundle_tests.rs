@@ -1,20 +1,27 @@
+#[allow(unused_imports)]
 use super::super::Received;
+#[allow(unused_imports)]
 use super::{connect_play_test, finish_play_test, offer_test_payloads, spawn_menu_test};
+#[allow(unused_imports)]
 use crate::game::{
     native_entity_refs::tests::{run_fresh_cases, with_client_game},
     viewed_worlds::tests::column,
 };
+#[allow(unused_imports)]
 use mod_api::{
     HandlerThread, Hooks, IPayloadContext, IPayloadHandler, ModEntry, PayloadBytes,
     PayloadContextError, PayloadHandleError, PayloadId, PayloadSendError, PayloadWork,
     PayloadWorkStatus, Registrar,
 };
+#[allow(unused_imports)]
 use std::{
     sync::{Arc, Mutex, mpsc},
     thread::{self, JoinHandle, ThreadId},
     time::{Duration, Instant},
 };
+#[allow(unused_imports)]
 use sunrise_client::{net::Event, raw_payloads};
+#[allow(unused_imports)]
 use sunrise_protocol::{
     connection::ConnReader,
     connection_groups::{self, Cell, Entry, Section},
@@ -26,25 +33,25 @@ use sunrise_protocol::{
     },
 };
 
-const MAIN: &str = "bundle_probe:main";
-const NETWORK: &str = "bundle_probe:network";
-const SERVER_ONLY: &str = "bundle_probe:server_only";
-const DROPPABLE: &str = "bundle_probe:droppable";
+pub(in crate::game) const MAIN: &str = "bundle_probe:main";
+pub(in crate::game) const NETWORK: &str = "bundle_probe:network";
+pub(in crate::game) const SERVER_ONLY: &str = "bundle_probe:server_only";
+pub(in crate::game) const DROPPABLE: &str = "bundle_probe:droppable";
 // Larger than the memory pipe's 64 KiB window: the writer cannot finish this
 // frame until the inline drain witness starts reading.
-const DRAIN_LEN: usize = 128 * 1024;
+pub(in crate::game) const DRAIN_LEN: usize = 128 * 1024;
 
-struct Witness {
-    main: ThreadId,
-    order: Mutex<Vec<&'static str>>,
-    transfer_started: Mutex<Option<mpsc::Receiver<()>>>,
-    parked_reader: Mutex<Option<JoinHandle<()>>>,
-    drain_reader: Mutex<Option<(ConnReader, Arc<raw_payloads::Local>)>>,
+pub(in crate::game) struct Witness {
+    pub(in crate::game) main: ThreadId,
+    pub(in crate::game) order: Mutex<Vec<&'static str>>,
+    pub(in crate::game) transfer_started: Mutex<Option<mpsc::Receiver<()>>>,
+    pub(in crate::game) parked_reader: Mutex<Option<JoinHandle<()>>>,
+    pub(in crate::game) drain_reader: Mutex<Option<(ConnReader, Arc<raw_payloads::Local>)>>,
 }
 
-struct Handler {
-    witness: Arc<Witness>,
-    network: bool,
+pub(in crate::game) struct Handler {
+    pub(in crate::game) witness: Arc<Witness>,
+    pub(in crate::game) network: bool,
 }
 
 impl IPayloadHandler for Handler {
@@ -157,7 +164,7 @@ impl IPayloadHandler for Handler {
     }
 }
 
-struct Work(Arc<Witness>);
+pub(in crate::game) struct Work(pub(in crate::game) Arc<Witness>);
 impl PayloadWork for Work {
     fn run(&self, ctx: &mut dyn IPayloadContext) -> Result<(), String> {
         assert_eq!(thread::current().id(), self.0.main);
@@ -169,7 +176,7 @@ impl PayloadWork for Work {
     }
 }
 
-struct Probe(Arc<Witness>);
+pub(in crate::game) struct Probe(pub(in crate::game) Arc<Witness>);
 #[mod_api::__subscriptions]
 impl Hooks for Probe {
     fn register(&self, registrar: &mut dyn Registrar, _: &mod_api::RegistrationContext) {
@@ -212,11 +219,11 @@ impl Hooks for Probe {
     }
 }
 
-fn wait_for_bundle(game: &mut crate::game::Game<'_>) {
+pub(in crate::game) fn wait_for_bundle(game: &mut crate::game::Game<'_>) {
     game.wait_for_test_remote_event(|event| matches!(event, Event::Bundle(_)));
 }
 
-fn with_probe(test: impl FnOnce(&mut crate::game::Game<'_>, Arc<Witness>)) {
+pub(in crate::game) fn with_probe(test: impl FnOnce(&mut crate::game::Game<'_>, Arc<Witness>)) {
     let witness = Arc::new(Witness {
         main: thread::current().id(),
         order: Mutex::new(Vec::new()),
@@ -234,7 +241,7 @@ fn with_probe(test: impl FnOnce(&mut crate::game::Game<'_>, Arc<Witness>)) {
     );
 }
 
-fn connect_probe(
+pub(in crate::game) fn connect_probe(
     game: &mut crate::game::Game<'_>,
 ) -> (
     Arc<raw_payloads::Local>,
@@ -418,7 +425,7 @@ fn a_post_disconnect_droppable_reply_cannot_join_the_writer_drain() {
     });
 }
 
-fn accept_transfer_login(
+pub(in crate::game) fn accept_transfer_login(
     listener: std::net::TcpListener,
 ) -> sunrise_protocol::connection::Connection {
     let mut connection = accept_tcp(listener);
@@ -437,7 +444,7 @@ fn accept_transfer_login(
     connection
 }
 
-fn login_cookie(
+pub(in crate::game) fn login_cookie(
     connection: &mut sunrise_protocol::connection::Connection,
     key: &str,
 ) -> Option<Vec<u8>> {
@@ -454,7 +461,7 @@ fn login_cookie(
     response.payload
 }
 
-fn transfer_to(target: std::net::SocketAddr) -> C {
+pub(in crate::game) fn transfer_to(target: std::net::SocketAddr) -> C {
     C::Transfer(cfg::Transfer {
         host: target.ip().to_string(),
         port: target.port().into(),
@@ -541,7 +548,9 @@ fn a_grouped_column_split_across_tcp_reads_is_adopted_as_one_bundle() {
     });
 }
 
-fn accept_tcp(listener: std::net::TcpListener) -> sunrise_protocol::connection::Connection {
+pub(in crate::game) fn accept_tcp(
+    listener: std::net::TcpListener,
+) -> sunrise_protocol::connection::Connection {
     listener.set_nonblocking(true).unwrap();
     let deadline = Instant::now() + Duration::from_secs(5);
     let stream = loop {
@@ -559,61 +568,6 @@ fn accept_tcp(listener: std::net::TcpListener) -> sunrise_protocol::connection::
         .set_read_timeout(Some(Duration::from_secs(5)))
         .unwrap();
     sunrise_protocol::connection::Connection::from_stream(stream).unwrap()
-}
-
-#[test]
-#[ignore = "daily"]
-fn a_split_frame_group_bundle_refuses_a_mismatched_companion() {
-    with_probe(|game, _| {
-        let (local, _reader, mut writer) = connect_probe(game);
-        game.handle_packet(column(0, 0)).unwrap();
-        let pos = [3, 70, 5];
-        let original = game.world.block(pos[0], pos[1], pos[2]);
-        assert_ne!(original.0, 0);
-        let delimiter = C::BundleDelimiter(Empty).encode();
-        writer.send(&delimiter).unwrap();
-        writer
-            .send(&C::BlockUpdate(play::BlockUpdate { pos, state: 0 }).encode())
-            .unwrap();
-        let companion = C::CustomPayload(CustomPayload {
-            channel: connection_groups::CHANNEL.into(),
-            data: Section {
-                pos: [0, 4, 0],
-                entries: vec![Entry {
-                    cell: Cell::of([4, 70, 5]),
-                    group: Some(7),
-                }],
-            }
-            .encode()
-            .unwrap(),
-        });
-        let body = companion
-            .try_encode_with_payload_codecs(&local.codecs)
-            .unwrap();
-        let mut frame = Vec::new();
-        writer.frame_into(&writer.contents(&body).unwrap(), &mut frame);
-        let (prefix, suffix) = frame.split_at(frame.len() - 1);
-        writer.write_raw(prefix).unwrap();
-        game.poll_remote_events(false).unwrap();
-        assert_eq!(game.world.block(pos[0], pos[1], pos[2]), original);
-        assert!(game.remote.is_some());
-        writer.write_raw(suffix).unwrap();
-        writer.send(&delimiter).unwrap();
-        wait_for_bundle(game);
-        game.poll_remote_events(true).unwrap();
-        assert!(game.remote.is_none());
-        let Some(sunrise_client::title::Mode::Multiplayer(
-            sunrise_client::multiplayer::Screen::Disconnected { reason, .. },
-        )) = game.title.0.as_ref().map(|title| &title.mode)
-        else {
-            panic!("expected the multiplayer refusal screen");
-        };
-        assert!(
-            reason
-                .plain()
-                .contains("connection groups: group cell not in block update")
-        );
-    });
 }
 
 #[test]

@@ -17,7 +17,7 @@ enum Action {
 }
 impl Game<'_> {
     /// Run the permission-3 profiler command and reply only to its originating sender.
-    pub(super) fn cmd_modprofile(&mut self, id: &str) -> R<i32> {
+    pub(in crate::game) fn cmd_modprofile(&mut self, id: &str) -> R<i32> {
         let action = match id {
             "modprofile.start" => Action::Start,
             "modprofile.stop" => Action::Stop,

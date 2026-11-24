@@ -66,7 +66,7 @@ MinecraftServer.<init>	inline	crates/sunrise-client/src/game/interface/dedicated
 MinecraftServer.loadLevel	inline	crates/sunrise-client/src/game/interface/dedicated/mod.rs::Game::run_dedicated	gap: minor: the world is opened in run_dedicated; no JFR load profiling
 MinecraftServer.setupDebugLevel	skip:debug		debug world preset is not offered
 MinecraftServer.prepareLevels	port	crates/sunrise-client/src/game/world/initial_spawn.rs::Game::find_world_spawn	gap: minor: waits only for the spawn chunks (find_world_spawn returns None while one loads); no progress stage for other levels, no mob-spawn flag update here
-MinecraftServer.saveEverything	port	crates/sunrise-client/src/game/world/autosave.rs::Game::save_game_with	gap: minor: no low-disk warning
+MinecraftServer.saveEverything	port	crates/sunrise-client/src/game/world/autosave_client.rs::Game::save_game_with	gap: minor: no low-disk warning
 MinecraftServer.finishMeasuringTaskExecutionTime	skip:server		tick timing for the profiler
 MinecraftServer.constructOrExtractCrashReport	skip:debug		crash report wrapping
 MinecraftServer.haveTime	inline	crates/sunrise-client/src/game/world/levels.rs::Game::wait_for_next_server_tick	gap: minor: no time budget for queued tasks
@@ -79,7 +79,7 @@ MinecraftServer.processPacketsAndTick	port	crates/sunrise-client/src/game/world/
 MinecraftServer.autoSave	inline	crates/sunrise-client/src/game.rs::Game::tick	gap: minor: the save runs every 6000 ticks; /save-off is checked in the dedicated loop, where the check does nothing, so it does not stop the save
 MinecraftServer.logTickMethodTime	skip:server		tick timing log for the profiler
 MinecraftServer.computeNextAutosaveInterval	port	crates/sunrise-client/src/game/world/autosave.rs::Game::next_autosave_interval	Math.max(100, (int)(rate * 300.0F)) ticks counted down a tick at a time, at the tick rate or the measured rate while /tick sprint runs; twenty a second is still the six thousand a world autosaved on
-MinecraftServer.onTickRateChanged	port	crates/sunrise-client/src/game/world/autosave.rs::Game::on_tick_rate_changed	/tick rate and the end of a /tick sprint recompute the wait and shorten the one already running when it asks for less; the server_tick_rate_changed hook fires first
+MinecraftServer.onTickRateChanged	port	crates/sunrise-client/src/game/world/autosave_server.rs::Game::on_tick_rate_changed	/tick rate and the end of a /tick sprint recompute the wait and shorten the one already running when it asks for less; the server_tick_rate_changed hook fires first
 MinecraftServer.buildPlayerStatus	port	crates/sunrise-client/src/lan/mod.rs::Shared::status_json	up to 12 sampled player names in the status JSON
 MinecraftServer.updateEffectiveRespawnData	inline	crates/sunrise-client/src/game/world/initial_spawn.rs::Game::spawn_finder	gap: minor: no cached respawn data; the radius is clamped to the border when the spawn is found
 MinecraftServer.forceGameTimeSynchronization	port	crates/sunrise-client/src/lan/hub.rs::Hub::sync_world	game time sent to guests with SetTime
@@ -95,7 +95,7 @@ MinecraftServer.configureRepositoryWithSelection	inline	crates/sunrise-client/sr
 MinecraftServer.enableForcedFeaturePacks	inline	crates/sunrise-client-render/src/datapack.rs::enabled_ids	the last loop forces on every feature pack whose flags the world enables, whatever the world's selection says; a pack's flags are its pack.mcmeta features.enabled
 MinecraftServer.getSelectedPacks	port	crates/sunrise-client/src/game/administration/functions.rs::Game::save_datapack_settings	gap: minor: writes the enabled and disabled lists; no feature check
 MinecraftServer.findRespawnDimension	port	crates/sunrise-client/src/game/network/lan/mod.rs::Game::world_spawn_level	uses the saved world spawn's dimension
-MinecraftServer.setRespawnData	port	crates/sunrise-client/src/game/administration/commands/mod.rs::Game::cmd_setworldspawn	gap: minor: the new spawn is not sent to guests here; they get it on join
+MinecraftServer.setRespawnData	port	crates/sunrise-client/src/game/administration/commands/mod_server.rs::Game::cmd_setworldspawn	gap: minor: the new spawn is not sent to guests here; they get it on join
 MinecraftServer.getCommandStorage	skip:java		getter for the command storage
 MinecraftServer.getStopwatches	skip:java		getter for the stopwatches
 MinecraftServer.setWeatherParameters	port	crates/sunrise-client/src/game/administration/commands/mod.rs::Game::cmd_weather	sets the weather timers and state

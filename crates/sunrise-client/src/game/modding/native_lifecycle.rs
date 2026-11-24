@@ -2,50 +2,54 @@
 //! A paused pass
 //! observes nothing; a frozen world reports `world_running: false` except during a step.
 
+#[allow(unused_imports)]
 use std::sync::atomic::{AtomicU64, Ordering};
 
+#[allow(unused_imports)]
 use super::{
     Game,
     execution_role::ExecutionRole,
     scheduled_tasks::{ScheduledTasks, ServerTask, dispose_pending_task, report_failure, run_all},
 };
+#[allow(unused_imports)]
 use mod_api::{ScheduleError, TaskId};
 // Their old home, for mixin code that names them here.
-pub(super) use mod_api::{
+#[allow(unused_imports)]
+pub(in crate::game) use mod_api::{
     Authority, LifecycleContext, ServerTickPhase, TickId, WorldEpoch, WorldPhase,
 };
 
 /// Epoch allocation spans server and client `Game` instances and client level
 /// replacements, so the counter is process-wide.
-static NEXT_EPOCH: AtomicU64 = AtomicU64::new(1);
+pub(in crate::game) static NEXT_EPOCH: AtomicU64 = AtomicU64::new(1);
 
 /// A process-wide epoch no handle has carried yet: a server open's, or a
 /// client level's (`native_entity_refs.rs`), so a handle never crosses sides.
-pub(super) fn fresh_epoch() -> WorldEpoch {
+pub(in crate::game) fn fresh_epoch() -> WorldEpoch {
     WorldEpoch::new(NEXT_EPOCH.fetch_add(1, Ordering::Relaxed))
 }
 
 /// Internal state for deciding which events can fire.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum OpenState {
+pub(in crate::game) enum OpenState {
     Opening,
     Ready,
     Closing,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-struct OpenAttempt {
-    authority: Authority,
-    epoch: u64,
-    session: OpenState,
-    ticks: u64,
+pub(in crate::game) struct OpenAttempt {
+    pub(in crate::game) authority: Authority,
+    pub(in crate::game) epoch: u64,
+    pub(in crate::game) session: OpenState,
+    pub(in crate::game) ticks: u64,
     /// A tick started and its end has not fired (or the tick errored).
-    tick_open: bool,
-    tick_world_running: bool,
+    pub(in crate::game) tick_open: bool,
+    pub(in crate::game) tick_world_running: bool,
 }
 
 impl OpenAttempt {
-    fn context(&self) -> LifecycleContext {
+    pub(in crate::game) fn context(&self) -> LifecycleContext {
         LifecycleContext::from(mod_api::__private::built::LifecycleContext {
             authority: self.authority,
             epoch: WorldEpoch::new(self.epoch),
@@ -53,7 +57,7 @@ impl OpenAttempt {
         })
     }
 
-    fn server_context(&self) -> Option<LifecycleContext> {
+    pub(in crate::game) fn server_context(&self) -> Option<LifecycleContext> {
         (self.authority != Authority::RemoteClient).then(|| self.context())
     }
 }
@@ -62,28 +66,28 @@ impl OpenAttempt {
 /// and non-paused tick count. It only decides whether a phase fires; every
 /// hook body is empty, so with no native mods nothing changes.
 #[derive(Default)]
-pub(super) struct NativeLifecycle {
-    attempt: Option<OpenAttempt>,
-    read_scope: bool,
+pub(in crate::game) struct NativeLifecycle {
+    pub(in crate::game) attempt: Option<OpenAttempt>,
+    pub(in crate::game) read_scope: bool,
     /// The mods' delayed tasks (`schedule_task`): dropped whenever a world opens or closes.
-    tasks: ScheduledTasks,
+    pub(in crate::game) tasks: ScheduledTasks,
     /// The section `entity_entering_section` files each entity under, for this epoch's world.
-    pub(super) entity_sections: super::entity_sections::EntitySections,
-    pub(super) section_observer: super::entity_sections::observer_cache::ObserverCache,
-    pub(super) player_section_observer:
+    pub(in crate::game) entity_sections: super::entity_sections::EntitySections,
+    pub(in crate::game) section_observer: super::entity_sections::observer_cache::ObserverCache,
+    pub(in crate::game) player_section_observer:
         Option<std::rc::Rc<super::entity_sections::PlayerSectionObserver>>,
     /// Tossed item entities `item_toss` is still asking about, innermost last: a join flush
     /// stops before them, so a cancel never takes back an entity already announced.
-    pub(super) held_joins: Vec<u32>,
+    pub(in crate::game) held_joins: Vec<u32>,
     /// Item notices waiting for their join decision.
-    pub(super) pending_item_spawns: Vec<(u32, String, i32, [f64; 3])>,
+    pub(in crate::game) pending_item_spawns: Vec<(u32, String, i32, [f64; 3])>,
     /// The log has named the entity id exhaustion (`entity_ids_exhausted`).
-    pub(super) ids_exhausted_told: bool,
+    pub(in crate::game) ids_exhausted_told: bool,
 }
 
 impl NativeLifecycle {
     /// A read is valid only during a tick hook with its current tick context.
-    pub(super) fn permits_read(&self, context: &LifecycleContext) -> bool {
+    pub(in crate::game) fn permits_read(&self, context: &LifecycleContext) -> bool {
         self.read_scope
             && self
                 .attempt
@@ -93,12 +97,12 @@ impl NativeLifecycle {
 
     /// The epoch of the world open now, from the start of its open to the end
     /// of its close: what a mod's entity and level handles carry.
-    pub(super) fn epoch(&self) -> Option<WorldEpoch> {
+    pub(in crate::game) fn epoch(&self) -> Option<WorldEpoch> {
         self.attempt.map(|a| WorldEpoch::new(a.epoch))
     }
 
     /// The open starts: a fresh process-wide epoch, never reused.
-    pub(super) fn begin_open(&mut self, authority: Authority) {
+    pub(in crate::game) fn begin_open(&mut self, authority: Authority) {
         self.attempt = Some(OpenAttempt {
             authority,
             epoch: fresh_epoch().get(),
@@ -110,7 +114,7 @@ impl NativeLifecycle {
         self.tasks.clear();
     }
 
-    pub(super) fn world_open_ready(&mut self) -> Option<LifecycleContext> {
+    pub(in crate::game) fn world_open_ready(&mut self) -> Option<LifecycleContext> {
         let attempt = self.attempt.as_mut()?;
         if attempt.session != OpenState::Opening {
             return None;
@@ -119,14 +123,14 @@ impl NativeLifecycle {
         attempt.server_context()
     }
 
-    pub(super) fn is_opening(&self) -> bool {
+    pub(in crate::game) fn is_opening(&self) -> bool {
         self.attempt
             .as_ref()
             .is_some_and(|attempt| attempt.session == OpenState::Opening)
     }
 
     /// `WorldOpenFailed`: only while opening; the attempt is invalidated.
-    pub(super) fn world_open_failed(&mut self) -> Option<LifecycleContext> {
+    pub(in crate::game) fn world_open_failed(&mut self) -> Option<LifecycleContext> {
         let attempt = self.attempt.as_mut()?;
         if attempt.session != OpenState::Opening {
             return None;
@@ -137,14 +141,14 @@ impl NativeLifecycle {
         context
     }
 
-    pub(super) fn begin_close(&mut self) {
+    pub(in crate::game) fn begin_close(&mut self) {
         if let Some(attempt) = self.attempt.as_mut() {
             attempt.session = OpenState::Closing;
         }
     }
 
     /// A failure after readiness retires the epoch, including during shutdown.
-    pub(super) fn world_close_failed(&mut self) -> Option<LifecycleContext> {
+    pub(in crate::game) fn world_close_failed(&mut self) -> Option<LifecycleContext> {
         let attempt = self.attempt.as_ref()?;
         if attempt.session == OpenState::Opening {
             return None;
@@ -156,7 +160,7 @@ impl NativeLifecycle {
     }
 
     /// `WorldCloseFinal`: at most once per epoch; the epoch retires.
-    pub(super) fn world_close_final(&mut self) -> Option<LifecycleContext> {
+    pub(in crate::game) fn world_close_final(&mut self) -> Option<LifecycleContext> {
         let attempt = self.attempt.as_mut()?;
         if attempt.session != OpenState::Closing {
             return None;
@@ -168,7 +172,7 @@ impl NativeLifecycle {
     }
 
     /// Non-paused ready ticks only; a paused pass observes nothing, does not count.
-    pub(super) fn server_tick_start(
+    pub(in crate::game) fn server_tick_start(
         &mut self,
         world_running: bool,
     ) -> Option<(LifecycleContext, ServerTickPhase)> {
@@ -188,14 +192,14 @@ impl NativeLifecycle {
     }
 
     /// Discard the pending end when a tick fails.
-    pub(super) fn cancel_server_tick(&mut self) {
+    pub(in crate::game) fn cancel_server_tick(&mut self) {
         if let Some(attempt) = &mut self.attempt {
             attempt.tick_open = false;
         }
     }
 
     /// Pairs the last start; an errored tick never reaches it.
-    pub(super) fn server_tick_end(
+    pub(in crate::game) fn server_tick_end(
         &mut self,
         paused: bool,
     ) -> Option<(LifecycleContext, ServerTickPhase)> {
@@ -215,7 +219,7 @@ impl NativeLifecycle {
 
 impl Game<'_> {
     /// The role is fixed at construction; a mirror `Game` is remote whatever it is.
-    fn native_lifecycle_authority(&self) -> Authority {
+    pub(in crate::game) fn native_lifecycle_authority(&self) -> Authority {
         if self.remote.is_some() {
             return Authority::RemoteClient;
         }
@@ -226,7 +230,7 @@ impl Game<'_> {
         }
     }
 
-    pub(super) fn native_lifecycle_open_started(&mut self) {
+    pub(in crate::game) fn native_lifecycle_open_started(&mut self) {
         self.clear_composter_randoms();
         self.reset_entity_residency();
         self.server.entity_initialization = Default::default();
@@ -239,7 +243,7 @@ impl Game<'_> {
             .begin_open(self.native_lifecycle_authority());
     }
 
-    pub(super) fn native_lifecycle_world_ready(&mut self) {
+    pub(in crate::game) fn native_lifecycle_world_ready(&mut self) {
         // The saved scoreboard is there for the server-started hooks, before any tick.
         if self.remote.is_none() {
             self.load_scoreboard();
@@ -250,7 +254,7 @@ impl Game<'_> {
     }
 
     /// `error_text` is the engine's own error text, unchanged.
-    pub(super) fn native_lifecycle_world_failed(&mut self, error_text: &str) {
+    pub(in crate::game) fn native_lifecycle_world_failed(&mut self, error_text: &str) {
         // The server levels that opened before the failure close first.
         if self.remote.is_none() {
             self.native_levels_closing();
@@ -264,7 +268,7 @@ impl Game<'_> {
     }
 
     /// Report a server-loop or shutdown failure once and retire its epoch.
-    pub(super) fn native_lifecycle_close_failed(&mut self, error_text: &str) {
+    pub(in crate::game) fn native_lifecycle_close_failed(&mut self, error_text: &str) {
         if self.remote.is_none() {
             self.native_levels_closing();
         }
@@ -276,26 +280,7 @@ impl Game<'_> {
         self.resident_entities.table.get_mut().reset();
     }
 
-    /// After the final save, before the lock release. Client epochs retire
-    /// without dispatching server lifecycle hooks.
-    pub(super) fn native_lifecycle_world_closed(&mut self) {
-        self.client.instance_groups.borrow_mut().clear();
-        // Each server level closes after the final save (`LevelEvent.Unload`).
-        if self.remote.is_none() {
-            self.native_levels_closing();
-        }
-        if let Some(context) = self.native_lifecycle.world_close_final() {
-            self.native_world_lifecycle(&context, WorldPhase::WorldCloseFinal, "");
-        }
-        self.attachment_indexes.clear();
-        self.passages.retire_world();
-        self.resident_entities.table.get_mut().reset();
-        super::cauldron_interactions::clear();
-        self.clear_composter_randoms();
-        self.clear_world_parts();
-    }
-
-    fn drain_due_tasks(&mut self) -> Option<Box<dyn std::any::Any + Send>> {
+    pub(in crate::game) fn drain_due_tasks(&mut self) -> Option<Box<dyn std::any::Any + Send>> {
         run_all(
             self,
             |game| game.native_lifecycle.tasks.pop_due(),
@@ -323,7 +308,7 @@ impl Game<'_> {
         )
     }
 
-    pub(super) fn native_lifecycle_server_tick_start(&mut self, world_running: bool) {
+    pub(in crate::game) fn native_lifecycle_server_tick_start(&mut self, world_running: bool) {
         if let Some((context, phase)) = self.native_lifecycle.server_tick_start(world_running) {
             self.native_console_lines();
             self.native_lifecycle.read_scope = true;
@@ -366,7 +351,7 @@ impl Game<'_> {
     }
 
     /// An errored tick returned at `result?` before this site.
-    pub(super) fn native_lifecycle_server_tick_end(&mut self, paused: bool) {
+    pub(in crate::game) fn native_lifecycle_server_tick_end(&mut self, paused: bool) {
         if let Some((context, phase)) = self.native_lifecycle.server_tick_end(paused) {
             self.native_lifecycle.read_scope = true;
             self.native_server_tick(&context, phase);
@@ -382,7 +367,7 @@ impl Game<'_> {
 }
 
 #[cfg(test)]
-mod tests {
+pub(in crate::game) mod tests {
     use super::*;
     use crate::game::native_entity_refs::tests::with_game;
     use mod_api::{Hooks, ModEntry, ServerHost};
@@ -731,7 +716,7 @@ mod tests {
         };
 
         if run_fresh_cases(
-            "game::native_lifecycle::tests::a_scheduled_transaction_refusal_rolls_back_without_disabling_later_tasks",
+            "game::server_side::native_lifecycle::tests::a_scheduled_transaction_refusal_rolls_back_without_disabling_later_tasks",
             "SUNRISE_SCHEDULED_TRANSACTION_REFUSAL_CHILD",
             &["refused"],
         ) {
@@ -809,7 +794,7 @@ mod tests {
         use sunrise_client::{join_seq::residency::table::EntityLookup, mobs::Mob};
 
         if run_fresh_cases(
-            "game::native_lifecycle::tests::panicking_scheduled_task_captures_do_not_interrupt_cancellation_or_close",
+            "game::server_side::native_lifecycle::tests::panicking_scheduled_task_captures_do_not_interrupt_cancellation_or_close",
             "SUNRISE_SCHEDULED_TASK_DROP_CHILD",
             &["dispose"],
         ) {

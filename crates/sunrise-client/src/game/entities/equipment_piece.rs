@@ -3,12 +3,12 @@ use super::*;
 use sunrise_client::mobs::Part;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
-pub(super) enum EquipmentPass {
+pub(in crate::game) enum EquipmentPass {
     Draw,
     TextureInventory,
 }
 
-pub(super) struct EquipmentPiece<'a> {
+pub(in crate::game) struct EquipmentPiece<'a> {
     pub asset: String,
     pub slot: ArmorSlot,
     pub kind: &'static str,
@@ -17,17 +17,17 @@ pub(super) struct EquipmentPiece<'a> {
 }
 
 #[derive(Clone, Copy)]
-pub(super) enum ArmorSlot {
+pub(in crate::game) enum ArmorSlot {
     Head,
     Chest,
     Legs,
     Feet,
 }
 impl ArmorSlot {
-    pub(super) fn index(self) -> usize {
+    pub(in crate::game) fn index(self) -> usize {
         self as usize
     }
-    pub(super) fn shows(self, name: &str) -> bool {
+    pub(in crate::game) fn shows(self, name: &str) -> bool {
         match name {
             "head" | "hat" => matches!(self, Self::Head),
             "body" => matches!(self, Self::Chest | Self::Legs),
@@ -39,7 +39,7 @@ impl ArmorSlot {
 }
 
 impl Game<'_> {
-    pub(super) fn equipment_piece<'a>(
+    pub(in crate::game) fn equipment_piece<'a>(
         &'a self,
         item: &str,
         stack: Option<&ItemStack>,
@@ -75,13 +75,14 @@ impl Game<'_> {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub(super) struct EquipmentAssetLayer {
+pub(in crate::game) struct EquipmentAssetLayer {
     pub texture: String,
     pub dyeable: bool,
     pub use_player_texture: bool,
     pub color_when_undyed: Option<u32>,
 }
-pub(super) type EquipmentAssets = HashMap<String, HashMap<String, Vec<EquipmentAssetLayer>>>;
+pub(in crate::game) type EquipmentAssets =
+    HashMap<String, HashMap<String, Vec<EquipmentAssetLayer>>>;
 
 fn resolve_piece<'a>(
     equippable: sunrise_client::item_sync::Equippable,
@@ -123,7 +124,7 @@ fn resolve_piece<'a>(
 }
 
 impl Game<'_> {
-    pub(super) fn mob_equipment_layers(
+    pub(in crate::game) fn mob_equipment_layers(
         &self,
         mob: &Mob,
         pass: EquipmentPass,
@@ -183,11 +184,11 @@ impl Game<'_> {
 }
 
 #[derive(Clone, Copy)]
-pub(super) struct MaterialBinding<'a> {
+pub(in crate::game) struct MaterialBinding<'a> {
     pub name: &'a str,
     pub uv: [f32; 4],
 }
-pub(super) struct EquipmentMaterial<'a> {
+pub(in crate::game) struct EquipmentMaterial<'a> {
     pub binding: MaterialBinding<'a>,
     pub color: u32,
     pub overlay: u32,
@@ -196,7 +197,7 @@ pub(super) struct EquipmentMaterial<'a> {
     pub final_texture: bool,
 }
 
-pub(super) struct ResolvedEquipmentLayer<'a> {
+pub(in crate::game) struct ResolvedEquipmentLayer<'a> {
     pub binding: MaterialBinding<'a>,
     pub color: u32,
     pub model: Option<&'a Arc<Part>>,
@@ -204,7 +205,7 @@ pub(super) struct ResolvedEquipmentLayer<'a> {
 }
 
 impl Game<'_> {
-    pub(super) fn equipment_materials<'a>(
+    pub(in crate::game) fn equipment_materials<'a>(
         &'a self,
         piece: &EquipmentPiece<'_>,
         stack: Option<&ItemStack>,
@@ -276,7 +277,7 @@ impl EquipmentPiece<'_> {
         )
     }
 
-    pub(super) fn resolved_materials<'a>(
+    pub(in crate::game) fn resolved_materials<'a>(
         &self,
         trim: Option<MaterialBinding<'a>>,
         mut resolve: impl FnMut(usize, &EquipmentAssetLayer) -> Option<ResolvedEquipmentLayer<'a>>,

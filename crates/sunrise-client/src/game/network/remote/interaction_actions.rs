@@ -1,8 +1,9 @@
+#[allow(unused_imports)]
 use super::*;
 
 impl Game<'_> {
     /// Runs one interaction and restores the caller's swing policy afterwards, on every return path.
-    pub(super) fn with_interaction_swing_scope<R>(
+    pub(in crate::game) fn with_interaction_swing_scope<R>(
         &mut self,
         action: impl FnOnce(&mut Self) -> R,
     ) -> R {
@@ -14,144 +15,8 @@ impl Game<'_> {
         result
     }
 
-    /// Minecraft.startUseItem: use one crosshair target, then the item itself.
-    fn remote_use_inner(&mut self, attempt: mod_api::InteractionAttempt) {
-        // Another queued press in the same input drain cannot restart a capture.
-        if self.client_item_use.0.is_some() {
-            return;
-        }
-        // Minecraft.startUseItem returns before resetting rightClickDelay
-        // while a survival block break is active.
-        if self.remote.as_ref().is_some_and(|r| r.is_destroying) {
-            return;
-        }
-        self.use_delay = 4;
-        // Minecraft.startUseItem: nothing is used while the hands paddle a boat.
-        if self.hands_busy() {
-            return;
-        }
-        // InputEvent.InteractionKeyMappingTriggered for the main hand: a cancel
-        // ends the whole click, the off hand gets no turn.
-        if let Some(swing) = self
-            .native_interaction(InteractionKey::Use, Hand::Main, attempt)
-            .canceled_swing()
-        {
-            if swing {
-                self.swing_hand(Hand::Main, SwingAnimation::DEFAULT);
-            }
-            return;
-        }
-        // A registered client item behavior consumes the click before target handling.
-        if self.start_client_item_use() {
-            return;
-        }
-        // Resolve the crosshair once. A passing entity interaction keeps
-        // that target and may only fall back to using the item itself.
-        let entity = self.remote_use_targets_entity();
-        sunrise_client::interaction_input::use_on_target(
-            &mut RemoteUseWorld(self, attempt),
-            entity,
-        );
-    }
     pub(in crate::game) fn remote_use(&mut self, attempt: mod_api::InteractionAttempt) {
         self.with_interaction_swing_scope(|game| game.remote_use_inner(attempt));
-    }
-    fn remote_start_attack_inner(&mut self) -> bool {
-        if self.clicks.miss_time > 0 || self.hands_busy() {
-            return false;
-        }
-        if self.spectator() {
-            // Minecraft.startAttack: a spectator's click on an entity asks
-            // to watch through it (MultiPlayerGameMode.spectate); a click on
-            // nothing still tells the server (spectatorNoAction).
-            let target = self.spectator_click_target();
-            self.send(S::SpectatorAction(play::SpectatorAction { target }));
-            return true;
-        }
-        let spear = self
-            .held()
-            .and_then(|s| sunrise_client::spear::Kinetic::of(&s.item));
-        if spear.is_some() && self.cannot_attack_with_item(self.client.hand_strength.ticker, 0) {
-            return false;
-        }
-        // InputEvent.InteractionKeyMappingTriggered, after the checks that stop
-        // an attack: a cancel ends it there, swinging unless the mod said not to.
-        if let Some(swing) = self
-            .native_interaction(
-                InteractionKey::Attack,
-                Hand::Main,
-                mod_api::InteractionAttempt::Press,
-            )
-            .canceled_swing()
-        {
-            if swing {
-                let animation = spear.map_or(SwingAnimation::DEFAULT, |k| k.attack_animation());
-                self.swing_hand(Hand::Main, animation);
-            }
-            return false;
-        }
-        // A spear jabs (`MultiPlayerGameMode.piercingAttack`): this client
-        // reports the reach and combo of a mob in range, then the server stabs
-        // along the look it last heard (the jab sends none of its own) while
-        // this client swings, plays the sound and starts its charge again.
-        if let Some(kinetic) = spear {
-            if let Some((i, distance, _)) = self.mob_hit()
-                && self.before_block(distance)
-                && self.held_range_allows(distance)
-            {
-                self.pvp_attacked(self.mobs[i].id as i32, distance);
-            }
-            // ServerboundPlayerActionPacket.Action.STAB.
-            self.send(S::PlayerAction(play::PlayerAction {
-                action: 8,
-                pos: [0; 3],
-                direction: 0,
-                sequence: 0,
-            }));
-            self.client.hand_strength.reset_attack();
-            self.swing_hand(Hand::Main, kinetic.attack_animation());
-            self.play_at_feet(kinetic.attack_sound);
-            return true;
-        }
-        if self.mod_attack_targets() {
-            self.remote_swing_packet();
-            return false;
-        }
-        let mut instant = false;
-        if let Some(hit) = self.crosshair_entity_hit() {
-            // A range rejection is still an entity hit: skip the attack, but swing below.
-            if let Some(distance) = self.attack_hit_distance(hit.point) {
-                self.remote_attack_entity(hit.id, distance);
-            }
-        } else if let Some(hit) = self.pick() {
-            // A block hit on air falls through to MISS. `instant` below reads the
-            // block again after the dig, which may have broken it.
-            if mod_api::__private::listened(mod_api::HookId::LeftClickEmpty)
-                && self
-                    .res
-                    .facts()
-                    .is_air(self.world.block(hit.pos[0], hit.pos[1], hit.pos[2]))
-            {
-                self.native_left_click_empty();
-            }
-            if !self.remote_mining(true) {
-                return false;
-            }
-            instant = self
-                .res
-                .facts()
-                .is_air(self.world.block(hit.pos[0], hit.pos[1], hit.pos[2]));
-        } else {
-            if mod_api::__private::listened(mod_api::HookId::LeftClickEmpty) {
-                self.native_left_click_empty();
-            }
-            if self.has_miss_time() {
-                self.clicks.miss_time = 10;
-            }
-            self.reset_attack_strength();
-        }
-        self.remote_swing_packet();
-        instant
     }
     pub(in crate::game) fn remote_start_attack(&mut self) -> bool {
         // An agent's `attack ID` checks its entity against the pick its click is taken with,
@@ -161,111 +26,8 @@ impl Game<'_> {
         }
         self.with_interaction_swing_scope(Game::remote_start_attack_inner)
     }
-    fn remote_continue_attack_inner(&mut self, down: bool) {
-        if !down {
-            self.clicks.miss_time = 0;
-        }
-        // A piercing weapon neither breaks blocks nor swings on its own.
-        if self.clicks.miss_time > 0
-            || self.using.is_some()
-            || self.client_item_use.0.is_some()
-            || self
-                .held()
-                .is_some_and(|s| sunrise_client::spear::Kinetic::of(&s.item).is_some())
-        {
-            return;
-        }
-        let entity = self.entity_targeted();
-        if down
-            && !entity
-            && let Some(hit) = self.pick()
-        {
-            let state = self.world.block(hit.pos[0], hit.pos[1], hit.pos[2]);
-            let air = self.res.facts().is_air(state);
-            // InputEvent.InteractionKeyMappingTriggered, before the dig goes on:
-            // a cancel digs nothing and swings unless the mod said not to.
-            let canceled = if air {
-                None
-            } else {
-                self.native_interaction(
-                    InteractionKey::Attack,
-                    Hand::Main,
-                    mod_api::InteractionAttempt::Held,
-                )
-                .canceled_swing()
-            };
-            if canceled.is_none() && !air {
-                // MultiPlayerGameMode.continueDestroyBlock starts with ensureHasSentCarriedItem.
-                self.remote_send_carried();
-            }
-            if let Some(swing) = canceled {
-                if swing {
-                    self.remote_swing_packet();
-                }
-            } else if self.remote_break_restricted(hit.pos) {
-                // continueDestroyBlock returned false: no swing.
-            } else if !air {
-                if self.remote_mining(false) {
-                    self.remote_swing_packet();
-                }
-            } else {
-                if let Some(r) = self.remote.as_mut() {
-                    r.destroying = None;
-                    r.is_destroying = false;
-                }
-                self.mining = None;
-            }
-        } else {
-            // `stopDestroyBlock` returns at once for a break that is not running: a pick that
-            // missed once a break stopped ends nothing, so the dig's accumulated progress stays
-            // and goes on growing on the jumps that follow (#4124).
-            if self.stop_remote_mining() {
-                self.mining = None;
-            }
-        }
-    }
     pub(in crate::game) fn remote_continue_attack(&mut self, down: bool) {
         self.with_interaction_swing_scope(|game| game.remote_continue_attack_inner(down));
-    }
-    /// `Hud.onDisconnected`, from `Minecraft.disconnect` and `clearClientLevel`
-    /// (a proxy's reconfiguration too), but the chat: joining clears it and a
-    /// reconfiguration keeps it (`ChatComponent.storeState`).
-    pub(super) fn hud_disconnected(&mut self) {
-        self.tab_list.0.reset();
-        self.client.boss_overlay.reset();
-        self.client.toast_manager = Default::default();
-        self.client.debug_charts.reset();
-        self.client.titles.clear();
-        self.client.titles.reset_times();
-    }
-    /// `handleAnimate`: a player wakes up, or an entity gets the critical
-    /// hit (`CRIT`) or magic critical hit (`ENCHANTED_HIT`) emitter.
-    pub(super) fn remote_animate(&mut self, id: i32, action: u8) {
-        use sunrise_client::particles::{ParticleOptions, ParticleType};
-        let particle = match action {
-            // Player.stopSleepInBed.
-            0 => {
-                if self.player.is_some()
-                    && self
-                        .remote
-                        .as_ref()
-                        .is_some_and(|remote| remote.entity_id == id)
-                {
-                    self.sleeping = None;
-                    self.sleep_timer = 100;
-                }
-                return;
-            }
-            1 => ParticleType::Crit,
-            2 => ParticleType::EnchantedHit,
-            _ => return,
-        };
-        let Some((target, body)) = self.remote_tracking_body(id) else {
-            return;
-        };
-        self.particles
-            .0
-            .tracking_emitter(ParticleOptions::simple(particle), target, body);
     }
     /// `ServerPlayer.dismountTo` lands a rider at the ghast's own (x, maxY, z)
     /// (`HappyGhast.getDismountLocationForPassenger`). A vanilla client
@@ -273,7 +35,7 @@ impl Game<'_> {
     /// this window's copy trails the server's by the stepped interpolation and
     /// would rise into the rider's feet, which lets the rider fall through.
     /// Put the copy under the landing spot.
-    pub(super) fn place_ghast_under(&mut self, id: u32, spot: Vec3) {
+    pub(in crate::game) fn place_ghast_under(&mut self, id: u32, spot: Vec3) {
         let Some(m) = self
             .mobs
             .iter_mut()
@@ -301,7 +63,7 @@ impl Game<'_> {
     /// `ClientPacketListener.handleLookAt`: `Entity.lookAt` from this
     /// player's feet or eyes, towards the packet's entity (its feet or eyes)
     /// when this client tracks it, else towards the packet's point.
-    pub(super) fn remote_look_at(&mut self, p: &play::PlayerLookAt) {
+    pub(in crate::game) fn remote_look_at(&mut self, p: &play::PlayerLookAt) {
         // `EntityAnchorArgument.Anchor`: 0 feet, 1 eyes.
         const EYES: i32 = 1;
         let Some(player) = self.player.as_ref() else {
@@ -335,7 +97,7 @@ impl Game<'_> {
     /// - PumpkinBlock: shears are SUCCESS (only the server carves it);
     /// - WeatheringCopperGolemStatueBlock: an axe on an unaffected statue is SUCCESS (the server
     ///   lets the golem out).
-    pub(super) fn client_block_answer(
+    pub(in crate::game) fn client_block_answer(
         &self,
         hit: &crate::game::Hit,
         held: Option<&ItemStack>,
@@ -375,7 +137,12 @@ impl Game<'_> {
     /// than past them (the server would refuse it). Its place sound is the
     /// placer's own (`playSound(player, ...)`: the server sends it to the
     /// others only).
-    pub(super) fn predict_place(&mut self, placed: &DryPlace, stack: &ItemStack, seq: i32) {
+    pub(in crate::game) fn predict_place(
+        &mut self,
+        placed: &DryPlace,
+        stack: &ItemStack,
+        seq: i32,
+    ) {
         let pos = placed.pos;
         let at = [pos.x, pos.y, pos.z];
         // The dry simulation puts the stack state in the primary write. The
@@ -407,7 +174,7 @@ impl Game<'_> {
     /// up through `ClipContext.Fluid.SOURCE_ONLY`, a block to empty a full
     /// one against, `mayUseItemAt`), BottleItem.use (water to fill from) and
     /// BoatItem.use (a block or fluid surface with room for the boat).
-    pub(super) fn use_finds_no_target(&self, held: &ItemStack) -> bool {
+    pub(in crate::game) fn use_finds_no_target(&self, held: &ItemStack) -> bool {
         let id = &*held.item;
         let facts = |pos: [i32; 3]| {
             self.res
@@ -464,7 +231,7 @@ impl Game<'_> {
     /// crossbows, tridents, spyglasses, shields, eyes of ender, whose
     /// `getUseDuration` 0 never counts down to the end) or the server ends
     /// it (a mod's item): its use only counts ticks here.
-    pub(super) fn held_until_released(&self, stack: &ItemStack) -> bool {
+    pub(in crate::game) fn held_until_released(&self, stack: &ItemStack) -> bool {
         if self.mod_use(stack) {
             return true;
         }
@@ -501,7 +268,7 @@ impl Game<'_> {
     /// runs the client half of `Item.releaseUsing` (a Riptide launch moves the
     /// player itself). Vanilla reaches it both when the use key is let go and,
     /// in the same tick, when a keybind opens a screen.
-    pub(super) fn release_remote_use(&mut self) {
+    pub(in crate::game) fn release_remote_use(&mut self) {
         self.send_action(6);
         // a mod's Stop may skip the item's release, and a mod's own release follows.
         let hand = self.used_hand();
@@ -520,32 +287,12 @@ impl Game<'_> {
             });
         }
     }
-    /// The server's death message; chat uses the shared ChatComponent.
-    pub(in crate::game) fn remote_hud(&self, batch: &mut HudBatch) {
-        let Some(r) = &self.remote else { return };
-        let atlas = &self.gui.atlas;
-        let w = batch.width;
-        if self.client.screen == Screen::Dead
-            && let Some(message) = &r.death_message
-        {
-            // DeathScreen draws the styled cause component.
-            let tw = atlas.font.width_text(message);
-            batch.text_styled(
-                atlas,
-                message,
-                ((w - tw) / 2.0).floor(),
-                85.0,
-                u32::MAX,
-                true,
-            );
-        }
-    }
 }
 
 impl Game<'_> {
     /// `Entity.isColliding(pos, state)` for the local player: the state's own
     /// collision shape, at the player's pose, against the player's box.
-    pub(super) fn block_meets_player(&self, pos: [i32; 3], state: BlockStateId) -> bool {
+    pub(in crate::game) fn block_meets_player(&self, pos: [i32; 3], state: BlockStateId) -> bool {
         let Some(player) = self.player.as_ref() else {
             return false;
         };

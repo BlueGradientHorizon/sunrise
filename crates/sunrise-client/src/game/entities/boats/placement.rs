@@ -87,7 +87,7 @@ impl RayWorld for OutlineFluidRay<'_, '_> {
 }
 impl Game<'_> {
     /// `Item.getPlayerPOVHitResult`: float view vector, OUTLINE and Fluid.ANY.
-    pub(super) fn boat_item_hit(&self) -> Option<[f64; 3]> {
+    pub(in crate::game) fn boat_item_hit(&self) -> Option<[f64; 3]> {
         let [x, y, z] = self.eye_position()?;
         let start = Vec3::new(x, y, z);
         let dir = sunrise_world::view_direction::view_vector(self.pitch, self.yaw);

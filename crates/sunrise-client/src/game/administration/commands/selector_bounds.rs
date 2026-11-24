@@ -12,7 +12,7 @@ fn extents((lo, hi): ([f64; 3], [f64; 3])) -> Aabb {
 }
 
 /// `EntitySelectorParser.createAabb`, moved by the selector origin.
-pub(super) fn selector_box(origin: [f64; 3], delta: [f64; 3]) -> Aabb {
+pub(in crate::game) fn selector_box(origin: [f64; 3], delta: [f64; 3]) -> Aabb {
     let lo = std::array::from_fn(|i| origin[i] + delta[i].min(0.0));
     let hi = std::array::from_fn(|i| origin[i] + (delta[i].max(0.0) + 1.0));
     extents((lo, hi))

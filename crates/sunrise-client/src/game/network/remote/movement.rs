@@ -2,7 +2,7 @@ use sunrise_world::stepped_interpolation::{Path, PosRot, Start, SteppedInterpola
 
 /// The packet a living entity's move came in.
 #[derive(Clone, Copy, PartialEq)]
-pub(super) enum MovePacket {
+pub(in crate::game) enum MovePacket {
     /// `handleMoveEntity`: always interpolated.
     Move,
     /// `handleEntityPositionSync` for a ticking entity.
@@ -18,7 +18,7 @@ impl MovePacket {
     /// A position sync measures it from where the entity is, a teleport from
     /// where it is headed (`PositionMoveRotation.of`'s
     /// `getClientPositionAndRotation`).
-    pub(super) fn snaps(
+    pub(in crate::game) fn snaps(
         self,
         handler: &SteppedInterpolation,
         entity: PosRot,
@@ -42,7 +42,7 @@ impl MovePacket {
 /// (`adjustInterpolationTargetFromDeltas`), which this handler doesn't port,
 /// so the steps are dropped instead. That is the same for an entity that
 /// wasn't moving, as a teleported one usually isn't.
-pub(super) fn stepped_move(
+pub(in crate::game) fn stepped_move(
     handler: &mut SteppedInterpolation,
     packet: MovePacket,
     entity: PosRot,

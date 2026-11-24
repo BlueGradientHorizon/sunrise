@@ -2,10 +2,15 @@
 #[path = "pick_sections.rs"]
 pub(in crate::game) mod pick_sections;
 
+#[allow(unused_imports)]
 use super::Game;
+#[allow(unused_imports)]
 use super::pick_accumulator::{PickAccumulator, PickCandidate, pick_ray_segment};
+#[allow(unused_imports)]
 use mod_api::{BlockPos, CrosshairTarget, EntityRef};
+#[allow(unused_imports)]
 use sunrise_client::{items::ItemStack, save::uuid_text};
+#[allow(unused_imports)]
 use sunrise_core::geometry::{Aabb, Vec3};
 
 #[derive(Clone, Copy)]
@@ -23,7 +28,7 @@ pub(in crate::game) enum CrosshairDecision {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub(super) struct CrosshairEntityHit {
+pub(in crate::game) struct CrosshairEntityHit {
     pub id: i32,
     pub distance: f64,
     pub point: [f64; 3],
@@ -31,7 +36,7 @@ pub(super) struct CrosshairEntityHit {
     pub suggest_uuid: bool,
 }
 
-pub(super) fn aabb_extents((lo, hi): ([f64; 3], [f64; 3])) -> Aabb {
+pub(in crate::game) fn aabb_extents((lo, hi): ([f64; 3], [f64; 3])) -> Aabb {
     Aabb::new(
         Vec3::new(lo[0], lo[1], lo[2]),
         Vec3::new(hi[0], hi[1], hi[2]),
@@ -49,7 +54,7 @@ pub(in crate::game) fn knot_bounds(block: [i32; 3]) -> Aabb {
 }
 
 impl Game<'_> {
-    pub(super) fn crosshair_entity_hit(&self) -> Option<CrosshairEntityHit> {
+    pub(in crate::game) fn crosshair_entity_hit(&self) -> Option<CrosshairEntityHit> {
         if let Some(hit) = self.cached_entity_pick() {
             let (entity, distance, point) = hit?;
             return Some(CrosshairEntityHit {
@@ -94,7 +99,7 @@ impl Game<'_> {
     }
 
     /// The stored frame decision on a window; original during dispatch.
-    pub(super) fn crosshair_target(&self) -> Option<CrosshairTarget> {
+    pub(in crate::game) fn crosshair_target(&self) -> Option<CrosshairTarget> {
         if !self.native_window() || self.title.0.is_some() {
             return None;
         }
@@ -112,7 +117,7 @@ impl Game<'_> {
         }
     }
 
-    pub(super) fn pick_entity_candidate_within(
+    pub(in crate::game) fn pick_entity_candidate_within(
         &mut self,
         max_distance: f64,
         max_distance_sq: f64,
@@ -141,7 +146,7 @@ impl Game<'_> {
     }
 
     /// Runs the unified `LocalPlayer.raycastHitResult` entity result for unstored consumers.
-    pub(super) fn pick_entity_hit_unified(&self) -> Option<PickCandidate> {
+    pub(in crate::game) fn pick_entity_hit_unified(&self) -> Option<PickCandidate> {
         match self.compute_crosshair_decision() {
             CrosshairDecision::Entity(hit) => Some(hit),
             _ => None,
@@ -210,7 +215,7 @@ impl Game<'_> {
     /// Single pickable-entity query matching `LocalPlayer.pick` and `Level.getEntities`:
     /// sweeps the camera entity's current bounding box, visits accessible sections in
     /// `EntitySectionStorage` order (filtering by raw box), then appends dragon parts.
-    pub(super) fn collect_pick_candidates_within(
+    pub(in crate::game) fn collect_pick_candidates_within(
         &self,
         max_distance: f64,
         pick: &mut PickAccumulator,
@@ -239,11 +244,11 @@ impl Game<'_> {
     }
 
     /// Entity under the crosshair before any block (`Some(None)` when `getPickResult` is empty).
-    pub(super) fn pick_entity_hit_at(&self) -> Option<(f64, Option<i32>)> {
+    pub(in crate::game) fn pick_entity_hit_at(&self) -> Option<(f64, Option<i32>)> {
         self.crosshair_entity_hit()
             .map(|hit| (hit.distance, hit.pickable.then_some(hit.id)))
     }
-    pub(super) fn pick_entity_hit(&self) -> Option<Option<i32>> {
+    pub(in crate::game) fn pick_entity_hit(&self) -> Option<Option<i32>> {
         self.pick_entity_hit_at().map(|hit| hit.1)
     }
     /// Returns the wire entity id under the crosshair before any block.
@@ -253,7 +258,7 @@ impl Game<'_> {
     }
 
     /// `ClientSuggestionProvider.getSelectedEntities`: UUID of the crosshair entity hit.
-    pub(super) fn crosshair_entity_uuid(&self) -> Option<String> {
+    pub(in crate::game) fn crosshair_entity_uuid(&self) -> Option<String> {
         self.crosshair_entity_hit()
             .filter(|hit| hit.suggest_uuid)
             .and_then(|hit| self.persist.uuids.get(&(hit.id as u32)).copied())
@@ -261,7 +266,7 @@ impl Game<'_> {
     }
 
     /// `Entity.getPickResult` of the entity `id`.
-    pub(super) fn entity_pick_result(&self, id: i32) -> Option<ItemStack> {
+    pub(in crate::game) fn entity_pick_result(&self, id: i32) -> Option<ItemStack> {
         let id = id as u32;
         // EnderDragonPart.getPickResult delegates to its owner's Mob.getPickResult.
         let id = self
@@ -311,24 +316,8 @@ impl Game<'_> {
         Some(ItemStack::new(&item, 1))
     }
 
-    /// The fence of a natural knot or an explicitly summoned/loaded leash knot.
-    fn pick_knot_fence(&self, id: u32) -> Option<[i32; 3]> {
-        self.natural_knot(id).or_else(|| {
-            let knot = self
-                .others
-                .0
-                .iter()
-                .find(|o| o.id == id && o.knot_check.is_some())?;
-            if self.level_entity(id as i32) != Some(super::commands::Target::Other(id)) {
-                return None;
-            }
-            let block = sunrise_core::position::BlockPos::containing(knot.position);
-            Some([block.x, block.y, block.z])
-        })
-    }
-
     /// `Player.isWithinEntityInteractionRange(entity, 3.0)`.
-    pub(super) fn within_entity_range(&self, id: i32) -> bool {
+    pub(in crate::game) fn within_entity_range(&self, id: i32) -> bool {
         let Some(eye) = self.eye_position() else {
             return false;
         };
@@ -359,13 +348,20 @@ impl Game<'_> {
 }
 
 #[cfg(test)]
-mod tests {
+pub(in crate::game) mod tests {
+    #[allow(unused_imports)]
     use super::Game;
+    #[allow(unused_imports)]
     use crate::game::commands::Target;
+    #[allow(unused_imports)]
     use crate::game::creatures::SpawnSite;
+    #[allow(unused_imports)]
     use crate::game::dragon::dragon_part_id;
+    #[allow(unused_imports)]
     use crate::game::native_entity_refs::tests::with_game;
+    #[allow(unused_imports)]
     use sunrise_client::{items::ItemStack, motion::PlayerMotion};
+    #[allow(unused_imports)]
     use sunrise_core::geometry::Vec3;
 
     #[test]
@@ -376,99 +372,5 @@ mod tests {
         assert!(!Game::has_pick_result(Some(Target::DragonPart(40))));
         assert!(Game::has_pick_result(Some(Target::Boat(50))));
         assert!(Game::has_pick_result(Some(Target::Mob(60))));
-    }
-
-    #[test]
-    #[ignore = "daily"]
-    fn server_entity_pick_returns_lead_and_delegates_dragon_parts() {
-        crate::game::in_own_process(
-            "game::pick_entity::tests::server_entity_pick_returns_lead_and_delegates_dragon_parts",
-            || {
-                with_game(|game| {
-                    game.player =
-                        Some(PlayerMotion::new(game.motion, Vec3::new(0.5, 65.0, 0.5)).unwrap());
-                    let knot = game.tie_knot([0, 65, 2]);
-                    let far_knot = game.tie_knot([0, 65, 10]);
-                    let Some(Target::Other(explicit_knot)) = game
-                        .summon_with_nbt("minecraft:leash_knot", [1.5, 65.0, 2.5], "{}")
-                        .unwrap()
-                    else {
-                        panic!("expected an explicit leash knot");
-                    };
-                    for id in [knot, explicit_knot] {
-                        assert!(
-                            game.within_entity_range(id as i32),
-                            "knot {id} is reachable"
-                        );
-                        assert_eq!(
-                            game.entity_pick_result(id as i32),
-                            Some(ItemStack::new("minecraft:lead", 1))
-                        );
-                    }
-                    assert!(
-                        !game.within_entity_range(far_knot as i32),
-                        "far knot outside reach+3 must fail server reach"
-                    );
-                    // Cross the signed i32 boundary so later dragon parts carry negative wire IDs.
-                    game.server.next_entity = (i32::MAX as u32) - 3;
-                    let dragon = game
-                        .spawn_dragon_facing([0.5, 65.0, 3.5], SpawnSite::Plain, Some(0.0))
-                        .unwrap();
-                    let parent_result = game.entity_pick_result(dragon as i32);
-                    assert_eq!(
-                        parent_result,
-                        Some(ItemStack::new("minecraft:ender_dragon_spawn_egg", 1))
-                    );
-                    let body_part_id = dragon_part_id(dragon, 2) as i32;
-                    assert!(body_part_id < 0, "expected negative signed part wire ID");
-                    assert!(game.within_entity_range(body_part_id));
-                    for part in 0..8 {
-                        assert_eq!(
-                            game.entity_pick_result(dragon_part_id(dragon, part) as i32),
-                            parent_result
-                        );
-                    }
-
-                    // Exercise the real PickItemFromEntity server packet handler through a creative guest.
-                    let (mut hub, _rx, _other) =
-                        crate::game::lan_particles::tests::test_hub("PickEntity", Vec::new(), None);
-                    let gi = hub.guests.connection_index(1).unwrap();
-                    hub.guests.update(gi, |g| {
-                        g.game_mode = 1;
-                        g.position = [0.5, 65.0, 0.5];
-                        g.placed = true;
-                        g.dimension = "minecraft:overworld".into();
-                        g.inventory[0] = None;
-                        g.selected = 0;
-                    });
-                    game.lan = Some(crate::game::lan::LanHost::for_test(hub));
-
-                    for (id, expected) in [
-                        (far_knot as i32, None),
-                        (knot as i32, Some("minecraft:lead")),
-                        (explicit_knot as i32, Some("minecraft:lead")),
-                        (body_part_id, Some("minecraft:ender_dragon_spawn_egg")),
-                    ] {
-                        game.lan.as_mut().unwrap().hub.guests.update(gi, |g| {
-                            g.inventory[0] = None;
-                            g.selected = 0;
-                        });
-                        game.lan_guest_packet(
-                            1,
-                            sunrise_protocol::packets::play::Serverbound::PickItemFromEntity(
-                                sunrise_protocol::packets::play::PickItemFromEntity {
-                                    id,
-                                    include_data: false,
-                                },
-                            ),
-                        );
-                        let held = game.lan.as_ref().unwrap().hub.guests[gi].inventory[0]
-                            .as_ref()
-                            .map(|s| &*s.item);
-                        assert_eq!(held, expected, "PickItemFromEntity({id})");
-                    }
-                });
-            },
-        );
     }
 }

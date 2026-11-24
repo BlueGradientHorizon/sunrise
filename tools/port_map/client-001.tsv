@@ -33,7 +33,7 @@ ClientCommonPacketListenerImpl.handleKeepAlive	port	crates/sunrise-client/src/ne
 ClientCommonPacketListenerImpl.handleCustomPayload	port	crates/sunrise-client/src/net.rs::receive_brand	gap: minor: reads the brand only; other custom payloads go to the game and are ignored
 ClientCommonPacketListenerImpl.handleResourcePackPush	port	crates/sunrise-client/src/game/world/server_packs.rs::Game::handle_pack_push
 ClientCommonPacketListenerImpl.handleResourcePackPop	port	crates/sunrise-client/src/game/world/server_packs.rs::Game::handle_pack_pop
-ClientCommonPacketListenerImpl.handlePostEffects	inline	crates/sunrise-client/src/game/network/remote/mod.rs::Game::apply_packet
+ClientCommonPacketListenerImpl.handlePostEffects	inline	crates/sunrise-client/src/game/network/remote/mod_client.rs::Game::apply_packet
 ClientCommonPacketListenerImpl.preparePackPrompt	port	crates/sunrise-client/src/game/world/server_packs.rs::PackPrompt::texts	builds the server prompt line from the header and the server's prompt
 ClientCommonPacketListenerImpl.handleStoreCookie	port	crates/sunrise-client/src/net.rs::receive_play	stores the cookie for a later transfer or cookie request
 ClientCommonPacketListenerImpl.handleCustomReportDetails	skip:debug		extra lines for crash reports only
@@ -82,18 +82,18 @@ ClientHandshakePacketListenerImpl.handleCompression	port	crates/sunrise-client/s
 ClientHandshakePacketListenerImpl.handleCustomQuery	port	crates/sunrise-client/src/net.rs::run	answers an unknown custom query with no data
 ClientHandshakePacketListenerImpl.fillListenerSpecificCrashDetails	skip:debug		crash report details only
 ClientLevel.handleBlockChangedAck	port	crates/sunrise-client/src/game/network/remote/break_prediction.rs::Game::end_predictions	settles the predicted block actions up to the sequence
-ClientLevel.onBlockEntityAdded	port	crates/sunrise-client/src/game.rs::Game::entity_geometry	off-screen block entities (beacon, end gateway, structure and test blocks) are drawn without a view test
+ClientLevel.onBlockEntityAdded	port	crates/sunrise-client/src/game/game_client.rs::Game::entity_geometry	off-screen block entities (beacon, end gateway, structure and test blocks) are drawn without a view test
 ClientLevel.syncBlockState	port	crates/sunrise-client/src/game/network/remote/break_prediction.rs::Game::end_predictions	gap: minor: writes the server's state but does not move the player out when the block would sit on them (absSnapTo)
 ClientLevel.setBlock	port	crates/sunrise-client/src/game/network/remote/mod.rs::Game::set_block	gap: minor: the prediction bookkeeping is in Game::server_block
-ClientLevel.<init>	port	crates/sunrise-client/src/game/network/remote/session.rs::Game::enter_remote_dimension	gap: minor: the environment layers are applied in Game::render
-ClientLevel.addEnvironmentAttributeLayers	port	crates/sunrise-client/src/game.rs::Game::render	sky colour and sky light move during a lightning flash
+ClientLevel.<init>	port	crates/sunrise-client/src/game/network/remote/session_client.rs::Game::enter_remote_dimension	gap: minor: the environment layers are applied in Game::render
+ClientLevel.addEnvironmentAttributeLayers	port	crates/sunrise-client/src/game/game_client.rs::Game::render	sky colour and sky light move during a lightning flash
 ClientLevel.pollLightUpdates	skip:other		light is applied when it arrives or relit at once (light.rs relight); there is no queue to poll
 ClientLevel.getPrecipitationAt	port	crates/sunrise-client/src/game/world/weather.rs::precipitation_at	requires a loaded column, then uses the seeded block biome and the joined level's sea level
 ClientLevel.removeBlockBreakingProgress	inline	crates/sunrise-client/src/game/modding/client_cracks.rs::Game::destroy_block_progress	minor: the 400-tick expiry runs on every update, not every 20 ticks
 ClientLevel.removeProgress	inline	crates/sunrise-client/src/game/modding/client_cracks.rs::Game::destroy_block_progress	cracks are keyed by breaker id, so there are no per-position sets to tidy
 ClientLevel.shouldTickDeath	missing		minor: death animations tick for every remote mob held; no simulation-distance check
-ClientLevel.tickNonPassenger	port	crates/sunrise-client/src/game/network/remote/tick.rs::Game::tick_remote_entities	ticks each remote entity
-ClientLevel.tickPassenger	port	crates/sunrise-client/src/game/entities/passengers.rs::Game::position_riders	gap: minor: passengers are placed on their vehicle; no per-passenger tick
+ClientLevel.tickNonPassenger	port	crates/sunrise-client/src/game/network/remote/tick_client.rs::Game::tick_remote_entities	ticks each remote entity
+ClientLevel.tickPassenger	port	crates/sunrise-client/src/game/entities/passengers_client.rs::Game::position_riders	gap: minor: passengers are placed on their vehicle; no per-passenger tick
 ClientLevel.update	skip:other		runs the light queue each tick; Sunrise relights when changes arrive
 ClientLevel.unload	inline	crates/sunrise-client/src/game/network/remote/packets_world.rs::Game::apply_forget_level_chunk_packet	minor: the ForgetLevelChunk arm clears block entities and renderer columns; light and entity ticking are not toggled
 ClientLevel.onChunkLoaded	inline	crates/sunrise-client/src/game/network/remote_chunks.rs::Game::remote_chunk	minor: chunks are meshed on arrival; no tint cache to clear and no entity-ticking gate
@@ -109,7 +109,7 @@ ClientLevel.getRelativeTickSpeed	skip:other		no caller in the 26.3 client source
 ClientLevel.destroyBlockProgress	port	crates/sunrise-client/src/game/modding/client_cracks.rs::Game::destroy_block_progress	sets or clears another player's crack on a block
 ClientLevel.addAlwaysVisibleParticle	port	crates/sunrise-client-render/src/particles.rs::ParticleEngine::add_with	always-show flag set
 ClientLevel.doAddParticle	port	crates/sunrise-client-render/src/particles.rs::ParticleEngine::add_with	drops particles beyond 32 blocks and at minimal particle level
-ClientLevel.getSkyFlashTime	inline	crates/sunrise-client/src/game.rs::Game::render	the flash check with the hideLightningFlashes option
+ClientLevel.getSkyFlashTime	inline	crates/sunrise-client/src/game/game_client.rs::Game::render	the flash check with the hideLightningFlashes option
 ClientLevel.calculateBlockTint	port	crates/sunrise-client-render/src/mesher.rs::MeshTables::terrain_particle_tint	gap: minor: returns none for grass-block tints
 ClientLevel.playBreakingSound	port	crates/sunrise-client/src/game/interface/level_particles.rs::Game::breaking_block_effects	the block's hit sound while digging
 ClientLevel.getClientLeafTintColor	port	crates/sunrise-client/src/animate_tick.rs::AnimateContext::foliage	leaf tint for tinted leaves particles; the caller is TintedParticleLeavesBlock

@@ -14,8 +14,8 @@ MobEffectInstance.<init>	port	crates/sunrise-client-render/src/effects.rs::Effec
 MobEffectInstance.asDetails	inline	crates/sunrise-client-render/src/effects.rs::PlayerEffects::saved	gap: minor: only id, duration, amplifier, ambient and particles are saved; hidden_effect is lost on save and show_icon is written as the particles flag
 MobEffectInstance.setDetailsFrom	inline	crates/sunrise-client-render/src/effects.rs::EffectInstance::downgrade	copies the hidden effect's details when the active one runs out; the copy constructor is Clone
 MobEffectInstance.isShorterDurationThan	port	crates/sunrise-client-render/src/effects.rs::EffectInstance::shorter_than
-MobEffectInstance.withScaledDuration	inline	crates/sunrise-client/src/game/items/potions.rs::Game::cloud_affect	the scaled closure: floor(duration * 0.25) at least 1 for lingering clouds; fixed 0.25, the stack's potion_duration_scale is not read
-MobEffectInstance.mapDuration	inline	crates/sunrise-client/src/game/items/potions.rs::Game::splash	the (int)(scale * duration + 0.5) of a splash potion on mobs (splash_on_player for the player); potions are never infinite
+MobEffectInstance.withScaledDuration	inline	crates/sunrise-client/src/game/items/potions_server.rs::Game::cloud_affect	the scaled closure: floor(duration * 0.25) at least 1 for lingering clouds; fixed 0.25, the stack's potion_duration_scale is not read
+MobEffectInstance.mapDuration	inline	crates/sunrise-client/src/game/items/potions_server.rs::Game::splash	the (int)(scale * duration + 0.5) of a splash potion on mobs (splash_on_player for the player); potions are never infinite
 MobEffectInstance.tickDownDuration	port	crates/sunrise-client-render/src/effects.rs::EffectInstance::tick_down	hidden effect ticks down too; infinite stays
 MobEffectInstance.downgradeToHiddenEffect	port	crates/sunrise-client-render/src/effects.rs::EffectInstance::downgrade	gap: minor: mobs keep no hidden effects (Mob::add_effect drops a weaker one)
 MobEffectInstance.onMobRemoved	inline	crates/sunrise-client/src/game/items/potions.rs::Game::effects_on_death	oozing, weaving and wind charged run when their bearer dies (player or mob)
@@ -55,10 +55,10 @@ AreaEffectCloud.refreshDimensions	inline	crates/sunrise-client/src/game/items/po
 AreaEffectCloud.readAdditionalSaveData	port	crates/sunrise-client/src/game/items/potions.rs::Game::load_potion_cloud	loaded potion effects, age, radius, duration, wait, reapplication, per-use/per-tick changes and duration scale join the live cloud model; owner resolution and custom particles remain unmodeled; save/reopen remains separate
 AreaEffectCloud.addAdditionalSaveData	port	crates/sunrise-client/src/game/items/potions.rs::potion_cloud_to_nbt	the lifetime, radius, the four use settings, RadiusPerTick, potion_duration_scale and the effects as `custom_effects` with the colour; a dragon's own breath carries no potion and is not written
 AreaEffectCloud.get	skip:other		entity data component accessor for predicates and /data; Sunrise keeps the cloud's potion in PotionCloud
-AreaEffectCloud.applyImplicitComponents	inline	crates/sunrise-client/src/game/items/potions.rs::Game::splash	the lingering branch takes the thrown stack's potion effects and colour; potion_duration_scale is fixed at 0.25
-AreaEffectCloud.applyImplicitComponent	inline	crates/sunrise-client/src/game/items/potions.rs::Game::splash	same: potion contents only
+AreaEffectCloud.applyImplicitComponents	inline	crates/sunrise-client/src/game/items/potions_server.rs::Game::splash	the lingering branch takes the thrown stack's potion effects and colour; potion_duration_scale is fixed at 0.25
+AreaEffectCloud.applyImplicitComponent	inline	crates/sunrise-client/src/game/items/potions_server.rs::Game::splash	same: potion contents only
 Avatar.defineSynchedData	port	crates/sunrise-client/src/lan/hub.rs::Hub::player_state	entry 15 (main arm) is paired when left and resets to right on a tracked change; entry 16 carries skin parts
-Avatar.isModelPartShown	port	crates/sunrise-client/src/game/network/remote/status.rs::Game::update_remote_skins	the Skin Customization cape option reaches the drawn player
+Avatar.isModelPartShown	port	crates/sunrise-client/src/game/network/remote/status_client.rs::Game::update_remote_skins	the Skin Customization cape option reaches the drawn player
 Bucketable.loadDefaultDataFromBucketTag	port	crates/sunrise-client/src/entity_nbt.rs::apply_item_components	NoAI, Silent, NoGravity, Glowing, Invulnerable, PersistenceRequired and Health, read from the bucket's entity data
 ContainerUser.getLivingEntity	skip:java		interface cast; every container user here is the player
 ConversionTracker.addAdditionalSaveData	inline	crates/sunrise-client/src/entity_nbt.rs::mob_to_nbt	Zombie-derived InWaterTime saves -1 unless cached eyes are in water; gap: supplied NBT can still shadow live counter progress

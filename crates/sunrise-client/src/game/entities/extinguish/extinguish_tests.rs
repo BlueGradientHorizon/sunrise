@@ -1,24 +1,31 @@
 //! Powder snow and water cauldrons putting a burning player out: the hiss
 //! (`Entity.playEntityOnFireExtinguishedSound`) plays either way, the block
 //! change only where `mayInteract` allows it.
+#[allow(unused_imports)]
 use super::*;
+#[allow(unused_imports)]
 use crate::game::game_tests::tests::server_game;
+#[allow(unused_imports)]
 use sunrise_client::motion::{MotionWorld, PlayerMotion};
+#[allow(unused_imports)]
 use sunrise_core::geometry::Vec3;
+#[allow(unused_imports)]
 use sunrise_world::chunk::BlockState;
+#[allow(unused_imports)]
 use sunrise_world::entity_move::MovementRecord;
+#[allow(unused_imports)]
 use sunrise_world::registry::BlockStateId;
 
 /// A server's game on the prepared resources, or None when they are absent
 /// (CI has none: the tests then skip quietly).
-fn server<'a>(
+pub(in crate::game) fn server<'a>(
     resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>,
 ) -> Option<Game<'a>> {
     std::env::var_os("SUNRISE_TEST_RESOURCES")?;
     Some(server_game(resources))
 }
 
-fn state(game: &Game<'_>, name: &str, level: &str) -> BlockStateId {
+pub(in crate::game) fn state(game: &Game<'_>, name: &str, level: &str) -> BlockStateId {
     let mut state = BlockState {
         name: name.into(),
         properties: Default::default(),
@@ -29,24 +36,18 @@ fn state(game: &Game<'_>, name: &str, level: &str) -> BlockStateId {
     game.pack.assets.registry.resolve(&state).unwrap()
 }
 
-fn block(game: &Game<'_>, pos: [i32; 3]) -> String {
+pub(in crate::game) fn block(game: &Game<'_>, pos: [i32; 3]) -> String {
     let state = game.world.block(pos[0], pos[1], pos[2]);
     game.res.facts().get(state).name.to_string()
 }
 
-fn heard(game: &Game<'_>) -> u32 {
-    game.audio
-        .0
-        .heard
-        .get("minecraft:entity.generic.extinguish_fire")
-        .copied()
-        .unwrap_or(0)
-}
+#[allow(unused_imports)]
+pub(in crate::game) use crate::game::client_side::extinguish_client::extinguish_tests::heard;
 
 /// A server's player standing in the block at `pos` (feet on its floor), on
 /// fire: the tick `guest_server_tick` runs for it, its block effects and the
 /// consumer of their events.
-fn burn_in(game: &mut Game<'_>, pos: [i32; 3]) {
+pub(in crate::game) fn burn_in(game: &mut Game<'_>, pos: [i32; 3]) {
     let at = Vec3::new(
         f64::from(pos[0]) + 0.5,
         f64::from(pos[1]),
@@ -85,7 +86,7 @@ fn burn_in(game: &mut Game<'_>, pos: [i32; 3]) {
 
 /// Outside the world border, as `/worldborder center 1000 1000` and
 /// `/worldborder set 100` put the origin.
-fn outside_the_border(game: &mut Game<'_>) {
+pub(in crate::game) fn outside_the_border(game: &mut Game<'_>) {
     game.border.set_center([1000.0, 1000.0]);
     game.border.set_size(100.0);
 }

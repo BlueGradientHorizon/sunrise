@@ -1,11 +1,17 @@
 //! The `sound_type` Part method (`IBlockExtension.getSoundType`). The client library asks through
 //! `native_client_hooks`; only a state whose block has a subscribing part is converted, and only
 //! then is its own sound type kept to fall back on.
+#[allow(unused_imports)]
 use super::api_values::{TryIntoApi, block_state};
+#[allow(unused_imports)]
 use super::{Game, GameLevel};
+#[allow(unused_imports)]
 use mod_api::{BlockSoundCause, BlockSoundType};
+#[allow(unused_imports)]
 use std::sync::Arc;
+#[allow(unused_imports)]
 use sunrise_core::{identifier::Identifier, position::BlockPos};
+#[allow(unused_imports)]
 use sunrise_world::{
     level::data::Sounds, native_load_context::LoopContext, registry::BlockStateId,
 };
@@ -41,7 +47,7 @@ pub(crate) fn sound_type(
 
 /// Whether a part's answer can be played: a finite volume and pitch of at least 0, and every
 /// event a `namespace:path` id (a mod's own included; one the resources lack plays nothing).
-fn playable(sound: &BlockSoundType) -> bool {
+pub(in crate::game) fn playable(sound: &BlockSoundType) -> bool {
     let level = |value: f32| value.is_finite() && value >= 0.0;
     let events = [
         &sound.break_sound,
@@ -88,21 +94,6 @@ impl Game<'_> {
         let player = (self.own_entity_id() as u32, "minecraft:player");
         self.block_sound_type(pos, state, Some(player), cause)
     }
-    /// `LevelEventHandler`'s break sound (level event 2001, which a client's predicted break
-    /// also plays): the block's break sound at its centre, at `(volume + 1) / 2` and pitch × 0.8.
-    /// None for air.
-    pub(in crate::game) fn play_break_sound(&mut self, pos: [i32; 3], state: BlockStateId) {
-        if self.res.facts().is_air(state) {
-            return;
-        }
-        let sound = self.block_sound_type(pos, state, None, BlockSoundCause::Break);
-        self.audio.0.play(
-            &sound.break_sound,
-            Some(pos.map(|v| f64::from(v) + 0.5)),
-            (sound.volume + 1.0) / 2.0,
-            sound.pitch * 0.8,
-        );
-    }
 }
 
 impl GameLevel<'_> {
@@ -145,7 +136,7 @@ impl GameLevel<'_> {
 }
 
 #[cfg(test)]
-mod tests {
+pub(in crate::game) mod tests {
     use super::super::native_entity_refs::tests::with_game;
     use super::playable;
     use mod_api::BlockSoundCause::{Break, Dig, Fall, Place, Step};

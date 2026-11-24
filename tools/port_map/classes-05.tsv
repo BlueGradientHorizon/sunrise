@@ -37,11 +37,11 @@ EntityPositionSource.getId	skip:java		accessor; Sunrise's listeners hold the sou
 EntityPositionSource.getPosition	port	crates/sunrise-client/src/mobs/warden.rs::listen	gap: minor: covers the warden's eye-height listener only; no other position source is used
 EntityPositionSource.getUuid	skip:java		accessor; Sunrise holds the source as a Who
 EntityPositionSource.resolveEntity	skip:other		the source is a Who held by the listener, so there is no entity lookup to port
-EuclideanGameEventListenerRegistry.getPostableListenerPosition	inline	crates/sunrise-client/src/game/blocks/sculk.rs::Game::post_game_event	the in-range distance test that picks the listeners
+EuclideanGameEventListenerRegistry.getPostableListenerPosition	inline	crates/sunrise-client/src/game/blocks/sculk_server.rs::Game::post_game_event	the in-range distance test that picks the listeners
 EuclideanGameEventListenerRegistry.register	port	crates/sunrise-client/src/game/blocks/sculk.rs::Game::sculk_scan_chunk	a sculk block found in a loaded chunk enters the index
 EuclideanGameEventListenerRegistry.sendDebugInfo	skip:debug		debug rendering of listeners
 EuclideanGameEventListenerRegistry.unregister	port	crates/sunrise-client/src/game/blocks/sculk.rs::Game::sculk_sync_index	index entries of removed sculk blocks are dropped
-EuclideanGameEventListenerRegistry.visitInRangeListeners	port	crates/sunrise-client/src/game/blocks/sculk.rs::Game::post_game_event	walks the index for listeners in range, then the wardens
+EuclideanGameEventListenerRegistry.visitInRangeListeners	port	crates/sunrise-client/src/game/blocks/sculk_server.rs::Game::post_game_event	walks the index for listeners in range, then the wardens
 VibrationInfo.getEntity	port	crates/sunrise-client/src/game/blocks/sculk.rs::Game::sculk_receive	the source is held as a Who and read there
 VibrationInfo.getProjectileOwner	port	crates/sunrise-client/src/game/blocks/sculk.rs::Game::sculk_receive	the projectile owner is captured when posted (info.owner) and read there
 VibrationSelector.addCandidate	port	crates/sunrise-client-render/src/sculk.rs::Selector::add_candidate

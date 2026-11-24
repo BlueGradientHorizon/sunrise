@@ -17,7 +17,7 @@ Add this row to the `sunrise-mod.toml` of your native mod. Keep the `[native]` p
 ```toml
 [[native.mixin]]
 id = "head"
-target = "sunrise_client::game::autosave::Game<'_>::on_tick_rate_changed"
+target = "sunrise_client::game::server_side::autosave_server::Game<'_>::on_tick_rate_changed"
 kind = "HEAD"
 cancellable = true
 helper = "src/mixins/head.rs"
@@ -114,7 +114,7 @@ Read these files at the `mixins` revision pinned in your manifest when checking 
 
 A target is the function's module path, then its type and name:
 
-- a method: `sunrise_client::game::autosave::Game<'_>::on_tick_rate_changed`, where the module is the one
+- a method: `sunrise_client::game::server_side::autosave_server::Game<'_>::on_tick_rate_changed`, where the module is the one
   holding the `impl` block and the type is written as there, lifetimes included;
 - a free function: `sunrise_client::game::commands::misc::millis`;
 - a trait method: the module of the `impl Trait for Type` block, then `<Type as Trait>` as written, then the

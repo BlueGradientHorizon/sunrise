@@ -1,8 +1,11 @@
 //! Powder snow and water cauldrons putting a burning player out: the block
 //! change they make is gated on `mayInteract`, and the move that put the fire
 //! out plays the extinguish hiss (`Entity.playEntityOnFireExtinguishedSound`).
+#[allow(unused_imports)]
 use super::Game;
+#[allow(unused_imports)]
 use sunrise_client::motion::MotionEvent;
+#[allow(unused_imports)]
 use sunrise_core::position::BlockPos;
 
 impl Game<'_> {
@@ -106,4 +109,4 @@ impl Game<'_> {
 
 #[cfg(test)]
 #[path = "extinguish/extinguish_tests.rs"]
-mod extinguish_tests;
+pub(in crate::game) mod extinguish_tests;

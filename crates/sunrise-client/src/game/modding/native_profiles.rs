@@ -45,7 +45,7 @@ mod tests {
     #[ignore = "daily"]
     fn invalid_names_and_clients_resolve_no_profile() {
         if run_fresh_cases(
-            "game::native_profiles::tests::invalid_names_and_clients_resolve_no_profile",
+            "game::client_side::native_profiles::tests::invalid_names_and_clients_resolve_no_profile",
             "SUNRISE_PROFILES_CASE",
             &["server"],
         ) {

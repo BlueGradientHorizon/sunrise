@@ -2,7 +2,9 @@
 //! `remove`): feeding babies, swallowing a held block, shearing it back
 //! out, lighting an explosive one, swallowing blocks from the ground and
 //! splitting into two babies.
+#[allow(unused_imports)]
 use super::Game;
+#[allow(unused_imports)]
 use sunrise_client::{
     items::ItemStack,
     mesher::Vertex,
@@ -10,15 +12,16 @@ use sunrise_client::{
     projectiles::Projectile,
     text::Text,
 };
+#[allow(unused_imports)]
 use sunrise_core::position::BlockPos;
 
-fn block_transform(base: glam::Mat4, baby: bool) -> glam::Mat4 {
+pub(in crate::game) fn block_transform(base: glam::Mat4, baby: bool) -> glam::Mat4 {
     base * glam::Mat4::from_scale(glam::Vec3::new(1.0, -1.0, -1.0))
         * glam::Mat4::from_scale(glam::Vec3::splat(if baby { 0.5 } else { 1.0 }))
         * glam::Mat4::from_translation(glam::Vec3::new(-0.5, -0.518, -0.5))
 }
 
-fn block_overlay(fuse_ticks: i32, alpha: f32, hurt: bool) -> u32 {
+pub(in crate::game) fn block_overlay(fuse_ticks: i32, alpha: f32, hurt: bool) -> u32 {
     let fuse = if fuse_ticks >= 0 {
         fuse_ticks as f32 - alpha + 1.0
     } else {
@@ -31,7 +34,7 @@ fn block_overlay(fuse_ticks: i32, alpha: f32, hurt: bool) -> u32 {
     }
 }
 
-fn block_light(light: u32, emission: u8) -> u32 {
+pub(in crate::game) fn block_light(light: u32, emission: u8) -> u32 {
     let block = (light >> 8 & 0xFF).max(u32::from(emission) * 16);
     (light & 0xFF) | block << 8
 }
@@ -78,14 +81,8 @@ impl Game<'_> {
         }
     }
 
-    fn sulfur_sound(&mut self, index: usize, sound: &str) {
-        let at = self.mobs[index].center();
-        self.audio
-            .0
-            .play(&format!("minecraft:{sound}"), Some(at), 1.0, 1.0);
-    }
     /// Spit the swallowed block out on top (`EntityAttachment.PASSENGER`).
-    fn eject_sulfur_block(&mut self, index: usize) {
+    pub(in crate::game) fn eject_sulfur_block(&mut self, index: usize) {
         let m = &mut self.mobs[index];
         let Some(item) = m.take_body_equipment() else {
             return;
@@ -190,7 +187,7 @@ impl Game<'_> {
     /// `Bucketable.bucketMobPickup` for a sulfur cube
     /// (`SulfurCube.canBePickedUpWithBucket`: an empty bucket), as the water
     /// bucket's mobs are picked up in `interact_mob`.
-    fn bucket_sulfur_cube(&mut self, index: usize) {
+    pub(in crate::game) fn bucket_sulfur_cube(&mut self, index: usize) {
         let held = self.held().cloned();
         let at = self.mobs[index].center();
         self.client_audio_play("minecraft:item.bucket.fill_sulfur_cube", Some(at), 1.0, 1.0);
@@ -367,7 +364,7 @@ impl Game<'_> {
 }
 
 #[cfg(test)]
-mod tests {
+pub(in crate::game) mod tests {
     use super::*;
 
     #[test]
@@ -410,7 +407,7 @@ mod tests {
 }
 
 #[cfg(test)]
-mod off_level_tests {
+pub(in crate::game) mod off_level_tests {
     use super::*;
     use sunrise_core::geometry::Vec3;
 

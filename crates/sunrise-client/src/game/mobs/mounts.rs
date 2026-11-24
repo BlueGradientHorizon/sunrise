@@ -2,8 +2,11 @@
 //! armour and chests, mounting, the rider's control and jump bar
 //! (`LocalPlayer.aiStep`'s riding jump), positioning, dismounting, and the
 //! mount's health and jump bar on the HUD.
+#[allow(unused_imports)]
 use super::Game;
+#[allow(unused_imports)]
 use sunrise_client::actions::Action;
+#[allow(unused_imports)]
 use sunrise_client::{
     blocks::Fluid,
     first_person::Hand,
@@ -14,13 +17,19 @@ use sunrise_client::{
     pose::{Dimensions, Pose},
     sprint::Keys,
 };
+#[allow(unused_imports)]
 use sunrise_core::{
     geometry::{Aabb, Vec3, VoxelShape},
     random::RandomSource,
 };
+#[allow(unused_imports)]
 use sunrise_world::living_air::escape_vector;
 
-pub(super) fn steering_item(species: Species, main: Option<&str>, offhand: Option<&str>) -> bool {
+pub(in crate::game) fn steering_item(
+    species: Species,
+    main: Option<&str>,
+    offhand: Option<&str>,
+) -> bool {
     let item = match species {
         Species::Pig => "minecraft:carrot_on_a_stick",
         Species::Strider => "minecraft:warped_fungus_on_a_stick",
@@ -30,15 +39,15 @@ pub(super) fn steering_item(species: Species, main: Option<&str>, offhand: Optio
 }
 
 #[derive(Default)]
-pub(super) struct MountState {
+pub(in crate::game) struct MountState {
     /// `jumpRidingTicks`: -10 cooling down after a jump, >= 0 charging.
-    pub(super) jump_ticks: i32,
+    pub(in crate::game) jump_ticks: i32,
     /// `jumpRidingScale` (0..1).
-    pub(super) jump_scale: f32,
-    was_jumping: bool,
+    pub(in crate::game) jump_scale: f32,
+    pub(in crate::game) was_jumping: bool,
 }
 impl MountState {
-    pub(super) fn reset_jump(&mut self) {
+    pub(in crate::game) fn reset_jump(&mut self) {
         self.jump_ticks = 0;
         self.jump_scale = 0.0;
     }
@@ -52,7 +61,7 @@ impl MountState {
 /// nothing else), and the horse food tag carries no red mushrooms; a skeleton
 /// horse inherits the horse food tag but only a tamed one gets that far
 /// (`SkeletonHorse.mobInteract` passes for an untamed one).
-fn eating(species: Species, item: &str) -> Option<(f32, i32, u8, bool)> {
+pub(in crate::game) fn eating(species: Species, item: &str) -> Option<(f32, i32, u8, bool)> {
     let camel = species == Species::Camel;
     // CamelHusk.isFood: rabbit's feet (and it never falls in love).
     if species == Species::CamelHusk && item != "minecraft:rabbit_foot" {
@@ -89,7 +98,7 @@ fn eating(species: Species, item: &str) -> Option<(f32, i32, u8, bool)> {
 }
 /// `EntityTypeTags.DISMOUNTS_UNDERWATER` (`Entity.dismountsUnderwater`): the mounts that throw their
 /// riders off when the rider's eyes are in water.
-fn dismounts_underwater(tags: &EntityTypeTags, mount: &Mob) -> bool {
+pub(in crate::game) fn dismounts_underwater(tags: &EntityTypeTags, mount: &Mob) -> bool {
     tags.has_bit(
         mount.kind.flags.entity_tag_slot,
         EntityTypeTags::DISMOUNTS_UNDERWATER,
@@ -98,14 +107,14 @@ fn dismounts_underwater(tags: &EntityTypeTags, mount: &Mob) -> bool {
 
 /// `EntityAttachments.transformPoint`: `Vec3.yRot(-yRot * (float) (Math.PI / 180.0))`,
 /// an attachment point turned with the vehicle.
-fn turned(a: [f64; 3], yaw: f32) -> Vec3 {
+pub(in crate::game) fn turned(a: [f64; 3], yaw: f32) -> Vec3 {
     Vec3::new(a[0], a[1], a[2]).rotate_y(-yaw * (std::f64::consts::PI / 180.0) as f32)
 }
 
 /// `Entity.getPassengerRidingPosition` for a player on `m`: the vehicle's
 /// attachment point, turned with it, less the player's own vehicle attachment
 /// (`Avatar.DEFAULT_VEHICLE_ATTACHMENT`, a `Vec3(0.0, 0.6, 0.0)` of doubles).
-fn seat_of(m: &sunrise_client::mobs::Mob, attachment: [f64; 3]) -> Vec3 {
+pub(in crate::game) fn seat_of(m: &sunrise_client::mobs::Mob, attachment: [f64; 3]) -> Vec3 {
     let at = turned(attachment, m.yaw);
     Vec3::new(
         m.position.x + at.x,
@@ -115,130 +124,12 @@ fn seat_of(m: &sunrise_client::mobs::Mob, attachment: [f64; 3]) -> Vec3 {
 }
 
 impl Game<'_> {
-    pub(super) fn mount_index(&self) -> Option<usize> {
+    pub(in crate::game) fn mount_index(&self) -> Option<usize> {
         let id = self.riding?;
         self.mobs.iter().position(|m| m.id == id)
     }
-    /// `Entity.interact` / `Mob.canShearEquipment` / `Mob.attemptToShearEquipment`
-    /// / `Mob.shearItem`: the saddle of a `#can_equip_saddle` mob comes off
-    /// before its mobInteract can ride it, with the saddle's shearing sound.
-    /// An occupied mount is not sheared: its mobInteract runs instead.
-    pub(super) fn shear_saddle(&mut self, index: usize, item: &str) -> Option<bool> {
-        let m = &self.mobs[index];
-        // EntityTypeTags.CAN_EQUIP_SADDLE.
-        let saddleable = matches!(
-            m.species(),
-            Species::Horse
-                | Species::SkeletonHorse
-                | Species::ZombieHorse
-                | Species::Donkey
-                | Species::Mule
-                | Species::Pig
-                | Species::Strider
-                | Species::Camel
-                | Species::CamelHusk
-                | Species::Nautilus
-                | Species::ZombieNautilus
-        );
-        if item != "minecraft:shears" || !saddleable || m.is_baby() || !m.alive() {
-            return None;
-        }
-        let id = m.id;
-        if self.riding == Some(id)
-            || self.ridden_by_guest(id)
-            || equine::is_vehicle(m)
-            || self
-                .mobs
-                .iter()
-                .any(|r| r.alive() && !r.removed && r.extra.mount == Some(id))
-        {
-            // !canShearEquipment (isVehicle): the click goes on to mobInteract. A
-            // ridden pig or strider has nothing more to give, but a camel takes a
-            // second rider and a horse or nautilus opens its inventory.
-            return matches!(m.species(), Species::Pig | Species::Strider).then_some(false);
-        }
-        if self.held_mapping(Action::Sneak) {
-            return None;
-        }
-        // attemptToShearEquipment takes the body slot before the saddle: horse
-        // and nautilus armor come off first (not modelled here).
-        if m.extra
-            .body_id()
-            .is_some_and(|b| b.ends_with("_horse_armor") || b.ends_with("_nautilus_armor"))
-        {
-            return None;
-        }
-        let saddle = m.saddle_item()?;
-        if &*saddle.item != "minecraft:saddle" {
-            return None;
-        }
-        let silent = m.silent;
-        let at = m.position;
-        let offset = sunrise_client::mobs::riders::passenger_attachment(m)[1];
-        self.damage_held_tool();
-        self.mobs[index].set_saddle(None);
-        let context = self.who_context(Some(Who::Player), None);
-        self.post_game_event("minecraft:shear", [at.x, at.y, at.z], context);
-        self.mob_equip_event(id, [at.x, at.y, at.z], false);
-        self.spawn_at_location(at, offset, saddle.clone());
-        let target = self.mob_entity(&self.mobs[index]);
-        self.trigger_item_entity("minecraft:player_sheared_equipment", &saddle, &target);
-        // attemptToShearEquipment: playSound(equippable.shearingSound()).
-        if !silent {
-            self.audio.0.play(
-                "minecraft:item.saddle.unequip",
-                Some([at.x, at.y, at.z]),
-                1.0,
-                1.0,
-            );
-        }
-        Some(true)
-    }
-    /// `Pig.mobInteract` / `Strider.mobInteract`: saddle an adult, or ride a saddled mount with no passenger.
-    fn interact_steerable(&mut self, index: usize, item: &str) -> bool {
-        let held = self.inventory[self.selected].clone();
-        let sneaking = self.held_mapping(Action::Sneak);
-        let m = &self.mobs[index];
-        if m.is_baby() || !m.alive() || Some(m.id) == self.riding {
-            return false;
-        }
-        let at = m.center();
-        if item == "minecraft:saddle" && !m.extra.saddled() {
-            let sound = if m.species() == Species::Strider {
-                "minecraft:entity.strider.saddle"
-            } else {
-                "minecraft:entity.pig.saddle"
-            };
-            self.mobs[index].set_saddle(held.map(|s| ItemStack { count: 1, ..s }));
-            self.audio.0.play(sound, Some(at), 1.0, 1.0);
-            self.consume_held();
-            let id = self.mobs[index].id;
-            let pos = self.mobs[index].position;
-            self.mob_equip_event(id, [pos.x, pos.y, pos.z], true);
-            self.world
-                .modified
-                .insert((at[0].floor() as i32 >> 4, at[2].floor() as i32 >> 4));
-            return true;
-        }
-        // Pig.mobInteract: held food goes to Animal.mobInteract, not a ride.
-        let food = m.kind.food.iter().any(|f| f.as_str() == item);
-        if !m.extra.saddled() || food || sneaking || self.has_seated_passengers(m.id) {
-            return false;
-        }
-        // `Strider.canAddPassenger`: a strider whose eyes are in lava has no
-        // seat, though the click still counts as used.
-        if m.species() == Species::Strider && m.fluids.eye_in_lava {
-            return true;
-        }
-        let id = m.id;
-        if !self.native_may_board(id) {
-            return true;
-        }
-        self.start_riding(id);
-        true
-    }
     /// `FoodOnAStickItem.use` while riding: boost the mount, wear the stick.
-    pub(super) fn use_steering_stick(&mut self, item: &str) -> bool {
+    pub(in crate::game) fn use_steering_stick(&mut self, item: &str) -> bool {
         let (species, wear) = match item {
             "minecraft:carrot_on_a_stick" => (Species::Pig, 7),
             "minecraft:warped_fungus_on_a_stick" => (Species::Strider, 1),
@@ -277,173 +168,8 @@ impl Game<'_> {
         self.swing_arm();
         true
     }
-    /// `AbstractHorse.mobInteract`. Returns whether the click was used.
-    pub(super) fn interact_mount(&mut self, index: usize, item: &str) -> bool {
-        let held = self.held().cloned();
-        let m = &self.mobs[index];
-        let species = m.species();
-        // Pigs and striders check occupancy only for boarding, not for saddling.
-        if matches!(species, Species::Pig | Species::Strider) {
-            return self.interact_steerable(index, item);
-        }
-        // A server player rides it already (`isVehicle`: no seat, no feeding).
-        if self.ridden_by_guest(m.id) {
-            return false;
-        }
-        if sunrise_client::mobs::llama::is_llama(species) {
-            return self.interact_llama(index, item);
-        }
-        if species == Species::HappyGhast {
-            return self.interact_happy_ghast(index, item);
-        }
-        if sunrise_client::mobs::nautilus::is_nautilus(species) {
-            return self.interact_nautilus(index, item);
-        }
-        if !equine::is_equine(species) || !m.alive() || Some(m.id) == self.riding {
-            return false;
-        }
-        // AbstractHorse.mobInteract: a horse a mob rides (`isVehicle`) has no
-        // seat, inventory or feeding to give. Camels seat two and check their
-        // passengers themselves.
-        let id = m.id;
-        if !matches!(species, Species::Camel | Species::CamelHusk)
-            && self
-                .mobs
-                .iter()
-                .any(|p| p.extra.mount == Some(id) && !p.removed && p.alive())
-        {
-            return false;
-        }
-        // SkeletonHorse.mobInteract: nothing for an untamed one.
-        if species == Species::SkeletonHorse && !m.extra.tame {
-            return false;
-        }
-        let sneaking = self.held_mapping(Action::Sneak)
-            || self.client.keys.raw(&winit::keyboard::KeyCode::ShiftRight);
-        // Horse / ZombieHorse.mobInteract: food is fed, and anything else in
-        // hand makes an untamed one mad instead of seating the player.
-        let dandelion = [self.held(), self.offhand.as_ref()]
-            .into_iter()
-            .flatten()
-            .any(|s| &*s.item == "minecraft:golden_dandelion");
-        let mut events = Vec::new();
-        match equine::held_item(
-            &mut self.mobs[index],
-            item,
-            sneaking,
-            dandelion,
-            &mut events,
-        ) {
-            Some(equine::HeldItem::Feed) => return self.feed_mount(index, item),
-            Some(equine::HeldItem::Refused) => {
-                let _ = self.handle_mob_events(events);
-                return true;
-            }
-            None => {}
-        }
-        let m = &self.mobs[index];
-        // AbstractHorse.mobInteract: shift + use opens a tamed adult's inventory.
-        if !m.is_baby() && m.extra.tame && sneaking {
-            self.open_mount_menu(index);
-            return true;
-        }
-        if self.feed_mount(index, item) {
-            return true;
-        }
-        let m = &mut self.mobs[index];
-        if m.is_baby() {
-            return false;
-        }
-        let at = m.center();
-        let tamed = m.extra.tame;
-        let sound = if item == "minecraft:saddle" && tamed && !m.extra.saddled() {
-            m.set_saddle(held.map(|s| ItemStack { count: 1, ..s }));
-            // Camel.getSaddleSound (the equip sound of a camel's saddle).
-            Some(match species {
-                Species::Camel => "minecraft:entity.camel.saddle",
-                Species::CamelHusk => "minecraft:entity.camel_husk.saddle",
-                _ => "minecraft:entity.horse.saddle",
-            })
-        } else if item.ends_with("_horse_armor")
-            && species == Species::Horse
-            && tamed
-            && m.extra.body_id().is_none()
-        {
-            m.extra
-                .set_body_stack(held.map(|s| ItemStack { count: 1, ..s }));
-            Some("minecraft:entity.horse.armor")
-        } else if item == "minecraft:chest"
-            && matches!(species, Species::Donkey | Species::Mule)
-            && tamed
-            && !m.extra.chested
-        {
-            m.extra.chested = true;
-            // AbstractChestedHorse.playChestEquipsSound, which Mule overrides
-            // with its own chest sound.
-            Some(match species {
-                Species::Mule => "minecraft:entity.mule.chest",
-                _ => "minecraft:entity.donkey.chest",
-            })
-        } else {
-            None
-        };
-        if let Some(sound) = sound {
-            let chest = item == "minecraft:chest";
-            let m = &mut self.mobs[index];
-            let silent = m.silent;
-            // `LivingEntity.onEquipItem`: a saddle's or armour's equip sound plays
-            // at the mount's feet at pitch `1.0F`, seeded with the mount's own
-            // random's `nextLong`. `AbstractChestedHorse.playChestEquipsSound`
-            // pitches a chest's sound from two floats of that same random, which
-            // it draws even while silent, at volume 1.0.
-            let pitch = if chest {
-                (m.random.next_float() - m.random.next_float()) * 0.2 + 1.0
-            } else {
-                1.0
-            };
-            let seed = if chest || silent {
-                None
-            } else {
-                Some(m.random.next_long())
-            };
-            let feet = [m.position.x, m.position.y, m.position.z];
-            if !silent {
-                match seed {
-                    Some(seed) => self
-                        .audio
-                        .0
-                        .play_seeded(sound, Some(feet), 1.0, pitch, seed),
-                    None => self.audio.0.play(sound, Some(feet), 1.0, pitch),
-                }
-            }
-            self.consume_held();
-            if !chest {
-                let id = self.mobs[index].id;
-                let pos = self.mobs[index].position;
-                self.mob_equip_event(id, [pos.x, pos.y, pos.z], true);
-            }
-            self.world
-                .modified
-                .insert((at[0].floor() as i32 >> 4, at[2].floor() as i32 >> 4));
-            return true;
-        }
-        // doPlayerRide: `AbstractHorse.doPlayerRide` turns the rider to the
-        // horse's yaw before it seats them.
-        let id = self.mobs[index].id;
-        if !self.native_may_board(id) {
-            return true;
-        }
-        let m = &mut self.mobs[index];
-        m.extra.flag = false;
-        m.extra.counter = 0;
-        self.yaw = m.yaw;
-        self.mount.jump_ticks = 0;
-        self.mount.jump_scale = 0.0;
-        self.start_riding(id);
-        true
-    }
     /// `AbstractHorse.handleEating`.
-    fn feed_mount(&mut self, index: usize, item: &str) -> bool {
+    pub(in crate::game) fn feed_mount(&mut self, index: usize, item: &str) -> bool {
         let Some((heal, age_up, temper, love)) = eating(self.mobs[index].species(), item) else {
             return false;
         };
@@ -524,7 +250,7 @@ impl Game<'_> {
     }
     /// `LocalPlayer.aiStep`'s riding jump: the bar charges while jump is
     /// held; on release, the jump's strength (0 when there is none).
-    pub(super) fn charge_mount_jump(&mut self, i: usize, keys: Keys) -> f32 {
+    pub(in crate::game) fn charge_mount_jump(&mut self, i: usize, keys: Keys) -> f32 {
         let saddled = self.mobs[i].extra.saddled() && Self::jumps(self.mobs[i].species());
         let mut jump = 0.0;
         if saddled {
@@ -558,7 +284,7 @@ impl Game<'_> {
     }
     /// Whether the rider's eyes are in water (`Entity.updateFluidOnEyes` then `isEyeInFluid(WATER)`),
     /// and not in a bubble column, as `LivingEntity.baseTick` asks before it lets a rider stay.
-    fn rider_eyes_in_water(&self) -> bool {
+    pub(in crate::game) fn rider_eyes_in_water(&self) -> bool {
         let Some([x, y, z]) = self.eye_position() else {
             return false;
         };
@@ -570,7 +296,7 @@ impl Game<'_> {
             .is_some_and(|(height, _)| f64::from(by) + f64::from(height) > y)
     }
     /// The rider's input for this tick; returns false when not on a mount.
-    pub(super) fn tick_mount_riding(&mut self, keys: Keys) -> bool {
+    pub(in crate::game) fn tick_mount_riding(&mut self, keys: Keys) -> bool {
         let Some(i) = self.mount_index() else {
             return false;
         };
@@ -636,7 +362,7 @@ impl Game<'_> {
     }
     /// `LivingEntity.baseTick` for the mobs that ride a mount of the `dismounts_underwater` tag (a baby
     /// zombie on a chicken): with their eyes in water they get off it.
-    pub(super) fn dismount_underwater_mob_riders(&mut self) {
+    pub(in crate::game) fn dismount_underwater_mob_riders(&mut self) {
         let blocked = self.mobs_below_off_level();
         let tags = &self.items().entity_type_tags;
         let swimmers: Vec<u32> = self
@@ -654,7 +380,7 @@ impl Game<'_> {
         }
     }
     /// This player's index in `vehicle`'s `getPassengers`, 0 when it is not listed.
-    fn own_passenger_index(&self, vehicle: u32) -> usize {
+    pub(in crate::game) fn own_passenger_index(&self, vehicle: u32) -> usize {
         let own = self.riding_player().map(|(id, _)| id);
         self.seated_passengers(vehicle)
             .iter()
@@ -662,7 +388,7 @@ impl Game<'_> {
             .unwrap_or(0)
     }
     /// `positionRider`: the player sits on the mount after it moves.
-    pub(super) fn position_rider(&mut self) {
+    pub(in crate::game) fn position_rider(&mut self) {
         let Some(i) = self.mount_index() else {
             return;
         };
@@ -709,7 +435,7 @@ impl Game<'_> {
     }
     /// `removePassenger` + `getDismountLocationForPassenger`: where the mount
     /// lets the rider out.
-    pub(super) fn dismount_mount(&mut self) {
+    pub(in crate::game) fn dismount_mount(&mut self) {
         let Some(id) = self.riding else {
             return;
         };
@@ -746,7 +472,7 @@ impl Game<'_> {
         }
     }
     /// Where `mount` lets a player in `p` facing `yaw` off, and the pose they take there.
-    fn mount_player_dismount(
+    pub(in crate::game) fn mount_player_dismount(
         &self,
         mount: &Mount,
         yaw: f32,
@@ -762,7 +488,7 @@ impl Game<'_> {
     }
 
     /// The same player search when the mount is lent out during a mob tick.
-    pub(super) fn player_dismount_from_lent_mob(
+    pub(in crate::game) fn player_dismount_from_lent_mob(
         &self,
         mount: &Mob,
         yaw: f32,
@@ -796,7 +522,7 @@ impl Game<'_> {
     }
     /// `AbstractHorse.tameWithName`: the acting player owns `mob`, then gets
     /// the `tame_animal` trigger.
-    fn tame_mount(&mut self, mob: u32) {
+    pub(in crate::game) fn tame_mount(&mut self, mob: u32) {
         // RunAroundLikeCrazyGoal.tick: tameWithName by the player on its
         // back, unless AnimalTameEvent is cancelled, which fails the roll
         // instead. Inside a guest's turn the acting ids are the guest's.
@@ -840,7 +566,7 @@ impl Game<'_> {
             self.native_entity_tame(mob, &kind, Some(owner));
         }
     }
-    pub(super) fn mount_event(&mut self, e: &MobEvent) {
+    pub(in crate::game) fn mount_event(&mut self, e: &MobEvent) {
         match *e {
             MobEvent::Tamed { mob } => {
                 // tameWithName(player): the rider, a server's player in its turn.
@@ -926,7 +652,7 @@ impl Game<'_> {
     /// `causeFallDamage` of its fall, as the mount's own damage does. The local
     /// player, the server players and the mob on its back each get it, with
     /// their own safe distance and armour.
-    pub(super) fn fall_to_passengers(&mut self, mob: u32, distance: f64, modifier: f32) {
+    pub(in crate::game) fn fall_to_passengers(&mut self, mob: u32, distance: f64, modifier: f32) {
         let seats = self.seated_passengers(mob);
         for (_, id, player) in seats {
             if player {
@@ -996,7 +722,7 @@ impl Game<'_> {
     /// landing code's own fall damage for the player: creative flight is
     /// exempt, and the statistic, the sounds and the damage records wait in the
     /// player's events for its next tick, as a landing of its own leaves them.
-    pub(super) fn rider_fall_damage(&mut self, distance: f64, modifier: f32) {
+    pub(in crate::game) fn rider_fall_damage(&mut self, distance: f64, modifier: f32) {
         let Some(player) = self.player.as_mut() else {
             return;
         };
@@ -1021,7 +747,7 @@ impl Game<'_> {
         }
     }
     /// `PlayerRideableJumping`: horses, camels and nautili (the dash).
-    fn jumps(species: Species) -> bool {
+    pub(in crate::game) fn jumps(species: Species) -> bool {
         equine::is_equine(species) || sunrise_client::mobs::nautilus::is_nautilus(species)
     }
     /// `LocalPlayer.jumpableVehicle`: the vehicle the player controls (`getControlledVehicle`:
@@ -1031,7 +757,7 @@ impl Game<'_> {
     /// down; a pig or a strider never jumps), by its entity id. Unlike the ridden movement's
     /// `drives`, it does not ask whether the mount is alive: vanilla doesn't. The HUD's jump
     /// bar and `ClientViewClientHost::jumpable_vehicle` both read this decision.
-    pub(super) fn jumpable_mount(&self) -> Option<u32> {
+    pub(in crate::game) fn jumpable_mount(&self) -> Option<u32> {
         if !self.remote.as_ref().is_some_and(|r| r.first_passenger) {
             return None;
         }
@@ -1043,11 +769,11 @@ impl Game<'_> {
         can_jump.then_some(mount.id)
     }
     /// `willPrioritizeJumpInfo`: charging a jump or recharging.
-    pub(super) fn mount_jumping(&self) -> bool {
+    pub(in crate::game) fn mount_jumping(&self) -> bool {
         self.mount.jump_scale > 0.0 || self.mount.jump_ticks < 0
     }
     /// The jump bar when it is the contextual bar.
-    pub(super) fn draw_jump_bar(&self, batch: &mut HudBatch, w: i32, h: i32) {
+    pub(in crate::game) fn draw_jump_bar(&self, batch: &mut HudBatch, w: i32, h: i32) {
         let Some(i) = self.mount_index() else {
             return;
         };
@@ -1066,15 +792,15 @@ impl Game<'_> {
 
 /// The mount a rider gets off: its kind, where it stands, its box,
 /// `getBbWidth` and body yaw.
-struct Mount {
-    species: Species,
-    position: Vec3,
-    bounds: Aabb,
-    width: f32,
-    yaw: f32,
+pub(in crate::game) struct Mount {
+    pub(in crate::game) species: Species,
+    pub(in crate::game) position: Vec3,
+    pub(in crate::game) bounds: Aabb,
+    pub(in crate::game) width: f32,
+    pub(in crate::game) yaw: f32,
 }
 impl Mount {
-    fn of(m: &Mob) -> Self {
+    pub(in crate::game) fn of(m: &Mob) -> Self {
         Self {
             species: m.species(),
             position: m.position,
@@ -1085,7 +811,7 @@ impl Mount {
     }
 }
 /// On top of `m`, where it lets off a rider it has no other rule for.
-pub(super) fn on_top(m: &Mob) -> Vec3 {
+pub(in crate::game) fn on_top(m: &Mob) -> Vec3 {
     Vec3::new(
         m.position.x,
         m.position.y + f64::from(m.height()),
@@ -1094,16 +820,17 @@ pub(super) fn on_top(m: &Mob) -> Vec3 {
 }
 /// The rider getting off: `getYRot`, `getBbWidth`, and
 /// `getLocalBoundsForPose` for each of `Player.getDismountPoses`.
-struct Rider {
-    yaw: f32,
-    width: f32,
-    poses: Vec<(Pose, Dimensions)>,
-    main_arm_left: bool,
+pub(in crate::game) struct Rider {
+    pub(in crate::game) yaw: f32,
+    pub(in crate::game) width: f32,
+    pub(in crate::game) poses: Vec<(Pose, Dimensions)>,
+    pub(in crate::game) main_arm_left: bool,
 }
 /// `Player.getDismountPoses`: standing, crouching, then crawling.
-const DISMOUNT_POSES: [Pose; 3] = [Pose::Standing, Pose::Crouching, Pose::Swimming];
+pub(in crate::game) const DISMOUNT_POSES: [Pose; 3] =
+    [Pose::Standing, Pose::Crouching, Pose::Swimming];
 /// The rider's box in each dismount pose, at their `minecraft:scale`.
-fn rider_poses(p: &PlayerMotion) -> Vec<(Pose, Dimensions)> {
+pub(in crate::game) fn rider_poses(p: &PlayerMotion) -> Vec<(Pose, Dimensions)> {
     // EntityDimensions.scale: every player pose scales alike, so the
     // standing width gives the scale without a mutable attribute lookup.
     let scale = p.dimensions.width / Pose::Standing.dimensions(1.0).width;
@@ -1113,7 +840,7 @@ fn rider_poses(p: &PlayerMotion) -> Vec<(Pose, Dimensions)> {
         .collect()
 }
 /// The level queries a dismount makes.
-trait DismountWorld {
+pub(in crate::game) trait DismountWorld {
     /// `getFluidState(pos).is(FluidTags.LAVA)`.
     fn lava(&self, p: [i32; 3]) -> bool;
     /// `BlockGetter.getBlockFloorHeight(pos)`.
@@ -1121,7 +848,7 @@ trait DismountWorld {
     /// `DismountHelper.canDismountTo(level, passenger, box)`.
     fn can_dismount_to(&self, bounds: Aabb) -> bool;
 }
-struct GameDismountWorld<'a, 'g>(&'a Game<'g>);
+pub(in crate::game) struct GameDismountWorld<'a, 'g>(pub(in crate::game) &'a Game<'g>);
 impl DismountWorld for GameDismountWorld<'_, '_> {
     fn lava(&self, p: [i32; 3]) -> bool {
         let g = self.0;
@@ -1140,7 +867,7 @@ impl DismountWorld for GameDismountWorld<'_, '_> {
 }
 /// `getDismountLocationForPassenger`, and the pose the rider takes there: each
 /// vehicle class's own rule, and `Entity`'s on top of the mount for the rest.
-fn dismount_location(
+pub(in crate::game) fn dismount_location(
     mount: &Mount,
     rider: &Rider,
     world: &impl DismountWorld,
@@ -1167,7 +894,7 @@ fn dismount_location(
 }
 /// `AbstractHorse.getDismountLocationForPassenger`: out of the horse's box to
 /// the main hand's side first, then the other, then its own position.
-fn horse_dismount_location(
+pub(in crate::game) fn horse_dismount_location(
     mount: &Mount,
     rider: &Rider,
     world: &impl DismountWorld,
@@ -1188,7 +915,7 @@ fn horse_dismount_location(
 }
 /// `AbstractHorse.getDismountLocationInDirection`: from the horse's feet up to
 /// 0.75 above its box, in each of the rider's dismount poses.
-fn horse_side(
+pub(in crate::game) fn horse_side(
     mount: &Mount,
     rider: &Rider,
     world: &impl DismountWorld,
@@ -1224,7 +951,7 @@ fn horse_side(
 }
 /// `Animal.getDismountLocationForPassenger`: the eight blocks around the
 /// mount, its own facing's right side first, at the mount's own height.
-fn animal_dismount_location(
+pub(in crate::game) fn animal_dismount_location(
     mount: &Mount,
     rider: &Rider,
     world: &impl DismountWorld,
@@ -1284,7 +1011,7 @@ fn animal_dismount_location(
 /// with no lava, a valid floor (`DismountHelper.isBlockFloorValid`) and room
 /// for one of the rider's dismount poses (`canDismountTo`) wins, with that
 /// pose; without one, on top of the strider with the pose unchanged.
-fn strider_dismount_location(
+pub(in crate::game) fn strider_dismount_location(
     strider: &Mount,
     rider: &Rider,
     world: &impl DismountWorld,
@@ -1344,7 +1071,7 @@ fn strider_dismount_location(
 /// Nothing here moves the mount on its own: what a horse, camel or nautilus
 /// does with the jump is its `handleStartJump`, and the travel that follows
 /// (a dash, a rear) is the mount's own tick.
-pub(super) fn start_riding_jump(
+pub(in crate::game) fn start_riding_jump(
     m: &mut sunrise_client::mobs::Mob,
     data: i32,
 ) -> Option<(&'static str, f32)> {
@@ -1379,8 +1106,10 @@ pub(super) fn start_riding_jump(
 }
 
 #[cfg(test)]
-mod tests {
+pub(in crate::game) mod tests {
+    #[allow(unused_imports)]
     use super::*;
+    #[allow(unused_imports)]
     use std::collections::HashMap;
 
     /// `ZombieHorse.isFood` is `#minecraft:zombie_horse_food`, which holds only
@@ -1465,7 +1194,7 @@ mod tests {
     }
 
     /// A mob of the prepared resources' type `kind` (None without them).
-    fn mob(kind: &str) -> Option<sunrise_client::mobs::Mob> {
+    pub(in crate::game) fn mob(kind: &str) -> Option<sunrise_client::mobs::Mob> {
         let root = std::env::var_os("SUNRISE_RESOURCES")
             .map(std::path::PathBuf::from)
             .unwrap_or_else(|| {
@@ -1636,16 +1365,16 @@ mod tests {
     }
 
     /// A lava sea up to y 30 with full blocks placed in it; air above.
-    struct Sea {
-        blocks: HashMap<[i32; 3], ()>,
+    pub(in crate::game) struct Sea {
+        pub(in crate::game) blocks: HashMap<[i32; 3], ()>,
     }
     impl Sea {
-        fn with(blocks: &[[i32; 3]]) -> Self {
+        pub(in crate::game) fn with(blocks: &[[i32; 3]]) -> Self {
             Self {
                 blocks: blocks.iter().map(|&b| (b, ())).collect(),
             }
         }
-        fn solid(&self, p: [i32; 3]) -> bool {
+        pub(in crate::game) fn solid(&self, p: [i32; 3]) -> bool {
             self.blocks.contains_key(&p)
         }
     }
@@ -1671,9 +1400,9 @@ mod tests {
         }
     }
     /// The top of a lava source at y 30 (`FlowingFluid.getOwnHeight`, 8/9).
-    const SURFACE: f64 = 30.0 + 8.0 / 9.0;
+    pub(in crate::game) const SURFACE: f64 = 30.0 + 8.0 / 9.0;
     /// A strider (0.9 by 1.7) standing on the lava at x, z, facing south.
-    fn strider_at(x: f64, z: f64) -> Mount {
+    pub(in crate::game) fn strider_at(x: f64, z: f64) -> Mount {
         Mount {
             species: Species::Strider,
             position: Vec3::new(x, SURFACE, z),
@@ -1685,7 +1414,7 @@ mod tests {
             yaw: 0.0,
         }
     }
-    fn rider(yaw: f32) -> Rider {
+    pub(in crate::game) fn rider(yaw: f32) -> Rider {
         Rider {
             yaw,
             width: 0.6,
@@ -1696,7 +1425,7 @@ mod tests {
             main_arm_left: false,
         }
     }
-    fn block_of(at: Vec3) -> [i32; 3] {
+    pub(in crate::game) fn block_of(at: Vec3) -> [i32; 3] {
         [
             at.x.floor() as i32,
             at.y.floor() as i32,
@@ -1736,7 +1465,7 @@ mod tests {
 
     /// A server-side game with nothing in it but an empty chunk, or None when
     /// the prepared resources are missing (CI has no vanilla data).
-    pub(super) fn server_game(
+    pub(in crate::game) fn server_game(
         resources: &mut Option<std::sync::Arc<crate::game::Resources>>,
     ) -> Option<Box<Game<'_>>> {
         use crate::game::{Audio, Options, Progress, Settings, load_resources};
@@ -1795,43 +1524,23 @@ mod tests {
 
     /// What one feeding made the level show.
     #[derive(Debug)]
-    struct Shown {
-        sounds: Vec<(String, [f64; 3], f32, f32)>,
-        events: Vec<(&'static str, [f64; 3], Option<Who>)>,
+    pub(in crate::game) struct Shown {
+        pub(in crate::game) sounds: Vec<(String, [f64; 3], f32, f32)>,
+        pub(in crate::game) events: Vec<(&'static str, [f64; 3], Option<Who>)>,
     }
 
-    /// Feeds `item` to mob 0 and collects the sounds and the `minecraft:eat`
-    /// game events it made.
-    fn feed(game: &mut Game<'_>, item: &str) -> (bool, Shown) {
-        game.inventory[game.selected] = Some(ItemStack::new(item, 2));
-        game.audio.0.capture = Some(Vec::new());
-        crate::game::sculk::TEST_POSTED_EVENTS
-            .with(|events| *events.borrow_mut() = Some(Vec::new()));
-        let used = game.interact_mount(0, item);
-        let sounds = game
-            .audio
-            .0
-            .capture
-            .take()
-            .unwrap()
-            .into_iter()
-            .map(|s| (s.event, s.position, s.volume, s.pitch))
-            .collect();
-        let events = crate::game::sculk::TEST_POSTED_EVENTS.with(|events| {
-            events
-                .borrow_mut()
-                .take()
-                .unwrap_or_default()
-                .into_iter()
-                .filter(|(event, _, _)| *event == "minecraft:eat")
-                .collect()
-        });
-        (used, Shown { sounds, events })
-    }
+    #[allow(unused_imports)]
+    pub(in crate::game) use crate::game::client_side::mounts_client::tests::feed;
 
     /// A whole, tamed mount of `kind` standing at `at` with `seed` for its own
     /// random, alone in `game`.
-    fn mount(game: &mut Game<'_>, kind: &str, id: u32, at: [f64; 3], seed: i64) {
+    pub(in crate::game) fn mount(
+        game: &mut Game<'_>,
+        kind: &str,
+        id: u32,
+        at: [f64; 3],
+        seed: i64,
+    ) {
         let kind = game.res.mob_types().get(kind).unwrap().clone();
         let mut m = sunrise_client::mobs::Mob::new(id, kind, Vec3::new(at[0], at[1], at[2]), 0.0);
         m.extra.tame = true;
@@ -1843,7 +1552,7 @@ mod tests {
 
     /// `AbstractHorse.handleEating`'s growth particle position draws:
     /// `getRandomX(1.0)`, `getRandomY()` and `getRandomZ(1.0)` take a double each.
-    fn sparkle_draws(r: &mut sunrise_core::random::LegacyRandom) {
+    pub(in crate::game) fn sparkle_draws(r: &mut sunrise_core::random::LegacyRandom) {
         for _ in 0..3 {
             r.next_double();
         }
@@ -1942,34 +1651,8 @@ mod tests {
         assert_eq!(game.mobs[0].extra.age, -23800, "camel cactus ages 10 s");
     }
 
-    /// Equips `item` on mob 0 and collects the sounds and the `minecraft:equip`
-    /// game events it made.
-    fn equip(game: &mut Game<'_>, item: &str) -> (bool, Shown) {
-        game.inventory[game.selected] = Some(ItemStack::new(item, 2));
-        game.audio.0.capture = Some(Vec::new());
-        crate::game::sculk::TEST_POSTED_EVENTS
-            .with(|events| *events.borrow_mut() = Some(Vec::new()));
-        let used = game.interact_mount(0, item);
-        let sounds = game
-            .audio
-            .0
-            .capture
-            .take()
-            .unwrap()
-            .into_iter()
-            .map(|s| (s.event, s.position, s.volume, s.pitch))
-            .collect();
-        let events = crate::game::sculk::TEST_POSTED_EVENTS.with(|events| {
-            events
-                .borrow_mut()
-                .take()
-                .unwrap_or_default()
-                .into_iter()
-                .filter(|(event, _, _)| *event == "minecraft:equip")
-                .collect()
-        });
-        (used, Shown { sounds, events })
-    }
+    #[allow(unused_imports)]
+    pub(in crate::game) use crate::game::client_side::mounts_client::tests::equip;
 
     /// `LivingEntity.onEquipItem`: a saddle or horse armour plays its equip sound
     /// at pitch `1.0F`, at the mount's feet, seeded with the mount's own random's
@@ -2072,56 +1755,6 @@ mod tests {
         );
     }
 
-    /// `AbstractChestedHorse.equipChest`: a tamed donkey or mule given a chest
-    /// plays its chest sound at volume 1.0 (`AbstractChestedHorse`
-    /// `playChestEquipsSound` uses `DONKEY_CHEST`, `Mule` overrides it with
-    /// `MULE_CHEST`) and posts no mob equip event, which only the saddle and
-    /// the armour do.
-    #[test]
-    #[ignore = "daily"]
-    fn a_chest_on_a_donkey_or_mule_plays_its_own_sound_at_full_volume() {
-        let mut resources = None;
-        let Some(mut game) = server_game(&mut resources) else {
-            return;
-        };
-        for (kind, sound) in [
-            ("minecraft:donkey", "minecraft:entity.donkey.chest"),
-            ("minecraft:mule", "minecraft:entity.mule.chest"),
-        ] {
-            mount(&mut game, kind, 5, [2.5, 64.0, 2.5], 7);
-            game.inventory[game.selected] = Some(ItemStack::new("minecraft:chest", 1));
-            game.audio.0.capture = Some(Vec::new());
-            crate::game::sculk::TEST_POSTED_EVENTS
-                .with(|events| *events.borrow_mut() = Some(Vec::new()));
-            assert!(game.interact_mount(0, "minecraft:chest"), "{kind}");
-            let sounds: Vec<_> = game
-                .audio
-                .0
-                .capture
-                .take()
-                .unwrap()
-                .into_iter()
-                .map(|s| (s.event, s.position, s.volume, s.pitch))
-                .collect();
-            let equip_events = crate::game::sculk::TEST_POSTED_EVENTS
-                .with(|events| events.borrow_mut().take().unwrap_or_default());
-            crate::game::sculk::TEST_POSTED_EVENTS.with(|events| *events.borrow_mut() = None);
-            assert!(game.mobs[0].extra.chested, "{kind} wears the chest");
-            assert_eq!(sounds.len(), 1, "{kind}: {sounds:?}");
-            assert_eq!(sounds[0].0, sound, "{kind} chest sound");
-            assert_eq!(sounds[0].2, 1.0, "{kind} chest sound volume");
-            assert!(
-                (0.8..=1.2).contains(&sounds[0].3),
-                "{kind} chest pitch {} outside vanilla's 0.8..1.2",
-                sounds[0].3
-            );
-            assert!(
-                equip_events.is_empty(),
-                "{kind} posted a mob equip event: {equip_events:?}"
-            );
-        }
-    }
-
     /// `CamelHusk.interact` sets `PersistenceRequired` before it hands the click
     /// on, so a husk a player saddled is kept past the monster category's 128
     /// blocks (`Mob.checkDespawn` reads `isPersistenceRequired`).
@@ -2150,14 +1783,14 @@ mod tests {
 }
 
 #[cfg(test)]
-mod off_level_tests {
+pub(in crate::game) mod off_level_tests {
     use super::*;
 
     #[test]
     #[ignore = "daily"]
     fn underwater_dismount_uses_the_levels_current_mount_tag() {
         crate::game::in_own_process(
-            "game::mounts::off_level_tests::underwater_dismount_uses_the_levels_current_mount_tag",
+            "game::server_side::mounts::off_level_tests::underwater_dismount_uses_the_levels_current_mount_tag",
             || {
                 crate::game::native_entity_refs::tests::with_game(|game| {
                     let tags = &game.items().entity_type_tags;
@@ -2240,14 +1873,14 @@ mod off_level_tests {
 
 #[cfg(test)]
 #[path = "mounts/camel_jump_tests.rs"]
-mod camel_jump_tests;
+pub(in crate::game) mod camel_jump_tests;
 
 #[cfg(test)]
 #[path = "mounts/sneak_dismount_tests.rs"]
 pub(in crate::game) mod sneak_dismount_tests;
 #[cfg(test)]
 #[path = "tests/strider_lava_boarding_tests.rs"]
-mod strider_lava_boarding_tests;
+pub(in crate::game) mod strider_lava_boarding_tests;
 
 #[cfg(test)]
 #[path = "tests/steerable_boarding_tests.rs"]
@@ -2255,8 +1888,8 @@ pub(in crate::game) mod steerable_boarding_tests;
 
 #[cfg(test)]
 #[path = "tests/ride_dismount_tests.rs"]
-mod ride_dismount_tests;
+pub(in crate::game) mod ride_dismount_tests;
 
 #[cfg(test)]
 #[path = "tests/ride_seat_tests.rs"]
-mod ride_seat_tests;
+pub(in crate::game) mod ride_seat_tests;

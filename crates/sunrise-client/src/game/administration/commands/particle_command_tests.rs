@@ -3,14 +3,19 @@
 //! turns it into what `ParticleProvider.createParticle` reads — a block
 //! crumble's block state, a dust transition's colours and scale, a spell's
 //! colour and power, a sculk charge's roll, a vibration's destination.
+#[allow(unused_imports)]
 use super::*;
+#[allow(unused_imports)]
 use crate::game::{
     execution_role,
     launch_options::Options,
     resource_load::{Progress, load_resources},
 };
+#[allow(unused_imports)]
 use mod_api::client::particles::PositionSource;
+#[allow(unused_imports)]
 use std::sync::Arc;
+#[allow(unused_imports)]
 use sunrise_client::{
     audio::Audio,
     chunk::Chunk,
@@ -18,9 +23,12 @@ use sunrise_client::{
     particles::{ParticleLevel, ParticleOptions, ParticleType},
     settings::Settings,
 };
+#[allow(unused_imports)]
 use sunrise_core::geometry::Vec3;
 
-fn game<'a>(resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>) -> Game<'a> {
+pub(in crate::game) fn game<'a>(
+    resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>,
+) -> Game<'a> {
     let root = std::path::PathBuf::from(
         std::env::var_os("SUNRISE_TEST_RESOURCES")
             .expect("set SUNRISE_TEST_RESOURCES to prepared resources"),
@@ -68,15 +76,8 @@ fn game<'a>(resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>) -
     game
 }
 
-/// The one particle the window asks the engine for with `command`, at the
-/// player's own block and with no spread.
-fn drawn(game: &mut Game<'_>, command: &str) -> ParticleOptions {
-    game.particles.0.created_requests = Some(Vec::new());
-    assert!(game.run_command(command), "{command}");
-    let mut made = game.particles.0.created_requests.take().unwrap();
-    assert_eq!(made.len(), 1, "{command}");
-    made.remove(0).0
-}
+#[allow(unused_imports)]
+pub(in crate::game) use crate::game::client_side::commands_client::world_cmds::particle_command_tests::drawn;
 
 #[test]
 #[ignore = "daily"]
@@ -125,29 +126,6 @@ fn particle_options_carry_their_codec_data() {
         vibration.vibration,
         Some((PositionSource::Block([0, 64, 0]), [0.5, 64.5, 0.5], 20))
     );
-}
-
-/// The crumbs the command names are drawn: `TerrainParticle.CrumblingProvider`
-/// keeps no particle for options that carry no block.
-#[test]
-#[ignore = "daily"]
-fn block_crumble_draws_the_block_it_names() {
-    let mut resources = None;
-    let mut game = game(&mut resources);
-    game.particles.0.created_requests = None;
-    game.particles.0.clear();
-    assert!(game.run_command(
-        "particle minecraft:block_crumble{block_state:\"minecraft:stone\"} 0.5 100.5 0.5 0 0 0 0 1"
-    ));
-    let level = ParticleLevel {
-        world: &game.world,
-        facts: game.res.facts(),
-        collision: game.collision,
-        player: None,
-        cached_chunk: std::cell::Cell::new(None),
-    };
-    game.particles.0.tick(&level);
-    assert_eq!(game.particles.0.len(), 1, "the crumble is drawn");
 }
 
 #[test]

@@ -1,22 +1,26 @@
 //! Position-owned state follows the payload; observers are invalidated at the owning boundary.
+#[allow(unused_imports)]
 use super::Game;
+#[allow(unused_imports)]
 use sunrise_client::{
     block_entities::Pos,
     chunk::PendingContainerLoot,
     world::{BlockEntityExtras, World},
 };
+#[allow(unused_imports)]
 use sunrise_core::nbt::{Compound, Tag};
 
 /// Mutable position-owned server data borrowed by the level adapter.
-pub(super) struct PositionState<'a> {
-    pub(super) gateways: &'a mut sunrise_client::fast_hash::FxHashMap<
+pub(in crate::game) struct PositionState<'a> {
+    pub(in crate::game) gateways: &'a mut sunrise_client::fast_hash::FxHashMap<
         [i32; 3],
         sunrise_client::block_entity_anim::EndGateway,
     >,
-    pub(super) hoppers: &'a mut std::collections::HashMap<Pos, super::machines::HopperState>,
+    pub(in crate::game) hoppers:
+        &'a mut std::collections::HashMap<Pos, super::machines::HopperState>,
 }
 
-pub(super) enum PositionChange {
+pub(in crate::game) enum PositionChange {
     Carry {
         from: Pos,
         to: Pos,
@@ -27,7 +31,7 @@ pub(super) enum PositionChange {
     },
 }
 
-pub(super) fn take_position_data(world: &mut World, from: Pos) -> Compound {
+pub(in crate::game) fn take_position_data(world: &mut World, from: Pos) -> Compound {
     let mut extras = world.block_entity_extras(from);
     if extras.source.is_none() {
         extras.source = super::spill::saved_entity(world, [from.0, from.1, from.2]);
@@ -63,7 +67,7 @@ pub(super) fn take_position_data(world: &mut World, from: Pos) -> Compound {
     world.set_block_entity_extras(from, BlockEntityExtras::default());
     data
 }
-pub(super) fn land_position_data(world: &mut World, at: Pos, data: &Compound) {
+pub(in crate::game) fn land_position_data(world: &mut World, at: Pos, data: &Compound) {
     if let Some(name) = data.get(&"Name".into()) {
         world.block_names.insert(at, name.clone());
     }
@@ -86,12 +90,12 @@ pub(super) fn land_position_data(world: &mut World, at: Pos, data: &Compound) {
 }
 impl Game<'_> {
     /// Reject obsolete mesh entries even if an old asynchronous upload arrives after a move.
-    pub(super) fn live_block_entity_render(&self, pos: [i32; 3], state: u32) -> bool {
+    pub(in crate::game) fn live_block_entity_render(&self, pos: [i32; 3], state: u32) -> bool {
         self.world.block(pos[0], pos[1], pos[2]).0 == state
             && self.res.block_entity_render().renders(state)
     }
     /// Runs before with_level returns: no menu, ticker, save or packet sees an old owner.
-    pub(super) fn finish_piston_position_changes(&mut self, changes: Vec<PositionChange>) {
+    pub(in crate::game) fn finish_piston_position_changes(&mut self, changes: Vec<PositionChange>) {
         if changes.is_empty() {
             return;
         }
@@ -171,10 +175,5 @@ impl Game<'_> {
                 }
             }
         }
-    }
-
-    #[inline(always)]
-    pub(in crate::game) fn finish_piston_position_changes_client(&mut self, at: Pos) {
-        self.client.test_highlights.remove(&at);
     }
 }

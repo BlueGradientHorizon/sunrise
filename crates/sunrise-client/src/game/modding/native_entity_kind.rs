@@ -3,7 +3,7 @@ use super::{Game, commands::Target};
 use mod_api::{EntityRef, EntityTypeKey, LevelReadError, PushReaction};
 
 impl Game<'_> {
-    pub(super) fn native_entity_kind_key(&self, target: Target) -> Option<EntityTypeKey> {
+    pub(in crate::game) fn native_entity_kind_key(&self, target: Target) -> Option<EntityTypeKey> {
         // A living entity's type key was resolved with the accepted resources; other kinds
         // resolve their name.
         let keys = self.res.living_type_keys();
@@ -66,7 +66,7 @@ impl Game<'_> {
     }
 
     /// `Entity.getPistonPushReaction`; only the armor stand's override depends on instance state.
-    pub(super) fn entity_piston_push_reaction(
+    pub(in crate::game) fn entity_piston_push_reaction(
         &self,
         entity: EntityRef,
     ) -> Result<Option<PushReaction>, LevelReadError> {
@@ -105,7 +105,7 @@ impl Game<'_> {
             }))
     }
 
-    pub(super) fn entity_is_hanging(
+    pub(in crate::game) fn entity_is_hanging(
         &self,
         entity: EntityRef,
     ) -> Result<Option<bool>, LevelReadError> {

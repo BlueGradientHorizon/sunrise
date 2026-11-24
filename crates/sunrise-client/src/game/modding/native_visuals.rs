@@ -4,13 +4,13 @@ use sunrise_client::{dynamic_light, gizmos};
 /// Non-particle requests survive a late particle clear. Select the combined nearest
 /// lights only after particle extraction, so removed particles cannot displace them.
 #[derive(Default)]
-pub(super) struct FrameVisuals {
+pub(in crate::game) struct FrameVisuals {
     item_lights: Vec<mod_api::ColoredLight>,
     mod_lights: Vec<mod_api::ColoredLight>,
 }
 
 impl FrameVisuals {
-    pub(super) fn finish(
+    pub(in crate::game) fn finish(
         self,
         game: &Game<'_>,
         camera: glam::DVec3,
@@ -50,7 +50,7 @@ fn rim_target_valid(
 
 impl Game<'_> {
     /// Frame-local requests never persist after a mod is removed or a world changes.
-    pub(super) fn native_frame_visuals(
+    pub(in crate::game) fn native_frame_visuals(
         &self,
         alpha: f64,
         lines: &mut Vec<gizmos::Line>,

@@ -2,7 +2,7 @@
 use mod_api::{Hand, HostSide, InteractionResult as Answer};
 use std::sync::Mutex;
 
-pub(super) static STATE: Mutex<([i32; 3], [i32; 3])> = Mutex::new(([0; 3], [0; 3]));
+pub(in crate::game) static STATE: Mutex<([i32; 3], [i32; 3])> = Mutex::new(([0; 3], [0; 3]));
 
 fn answer(path: i32, host: HostSide<'_>, hand: Hand) -> Option<Answer> {
     let state = STATE.lock().unwrap();
@@ -66,11 +66,11 @@ impl mod_api::ItemPart for Part {
     }
 }
 
-pub(super) fn begin(path: i32, answer: i32, server_only: bool) {
+pub(in crate::game) fn begin(path: i32, answer: i32, server_only: bool) {
     *STATE.lock().unwrap() = ([path, answer, i32::from(server_only)], [0; 3]);
 }
 
-pub(super) fn finish() -> [i32; 3] {
+pub(in crate::game) fn finish() -> [i32; 3] {
     let mut state = STATE.lock().unwrap();
     state.0 = [0; 3];
     state.1

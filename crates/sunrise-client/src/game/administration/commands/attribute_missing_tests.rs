@@ -4,11 +4,16 @@
 //! when it has none (a player has no `minecraft:follow_range`), before any
 //! modifier is added or removed. The same id on an attribute the player does
 //! have still works.
+#[allow(unused_imports)]
 use crate::game::*;
+#[allow(unused_imports)]
 use std::sync::Arc;
+#[allow(unused_imports)]
 use sunrise_client::motion::PlayerMotion;
 
-fn game<'a>(resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>) -> Game<'a> {
+pub(in crate::game) fn game<'a>(
+    resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>,
+) -> Game<'a> {
     let mut game = crate::game::game_tests::tests::server_game(resources);
     game.build_registries();
     game.set_allow_commands(true);
@@ -21,19 +26,11 @@ fn game<'a>(resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>) -
     game
 }
 
-/// Runs `command`: whether it succeeded and what the issuer was told.
-fn run(game: &mut Game<'_>, command: &str) -> (bool, Vec<String>) {
-    game.server.chat_capture = Some(Vec::new());
-    let ok = game.run_command(command);
-    let said = game.server.chat_capture.take().unwrap_or_default();
-    (
-        ok,
-        said.iter().map(sunrise_client::text::Text::plain).collect(),
-    )
-}
+#[allow(unused_imports)]
+pub(in crate::game) use crate::game::server_side::commands_server::world_cmds::attribute_missing_tests::run;
 
 /// The one line a command told its issuer (`command_failure` adds no others).
-fn only(said: &[String]) -> &str {
+pub(in crate::game) fn only(said: &[String]) -> &str {
     assert_eq!(said.len(), 1, "{said:?}");
     &said[0]
 }

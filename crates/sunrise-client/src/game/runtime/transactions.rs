@@ -31,15 +31,19 @@
 //! health and absorption, and the attribute modifier rows the effects own.
 //! An entity added inside one goes at an abort, one removed is only marked until the root
 //! commit, and mods hear of joins and leaves at the root commit (`transactions/entities.rs`).
+#[allow(unused_imports)]
 use super::{
     BlockEntity, BlockStateId, Dim, Game, lan_mount_menu::MountClickWindow, machines::HopperState,
     maps::MapData,
 };
+#[allow(unused_imports)]
 use mod_api::{
     __private::TransactionFrame, LevelRef, TransactionContext, TransactionLifecycle,
     TransactionScopeError,
 };
+#[allow(unused_imports)]
 use std::collections::{BTreeMap, HashMap};
+#[allow(unused_imports)]
 use sunrise_client::{
     block_entities::BlockEntityIdentity,
     effects::EffectInstance,
@@ -50,28 +54,33 @@ use sunrise_client::{
     mobs::{Mob, StoredEffect, finalize::EffectModifierUndo, gear::Gear},
     world::{BlockEntityExtras, ModifiedChunks, World},
 };
+#[allow(unused_imports)]
 use sunrise_core::{geometry::Vec3, position::BlockPos, random::LegacyRandom};
+#[allow(unused_imports)]
 use sunrise_items::equipment::Equipment;
+#[allow(unused_imports)]
 use sunrise_mod_runtime::attachments::{AttachmentQueryScopes, Attachments, Holder};
+#[allow(unused_imports)]
 use sunrise_world::level::flags;
 
 #[path = "transactions/decision.rs"]
 pub(in crate::game) mod decision;
 #[path = "transactions/entities.rs"]
-mod entities;
+pub(in crate::game) mod entities;
+#[allow(unused_imports)]
 pub(in crate::game) use entities::{Announcement, ArrivalRollback};
 #[path = "transactions/scratch.rs"]
-mod scratch;
+pub(in crate::game) mod scratch;
 
 /// A notice names the container that received the write, not a replacement at its position.
 pub(in crate::game) struct QuickMoveNotice {
-    dim: Dim,
-    holder: BlockEntityIdentity,
+    pub(in crate::game) dim: Dim,
+    pub(in crate::game) holder: BlockEntityIdentity,
 }
 
-struct QuickMoveNotices<'a, 'g> {
-    game: &'a mut Game<'g>,
-    outer: Option<Vec<QuickMoveNotice>>,
+pub(in crate::game) struct QuickMoveNotices<'a, 'g> {
+    pub(in crate::game) game: &'a mut Game<'g>,
+    pub(in crate::game) outer: Option<Vec<QuickMoveNotice>>,
 }
 
 impl Drop for QuickMoveNotices<'_, '_> {
@@ -80,7 +89,7 @@ impl Drop for QuickMoveNotices<'_, '_> {
     }
 }
 
-type Pos = (i32, i32, i32);
+pub(in crate::game) type Pos = (i32, i32, i32);
 
 /// A level-local save follows that level's block writes. A transaction save follows the
 /// dimension-keyed owner journal (e.g. an entity's equipment), even through a different level.
@@ -91,47 +100,47 @@ pub(in crate::game) enum SaveChunkScope {
 }
 
 /// The last pending value at this depth for a connection, menu generation and data index.
-type MenuDataJournal = BTreeMap<(u32, u64, usize), i32>;
-type ComposterRandoms =
+pub(in crate::game) type MenuDataJournal = BTreeMap<(u32, u64, usize), i32>;
+pub(in crate::game) type ComposterRandoms =
     HashMap<(mod_api::DimensionKey, (i32, i32)), HashMap<Pos, sunrise_core::random::LegacyRandom>>;
 
 /// The open transactions, innermost last, and which close is running, if any: what
 /// `transaction_lifecycle` reads.
 #[derive(Default)]
 pub(in crate::game) struct OpenTransactions {
-    levels: Vec<Level>,
+    pub(in crate::game) levels: Vec<Level>,
     pub(in crate::game) attachment_query_scopes: AttachmentQueryScopes,
     // A live, non-ZST address distinguishes journal instances.
-    tag: Option<Box<u8>>,
-    next_frame: u64,
+    pub(in crate::game) tag: Option<Box<u8>>,
+    pub(in crate::game) next_frame: u64,
     /// Live scratch rows; the frame opening a loan owns its ID.
-    scratch: HashMap<u64, scratch::Scratch>,
-    closing: Option<TransactionLifecycle>,
+    pub(in crate::game) scratch: HashMap<u64, scratch::Scratch>,
+    pub(in crate::game) closing: Option<TransactionLifecycle>,
     /// Implicit container notices waiting for this quick move's source settlement.
-    quick_move_notices: Option<Vec<QuickMoveNotice>>,
+    pub(in crate::game) quick_move_notices: Option<Vec<QuickMoveNotice>>,
     /// How many writes the journals have been asked to keep, ever: a whole-state epoch that no
     /// restore moves back. A decision that read a player's inventory or a container's slots
     /// compares it before and after its listeners ran; an equal rewrite counts as a write.
-    writes: u64,
+    pub(in crate::game) writes: u64,
     /// The same count for a player's own state only (inventory, cursor, menu storage): what a
     /// decision that must stay open to other writes (a mod's move into another block) reads.
-    player_writes: u64,
+    pub(in crate::game) player_writes: u64,
     /// The root commits telling their joins and leaves, outermost first: a listener's command in
     /// another level can commit a transaction there while this level's commit is told.
-    committing: Vec<entities::Committing>,
-    composter_epoch: Option<mod_api::WorldEpoch>,
+    pub(in crate::game) committing: Vec<entities::Committing>,
+    pub(in crate::game) composter_epoch: Option<mod_api::WorldEpoch>,
     /// Each composter port owns its transactional random stream, independently of Level.random.
-    composter_randoms: ComposterRandoms,
+    pub(in crate::game) composter_randoms: ComposterRandoms,
     /// Active retained original-player attachment maps during `player_clone` dispatch,
     /// kept in sync with open transaction frames so mutations roll back on abort.
-    retained_original_attachments:
+    pub(in crate::game) retained_original_attachments:
         Vec<std::sync::Arc<std::sync::Mutex<super::original_player::OriginalAttachmentSlot>>>,
     #[cfg(test)]
     pub(in crate::game) trace: Option<std::sync::Arc<std::sync::Mutex<Vec<String>>>>,
 }
 
 impl OpenTransactions {
-    fn next_frame(&mut self) -> TransactionFrame {
+    pub(in crate::game) fn next_frame(&mut self) -> TransactionFrame {
         let tag = self.tag.get_or_insert_with(|| Box::new(0));
         let journal = std::ptr::from_ref(&**tag) as usize;
         self.next_frame = self
@@ -152,7 +161,11 @@ impl OpenTransactions {
         self.retained_original_attachments.pop();
     }
 
-    fn close_retained_originals(&self, frame: Option<TransactionFrame>, commit: bool) {
+    pub(in crate::game) fn close_retained_originals(
+        &self,
+        frame: Option<TransactionFrame>,
+        commit: bool,
+    ) {
         if let Some(frame) = frame {
             for slot in &self.retained_original_attachments {
                 slot.lock()
@@ -166,13 +179,16 @@ impl OpenTransactions {
         entities::open_in(self, dim)
     }
 
-    fn insert_scratch(&mut self, entry: scratch::Scratch) -> mod_api::ScratchSlot {
+    pub(in crate::game) fn insert_scratch(
+        &mut self,
+        entry: scratch::Scratch,
+    ) -> mod_api::ScratchSlot {
         let slot = mod_api::ScratchSlot::fresh();
         self.scratch.insert(slot.id(), entry);
         slot
     }
 
-    fn player_write(&mut self) -> Option<&mut Level> {
+    pub(in crate::game) fn player_write(&mut self) -> Option<&mut Level> {
         self.player_writes = self.player_writes.wrapping_add(1);
         self.writes = self.writes.wrapping_add(1);
         self.last_mut()
@@ -286,9 +302,9 @@ impl std::ops::DerefMut for OpenTransactions {
 }
 
 /// Puts the closing phase back when a close ends, however it ends.
-struct ClosingPhase<'a, 'g> {
-    game: &'a mut Game<'g>,
-    outer: Option<TransactionLifecycle>,
+pub(in crate::game) struct ClosingPhase<'a, 'g> {
+    pub(in crate::game) game: &'a mut Game<'g>,
+    pub(in crate::game) outer: Option<TransactionLifecycle>,
 }
 
 impl Drop for ClosingPhase<'_, '_> {
@@ -297,10 +313,10 @@ impl Drop for ClosingPhase<'_, '_> {
     }
 }
 
-struct KeptBlock {
-    state: BlockStateId,
-    replay: Option<BlockReplay>,
-    strict: bool,
+pub(in crate::game) struct KeptBlock {
+    pub(in crate::game) state: BlockStateId,
+    pub(in crate::game) replay: Option<BlockReplay>,
+    pub(in crate::game) strict: bool,
 }
 
 pub(in crate::game) type RemovedRow = (Box<BlockEntity>, u64);
@@ -315,11 +331,11 @@ pub(in crate::game) fn take_replay_row(world: &mut World, pos: Pos) -> Option<Re
 }
 
 pub(in crate::game) struct BlockStep {
-    pos: Pos,
-    to: BlockStateId,
-    replay: BlockReplay,
+    pub(in crate::game) pos: Pos,
+    pub(in crate::game) to: BlockStateId,
+    pub(in crate::game) replay: BlockReplay,
     // Some means staging took the resident row out (even if it was already absent).
-    removed: Option<Option<RemovedRow>>,
+    pub(in crate::game) removed: Option<Option<RemovedRow>>,
 }
 
 pub(in crate::game) struct StrictBlockStep {
@@ -332,23 +348,23 @@ pub(in crate::game) struct StrictBlockStep {
 pub(in crate::game) type StrictBlockSteps = indexmap::IndexMap<Pos, StrictBlockStep>;
 
 #[derive(Clone, Copy)]
-struct BlockReplay {
-    state: BlockStateId,
-    flags: i32,
+pub(in crate::game) struct BlockReplay {
+    pub(in crate::game) state: BlockStateId,
+    pub(in crate::game) flags: i32,
     /// Replay LevelWriteHost writes through the direct host's block-entity creation path.
-    level_host: bool,
+    pub(in crate::game) level_host: bool,
     /// A level-host write only hid the entity from other reads. At commit
     /// the real Level.setBlock still has to run its removal side effects.
-    replay_removal: bool,
+    pub(in crate::game) replay_removal: bool,
     /// Any tentative write at this position replaced the block with one that does not keep
     /// connection groups (`!Behaviours::keeps_block_entity`), even if a later write returned
     /// it to a compatible block.
-    clear_connection_group: bool,
+    pub(in crate::game) clear_connection_group: bool,
 }
 
 /// Preserve requested updates, and suppress an effect only if every write
 /// suppressed it. Other bits describe the final write (e.g. moved by piston).
-fn merge_block_update_flags(earlier: i32, later: i32) -> i32 {
+pub(in crate::game) fn merge_block_update_flags(earlier: i32, later: i32) -> i32 {
     const REQUESTED: i32 =
         flags::UPDATE_NEIGHBORS | flags::UPDATE_CLIENTS | flags::UPDATE_IMMEDIATE;
     const SUPPRESSED: i32 = flags::UPDATE_INVISIBLE
@@ -373,130 +389,132 @@ pub(in crate::game) struct KeptGeneralEntity {
 /// One journal, either an open frame or a level-local batch split from one at close.
 #[derive(Default)]
 pub(in crate::game) struct Level {
-    frame: Option<TransactionFrame>,
-    parent_attachment_query_scope: u64,
-    dimension: Option<super::Dim>,
+    pub(in crate::game) frame: Option<TransactionFrame>,
+    pub(in crate::game) parent_attachment_query_scope: u64,
+    pub(in crate::game) dimension: Option<super::Dim>,
     /// Each block entity as it was before this transaction first wrote it.
-    block_entities: HashMap<Pos, Kept>,
+    pub(in crate::game) block_entities: HashMap<Pos, Kept>,
     /// Rows moved out of storage when their block was tentatively replaced. Commit replays
     /// removal with the row as it was then; abort uses the first write in `block_entities`.
     /// A removal without a resident row still marks the position for abort.
-    removed_block_entities: HashMap<Pos, Option<RemovedRow>>,
+    pub(in crate::game) removed_block_entities: HashMap<Pos, Option<RemovedRow>>,
     /// A decorated pot lives in its chunk's saved block-entity tags, not the slot table.
-    saved_pots: HashMap<Pos, Option<sunrise_core::nbt::Tag>>,
+    pub(in crate::game) saved_pots: HashMap<Pos, Option<sunrise_core::nbt::Tag>>,
     /// Each item slot (block entity, slot) a slot-only write changed, as it was before this
     /// transaction first wrote it, for a block entity not kept whole in `block_entities`: a
     /// move through a container keeps the slot it touches, not the entity's whole saved data.
-    slots: HashMap<(Pos, usize), KeptSlot>,
+    pub(in crate::game) slots: HashMap<(Pos, usize), KeptSlot>,
     /// Each block's original state and the combined update flags of its writes.
-    blocks: HashMap<Pos, KeptBlock>,
+    pub(in crate::game) blocks: HashMap<Pos, KeptBlock>,
     /// Each cell's original connection group before this transaction first changed it, used for
     /// silent rollback on abort and pre-replay restoration on root commit.
-    connection_groups: HashMap<Pos, Option<u64>>,
+    pub(in crate::game) connection_groups: HashMap<Pos, Option<u64>>,
     /// Level.random in this frame's own dimension before its first draw.
-    level_random: Option<LegacyRandom>,
+    pub(in crate::game) level_random: Option<LegacyRandom>,
     /// Other levels drawn from at this depth. Only those draws allocate a map entry.
-    parked_level_randoms: HashMap<LevelRef, LegacyRandom>,
+    pub(in crate::game) parked_level_randoms: HashMap<LevelRef, LegacyRandom>,
     /// Named loot streams before tentative block loot.
-    loot_sequences: Option<sunrise_items::random_sequences::RandomSequences>,
+    pub(in crate::game) loot_sequences: Option<sunrise_items::random_sequences::RandomSequences>,
     /// Composter-local random streams before this depth first evaluated their layers.
-    composter_randoms: ComposterRandoms,
+    pub(in crate::game) composter_randoms: ComposterRandoms,
     /// Each quart cell before this transaction first wrote it, keyed by level.
-    biomes: HashMap<(Dim, Pos), u16>,
+    pub(in crate::game) biomes: HashMap<(Dim, Pos), u16>,
     /// Each player's inventory and saved data before this transaction first wrote them.
-    players: HashMap<JournaledPlayer, KeptPlayer>,
+    pub(in crate::game) players: HashMap<JournaledPlayer, KeptPlayer>,
     /// Ender storage has one journal shared by player and menu writes.
-    ender_items: HashMap<JournaledPlayer, Vec<Option<ItemStack>>>,
+    pub(in crate::game) ender_items: HashMap<JournaledPlayer, Vec<Option<ItemStack>>>,
     /// Saved player extra NBT (`level.player_extra` / `guest.saved`), shared by player and
     /// persistent-data writes, including dead players.
-    player_extra: HashMap<JournaledPlayer, Option<sunrise_core::nbt::Tag>>,
+    pub(in crate::game) player_extra: HashMap<JournaledPlayer, Option<sunrise_core::nbt::Tag>>,
     /// Synced player health and its unpublished update events before set_health, by player body.
-    player_health: HashMap<PlayerBodyKey, KeptPlayerHealth>,
+    pub(in crate::game) player_health: HashMap<PlayerBodyKey, KeptPlayerHealth>,
     /// Mob health and synchronization dirtiness before set_health, keyed by level.
-    mob_health: HashMap<(Dim, u32), KeptMobHealth>,
+    pub(in crate::game) mob_health: HashMap<(Dim, u32), KeptMobHealth>,
     /// Active and hidden effects before the first write to the mob at this depth, keyed by level.
-    mob_effects: HashMap<(Dim, u32), KeptMobEffects>,
+    pub(in crate::game) mob_effects: HashMap<(Dim, u32), KeptMobEffects>,
     /// Effect-owned modifier changes in write order, so rows can return to their positions.
-    effect_modifiers: Vec<((Dim, u32), EffectModifierUndo)>,
+    pub(in crate::game) effect_modifiers: Vec<((Dim, u32), EffectModifierUndo)>,
     /// Each entity's inventory (`entity_slots`) before this transaction first wrote it, by level.
-    entities: HashMap<(Dim, u32), Vec<Option<ItemStack>>>,
+    pub(in crate::game) entities: HashMap<(Dim, u32), Vec<Option<ItemStack>>>,
     /// Each mob's or armor stand's equipment before this transaction first
     /// wrote it (#932), told apart for the way back and keyed by level.
-    equipment: HashMap<(Dim, u32), KeptEquipment>,
+    pub(in crate::game) equipment: HashMap<(Dim, u32), KeptEquipment>,
     /// Live modifier diffs, also kept for rebuilds that write no slot, keyed by level.
-    modifier_changes: HashMap<(Dim, u32), ModifierChanges>,
+    pub(in crate::game) modifier_changes: HashMap<(Dim, u32), ModifierChanges>,
     /// Each chested mob's item list's length before `entity_slots` first grew it to its slots
     /// in this transaction, keyed by level.
-    mob_lengths: HashMap<(Dim, u32), usize>,
+    pub(in crate::game) mob_lengths: HashMap<(Dim, u32), usize>,
     /// Each item entity's changed fields before this transaction first wrote them.
-    item_entities: HashMap<crate::join_seq::JoinSeq, KeptItemEntity>,
+    pub(in crate::game) item_entities: HashMap<crate::join_seq::JoinSeq, KeptItemEntity>,
     /// Each general entity subject's changed fields before the first write.
-    general_entities: HashMap<crate::join_seq::JoinSeq, KeptGeneralEntity>,
+    pub(in crate::game) general_entities: HashMap<crate::join_seq::JoinSeq, KeptGeneralEntity>,
     /// The merge fields of resident experience orbs before the first award touched them, by level.
-    orbs: HashMap<(Dim, crate::join_seq::JoinSeq), (i32, u32, i32)>,
+    pub(in crate::game) orbs: HashMap<(Dim, crate::join_seq::JoinSeq), (i32, u32, i32)>,
     /// Each detached station before the first click wrote it, by connection and owner.
-    stations: HashMap<(u32, decision::MenuId), super::lan_stations::GuestStation>,
+    pub(in crate::game) stations:
+        HashMap<(u32, decision::MenuId), super::lan_stations::GuestStation>,
     /// Each guest's inventory crafting grid before the first write, by connection.
-    menus: HashMap<u32, KeptMenus>,
+    pub(in crate::game) menus: HashMap<u32, KeptMenus>,
     /// Drag, machine and preview state before a scoped default click.
-    menu_clicks: HashMap<u64, KeptClick>,
+    pub(in crate::game) menu_clicks: HashMap<u64, KeptClick>,
     /// The first drag state written in a guest's mount window.
-    mount_drags: HashMap<MountClickWindow, QuickCraftDrag>,
+    pub(in crate::game) mount_drags: HashMap<MountClickWindow, QuickCraftDrag>,
     /// Mount window identities to reconcile once the outermost transaction has settled.
-    mount_replies: indexmap::IndexSet<MountClickWindow>,
+    pub(in crate::game) mount_replies: indexmap::IndexSet<MountClickWindow>,
     pub(in crate::game) menu_click_active: Option<u32>,
     /// Each native window's slots before the first write, by menu generation.
-    native_menu_slots: HashMap<u64, Vec<Option<ItemStack>>>,
-    menu_data: MenuDataJournal,
+    pub(in crate::game) native_menu_slots: HashMap<u64, Vec<Option<ItemStack>>>,
+    pub(in crate::game) menu_data: MenuDataJournal,
     /// The scoreboard before this transaction first wrote it (`journal_scoreboard`), whole.
-    board: Option<sunrise_client::scoreboard::Scoreboard>,
+    pub(in crate::game) board: Option<sunrise_client::scoreboard::Scoreboard>,
     /// Each entity's, player's, chunk's and the level's attachment map before this transaction
     /// first reached it (a block entity's is kept with it). Per-level holders are keyed by level;
     /// player-owned attachment maps are keyed by player body across dimensions.
-    attachments: HashMap<AttachmentKey, KeptAttachments>,
+    pub(in crate::game) attachments: HashMap<AttachmentKey, KeptAttachments>,
     /// Held once this transaction reaches an attachment map, until it closes: the save
     /// admission gate (`passes_settled`) refuses a save while a map may hold tentative
     /// values, which only the root commit makes saveable.
-    save_gate: Option<sunrise_client::join_seq::visibility::PassLease>,
+    pub(in crate::game) save_gate: Option<sunrise_client::join_seq::visibility::PassLease>,
     /// Each chunk's unsaved mark and save queue entry before this transaction first reached an
     /// attachment map in it: an abort puts them back, so a chunk only a tentative write marked
     /// is clean again.
-    chunk_marks: HashMap<(i32, i32), sunrise_client::world::ChunkMark>,
+    pub(in crate::game) chunk_marks: HashMap<(i32, i32), sunrise_client::world::ChunkMark>,
     /// Chunks whose committed storage writes must be saved, in first-write order and in the
     /// levels written.
-    save_chunks: indexmap::IndexSet<(Dim, (i32, i32), SaveChunkScope)>,
+    pub(in crate::game) save_chunks: indexmap::IndexSet<(Dim, (i32, i32), SaveChunkScope)>,
     /// New map data and its reserved IDs. Neither enters the saved map table until root commit.
     pub(in crate::game) new_maps: BTreeMap<i32, MapData>,
     /// What the root commit does, in order.
-    after: Vec<After>,
+    pub(in crate::game) after: Vec<After>,
     /// Internal decide/fire/apply state for menu actions.
-    actions: decision::Journal,
+    pub(in crate::game) actions: decision::Journal,
     /// Merchant takes keep their session, mob, statistics and criterion progress together.
     pub(in crate::game) trades: super::lan_trade_decisions::Journal,
     pub(in crate::game) packets: Option<sunrise_client::lan::conn::transaction_packets::Scope>,
-    captured_packets: Vec<sunrise_client::lan::conn::transaction_packets::Packets>,
-    action: Option<decision::ActiveAction>,
+    pub(in crate::game) captured_packets:
+        Vec<sunrise_client::lan::conn::transaction_packets::Packets>,
+    pub(in crate::game) action: Option<decision::ActiveAction>,
     /// A scratch slot owned by this frame, and before-images of ancestor loans it wrote.
-    owned_scratch: Option<u64>,
-    scratch_kept: HashMap<u64, scratch::Scratch>,
+    pub(in crate::game) owned_scratch: Option<u64>,
+    pub(in crate::game) scratch_kept: HashMap<u64, scratch::Scratch>,
     /// The entities it added and removed, and the announcements it holds.
-    lifetimes: entities::EntityJournal,
+    pub(in crate::game) lifetimes: entities::EntityJournal,
     /// Each attachment map that went with an entity to another level after this transaction
     /// first reached it, by the id it arrived under, as it was then.
-    travelled: HashMap<u32, KeptAttachments>,
+    pub(in crate::game) travelled: HashMap<u32, KeptAttachments>,
     /// The index rows of the entities that left this level, kept until the root closes.
-    departed: Vec<entities::Departure>,
+    pub(in crate::game) departed: Vec<entities::Departure>,
     /// The entities taken for a transfer whose arrival is not adopted yet, by source id, each
     /// with the slot its arrival reads an abort's way back from.
-    in_flight: HashMap<u32, entities::ArrivalRollback>,
+    pub(in crate::game) in_flight: HashMap<u32, entities::ArrivalRollback>,
 }
 
 /// A slot's stack before a transaction first wrote it, and the generation of the block entity
 /// it belongs to: an abort puts it back only into that same block entity, never into one that
 /// replaced it.
-struct KeptSlot {
-    stack: Option<ItemStack>,
-    generation: Option<u64>,
+pub(in crate::game) struct KeptSlot {
+    pub(in crate::game) stack: Option<ItemStack>,
+    pub(in crate::game) generation: Option<u64>,
 }
 
 /// Identity of one player body for transaction rollback: either the local host player
@@ -517,28 +535,28 @@ pub(in crate::game) enum AttachmentKey {
     Player(PlayerBodyKey),
 }
 
-struct KeptAttachments {
-    contents: Attachments,
-    indexed: bool,
+pub(in crate::game) struct KeptAttachments {
+    pub(in crate::game) contents: Attachments,
+    pub(in crate::game) indexed: bool,
 }
 
-struct Kept {
-    entity: Option<BlockEntity>,
+pub(in crate::game) struct Kept {
+    pub(in crate::game) entity: Option<BlockEntity>,
     /// The pre-write batch, stored apart from the entity clone's fresh identity.
-    client_update_fields: Option<sunrise_core::nbt::Compound>,
-    generation: Option<u64>,
+    pub(in crate::game) client_update_fields: Option<sunrise_core::nbt::Compound>,
+    pub(in crate::game) generation: Option<u64>,
     /// None where it had no map: an abort removes one a write made.
-    attachments: Option<Attachments>,
-    hopper: Option<HopperState>,
+    pub(in crate::game) attachments: Option<Attachments>,
+    pub(in crate::game) hopper: Option<HopperState>,
     /// The custom name Sunrise keeps beside the model (`World::block_names`).
-    name: Option<sunrise_core::nbt::Tag>,
+    pub(in crate::game) name: Option<sunrise_core::nbt::Tag>,
     /// The container lock and loot table roll kept beside the model.
-    extras: BlockEntityExtras,
-    contents_watches: Vec<(Pos, u64)>,
+    pub(in crate::game) extras: BlockEntityExtras,
+    pub(in crate::game) contents_watches: Vec<(Pos, u64)>,
 }
 
 impl Kept {
-    fn capture(
+    pub(in crate::game) fn capture(
         world: &sunrise_client::world::World,
         hoppers: &HashMap<Pos, HopperState>,
         pos: Pos,
@@ -565,55 +583,55 @@ impl Kept {
     }
 }
 
-struct KeptPlayerHealth {
-    data: sunrise_world::synced_floats::SyncedFloats,
-    events_len: usize,
-    dead: bool,
-    guest: Option<(u32, bool, u32)>,
+pub(in crate::game) struct KeptPlayerHealth {
+    pub(in crate::game) data: sunrise_world::synced_floats::SyncedFloats,
+    pub(in crate::game) events_len: usize,
+    pub(in crate::game) dead: bool,
+    pub(in crate::game) guest: Option<(u32, bool, u32)>,
 }
 
-struct KeptMobHealth {
-    absorption: f32,
-    health: f32,
-    needs_sync: bool,
-    death_time: i32,
-    death_canceled: bool,
-    processed: bool,
+pub(in crate::game) struct KeptMobHealth {
+    pub(in crate::game) absorption: f32,
+    pub(in crate::game) health: f32,
+    pub(in crate::game) needs_sync: bool,
+    pub(in crate::game) death_time: i32,
+    pub(in crate::game) death_canceled: bool,
+    pub(in crate::game) processed: bool,
 }
 
-struct KeptMobEffects {
-    active: Vec<StoredEffect>,
-    chains: Vec<EffectInstance>,
-    ambient: Vec<&'static str>,
-    hidden: Vec<&'static str>,
-    dirty: bool,
+pub(in crate::game) struct KeptMobEffects {
+    pub(in crate::game) active: Vec<StoredEffect>,
+    pub(in crate::game) chains: Vec<EffectInstance>,
+    pub(in crate::game) ambient: Vec<&'static str>,
+    pub(in crate::game) hidden: Vec<&'static str>,
+    pub(in crate::game) dirty: bool,
 }
 
 /// Storage identity, not a public player handle. Fake players in different levels
 /// can share a UUID; their hub connections still distinguish their records.
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
-enum JournaledPlayer {
+pub(in crate::game) enum JournaledPlayer {
     Local(u128),
     Guest(u32),
 }
 
-enum PlayerStorageHome {
+pub(in crate::game) enum PlayerStorageHome {
     Game,
     Guest(usize),
 }
 
 #[derive(Clone)]
-struct KeptPlayer {
-    inventory: Vec<Option<ItemStack>>,
-    armor: [Option<ItemStack>; 4],
-    offhand: Option<ItemStack>,
-    equipment: Equipment,
-    carried: Option<ItemStack>,
+pub(in crate::game) struct KeptPlayer {
+    pub(in crate::game) inventory: Vec<Option<ItemStack>>,
+    pub(in crate::game) armor: [Option<ItemStack>; 4],
+    pub(in crate::game) offhand: Option<ItemStack>,
+    pub(in crate::game) equipment: Equipment,
+    pub(in crate::game) carried: Option<ItemStack>,
 }
 
 /// The raw slots before the first write, with a mob's separate gear overlay.
 /// Projecting the slots here would bake the overlay into the resident stacks.
-enum KeptEquipment {
+pub(in crate::game) enum KeptEquipment {
     Mob {
         slots: Box<Equipment>,
         gear: Option<Box<Gear>>,
@@ -621,19 +639,19 @@ enum KeptEquipment {
     Stand(Box<Equipment>),
 }
 
-struct KeptClick {
-    conn: u32,
-    drag: Option<(u8, Vec<usize>)>,
-    craft: Option<sunrise_client::lan::menu::ModCraft>,
-    slot_changed_seen: Option<Vec<Option<ItemStack>>>,
-    owned: Option<(u64, Box<sunrise_client::menu::Menu>)>,
-    machine: Option<(i32, Box<sunrise_client::menu::Menu>)>,
-    places: Option<super::native_menu_places::MenuSlotPlaces>,
+pub(in crate::game) struct KeptClick {
+    pub(in crate::game) conn: u32,
+    pub(in crate::game) drag: Option<(u8, Vec<usize>)>,
+    pub(in crate::game) craft: Option<sunrise_client::lan::menu::ModCraft>,
+    pub(in crate::game) slot_changed_seen: Option<Vec<Option<ItemStack>>>,
+    pub(in crate::game) owned: Option<(u64, Box<sunrise_client::menu::Menu>)>,
+    pub(in crate::game) machine: Option<(i32, Box<sunrise_client::menu::Menu>)>,
+    pub(in crate::game) places: Option<super::native_menu_places::MenuSlotPlaces>,
 }
 
 #[derive(Clone)]
-struct KeptMenus {
-    craft_grid: [Option<ItemStack>; 4],
+pub(in crate::game) struct KeptMenus {
+    pub(in crate::game) craft_grid: [Option<ItemStack>; 4],
 }
 
 /// What a write tells the world, at the root commit.
@@ -769,7 +787,7 @@ pub(in crate::game) enum After {
 }
 
 impl After {
-    fn level_owned(&self) -> bool {
+    pub(in crate::game) fn level_owned(&self) -> bool {
         matches!(
             self,
             Self::Block(_)
@@ -852,7 +870,7 @@ impl Level {
         self.connection_groups.entry(pos).or_insert(group);
     }
 
-    fn merge_level_writes(&mut self, child: &mut Self) {
+    pub(in crate::game) fn merge_level_writes(&mut self, child: &mut Self) {
         for (pos, biome) in std::mem::take(&mut child.biomes) {
             self.biomes.entry(pos).or_insert(biome);
         }
@@ -911,7 +929,7 @@ impl Level {
         }
     }
 
-    fn keep_player(
+    pub(in crate::game) fn keep_player(
         &mut self,
         owner: JournaledPlayer,
         ender_items: &[Option<ItemStack>],
@@ -965,7 +983,7 @@ pub(in crate::game) enum StorageSettlement {
 /// and any nested frames still open inside it.
 pub(in crate::game) struct StorageScope<'a, 'g> {
     pub(in crate::game) game: &'a mut Game<'g>,
-    frame: Option<TransactionFrame>,
+    pub(in crate::game) frame: Option<TransactionFrame>,
 }
 
 impl StorageScope<'_, '_> {
@@ -1085,7 +1103,7 @@ impl<'g> Game<'g> {
     }
 
     /// Also returns the frame's own detached scratch row when it commits.
-    fn run_storage_scope<R>(
+    pub(in crate::game) fn run_storage_scope<R>(
         &mut self,
         f: impl FnOnce(&mut Self, TransactionFrame) -> (R, bool),
     ) -> (R, StorageSettlement) {
@@ -1195,7 +1213,10 @@ impl<'g> Game<'g> {
     /// Always switches into the top frame's recorded dimension for the entire close (retirement,
     /// commit or rollback) and restores the caller's active dimension afterwards, so an abandoned
     /// or cross-level frame never commits or restores its level-local snapshots into another level.
-    fn close_storage_transaction(&mut self, commit: bool) -> Option<StorageSettlement> {
+    pub(in crate::game) fn close_storage_transaction(
+        &mut self,
+        commit: bool,
+    ) -> Option<StorageSettlement> {
         let owner = self.transactions.last()?.dimension.unwrap_or(self.dim);
         if let Some(settlement) = self.with_effect_level(owner, |game| {
             game.close_storage_transaction_in_place(commit)
@@ -1215,7 +1236,10 @@ impl<'g> Game<'g> {
         }
     }
     /// Closes the innermost transaction with its owning level already in place.
-    fn close_storage_transaction_in_place(&mut self, commit: bool) -> Option<StorageSettlement> {
+    pub(in crate::game) fn close_storage_transaction_in_place(
+        &mut self,
+        commit: bool,
+    ) -> Option<StorageSettlement> {
         let mut level = self.transactions.pop()?;
         let refused = commit
             && level.packets.is_some()
@@ -1263,7 +1287,7 @@ impl<'g> Game<'g> {
     /// Defensive fallback if a frame's recorded dimension is no longer parked: pop the frame so
     /// abandon loops always terminate and discard its level-local snapshots rather than restoring
     /// them into the wrong active level.
-    fn drop_unreachable_transaction_frame(&mut self) {
+    pub(in crate::game) fn drop_unreachable_transaction_frame(&mut self) {
         let Some(mut level) = self.transactions.pop() else {
             return;
         };
@@ -1315,7 +1339,7 @@ impl<'g> Game<'g> {
         guard.game.settle_mount_replies(mount_replies);
     }
     /// What closing `level` does, with the closing phase already set.
-    fn close_level(&mut self, mut level: Level, commit: bool) {
+    pub(in crate::game) fn close_level(&mut self, mut level: Level, commit: bool) {
         if let Some(scope) = level.packets.take()
             && commit
             && let Some(packets) = scope.finish()
@@ -1638,7 +1662,12 @@ impl<'g> Game<'g> {
             .or_insert_with(|| Kept::capture(&self.world, &self.server.hoppers, pos));
     }
     /// Puts back a removed block entity and its generation where none stands there now.
-    fn restore_removed_block_entity(&mut self, pos: Pos, entity: BlockEntity, generation: u64) {
+    pub(in crate::game) fn restore_removed_block_entity(
+        &mut self,
+        pos: Pos,
+        entity: BlockEntity,
+        generation: u64,
+    ) {
         let entities = &mut self.world.block_entities;
         if entities.get(&pos).is_none() {
             entities.insert(pos, entity);
@@ -1860,7 +1889,10 @@ impl<'g> Game<'g> {
 
     /// Follow the actual storage, even when public handles cannot resolve the player.
     /// Each outstanding swap holds the immediately preceding actor in the inner guest's row.
-    fn player_storage_home(&self, owner: JournaledPlayer) -> Option<PlayerStorageHome> {
+    pub(in crate::game) fn player_storage_home(
+        &self,
+        owner: JournaledPlayer,
+    ) -> Option<PlayerStorageHome> {
         let parked_in = match owner {
             JournaledPlayer::Local(uuid) => {
                 let local = self
@@ -2363,7 +2395,11 @@ impl<'g> Game<'g> {
         }
     }
 
-    fn publish_holder_changed(&mut self, holder: BlockEntityIdentity, silent: bool) {
+    pub(in crate::game) fn publish_holder_changed(
+        &mut self,
+        holder: BlockEntityIdentity,
+        silent: bool,
+    ) {
         let [x, y, z] = holder.position;
         let pos = (x, y, z);
         if self.world.block_entities.identity(pos) == Some(holder) {
@@ -2375,7 +2411,11 @@ impl<'g> Game<'g> {
         }
     }
 
-    fn container_change_effect(&self, pos: Pos, holder: Option<BlockEntityIdentity>) -> After {
+    pub(in crate::game) fn container_change_effect(
+        &self,
+        pos: Pos,
+        holder: Option<BlockEntityIdentity>,
+    ) -> After {
         let silent = !self.server.contents_changing.is_empty()
             && self.native_level_here().is_some_and(|level| {
                 self.contents_notice_active(level, BlockPos::new(pos.0, pos.1, pos.2))
@@ -2426,216 +2466,6 @@ impl<'g> Game<'g> {
             None => self.run_after(after),
         }
     }
-    fn run_after(&mut self, after: After) {
-        match after {
-            After::PlayerRespawn(conn) => self.commit_player_respawn(conn),
-            After::Trade(effect) => self.commit_merchant_effect(*effect),
-            After::Payload(payload) => payload.publish(),
-            After::Packet(packet, body) => self.publish_mod_held(packet, body),
-            After::Composter(effects) => self.commit_composter_effects(effects),
-            After::FluidWrite(written) => self.commit_fluid_write(*written),
-            After::FluidEffects(effects) => self.commit_fluid_effects(*effects),
-            After::DispenserDrop {
-                pos,
-                facing,
-                spawn,
-                play_events,
-            } => {
-                self.commit_dispensed(pos, facing, *spawn, play_events);
-            }
-            After::DispenserFeedback { pos, facing, event } => {
-                self.commit_dispense_feedback(pos, facing, event);
-            }
-            After::LevelWrite(write) => self.commit_level_write(*write),
-            After::BlockGameEvent(id, pos, who, state) => {
-                self.post_block_game_event(id, pos, Some(who), Some(state));
-            }
-            After::Changed(pos) => self.container_changed(pos),
-            After::ChangedWithoutHook(pos) => self.container_changed_without_hook(pos),
-            After::ChangedHolder { holder, silent } => {
-                if !silent && let Some(queue) = &mut self.transactions.quick_move_notices {
-                    queue.push(QuickMoveNotice {
-                        dim: self.dim,
-                        holder,
-                    });
-                } else {
-                    self.publish_holder_changed(holder, silent);
-                }
-            }
-            After::GuestMenu(conn, effects) => self.publish_guest_menu_effects(conn, *effects),
-            After::PersonalSidebar(conn, contents) => {
-                if contents.is_some() {
-                    self.load_scoreboard();
-                }
-                let board = &self.score.board;
-                if let Some(host) = &mut self.lan {
-                    host.hub.update_guest(conn, |guest| {
-                        guest.set_personal_sidebar(board, contents.map(|contents| *contents));
-                    });
-                }
-            }
-            After::MountEquipment {
-                dim,
-                id,
-                at,
-                sound,
-                equips,
-            } => {
-                let _ = self.with_effect_level(dim, |game| {
-                    if let Some((sound, center)) = sound {
-                        game.audio.0.play(&sound, Some(center), 1.0, 1.0);
-                    }
-                    game.mob_equip_event(id, at, equips);
-                });
-            }
-            After::MenuClick(reply) => self.publish_menu_click(*reply),
-            After::MenuPlacesNotice(conn, uuid, window) => {
-                self.queue_menu_places_notice(conn, uuid, window);
-            }
-            After::FurnaceMenu(effects) => self.publish_furnace_menu_effects(*effects),
-            After::StoreCartItems(pos) => self.store_cart_items(pos),
-            After::BackedMenuClick(conn, uuid, menu, window) => {
-                self.publish_backed_menu_click(conn, uuid, menu, window);
-            }
-            After::Capabilities(pos) => self.world.capability_generations.invalidate(pos),
-
-            After::BreakProgress(breaker, pos, progress) => {
-                self.server_destroy_block_progress(breaker, pos, progress);
-            }
-            After::Biome(key) => {
-                self.commit_biome_columns(&std::collections::HashSet::from([key]), &[key]);
-            }
-            After::Effect(effect) => match effect {
-                DeferredEffect::CustomStat {
-                    player,
-                    key,
-                    amount,
-                } => {
-                    self.native_as_player(player, |g| g.award_custom_stat(key, amount));
-                }
-                DeferredEffect::ItemStat {
-                    player,
-                    stat,
-                    item,
-                    amount,
-                } => {
-                    self.native_as_player(player, |g| g.award_stat(stat, &item, amount));
-                }
-                DeferredEffect::Sound {
-                    sound,
-                    at,
-                    volume,
-                    pitch,
-                } => self.audio.0.play(sound, Some(at), volume, pitch),
-                DeferredEffect::RestoreStatistics(player, values) => {
-                    self.restore_player_statistics(player, *values);
-                }
-            },
-            // Only reached through a root commit, which replays blocks and connection groups in order.
-            After::Block(_) | After::BulkBlocks(..) | After::ConnectionGroup(..) => {}
-            After::Drop(pos, stack) => {
-                self.spawn_item(stack, pos.map(|p| f64::from(p) + 0.5), [0.0; 3], 10);
-            }
-            After::GivePickup {
-                uuid,
-                dim,
-                prototype,
-            } => {
-                self.native_as_player(uuid, |g| {
-                    let back = g.enter_command_level(dim);
-                    if g.dim == dim {
-                        g.give_pickup(prototype);
-                    }
-                    if let Some(back) = back {
-                        g.enter_command_level(back);
-                    }
-                });
-            }
-            After::InventoryTrigger(uuid) => {
-                self.native_as_player(uuid, |g| g.check_inventory_trigger());
-            }
-            After::GrindstoneEvent(pos) => self.level_event_at(1042, pos, 0),
-            After::StationContent(conn, owner, window) => {
-                if self
-                    .lan
-                    .as_ref()
-                    .and_then(|host| host.menus.get(&conn))
-                    .is_some_and(|menus| {
-                        menus.station.id() == owner
-                            && menus.station.as_ref().is_some_and(|s| s.window == window)
-                    })
-                {
-                    self.lan_send_station(conn);
-                }
-            }
-            After::GiveRest {
-                uuid,
-                rest,
-                owner,
-                dim,
-                eye,
-            } => {
-                let mut rest = Some(rest);
-                self.native_as_player(uuid, |g| {
-                    let back = g.enter_command_level(dim);
-                    if let Some(rest) = rest.take() {
-                        g.give_remainder(rest, owner);
-                    }
-                    if let Some(back) = back {
-                        g.enter_command_level(back);
-                    }
-                });
-                // The stack was accepted (the command succeeded, `give_stack` returned no
-                // rest): a player who died or left since, so it was not thrown, still has it
-                // land where they were.
-                if let Some(rest) = rest {
-                    let back = self.enter_command_level(dim);
-                    self.give_remainder_unheld(rest, owner, eye);
-                    if let Some(back) = back {
-                        self.enter_command_level(back);
-                    }
-                }
-            }
-            After::PlayerEquip(uuid, slot, stack) => {
-                self.native_as_player(uuid, |g| {
-                    g.player_equipped(&slot, stack.as_ref());
-                    g.apply_equipment();
-                });
-            }
-            After::PlayerDrop(uuid, stack) => {
-                // A player who left meanwhile drops nothing; their inventory had changed for good.
-                self.native_as_player(uuid, |g| {
-                    g.drop_plain(stack);
-                });
-            }
-            After::Spawn(at, stack) => self.spawn_item(stack, at, [0.0; 3], 10),
-            After::Emptied(id) => {
-                let emptied = self
-                    .dropped
-                    .iter()
-                    .position(|e| e.id == id && e.stack.count == 0);
-                if let Some(i) = emptied {
-                    self.remove_dropped(i);
-                }
-            }
-            After::EquipmentSync(id) => {
-                if let Some(mob) = self.mobs.iter_mut().find(|m| m.id == id && !m.removed) {
-                    mob.needs_sync = true;
-                }
-            }
-            After::Equip {
-                at,
-                sound,
-                equips,
-                who,
-            } => {
-                // `equip_item_effects` rebuilt from the entity it names: the
-                // sculk context reads the mob as it is at the root commit.
-                let ctx = self.who_context(Some(sunrise_client::mobs::Who::Mob(who)), None);
-                self.equip_item_effects(at, sound, equips, ctx);
-            }
-        }
-    }
     pub(in crate::game) fn pending_menu_data(&self, key: (u32, u64, usize)) -> Option<i32> {
         self.transactions
             .iter()
@@ -2655,7 +2485,7 @@ impl<'g> Game<'g> {
         true
     }
 
-    fn commit_menu_data(&mut self, journal: MenuDataJournal) {
+    pub(in crate::game) fn commit_menu_data(&mut self, journal: MenuDataJournal) {
         let Some(host) = &mut self.lan else { return };
         for ((conn, generation, index), value) in journal {
             host.hub.update_guest(conn, |guest| {
@@ -2669,7 +2499,7 @@ impl<'g> Game<'g> {
     /// What the mod block entity at `pos` held before a committed transaction that kept
     /// `block_entities` and `slots`: its kept entity, or the live items with the kept slots put
     /// back. `None` when the transaction kept nothing there.
-    fn committed_block_items_before(
+    pub(in crate::game) fn committed_block_items_before(
         &self,
         block_entities: &HashMap<Pos, Kept>,
         slots: &HashMap<(Pos, usize), KeptSlot>,
@@ -2699,7 +2529,7 @@ impl<'g> Game<'g> {
         }
         patched.then_some(before)
     }
-    fn root_commit(&mut self, mut level: Level) {
+    pub(in crate::game) fn root_commit(&mut self, mut level: Level) {
         // Storage is final. Publish save marks before any callback can unwind or start a save.
         for (dim, chunk, _) in level.save_chunks {
             let world = if dim == self.dim {
@@ -2978,7 +2808,7 @@ impl<'g> Game<'g> {
             }
         }
     }
-    fn roll_back(&mut self, mut level: Level) {
+    pub(in crate::game) fn roll_back(&mut self, mut level: Level) {
         self.roll_back_in_flight(&mut level);
         self.scratch_roll_back(std::mem::take(&mut level.scratch_kept));
         // Discard deferred effects before undoing tentative action storage.
@@ -3403,7 +3233,7 @@ impl<'g> Game<'g> {
     }
 
     /// Identity of the player body currently swapped into `Game`.
-    fn acting_player_body(&self) -> PlayerBodyKey {
+    pub(in crate::game) fn acting_player_body(&self) -> PlayerBodyKey {
         if let Some(conn) = self.server.lan_acting {
             return PlayerBodyKey::Guest(conn);
         }
@@ -3422,7 +3252,7 @@ impl<'g> Game<'g> {
     /// Resolves which player body `attachment_slot(Holder::Player(uuid), _)` addresses now:
     /// the acting body when its UUID matches, else the exact guest `conn` resolved in `self.dim`
     /// (online real player across dimensions, or the per-level fake player in `self.dim`).
-    fn attachment_player_body(&self, uuid: u128) -> Option<PlayerBodyKey> {
+    pub(in crate::game) fn attachment_player_body(&self, uuid: u128) -> Option<PlayerBodyKey> {
         if self.server.lan_acting_uuid == Some(uuid) {
             return Some(self.acting_player_body());
         }
@@ -3443,7 +3273,11 @@ impl<'g> Game<'g> {
     /// Restore a player body's attachment map directly wherever that exact body's state lives
     /// now (acting body in `player_state` or parked guest `conn` in `lan.hub.guests`), without
     /// looking up by UUID across unrelated per-level fake players.
-    fn restore_player_attachments(&mut self, body: PlayerBodyKey, kept: KeptAttachments) {
+    pub(in crate::game) fn restore_player_attachments(
+        &mut self,
+        body: PlayerBodyKey,
+        kept: KeptAttachments,
+    ) {
         let map = if self.acting_player_body() == body {
             Some(&mut self.player_state.attachments)
         } else if let PlayerBodyKey::Guest(conn) = body
@@ -3468,19 +3302,26 @@ include!("transactions/item_entity.rs");
 
 #[cfg(test)]
 #[path = "transactions/player_tests.rs"]
-mod player_tests;
+pub(in crate::game) mod player_tests;
 
 #[cfg(test)]
-mod tests {
+pub(in crate::game) mod tests {
+    #[allow(unused_imports)]
     use super::super::api_values::TryIntoApi;
+    #[allow(unused_imports)]
     use super::super::{Audio, BlockEntity, Game, Options, Progress, Settings, load_resources};
+    #[allow(unused_imports)]
     use mod_api::HostTransaction;
+    #[allow(unused_imports)]
     use mod_api::ServerHost;
+    #[allow(unused_imports)]
     use mod_api::{
         Authority, BlockSide, BlockUpdateFlags, FLUIDS, FluidStack, ITEMS, ItemResource,
         TransactionContext, TransactionError,
     };
+    #[allow(unused_imports)]
     use std::{sync::Arc, time::Instant};
+    #[allow(unused_imports)]
     use sunrise_client::{chunk::Chunk, items::ItemStack};
 
     #[test]
@@ -3743,90 +3584,6 @@ mod tests {
 
     #[test]
     #[ignore = "daily"]
-    fn cauldron_effects_wait_for_root_and_abort_with_inventory() {
-        super::super::native_entity_refs::tests::with_game(|game| {
-            let pos = [2, 64, 2];
-            game.world
-                .chunks
-                .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
-            let empty = game
-                .pack
-                .assets
-                .registry
-                .default_state("minecraft:cauldron")
-                .unwrap();
-            game.world.set(pos[0], pos[1], pos[2], empty).unwrap();
-            game.player = Some(
-                super::super::PlayerMotion::new(
-                    game.motion,
-                    sunrise_core::geometry::Vec3::new(0.5, 65.0, 3.5),
-                )
-                .unwrap(),
-            );
-            game.selected = 0;
-            game.creative = false;
-            game.inventory[0] = Some(ItemStack::new("minecraft:water_bucket", 1));
-            let before = game.stats.get("custom", "minecraft:fill_cauldron");
-            game.audio.0.capture = Some(Vec::new());
-            game.open_storage_transaction();
-            assert_eq!(
-                game.use_on_cauldron(pos).unwrap(),
-                sunrise_client::cauldron::Outcome::Success
-            );
-            assert_eq!(game.stats.get("custom", "minecraft:fill_cauldron"), before);
-            assert!(game.audio.0.capture.as_ref().unwrap().is_empty());
-            game.close_storage_transaction(false);
-            assert_eq!(game.world.block(pos[0], pos[1], pos[2]), empty);
-            assert_eq!(
-                &*game.inventory[0].as_ref().unwrap().item,
-                "minecraft:water_bucket"
-            );
-            assert_eq!(game.stats.get("custom", "minecraft:fill_cauldron"), before);
-            assert!(game.audio.0.capture.as_ref().unwrap().is_empty());
-            game.open_storage_transaction();
-            game.open_storage_transaction();
-            assert_eq!(
-                game.use_on_cauldron(pos).unwrap(),
-                sunrise_client::cauldron::Outcome::Success
-            );
-            game.close_storage_transaction(false);
-            assert_eq!(game.world.block(pos[0], pos[1], pos[2]), empty);
-            assert_eq!(
-                &*game.inventory[0].as_ref().unwrap().item,
-                "minecraft:water_bucket"
-            );
-            game.close_storage_transaction(true);
-            assert_eq!(game.stats.get("custom", "minecraft:fill_cauldron"), before);
-            assert!(game.audio.0.capture.as_ref().unwrap().is_empty());
-            assert_eq!(
-                game.use_on_cauldron(pos).unwrap(),
-                sunrise_client::cauldron::Outcome::Success
-            );
-            assert_ne!(game.world.block(pos[0], pos[1], pos[2]), empty);
-            assert_eq!(
-                &*game.inventory[0].as_ref().unwrap().item,
-                "minecraft:bucket"
-            );
-            assert_eq!(
-                game.stats.get("custom", "minecraft:fill_cauldron"),
-                before + 1
-            );
-            assert_eq!(
-                game.audio
-                    .0
-                    .capture
-                    .as_ref()
-                    .unwrap()
-                    .iter()
-                    .map(|s| s.event.as_str())
-                    .collect::<Vec<_>>(),
-                ["minecraft:item.bucket.empty"]
-            );
-        });
-    }
-
-    #[test]
-    #[ignore = "daily"]
     fn a_menu_write_outside_a_transaction_keeps_no_journal() {
         super::super::native_guest_turn_tests::with_guests(|game| {
             let player = game.player(12).unwrap();
@@ -3870,7 +3627,7 @@ mod tests {
         });
     }
 
-    fn insert(
+    pub(in crate::game) fn insert(
         host: &mut dyn ServerHost,
         at: BlockSide,
         slot: usize,
@@ -3896,7 +3653,7 @@ mod tests {
         })
     }
 
-    fn extract(
+    pub(in crate::game) fn extract(
         host: &mut dyn ServerHost,
         at: BlockSide,
         slot: usize,
@@ -3914,7 +3671,7 @@ mod tests {
         resource.to_stack(taken)
     }
 
-    fn extract_fluid(
+    pub(in crate::game) fn extract_fluid(
         host: &mut dyn ServerHost,
         at: BlockSide,
         tank: usize,
@@ -3932,7 +3689,7 @@ mod tests {
         (taken > 0).then(|| resource.to_stack(taken))
     }
 
-    fn chest_items(game: &Game<'_>) -> Vec<(usize, u32)> {
+    pub(in crate::game) fn chest_items(game: &Game<'_>) -> Vec<(usize, u32)> {
         let Some(BlockEntity::Chest(items)) = game.world.block_entities.get(&(0, 64, 0)) else {
             panic!("chest block entity missing")
         };
@@ -4661,7 +4418,7 @@ mod tests {
 }
 
 #[cfg(test)]
-mod mod_capability_tests {
+pub(in crate::game) mod mod_capability_tests {
     use super::super::native_entity_refs::tests::with_game;
     use mod_api::ServerHost;
     use mod_api::{BlockSide, HostTransaction, ResourceHandler, resource_util::move_resources};

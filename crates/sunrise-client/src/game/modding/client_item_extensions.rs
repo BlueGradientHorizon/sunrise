@@ -16,24 +16,25 @@ use sunrise_client::{
     mobs::{Part, Polygon},
 };
 
-pub(super) static DEFAULT_TOOLTIP_FONT_ID: LazyLock<mod_api::Identifier> = LazyLock::new(|| {
-    mod_api::Identifier::from_parts("minecraft", "default")
-        .expect("minecraft:default is a valid identifier")
-});
+pub(in crate::game) static DEFAULT_TOOLTIP_FONT_ID: LazyLock<mod_api::Identifier> =
+    LazyLock::new(|| {
+        mod_api::Identifier::from_parts("minecraft", "default")
+            .expect("minecraft:default is a valid identifier")
+    });
 
-pub(super) struct ItemExtensionsPart {
+pub(in crate::game) struct ItemExtensionsPart {
     pub attached: mod_api::Attached<dyn ClientItemExtensions>,
     pub callback_owner: mod_api::__private::game::CallbackOwner,
     pub failed: AtomicBool,
     pub reported_stale: AtomicBool,
 }
 
-pub(super) struct ArmorModel {
+pub(in crate::game) struct ArmorModel {
     pub name: String,
     pub slots: [Arc<Part>; 4],
 }
 
-pub(super) struct ArmorExtensions {
+pub(in crate::game) struct ArmorExtensions {
     pub generation: u64,
     pub models: Vec<ArmorModel>,
     pub textures: Vec<String>,
@@ -298,7 +299,7 @@ fn bake_model(name: &str, model: &ModelPart) -> std::result::Result<Part, &'stat
 }
 
 impl Game<'_> {
-    pub(super) fn prepare_client_item_extensions(
+    pub(in crate::game) fn prepare_client_item_extensions(
         gui: &UiResources,
     ) -> std::result::Result<ArmorExtensions, String> {
         use mod_api::__private::game::RegistrationContextNew;
@@ -336,7 +337,7 @@ impl Game<'_> {
     ///
     /// Returns `minecraft:default` when no extension is registered, the provider returns `None`,
     /// the stack cannot cross the API boundary, or the provider panics.
-    pub(super) fn item_tooltip_font(
+    pub(in crate::game) fn item_tooltip_font(
         &self,
         stack: &sunrise_client::items::ItemStack,
     ) -> Cow<'static, mod_api::Identifier> {
@@ -368,7 +369,7 @@ impl Game<'_> {
             .map_or(default, Cow::Owned)
     }
 
-    pub(super) fn extended_equipment_materials<'a>(
+    pub(in crate::game) fn extended_equipment_materials<'a>(
         &'a self,
         piece: &super::equipment_piece::EquipmentPiece<'_>,
         stack: &sunrise_client::items::ItemStack,

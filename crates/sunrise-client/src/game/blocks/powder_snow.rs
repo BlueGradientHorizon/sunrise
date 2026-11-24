@@ -7,13 +7,13 @@ use sunrise_client::{Result, cauldron, items::ItemStack, mobs::Who};
 use sunrise_core::{position::BlockPos, random::RandomSource};
 
 /// The two ordered float draws of `Entity.playEntityOnFireExtinguishedSound`.
-pub(super) fn extinguish_pitch(random: &mut impl RandomSource) -> f32 {
+pub(in crate::game) fn extinguish_pitch(random: &mut impl RandomSource) -> f32 {
     1.6 + (random.next_float() - random.next_float()) * 0.4
 }
 
 impl Game<'_> {
     /// Entity.playEntityOnFireExtinguishedSound
-    pub(super) fn extinguish_sound(&mut self, at: [f64; 3]) {
+    pub(in crate::game) fn extinguish_sound(&mut self, at: [f64; 3]) {
         let pitch = extinguish_pitch(self.particles.0.random());
         self.audio.0.play(
             "minecraft:entity.generic.extinguish_fire",
@@ -25,7 +25,7 @@ impl Game<'_> {
     /// `Entity.applyEffectsFromBlocks`: a burning player in the rain
     /// (`isInRain`) has the fire put out (`clearFire`), with the extinguish
     /// sound that everyone near hears.
-    pub(super) fn rain_extinguish_player(&mut self) {
+    pub(in crate::game) fn rain_extinguish_player(&mut self) {
         let Some(player) = self.player.as_ref() else {
             return;
         };
@@ -41,7 +41,7 @@ impl Game<'_> {
     /// `PowderSnowBlock.entityInside` (runBefore EXTINGUISH) for a burning
     /// player: `Level.destroyBlock(pos, false)`, which needs `mayInteract`.
     /// A client of a remote server leaves it to the server.
-    pub(super) fn powder_snow_melt(&mut self, pos: BlockPos) {
+    pub(in crate::game) fn powder_snow_melt(&mut self, pos: BlockPos) {
         let at = [pos.x, pos.y, pos.z];
         if self.remote.is_some() || !self.is_powder_snow(at) || !self.may_interact_at(pos) {
             return;
@@ -51,7 +51,7 @@ impl Game<'_> {
         self.world.modified.insert((at[0] >> 4, at[2] >> 4));
     }
     /// Whether the block at `pos` is powder snow.
-    pub(super) fn is_powder_snow(&self, pos: [i32; 3]) -> bool {
+    pub(in crate::game) fn is_powder_snow(&self, pos: [i32; 3]) -> bool {
         &*self
             .res
             .facts()
@@ -63,7 +63,7 @@ impl Game<'_> {
     /// `PowderSnowBlock.pickupBlock` (air, level event 2001), the used
     /// statistic, the fill sound, FLUID_PICKUP, `ItemUtils.createFilledResult`
     /// and the filled_bucket trigger.
-    pub(super) fn pick_up_powder_snow(&mut self, pos: [i32; 3]) -> Result<()> {
+    pub(in crate::game) fn pick_up_powder_snow(&mut self, pos: [i32; 3]) -> Result<()> {
         let at = BlockPos::new(pos[0], pos[1], pos[2]);
         let creative = self.creative;
         let picked = self.with_level(|b, level, ticks| b.bucket_pickup(level, ticks, at, creative));
@@ -93,7 +93,7 @@ impl Game<'_> {
         Ok(())
     }
     /// `ItemUtils.createFilledResult(held, player, filled)` for the held stack.
-    pub(super) fn filled_result(&mut self, filled: ItemStack) {
+    pub(in crate::game) fn filled_result(&mut self, filled: ItemStack) {
         let slot = self.held_slot();
         let mut held = HeldSlot {
             game: self,
@@ -118,12 +118,12 @@ fn added(stack: &mut ItemStack, rest: Option<ItemStack>, creative: bool) -> bool
 
 /// The player acting, holding the stack in `slot` (`stack_in_mut`'s numbers), as
 /// `ItemUtils.createFilledResult` and the cauldron see them.
-pub(super) struct HeldSlot<'g, 'a> {
-    pub(super) game: &'g mut Game<'a>,
-    pub(super) slot: usize,
+pub(in crate::game) struct HeldSlot<'g, 'a> {
+    pub(in crate::game) game: &'g mut Game<'a>,
+    pub(in crate::game) slot: usize,
     /// The UUID of the player a mod's write acts as: what doesn't fit waits for the root
     /// commit of an open transaction. None for the game's own use.
-    pub(super) dropper: Option<u128>,
+    pub(in crate::game) dropper: Option<u128>,
 }
 impl cauldron::Player for HeldSlot<'_, '_> {
     fn creative(&self) -> bool {

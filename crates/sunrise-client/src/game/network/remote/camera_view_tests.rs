@@ -1,26 +1,31 @@
 //! #3948: the shader-pack uniforms tied to the view read the camera entity (the entity a
 //! spectator's click or the server's `SetCamera` attached the view to), and the client keeps the
 //! other living entities' effects for it (`ClientPacketListener.handleUpdateMobEffect`).
+#[allow(unused_imports)]
 use crate::game::{Game, native_entity_refs::tests::with_client_game};
+#[allow(unused_imports)]
 use std::sync::Arc;
+#[allow(unused_imports)]
 use sunrise_client::{
     camera::CameraType, chunk::Chunk, gfx::pack_uniforms::ViewEntity, level_loading::Reason,
     motion::PlayerMotion, options_file::V,
 };
+#[allow(unused_imports)]
 use sunrise_core::geometry::Vec3;
+#[allow(unused_imports)]
 use sunrise_protocol::{
     connection::Pipe,
     packets::play::{self, Clientbound as C, SpawnInfo},
 };
 
 /// The local player's entity id.
-const OWN: i32 = 7;
+pub(in crate::game) const OWN: i32 = 7;
 /// A zombie, living.
-const ZOMBIE: i32 = 31;
+pub(in crate::game) const ZOMBIE: i32 = 31;
 /// An oak boat, not living.
-const BOAT: i32 = 40;
+pub(in crate::game) const BOAT: i32 = 40;
 
-fn spawn(dimension: &str) -> SpawnInfo {
+pub(in crate::game) fn spawn(dimension: &str) -> SpawnInfo {
     SpawnInfo {
         dimension_type: 0,
         dimension: dimension.into(),
@@ -36,7 +41,7 @@ fn spawn(dimension: &str) -> SpawnInfo {
 }
 
 /// A spectator client in the overworld, holding a zombie at (10, 64, 12) and an oak boat.
-fn with_spectator(test: impl FnOnce(&mut Game<'_>)) {
+pub(in crate::game) fn with_spectator(test: impl FnOnce(&mut Game<'_>)) {
     with_client_game(|game| {
         let (client, _server) = Pipe::pair();
         game.connect_local(client, "CameraViewTest").unwrap();
@@ -57,7 +62,7 @@ fn with_spectator(test: impl FnOnce(&mut Game<'_>)) {
     });
 }
 
-fn add(game: &mut Game<'_>, id: i32, kind: &str, position: [f64; 3]) {
+pub(in crate::game) fn add(game: &mut Game<'_>, id: i32, kind: &str, position: [f64; 3]) {
     let kind = registry_id(game, "minecraft:entity_type", kind);
     game.handle_packet(C::AddEntity(play::AddEntity {
         id,
@@ -73,12 +78,18 @@ fn add(game: &mut Game<'_>, id: i32, kind: &str, position: [f64; 3]) {
     .unwrap();
 }
 
-fn registry_id(game: &Game<'_>, registry: &str, name: &str) -> i32 {
+pub(in crate::game) fn registry_id(game: &Game<'_>, registry: &str, name: &str) -> i32 {
     let remote = game.remote.as_ref().unwrap();
     remote.builtin.get(registry).unwrap().id(name).unwrap()
 }
 
-fn update(game: &mut Game<'_>, id: i32, effect: &str, duration: i32, flags: i8) {
+pub(in crate::game) fn update(
+    game: &mut Game<'_>,
+    id: i32,
+    effect: &str,
+    duration: i32,
+    flags: i8,
+) {
     let effect = registry_id(game, "minecraft:mob_effect", effect);
     game.handle_packet(C::UpdateMobEffect(play::UpdateMobEffect {
         id,
@@ -90,19 +101,19 @@ fn update(game: &mut Game<'_>, id: i32, effect: &str, duration: i32, flags: i8) 
     .unwrap();
 }
 
-fn remove(game: &mut Game<'_>, id: i32, effect: &str) {
+pub(in crate::game) fn remove(game: &mut Game<'_>, id: i32, effect: &str) {
     let effect = registry_id(game, "minecraft:mob_effect", effect);
     game.handle_packet(C::RemoveMobEffect(play::RemoveMobEffect { id, effect }))
         .unwrap();
 }
 
-fn set_camera(game: &mut Game<'_>, camera_id: i32) {
+pub(in crate::game) fn set_camera(game: &mut Game<'_>, camera_id: i32) {
     game.handle_packet(C::SetCamera(play::SetCamera { camera_id }))
         .unwrap();
 }
 
 /// The view's values but its light, read at the partial tick 0.25.
-fn view(game: &Game<'_>) -> ViewEntity {
+pub(in crate::game) fn view(game: &Game<'_>) -> ViewEntity {
     ViewEntity {
         eye_light: [0; 2],
         ..game.pack_view_entity(glam::DVec3::new(0.5, 65.62, 0.5), 0.25)
@@ -111,7 +122,7 @@ fn view(game: &Game<'_>) -> ViewEntity {
 
 /// The effects the client keeps for the entity `id` (a mob, another player or an armor stand),
 /// `None` when the level holds no such entity or it has none.
-fn kept(game: &Game<'_>, id: i32) -> Option<Vec<(&'static str, i32)>> {
+pub(in crate::game) fn kept(game: &Game<'_>, id: i32) -> Option<Vec<(&'static str, i32)>> {
     let id = id as u32;
     let list = match game.mobs.iter().find(|m| m.id == id) {
         Some(m) => &m.extra.client_effects.list,
@@ -127,7 +138,7 @@ fn kept(game: &Game<'_>, id: i32) -> Option<Vec<(&'static str, i32)>> {
     (!list.is_empty()).then(|| list.iter().map(|e| (e.id, e.duration)).collect())
 }
 
-const PLAYER_VIEW: ViewEntity = ViewEntity {
+pub(in crate::game) const PLAYER_VIEW: ViewEntity = ViewEntity {
     living: true,
     blindness: 1.0,
     night_vision: 0.0,
@@ -135,117 +146,6 @@ const PLAYER_VIEW: ViewEntity = ViewEntity {
     mood: 0.375,
     eye_light: [0; 2],
 };
-
-/// While the view is on a spectated zombie, `blindness`, `nightVision` and `darknessFactor`
-/// read the effects the server sent for it, counting down and fading on its ticks, and the mood
-/// is 0; on the player's own view they are the player's, and the lightmap keeps the player's
-/// all along.
-#[test]
-#[ignore = "daily"]
-fn the_view_reads_the_spectated_entitys_effects() {
-    with_spectator(|game| {
-        game.client.ambience.moodiness = 0.375;
-        game.settings
-            .file
-            .set("darknessEffectScale", V::Double(0.5));
-        update(game, OWN, "minecraft:blindness", 100, 0);
-        // Not blended (no flag 8): darkness is at its target at once.
-        update(game, ZOMBIE, "minecraft:night_vision", 201, 0);
-        update(game, ZOMBIE, "minecraft:darkness", 600, 0);
-        assert_eq!(view(game), PLAYER_VIEW, "the player is the camera");
-
-        set_camera(game, ZOMBIE);
-        let zombie = ViewEntity {
-            living: true,
-            blindness: 0.0,
-            night_vision: 1.0,
-            darkness: 0.5,
-            mood: 0.0,
-            eye_light: [0; 2],
-        };
-        assert_eq!(view(game), zombie);
-        // The lightmap's night vision and darkness stay the player's (none).
-        assert_eq!(game.night_vision_intensity(0.25), 0.0);
-        assert_eq!(game.darkness_lighting(0.25).0, 0.0);
-
-        // GameRenderer.nightVisionScale once 200 ticks are left: it flickers, on Mth.sin's
-        // table (Java's float expression evaluated outside Sunrise: 0.6530526; f32 `sin` gives
-        // 0.6530707).
-        game.tick_remote_entities(true);
-        assert_eq!(view(game).night_vision, 0.6530526);
-        // A frozen level ticks no mob: nothing counts down.
-        game.tick_remote_entities(false);
-        assert_eq!(view(game).night_vision, 0.6530526);
-
-        update(game, ZOMBIE, "minecraft:blindness", 40, 0);
-        assert_eq!(view(game).blindness, 1.0);
-        remove(game, ZOMBIE, "minecraft:blindness");
-        assert_eq!(view(game).blindness, 0.0);
-        // getEffectBlendFactor: the fade is the instance's, so it goes with it, before any tick.
-        remove(game, ZOMBIE, "minecraft:darkness");
-        assert_eq!(view(game).darkness, 0.0);
-        game.tick_remote_entities(true);
-        assert_eq!(view(game).darkness, 0.0);
-
-        set_camera(game, OWN);
-        assert_eq!(view(game), PLAYER_VIEW, "back on the player");
-    });
-}
-
-/// An entity that isn't living has no effects to read and looks nowhere, and a living one with
-/// none reads none; neither has the player's mood or blindness.
-#[test]
-#[ignore = "daily"]
-fn a_view_on_another_entity_has_none_of_the_players_values() {
-    with_spectator(|game| {
-        game.client.ambience.moodiness = 0.375;
-        update(game, OWN, "minecraft:blindness", 100, 0);
-        // Not kept: a boat is not a LivingEntity.
-        update(game, BOAT, "minecraft:blindness", 100, 0);
-        assert_eq!(kept(game, BOAT), None);
-        set_camera(game, BOAT);
-        let none = ViewEntity {
-            living: false,
-            blindness: 0.0,
-            night_vision: 0.0,
-            darkness: 0.0,
-            mood: 0.0,
-            eye_light: [0; 2],
-        };
-        assert_eq!(view(game), none);
-        set_camera(game, ZOMBIE);
-        assert_eq!(
-            view(game),
-            ViewEntity {
-                living: true,
-                ..none
-            }
-        );
-        // The boat leaves while it is the camera: the view stays on it (`Minecraft.cameraEntity`
-        // keeps the removed entity), with none of the player's values.
-        set_camera(game, BOAT);
-        game.handle_packet(C::RemoveEntities(play::RemoveEntities { ids: vec![BOAT] }))
-            .unwrap();
-        assert_eq!(view(game), none);
-        // So does a removed living camera: the zombie's blindness as it was.
-        update(game, ZOMBIE, "minecraft:blindness", 100, 0);
-        set_camera(game, ZOMBIE);
-        game.handle_packet(C::RemoveEntities(play::RemoveEntities {
-            ids: vec![ZOMBIE],
-        }))
-        .unwrap();
-        assert_eq!(
-            view(game),
-            ViewEntity {
-                living: true,
-                blindness: 1.0,
-                ..none
-            }
-        );
-        set_camera(game, OWN);
-        assert_eq!(view(game), PLAYER_VIEW);
-    });
-}
 
 /// The other entities' effects are kept one of a kind, for living entities the level holds,
 /// and go with the entity: when it is removed, added again under its id, or the level is
@@ -324,28 +224,8 @@ fn other_entities_effects_go_with_the_entity() {
     });
 }
 
-/// `eyeBrightness` reads the light at the camera entity's eye, where a third-person camera
-/// backs off from: not at the camera's own block.
-#[test]
-#[ignore = "daily"]
-fn the_view_light_is_at_the_camera_entitys_eye() {
-    with_spectator(|game| {
-        set_camera(game, ZOMBIE);
-        game.apply_camera_type(CameraType::ThirdPersonBack);
-        let (camera, _, _) = game.camera_view(0.0).unwrap();
-        let eye = glam::DVec3::from_array(game.client.view.eye);
-        let (at_eye, at_camera) = (eye.floor().as_ivec3(), camera.floor().as_ivec3());
-        assert_ne!(at_eye, at_camera);
-        // Sky 5, block 12 at the eye; sky 3, block 0 at the camera.
-        set_light(game, at_eye, 0x5c);
-        set_light(game, at_camera, 0x30);
-        assert_eq!(game.pack_view_entity(eye, 0.0).eye_light, [12, 5]);
-        assert_eq!(game.pack_view_entity(camera, 0.0).eye_light, [0, 3]);
-    });
-}
-
 /// Puts `light` (`sky << 4 | block`) at one block, every other block of its section dark.
-fn set_light(game: &mut Game<'_>, at: glam::IVec3, light: u8) {
+pub(in crate::game) fn set_light(game: &mut Game<'_>, at: glam::IVec3, light: u8) {
     let key = (at.x >> 4, at.z >> 4);
     let layout = game.world.layout();
     if game.world.chunks.get(&key).is_none() {
@@ -363,7 +243,7 @@ fn set_light(game: &mut Game<'_>, at: glam::IVec3, light: u8) {
     section.light = sunrise_client::chunk::Light::from_slice(&all);
 }
 
-fn ride(game: &mut Game<'_>, vehicle: i32, passengers: Vec<i32>) {
+pub(in crate::game) fn ride(game: &mut Game<'_>, vehicle: i32, passengers: Vec<i32>) {
     game.handle_packet(C::SetPassengers(play::SetPassengers {
         vehicle,
         passengers,
@@ -656,12 +536,11 @@ fn a_canceled_tick_counts_no_effect_down() {
     });
 }
 
-const FRAME_NAME: &str =
-    "game::remote::camera_view_tests::the_frame_reads_the_eye_light_in_first_and_third_person";
-const FRAME_CASE: &str = "SUNRISE_CAMERA_VIEW_FRAME_CASE";
+pub(in crate::game) const FRAME_NAME: &str = "game::client_side::remote_client::camera_view_tests::the_frame_reads_the_eye_light_in_first_and_third_person";
+pub(in crate::game) const FRAME_CASE: &str = "SUNRISE_CAMERA_VIEW_FRAME_CASE";
 
 /// What a game's frame gives the pack: its camera, its `eyePosition` and the view's light.
-fn framed(game: &mut Game<'_>) -> (glam::DVec3, glam::DVec3, [i32; 2]) {
+pub(in crate::game) fn framed(game: &mut Game<'_>) -> (glam::DVec3, glam::DVec3, [i32; 2]) {
     let mut seen = None;
     game.render_with(|_, frame| {
         seen = Some((frame.camera, frame.eye, frame.pack.view.eye_light));
@@ -669,46 +548,4 @@ fn framed(game: &mut Game<'_>) -> (glam::DVec3, glam::DVec3, [i32; 2]) {
     })
     .unwrap();
     seen.expect("no frame was built")
-}
-
-/// Through a game's frame: `eyeBrightness` reads the light at the camera entity's eye in first
-/// person and in third person, where the camera backs off to another block with other light.
-#[test]
-#[ignore = "daily"]
-fn the_frame_reads_the_eye_light_in_first_and_third_person() {
-    use crate::game::native_entity_refs::tests::run_fresh_cases;
-    if run_fresh_cases(FRAME_NAME, FRAME_CASE, &["frame"]) {
-        return;
-    }
-    with_client_game(|game| {
-        let _event_loop = crate::game::native_hooks::particle_count_tests::frame_scene(game);
-        game.client.screen = crate::game::Screen::Playing;
-        // The view's uniforms are worked out while a pack is picked: an empty Sunrise pack.
-        let packs = tempfile::tempdir().unwrap();
-        let pack = packs.path().join("eye_light");
-        std::fs::create_dir_all(&pack).unwrap();
-        std::fs::write(
-            pack.join(sunrise_shader_api::MANIFEST),
-            "schema = 1\nid = \"eye_light\"\nname = \"Eye light\"\nversion = \"1\"\napi = \"0.1\"\n",
-        )
-        .unwrap();
-        game.settings.sunrise.shader_pack = pack.to_string_lossy().into_owned();
-        for camera_type in [CameraType::FirstPerson, CameraType::ThirdPersonBack] {
-            game.apply_camera_type(camera_type);
-            let (camera, eye, _) = framed(game);
-            let (at_eye, at_camera) = (eye.floor().as_ivec3(), camera.floor().as_ivec3());
-            assert_eq!(
-                at_eye == at_camera,
-                camera_type == CameraType::FirstPerson,
-                "{camera_type:?}"
-            );
-            // Sky 5, block 12 at the eye; sky 3, block 0 at a third-person camera.
-            if at_eye != at_camera {
-                set_light(game, at_camera, 0x30);
-            }
-            set_light(game, at_eye, 0x5c);
-            assert_eq!(framed(game).2, [12, 5], "{camera_type:?}");
-            set_light(game, at_eye, 0);
-        }
-    });
 }

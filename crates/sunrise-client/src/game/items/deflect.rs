@@ -3,16 +3,19 @@
 //! `ProjectileDeflection.AIM_DEFLECT` instead of hurting anything. It flies on
 //! along the player's view and is the player's now (`Projectile.deflect`
 //! sets the owner), so a ghast it meets dies of it (`Ghast.isReflectedFireball`).
+#[allow(unused_imports)]
 use super::Game;
+#[allow(unused_imports)]
 use sunrise_client::{
     mobs::Who,
     projectiles::{Projectile, ProjectileKind, Turn},
 };
+#[allow(unused_imports)]
 use sunrise_core::geometry::Vec3;
 
 /// `AbstractHurtingProjectile.getPickRadius`: the crosshair finds it a block
 /// round its box.
-const PICK_RADIUS: f64 = 1.0;
+pub(in crate::game) const PICK_RADIUS: f64 = 1.0;
 
 /// `#minecraft:redirectable_projectile`: a ghast's fireball and both wind charges.
 pub(in crate::game) fn redirectable(p: &Projectile) -> bool {
@@ -209,22 +212,6 @@ impl Game<'_> {
         p
     }
 
-    /// `ShulkerBullet.hurtServer`'s sound (unless silent) and fifteen crit particles
-    /// (`sendParticles`, spread 0.2) at the bullet, before it is discarded.
-    pub(in crate::game) fn shulker_bullet_hurt(&mut self, at: [f64; 3], silent: bool) {
-        if !silent {
-            self.audio
-                .0
-                .play("minecraft:entity.shulker_bullet.hurt", Some(at), 1.0, 1.0);
-        }
-        if let Some(ty) = sunrise_client::particles::ParticleType::from_name("crit") {
-            let options = sunrise_client::particles::ParticleOptions::simple(ty);
-            self.particles
-                .0
-                .send_particles(&options, at, [0.2, 0.2, 0.2], 0.0, 15);
-            self.lan_level_particles(&options, at, [0.2, 0.2, 0.2], 0.0, 15, None);
-        }
-    }
     /// `Player.canInteractWithEntity(box, 3.0)` as the server checks an
     /// attack packet: the projectile's box within the reach plus 3 of the eyes.
     pub(in crate::game) fn within_interaction_range(&self, i: usize) -> bool {
@@ -267,29 +254,9 @@ impl Game<'_> {
         Some(sunrise_world::view_direction::view_vector(pitch, yaw))
     }
 
-    /// `Player.attack` on a redirectable projectile: `onAttack` resets the
-    /// attack strength, then `Projectile.deflect(AIM_DEFLECT, player, player,
-    /// true)`. When the projectile refuses (a wind charge in its first five
-    /// ticks) the blow goes on as an ordinary attack, which a projectile does
-    /// not take: `hurtOrSimulate` fails and `PLAYER_ATTACK_NODAMAGE` plays,
-    /// the same sound. Either way the swing follows. True when it turned.
-    pub(in crate::game) fn deflect(&mut self, i: usize) -> bool {
-        self.reset_attack_strength();
-        let turned = self.turn_projectile(i);
-        self.swing_arm();
-        let from = self
-            .player
-            .as_ref()
-            .map(|p| [p.position.x, p.position.y, p.position.z]);
-        self.audio
-            .0
-            .play("minecraft:entity.player.attack.nodamage", from, 1.0, 1.0);
-        turned
-    }
-
     /// The deflection itself: the view as the new movement, the player as
     /// owner. False, and nothing changes, when the projectile refuses.
-    fn turn_projectile(&mut self, i: usize) -> bool {
+    pub(in crate::game) fn turn_projectile(&mut self, i: usize) -> bool {
         let (pitch, yaw) = (self.pitch, self.yaw);
         let (guest, owner_uuid) = (self.server.lan_acting, Some(self.acting_player_uuid()));
         self.creatures
@@ -301,7 +268,7 @@ impl Game<'_> {
 /// `Player.attack`'s `deflect(AIM_DEFLECT, player, player, true)`: [`aim_deflect`] along the
 /// player's look at `pitch` and `yaw` (`Entity.getLookAngle`, vanilla's sine table), with `p`
 /// turned to it. False, and nothing changes, when the projectile refuses.
-fn attack_deflect(
+pub(in crate::game) fn attack_deflect(
     p: &mut Projectile,
     pitch: f32,
     yaw: f32,
@@ -321,7 +288,7 @@ fn attack_deflect(
 }
 
 #[cfg(test)]
-mod tests {
+pub(in crate::game) mod tests {
     use super::*;
     use sunrise_core::geometry::Aabb;
 

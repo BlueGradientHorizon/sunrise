@@ -54,7 +54,7 @@ impl Game<'_> {
 
     /// The two attributes read by `LivingEntityRenderer` and
     /// `EntityRenderer.extractNameTags`.
-    pub(super) fn remote_nameplate_values(
+    pub(in crate::game) fn remote_nameplate_values(
         &self,
         values: &[play::AttributeSnapshot],
     ) -> NameplateDistances {

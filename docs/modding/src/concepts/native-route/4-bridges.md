@@ -28,7 +28,7 @@ member = "ticks_until_autosave"
 
 [[native.mixin]]
 id = "head"
-target = "sunrise_client::game::autosave::Game<'_>::on_tick_rate_changed"
+target = "sunrise_client::game::server_side::autosave_server::Game<'_>::on_tick_rate_changed"
 kind = "HEAD"
 helper = "src/mixins/head.rs"
 bindings = [{ name = "game", ty = "&mut Game<'_>", value = "&mut *self" }]

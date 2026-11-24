@@ -5,44 +5,50 @@
 //! This hook's cancellation is an override result, not an abort: a cancelled, handled click
 //! sets the stacks the listener names and is Applied. The abort outcomes are a stale read, an
 //! invalid answer and a failing listener; each undoes every write the listener made.
+#[allow(unused_imports)]
 use crate::game::native_entity_refs::tests::with_game;
+#[allow(unused_imports)]
 use crate::game::native_guest_turn_tests::with_guests;
+#[allow(unused_imports)]
 use mod_api::item::menu::{ClickedStackResult, StackResult};
+#[allow(unused_imports)]
 use mod_api::{
     Flow, Hooks, HostSide, HostTransaction, ItemPlace, ItemResource, ItemStackedOnOtherEvent,
     ModEntry, Mods,
 };
+#[allow(unused_imports)]
 use std::cell::RefCell;
+#[allow(unused_imports)]
 use sunrise_client::{items::ItemStack, menu::Input};
 
 /// What the listener does.
 #[derive(Clone, Default)]
-struct Script {
+pub(in crate::game) struct Script {
     /// Put dirt in this inventory slot through the `Host` (its own nested transaction).
-    write_dirt: Option<i32>,
+    pub(in crate::game) write_dirt: Option<i32>,
     /// ...and take it out again at once.
-    take_dirt_back: bool,
-    panic: bool,
-    cancel: bool,
-    handled: bool,
+    pub(in crate::game) take_dirt_back: bool,
+    pub(in crate::game) panic: bool,
+    pub(in crate::game) cancel: bool,
+    pub(in crate::game) handled: bool,
     /// Set the cursor to this stack (item, count); `Some(None)` empties it.
-    set_carried: Option<Option<(&'static str, u32)>>,
-    set_clicked: Option<Option<(&'static str, u32)>>,
-    take_clicked: Option<u32>,
-    dirt_rule: Option<(bool, u32)>,
-    write_scoreboard: bool,
+    pub(in crate::game) set_carried: Option<Option<(&'static str, u32)>>,
+    pub(in crate::game) set_clicked: Option<Option<(&'static str, u32)>>,
+    pub(in crate::game) take_clicked: Option<u32>,
+    pub(in crate::game) dirt_rule: Option<(bool, u32)>,
+    pub(in crate::game) write_scoreboard: bool,
 }
 
 thread_local! {
-    static SCRIPT: RefCell<Script> = RefCell::new(Script::default());
+    pub(in crate::game) static SCRIPT: RefCell<Script> = RefCell::new(Script::default());
     /// What the listener saw each time: the cursor's and the clicked slot's counts.
-    static SEEN: RefCell<Vec<(u32, u32)>> = const { RefCell::new(Vec::new()) };
-    static PLAYER: std::cell::Cell<u128> = const { std::cell::Cell::new(0) };
+    pub(in crate::game) static SEEN: RefCell<Vec<(u32, u32)>> = const { RefCell::new(Vec::new()) };
+    pub(in crate::game) static PLAYER: std::cell::Cell<u128> = const { std::cell::Cell::new(0) };
     /// How often the menu type's `menu_slot_rules` part was asked.
-    static ASKS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+    pub(in crate::game) static ASKS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
 }
 
-struct Rules;
+pub(in crate::game) struct Rules;
 #[mod_api::sunrise_part]
 impl mod_api::MenuPart for Rules {
     fn menu_slot_rules(&self, _: &dyn mod_api::Host, event: &mut mod_api::MenuSlotRulesEvent<'_>) {
@@ -56,19 +62,19 @@ impl mod_api::MenuPart for Rules {
     }
 }
 
-fn script(script: Script) {
+pub(in crate::game) fn script(script: Script) {
     SEEN.with(|seen| seen.borrow_mut().clear());
     SCRIPT.with(|s| *s.borrow_mut() = script);
 }
-fn dispatches() -> usize {
+pub(in crate::game) fn dispatches() -> usize {
     SEEN.with(|seen| seen.borrow().len())
 }
 
-fn api_stack(item: &str, count: u32) -> mod_api::ItemStack {
+pub(in crate::game) fn api_stack(item: &str, count: u32) -> mod_api::ItemStack {
     mod_api::ItemStack::new(mod_api::__private::item_key(item).unwrap(), count).unwrap()
 }
 
-struct Listener;
+pub(in crate::game) struct Listener;
 #[mod_api::__subscriptions]
 impl Hooks for Listener {
     fn register(&self, r: &mut dyn mod_api::Registrar, _: &mod_api::RegistrationContext) {
@@ -141,7 +147,7 @@ impl Hooks for Listener {
     }
 }
 
-fn with_mod(test: impl FnOnce()) {
+pub(in crate::game) fn with_mod(test: impl FnOnce()) {
     let mods: Mods = vec![ModEntry::new("stacked", Box::new(Listener))].into();
     crate::game::api_values::install_parts(&mods).unwrap();
     mod_platform::testing::with_mods(mods, test);
@@ -149,7 +155,7 @@ fn with_mod(test: impl FnOnce()) {
 
 /// A local game with a player, the inventory screen open, stone 3 on the cursor and nothing in
 /// slot 9 (the first slot of the main inventory, menu slot 9).
-fn with_local(test: impl FnOnce(&mut crate::game::Game<'_>)) {
+pub(in crate::game) fn with_local(test: impl FnOnce(&mut crate::game::Game<'_>)) {
     with_game(|game| {
         let _serving = crate::game::integrated::tests::install_serving(game, false);
         game.level.player_uuid = Some([0, 0, 0, 99]);
@@ -167,15 +173,15 @@ fn with_local(test: impl FnOnce(&mut crate::game::Game<'_>)) {
         test(game);
     });
 }
-fn reset_local(game: &mut crate::game::Game<'_>) {
+pub(in crate::game) fn reset_local(game: &mut crate::game::Game<'_>) {
     game.inventory = vec![None; game.inventory.len()];
     game.carried = Some(ItemStack::new("minecraft:stone", 3));
 }
-fn count(stack: &Option<ItemStack>) -> u32 {
+pub(in crate::game) fn count(stack: &Option<ItemStack>) -> u32 {
     stack.as_ref().map_or(0, |s| s.count)
 }
 /// The click: pickup on the first main-inventory slot. What is left: (slot 9, cursor, slot 20).
-fn click(game: &mut crate::game::Game<'_>) -> (u32, u32, u32) {
+pub(in crate::game) fn click(game: &mut crate::game::Game<'_>) -> (u32, u32, u32) {
     assert!(game.menu_ops(&[(Some(9), 0, Input::Pickup)]));
     (
         count(&game.inventory[9]),
@@ -350,123 +356,6 @@ fn without_a_listener_the_click_is_plain_and_nothing_is_decided() {
 
 #[test]
 #[ignore = "daily"]
-fn a_lan_hub_click_is_decided_the_same_way() {
-    use sunrise_client::lan::menu::Slots;
-    use sunrise_protocol::packets::play::{ContainerClick, Serverbound};
-    with_mod(|| {
-        with_guests(|game| {
-            let pos = (1, 64, 1);
-            game.world.chunks.insert(
-                (0, 0),
-                std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
-            );
-            let stone = game
-                .pack
-                .assets
-                .registry
-                .default_state("minecraft:stone")
-                .unwrap();
-            game.world.set(pos.0, pos.1, pos.2, stone).unwrap();
-            PLAYER.set(12);
-            let open = |game: &mut crate::game::Game<'_>| {
-                game.world.block_entities.insert(
-                    pos,
-                    sunrise_client::containers::BlockEntity::Chest(vec![None; 27]),
-                );
-                let host = game.lan.as_mut().unwrap();
-                host.hub.open_container(
-                    12,
-                    "minecraft:generic_9x3",
-                    sunrise_core::nbt::Tag::String("test".into()),
-                    pos,
-                    Slots::Block(pos),
-                    vec![None; 27],
-                    None,
-                );
-                let window = host.hub.guests[0].menu.as_ref().unwrap().window;
-                host.hub.guests.update(0, |guest| {
-                    guest.inventory = vec![None; guest.inventory.len()];
-                    guest.carried = Some(ItemStack::new("minecraft:stone", 3));
-                });
-                window
-            };
-            let click = |game: &mut crate::game::Game<'_>, window: i32| {
-                game.lan_guest_packet(
-                    12,
-                    Serverbound::ContainerClick(ContainerClick {
-                        container: window,
-                        state: 0,
-                        slot: 0,
-                        button: 0,
-                        input: 0,
-                        changed: Vec::new(),
-                        carried: None,
-                    }),
-                );
-                let slot = game.world.block_entities.get(&pos).unwrap().slots()[0]
-                    .as_ref()
-                    .map_or(0, |s| s.count);
-                let host = game.lan.as_ref().unwrap();
-                let guest = &host.hub.guests[0];
-                (slot, count(&guest.carried), count(&guest.inventory[20]))
-            };
-            let window = open(game);
-            script(Script::default());
-            ASKS.set(0);
-            // Row 72 on the LAN route: stone 3 into the empty slot, one dispatch with the
-            // frozen stacks, and the LAN host is back.
-            assert_eq!(click(game, window), (3, 0, 0));
-            // Placement and capacity are separate live slot queries.
-            assert_eq!(ASKS.get(), 2);
-            assert_eq!(SEEN.with(|s| s.borrow().clone()), [(3, 0)]);
-            assert!(game.lan.is_some());
-
-            // The listener proposes dirt, not the stone a plain click would place. Both a
-            // permission refusal and an undersized limit keep the cursor and the container.
-            for (may_place, limit, count) in [(false, 64, 0), (true, 1, 0), (true, 2, 2)] {
-                let window = open(game);
-                script(Script {
-                    cancel: true,
-                    handled: true,
-                    set_carried: Some(None),
-                    set_clicked: Some(Some(("minecraft:dirt", 2))),
-                    dirt_rule: Some((may_place, limit)),
-                    write_scoreboard: true,
-                    ..Script::default()
-                });
-                ASKS.set(0);
-                assert_eq!(
-                    click(game, window),
-                    (count, if count == 0 { 3 } else { 0 }, 0)
-                );
-                assert_eq!(dispatches(), 1);
-                // A placement refusal short-circuits before the capacity query.
-                assert_eq!(ASKS.get(), if may_place { 2 } else { 1 });
-                assert_eq!(game.score.board.objective("pickup").is_some(), count != 0);
-            }
-
-            // Rows 73 and 84: a write and then a panic are undone, and the guest swap and
-            // host are restored. Run this last: the failing callback is now disabled.
-            let window = open(game);
-            script(Script {
-                write_dirt: Some(20),
-                panic: true,
-                ..Script::default()
-            });
-            assert_eq!(click(game, window), (0, 3, 0));
-            assert_eq!(dispatches(), 1);
-            assert!(game.lan.is_some());
-            assert!(game.server.lan_guest_swaps.is_empty());
-            let window = open(game);
-            script(Script::default());
-            assert_eq!(click(game, window), (3, 0, 0));
-            assert_eq!(dispatches(), 0);
-        });
-    });
-}
-
-#[test]
-#[ignore = "daily"]
 fn a_lan_inventory_click_is_decided_the_same_way() {
     use sunrise_protocol::packets::play::{ContainerClick, Serverbound};
     with_mod(|| {
@@ -523,7 +412,7 @@ fn a_lan_inventory_click_is_decided_the_same_way() {
 /// The LAN menus the game runs for a guest: the hook fires on each, with the frozen stacks, and a
 /// cancelled, handled answer that sets the cursor applies. Plain, the stone on the cursor would
 /// have gone into the slot; set, the cursor ends as dirt 2.
-mod families {
+pub(in crate::game) mod families {
     use super::*;
     use crate::game::Game;
     use sunrise_protocol::packets::play::{ContainerClick, Serverbound};
@@ -1236,52 +1125,55 @@ fn an_outer_abort_after_an_applied_lan_click_restores_the_guest_and_the_containe
     });
 }
 
-mod item_part_tests {
+pub(in crate::game) mod item_part_tests {
+    #[allow(unused_imports)]
     use super::*;
+    #[allow(unused_imports)]
     use mod_api::item::menu::StackedOnOtherDirection;
+    #[allow(unused_imports)]
     use mod_api::{ItemPart, Registrar, RegistrationContext};
 
     #[derive(Clone, Default)]
-    struct PartScript {
-        cancel_carried: bool,
-        cancel_clicked: bool,
-        handled: bool,
-        carried_handled: Option<bool>,
-        clicked_handled: Option<bool>,
-        set_carried: Option<Option<(&'static str, u32)>>,
-        set_clicked: Option<Option<(&'static str, u32)>>,
-        take_clicked: Option<u32>,
-        carried_phase_set_carried: Option<Option<(&'static str, u32)>>,
-        carried_phase_set_clicked: Option<Option<(&'static str, u32)>>,
-        carried_phase_take_clicked: Option<u32>,
-        clicked_phase_set_carried: Option<Option<(&'static str, u32)>>,
-        clicked_phase_set_clicked: Option<Option<(&'static str, u32)>>,
-        clicked_phase_take_clicked: Option<u32>,
-        panic_on_carried: bool,
-        write_scoreboard: bool,
+    pub(in crate::game) struct PartScript {
+        pub(in crate::game) cancel_carried: bool,
+        pub(in crate::game) cancel_clicked: bool,
+        pub(in crate::game) handled: bool,
+        pub(in crate::game) carried_handled: Option<bool>,
+        pub(in crate::game) clicked_handled: Option<bool>,
+        pub(in crate::game) set_carried: Option<Option<(&'static str, u32)>>,
+        pub(in crate::game) set_clicked: Option<Option<(&'static str, u32)>>,
+        pub(in crate::game) take_clicked: Option<u32>,
+        pub(in crate::game) carried_phase_set_carried: Option<Option<(&'static str, u32)>>,
+        pub(in crate::game) carried_phase_set_clicked: Option<Option<(&'static str, u32)>>,
+        pub(in crate::game) carried_phase_take_clicked: Option<u32>,
+        pub(in crate::game) clicked_phase_set_carried: Option<Option<(&'static str, u32)>>,
+        pub(in crate::game) clicked_phase_set_clicked: Option<Option<(&'static str, u32)>>,
+        pub(in crate::game) clicked_phase_take_clicked: Option<u32>,
+        pub(in crate::game) panic_on_carried: bool,
+        pub(in crate::game) write_scoreboard: bool,
     }
 
     #[derive(Clone, Debug, PartialEq, Eq)]
-    struct PartObservation {
-        tag: &'static str,
-        direction: StackedOnOtherDirection,
-        is_server: bool,
-        primary: bool,
-        carried: Option<(String, u32)>,
-        clicked: Option<(String, u32)>,
+    pub(in crate::game) struct PartObservation {
+        pub(in crate::game) tag: &'static str,
+        pub(in crate::game) direction: StackedOnOtherDirection,
+        pub(in crate::game) is_server: bool,
+        pub(in crate::game) primary: bool,
+        pub(in crate::game) carried: Option<(String, u32)>,
+        pub(in crate::game) clicked: Option<(String, u32)>,
     }
 
     thread_local! {
-        static PART_SCRIPT: RefCell<PartScript> = RefCell::new(PartScript::default());
-        static TRACE: RefCell<Vec<(&'static str, StackedOnOtherDirection)>> =
+        pub(in crate::game) static PART_SCRIPT: RefCell<PartScript> = RefCell::new(PartScript::default());
+        pub(in crate::game) static TRACE: RefCell<Vec<(&'static str, StackedOnOtherDirection)>> =
             const { RefCell::new(Vec::new()) };
-        static OBSERVATIONS: RefCell<Vec<PartObservation>> = const { RefCell::new(Vec::new()) };
-        static SMELTED: RefCell<Vec<(Option<(String, u32)>, u32)>> =
+        pub(in crate::game) static OBSERVATIONS: RefCell<Vec<PartObservation>> = const { RefCell::new(Vec::new()) };
+        pub(in crate::game) static SMELTED: RefCell<Vec<(Option<(String, u32)>, u32)>> =
             const { RefCell::new(Vec::new()) };
-        static EXTRACTED: RefCell<Vec<(String, u32)>> = const { RefCell::new(Vec::new()) };
+        pub(in crate::game) static EXTRACTED: RefCell<Vec<(String, u32)>> = const { RefCell::new(Vec::new()) };
     }
 
-    fn set_part_script(script: PartScript) {
+    pub(in crate::game) fn set_part_script(script: PartScript) {
         TRACE.with(|t| t.borrow_mut().clear());
         OBSERVATIONS.with(|o| o.borrow_mut().clear());
         SMELTED.with(|s| s.borrow_mut().clear());
@@ -1289,23 +1181,23 @@ mod item_part_tests {
         PART_SCRIPT.with(|s| *s.borrow_mut() = script);
     }
 
-    fn smelted_events() -> Vec<(Option<(String, u32)>, u32)> {
+    pub(in crate::game) fn smelted_events() -> Vec<(Option<(String, u32)>, u32)> {
         SMELTED.with(|s| s.borrow().clone())
     }
 
-    fn extracted_events() -> Vec<(String, u32)> {
+    pub(in crate::game) fn extracted_events() -> Vec<(String, u32)> {
         EXTRACTED.with(|e| e.borrow().clone())
     }
 
-    fn trace() -> Vec<(&'static str, StackedOnOtherDirection)> {
+    pub(in crate::game) fn trace() -> Vec<(&'static str, StackedOnOtherDirection)> {
         TRACE.with(|t| t.borrow().clone())
     }
 
-    fn observations() -> Vec<PartObservation> {
+    pub(in crate::game) fn observations() -> Vec<PartObservation> {
         OBSERVATIONS.with(|o| o.borrow().clone())
     }
 
-    struct TaggedPart(&'static str);
+    pub(in crate::game) struct TaggedPart(pub(in crate::game) &'static str);
 
     #[mod_api::sunrise_part]
     impl ItemPart for TaggedPart {
@@ -1424,7 +1316,7 @@ mod item_part_tests {
         }
     }
 
-    struct PartOnlyMod;
+    pub(in crate::game) struct PartOnlyMod;
     #[mod_api::__subscriptions]
     impl Hooks for PartOnlyMod {
         fn register(&self, r: &mut dyn Registrar, _: &RegistrationContext) {
@@ -1435,7 +1327,7 @@ mod item_part_tests {
         }
     }
 
-    struct PartWithFurnaceHooksMod;
+    pub(in crate::game) struct PartWithFurnaceHooksMod;
     #[mod_api::__subscriptions]
     impl Hooks for PartWithFurnaceHooksMod {
         fn register(&self, r: &mut dyn Registrar, _: &RegistrationContext) {
@@ -1470,7 +1362,7 @@ mod item_part_tests {
         }
     }
 
-    fn with_part_and_furnace_hooks_mod(test: impl FnOnce()) {
+    pub(in crate::game) fn with_part_and_furnace_hooks_mod(test: impl FnOnce()) {
         let mods: Mods = vec![ModEntry::new(
             "part_furnace",
             Box::new(PartWithFurnaceHooksMod),
@@ -1480,7 +1372,7 @@ mod item_part_tests {
         mod_platform::testing::with_mods(mods, test);
     }
 
-    struct GlobalAndPartMod(bool);
+    pub(in crate::game) struct GlobalAndPartMod(pub(in crate::game) bool);
     #[mod_api::__subscriptions]
     impl Hooks for GlobalAndPartMod {
         fn register(&self, r: &mut dyn Registrar, _: &RegistrationContext) {
@@ -1503,7 +1395,7 @@ mod item_part_tests {
         }
     }
 
-    fn with_part_only_mod(test: impl FnOnce()) {
+    pub(in crate::game) fn with_part_only_mod(test: impl FnOnce()) {
         let mods: Mods = vec![ModEntry::new("part_stacked", Box::new(PartOnlyMod))].into();
         crate::game::api_values::install_parts(&mods).unwrap();
         mod_platform::testing::with_mods(mods, test);
@@ -1758,294 +1650,6 @@ mod item_part_tests {
                     Some(("minecraft:diamond", 2))
                 );
                 assert!(guest.inventory[9].is_none());
-            });
-        });
-    }
-
-    #[test]
-    #[ignore = "daily"]
-    fn item_part_client_prediction_reconciliation_and_creative_pickups() {
-        use crate::game::Screen;
-        use sunrise_client::creative::Creative;
-        use sunrise_protocol::{
-            item::Stack,
-            packets::play::{self, Clientbound as C, Serverbound as S},
-        };
-        // Install BOTH a cancelling global listener AND ItemParts so we prove client prediction
-        // and creative pickups run ItemParts with HostSide::Client while keeping the global
-        // listener authoritative-server-only.
-        let mods: Mods = vec![ModEntry::new(
-            "client_part_pred",
-            Box::new(GlobalAndPartMod(true)),
-        )]
-        .into();
-        crate::game::api_values::install_parts(&mods).unwrap();
-        mod_platform::testing::with_mods(mods, || {
-            with_game(|game| {
-                let (mut reader, _writer) = crate::game::remote::tests::connect_menu_test(game);
-                crate::game::remote::tests::spawn_menu_test(game);
-                let mut body = sunrise_client::motion::PlayerMotion::new(
-                    game.motion,
-                    sunrise_core::geometry::Vec3::new(0.0, 64.0, 0.0),
-                )
-                .unwrap();
-                body.entity_id = 7;
-                game.player = Some(body);
-                reader
-                    .set_read_timeout(Some(std::time::Duration::from_millis(200)))
-                    .unwrap();
-                let drain_packets = |reader: &mut sunrise_protocol::connection::ConnReader| {
-                    let mut out = Vec::new();
-                    while let Ok((id, body)) = reader.recv() {
-                        if let Ok(pkt) = S::decode(id, &body) {
-                            out.push(pkt);
-                        }
-                    }
-                    out
-                };
-                let _ = drain_packets(&mut reader);
-
-                // 1. Ordinary client prediction on Screen::Inventory dispatches ItemPart with
-                //    HostSide::Client (never global listener), predicts the edit locally, and
-                //    sends ContainerClick with the predicted slots/carried.
-                game.creative = false;
-                game.client.screen = Screen::Inventory;
-                game.inventory = vec![None; game.inventory.len()];
-                game.inventory[9] = Some(ItemStack::new("minecraft:flint", 1));
-                game.carried = Some(ItemStack::new("minecraft:stick", 1));
-                set_part_script(PartScript {
-                    cancel_carried: true,
-                    handled: true,
-                    set_carried: Some(None),
-                    set_clicked: Some(Some(("minecraft:diamond", 2))),
-                    ..PartScript::default()
-                });
-                assert!(game.menu_ops(&[(Some(9), 0, Input::Pickup)]));
-                assert_eq!(
-                    trace(),
-                    [("stick", StackedOnOtherDirection::CarriedOnOther)]
-                );
-                assert!(
-                    !observations()[0].is_server,
-                    "client prediction must pass HostSide::Client"
-                );
-                assert!(game.carried.is_none());
-                assert_eq!(
-                    game.inventory[9].as_ref().map(|s| (&*s.item, s.count)),
-                    Some(("minecraft:diamond", 2))
-                );
-                let packets = drain_packets(&mut reader);
-                let click_pkt = packets
-                    .iter()
-                    .find_map(|p| match p {
-                        S::ContainerClick(c) => Some(c),
-                        _ => None,
-                    })
-                    .expect("expected ContainerClick for client prediction");
-                assert_eq!(
-                    (click_pkt.container, click_pkt.slot, click_pkt.input),
-                    (0, 9, 0)
-                );
-                assert!(click_pkt.carried.is_none());
-                assert_eq!(click_pkt.changed.len(), 1);
-                assert_eq!(click_pkt.changed[0].0, 9);
-                assert_eq!(click_pkt.changed[0].1.as_ref().map(|h| h.count), Some(2));
-
-                // Server reconciliation stays authoritative over client prediction.
-                let item_id = |game: &crate::game::Game<'_>, name: &str| {
-                    game.remote
-                        .as_ref()
-                        .unwrap()
-                        .builtin
-                        .get("minecraft:item")
-                        .and_then(|r| r.id(name))
-                        .unwrap()
-                };
-                let emerald = item_id(game, "minecraft:emerald");
-                let stone = item_id(game, "minecraft:stone");
-                game.handle_packet(C::ContainerSetSlot(play::ContainerSetSlot {
-                    container: 0,
-                    state: 5,
-                    slot: 9,
-                    item: Some(Stack::new(emerald, 1)),
-                }))
-                .unwrap();
-                game.handle_packet(C::SetCursorItem(play::SetCursorItem {
-                    item: Some(Stack::new(stone, 3)),
-                }))
-                .unwrap();
-                assert_eq!(
-                    game.inventory[9].as_ref().map(|s| (&*s.item, s.count)),
-                    Some(("minecraft:emerald", 1))
-                );
-                assert_eq!(
-                    game.carried.as_ref().map(|s| (&*s.item, s.count)),
-                    Some(("minecraft:stone", 3))
-                );
-
-                // 2. Client prediction for a 1-slot left drag resolves to a pickup and runs Part.
-                game.inventory[10] = None;
-                game.carried = Some(ItemStack::new("minecraft:stick", 1));
-                set_part_script(PartScript {
-                    cancel_carried: true,
-                    handled: true,
-                    set_carried: Some(None),
-                    set_clicked: Some(Some(("minecraft:diamond", 1))),
-                    ..PartScript::default()
-                });
-                assert!(game.menu_ops(&[
-                    (None, 0, Input::QuickCraft),
-                    (Some(10), 1, Input::QuickCraft),
-                    (None, 2, Input::QuickCraft),
-                ]));
-                assert_eq!(
-                    trace(),
-                    [("stick", StackedOnOtherDirection::CarriedOnOther)]
-                );
-                assert!(!observations()[0].is_server);
-                assert_eq!(
-                    game.inventory[10].as_ref().map(|s| (&*s.item, s.count)),
-                    Some(("minecraft:diamond", 1))
-                );
-                let drag_clicks = drain_packets(&mut reader)
-                    .into_iter()
-                    .filter(|p| matches!(p, S::ContainerClick(_)))
-                    .count();
-                assert_eq!(drag_clicks, 3);
-
-                // 2b. Multi-gesture batch on a remote inventory carries predicted `craft_result`
-                //     from gesture 1 to gesture 2 so gesture 2 does not see a cleared result.
-                game.remote.as_mut().unwrap().craft_result =
-                    Some(ItemStack::new("minecraft:flint", 1));
-                game.carried = Some(ItemStack::new("minecraft:stick", 1));
-                set_part_script(PartScript {
-                    cancel_carried: true,
-                    handled: true,
-                    set_clicked: Some(None),
-                    ..PartScript::default()
-                });
-                assert!(game.remote_menu_ops(&[
-                    (Some(200), 0, Input::Pickup),
-                    (Some(200), 0, Input::Pickup),
-                ]));
-                assert_eq!(
-                    observations().len(),
-                    2,
-                    "both gestures in the batch must dispatch CarriedOnOther"
-                );
-                assert_eq!(
-                    observations()[0].clicked,
-                    Some(("minecraft:flint".to_owned(), 1))
-                );
-                assert_eq!(
-                    observations()[1].clicked,
-                    None,
-                    "second gesture in remote batch must observe updated craft_result"
-                );
-                assert_eq!(game.remote.as_ref().unwrap().craft_result, None);
-                let _ = drain_packets(&mut reader);
-
-                // 3. Creative Survival Inventory tab pickup runs ItemPart on HostSide::Client and
-                //    sends SetCreativeModeSlot (never ContainerClick).
-                game.creative = true;
-                game.client.screen = Screen::Creative;
-                game.refresh_creative_tabs();
-                let inv_tab = game
-                    .creative_screen
-                    .0
-                    .tabs
-                    .iter()
-                    .position(|t| t.inventory)
-                    .expect("creative inventory tab");
-                game.creative_screen.0.select(inv_tab);
-                assert!(game.creative_inventory_open());
-                game.inventory[9] = Some(ItemStack::new("minecraft:flint", 1));
-                game.carried = Some(ItemStack::new("minecraft:stick", 1));
-                set_part_script(PartScript {
-                    cancel_carried: true,
-                    handled: true,
-                    set_carried: Some(None),
-                    set_clicked: Some(Some(("minecraft:diamond", 4))),
-                    ..PartScript::default()
-                });
-                assert!(game.click_open_inventory(Some(9), 0, Input::Pickup));
-                assert_eq!(
-                    trace(),
-                    [("stick", StackedOnOtherDirection::CarriedOnOther)]
-                );
-                assert!(!observations()[0].is_server);
-                assert_eq!(
-                    game.inventory[9].as_ref().map(|s| (&*s.item, s.count)),
-                    Some(("minecraft:diamond", 4))
-                );
-                let creative_pkts = drain_packets(&mut reader);
-                assert!(
-                    creative_pkts
-                        .iter()
-                        .any(|p| matches!(p, S::SetCreativeModeSlot(_))),
-                    "creative inventory tab pickup must sync changed slots via SetCreativeModeSlot"
-                );
-                assert!(
-                    !creative_pkts
-                        .iter()
-                        .any(|p| matches!(p, S::ContainerClick(_))),
-                    "creative inventory tab pickup must not send ContainerClick"
-                );
-
-                // 4. Creative item-tab hotbar pickup runs ItemPart on HostSide::Client and sends
-                //    SetCreativeModeSlot; creative catalogue display slots do NOT dispatch Parts.
-                let item_tab = game
-                    .creative_screen
-                    .0
-                    .tabs
-                    .iter()
-                    .position(|t| !t.inventory && !t.search && !t.items.is_empty())
-                    .expect("creative item tab");
-                game.creative_screen.0.select(item_tab);
-                assert!(game.creative_tab_open());
-                game.inventory[0] = Some(ItemStack::new("minecraft:flint", 1));
-                game.carried = Some(ItemStack::new("minecraft:stick", 1));
-                set_part_script(PartScript {
-                    cancel_carried: true,
-                    handled: true,
-                    set_carried: Some(None),
-                    set_clicked: Some(Some(("minecraft:emerald", 2))),
-                    ..PartScript::default()
-                });
-                assert!(game.click_open_inventory(Some(0), 0, Input::Pickup));
-                assert_eq!(
-                    trace(),
-                    [("stick", StackedOnOtherDirection::CarriedOnOther)]
-                );
-                assert!(!observations()[0].is_server);
-                assert_eq!(
-                    game.inventory[0].as_ref().map(|s| (&*s.item, s.count)),
-                    Some(("minecraft:emerald", 2))
-                );
-                let hotbar_pkts = drain_packets(&mut reader);
-                assert!(
-                    hotbar_pkts
-                        .iter()
-                        .any(|p| matches!(p, S::SetCreativeModeSlot(_)))
-                );
-                assert!(
-                    !hotbar_pkts
-                        .iter()
-                        .any(|p| matches!(p, S::ContainerClick(_)))
-                );
-
-                // Creative catalogue display slot must NEVER fire pickup overrides.
-                game.carried = Some(ItemStack::new("minecraft:stick", 1));
-                set_part_script(PartScript {
-                    cancel_carried: true,
-                    handled: true,
-                    ..PartScript::default()
-                });
-                assert!(game.click_open_inventory(Some(Creative::DISPLAY), 0, Input::Pickup));
-                assert!(
-                    trace().is_empty(),
-                    "creative catalogue display slots must not dispatch pickup overrides"
-                );
             });
         });
     }

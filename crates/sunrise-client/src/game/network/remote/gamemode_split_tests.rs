@@ -1,16 +1,22 @@
 //! Parity tests for Minecraft 26.3 client local-game-mode vs `PlayerInfo` split (Item 3).
 //! Witness recorded into `.local` by `tools/test_gamemode_split_parity.py` (`VanillaClientGameModeSplitOracle`, JDK 25).
+#[allow(unused_imports)]
 use super::super::*;
+#[allow(unused_imports)]
 use crate::game::game_mode::mode_from_id;
+#[allow(unused_imports)]
 use crate::game::native_entity_refs::tests::with_client_game;
+#[allow(unused_imports)]
 use serde_json::Value as JsonValue;
+#[allow(unused_imports)]
 use sunrise_client::command::args::GameMode;
+#[allow(unused_imports)]
 use sunrise_protocol::connection::ConnReader;
 
-const SELF_UUID: u128 = 0xdf71_dcc7_da3b_3506_b229_6d1f_589e_2569;
-const SELF_NAME: &str = "BX0W";
+pub(in crate::game) const SELF_UUID: u128 = 0xdf71_dcc7_da3b_3506_b229_6d1f_589e_2569;
+pub(in crate::game) const SELF_NAME: &str = "BX0W";
 
-fn oracle_witness() -> JsonValue {
+pub(in crate::game) fn oracle_witness() -> JsonValue {
     let path = std::env::var("SUNRISE_GAMEMODE_SPLIT_WITNESS").unwrap_or_else(|_| {
         let fallback = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../../.local/witness/26.3/gamemode_split/witness.json");
@@ -28,19 +34,22 @@ fn oracle_witness() -> JsonValue {
     serde_json::from_str(&raw).expect("valid 26.3 gamemode split witness JSON")
 }
 
-fn f32_bits(hex: &JsonValue) -> u32 {
+pub(in crate::game) fn f32_bits(hex: &JsonValue) -> u32 {
     u32::from_str_radix(hex.as_str().unwrap().trim_start_matches("0x"), 16).unwrap()
 }
 
-fn f64_bits(hex: &JsonValue) -> u64 {
+pub(in crate::game) fn f64_bits(hex: &JsonValue) -> u64 {
     u64::from_str_radix(hex.as_str().unwrap().trim_start_matches("0x"), 16).unwrap()
 }
 
-fn mode_id_from_name(name: &str) -> i32 {
+pub(in crate::game) fn mode_id_from_name(name: &str) -> i32 {
     GameMode::from_name(name).unwrap().id()
 }
 
-fn spawn_info(game_type: i32, previous_game_type: Option<i32>) -> play::SpawnInfo {
+pub(in crate::game) fn spawn_info(
+    game_type: i32,
+    previous_game_type: Option<i32>,
+) -> play::SpawnInfo {
     play::SpawnInfo {
         dimension_type: 0,
         dimension: "minecraft:overworld".into(),
@@ -55,7 +64,11 @@ fn spawn_info(game_type: i32, previous_game_type: Option<i32>) -> play::SpawnInf
     }
 }
 
-fn login_packet(player_id: i32, game_type: i32, previous_game_type: Option<i32>) -> C {
+pub(in crate::game) fn login_packet(
+    player_id: i32,
+    game_type: i32,
+    previous_game_type: Option<i32>,
+) -> C {
     C::Login(play::Login {
         player_id,
         hardcore: false,
@@ -72,7 +85,7 @@ fn login_packet(player_id: i32, game_type: i32, previous_game_type: Option<i32>)
     })
 }
 
-fn position_packet(teleport: i32, position: [f64; 3]) -> C {
+pub(in crate::game) fn position_packet(teleport: i32, position: [f64; 3]) -> C {
     C::PlayerPosition(play::PlayerPosition {
         teleport,
         position,
@@ -83,7 +96,7 @@ fn position_packet(teleport: i32, position: [f64; 3]) -> C {
     })
 }
 
-fn abilities_packet(flags: i8, flying_speed: f32, walking_speed: f32) -> C {
+pub(in crate::game) fn abilities_packet(flags: i8, flying_speed: f32, walking_speed: f32) -> C {
     C::PlayerAbilities(play::PlayerAbilities {
         flags,
         flying_speed,
@@ -91,11 +104,11 @@ fn abilities_packet(flags: i8, flying_speed: f32, walking_speed: f32) -> C {
     })
 }
 
-fn change_mode_packet(param: f32) -> C {
+pub(in crate::game) fn change_mode_packet(param: f32) -> C {
     C::GameEvent(play::GameEvent { event: 3, param })
 }
 
-fn player_info_add_mode(uuid: u128, name: &str, game_mode: i32) -> C {
+pub(in crate::game) fn player_info_add_mode(uuid: u128, name: &str, game_mode: i32) -> C {
     C::PlayerInfoUpdate(play::PlayerInfoUpdate {
         actions: 0x01 | 0x04 | 0x08,
         entries: vec![play::PlayerInfo {
@@ -108,7 +121,7 @@ fn player_info_add_mode(uuid: u128, name: &str, game_mode: i32) -> C {
     })
 }
 
-fn player_info_mode(uuid: u128, game_mode: i32) -> C {
+pub(in crate::game) fn player_info_mode(uuid: u128, game_mode: i32) -> C {
     C::PlayerInfoUpdate(play::PlayerInfoUpdate {
         actions: 0x04,
         entries: vec![play::PlayerInfo {
@@ -119,7 +132,7 @@ fn player_info_mode(uuid: u128, game_mode: i32) -> C {
     })
 }
 
-fn install_stone_floor(game: &mut Game<'_>) {
+pub(in crate::game) fn install_stone_floor(game: &mut Game<'_>) {
     game.streaming
         .insert_remote(&mut game.world, Chunk::empty(0, 0));
     let stone = game
@@ -137,34 +150,10 @@ fn install_stone_floor(game: &mut Game<'_>) {
     }
 }
 
-fn setup_client(
-    game: &mut Game<'_>,
-    local_mode: i32,
-    previous_mode: Option<i32>,
-    pos: [f64; 3],
-) -> (ConnReader, sunrise_protocol::connection::ConnWriter) {
-    let (peer, writer) = super::super::tests::connect_menu_test(game);
-    peer.set_read_timeout(Some(std::time::Duration::from_secs(5)))
-        .unwrap();
-    {
-        let remote = game.remote.as_mut().unwrap();
-        remote.profile = SELF_UUID;
-        remote.profile_name = SELF_NAME.into();
-    }
-    game.handle_packet(login_packet(83081, local_mode, previous_mode))
-        .unwrap();
-    install_stone_floor(game);
-    game.handle_packet(position_packet(1, pos)).unwrap();
-    {
-        let remote = game.remote.as_mut().unwrap();
-        remote.loaded_sent = true;
-        remote.level_load.finish();
-    }
-    game.client.screen = Screen::Playing;
-    (peer, writer)
-}
+#[allow(unused_imports)]
+pub(in crate::game) use crate::game::client_side::remote_client::abilities::gamemode_split_tests::setup_client;
 
-fn drain_sent_abilities(game: &Game<'_>, peer: &mut ConnReader) -> Vec<bool> {
+pub(in crate::game) fn drain_sent_abilities(game: &Game<'_>, peer: &mut ConnReader) -> Vec<bool> {
     game.send(S::ClientTickEnd(Empty));
     let mut sent = Vec::new();
     while let Ok((id, bytes)) = peer.recv() {
@@ -177,17 +166,17 @@ fn drain_sent_abilities(game: &Game<'_>, peer: &mut ConnReader) -> Vec<bool> {
     sent
 }
 
-fn run_local_tick(game: &mut Game<'_>) {
+pub(in crate::game) fn run_local_tick(game: &mut Game<'_>) {
     game.tick_local_player(Vec::new(), 7, None).unwrap();
 }
 
-fn player_info_mode_name(game: &Game<'_>) -> Option<&'static str> {
+pub(in crate::game) fn player_info_mode_name(game: &Game<'_>) -> Option<&'static str> {
     let r = game.remote.as_ref()?;
     let t = r.tab_players.get(&r.profile)?;
     Some(mode_from_id(t.game_mode).name())
 }
 
-fn assert_row_core(
+pub(in crate::game) fn assert_row_core(
     game: &Game<'_>,
     row: &JsonValue,
     check_pos_vel: bool,
@@ -487,131 +476,8 @@ fn split_local_and_player_info_physics_matrix_26_3() {
     run_split_local_and_player_info_physics_matrix_26_3();
 }
 
-pub(in crate::game) fn run_split_local_and_player_info_physics_matrix_26_3() {
-    crate::game::in_own_process(
-        "game::remote::abilities::gamemode_split_tests::split_local_and_player_info_physics_matrix_26_3",
-        || {
-            let witness = oracle_witness();
-            assert_eq!(witness["version"].as_str(), Some("26.3"));
-            let rows = witness["scenarios"]["split_mode_physics_matrix"]
-                .as_array()
-                .unwrap();
-            assert_eq!(rows.len(), 48);
-
-            with_client_game(|game| {
-                let (mut peer, _writer) = super::super::tests::connect_menu_test(game);
-                peer.set_read_timeout(Some(std::time::Duration::from_secs(5)))
-                    .unwrap();
-
-                let modes = ["survival", "creative", "adventure", "spectator"];
-                let info_modes: [Option<&str>; 5] = [
-                    None,
-                    Some("survival"),
-                    Some("creative"),
-                    Some("adventure"),
-                    Some("spectator"),
-                ];
-                let mut row_idx = 0;
-
-                for local in modes {
-                    for info in info_modes {
-                        for may_fly in [false, true] {
-                            {
-                                let remote = game.remote.as_mut().unwrap();
-                                remote.profile = SELF_UUID;
-                                remote.profile_name = SELF_NAME.into();
-                                remote.tab_players.clear();
-                                remote.tab_game_modes.clear();
-                                remote.listed.clear();
-                                remote.own_player_info = std::cell::OnceCell::new();
-                                remote.has_logical_player = false;
-                            }
-                            game.player = None;
-                            game.handle_packet(login_packet(83081, mode_id_from_name(local), None))
-                                .unwrap();
-                            install_stone_floor(game);
-                            if let Some(info_name) = info {
-                                game.handle_packet(player_info_add_mode(
-                                    SELF_UUID,
-                                    SELF_NAME,
-                                    mode_id_from_name(info_name),
-                                ))
-                                .unwrap();
-                            }
-                            game.handle_packet(position_packet(1, [0.5, 64.0, 0.5]))
-                                .unwrap();
-                            game.player.as_mut().unwrap().ground.on_ground = true;
-                            game.handle_packet(abilities_packet(
-                                if may_fly { 0x04 } else { 0x00 },
-                                0.05,
-                                0.10,
-                            ))
-                            .unwrap();
-                            {
-                                let remote = game.remote.as_mut().unwrap();
-                                remote.loaded_sent = true;
-                                remote.level_load.finish();
-                            }
-                            game.client.screen = Screen::Playing;
-                            let _ = drain_sent_abilities(game, &mut peer);
-
-                            for _ in 0..3 {
-                                run_local_tick(game);
-                            }
-                            let sent = drain_sent_abilities(game, &mut peer);
-                            assert_row_core(game, &rows[row_idx], true, Some(&sent));
-                            row_idx += 1;
-                        }
-                    }
-                }
-
-                // 8 landing rows: flying=true with downward velocity -0.1 into stone floor at y=64.0.
-                for local in modes {
-                    for info_name in ["adventure", "spectator"] {
-                        {
-                            let remote = game.remote.as_mut().unwrap();
-                            remote.profile = SELF_UUID;
-                            remote.profile_name = SELF_NAME.into();
-                            remote.tab_players.clear();
-                            remote.tab_game_modes.clear();
-                            remote.listed.clear();
-                            remote.own_player_info = std::cell::OnceCell::new();
-                            remote.has_logical_player = false;
-                        }
-                        game.player = None;
-                        game.handle_packet(login_packet(83081, mode_id_from_name(local), None))
-                            .unwrap();
-                        install_stone_floor(game);
-                        game.handle_packet(player_info_add_mode(
-                            SELF_UUID,
-                            SELF_NAME,
-                            mode_id_from_name(info_name),
-                        ))
-                        .unwrap();
-                        game.handle_packet(position_packet(1, [0.5, 64.0, 0.5]))
-                            .unwrap();
-                        game.handle_packet(abilities_packet(0x06, 0.05, 0.10))
-                            .unwrap();
-                        game.player.as_mut().unwrap().velocity = Vec3::new(0.0, -0.1, 0.0);
-                        {
-                            let remote = game.remote.as_mut().unwrap();
-                            remote.loaded_sent = true;
-                            remote.level_load.finish();
-                        }
-                        game.client.screen = Screen::Playing;
-                        let _ = drain_sent_abilities(game, &mut peer);
-
-                        run_local_tick(game);
-                        let sent = drain_sent_abilities(game, &mut peer);
-                        assert_row_core(game, &rows[row_idx], true, Some(&sent));
-                        row_idx += 1;
-                    }
-                }
-                assert_eq!(row_idx, 48);
-            });
-        },
-    );
-}
+#[allow(unused_imports)]
+pub(in crate::game) use crate::game::client_side::remote_client::abilities::gamemode_split_tests::run_split_local_and_player_info_physics_matrix_26_3;
 
 /// Real 26.3 oracle witness (`scenarios.live_player_info_transitions`):
 /// while `local_game_mode` stays Spectator and abilities stay 0x00, `PlayerInfoUpdate` flips
@@ -732,114 +598,8 @@ fn resolved_player_info_retains_identity_across_remove_and_readd_26_3() {
     run_resolved_player_info_retains_identity_across_remove_and_readd_26_3();
 }
 
-pub(in crate::game) fn run_resolved_player_info_retains_identity_across_remove_and_readd_26_3() {
-    crate::game::in_own_process(
-        "game::remote::abilities::gamemode_split_tests::resolved_player_info_retains_identity_across_remove_and_readd_26_3",
-        || {
-            let witness = oracle_witness();
-            assert_eq!(witness["version"].as_str(), Some("26.3"));
-            let rows = witness["scenarios"]["resolved_player_info_retention"]
-                .as_array()
-                .unwrap();
-
-            with_client_game(|game| {
-                let (mut peer, _writer) = setup_client(game, 3, None, [0.5, 64.0, 0.5]);
-                game.handle_packet(abilities_packet(0x00, 0.05, 0.10))
-                    .unwrap();
-                let _ = drain_sent_abilities(game, &mut peer);
-
-                run_local_tick(game);
-                let sent = drain_sent_abilities(game, &mut peer);
-                assert_row_core(game, &rows[0], true, Some(&sent));
-
-                game.handle_packet(player_info_add_mode(SELF_UUID, SELF_NAME, 3))
-                    .unwrap();
-                run_local_tick(game);
-                let sent = drain_sent_abilities(game, &mut peer);
-                assert_row_core(game, &rows[1], true, Some(&sent));
-
-                game.handle_packet(C::PlayerInfoRemove(play::PlayerInfoRemove {
-                    uuids: vec![SELF_UUID],
-                }))
-                .unwrap();
-                run_local_tick(game);
-                let sent = drain_sent_abilities(game, &mut peer);
-                assert_row_core(game, &rows[2], true, Some(&sent));
-
-                game.handle_packet(player_info_add_mode(SELF_UUID, SELF_NAME, 2))
-                    .unwrap();
-                run_local_tick(game);
-                let sent = drain_sent_abilities(game, &mut peer);
-                assert_row_core(game, &rows[3], true, Some(&sent));
-
-                game.handle_packet(C::Respawn(play::Respawn {
-                    spawn: spawn_info(2, None),
-                    keep: 0,
-                }))
-                .unwrap();
-                game.handle_packet(position_packet(2, [0.5, 64.0, 0.5]))
-                    .unwrap();
-                {
-                    let remote = game.remote.as_mut().unwrap();
-                    remote.loaded_sent = true;
-                    remote.level_load.finish();
-                }
-                game.client.screen = Screen::Playing;
-                run_local_tick(game);
-                let sent = drain_sent_abilities(game, &mut peer);
-                assert_row_core(game, &rows[4], true, Some(&sent));
-
-                assert_eq!(rows.len(), 7);
-                // #3: Respawn clears own_player_info and must leave it unresolved across Respawn
-                // and PlayerPosition until the replacement player first reads it.
-                game.handle_packet(C::Respawn(play::Respawn {
-                    spawn: spawn_info(0, None),
-                    keep: 0,
-                }))
-                .unwrap();
-                assert!(
-                    game.remote
-                        .as_ref()
-                        .unwrap()
-                        .own_player_info
-                        .get()
-                        .is_none(),
-                    "Respawn must leave the replacement player's PlayerInfo cache unresolved"
-                );
-                game.handle_packet(position_packet(3, [0.5, 64.0, 0.5]))
-                    .unwrap();
-                assert!(
-                    game.remote
-                        .as_ref()
-                        .unwrap()
-                        .own_player_info
-                        .get()
-                        .is_none(),
-                    "PlayerPosition must not eagerly resolve PlayerInfo before first read"
-                );
-                {
-                    let remote = game.remote.as_mut().unwrap();
-                    remote.loaded_sent = true;
-                    remote.level_load.finish();
-                }
-                game.client.screen = Screen::Playing;
-                game.handle_packet(C::PlayerInfoRemove(play::PlayerInfoRemove {
-                    uuids: vec![SELF_UUID],
-                }))
-                .unwrap();
-                run_local_tick(game);
-                let sent = drain_sent_abilities(game, &mut peer);
-                assert_row_core(game, &rows[5], true, Some(&sent));
-
-                game.handle_packet(player_info_add_mode(SELF_UUID, SELF_NAME, 1))
-                    .unwrap();
-                run_local_tick(game);
-                let sent = drain_sent_abilities(game, &mut peer);
-                assert_row_core(game, &rows[6], true, Some(&sent));
-            });
-        },
-    );
-}
+#[allow(unused_imports)]
+pub(in crate::game) use crate::game::client_side::remote_client::abilities::gamemode_split_tests::run_resolved_player_info_retains_identity_across_remove_and_readd_26_3;
 
 /// Real 26.3 oracle witness (`scenarios.respawn_keep_data_spectator_clears_y`):
 /// `Respawn(KEEP_ENTITY_DATA)` followed by a Spectator `PlayerInfoUpdate` before the first
@@ -1441,7 +1201,12 @@ pub(in crate::game) fn run_split_mode_hud_rendering_reach_miss_inventory_and_inp
     );
 }
 
-fn add_entity_packet(game: &Game<'_>, id: i32, uuid: u128, kind_name: &str) -> C {
+pub(in crate::game) fn add_entity_packet(
+    game: &Game<'_>,
+    id: i32,
+    uuid: u128,
+    kind_name: &str,
+) -> C {
     let kind = game
         .remote
         .as_ref()
@@ -1464,7 +1229,7 @@ fn add_entity_packet(game: &Game<'_>, id: i32, uuid: u128, kind_name: &str) -> C
     })
 }
 
-fn spawn_mob(
+pub(in crate::game) fn spawn_mob(
     game: &mut Game<'_>,
     id: i32,
     uuid: u128,
@@ -1495,7 +1260,9 @@ fn spawn_mob(
     mob.extra.set_saddled(saddled);
 }
 
-fn contextual_bar_name(bar: sunrise_client::locator_bar::ContextualBar) -> &'static str {
+pub(in crate::game) fn contextual_bar_name(
+    bar: sunrise_client::locator_bar::ContextualBar,
+) -> &'static str {
     use sunrise_client::locator_bar::ContextualBar;
     match bar {
         ContextualBar::Empty => "empty",

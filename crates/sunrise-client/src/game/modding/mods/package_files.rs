@@ -12,7 +12,7 @@ use sunrise_mod_package::{
     selection::SelectedPackage,
 };
 
-pub(super) struct PackageContent {
+pub(in crate::game) struct PackageContent {
     path: PathBuf,
     opened: Result<AdmittedContentSource, OpenError>,
     visibility: Visibility,
@@ -46,7 +46,7 @@ impl PackageContent {
         }
     }
 
-    pub(super) fn read_declaring(
+    pub(in crate::game) fn read_declaring(
         &self,
         manifest: &Manifest,
         declared: &[String],
@@ -86,12 +86,15 @@ pub(in crate::game) struct StartupAdmission {
     /// have selected different packages.
     selected: Arc<[SelectedPackage]>,
     native: Arc<sunrise_mod_package::runtime::Runtime>,
-    pub(super) refused: Vec<MissingJar>,
+    pub(in crate::game) refused: Vec<MissingJar>,
     packages: BTreeMap<String, Arc<PackageContent>>,
 }
 
 impl StartupAdmission {
-    pub(super) fn open(mods: &ModsState, refused: Vec<MissingJar>) -> sunrise_client::Result<Self> {
+    pub(in crate::game) fn open(
+        mods: &ModsState,
+        refused: Vec<MissingJar>,
+    ) -> sunrise_client::Result<Self> {
         let native = mods
             .native
             .packages()
@@ -152,7 +155,7 @@ impl StartupAdmission {
             .is_some_and(|package| package.visibility == Visibility::Visible)
     }
 
-    pub(super) fn namespace_refusal(&self, id: &str) -> Option<&str> {
+    pub(in crate::game) fn namespace_refusal(&self, id: &str) -> Option<&str> {
         self.packages
             .get(id)
             .filter(|p| p.visibility == Visibility::RefusedContent)?
@@ -175,11 +178,11 @@ impl StartupAdmission {
             .filter(|p| self.registration_visible(&p.package.manifest.id))
     }
 
-    pub(super) fn matches_selection(&self, selected: &Arc<[SelectedPackage]>) -> bool {
+    pub(in crate::game) fn matches_selection(&self, selected: &Arc<[SelectedPackage]>) -> bool {
         Arc::ptr_eq(&self.selected, selected)
     }
 
-    pub(super) fn package(&self, id: &str, path: &Path) -> Option<&PackageContent> {
+    pub(in crate::game) fn package(&self, id: &str, path: &Path) -> Option<&PackageContent> {
         self.packages
             .get(id)
             .filter(|source| source.path == path)

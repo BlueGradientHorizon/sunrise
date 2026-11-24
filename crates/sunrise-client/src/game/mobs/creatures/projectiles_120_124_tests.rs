@@ -1,170 +1,178 @@
 //! Witness-driven parity tests for projectile gaps #120-#124 against vanilla 26.3.
+#[allow(unused_imports)]
 use crate::game::{Game, commands::Target};
+#[allow(unused_imports)]
 use serde::Deserialize;
+#[allow(unused_imports)]
 use std::collections::BTreeMap;
+#[allow(unused_imports)]
 use std::path::PathBuf;
+#[allow(unused_imports)]
 use sunrise_client::mobs::{Who, leash::Holder};
+#[allow(unused_imports)]
 use sunrise_client::projectiles::{Projectile, ProjectileKind};
+#[allow(unused_imports)]
 use sunrise_core::geometry::Vec3;
+#[allow(unused_imports)]
 use sunrise_core::random::{LegacyRandom, RandomSource};
 
 #[derive(Deserialize)]
-struct Witness {
-    game_version: String,
-    proj_seed: i64,
-    level_seed: i64,
-    gap_120_spectator: Vec<Case120>,
-    gap_121_wind_crystal: Vec<Case121>,
-    gap_122_trident_enderman: Vec<Case122>,
-    gap_123_piercing: Vec<Case123>,
-    gap_124_fireworks: Vec<Case124>,
-    review_round1: Vec<ReviewCase>,
+pub(in crate::game) struct Witness {
+    pub(in crate::game) game_version: String,
+    pub(in crate::game) proj_seed: i64,
+    pub(in crate::game) level_seed: i64,
+    pub(in crate::game) gap_120_spectator: Vec<Case120>,
+    pub(in crate::game) gap_121_wind_crystal: Vec<Case121>,
+    pub(in crate::game) gap_122_trident_enderman: Vec<Case122>,
+    pub(in crate::game) gap_123_piercing: Vec<Case123>,
+    pub(in crate::game) gap_124_fireworks: Vec<Case124>,
+    pub(in crate::game) review_round1: Vec<ReviewCase>,
 }
 
 #[derive(Deserialize)]
-struct GameEventSnap {
-    id: String,
-    pos_bits: [String; 3],
+pub(in crate::game) struct GameEventSnap {
+    pub(in crate::game) id: String,
+    pub(in crate::game) pos_bits: [String; 3],
 }
 
 #[derive(Deserialize)]
-struct Case120 {
-    mode: String,
-    projectile: String,
-    ticks: Vec<Tick120>,
+pub(in crate::game) struct Case120 {
+    pub(in crate::game) mode: String,
+    pub(in crate::game) projectile: String,
+    pub(in crate::game) ticks: Vec<Tick120>,
 }
 
 #[derive(Deserialize)]
-struct Tick120 {
-    tick: usize,
-    proj_alive: bool,
-    proj_pos_bits: [String; 3],
-    proj_vel_bits: [String; 3],
-    in_ground: bool,
-    player_health: f32,
+pub(in crate::game) struct Tick120 {
+    pub(in crate::game) tick: usize,
+    pub(in crate::game) proj_alive: bool,
+    pub(in crate::game) proj_pos_bits: [String; 3],
+    pub(in crate::game) proj_vel_bits: [String; 3],
+    pub(in crate::game) in_ground: bool,
+    pub(in crate::game) player_health: f32,
 }
 
 #[derive(Deserialize)]
-struct Case121 {
-    case: String,
-    ticks: Vec<Tick121>,
+pub(in crate::game) struct Case121 {
+    pub(in crate::game) case: String,
+    pub(in crate::game) ticks: Vec<Tick121>,
 }
 
 #[derive(Deserialize)]
-struct Tick121 {
-    tick: usize,
-    proj_alive: bool,
-    proj_pos_bits: [String; 3],
-    proj_vel_bits: [String; 3],
-    crystal_alive: bool,
-    pig_health: f32,
+pub(in crate::game) struct Tick121 {
+    pub(in crate::game) tick: usize,
+    pub(in crate::game) proj_alive: bool,
+    pub(in crate::game) proj_pos_bits: [String; 3],
+    pub(in crate::game) proj_vel_bits: [String; 3],
+    pub(in crate::game) crystal_alive: bool,
+    pub(in crate::game) pig_health: f32,
 }
 
 #[derive(Deserialize)]
-struct Case122 {
-    case: String,
-    ticks: Vec<Tick122>,
+pub(in crate::game) struct Case122 {
+    pub(in crate::game) case: String,
+    pub(in crate::game) ticks: Vec<Tick122>,
 }
 
 #[derive(Deserialize)]
-struct Tick122 {
-    tick: usize,
-    proj_alive: bool,
-    proj_pos_bits: [String; 3],
-    proj_vel_bits: [String; 3],
-    proj_yaw_bits: String,
-    dealt_damage: bool,
-    target_health: f32,
-    target_teleported: bool,
-    behind_pig_health: f32,
-    game_events: Vec<GameEventSnap>,
-    sounds: Vec<String>,
+pub(in crate::game) struct Tick122 {
+    pub(in crate::game) tick: usize,
+    pub(in crate::game) proj_alive: bool,
+    pub(in crate::game) proj_pos_bits: [String; 3],
+    pub(in crate::game) proj_vel_bits: [String; 3],
+    pub(in crate::game) proj_yaw_bits: String,
+    pub(in crate::game) dealt_damage: bool,
+    pub(in crate::game) target_health: f32,
+    pub(in crate::game) target_teleported: bool,
+    pub(in crate::game) behind_pig_health: f32,
+    pub(in crate::game) game_events: Vec<GameEventSnap>,
+    pub(in crate::game) sounds: Vec<String>,
 }
 
 #[derive(Deserialize)]
-struct Case123 {
-    case: String,
-    ticks: Vec<Tick123>,
+pub(in crate::game) struct Case123 {
+    pub(in crate::game) case: String,
+    pub(in crate::game) ticks: Vec<Tick123>,
 }
 
 #[derive(Deserialize)]
-struct Target123 {
-    alive: bool,
-    health: f32,
+pub(in crate::game) struct Target123 {
+    pub(in crate::game) alive: bool,
+    pub(in crate::game) health: f32,
 }
 
 #[derive(Deserialize)]
-struct Tick123 {
-    tick: usize,
-    proj_alive: bool,
-    proj_pos_bits: [String; 3],
-    proj_vel_bits: [String; 3],
-    proj_yaw_bits: String,
-    in_ground: bool,
-    targets: Vec<Target123>,
-    two_birds_done: bool,
-    arbalistic_done: bool,
-    game_events: Vec<GameEventSnap>,
-    sounds: Vec<String>,
+pub(in crate::game) struct Tick123 {
+    pub(in crate::game) tick: usize,
+    pub(in crate::game) proj_alive: bool,
+    pub(in crate::game) proj_pos_bits: [String; 3],
+    pub(in crate::game) proj_vel_bits: [String; 3],
+    pub(in crate::game) proj_yaw_bits: String,
+    pub(in crate::game) in_ground: bool,
+    pub(in crate::game) targets: Vec<Target123>,
+    pub(in crate::game) two_birds_done: bool,
+    pub(in crate::game) arbalistic_done: bool,
+    pub(in crate::game) game_events: Vec<GameEventSnap>,
+    pub(in crate::game) sounds: Vec<String>,
 }
 
 #[derive(Deserialize)]
-struct Case124 {
-    case: String,
-    spawn_y: f64,
-    ticks: Vec<Tick124>,
+pub(in crate::game) struct Case124 {
+    pub(in crate::game) case: String,
+    pub(in crate::game) spawn_y: f64,
+    pub(in crate::game) ticks: Vec<Tick124>,
 }
 
 #[derive(Deserialize)]
-struct Tick124 {
-    tick: usize,
-    rocket_alive: bool,
-    rocket_pos_bits: [String; 3],
-    rocket_vel_bits: [String; 3],
-    targets_alive: BTreeMap<String, bool>,
-    drops: Vec<String>,
-    game_events: Vec<GameEventSnap>,
-    sounds: Vec<String>,
+pub(in crate::game) struct Tick124 {
+    pub(in crate::game) tick: usize,
+    pub(in crate::game) rocket_alive: bool,
+    pub(in crate::game) rocket_pos_bits: [String; 3],
+    pub(in crate::game) rocket_vel_bits: [String; 3],
+    pub(in crate::game) targets_alive: BTreeMap<String, bool>,
+    pub(in crate::game) drops: Vec<String>,
+    pub(in crate::game) game_events: Vec<GameEventSnap>,
+    pub(in crate::game) sounds: Vec<String>,
 }
 
 #[derive(Deserialize)]
-struct ReviewCase {
-    case: String,
-    ticks: Vec<ReviewTick>,
+pub(in crate::game) struct ReviewCase {
+    pub(in crate::game) case: String,
+    pub(in crate::game) ticks: Vec<ReviewTick>,
 }
 
 #[derive(Deserialize)]
-struct ReviewTick {
-    tick: usize,
-    player_health: f32,
-    lightning_count: usize,
-    xp_orb_count: usize,
-    target_power: i32,
-    sculk_phase: Option<String>,
-    entities: BTreeMap<String, ReviewEntitySnap>,
-    drops: Vec<String>,
-    game_events: Vec<GameEventSnap>,
-    sounds: Vec<String>,
+pub(in crate::game) struct ReviewTick {
+    pub(in crate::game) tick: usize,
+    pub(in crate::game) player_health: f32,
+    pub(in crate::game) lightning_count: usize,
+    pub(in crate::game) xp_orb_count: usize,
+    pub(in crate::game) target_power: i32,
+    pub(in crate::game) sculk_phase: Option<String>,
+    pub(in crate::game) entities: BTreeMap<String, ReviewEntitySnap>,
+    pub(in crate::game) drops: Vec<String>,
+    pub(in crate::game) game_events: Vec<GameEventSnap>,
+    pub(in crate::game) sounds: Vec<String>,
 }
 
 #[derive(Deserialize)]
-struct ReviewEntitySnap {
-    present: bool,
-    alive: bool,
-    pos_bits: [String; 3],
-    vel_bits: [String; 3],
-    yaw_bits: String,
-    fire_ticks: i32,
-    ticks_frozen: i32,
-    health: Option<f32>,
-    frame_item: Option<String>,
-    leashed: Option<bool>,
+pub(in crate::game) struct ReviewEntitySnap {
+    pub(in crate::game) present: bool,
+    pub(in crate::game) alive: bool,
+    pub(in crate::game) pos_bits: [String; 3],
+    pub(in crate::game) vel_bits: [String; 3],
+    pub(in crate::game) yaw_bits: String,
+    pub(in crate::game) fire_ticks: i32,
+    pub(in crate::game) ticks_frozen: i32,
+    pub(in crate::game) health: Option<f32>,
+    pub(in crate::game) frame_item: Option<String>,
+    pub(in crate::game) leashed: Option<bool>,
 }
 
-const STAR_FIREWORK_ITEM: &str = r#"{id:"minecraft:firework_rocket",count:1,components:{"minecraft:fireworks":{flight_duration:1,explosions:[{shape:"small_ball",colors:[I;11743532]}]}}}"#;
-const PLAIN_FIREWORK_ITEM: &str = r#"{id:"minecraft:firework_rocket",count:1}"#;
+pub(in crate::game) const STAR_FIREWORK_ITEM: &str = r#"{id:"minecraft:firework_rocket",count:1,components:{"minecraft:fireworks":{flight_duration:1,explosions:[{shape:"small_ball",colors:[I;11743532]}]}}}"#;
+pub(in crate::game) const PLAIN_FIREWORK_ITEM: &str = r#"{id:"minecraft:firework_rocket",count:1}"#;
 
-fn load_witness() -> Witness {
+pub(in crate::game) fn load_witness() -> Witness {
     let dir = std::env::var_os("SUNRISE_PROJECTILE_WITNESS_DIR").unwrap_or_else(|| {
         panic!(
             "SUNRISE_PROJECTILE_WITNESS_DIR is unset; run tools/test_projectile_targets_parity.py"
@@ -182,19 +190,21 @@ fn load_witness() -> Witness {
     witness
 }
 
-fn bits(v: f64) -> String {
+pub(in crate::game) fn bits(v: f64) -> String {
     format!("{:016x}", v.to_bits())
 }
 
-fn fbits(v: f32) -> String {
+pub(in crate::game) fn fbits(v: f32) -> String {
     format!("{:08x}", v.to_bits())
 }
 
-fn vec_bits(v: Vec3) -> [String; 3] {
+pub(in crate::game) fn vec_bits(v: Vec3) -> [String; 3] {
     [bits(v.x), bits(v.y), bits(v.z)]
 }
 
-fn setup_game<'a>(resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>) -> Game<'a> {
+pub(in crate::game) fn setup_game<'a>(
+    resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>,
+) -> Game<'a> {
     let mut game = crate::game::game_tests::tests::server_game(resources);
     game.options.dedicated = None;
     let mut player =
@@ -262,7 +272,7 @@ fn setup_game<'a>(resources: &'a mut Option<std::sync::Arc<crate::game::Resource
     game
 }
 
-fn clear_arena(game: &mut Game<'_>, backstop_x: i32) {
+pub(in crate::game) fn clear_arena(game: &mut Game<'_>, backstop_x: i32) {
     if game.riding.is_some() {
         game.stop_riding();
     }
@@ -322,40 +332,22 @@ fn clear_arena(game: &mut Game<'_>, backstop_x: i32) {
     game.audio.0.heard.clear();
 }
 
-fn player_uuid_nbt(game: &Game<'_>) -> String {
+pub(in crate::game) fn player_uuid_nbt(game: &Game<'_>) -> String {
     let arr = game.level.player_uuid.unwrap_or([0, 0, 0, 1]);
     format!("[I;{},{},{},{}]", arr[0], arr[1], arr[2], arr[3])
 }
 
-fn adv_done(game: &Game<'_>, id: &str) -> bool {
+pub(in crate::game) fn adv_done(game: &Game<'_>, id: &str) -> bool {
     game.adv
         .tree
         .find_id(id)
         .is_some_and(|idx| game.adv.progress.done(&game.adv.tree.list[idx]))
 }
 
-fn step_recording(
-    game: &mut Game<'_>,
-) -> (
-    Vec<(&'static str, [f64; 3], Option<Who>)>,
-    BTreeMap<String, usize>,
-) {
-    game.audio.0.heard.clear();
-    super::super::sculk::TEST_POSTED_EVENTS.with(|e| *e.borrow_mut() = Some(Vec::new()));
-    game.tick_server(false).unwrap();
-    let events =
-        super::super::sculk::TEST_POSTED_EVENTS.with(|e| e.borrow_mut().take().unwrap_or_default());
-    let sounds = game
-        .audio
-        .0
-        .heard
-        .iter()
-        .map(|(k, &v)| (k.clone(), v as usize))
-        .collect();
-    (events, sounds)
-}
+#[allow(unused_imports)]
+pub(in crate::game) use crate::game::client_side::creatures_client::projectiles_120_124_tests::step_recording;
 
-fn land_positions_match(
+pub(in crate::game) fn land_positions_match(
     events: &[(&'static str, [f64; 3], Option<Who>)],
     expected: &[GameEventSnap],
 ) -> Result<(), String> {
@@ -1141,7 +1133,7 @@ pub(in crate::game) fn run_witness_piercing_arrow_multihit_123() {
 }
 
 #[derive(Clone, Copy)]
-enum Target124 {
+pub(in crate::game) enum Target124 {
     Boat(u32),
     Cart(u32),
     Frame(u32),
@@ -1154,20 +1146,8 @@ enum Target124 {
     Stand(u32),
 }
 
-fn alive_124(game: &Game<'_>, t: Target124) -> bool {
-    match t {
-        Target124::Boat(id) => game.boats.iter().any(|b| b.id == id),
-        Target124::Cart(id) => game.carts.iter().any(|c| c.id == id),
-        Target124::Frame(id) => game.item_frames.iter().any(|f| f.id == id),
-        Target124::Painting(id) => game.paintings.iter().any(|p| p.id == id),
-        Target124::Falling(id) => game.falling.iter().any(|f| f.id == id),
-        Target124::Knot(id) => game.others.0.iter().any(|o| o.id == id),
-        Target124::Cushion(id) => game.cushions.iter().any(|c| c.id == id),
-        Target124::Crystal(id) => game.crystals.iter().any(|c| c.id == id),
-        Target124::Tnt(id) => game.tnts.iter().any(|t| t.id == id),
-        Target124::Stand(id) => game.armor_stands.iter().any(|a| a.id == id),
-    }
-}
+#[allow(unused_imports)]
+pub(in crate::game) use crate::game::server_side::creatures_server::projectiles_120_124_tests::alive_124;
 
 #[test]
 #[ignore = "run by tools/test_projectile_targets_parity.py"]
@@ -1175,266 +1155,11 @@ fn witness_firework_rocket_targets_124() {
     run_witness_firework_rocket_targets_124();
 }
 
-pub(in crate::game) fn run_witness_firework_rocket_targets_124() {
-    let witness = load_witness();
-    let mut resources = None;
-    let mut game = setup_game(&mut resources);
-    let mut failures = Vec::new();
-
-    for case in &witness.gap_124_fireworks {
-        let label = format!("124 {}", case.case);
-        clear_arena(&mut game, 10);
-        game.world.random.set_seed(witness.level_seed);
-
-        if case.case == "item_frame" || case.case == "painting" {
-            let _ = game.run_command("fill 4 64 2 4 66 6 minecraft:stone");
-        }
-        if case.case == "leash_knot" {
-            let _ = game.run_command("setblock 3 64 4 minecraft:oak_fence");
-        }
-        if case.case == "armor_stand_blast_nearby" {
-            let _ = game.run_command("fill 6 64 3 6 66 5 minecraft:stone");
-        }
-
-        let mut targets: BTreeMap<String, Target124> = BTreeMap::new();
-        match case.case.as_str() {
-            "oak_boat" | "oak_boat_no_star" => {
-                assert!(game.run_command("summon minecraft:oak_boat 3.5 64.0 4.5 {}"));
-                targets.insert(
-                    "boat".into(),
-                    Target124::Boat(game.boats.last().unwrap().id),
-                );
-            }
-            "minecart" => {
-                assert!(game.run_command("summon minecraft:minecart 3.5 64.0 4.5 {}"));
-                targets.insert(
-                    "minecart".into(),
-                    Target124::Cart(game.carts.last().unwrap().id),
-                );
-            }
-            "item_frame" => {
-                assert!(game.run_command(
-                    r#"summon minecraft:item_frame 3.5 64.5 4.5 {block_pos:[I;3,64,4],Facing:4b,Item:{id:"minecraft:diamond",count:1}}"#
-                ));
-                targets.insert(
-                    "frame".into(),
-                    Target124::Frame(game.item_frames.last().unwrap().id),
-                );
-            }
-            "painting" => {
-                assert!(game.run_command(
-                    r#"summon minecraft:painting 3.5 64.5 4.5 {block_pos:[I;3,64,4],facing:1b,variant:"minecraft:kebab"}"#
-                ));
-                targets.insert(
-                    "painting".into(),
-                    Target124::Painting(game.paintings.last().unwrap().id),
-                );
-            }
-            "falling_block" => {
-                assert!(game.run_command(
-                    r#"summon minecraft:falling_block 3.5 65.0 4.5 {BlockState:"minecraft:sand",Time:1,Motion:[0.0d,0.0d,0.0d]}"#
-                ));
-                targets.insert(
-                    "falling".into(),
-                    Target124::Falling(game.falling.last().unwrap().id),
-                );
-            }
-            "leash_knot" => {
-                assert!(game.run_command("summon minecraft:leash_knot 3.5 64.375 4.5 {}"));
-                targets.insert(
-                    "knot".into(),
-                    Target124::Knot(game.others.0.last().unwrap().id),
-                );
-            }
-            "cushion" => {
-                assert!(game.run_command(
-                    r#"summon minecraft:cushion 3.5 64.0 4.5 {block_pos:[I;3,64,4],color:"white"}"#
-                ));
-                targets.insert(
-                    "cushion".into(),
-                    Target124::Cushion(game.cushions.last().unwrap().id),
-                );
-            }
-            "end_crystal" => {
-                assert!(game.run_command("summon minecraft:end_crystal 4.25 64.0 4.5 {}"));
-                targets.insert(
-                    "crystal".into(),
-                    Target124::Crystal(game.crystals.last().unwrap().id),
-                );
-            }
-            "tnt" => {
-                assert!(game.run_command("summon minecraft:tnt 3.5 64.0 4.5 {fuse:80}"));
-                targets.insert("tnt".into(), Target124::Tnt(game.tnts.last().unwrap().id));
-            }
-            "armor_stand" => {
-                assert!(game.run_command("summon minecraft:armor_stand 3.5 64.0 4.5 {}"));
-                targets.insert(
-                    "stand".into(),
-                    Target124::Stand(game.armor_stands.last().unwrap().id),
-                );
-            }
-            "armor_stand_marker" => {
-                assert!(game.run_command("summon minecraft:armor_stand 3.5 64.0 4.5 {Marker:1b}"));
-                targets.insert(
-                    "stand".into(),
-                    Target124::Stand(game.armor_stands.last().unwrap().id),
-                );
-            }
-            "armor_stand_blast_nearby" => {
-                assert!(game.run_command("summon minecraft:armor_stand 5.5 64.0 4.5 {}"));
-                targets.insert(
-                    "normal".into(),
-                    Target124::Stand(game.armor_stands.last().unwrap().id),
-                );
-                assert!(
-                    game.run_command("summon minecraft:armor_stand 3.5 64.0 6.5 {Invisible:1b}")
-                );
-                targets.insert(
-                    "invisible".into(),
-                    Target124::Stand(game.armor_stands.last().unwrap().id),
-                );
-                assert!(game.run_command("summon minecraft:armor_stand 3.5 64.0 2.5 {Marker:1b}"));
-                targets.insert(
-                    "marker".into(),
-                    Target124::Stand(game.armor_stands.last().unwrap().id),
-                );
-                assert!(game.run_command("summon minecraft:armor_stand 7.5 64.0 4.5 {}"));
-                targets.insert(
-                    "occluded".into(),
-                    Target124::Stand(game.armor_stands.last().unwrap().id),
-                );
-                assert!(game.run_command("summon minecraft:armor_stand 9.5 64.0 4.5 {}"));
-                targets.insert(
-                    "far".into(),
-                    Target124::Stand(game.armor_stands.last().unwrap().id),
-                );
-            }
-            other => panic!("unexpected case {other}"),
-        }
-
-        let rocket_cmd = if case.case == "armor_stand_blast_nearby" {
-            format!(
-                "summon minecraft:firework_rocket 3.5 64.5 4.5 {{LifeTime:1,ShotAtAngle:1b,Motion:[0.0d,0.0d,0.0d],FireworksItem:{STAR_FIREWORK_ITEM}}}"
-            )
-        } else {
-            let plain = matches!(
-                case.case.as_str(),
-                "oak_boat_no_star" | "item_frame" | "painting" | "leash_knot"
-            );
-            let item = if plain {
-                PLAIN_FIREWORK_ITEM
-            } else {
-                STAR_FIREWORK_ITEM
-            };
-            format!(
-                "summon minecraft:firework_rocket 1.5 {} 4.5 {{LifeTime:20,ShotAtAngle:1b,Motion:[1.0d,0.0d,0.0d],FireworksItem:{item}}}",
-                case.spawn_y
-            )
-        };
-        assert!(game.run_command(&rocket_cmd), "{rocket_cmd}");
-        let idx = game.rockets.len() - 1;
-        let rocket_id = game.rockets[idx].id;
-        game.rockets.update(idx, |r| {
-            r.random = LegacyRandom::new(witness.proj_seed);
-        });
-
-        for exp in &case.ticks {
-            let (events, sounds) = step_recording(&mut game);
-            let live = game.rockets.iter().find(|r| r.id == rocket_id);
-            if live.is_some() != exp.rocket_alive {
-                failures.push(format!(
-                    "{label} t={}: rocket_alive expected {} got {}",
-                    exp.tick,
-                    exp.rocket_alive,
-                    live.is_some()
-                ));
-                break;
-            }
-            if let Some(r) = live
-                && (vec_bits(r.position) != exp.rocket_pos_bits
-                    || vec_bits(r.velocity) != exp.rocket_vel_bits)
-            {
-                failures.push(format!(
-                    "{label} t={}: pos/vel expected {:?}/{:?} got {:?}/{:?}",
-                    exp.tick,
-                    exp.rocket_pos_bits,
-                    exp.rocket_vel_bits,
-                    vec_bits(r.position),
-                    vec_bits(r.velocity)
-                ));
-                break;
-            }
-            let got_alive: BTreeMap<String, bool> = targets
-                .iter()
-                .map(|(k, &t)| (k.clone(), alive_124(&game, t)))
-                .collect();
-            if got_alive != exp.targets_alive {
-                failures.push(format!(
-                    "{label} t={}: targets_alive expected {:?} got {got_alive:?}",
-                    exp.tick, exp.targets_alive
-                ));
-                break;
-            }
-            let mut got_drops: Vec<String> = game
-                .dropped
-                .iter()
-                .map(|d| d.stack.item.to_string())
-                .collect();
-            got_drops.sort();
-            if got_drops != exp.drops {
-                failures.push(format!(
-                    "{label} t={}: drops expected {:?} got {got_drops:?}",
-                    exp.tick, exp.drops
-                ));
-                break;
-            }
-            if let Err(msg) = land_positions_match(&events, &exp.game_events) {
-                failures.push(format!("{label} t={}: {msg}", exp.tick));
-                break;
-            }
-            let exp_expl = exp
-                .game_events
-                .iter()
-                .filter(|e| e.id == "minecraft:explode")
-                .count();
-            let got_expl = events
-                .iter()
-                .filter(|&&(e, _, _)| e == "minecraft:explode")
-                .count();
-            if got_expl != exp_expl {
-                failures.push(format!(
-                    "{label} t={}: explode count expected {exp_expl} got {got_expl}",
-                    exp.tick
-                ));
-                break;
-            }
-            let exp_break = exp
-                .sounds
-                .iter()
-                .filter(|s| s.as_str() == "minecraft:entity.armor_stand.break")
-                .count();
-            let got_break = sounds
-                .get("minecraft:entity.armor_stand.break")
-                .copied()
-                .unwrap_or(0);
-            if got_break != exp_break {
-                failures.push(format!(
-                    "{label} t={}: armor_stand.break count expected {exp_break} got {got_break}",
-                    exp.tick
-                ));
-                break;
-            }
-        }
-    }
-    assert!(
-        failures.is_empty(),
-        "gap #124 failures:\n{}",
-        failures.join("\n")
-    );
-}
+#[allow(unused_imports)]
+pub(in crate::game) use crate::game::server_side::creatures_server::projectiles_120_124_tests::run_witness_firework_rocket_targets_124;
 
 #[derive(Clone, Copy)]
-enum ReviewTracked {
+pub(in crate::game) enum ReviewTracked {
     Mob(u32),
     Stand(u32),
     Frame(u32),
@@ -1446,7 +1171,7 @@ enum ReviewTracked {
     Rocket(u32),
 }
 
-fn summon_mob_seeded(game: &mut Game<'_>, cmd: &str, seed: i64) -> u32 {
+pub(in crate::game) fn summon_mob_seeded(game: &mut Game<'_>, cmd: &str, seed: i64) -> u32 {
     assert!(game.run_command(cmd), "{cmd}");
     let idx = game.mobs.len() - 1;
     let id = game.mobs[idx].id;
@@ -1454,7 +1179,7 @@ fn summon_mob_seeded(game: &mut Game<'_>, cmd: &str, seed: i64) -> u32 {
     id
 }
 
-fn summon_proj_seeded(game: &mut Game<'_>, cmd: &str, seed: i64) -> u32 {
+pub(in crate::game) fn summon_proj_seeded(game: &mut Game<'_>, cmd: &str, seed: i64) -> u32 {
     assert!(game.run_command(cmd), "{cmd}");
     let idx = game.creatures.projectiles.len() - 1;
     let id = game.creatures.projectiles[idx].id;
@@ -1464,7 +1189,7 @@ fn summon_proj_seeded(game: &mut Game<'_>, cmd: &str, seed: i64) -> u32 {
     id
 }
 
-fn summon_trident_seeded(game: &mut Game<'_>, cmd: &str, seed: i64) -> u32 {
+pub(in crate::game) fn summon_trident_seeded(game: &mut Game<'_>, cmd: &str, seed: i64) -> u32 {
     assert!(game.run_command(cmd), "{cmd}");
     let idx = game.tridents.len() - 1;
     let id = game.tridents[idx].id;
@@ -1474,7 +1199,7 @@ fn summon_trident_seeded(game: &mut Game<'_>, cmd: &str, seed: i64) -> u32 {
     id
 }
 
-fn summon_rocket_seeded(game: &mut Game<'_>, cmd: &str, seed: i64) -> u32 {
+pub(in crate::game) fn summon_rocket_seeded(game: &mut Game<'_>, cmd: &str, seed: i64) -> u32 {
     assert!(game.run_command(cmd), "{cmd}");
     let idx = game.rockets.len() - 1;
     let id = game.rockets[idx].id;
@@ -1484,7 +1209,7 @@ fn summon_rocket_seeded(game: &mut Game<'_>, cmd: &str, seed: i64) -> u32 {
     id
 }
 
-fn check_review_entity(
+pub(in crate::game) fn check_review_entity(
     game: &Game<'_>,
     label: &str,
     tick: usize,

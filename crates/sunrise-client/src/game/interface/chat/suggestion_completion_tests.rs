@@ -8,7 +8,7 @@ use std::sync::{Arc, Mutex};
 #[ignore = "daily"]
 fn chat_completion_reaches_mods_from_keyboard_and_mouse() {
     crate::game::in_own_process(
-        "game::chat::suggestion_completion_tests::chat_completion_reaches_mods_from_keyboard_and_mouse",
+        "game::client_side::chat::suggestion_completion_tests::chat_completion_reaches_mods_from_keyboard_and_mouse",
         chat_completion_reaches_mods_from_keyboard_and_mouse_isolated,
     );
 }

@@ -8,6 +8,7 @@
 //!
 //! Every single-player world runs this way; LAN guests and dedicated servers
 //! use the same server code.
+#[allow(unused_imports)]
 use super::{
     Dim, Game, Options, PackResources, Resources, UiResources, WorldIcon,
     execution_role::ExecutionRole,
@@ -19,6 +20,7 @@ use super::{
     owner_link::{OwnerRequest, Reply},
     world_loading::{WorldLoader, WorldRequest},
 };
+#[allow(unused_imports)]
 use std::{
     net::TcpListener,
     sync::{
@@ -29,8 +31,11 @@ use std::{
     thread::JoinHandle,
     time::{Duration, Instant},
 };
+#[allow(unused_imports)]
 use sunrise_client::level_loading::{STATUS_RADIUS, Stage};
+#[allow(unused_imports)]
 use sunrise_client::spans::startup;
+#[allow(unused_imports)]
 use sunrise_client::{
     Result,
     audio::Audio,
@@ -39,29 +44,31 @@ use sunrise_client::{
     settings::Settings,
     title::WorldOptions,
 };
+#[allow(unused_imports)]
 use sunrise_protocol::connection::Pipe;
+#[allow(unused_imports)]
 use sunrise_protocol::{crypto::offline_uuid, text::translatable};
 
 #[path = "integrated/capture.rs"]
-pub(super) mod capture;
+pub(in crate::game) mod capture;
 
 /// How long the window waits for the server thread to answer an `ask`.
-const CALL_TIMEOUT: Duration = Duration::from_secs(10);
+pub(in crate::game) const CALL_TIMEOUT: Duration = Duration::from_secs(10);
 /// The error of an `ask` without an answer: the server stopped, or it was
 /// busy past `CALL_TIMEOUT` (the log says which).
-pub(super) const NO_ANSWER: &str =
+pub(in crate::game) const NO_ANSWER: &str =
     "the integrated server stopped or did not answer within 10 s (the game log says which)";
 
 /// The server thread holds its `Game` by value and runs every tick on it. It uses the game
 /// worker stack floor or a larger `RUST_MIN_STACK` requested by a harness. std only reads that
 /// variable for threads spawned without an explicit size.
-fn server_thread_stack() -> usize {
+pub(in crate::game) fn server_thread_stack() -> usize {
     static SIZE: std::sync::OnceLock<usize> = std::sync::OnceLock::new();
     *SIZE.get_or_init(|| stack_for(std::env::var("RUST_MIN_STACK").ok().as_deref()))
 }
 
 /// Interpret `min_stack` as a byte count, as std parses `RUST_MIN_STACK`.
-fn stack_for(min_stack: Option<&str>) -> usize {
+pub(in crate::game) fn stack_for(min_stack: Option<&str>) -> usize {
     min_stack
         .and_then(|bytes| bytes.parse::<usize>().ok())
         .unwrap_or_default()
@@ -69,52 +76,56 @@ fn stack_for(min_stack: Option<&str>) -> usize {
 }
 
 /// `LevelLoadProgressTracker.EXPECTED_PLAYER_CHUNKS`: the 7x7 chunks around the spawn.
-const PLAYER_CHUNKS: usize = 49;
+pub(in crate::game) const PLAYER_CHUNKS: usize = 49;
 
 /// What the window and its server thread share.
 #[derive(Default)]
-struct Flags {
+pub(in crate::game) struct Flags {
     #[cfg(test)]
-    fail_tick: AtomicBool,
+    pub(in crate::game) fail_tick: AtomicBool,
     /// `Minecraft.pause`: a single-player pause screen is open.
-    paused: AtomicBool,
-    stop: AtomicBool,
-    finished: AtomicBool,
-    failure: Mutex<Option<String>>,
+    pub(in crate::game) paused: AtomicBool,
+    pub(in crate::game) stop: AtomicBool,
+    pub(in crate::game) finished: AtomicBool,
+    pub(in crate::game) failure: Mutex<Option<String>>,
     /// The owning window's report inbox, shared with this server and its region workers.
-    reports: Arc<Reports>,
+    pub(in crate::game) reports: Arc<Reports>,
     /// `IntegratedServer.getPort`: the port it is open to the LAN on, 0
     /// while it is not.
-    published: AtomicU16,
-    smoothed_tick_ms: AtomicU32,
+    pub(in crate::game) published: AtomicU16,
+    pub(in crate::game) smoothed_tick_ms: AtomicU32,
     /// `options.renderDistance` and `options.simulationDistance`, which the
     /// server follows while it runs (IntegratedServer.tickServer).
-    render_distance: AtomicI32,
-    simulation_distance: AtomicI32,
+    pub(in crate::game) render_distance: AtomicI32,
+    pub(in crate::game) simulation_distance: AtomicI32,
     /// `options.entityDistanceScaling` (an `f64`'s bits), which
     /// `IntegratedServer.getScaledTrackingDistance` reads on every call.
-    entity_distance: AtomicU64,
+    pub(in crate::game) entity_distance: AtomicU64,
     /// `MinecraftServer.isCurrentlySaving`: the server is autosaving.
-    saving: AtomicBool,
+    pub(in crate::game) saving: AtomicBool,
     /// The generators of the levels the server has run, by dimension: what
     /// F3's chunk generation entry asks `ServerChunkCache.getGenerator`.
-    terrain: Mutex<
+    pub(in crate::game) terrain: Mutex<
         std::collections::HashMap<&'static str, Arc<sunrise_client::vanillagen::VanillaTerrain>>,
     >,
     /// What the server's `LevelLoadListener` reports, for the window's
     /// `LevelLoadingScreen` (`LevelLoadTracker.serverProgress/statusView`).
-    load: Arc<sunrise_client::level_loading::ServerLoadView>,
+    pub(in crate::game) load: Arc<sunrise_client::level_loading::ServerLoadView>,
     /// What the world's upgrade has done (`UpgradeProgress`): the window shows it on
     /// `FileFixerProgressScreen` while the file fixers run, and its Cancel stops them.
-    upgrade: Arc<sunrise_world::datafix::progress::UpgradeProgress>,
+    pub(in crate::game) upgrade: Arc<sunrise_world::datafix::progress::UpgradeProgress>,
     /// Where the window's debug entries want the server's lines for (its
     /// dimension and feet), and the lines of the last tick there.
-    debug_at: Mutex<Option<(Dim, [i32; 3])>>,
-    debug: Mutex<super::debug_lines::ServerDebug>,
+    pub(in crate::game) debug_at: Mutex<Option<(Dim, [i32; 3])>>,
+    pub(in crate::game) debug: Mutex<super::debug_lines::ServerDebug>,
 }
 
 impl Flags {
-    fn emergency_save(&self, server: std::thread::ThreadId, timeout: Duration) -> bool {
+    pub(in crate::game) fn emergency_save(
+        &self,
+        server: std::thread::ThreadId,
+        timeout: Duration,
+    ) -> bool {
         if std::thread::current().id() == server || self.finished.load(Ordering::Acquire) {
             return true;
         }
@@ -136,7 +147,7 @@ impl Flags {
 }
 
 // Signal even if serve returns an error or unwinds; no game data is touched here.
-struct Finished(Arc<Flags>);
+pub(in crate::game) struct Finished(pub(in crate::game) Arc<Flags>);
 impl Drop for Finished {
     fn drop(&mut self) {
         self.0.finished.store(true, Ordering::Release);
@@ -144,11 +155,11 @@ impl Drop for Finished {
 }
 
 /// The window's handle on its server thread.
-pub(super) struct Integrated {
-    flags: Arc<Flags>,
-    thread: Option<JoinHandle<()>>,
-    emergency_save: Option<sunrise_client::crash::EmergencySave>,
-    tasks: Sender<OwnerRequest>,
+pub(in crate::game) struct Integrated {
+    pub(in crate::game) flags: Arc<Flags>,
+    pub(in crate::game) thread: Option<JoinHandle<()>>,
+    pub(in crate::game) emergency_save: Option<sunrise_client::crash::EmergencySave>,
+    pub(in crate::game) tasks: Sender<OwnerRequest>,
     /// The world's name (`level.dat`'s `LevelName`), for the pause menu.
     pub world_name: String,
     pub save_folder: String,
@@ -157,7 +168,7 @@ pub(super) struct Integrated {
 impl Integrated {
     /// The window's handle on a server fixture, with no server thread behind it.
     #[cfg(test)]
-    pub(super) fn fixture_for(serving: &Serving) -> Self {
+    pub(in crate::game) fn fixture_for(serving: &Serving) -> Self {
         let (tasks, _receiver) = channel();
         Self {
             flags: serving.flags.clone(),
@@ -172,7 +183,7 @@ impl Integrated {
 
     /// Queue every change, even if the currently published tree still has the requested state:
     /// an earlier update may be waiting for a busy server thread.
-    fn queue_pregen_option(&self, enabled: bool) {
+    pub(in crate::game) fn queue_pregen_option(&self, enabled: bool) {
         self.tell(OwnerRequest::SetPregen(enabled));
     }
     /// The generator of the server's level in `dimension`, once it has run.
@@ -194,13 +205,13 @@ impl Integrated {
         f32::from_bits(self.flags.smoothed_tick_ms.load(Ordering::Relaxed))
     }
     /// Asks for the debug entries' server lines at `at`, or stops asking.
-    pub(super) fn request_debug(&self, at: Option<(Dim, [i32; 3])>) {
+    pub(in crate::game) fn request_debug(&self, at: Option<(Dim, [i32; 3])>) {
         if let Ok(mut want) = self.flags.debug_at.lock() {
             *want = at;
         }
     }
     /// The debug entries' server lines of the last tick.
-    pub(super) fn debug(&self) -> super::debug_lines::ServerDebug {
+    pub(in crate::game) fn debug(&self) -> super::debug_lines::ServerDebug {
         self.flags
             .debug
             .lock()
@@ -231,7 +242,7 @@ impl Integrated {
         Some(self.flags.published.load(Ordering::Relaxed)).filter(|&p| p != 0)
     }
     /// `executeBlocking`: `None` once the server stopped or after `CALL_TIMEOUT` (the log tells which).
-    pub(super) fn ask<T: Send + 'static>(
+    pub(in crate::game) fn ask<T: Send + 'static>(
         &self,
         build: impl FnOnce(Reply<T>) -> OwnerRequest,
     ) -> Option<T> {
@@ -267,7 +278,7 @@ impl Integrated {
         }
     }
     /// `execute`: send a request without waiting for it. False once the server has stopped.
-    pub(super) fn tell(&self, request: OwnerRequest) -> bool {
+    pub(in crate::game) fn tell(&self, request: OwnerRequest) -> bool {
         self.tasks.send(request).is_ok()
     }
     /// Tests only: `f` on the server thread between two ticks, its answer awaited as `ask` does.
@@ -313,7 +324,7 @@ impl Integrated {
             .as_ref()
             .is_none_or(|thread| thread.is_finished())
     }
-    fn halt(&mut self) -> Result<()> {
+    pub(in crate::game) fn halt(&mut self) -> Result<()> {
         self.request_stop();
         self.emergency_save.take();
         if let Some(thread) = self.thread.take() {
@@ -342,35 +353,35 @@ impl Drop for Integrated {
 }
 
 /// The server thread's side of the window's handle (`Game::serving`).
-pub(super) struct Serving {
-    flags: Arc<Flags>,
-    tasks: Receiver<OwnerRequest>,
+pub(in crate::game) struct Serving {
+    pub(in crate::game) flags: Arc<Flags>,
+    pub(in crate::game) tasks: Receiver<OwnerRequest>,
     /// The window's profile.
-    pub(super) owner: u128,
+    pub(in crate::game) owner: u128,
     /// Open to LAN or closed from inside a player's command, while the hub
     /// is out of its place: applied after the tick.
-    pending: Option<Publish>,
+    pub(in crate::game) pending: Option<Publish>,
     /// Where the load focus is and how far the player's chunks are.
-    load: LoadPhase,
+    pub(in crate::game) load: LoadPhase,
 }
 /// The part of `LevelLoadListener` after `prepareLevels`: `PrepareSpawnTask`'s
 /// `LOAD_PLAYER_CHUNKS`.
 #[derive(Default)]
-struct LoadPhase {
+pub(in crate::game) struct LoadPhase {
     /// `updateFocus`: the spawn chunk, once the stage started.
-    focus: Option<(i32, i32)>,
+    pub(in crate::game) focus: Option<(i32, i32)>,
     /// `finish(LOAD_PLAYER_CHUNKS)`.
-    done: bool,
+    pub(in crate::game) done: bool,
 }
 impl Serving {
     /// A server thread's handle with no thread behind it, published on `port` (0: not).
     #[cfg(test)]
-    pub(super) fn fixture(port: u16) -> Self {
+    pub(in crate::game) fn fixture(port: u16) -> Self {
         Self::fixture_with_reports(port, Arc::default())
     }
 
     #[cfg(test)]
-    pub(super) fn fixture_with_reports(port: u16, reports: Arc<Reports>) -> Self {
+    pub(in crate::game) fn fixture_with_reports(port: u16, reports: Arc<Reports>) -> Self {
         let flags = Arc::new(Flags {
             reports,
             ..Flags::default()
@@ -386,60 +397,60 @@ impl Serving {
         }
     }
     /// Send reports only to this server's owner, not to LAN clients.
-    pub(super) fn reports(&self) -> &Reports {
+    pub(in crate::game) fn reports(&self) -> &Reports {
         &self.flags.reports
     }
 
     /// The window reads this as `MinecraftServer.isCurrentlySaving`.
-    pub(super) fn set_saving(&self, saving: bool) {
+    pub(in crate::game) fn set_saving(&self, saving: bool) {
         self.flags.saving.store(saving, Ordering::Relaxed);
     }
 }
-enum Publish {
+pub(in crate::game) enum Publish {
     Open(TcpListener, LanSettings),
     Close,
 }
 
 /// What the server thread hands the window once the world is open: its end
 /// of the connection and the world's name, or why it failed.
-type Ready = std::result::Result<(Pipe, String), String>;
+pub(in crate::game) type Ready = std::result::Result<(Pipe, String), String>;
 
 /// An integrated server loading its world: the window keeps drawing its
 /// loading screen and joins once the server is ready, as vanilla's client
 /// does while its server prepares (`Minecraft.doWorldLoad`), instead of
 /// waiting for it frozen for the whole load.
-pub(super) struct Starting {
-    pub(super) handle: Integrated,
-    ready: Receiver<Ready>,
-    player: String,
+pub(in crate::game) struct Starting {
+    pub(in crate::game) handle: Integrated,
+    pub(in crate::game) ready: Receiver<Ready>,
+    pub(in crate::game) player: String,
     /// The save's folder in `saves/`, for the world icon once joined.
-    folder: String,
+    pub(in crate::game) folder: String,
     /// `Minecraft.doWorldLoad`'s `newWorld`: the loading screen stays 500 ms
     /// once the level is ready.
-    new_world: bool,
+    pub(in crate::game) new_world: bool,
 }
 
 /// The world to open and the player who owns it.
-struct Launch {
-    folder: String,
-    rule_registry: Arc<sunrise_client::gamerules::RuleRegistry>,
-    name: Option<String>,
-    seed: Option<i64>,
-    creative: bool,
-    create: Option<WorldOptions>,
+pub(in crate::game) struct Launch {
+    pub(in crate::game) folder: String,
+    pub(in crate::game) rule_registry: Arc<sunrise_client::gamerules::RuleRegistry>,
+    pub(in crate::game) name: Option<String>,
+    pub(in crate::game) seed: Option<i64>,
+    pub(in crate::game) creative: bool,
+    pub(in crate::game) create: Option<WorldOptions>,
     /// The window's profile: the only one let in until the world is open to
     /// the LAN, and the world's player.
-    owner: u128,
+    pub(in crate::game) owner: u128,
     /// Its name, for the LAN's MOTD.
-    player: String,
+    pub(in crate::game) player: String,
     /// The signed-in account's profile, fetched while the world loads.
-    owner_profile: Option<Arc<OwnerProfile>>,
+    pub(in crate::game) owner_profile: Option<Arc<OwnerProfile>>,
 }
 
 impl Game<'_> {
     /// Only the owner window changes its integrated server's command tree. A remote
     /// server keeps its own choice and permissions.
-    pub(super) fn sync_pregen_option(&self) {
+    pub(in crate::game) fn sync_pregen_option(&self) {
         let Some(server) = &self.integrated else {
             return;
         };
@@ -451,251 +462,28 @@ impl Game<'_> {
 
     /// `Minecraft.hasSingleplayerServer`: a world of this window's own, run
     /// in the frame or on its server thread.
-    pub(super) fn has_singleplayer_server(&self) -> bool {
+    pub(in crate::game) fn has_singleplayer_server(&self) -> bool {
         self.remote.is_none() || self.integrated.is_some()
     }
     /// `Minecraft.isMultiplayerServer`: on another's server, or a world of one's own open to the
     /// network.
-    pub(super) fn is_multiplayer_server(&self) -> bool {
+    pub(in crate::game) fn is_multiplayer_server(&self) -> bool {
         !self.has_singleplayer_server() || self.is_published()
     }
     /// `IntegratedServer.isPublished`: the world is open to the network.
-    pub(super) fn is_published(&self) -> bool {
+    pub(in crate::game) fn is_published(&self) -> bool {
         self.lan.is_some()
             || self
                 .integrated
                 .as_ref()
                 .is_some_and(|s| s.published().is_some())
     }
-    /// `Minecraft.doWorldLoad`: start the server thread on the world; the
-    /// window joins it through memory once it is ready (`poll_integrated_start`).
-    pub(super) fn open_integrated(
-        &mut self,
-        folder: &str,
-        name: Option<&str>,
-        seed: Option<i64>,
-        creative: bool,
-        create: Option<&WorldOptions>,
-    ) -> Result<()> {
-        self.client_logging_out();
-        sunrise_client::command::vanilla::set_sunrise_commands(
-            self.options.pregen || self.settings.extras.pregen,
-        );
-        let auth = sunrise_client::auth::current();
-        let player = auth
-            .as_ref()
-            .map_or_else(|| self.options.player_name(), |a| a.name.clone());
-        let new_world = create.is_some();
-        let rule_registry = create.map_or_else(
-            || Arc::new(crate::game::api_values::game_rule_registry()),
-            |options| options.rules.registry().clone(),
-        );
-        // `IntegratedServer`'s constructor: `setSingleplayerProfile(minecraft.getGameProfile())`
-        // — the signed-in account's own UUID. Only an offline start names its player by the
-        // offline profile. The owner is the world's player, so a world without
-        // `singleplayer_uuid` (a Realms download, `renameAndDropPlayer`) finds the owner's
-        // `players/data/<uuid>.dat` instead of starting a new player.
-        let owner = auth
-            .as_ref()
-            .map_or_else(|| offline_uuid(&player), |a| a.uuid);
-        let launch = Launch {
-            rule_registry: rule_registry.clone(),
-            folder: folder.to_owned(),
-            name: name.map(str::to_owned),
-            seed,
-            creative,
-            create: create.cloned(),
-            owner,
-            player: player.clone(),
-            owner_profile: auth.as_ref().map(|a| {
-                let id = a.uuid;
-                Arc::new(OwnerProfile::new(move || {
-                    sunrise_client::skins::fetch_own_properties(id)
-                        .into_iter()
-                        .map(
-                            |(name, value, signature)| sunrise_core::profile::AccountProperty {
-                                name,
-                                value,
-                                signature,
-                            },
-                        )
-                        .collect()
-                }))
-            }),
-        };
-        let mut options = self.options.clone();
-        // A server without a console: no local player, no window, no control socket.
-        // Compatibility for gameplay checks outside startup/world loading.
-        options.dedicated = Some(Vec::new());
-        options.execution_role = ExecutionRole::IntegratedServer;
-        options.control = None;
-        options.benchmark = None;
-        options.frames = None;
-        options.world_frames = None;
-        options.report = None;
-        options.server = None;
-        options.world = None;
-        self.join_world_rest()?;
-        // The window plays against the world's own biome table (its chunks
-        // carry the packs' ids past the built-in list, `set_registries`
-        // names them through it), as the server thread's copy does.
-        let world = std::env::current_dir()?.join("saves").join(folder);
-        let enabled_features = sunrise_client::save::Level::read(&world)
-            .map(|l| l.enabled_features)
-            .unwrap_or_default();
-        self.world_biomes = Some(super::world_loading::packed_biomes(
-            &world,
-            &self.options.resources,
-            self.res.biomes(),
-            &enabled_features,
-            &self.pack.additional_data,
-        ));
-        self.world_biomes_base = self.world_biomes.clone();
-        let (res, pack, settings) = (self.res.clone(), self.pack.clone(), self.settings.clone());
-        sunrise_client::parallel::set_setting(settings.sunrise.parallel_tick);
-        let flags = Arc::new(Flags {
-            reports: self.client_reports.0.clone(),
-            ..Flags::default()
-        });
-        flags
-            .render_distance
-            .store(settings.render_distance, Ordering::Relaxed);
-        flags
-            .simulation_distance
-            .store(settings.simulation_distance, Ordering::Relaxed);
-        flags
-            .entity_distance
-            .store(settings.entity_distance.to_bits(), Ordering::Relaxed);
-        let (ready_tx, ready) = channel();
-        let (tasks, server_tasks) = channel();
-        let server_flags = flags.clone();
-        let run_server = move |_: &()| {
-            let _finished = Finished(server_flags.clone());
-            // MinecraftServer.spin's Thread.setPriority(8).
-            sunrise_threads::favour_current();
-            let result = serve(
-                &res,
-                pack,
-                options,
-                settings,
-                launch,
-                server_flags.clone(),
-                server_tasks,
-                &ready_tx,
-            );
-            if let Err(e) = result {
-                log::error!("Sunrise: integrated server: {e}");
-                *server_flags.failure.lock().unwrap() = Some(e.to_string());
-                let _ = ready_tx.send(Err(e.to_string()));
-            }
-        };
-        // Production installations are process-wide. A test installation is scoped
-        // to its owning thread; the real server thread must inherit that snapshot.
-        #[cfg(test)]
-        let run_server = mod_api::testing::inherit_mods(run_server);
-        let thread = std::thread::Builder::new()
-            .name(sunrise_client::crash::INTEGRATED_SERVER_THREAD.into())
-            .stack_size(server_thread_stack())
-            .spawn(move || run_server(&()))?;
-        let emergency_flags = flags.clone();
-        let server_id = thread.thread().id();
-        let emergency_save = sunrise_client::crash::on_emergency_save(move || {
-            emergency_flags.emergency_save(server_id, Duration::from_secs(30));
-        });
-        let handle = Integrated {
-            emergency_save: Some(emergency_save),
-            flags,
-            thread: Some(thread),
-            tasks,
-            world_name: String::new(),
-            save_folder: folder.to_owned(),
-            rule_registry,
-        };
-        self.integrated_starting = Some(Starting {
-            handle,
-            ready,
-            player,
-            folder: folder.to_owned(),
-            new_world,
-        });
-        // Harnesses, control scripts and runs without a window go on with the world open.
-        if self.window.0.is_none() || super::synchronous_startup(&self.options) {
-            while self.integrated_starting.is_some() {
-                self.poll_integrated_start()?;
-                if self.integrated_starting.is_some() {
-                    std::thread::sleep(Duration::from_millis(5));
-                }
-            }
-        }
-        Ok(())
-    }
-
-    /// The starting server's answer, polled each frame: joined once it is ready.
-    pub(super) fn poll_integrated_start(&mut self) -> Result<()> {
-        if self.integrated_starting.is_none() {
-            return Ok(());
-        }
-        self.tick_load_progress();
-        let Some(starting) = &self.integrated_starting else {
-            return Ok(());
-        };
-        let (pipe, world_name) = match starting.ready.try_recv() {
-            Ok(Ok(ready)) => ready,
-            Err(std::sync::mpsc::TryRecvError::Empty) => return Ok(()),
-            // FileFixerProgressScreen's Cancel: the upgrade stopped, back to the title.
-            Ok(Err(_)) if starting.handle.upgrade().is_canceled() => {
-                self.integrated_starting = None;
-                self.perf.cancel_world_opening();
-                return Ok(());
-            }
-            Ok(Err(e)) => {
-                self.integrated_starting = None;
-                return Err(e.into());
-            }
-            Err(std::sync::mpsc::TryRecvError::Disconnected) => {
-                self.integrated_starting = None;
-                return Err("the integrated server stopped".into());
-            }
-        };
-        let Some(Starting {
-            mut handle,
-            player,
-            folder,
-            new_world,
-            ..
-        }) = self.integrated_starting.take()
-        else {
-            return Ok(());
-        };
-        handle.world_name = world_name;
-        self.server_packs_world_pack(&folder);
-        self.connect_local(pipe, &player)?;
-        if let Some(r) = self.remote.as_mut() {
-            // `new LevelLoadTracker(newWorld ? 500L : 0L)`.
-            r.level_load = sunrise_client::level_loading::LevelLoadTracker::new(if new_world {
-                sunrise_client::level_loading::LEVEL_LOAD_CLOSE_DELAY_MS
-            } else {
-                0
-            });
-        }
-        // IntegratedServer.getWorldScreenshotFile: the client grabs the frame
-        // the Select World list shows, and needs the save folder for it.
-        self.client.world_icon = Some(WorldIcon {
-            path: std::env::current_dir()?
-                .join("saves")
-                .join(&folder)
-                .join("icon.png"),
-            last_attempt: None,
-        });
-        self.integrated = Some(handle);
-        Ok(())
-    }
 
     /// `PrepareSpawnTask`'s `LOAD_PLAYER_CHUNKS`, reported to the window's
     /// loading screen: the focus moves to the spawn chunk when the stage
     /// starts, the 7x7 chunks around it count as they are ready, and the
     /// status map around the focus follows (`ChunkLoadStatusView.get`).
-    pub(super) fn publish_load_view(&mut self) {
+    pub(in crate::game) fn publish_load_view(&mut self) {
         let Some(serving) = self.serving.as_mut() else {
             return;
         };
@@ -739,32 +527,9 @@ impl Game<'_> {
         }
     }
 
-    /// `LevelLoadingScreen.tick`'s easing of the server's progress, every 50 ms
-    /// of wall time (the starting server has no client tick yet).
-    pub(super) fn tick_load_progress(&mut self) {
-        let view = match (&self.integrated_starting, &self.integrated) {
-            (Some(s), _) => s.handle.load_view().clone(),
-            (None, Some(i)) => i.load_view().clone(),
-            _ => return,
-        };
-        let now = Instant::now();
-        let at = self.client.loading_progress_at.get_or_insert(now);
-        let steps = (now.duration_since(*at).as_millis() / 50).min(20) as u32;
-        *at += Duration::from_millis(u64::from(steps) * 50);
-        if now.duration_since(*at) > Duration::from_secs(1) {
-            *at = now;
-        }
-        for _ in 0..steps {
-            self.client.loading_progress = sunrise_client::level_loading::smooth(
-                self.client.loading_progress,
-                view.server_progress(),
-            );
-        }
-    }
-
     /// The server thread's loop (`MinecraftServer.runServer`): 20 ticks a
     /// second, the world held while the window is paused.
-    fn run_integrated(
+    pub(in crate::game) fn run_integrated(
         &mut self,
         launch: Launch,
         flags: Arc<Flags>,
@@ -787,7 +552,7 @@ impl Game<'_> {
         result
     }
 
-    fn run_integrated_inner(
+    pub(in crate::game) fn run_integrated_inner(
         &mut self,
         launch: Launch,
         flags: Arc<Flags>,
@@ -816,7 +581,7 @@ impl Game<'_> {
         self.integrated_tick_loop(&flags)
     }
 
-    fn integrated_tick_loop(&mut self, flags: &Flags) -> Result<()> {
+    pub(in crate::game) fn integrated_tick_loop(&mut self, flags: &Flags) -> Result<()> {
         let mut next = Instant::now();
         let mut was_paused = false;
         let mut failure = None;
@@ -921,17 +686,9 @@ impl Game<'_> {
         Ok(())
     }
 
-    #[inline(always)]
-    pub(in crate::game) fn integrated_tick_loop_client(&mut self, started: Instant) -> f32 {
-        self.client
-            .debug_charts
-            .log_tick(started, started.elapsed());
-        self.client.debug_charts.smoothed_tick_ms
-    }
-
     /// After the level of `dim` ticked: the window's debug entries' server
     /// lines, when they want them from this level.
-    pub(super) fn publish_server_debug(&self, dim: Dim) {
+    pub(in crate::game) fn publish_server_debug(&self, dim: Dim) {
         let Some(serving) = &self.serving else {
             return;
         };
@@ -949,7 +706,7 @@ impl Game<'_> {
     /// The integrated server's world open: `run_integrated`'s segment
     /// from `load_world` through `settle_spawn`, whole so its failures are
     /// one open failure (`WorldOpenFailed`, the engine's own error text).
-    fn integrated_open(
+    pub(in crate::game) fn integrated_open(
         &mut self,
         launch: &Launch,
         flags: &Arc<Flags>,
@@ -1070,7 +827,11 @@ impl Game<'_> {
 
     /// `MinecraftServer.stopServer`: the players are saved and sent away,
     /// then the world is saved.
-    pub(super) fn stop_integrated(&mut self, crashed: bool, run_error: Option<&str>) -> Result<()> {
+    pub(in crate::game) fn stop_integrated(
+        &mut self,
+        crashed: bool,
+        run_error: Option<&str>,
+    ) -> Result<()> {
         // Abort background terrain generation/decoration on shutdown, matching vanilla behavior.
         self.streaming.abort_generation();
         self.levels.0.abort_parked_generation();
@@ -1106,7 +867,7 @@ impl Game<'_> {
 
 /// What the world options screen shows of an integrated server.
 #[derive(Clone, Copy, Debug)]
-pub(super) struct ServerOptions {
+pub(in crate::game) struct ServerOptions {
     pub default_mode: i32,
     /// The owner's own game mode.
     pub personal_mode: i32,
@@ -1123,14 +884,14 @@ pub(super) struct ServerOptions {
 impl Game<'_> {
     /// IntegratedServer.teardownPublishedState, also reached when a shutdown
     /// callback unwinds before the normal stop path can retire the server.
-    pub(super) fn stop_serving(&mut self) {
+    pub(in crate::game) fn stop_serving(&mut self) {
         if let Some(s) = self.serving.take() {
             s.flags.published.store(0, Ordering::Relaxed);
         }
     }
 
     /// Whether this game is an integrated server's.
-    pub(super) fn serving(&self) -> bool {
+    pub(in crate::game) fn serving(&self) -> bool {
         self.serving.is_some()
     }
     /// The window's agent runs a command as single player's console does
@@ -1138,7 +899,7 @@ impl Game<'_> {
     /// the owner's level, at the owner permission level. The feedback goes to
     /// the owner's chat and is returned, with the command's outcome
     /// (`recording_command_outcome`; None when nothing ran).
-    pub(super) fn owner_console_command(
+    pub(in crate::game) fn owner_console_command(
         &mut self,
         command: &str,
     ) -> (Vec<String>, Option<(bool, i32)>) {
@@ -1211,7 +972,7 @@ impl Game<'_> {
 
     /// Run `f` with the owner's level in place (the server holds one per
     /// dimension), then put back the level that was.
-    pub(super) fn in_owner_level<T>(&mut self, f: impl FnOnce(&mut Self) -> T) -> T {
+    pub(in crate::game) fn in_owner_level<T>(&mut self, f: impl FnOnce(&mut Self) -> T) -> T {
         let owner = self.serving.as_ref().map(|s| s.owner);
         let dim = self.lan.as_ref().and_then(|h| {
             let g = h.hub.guests.iter().find(|g| Some(g.uuid) == owner)?;
@@ -1226,7 +987,7 @@ impl Game<'_> {
     }
 
     /// The window's requests, between two ticks.
-    fn run_tasks(&mut self) {
+    pub(in crate::game) fn run_tasks(&mut self) {
         let requests: Vec<OwnerRequest> = match &self.serving {
             Some(s) => s.tasks.try_iter().collect(),
             None => return,
@@ -1238,18 +999,21 @@ impl Game<'_> {
     }
     /// Whether anyone but a single-player owner can join this world: any hub of a client or
     /// a dedicated server, an integrated server's only once published to LAN.
-    pub(super) fn open_to_others(&self) -> bool {
+    pub(in crate::game) fn open_to_others(&self) -> bool {
         self.lan.is_some() && (!self.serving() || self.published_port().is_some())
     }
     /// `IntegratedServer.getPort` while published.
-    pub(super) fn published_port(&self) -> Option<u16> {
+    pub(in crate::game) fn published_port(&self) -> Option<u16> {
         let s = self.serving.as_ref()?;
         Some(s.flags.published.load(Ordering::Relaxed)).filter(|&p| p != 0)
     }
     /// `IntegratedServer.publishServer`: listen on `settings.port` (0 picks
     /// one) and announce the world. The socket is bound at once so a busy
     /// port fails here; the hub starts listening once it is at hand.
-    pub(super) fn publish(&mut self, settings: LanSettings) -> std::result::Result<u16, String> {
+    pub(in crate::game) fn publish(
+        &mut self,
+        settings: LanSettings,
+    ) -> std::result::Result<u16, String> {
         if self.options.developer_single_player {
             return Err(sunrise_client::lang::get(
                 "sunrise.developer_offline.single_player",
@@ -1271,7 +1035,7 @@ impl Game<'_> {
     }
     /// `IntegratedServer.unpublishServer`: stop listening and send every
     /// player but the owner away. False when it was not published.
-    pub(super) fn unpublish(&mut self) -> bool {
+    pub(in crate::game) fn unpublish(&mut self) -> bool {
         let Some(s) = self.serving.as_mut() else {
             return false;
         };
@@ -1284,7 +1048,7 @@ impl Game<'_> {
     }
     /// IntegratedServer.tickServer: the server follows the window's render
     /// and simulation distances when they change.
-    fn follow_distances(&mut self, flags: &Flags) {
+    pub(in crate::game) fn follow_distances(&mut self, flags: &Flags) {
         // IntegratedServer.getScaledTrackingDistance reads the option each time.
         self.settings.entity_distance =
             f64::from_bits(flags.entity_distance.load(Ordering::Relaxed));
@@ -1307,7 +1071,7 @@ impl Game<'_> {
         }
     }
 
-    fn apply_publish(&mut self) {
+    pub(in crate::game) fn apply_publish(&mut self) {
         if self.lan.is_none() {
             return;
         }
@@ -1355,7 +1119,7 @@ impl Game<'_> {
         }
     }
     /// The world options screen's state, read on the server.
-    pub(super) fn server_options(&self) -> ServerOptions {
+    pub(in crate::game) fn server_options(&self) -> ServerOptions {
         let owner = self.serving.as_ref().map(|s| s.owner);
         let host = self.lan.as_ref();
         let personal_mode = host
@@ -1375,7 +1139,7 @@ impl Game<'_> {
         }
     }
     /// `IntegratedServer.setPersonalGameType`: the owner's game mode.
-    pub(super) fn set_owner_mode(&mut self, mode: i32) {
+    pub(in crate::game) fn set_owner_mode(&mut self, mode: i32) {
         let Some(owner) = self.serving.as_ref().map(|s| s.owner) else {
             return;
         };
@@ -1393,7 +1157,7 @@ impl Game<'_> {
     }
     /// `IntegratedServer.setWorldAllowCommands`: the owner is an operator
     /// while the world allows commands; everyone's level is sent again.
-    pub(super) fn owner_allow_commands(&mut self, allow: bool) {
+    pub(in crate::game) fn owner_allow_commands(&mut self, allow: bool) {
         let Some(owner) = self.serving.as_ref().map(|s| s.owner) else {
             return;
         };
@@ -1411,7 +1175,7 @@ impl Game<'_> {
 
 /// The server thread: a game of its own over the shared resources.
 #[allow(clippy::too_many_arguments)]
-fn serve(
+pub(in crate::game) fn serve(
     res: &Arc<Resources>,
     pack: PackResources,
     options: Options,
@@ -1465,14 +1229,14 @@ fn serve(
 }
 
 /// What `serve` starts beside the server's own Game.
-struct Opening {
-    world: Result<WorldLoader>,
-    sync: Option<SyncPreload>,
+pub(in crate::game) struct Opening {
+    pub(in crate::game) world: Result<WorldLoader>,
+    pub(in crate::game) sync: Option<SyncPreload>,
 }
 
 /// Component oracles supply their own synthetic levels and entity phases.
 /// They still execute on a server Game, never the client's world.
-pub(super) enum ComponentHarness {
+pub(in crate::game) enum ComponentHarness {
     Dispenser(String),
     Sculk(String),
     /// The hot-path benchmark (`hot_paths`), which builds its own levels the same way.
@@ -1480,7 +1244,7 @@ pub(super) enum ComponentHarness {
 }
 
 impl Game<'_> {
-    pub(super) fn run_component_harness(&self, fixture: ComponentHarness) -> Result<()> {
+    pub(in crate::game) fn run_component_harness(&self, fixture: ComponentHarness) -> Result<()> {
         let (res, pack, settings) = (self.res.clone(), self.pack.clone(), self.settings.clone());
         let mut options = self.options.clone();
         options.execution_role = ExecutionRole::IntegratedServer;
@@ -1505,7 +1269,7 @@ impl Game<'_> {
     }
 }
 
-fn server_game(
+pub(in crate::game) fn server_game(
     res: &Arc<Resources>,
     pack: PackResources,
     options: Options,
@@ -1522,7 +1286,7 @@ fn server_game(
 /// player's UUID comes from their name alone, so a LAN or friends player naming themselves after
 /// the host would otherwise get the host's UUID, kick the host and take their operator rights and
 /// player data (vanilla always authenticates LAN guests, so there it can't happen).
-fn refused(owner: bool, published: bool, memory: bool) -> bool {
+pub(in crate::game) fn refused(owner: bool, published: bool, memory: bool) -> bool {
     if owner { !memory } else { !published }
 }
 
@@ -1533,7 +1297,7 @@ impl Game<'_> {
     /// finishes the server's own stop and save first, then exit without returning an
     /// error that would create another report. A panic inside a posted task happens
     /// outside the tick loop's catch, so the join doesn't promise a save there.
-    pub(super) fn exit_after_server_crash(&mut self) {
+    pub(in crate::game) fn exit_after_server_crash(&mut self) {
         if !sunrise_client::crash::server_crashed() {
             return;
         }
@@ -1552,7 +1316,7 @@ impl Game<'_> {
 }
 
 #[cfg(test)]
-pub(super) mod tests {
+pub(in crate::game) mod tests {
     use super::*;
     use mod_api::prelude::*;
 
@@ -1622,7 +1386,7 @@ pub(super) mod tests {
         use std::cell::Cell;
         use winit::event_loop::ControlFlow;
         if run_fresh_cases(
-            "game::integrated::tests::a_quit_while_the_world_loads_waits_for_its_server",
+            "game::server_side::integrated::tests::a_quit_while_the_world_loads_waits_for_its_server",
             "SUNRISE_CLIENT_QUIT_STARTING_CHILD",
             &["starting"],
         ) {
@@ -1832,7 +1596,7 @@ pub(super) mod tests {
         };
 
         if run_fresh_cases(
-            "game::integrated::tests::forced_disconnect_keeps_wire_cache_until_integrated_server_stops",
+            "game::server_side::integrated::tests::forced_disconnect_keeps_wire_cache_until_integrated_server_stops",
             "SUNRISE_INTEGRATED_DISCONNECT_SYNC_CHILD",
             &["disconnect"],
         ) {
@@ -2048,7 +1812,8 @@ pub(super) mod tests {
         };
         use sunrise_core::nbt::Tag;
 
-        const NAME: &str = "game::integrated::tests::integrated_tick_panic_saves_changed_world";
+        const NAME: &str =
+            "game::server_side::integrated::tests::integrated_tick_panic_saves_changed_world";
         // The mod's block and block entity declarations freeze process-wide registries.
         if run_fresh_cases(NAME, "SUNRISE_CRASH_CHECKPOINT_CHILD", &["crash"]) {
             return;

@@ -1,18 +1,22 @@
+#[allow(unused_imports)]
 use super::{C, Game, Signature, Tag, play, secure_chat};
+#[allow(unused_imports)]
 use crate::game::{in_own_process, native_entity_refs::tests::with_client_game};
+#[allow(unused_imports)]
 use sunrise_client::{
     chat::{ChatAbilities, ChatOptions, ChatVisibility},
     hud_layout::GuiDraw,
     options_file::V,
     tab_list::TabPlayer,
 };
+#[allow(unused_imports)]
 use sunrise_protocol::rsa::{RsaPrivateKey, RsaPublicKey, SignatureHash};
 
-const ALICE: u128 = 10;
-const BOB: u128 = 11;
-const SESSION: u128 = 42;
+pub(in crate::game) const ALICE: u128 = 10;
+pub(in crate::game) const BOB: u128 = 11;
+pub(in crate::game) const SESSION: u128 = 42;
 
-fn with_delayed_chat(test: &str, check: impl FnOnce(&mut Game<'_>)) {
+pub(in crate::game) fn with_delayed_chat(test: &str, check: impl FnOnce(&mut Game<'_>)) {
     let (_, module) = module_path!().split_once("::").unwrap();
     // The game fixture registers keys and particle providers; keep them in the child.
     in_own_process(&format!("{module}::{test}"), || {
@@ -25,7 +29,7 @@ fn with_delayed_chat(test: &str, check: impl FnOnce(&mut Game<'_>)) {
     });
 }
 
-fn tracker_offset(game: &mut Game<'_>) -> i32 {
+pub(in crate::game) fn tracker_offset(game: &mut Game<'_>) -> i32 {
     game.remote
         .as_mut()
         .unwrap()
@@ -34,7 +38,7 @@ fn tracker_offset(game: &mut Game<'_>) -> i32 {
         .offset()
 }
 
-fn take_seen_update(game: &mut Game<'_>) -> secure_chat::SeenUpdate {
+pub(in crate::game) fn take_seen_update(game: &mut Game<'_>) -> secure_chat::SeenUpdate {
     game.remote
         .as_mut()
         .unwrap()
@@ -43,7 +47,7 @@ fn take_seen_update(game: &mut Game<'_>) -> secure_chat::SeenUpdate {
         .update()
 }
 
-fn bound() -> play::ChatTypeBound {
+pub(in crate::game) fn bound() -> play::ChatTypeBound {
     play::ChatTypeBound {
         chat_type: 0,
         name: Tag::String("Alice".into()),
@@ -51,7 +55,11 @@ fn bound() -> play::ChatTypeBound {
     }
 }
 
-fn player_chat(sender: u128, global_index: i32, content: &str) -> play::PlayerChat {
+pub(in crate::game) fn player_chat(
+    sender: u128,
+    global_index: i32,
+    content: &str,
+) -> play::PlayerChat {
     play::PlayerChat {
         global_index,
         sender,
@@ -67,7 +75,7 @@ fn player_chat(sender: u128, global_index: i32, content: &str) -> play::PlayerCh
     }
 }
 
-fn add_sender(game: &mut Game<'_>, sender: u128) {
+pub(in crate::game) fn add_sender(game: &mut Game<'_>, sender: u128) {
     game.remote
         .as_mut()
         .unwrap()
@@ -75,7 +83,7 @@ fn add_sender(game: &mut Game<'_>, sender: u128) {
         .insert(sender, TabPlayer::new(sender, "Player"));
 }
 
-fn add_signed_sender(game: &mut Game<'_>, key: &RsaPrivateKey, sender: u128) {
+pub(in crate::game) fn add_signed_sender(game: &mut Game<'_>, key: &RsaPrivateKey, sender: u128) {
     add_sender(game, sender);
     // A fixture key signs both its profile certificate and its chat packets;
     // the packet handler still runs the real keyed validator and message chain.
@@ -97,7 +105,7 @@ fn add_signed_sender(game: &mut Game<'_>, key: &RsaPrivateKey, sender: u128) {
         .insert(sender, secure_chat::MessageValidator::keyed(session));
 }
 
-fn deliver_signed(
+pub(in crate::game) fn deliver_signed(
     game: &mut Game<'_>,
     key: &RsaPrivateKey,
     mut packet: play::PlayerChat,
@@ -203,53 +211,6 @@ fn disguised_chat_has_a_system_tag_but_is_player_chat() {
 
 #[test]
 #[ignore = "daily"]
-fn delayed_player_chat_checks_block_filter_and_visibility_on_accept() {
-    with_delayed_chat(
-        "delayed_player_chat_checks_block_filter_and_visibility_on_accept",
-        |game| {
-            let key = RsaPrivateKey::generate(2048).unwrap();
-            add_signed_sender(game, &key, ALICE);
-            add_signed_sender(game, &key, BOB);
-            let blocked = deliver_signed(game, &key, player_chat(ALICE, 0, "block me"));
-            let mut packet = player_chat(BOB, 1, "filter me");
-            packet.filter = (1, Vec::new());
-            let fully_filtered = deliver_signed(game, &key, packet);
-            let mut packet = player_chat(BOB, 2, "hello");
-            packet.filter = (2, vec![0b0110]);
-            let partially_filtered = deliver_signed(game, &key, packet);
-            assert_eq!(tracker_offset(game), 0);
-            assert!(game.ui.chat.recent_lines(3).is_empty());
-            assert_eq!(game.chat_queue_len(), 3);
-
-            game.client.social.hidden.insert(ALICE);
-            game.tick_chat_queue();
-            assert_eq!(game.chat_queue_len(), 0);
-            let seen = take_seen_update(game);
-            assert_eq!(seen.update.offset, 3);
-            assert_eq!(seen.last_seen, vec![partially_filtered]);
-            assert!(!seen.last_seen.contains(&blocked));
-            assert!(!seen.last_seen.contains(&fully_filtered));
-            let lines = game.ui.chat.recent_lines(3);
-            assert_eq!(lines.len(), 1);
-            assert!(lines[0].contains("h##lo"));
-
-            let hidden = deliver_signed(game, &key, player_chat(BOB, 3, "hide with Chat option"));
-            let font = &game.gui.atlas.font;
-            game.ui
-                .chat
-                .set_abilities(font, ChatAbilities::new(ChatVisibility::System));
-            game.accept_next_delayed_message();
-            let seen = take_seen_update(game);
-            assert_eq!(seen.update.offset, 1);
-            assert_eq!(seen.last_seen, vec![partially_filtered]);
-            assert!(!seen.last_seen.contains(&hidden));
-            assert_eq!(game.ui.chat.recent_lines(3), lines);
-        },
-    );
-}
-
-#[test]
-#[ignore = "daily"]
 fn delete_chat_removes_a_queued_fully_filtered_message_without_ack() {
     with_delayed_chat(
         "delete_chat_removes_a_queued_fully_filtered_message_without_ack",
@@ -334,64 +295,6 @@ fn delayed_chat_uses_only_show_secure_chat_from_receipt() {
             chat.smooth = false;
             chat.hide_indicator = false;
             assert!(chat.focused_tags(font, 100, 1.0, 59.0).0.is_none());
-        },
-    );
-}
-
-#[test]
-#[ignore = "daily"]
-fn validation_error_acks_on_accept_and_checks_the_current_block_list() {
-    with_delayed_chat(
-        "validation_error_acks_on_accept_and_checks_the_current_block_list",
-        |game| {
-            sunrise_narrator::set_status(sunrise_narrator::Status::All);
-            let prior_speech = sunrise_narrator::recent();
-            let invalid = [6; secure_chat::SIGNATURE_BYTES];
-            let mut packet = player_chat(ALICE, 0, "sender missing from player info");
-            packet.signature = Some(invalid.to_vec());
-            game.handle_packet(C::PlayerChat(packet)).unwrap();
-            assert_eq!(game.chat_queue_len(), 1);
-            assert_eq!(tracker_offset(game), 0);
-
-            // Even with an invalid signature to acknowledge, a validation error has no queue key.
-            game.handle_packet(C::DeleteChat(play::DeleteChat {
-                signature: (0, None),
-            }))
-            .unwrap();
-            assert_eq!(game.chat_queue_len(), 1);
-            game.client.social.hidden.insert(ALICE);
-            game.tick_chat_queue();
-            assert_eq!(game.chat_queue_len(), 0);
-            let seen = take_seen_update(game);
-            assert_eq!(seen.update.offset, 1);
-            assert!(seen.last_seen.is_empty());
-            assert!(game.ui.chat.recent_lines(1).is_empty());
-            assert_eq!(sunrise_narrator::recent(), prior_speech);
-
-            // An unhidden invalid message shows and narrates on acceptance, still acked as not shown.
-            let invalid_visible = [7; secure_chat::SIGNATURE_BYTES];
-            let mut packet = player_chat(BOB, 1, "unhidden sender missing");
-            packet.signature = Some(invalid_visible.to_vec());
-            game.handle_packet(C::PlayerChat(packet)).unwrap();
-            assert_eq!(game.chat_queue_len(), 1);
-            assert_eq!(tracker_offset(game), 0);
-            assert!(game.ui.chat.recent_lines(1).is_empty());
-            assert_eq!(sunrise_narrator::recent(), prior_speech);
-
-            game.tick_chat_queue();
-            assert_eq!(game.chat_queue_len(), 0);
-            let seen = take_seen_update(game);
-            assert_eq!(seen.update.offset, 1);
-            assert!(seen.last_seen.is_empty());
-            assert_eq!(game.ui.chat.recent_lines(1).len(), 1);
-            assert_ne!(sunrise_narrator::recent(), prior_speech);
-            let chat = &mut game.ui.chat;
-            let font = &game.gui.atlas.font;
-            chat.options = ChatOptions::default();
-            chat.smooth = false;
-            chat.hide_indicator = false;
-            let (tag, _) = chat.focused_tags(font, 100, 1.0, 59.0);
-            assert_eq!(tag.unwrap().translation_key(), Some("chat.tag.error"));
         },
     );
 }

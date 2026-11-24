@@ -217,7 +217,7 @@ fn fishing_catch_invalid_drops_keep_the_earlier_listeners_outputs() {
     // Isolate the process-global logger, as the structure-transform tests do.
     if std::env::var_os("SUNRISE_FISHING_REFUSAL_LOG_CHILD").is_none() {
         let status = std::process::Command::new(std::env::current_exe().unwrap())
-            .args(["--exact", "game::fishing::fishing_catch_tests::fishing_catch_invalid_drops_keep_the_earlier_listeners_outputs", "--include-ignored", "--nocapture"])
+            .args(["--exact", "game::server_side::fishing::fishing_catch_tests::fishing_catch_invalid_drops_keep_the_earlier_listeners_outputs", "--include-ignored", "--nocapture"])
             .env("SUNRISE_FISHING_REFUSAL_LOG_CHILD", "1")
             .status().unwrap();
         assert!(status.success());

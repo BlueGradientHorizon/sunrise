@@ -1,9 +1,12 @@
 //! Real rocket tick coverage for impact payloads and canceled explosions.
+#[allow(unused_imports)]
 use super::*;
+#[allow(unused_imports)]
 use crate::game::native_projectiles::impact_probe::{Action, point, with_probe};
+#[allow(unused_imports)]
 use sunrise_client::mobs::Mob;
 
-fn launch(game: &mut Game<'_>, lifetime: i32) {
+pub(in crate::game) fn launch(game: &mut Game<'_>, lifetime: i32) {
     let mut r = Rocket::remote(71, Vec3::new(0.5, 64.5, 0.5), Vec3::new(4.0, 0.0, 0.0));
     r.angled = true;
     r.owner = Some(Who::Player);
@@ -175,43 +178,4 @@ fn rocket_section_listener_reads_the_advanced_position() {
             [Some([pos.x, pos.y, pos.z])]
         );
     });
-}
-
-#[test]
-#[ignore = "daily"]
-fn rocket_impact_listener_can_save_the_advanced_rocket() {
-    crate::game::in_own_process(
-        "game::fireworks::impact::tests::rocket_impact_listener_can_save_the_advanced_rocket",
-        || {
-            with_probe(Action::SaveOnImpact, true, |game, observed| {
-                let stone = game
-                    .pack
-                    .assets
-                    .registry
-                    .default_state("minecraft:stone")
-                    .unwrap();
-                game.world.set(2, 64, 0, stone).unwrap();
-                launch(game, 100);
-                game.tick_rockets();
-
-                let hits = observed.hits.lock().unwrap();
-                assert_eq!(hits.len(), 1);
-                assert_eq!(hits[0].projectile, 71);
-                let saved = game.save.0.load_entities(0, 0).unwrap();
-                let rocket = saved
-                    .iter()
-                    .find(|tag| {
-                        sunrise_client::entity_nbt::kind(tag).as_deref()
-                            == Some("minecraft:firework_rocket")
-                    })
-                    .expect("impact save includes the resident rocket");
-                let saved_position = sunrise_client::entity_nbt::position(rocket).unwrap();
-                assert_eq!(
-                    [saved_position.x, saved_position.y, saved_position.z].map(f64::to_bits),
-                    hits[0].projectile_pos.map(f64::to_bits),
-                );
-                assert!(hits[0].projectile_pos[0] > 0.5);
-            });
-        },
-    );
 }

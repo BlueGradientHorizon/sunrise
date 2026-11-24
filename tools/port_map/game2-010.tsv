@@ -27,7 +27,7 @@ EnchantmentAttributeEffect.onDeactivated	inline	crates/sunrise-client/src/game/i
 EnchantmentAttributeEffect.makeAttributeMap	skip:java		multimap builder for one modifier
 EnchantmentHelper.updateEnchantments	port	crates/sunrise-items/src/item_data.rs::ItemStack::enchant	gap: minor: sets one enchantment; no bulk consumer form
 EnchantmentHelper.processAmmoUse	port	crates/sunrise-client/src/game/items/enchant_effects.rs::Game::bow_enchantments	Infinity as a flag; the ammo count change is decided by the caller
-EnchantmentHelper.processBlockExperience	inline	crates/sunrise-client/src/game.rs::Game::break_block_as_player	Silk Touch zeroes the XP at the call site; spawners keep it
+EnchantmentHelper.processBlockExperience	inline	crates/sunrise-client/src/game/game_server.rs::Game::break_block_as_player	Silk Touch zeroes the XP at the call site; spawners keep it
 EnchantmentHelper.processMobExperience	skip:other		no enchantment in the data uses mob_experience, so the amount never changes
 EnchantmentHelper.createBook	inline	crates/sunrise-client/src/creative.rs::from_json	the search tab comes from creative-inventory.json, whose export carries the 171 enchanted book stacks (vanilla CreativeModeTabs generates them)
 EnchantmentHelper.runIterationOnItem	port	crates/sunrise-items/src/item_data.rs::ItemStack::enchantments	the (enchantment, level) iteration; callers loop over it
@@ -94,8 +94,8 @@ Level.getWorldBorderAdjustedRespawnData	port	crates/sunrise-client/src/game/netw
 Level.hasEntities	missing		unsure: no entity-in-box test found for this use
 Level.getClockTimeTicks	port	crates/sunrise-client/src/game/blocks/level_access.rs::GameLevel::day_time	day time; no separate clock time
 Level.getThunderLevel	port	crates/sunrise-client-render/src/world.rs::World::levels	thunder scaled by rain
-Level.setThunderLevel	port	crates/sunrise-client/src/game/network/remote/packets_world.rs::Game::apply_game_event_packet	weather game event sets the thunder level
-Level.setRainLevel	port	crates/sunrise-client/src/game/network/remote/packets_world.rs::Game::apply_game_event_packet	weather game event sets the rain level
+Level.setThunderLevel	port	crates/sunrise-client/src/game/network/remote/packets_world_client.rs::Game::apply_game_event_packet	weather game event sets the thunder level
+Level.setRainLevel	port	crates/sunrise-client/src/game/network/remote/packets_world_client.rs::Game::apply_game_event_packet	weather game event sets the rain level
 Level.fillReportDetails	skip:debug		crash-report details
 BlockGetter.getBlockEntity	skip:other		bare block_entities map lookup at each caller
 BlockGetter.isBlockInLine	skip:other		no caller in 26.3 code

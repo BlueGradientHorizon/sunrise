@@ -3,15 +3,22 @@
 //! menu slot shows (ender chest, crafting grid, a mod's chest menu). Mods read and write
 //! them through `ItemPlace`'s `with_stack`, `insert` and `extract`, which come here for these
 //! places; a block entity's slots, a stack inside an item and a mod's own places go through their handlers.
+#[allow(unused_imports)]
 use super::Game;
+#[allow(unused_imports)]
 use super::api_values::component_edit::{GearEdits, prepare_component_edit};
+#[allow(unused_imports)]
 use super::native_server::PlayerRead;
+#[allow(unused_imports)]
 use super::transactions::{After, DeferredEffect};
+#[allow(unused_imports)]
 use mod_api::__private::game::*;
+#[allow(unused_imports)]
 use mod_api::{
     CraftedByError, EquipmentSlot, ItemComponentEditor, ItemPlace, ItemPlaceEditError,
     ItemStackView, LivingRef, MenuSlotBacking, TransactionContext,
 };
+#[allow(unused_imports)]
 use sunrise_client::{
     first_person::Hand,
     items::{ItemStack, Items},
@@ -20,14 +27,14 @@ use sunrise_client::{
 };
 
 /// An occupied inventory cell, addressed within the resolved player's own storage.
-enum PlayerStackSlot {
+pub(in crate::game) enum PlayerStackSlot {
     Inventory(usize),
     Armor(usize),
     Offhand,
 }
 
 impl PlayerStackSlot {
-    fn borrow<'a>(
+    pub(in crate::game) fn borrow<'a>(
         place: &ItemPlace,
         inventory: &'a [Option<ItemStack>],
         armor: &'a [Option<ItemStack>; 4],
@@ -62,7 +69,7 @@ impl PlayerStackSlot {
     }
 
     /// The same cell after preparation and journaling, neither of which changes the row.
-    fn stack_mut<'a>(
+    pub(in crate::game) fn stack_mut<'a>(
         self,
         inventory: &'a mut [Option<ItemStack>],
         armor: &'a mut [Option<ItemStack>; 4],
@@ -80,7 +87,7 @@ impl PlayerStackSlot {
 
 impl Game<'_> {
     /// The player a place belongs to, if a player's: a cursor's only while its menu is open.
-    fn place_player(&self, place: &ItemPlace) -> Option<u128> {
+    pub(in crate::game) fn place_player(&self, place: &ItemPlace) -> Option<u128> {
         match place {
             ItemPlace::PlayerSlot { player, .. } | ItemPlace::PlayerHand { player, .. } => {
                 Some(*player)
@@ -133,11 +140,14 @@ impl Game<'_> {
         Some(self.boats.update(i, |b| edit(&mut b.items, position)))
     }
     /// Whether this game simulates a world: a client's copy has no places to write.
-    fn places_simulated(&self) -> bool {
+    pub(in crate::game) fn places_simulated(&self) -> bool {
         self.is_logical_server()
     }
     /// The slot of the player in place that `place` names.
-    fn player_place(&mut self, place: &ItemPlace) -> Option<&mut Option<ItemStack>> {
+    pub(in crate::game) fn player_place(
+        &mut self,
+        place: &ItemPlace,
+    ) -> Option<&mut Option<ItemStack>> {
         match place {
             ItemPlace::PlayerSlot { slot, .. } => self.native_carried_slot(*slot),
             ItemPlace::PlayerHand {
@@ -151,7 +161,11 @@ impl Game<'_> {
         }
     }
     /// Player place insert and extract use the command/host slot writer (and its journal).
-    fn write_player_place(&mut self, place: &ItemPlace, stack: Option<ItemStack>) {
+    pub(in crate::game) fn write_player_place(
+        &mut self,
+        place: &ItemPlace,
+        stack: Option<ItemStack>,
+    ) {
         use super::commands::items::Slot;
         let slot = match place {
             ItemPlace::PlayerSlot {
@@ -236,7 +250,10 @@ impl Game<'_> {
     /// Borrow the stack in a native place without initializing a player. Reading a chest
     /// vehicle's `EntitySlot` unpacks its pending loot table without a player; equipment
     /// overlays are only applied when the caller projects a complete stack.
-    fn game_stack_source(&mut self, place: &ItemPlace) -> Option<EquipmentRead<'_>> {
+    pub(in crate::game) fn game_stack_source(
+        &mut self,
+        place: &ItemPlace,
+    ) -> Option<EquipmentRead<'_>> {
         if let ItemPlace::Scratch(slot) = place {
             return self.scratch_held(*slot).map(EquipmentRead::resident);
         }
@@ -354,7 +371,7 @@ impl Game<'_> {
     /// Prepare against the occupied slot and apply to that same cell, without lending a Host.
     /// Preparation can refuse or leave the slot unchanged; only a prepared write gets journaled
     /// and published.
-    fn edit_resolved_stack<P>(
+    pub(in crate::game) fn edit_resolved_stack<P>(
         &mut self,
         place: &ItemPlace,
         tx: &TransactionContext,
@@ -906,13 +923,17 @@ impl Game<'_> {
     }
     /// Project the equipment before a write. Outer `None` is an unavailable place; inner
     /// `None` is an empty slot that can receive an item.
-    fn equipment_stack(&self, entity: u32, slot: EquipmentSlot) -> Option<Option<ItemStack>> {
+    pub(in crate::game) fn equipment_stack(
+        &self,
+        entity: u32,
+        slot: EquipmentSlot,
+    ) -> Option<Option<ItemStack>> {
         self.equipment_stack_source(entity, slot)
             .map(|stack| stack.map(|stack| stack.project().into_owned()))
     }
 
     /// A mob's equipment with its worn overlays, or an armor stand's resident equipment.
-    fn equipment_stack_source(
+    pub(in crate::game) fn equipment_stack_source(
         &self,
         entity: u32,
         slot: EquipmentSlot,
@@ -930,7 +951,7 @@ impl Game<'_> {
     }
     /// The equipment write `set_equipment` makes (#932), deferred: whether it
     /// landed. False where the entity is gone or a client's copy refuses.
-    fn write_entity_equipment(
+    pub(in crate::game) fn write_entity_equipment(
         &mut self,
         entity: u32,
         slot: EquipmentSlot,
@@ -957,21 +978,31 @@ impl Game<'_> {
 
 #[cfg(test)]
 pub(in crate::game) mod tests {
+    #[allow(unused_imports)]
     use super::super::BlockEntity;
+    #[allow(unused_imports)]
     use super::super::api_values::TryIntoApi;
+    #[allow(unused_imports)]
     use super::super::native_entity_refs::tests::with_game;
+    #[allow(unused_imports)]
     use mod_api::HostTransaction;
+    #[allow(unused_imports)]
     use mod_api::ServerHost;
+    #[allow(unused_imports)]
     use mod_api::{
         CraftedByError, ENTITY_AUTOMATION, ENTITY_ITEMS, ItemPlace, ItemPlaceEditError,
         ItemResource, MenuRef, TransactionError,
     };
+    #[allow(unused_imports)]
     use std::sync::{Arc, atomic::AtomicI32, mpsc};
+    #[allow(unused_imports)]
     use sunrise_client::{
         items::ItemStack,
         lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubConfig},
     };
+    #[allow(unused_imports)]
     use sunrise_core::geometry::Direction;
+    #[allow(unused_imports)]
     use sunrise_protocol::packets::configuration::ClientInformation;
 
     /// A world open to LAN on a dedicated server, as a guest's actions run.
@@ -1367,83 +1398,8 @@ pub(in crate::game) mod tests {
         });
     }
 
-    #[test]
-    #[ignore = "daily"]
-    fn stand_equipment_effects_wait_for_root_commit() {
-        with_game(|game| {
-            let mut stand = sunrise_client::entities::ArmorStand::new(
-                40,
-                sunrise_core::geometry::Vec3::ZERO,
-                0.0,
-            );
-            stand.first_tick = false;
-            game.armor_stands.push(stand);
-            game.audio.0.capture = Some(Vec::new());
-            let items = game
-                .entity(40)
-                .unwrap()
-                .capability(game, &ENTITY_ITEMS, ())
-                .unwrap();
-            let chest = ItemResource::of(
-                &ItemStack::new("minecraft:diamond_chestplate", 1)
-                    .try_into_api()
-                    .unwrap(),
-            );
-            super::super::dispense_fixture::start_recording();
-            let result = game.storage_transaction(|host, tx| {
-                assert_eq!(items.insert_at(host, tx, 4, &chest, 1), Ok(1));
-                Err::<(), ()>(())
-            });
-            assert_eq!(result, Err(()));
-            assert!(game.armor_stands[0].equipment.get(4).is_none());
-            assert!(
-                game.audio.0.capture.as_ref().unwrap().is_empty(),
-                "aborted stand equip emitted sound"
-            );
-            assert!(super::super::dispense_fixture::stop_recording().is_empty());
-
-            super::super::dispense_fixture::start_recording();
-            let result = game.storage_transaction(|host, _| {
-                host.storage_transaction(|host, tx| {
-                    assert_eq!(items.insert_at(host, tx, 4, &chest, 1), Ok(1));
-                    Ok::<(), ()>(())
-                })
-                .unwrap();
-                Err::<(), ()>(())
-            });
-            assert_eq!(result, Err(()));
-            assert!(game.armor_stands[0].equipment.get(4).is_none());
-            assert!(game.audio.0.capture.as_ref().unwrap().is_empty());
-            assert!(super::super::dispense_fixture::stop_recording().is_empty());
-
-            super::super::dispense_fixture::start_recording();
-            let result = game.storage_transaction(|host, _| {
-                // An inner abort must not contribute effects to the root.
-                let aborted = host.transaction(|host, tx| {
-                    assert_eq!(items.insert_at(host, tx, 4, &chest, 1), Ok(1));
-                    Err::<(), ()>(())
-                });
-                assert_eq!(aborted, Err(TransactionError::Aborted(())));
-                host.transaction(|host, tx| {
-                    assert_eq!(items.insert_at(host, tx, 4, &chest, 1), Ok(1));
-                    Ok::<(), ()>(())
-                })
-                .unwrap();
-                assert!(super::super::dispense_fixture::stop_recording().is_empty());
-                super::super::dispense_fixture::start_recording();
-                Ok::<(), ()>(())
-            });
-            assert_eq!(result, Ok(()));
-            assert_eq!(game.armor_stands[0].equipment.get(4).unwrap().count, 1);
-            assert_eq!(game.audio.0.capture.as_ref().unwrap().len(), 1);
-            let events = super::super::dispense_fixture::stop_recording();
-            assert_eq!(events.len(), 1, "only one event at root commit: {events:?}");
-            assert!(events[0].ends_with("minecraft:equip"));
-        });
-    }
-
     /// A zombie mob, standing at the origin.
-    fn zombie(game: &mut super::Game<'_>) -> u32 {
+    pub(in crate::game) fn zombie(game: &mut super::Game<'_>) -> u32 {
         let kind = game
             .res
             .mob_types()
@@ -2704,7 +2660,11 @@ pub(in crate::game) mod tests {
         });
     }
 
-    fn saved_mob_attribute(game: &super::Game<'_>, entity: u32, attribute: &str) -> mod_api::Tag {
+    pub(in crate::game) fn saved_mob_attribute(
+        game: &super::Game<'_>,
+        entity: u32,
+        attribute: &str,
+    ) -> mod_api::Tag {
         use mod_api::Tag;
         let mob = game.mobs.iter().find(|mob| mob.id == entity).unwrap();
         let saved = sunrise_client::entity_nbt::mob_to_nbt(
@@ -3163,14 +3123,14 @@ pub(in crate::game) mod tests {
     }
 
     /// The open menu of guest 1 (UUID 123).
-    fn menu_of(game: &super::Game<'_>) -> MenuRef {
+    pub(in crate::game) fn menu_of(game: &super::Game<'_>) -> MenuRef {
         let player = game.player(123).unwrap();
         game.player_container_menu(player).unwrap()
     }
 
     /// One write at `place` in a transaction of its own: how many went in (`amount > 0`) or
     /// came out (`amount < 0`), committed or aborted.
-    fn write(
+    pub(in crate::game) fn write(
         game: &mut super::Game<'_>,
         place: &ItemPlace,
         item: &str,
@@ -3407,7 +3367,7 @@ pub(in crate::game) mod tests {
         });
     }
 
-    fn with_crafted_by_handler_map(
+    pub(in crate::game) fn with_crafted_by_handler_map(
         accepts_replacement: bool,
         on_insert: Option<sunrise_client::lan::PlayerSender>,
         test: impl FnOnce(&mut super::Game<'_>, ItemPlace, i32, mod_api::ItemStack),
@@ -4139,7 +4099,7 @@ pub(in crate::game) mod tests {
     }
 
     /// The guests' inventories, by connection.
-    fn inventories(game: &super::Game<'_>) -> Vec<Vec<Option<ItemStack>>> {
+    pub(in crate::game) fn inventories(game: &super::Game<'_>) -> Vec<Vec<Option<ItemStack>>> {
         let guests = &game.lan.as_ref().unwrap().hub.guests;
         guests.iter().map(|g| g.inventory.clone()).collect()
     }
@@ -4187,11 +4147,15 @@ pub(in crate::game) mod tests {
     }
 
     /// One player's offer in a trade: inventory index `.0` must still hold exactly `.1`.
-    type Offer = (usize, ItemStack);
+    pub(in crate::game) type Offer = (usize, ItemStack);
 
     /// Two guests' trade on a menu, as the docs' recipe has it: each offer's index must still
     /// hold exactly what was offered, and goes whole to the other player, or nothing moves.
-    fn trade(game: &mut super::Game<'_>, a: &[Offer], b: &[Offer]) -> Result<(), ()> {
+    pub(in crate::game) fn trade(
+        game: &mut super::Game<'_>,
+        a: &[Offer],
+        b: &[Offer],
+    ) -> Result<(), ()> {
         let host: &mut dyn ServerHost = game;
         let items = |host: &mut dyn ServerHost, id| {
             let entity = host.entity(id).unwrap();
@@ -4223,7 +4187,7 @@ pub(in crate::game) mod tests {
 
     /// A seller with 3 diamonds in slot 0 and a buyer with 5 emeralds in slot 0, beside
     /// `buyer_rest` in every other slot and the off hand.
-    fn traders(game: &mut super::Game<'_>, buyer_rest: Option<ItemStack>) {
+    pub(in crate::game) fn traders(game: &mut super::Game<'_>, buyer_rest: Option<ItemStack>) {
         open_to_lan(game);
         let mut seller = guest(1);
         seller.inventory[0] = Some(ItemStack::new("minecraft:diamond", 3));
@@ -4241,7 +4205,7 @@ pub(in crate::game) mod tests {
             .extend([seller, buyer]);
     }
 
-    fn offers() -> ([Offer; 1], [Offer; 1]) {
+    pub(in crate::game) fn offers() -> ([Offer; 1], [Offer; 1]) {
         (
             [(0, ItemStack::new("minecraft:diamond", 3))],
             [(0, ItemStack::new("minecraft:emerald", 5))],
@@ -4617,9 +4581,9 @@ pub(in crate::game) mod tests {
     /// A mod's `ENTITY_AUTOMATION` handler: one slot of up to 64 items, with the sides it was
     /// asked for.
     #[derive(Clone, Default)]
-    struct Bin {
-        held: Arc<std::sync::Mutex<Option<(String, u32)>>>,
-        sides: Arc<std::sync::Mutex<Vec<Option<Direction>>>>,
+    pub(in crate::game) struct Bin {
+        pub(in crate::game) held: Arc<std::sync::Mutex<Option<(String, u32)>>>,
+        pub(in crate::game) sides: Arc<std::sync::Mutex<Vec<Option<Direction>>>>,
     }
 
     impl mod_api::ResourceHandler<ItemResource> for Bin {
@@ -4688,7 +4652,7 @@ pub(in crate::game) mod tests {
     }
 
     /// Runs `test` with a mod answering `ENTITY_AUTOMATION` for pigs with `bin`.
-    fn with_bin_pigs(bin: &Bin, test: impl FnOnce(&mut super::Game<'_>)) {
+    pub(in crate::game) fn with_bin_pigs(bin: &Bin, test: impl FnOnce(&mut super::Game<'_>)) {
         use mod_api::{self, Hooks, ModEntry, Mods, Registrar};
         struct Pigs(Bin);
         #[mod_api::__subscriptions]
@@ -4707,7 +4671,11 @@ pub(in crate::game) mod tests {
     }
 
     /// A hopper at (0, 64, 0) facing `facing` holding `stack`, in an otherwise empty world.
-    fn hopper_with(game: &mut super::Game<'_>, facing: &str, stack: Option<ItemStack>) {
+    pub(in crate::game) fn hopper_with(
+        game: &mut super::Game<'_>,
+        facing: &str,
+        stack: Option<ItemStack>,
+    ) {
         use sunrise_client::chunk::Chunk;
         game.options.dedicated = Some(Vec::new());
         game.world
@@ -4728,7 +4696,7 @@ pub(in crate::game) mod tests {
             .insert((0, 64, 0), BlockEntity::Chest(slots));
     }
 
-    fn pig(game: &mut super::Game<'_>, id: u32, y: f64) {
+    pub(in crate::game) fn pig(game: &mut super::Game<'_>, id: u32, y: f64) {
         let kind = game.res.mob_types().get("minecraft:pig").unwrap().clone();
         game.mobs.push(sunrise_client::mobs::Mob::new(
             id,
@@ -4738,7 +4706,7 @@ pub(in crate::game) mod tests {
         ));
     }
 
-    fn hopper_slot(game: &super::Game<'_>) -> Option<ItemStack> {
+    pub(in crate::game) fn hopper_slot(game: &super::Game<'_>) -> Option<ItemStack> {
         match game.world.block_entities.get(&(0, 64, 0)) {
             Some(BlockEntity::Chest(slots)) => slots[0].clone(),
             _ => panic!("the hopper is gone"),
@@ -5169,7 +5137,7 @@ pub(in crate::game) mod tests {
     }
 
     /// A chunk at the origin, open to LAN, with a full water cauldron at (2, 64, 0).
-    fn with_cauldron(game: &mut super::Game<'_>) -> mod_api::LevelRef {
+    pub(in crate::game) fn with_cauldron(game: &mut super::Game<'_>) -> mod_api::LevelRef {
         use mod_api::BlockUpdateFlags;
         use sunrise_client::chunk::Chunk;
         open_to_lan(game);

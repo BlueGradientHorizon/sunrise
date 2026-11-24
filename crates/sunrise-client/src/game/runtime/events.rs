@@ -1,42 +1,46 @@
 //! What happened in the game, for agents (`events`, `wait-for`; docs/agent-control.md): the
 //! state is compared once per event loop turn, after the game ran, so watching never changes
 //! what the game does.
+#[allow(unused_imports)]
 use super::Game;
+#[allow(unused_imports)]
 use serde_json::{Value, json};
+#[allow(unused_imports)]
 use std::{
     collections::{BTreeMap, VecDeque},
     sync::mpsc::Sender,
     time::{Duration, Instant},
 };
+#[allow(unused_imports)]
 use sunrise_client::Result;
 
-pub(super) const HELP: &[&str] = &[
+pub(in crate::game) const HELP: &[&str] = &[
     "events [--since SEQ]           what happened (screen, chat, death, respawn, item, hurt, heal, food, dimension, world), oldest first",
     "wait-for screen NAME|widget ID|loaded|chat TEXT|event KIND [--timeout S] [--since SEQ]  reply once it holds (default 30 s; chat and event count from SEQ, else from now)",
 ];
 
 /// Events kept for `events`.
-const KEPT: usize = 256;
+pub(in crate::game) const KEPT: usize = 256;
 
 /// What the last turn saw.
 #[derive(PartialEq)]
-struct Snapshot {
-    screen: &'static str,
-    world: Option<String>,
-    dimension: String,
-    chat: u64,
-    counts: BTreeMap<String, i64>,
+pub(in crate::game) struct Snapshot {
+    pub(in crate::game) screen: &'static str,
+    pub(in crate::game) world: Option<String>,
+    pub(in crate::game) dimension: String,
+    pub(in crate::game) chat: u64,
+    pub(in crate::game) counts: BTreeMap<String, i64>,
     /// The player's health and food level, while there is a player.
-    vitals: Option<(f32, i64)>,
-    hit: Option<Hit>,
+    pub(in crate::game) vitals: Option<(f32, i64)>,
+    pub(in crate::game) hit: Option<Hit>,
 }
 
 /// The newest damage: a number that changes with each, the damage type, the amount and the
 /// name of what dealt it.
-type Hit = (i64, String, Option<f32>, Option<String>);
+pub(in crate::game) type Hit = (i64, String, Option<f32>, Option<String>);
 
 /// What the newest damage was, for a `hurt` or `death` event.
-fn add_cause(event: &mut Value, before: &Snapshot, now: &Snapshot) {
+pub(in crate::game) fn add_cause(event: &mut Value, before: &Snapshot, now: &Snapshot) {
     if let Some((at, kind, damage, by)) = &now.hit
         && before.hit.as_ref().is_none_or(|h| h.0 != *at)
     {
@@ -51,7 +55,7 @@ fn add_cause(event: &mut Value, before: &Snapshot, now: &Snapshot) {
     }
 }
 
-enum Condition {
+pub(in crate::game) enum Condition {
     Screen(String),
     Widget(String),
     Loaded,
@@ -59,29 +63,29 @@ enum Condition {
     Event(String),
 }
 
-struct Wait {
-    condition: Condition,
+pub(in crate::game) struct Wait {
+    pub(in crate::game) condition: Condition,
     /// The event sequence number when the wait started.
-    since: u64,
-    started: Instant,
-    timeout: Duration,
-    reply: Sender<String>,
+    pub(in crate::game) since: u64,
+    pub(in crate::game) started: Instant,
+    pub(in crate::game) timeout: Duration,
+    pub(in crate::game) reply: Sender<String>,
 }
 
 #[derive(Default)]
-pub(super) struct Events {
+pub(in crate::game) struct Events {
     /// The sequence number of the newest event (the first is 1).
-    seq: u64,
-    log: VecDeque<Value>,
-    last: Option<Snapshot>,
-    waits: Vec<Wait>,
+    pub(in crate::game) seq: u64,
+    pub(in crate::game) log: VecDeque<Value>,
+    pub(in crate::game) last: Option<Snapshot>,
+    pub(in crate::game) waits: Vec<Wait>,
     /// On a server's client (single player included), where the combat tracker is the
     /// server's: the newest `DamageEvent` it sent about this player.
-    remote_hit: Option<Hit>,
+    pub(in crate::game) remote_hit: Option<Hit>,
 }
 
 impl Events {
-    fn push(&mut self, tick: u64, mut event: Value) {
+    pub(in crate::game) fn push(&mut self, tick: u64, mut event: Value) {
         self.seq += 1;
         event["seq"] = self.seq.into();
         event["tick"] = tick.into();
@@ -92,19 +96,19 @@ impl Events {
     }
     /// `ClientboundDamageEventPacket` for this player: the damage type and the causing
     /// entity's type.
-    pub(super) fn note_hit(&mut self, cause: String, by: Option<String>) {
+    pub(in crate::game) fn note_hit(&mut self, cause: String, by: Option<String>) {
         let n = self.remote_hit.as_ref().map_or(0, |h| h.0) + 1;
         self.remote_hit = Some((n, cause, None, by));
     }
     /// An event from outside the once-a-turn comparison (`user-input`).
-    pub(super) fn note(&mut self, tick: u64, event: Value) {
+    pub(in crate::game) fn note(&mut self, tick: u64, event: Value) {
         self.push(tick, event);
     }
     /// Whether a `wait-for` is waiting: its agent is still watching.
-    pub(super) fn has_waits(&self) -> bool {
+    pub(in crate::game) fn has_waits(&self) -> bool {
         !self.waits.is_empty()
     }
-    fn since(&self, seq: u64) -> impl Iterator<Item = &Value> {
+    pub(in crate::game) fn since(&self, seq: u64) -> impl Iterator<Item = &Value> {
         self.log
             .iter()
             .filter(move |e| e["seq"].as_u64() > Some(seq))
@@ -112,7 +116,7 @@ impl Events {
 }
 
 /// The events between two snapshots.
-fn diff(before: &Snapshot, now: &Snapshot, chat: &[String]) -> Vec<Value> {
+pub(in crate::game) fn diff(before: &Snapshot, now: &Snapshot, chat: &[String]) -> Vec<Value> {
     let mut out = Vec::new();
     if before.world != now.world {
         if let Some(name) = &before.world {
@@ -170,7 +174,7 @@ fn diff(before: &Snapshot, now: &Snapshot, chat: &[String]) -> Vec<Value> {
 
 /// The condition, the timeout and `--since`.
 /// `events [--since SEQ] [--limit N]` → (since, newest N).
-fn parse_events(words: &[&str]) -> Result<(u64, Option<usize>)> {
+pub(in crate::game) fn parse_events(words: &[&str]) -> Result<(u64, Option<usize>)> {
     let (mut since, mut limit) = (0, None);
     let mut it = words.iter();
     while let Some(word) = it.next() {
@@ -183,7 +187,7 @@ fn parse_events(words: &[&str]) -> Result<(u64, Option<usize>)> {
     Ok((since, limit))
 }
 
-fn parse_wait(words: &[&str]) -> Result<(Condition, Duration, Option<u64>)> {
+pub(in crate::game) fn parse_wait(words: &[&str]) -> Result<(Condition, Duration, Option<u64>)> {
     let mut rest = Vec::new();
     let mut timeout = 30.0;
     let mut since = None;
@@ -234,14 +238,7 @@ fn parse_wait(words: &[&str]) -> Result<(Condition, Duration, Option<u64>)> {
 }
 
 impl Game<'_> {
-    #[inline(always)]
-    pub(in crate::game) fn combat_last_hit(
-        &self,
-    ) -> Option<(i64, String, Option<f32>, Option<String>)> {
-        self.combat.0.last_hit()
-    }
-
-    fn snapshot(&self) -> Snapshot {
+    pub(in crate::game) fn snapshot(&self) -> Snapshot {
         let world = self.title.0.is_none().then(|| self.level.name.clone());
         Snapshot {
             screen: self.screen_label(),
@@ -270,14 +267,14 @@ impl Game<'_> {
         }
     }
 
-    pub(super) fn loaded(&self) -> bool {
+    pub(in crate::game) fn loaded(&self) -> bool {
         self.title.0.is_none()
             && self.player.is_some()
             && self.streaming.pending() + self.pending_uploads.0.len() == 0
     }
 
     /// Once per event loop turn: record what changed, answer the waits that hold.
-    pub(super) fn watch_events(&mut self) {
+    pub(in crate::game) fn watch_events(&mut self) {
         let now = self.snapshot();
         if let Some(before) = &self.events.last
             && *before != now
@@ -348,7 +345,7 @@ impl Game<'_> {
     }
 
     /// `events` and `wait-for`; None for other commands, Some(None) when deferred.
-    pub(super) fn events_command(
+    pub(in crate::game) fn events_command(
         &mut self,
         words: &[&str],
         reply: &Sender<String>,
@@ -382,7 +379,7 @@ impl Game<'_> {
 }
 
 #[cfg(test)]
-mod tests {
+pub(in crate::game) mod tests {
     use super::*;
 
     #[test]

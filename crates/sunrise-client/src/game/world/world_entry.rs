@@ -1,17 +1,19 @@
 //! Entering a world without blocking the window: the deferred entry, world creation, the world
 //! resources' background load, and the world's own content tables.
+#[allow(unused_imports)]
 use super::*;
+#[allow(unused_imports)]
 use std::sync::atomic::{AtomicU64, Ordering};
 
-static BIOME_KEYS_SESSION: AtomicU64 = AtomicU64::new(1);
+pub(in crate::game) static BIOME_KEYS_SESSION: AtomicU64 = AtomicU64::new(1);
 
-fn next_biome_keys_session() -> u64 {
+pub(in crate::game) fn next_biome_keys_session() -> u64 {
     BIOME_KEYS_SESSION.fetch_add(1, Ordering::Relaxed)
 }
 
 impl Game<'_> {
     /// The server's data-pack enchantments, or the local world's registry.
-    pub(super) fn item_enchantments(&self) -> &Arc<sunrise_client::enchant::Enchantments> {
+    pub(in crate::game) fn item_enchantments(&self) -> &Arc<sunrise_client::enchant::Enchantments> {
         match self.remote.as_ref() {
             Some(remote) => remote
                 .enchantments
@@ -21,201 +23,20 @@ impl Game<'_> {
         }
     }
 
-    pub(super) fn defer_world_entry(&mut self, entry: PendingWorldEntry) -> Result<bool> {
-        self.poll_world_rest()?;
-        if self.rest_loader.0.is_none() {
-            return Ok(false);
-        }
-        self.perf.world_opening();
-        if self.title.0.is_none() {
-            let title = self
-                .new_title(std::env::current_dir()?.join("saves"))
-                .with_user(|| self.options.player_name());
-            self.show_title(title);
-        }
-        self.pending_entry.0 = Some(entry);
-        log::info!("Sunrise: world entry waiting for world resources");
-        Ok(true)
-    }
-
-    pub(super) fn resume_world_entry(&mut self) -> Result<()> {
-        self.poll_integrated_start()?;
-        self.poll_world_rest()?;
-        self.poll_world_creation();
-        if self.rest_loader.0.is_some() {
-            return Ok(());
-        }
-        let on_world_screens = self.title.0.as_ref().is_some_and(|title| {
-            !matches!(
-                title.mode,
-                sunrise_client::title::Mode::Main | sunrise_client::title::Mode::Multiplayer(_)
-            )
-        });
-        world_loading::preload_world_data(
-            on_world_screens,
-            &self.options.resources,
-            &self.pack.data_changes,
-            self.pack.assets.registry,
-        );
-        if std::mem::take(&mut self.client.pending_pack_reload) {
-            self.reload_packs();
-        }
-        match self.pending_entry.0.take() {
-            Some(PendingWorldEntry::Local {
-                folder,
-                name,
-                seed,
-                creative,
-                create,
-            }) => {
-                self.open_world(&folder, name.as_deref(), seed, creative, create.as_deref())?;
-            }
-            Some(PendingWorldEntry::Server {
-                address,
-                name,
-                list_name,
-                cookies,
-                lan,
-                realm,
-            }) => {
-                self.connect_server_with_options(
-                    &address,
-                    &name,
-                    cookies,
-                    lan,
-                    realm,
-                    list_name.as_deref(),
-                )?;
-            }
-            Some(PendingWorldEntry::StudioReplay(path)) => {
-                let path_str = path.to_string_lossy().to_string();
-                if let Err(e) = self.open_studio_replay(&path_str) {
-                    log::warn!("Sunrise Studio: could not open {path_str}: {e}");
-                }
-            }
-            None => {}
-        }
-        Ok(())
-    }
-
-    /// `CreateWorldScreen.openCreateWorldScreen`: read the world generation
-    /// data the create screen describes, on a worker, then open the screen
-    /// (`title.preparing`).
-    pub(super) fn poll_world_creation(&mut self) {
-        let Some(title) = self.title.0.as_ref() else {
-            return;
-        };
-        if !title.preparing() {
-            return;
-        }
-        if self.creation_job.0.is_none() {
-            let dir = self.options.resources.join("worldgen");
-            let registry = self.pack.assets.registry;
-            // The chosen packs' worldgen over the game's own:
-            // `applyNewPackConfig` reloads with the new pack config.
-            let overrides = title
-                .creation_packs()
-                .map(|(dir, packs)| {
-                    world_loading::creation_worldgen_overrides(
-                        dir.as_deref(),
-                        &self.options.resources,
-                        &packs,
-                        self.res.biomes(),
-                        &self.pack.additional_data,
-                    )
-                })
-                .unwrap_or_default();
-            let data_source = self.pack.data_changes.clone();
-            let job = std::thread::Builder::new()
-                .stack_size(sunrise_threads::GAME_THREAD_STACK_BYTES)
-                .name("world-creation".into())
-                .spawn(move || {
-                    sunrise_client::vanillagen::shared_data_from(
-                        &dir,
-                        &overrides,
-                        registry,
-                        &data_source,
-                    )
-                    .map(|_| ())
-                    .map_err(|e| e.to_string())
-                });
-            match job {
-                Ok(job) => self.creation_job.0 = Some(job),
-                Err(error) => {
-                    log::warn!("Sunrise: world creation worker could not start: {error}");
-                    if let Some(title) = self.title.0.as_mut() {
-                        title.finish_preparing();
-                        title.failed(format!(
-                            "{}: {error}",
-                            sunrise_client::lang::get("createWorld.preparing")
-                        ));
-                    }
-                }
-            }
-            return;
-        }
-        if !self
-            .creation_job
-            .0
-            .as_ref()
-            .is_none_or(std::thread::JoinHandle::is_finished)
-        {
-            return;
-        }
-        let outcome = self.creation_job.0.take().and_then(|job| job.join().ok());
-        if let Some(title) = self.title.0.as_mut() {
-            match outcome {
-                Some(Ok(())) => title.finish_preparing(),
-                // `applyNewPackConfig`'s failure: back out of the read with
-                // the message, the Create screen's options intact.
-                outcome => {
-                    let e = outcome
-                        .and_then(|r| r.err())
-                        .unwrap_or_else(|| "the read never ran".to_owned());
-                    log::warn!("Sunrise: preparing world creation failed: {e}");
-                    // Clear the flag first: `failed` sets the error screen
-                    // with Create as its back target, which
-                    // `finish_preparing` would replace with a fresh world.
-                    title.finish_preparing();
-                    title.failed(format!(
-                        "{}: {e}",
-                        sunrise_client::lang::get_or(
-                            "createWorld.preparing",
-                            "Preparing for world creation..."
-                        )
-                    ));
-                }
-            }
-        }
-    }
-
-    pub(super) fn poll_world_rest(&mut self) -> Result<()> {
-        if let Some(loader) = &self.rest_loader.0
-            && loader.ready()?
-        {
-            self.rest_loader
-                .0
-                .take()
-                .ok_or("missing world loader")?
-                .finish()?;
-        }
-        Ok(())
-    }
-
     // ---- the world's data packs' content tables ---------------------------
 
     /// The content tables the world plays with: its data packs' over the
     /// game's own when it has packs, `Resources.rest`'s own otherwise.
-    pub(super) fn items(&self) -> &Items {
+    pub(in crate::game) fn items(&self) -> &Items {
         world_items!(self)
     }
     /// The level's suffocation rules, for its mobs and its players.
-    pub(super) fn level_suffocation(
+    pub(in crate::game) fn level_suffocation(
         &self,
     ) -> &sunrise_world::suffocation::SuffocationRegistry<'static> {
         level_suffocation_of(&self.world_tables.0, &self.res)
     }
-    pub(super) fn recipes(&self) -> &Recipes {
+    pub(in crate::game) fn recipes(&self) -> &Recipes {
         match &self.world_tables.0 {
             Some(t) => &t.recipes,
             None => self.synced_recipes().unwrap_or_else(|| self.res.recipes()),
@@ -227,16 +48,7 @@ impl Game<'_> {
             .as_ref()
             .map_or_else(|| self.res.providers(), |t| &t.providers)
     }
-    /// The station recipes menus and screens use: a client of a server numbers and draws its
-    /// stonecutter buttons by the list the server sent, else the world's own.
-    pub(super) fn station_recipes(&self) -> &sunrise_client::stations::StationRecipes {
-        self.recipe_ui
-            .0
-            .server_stations
-            .as_ref()
-            .unwrap_or(&self.stations().recipes)
-    }
-    pub(super) fn stations(&self) -> &sunrise_client::stations::StationData {
+    pub(in crate::game) fn stations(&self) -> &sunrise_client::stations::StationData {
         match &self.world_tables.0 {
             Some(t) => &t.stations,
             None => self.res.stations(),
@@ -245,7 +57,7 @@ impl Game<'_> {
 
     /// The biome colours used by the mesher and client tint queries. On a
     /// world without its own table, a colour refresh updates the pack's table.
-    pub(super) fn mesh_biomes(&self) -> &Arc<Biomes> {
+    pub(in crate::game) fn mesh_biomes(&self) -> &Arc<Biomes> {
         self.world_biomes
             .as_ref()
             .unwrap_or(&self.pack.context.biomes)
@@ -253,16 +65,16 @@ impl Game<'_> {
 
     /// What the chunk and far-terrain workers mesh with: the pack's context,
     /// over the world's biomes when it has its own.
-    pub(super) fn worker_context(&self) -> Arc<WorkerContext> {
+    pub(in crate::game) fn worker_context(&self) -> Arc<WorkerContext> {
         self.pack.context_with(self.mesh_biomes().clone())
     }
-    pub(super) fn pack_files(&self) -> sunrise_world::loot::PackOverlay<'_> {
+    pub(in crate::game) fn pack_files(&self) -> sunrise_world::loot::PackOverlay<'_> {
         pack_files(&self.world_tables.0)
     }
     /// Load the world's data packs' content tables (`None`: the world has no
     /// packs, and `Resources.rest` stays in use). This re-reads the tables,
     /// so it runs once per world open and on `/reload`.
-    pub(super) fn stage_world_tables(
+    pub(in crate::game) fn stage_world_tables(
         &mut self,
         stack: &functions::PackStack,
         reload: bool,
@@ -585,7 +397,7 @@ impl Game<'_> {
     /// before any table is published. `None` when no mod declared a registry: nothing is
     /// scanned. A file whose `neoforge:conditions` fail is absent; the key is dropped before
     /// the schema sees the file.
-    fn datapack_candidate(
+    pub(in crate::game) fn datapack_candidate(
         &self,
         stack: &functions::PackStack,
         conditions: &sunrise_world::conditions::LoadConditions,
@@ -627,7 +439,7 @@ impl Game<'_> {
             })
     }
     /// A world open's tables, and the first generation of the registries the mods declared.
-    pub(super) fn open_world_tables(
+    pub(in crate::game) fn open_world_tables(
         &mut self,
         staged: super::condition_reload_state::StagedWorldTables,
     ) -> Result<()> {
@@ -652,7 +464,7 @@ impl Game<'_> {
     }
     /// Sends each joined Sunrise client the snapshot of the set just published, built from the
     /// offer owned by its connection. A refused replacement ends that connection with its reason.
-    fn send_datapack_snapshots(&mut self) {
+    pub(in crate::game) fn send_datapack_snapshots(&mut self) {
         let Some(host) = self.lan.as_ref() else {
             return;
         };
@@ -669,7 +481,7 @@ impl Game<'_> {
     /// `/reload` reloads a server's (`ReloadableServerResources`).
     /// Publish tables before function admission, leaving advancement rewards queued
     /// until the reload's new function store is available.
-    pub(super) fn install_world_tables(&mut self, prepared: PreparedWorldReload) {
+    pub(in crate::game) fn install_world_tables(&mut self, prepared: PreparedWorldReload) {
         let PreparedWorldReload {
             structure_spawns,
             tables,
@@ -751,35 +563,16 @@ impl Game<'_> {
         self.announce_data_maps_updated(mod_api::DataMapsUpdateCause::ServerReload);
         self.build_screen();
     }
-
-    pub(super) fn join_world_rest(&mut self) -> Result<()> {
-        if self.rest_loader.0.is_some() {
-            let waited = Instant::now();
-            log::info!("Sunrise: waiting for world resources");
-            while self.rest_loader.0.is_some() {
-                self.poll_world_rest()?;
-                if self.rest_loader.0.is_some() {
-                    std::thread::sleep(Duration::from_millis(10));
-                }
-            }
-            log::info!(
-                "Sunrise: world resources joined after {} ms",
-                waited.elapsed().as_millis()
-            );
-        }
-        if self.res.rest.get().is_none() {
-            return Err("world resources are unavailable".into());
-        }
-        Ok(())
-    }
 }
 
 impl Game<'_> {
-    pub(super) fn active_enchantment_definitions(&self) -> &sunrise_client::enchant::Enchantments {
+    pub(in crate::game) fn active_enchantment_definitions(
+        &self,
+    ) -> &sunrise_client::enchant::Enchantments {
         self.item_enchantments()
     }
     /// Build and publish one server snapshot for this world load or reload.
-    pub(super) fn load_server_loot(&mut self) {
+    pub(in crate::game) fn load_server_loot(&mut self) {
         if let Some(tables) = &self.world_tables.0 {
             self.server_items = Some(tables.items.clone());
             self.copy_loot_enchantment_answers(&tables.loot);
@@ -838,7 +631,7 @@ impl Game<'_> {
         self.server_loot.0.set(loot);
     }
 
-    pub(super) fn prepare_parts(&self, items: &Items) -> Result<PreparedParts> {
+    pub(in crate::game) fn prepare_parts(&self, items: &Items) -> Result<PreparedParts> {
         // Some unit fixtures construct the Part tables without loading game content.
         #[cfg(not(test))]
         if !mod_api::__private::content_owners_published() {
@@ -880,7 +673,7 @@ impl Game<'_> {
     }
     /// Reload the content tables with the world's packs, as
     /// `/reload` reloads a server's (`ReloadableServerResources`).
-    pub(super) fn prepare_world_reload(
+    pub(in crate::game) fn prepare_world_reload(
         &mut self,
         stack: &functions::PackStack,
         root: &std::path::Path,
@@ -950,7 +743,7 @@ impl Game<'_> {
 
     /// Resolve the mods' parts against the tags this game plays with (`/reload` again): mods
     /// that attach parts to a block or item it doesn't have are an error.
-    pub(super) fn resolve_parts(&self) -> Result<()> {
+    pub(in crate::game) fn resolve_parts(&self) -> Result<()> {
         let prepared = self.prepare_parts(self.items())?;
         if self
             .remote
@@ -967,13 +760,13 @@ impl Game<'_> {
         Ok(())
     }
     /// Bind parts, then resolve support and primary item answers against the published tags.
-    pub(super) fn install_parts(&self, prepared: PreparedParts) {
+    pub(in crate::game) fn install_parts(&self, prepared: PreparedParts) {
         self.bind_parts(prepared);
         self.resolve_primary_items();
     }
     /// Publish state keys and bind parts before their state-only answers are cached.
     /// A server also publishes its parts for world generation.
-    pub(super) fn bind_parts(&self, prepared: PreparedParts) {
+    pub(in crate::game) fn bind_parts(&self, prepared: PreparedParts) {
         if self.is_logical_server()
             && let Some(host) = &self.lan
         {
@@ -1000,7 +793,7 @@ impl Game<'_> {
         self.resolve_block_paths();
         self.resolve_piston_reactions();
     }
-    pub(super) fn resolve_block_paths(&self) {
+    pub(in crate::game) fn resolve_block_paths(&self) {
         use mod_api::{HookId, PathComputationType};
         use sunrise_client::mobs::data::PartAnswers;
         let data = self.res.mob_data();
@@ -1026,7 +819,7 @@ impl Game<'_> {
 
 /// [`Game::level_suffocation`] from the fields it reads, for a caller that holds other fields: the
 /// world's own tables (its datapacks' `causes_suffocation`), else the built-in ones.
-pub(super) fn level_suffocation_of<'a>(
+pub(in crate::game) fn level_suffocation_of<'a>(
     world_tables: &'a Option<WorldTables>,
     res: &'a Resources,
 ) -> &'a sunrise_world::suffocation::SuffocationRegistry<'static> {

@@ -7,13 +7,13 @@ pub(in crate::game) enum Component {
     Bundle,
     Charged,
 }
-pub(super) struct Provider<'a> {
+pub(in crate::game) struct Provider<'a> {
     items: &'a [Option<ItemStack>],
     position: &'a mut usize,
     mode: &'a str,
 }
 impl<'a> Provider<'a> {
-    pub(super) fn new(
+    pub(in crate::game) fn new(
         items: &'a [Option<ItemStack>],
         position: &'a mut usize,
         mode: &'a str,
@@ -26,7 +26,7 @@ impl<'a> Provider<'a> {
     }
 }
 impl Component {
-    pub(super) fn named(name: &str) -> Option<Self> {
+    pub(in crate::game) fn named(name: &str) -> Option<Self> {
         match name.strip_prefix("minecraft:").unwrap_or(name) {
             "container" => Some(Self::Container),
             "bundle_contents" => Some(Self::Bundle),
@@ -34,7 +34,7 @@ impl Component {
             _ => None,
         }
     }
-    pub(super) fn items(self, stack: &ItemStack) -> Vec<Option<ItemStack>> {
+    pub(in crate::game) fn items(self, stack: &ItemStack) -> Vec<Option<ItemStack>> {
         let Some(data) = stack.data() else {
             return Vec::new();
         };
@@ -58,7 +58,7 @@ impl Component {
     }
     /// ComponentSlotCollection writes a single normalized component back to
     /// its live parent; all unrelated parent components remain modeled.
-    pub(super) fn store(self, stack: &mut ItemStack, mut slots: Vec<Option<ItemStack>>) {
+    pub(in crate::game) fn store(self, stack: &mut ItemStack, mut slots: Vec<Option<ItemStack>>) {
         for slot in &mut slots {
             if slot
                 .as_ref()
@@ -106,7 +106,11 @@ impl Component {
 }
 
 impl Game<'_> {
-    pub(super) fn contents_slots(&mut self, parent: Slot, component: Component) -> Vec<Slot> {
+    pub(in crate::game) fn contents_slots(
+        &mut self,
+        parent: Slot,
+        component: Component,
+    ) -> Vec<Slot> {
         let size = self
             .slot_get(&parent)
             .map_or(0, |s| component.items(&s).len());
@@ -172,7 +176,7 @@ impl Game<'_> {
     }
     /// ComponentSlotCollection.modifySlots: visit occupied slots only, then
     /// commit the component through the same live parent slot.
-    pub(super) fn modify_contents(
+    pub(in crate::game) fn modify_contents(
         &mut self,
         parent: &Slot,
         component: Component,
@@ -208,7 +212,7 @@ impl Game<'_> {
     }
     /// GrowableMutableContainer.replaceSlotItems: consume one provider shared
     /// by the owner's source terms, including new component slots.
-    pub(super) fn replace_contents(
+    pub(in crate::game) fn replace_contents(
         &mut self,
         parent: &Slot,
         component: Component,

@@ -7,8 +7,11 @@
 //! `Player.stabAttack`). The hit's feedback (`onKineticHit`) reaches the
 //! players around as entity event 2. A left click jabs instead
 //! (`PiercingWeapon.attack`), which Lunge turns into a dash.
+#[allow(unused_imports)]
 use super::{Game, view_vector};
+#[allow(unused_imports)]
 pub(in crate::game) use sunrise_client::spear::hits_in_reach;
+#[allow(unused_imports)]
 use sunrise_client::{
     attack_strength::delay,
     collisions::SceneCollisions,
@@ -17,6 +20,7 @@ use sunrise_client::{
     mobs::Damage,
     spear::{HIT_FEEDBACK_TICKS, Kinetic, REACH},
 };
+#[allow(unused_imports)]
 use sunrise_core::{
     geometry::{Aabb, Vec3, traverse_blocks},
     position::BlockPos,
@@ -28,7 +32,7 @@ pub(in crate::game) const OWN: i32 = i32::MIN;
 /// What a stab reaches along the view: a mob (its index in `mobs`) or
 /// another player (its index in `stab_players`).
 #[derive(Clone, Copy)]
-enum Target {
+pub(in crate::game) enum Target {
     Mob(usize),
     Player(usize),
 }
@@ -72,7 +76,7 @@ impl Game<'_> {
 
     /// `Entity.getKnownSpeed` of the mob at `index`, per second: its root
     /// vehicle's (`KineticWeapon.getMotion`).
-    fn mob_speed(&self, index: usize) -> Vec3 {
+    pub(in crate::game) fn mob_speed(&self, index: usize) -> Vec3 {
         let mut mob = &self.mobs[index];
         while let Some(vehicle) = mob
             .extra
@@ -86,7 +90,7 @@ impl Game<'_> {
 
     /// `Level.clip` with COLLIDER shapes and no fluids: where the segment
     /// first meets a block, if it does (tall grass lets a stab through).
-    fn clip_collider(&self, from: Vec3, to: Vec3) -> Option<Vec3> {
+    pub(in crate::game) fn clip_collider(&self, from: Vec3, to: Vec3) -> Option<Vec3> {
         let mut scene = SceneCollisions {
             world: &self.world,
             binding: self.collision,
@@ -118,7 +122,12 @@ impl Game<'_> {
 
     /// `ProjectileUtil.getHitEntitiesAlong` with the spear's `AttackRange`:
     /// the mobs and the other players along the view, nearest first.
-    fn stab_targets(&self, eye: Vec3, look: Vec3, movement: Vec3) -> Vec<Target> {
+    pub(in crate::game) fn stab_targets(
+        &self,
+        eye: Vec3,
+        look: Vec3,
+        movement: Vec3,
+    ) -> Vec<Target> {
         // AttackRange.effectiveMinRange and effectiveMaxRange for a player.
         let (min, max) = if self.creative {
             (REACH.min_creative, REACH.max_creative)
@@ -243,7 +252,7 @@ impl Game<'_> {
     }
 
     /// `Player.stabAttack` on the mob at `index`: whether it was affected.
-    fn stab_mob(
+    pub(in crate::game) fn stab_mob(
         &mut self,
         index: usize,
         base_damage: f32,
@@ -371,41 +380,6 @@ impl Game<'_> {
         true
     }
 
-    /// `Player.damageStatsAndHearts`: the damage dealt statistic, and the
-    /// damage indicator particles over a target that lost more than 2 health
-    /// (`feet` and `height`: the target's).
-    pub(in crate::game) fn damage_stats_and_hearts(
-        &mut self,
-        actual: f32,
-        feet: [f64; 3],
-        height: f64,
-    ) {
-        self.award_custom_stat("damage_dealt", (actual * 10.0).round() as i32);
-        if actual > 2.0 {
-            let indicator = sunrise_client::particles::ParticleOptions::simple(
-                sunrise_client::particles::ParticleType::DamageIndicator,
-            );
-            self.particles.0.send_particles(
-                &indicator,
-                [feet[0], feet[1] + height * 0.5, feet[2]],
-                [0.1, 0.0, 0.1],
-                0.2,
-                (actual * 0.5) as u32,
-            );
-            // The players a server serves are sent them too (the window of the server thread).
-            self.lan_send_particles(super::lan_particles::QueuedParticle {
-                dimension: self.dim.id(),
-                options: indicator,
-                state: None,
-                at: [feet[0], feet[1] + height * 0.5, feet[2]],
-                spread: [0.1, 0.0, 0.1],
-                speed: [0.2; 3],
-                count: (actual * 0.5) as u32 as i32,
-                randomization: 0,
-            });
-        }
-    }
-
     /// `Player.cannotAttackWithItem` for the held item: a spear needs its
     /// `minimum_attack_charge` of 1, counting `tolerance` ticks more than the
     /// `ticker` ticks charged.
@@ -461,14 +435,6 @@ impl Game<'_> {
             self.reset_attack_strength();
         }
         Some(kinetic.attack_sound)
-    }
-
-    /// A sound at the player's feet.
-    pub(in crate::game) fn play_at_feet(&mut self, sound: &str) {
-        if let Some(p) = &self.player {
-            let at = [p.position.x, p.position.y, p.position.z];
-            self.audio.0.play(sound, Some(at), 1.0, 1.0);
-        }
     }
 
     /// `LivingEntity.onKineticHit` for `entity`: the hit feels (the spear

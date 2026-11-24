@@ -1,17 +1,23 @@
 //! Primed TNT (`PrimedTnt`): 80-tick fuse, gravity and drag, explosion of
 //! power 4, `TntRenderer` swell and white flash, and `TntBlock.useItemOn`
 //! (flint and steel / fire charge).
+#[allow(unused_imports)]
 use super::{Game, entity::Entity};
+#[allow(unused_imports)]
 use sunrise_client::entity_rules::EntityRules;
+#[allow(unused_imports)]
 use sunrise_client::lan::playerdata::uuid_ints;
+#[allow(unused_imports)]
 use sunrise_client::{
     Result, collisions::SceneCollisions, items::ItemStack, mesher::Vertex, mobs::Who, text::Text,
 };
+#[allow(unused_imports)]
 use sunrise_core::{
     geometry::{Aabb, Vec3},
     position::BlockPos,
     random::RandomSource,
 };
+#[allow(unused_imports)]
 use sunrise_world::level::flags as level_flags;
 
 #[derive(Clone, Debug)]
@@ -223,7 +229,7 @@ impl PrimedTnt {
         self.finish_tick(motion, assets, fluids, recorded.then_some(movement.wanted))
     }
 
-    fn move_before_fall(
+    pub(in crate::game) fn move_before_fall(
         &mut self,
         motion: sunrise_client::motion::BodyMotion<'_>,
         border: Option<&sunrise_core::geometry::border::BorderGeometry>,
@@ -309,7 +315,7 @@ impl PrimedTnt {
         )
     }
 
-    fn move_restitution(
+    pub(in crate::game) fn move_restitution(
         &self,
         motion: sunrise_client::motion::BodyMotion<'_>,
         movement: sunrise_client::motion::BodyMove,
@@ -324,7 +330,7 @@ impl PrimedTnt {
         )
     }
 
-    fn finish_tick(
+    pub(in crate::game) fn finish_tick(
         &mut self,
         motion: sunrise_client::motion::BodyMotion<'_>,
         assets: &sunrise_client::assets::Assets,
@@ -390,38 +396,6 @@ impl Game<'_> {
             let flags = level_flags::UPDATE_CLIENTS | level_flags::UPDATE_SKIP_ON_PLACE;
             self.with_level(|b, level, ticks| b.set_block(level, ticks, pos, tnt, flags));
         }
-    }
-    /// `new PrimedTnt(level, x + 0.5, y, z + 0.5, owner)`; `short` applies
-    /// `wasExploded`'s random short fuse. Plays `entity.tnt.primed` for primes.
-    pub(in crate::game) fn spawn_primed_tnt(
-        &mut self,
-        pos: BlockPos,
-        short: bool,
-        owner: Option<Who>,
-        guest: Option<u32>,
-    ) {
-        // PrimedTnt: the fuse is lit.
-        let who = self.sculk_actor();
-        self.post_block_game_event("minecraft:prime_fuse", [pos.x, pos.y, pos.z], who, None);
-        let r = &mut self.world.random;
-        let rot = r.next_double() * f64::from(std::f32::consts::TAU);
-        let fuse = if short {
-            // PrimedTnt.getRandomShortFuse
-            r.next_int_bound(20).unwrap_or(0) + 10
-        } else {
-            self.audio.0.play(
-                "minecraft:entity.tnt.primed",
-                Some([
-                    f64::from(pos.x) + 0.5,
-                    f64::from(pos.y),
-                    f64::from(pos.z) + 0.5,
-                ]),
-                1.0,
-                1.0,
-            );
-            80
-        };
-        self.add_primed_tnt(pos, rot, fuse, owner, guest);
     }
     /// Adds primed TNT at the block's bottom centre, pushed along `rot`.
     pub(in crate::game) fn add_primed_tnt(
@@ -678,7 +652,11 @@ impl Game<'_> {
         )
     }
     /// `EntityReference.of(owner)`: the UUID of the player or mob that lit it.
-    fn tnt_owner_uuid(&mut self, owner: Option<Who>, guest: Option<u32>) -> Option<[i32; 4]> {
+    pub(in crate::game) fn tnt_owner_uuid(
+        &mut self,
+        owner: Option<Who>,
+        guest: Option<u32>,
+    ) -> Option<[i32; 4]> {
         match owner? {
             Who::Player => match guest {
                 Some(conn) => self
@@ -695,7 +673,7 @@ impl Game<'_> {
     }
     /// `PrimedTnt.getOwner` for the TNT `id` whose own owner is `owner`: else
     /// the one it was loaded with.
-    fn tnt_owner(
+    pub(in crate::game) fn tnt_owner(
         &self,
         id: u32,
         owner: Option<Who>,
@@ -754,7 +732,7 @@ impl Game<'_> {
     }
     /// `PrimedTnt.getOwner` for TNT loaded with an `owner`: looked up when
     /// asked, so a player who joined or a mob loaded since is found.
-    fn loaded_tnt_owner(&self, id: u32) -> Option<(Who, Option<u32>)> {
+    pub(in crate::game) fn loaded_tnt_owner(&self, id: u32) -> Option<(Who, Option<u32>)> {
         let uuid = sunrise_client::entity_nbt::tnt_owner(self.persist.raw.get(&id)?)?;
         let guest = self.lan.as_ref().and_then(|host| {
             let mut guests = host.hub.guests.iter();
@@ -1044,7 +1022,7 @@ impl Game<'_> {
 
 /// `PrimedTnt.getOwner` as the blast's causing entity: the player, or a mob
 /// that is still in the level (null once it is gone).
-fn tnt_blast_owner(
+pub(in crate::game) fn tnt_blast_owner(
     owner: Option<Who>,
     player: impl FnOnce() -> Option<(u32, Text)>,
     mob_name: impl Fn(u32) -> Option<Text>,
@@ -1055,7 +1033,7 @@ fn tnt_blast_owner(
     }
 }
 
-fn tnt_seat(tnt: Vec3, rider_offset: f64) -> Vec3 {
+pub(in crate::game) fn tnt_seat(tnt: Vec3, rider_offset: f64) -> Vec3 {
     Vec3::new(tnt.x, tnt.y + PrimedTnt::SIZE - rider_offset, tnt.z)
 }
 
@@ -1066,6 +1044,7 @@ pub(in crate::game) fn tnt_general_seat(tnt: Vec3) -> Vec3 {
 
 #[cfg(test)]
 pub(in crate::game) mod tests {
+    #[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -1735,7 +1714,7 @@ pub(in crate::game) mod tests {
 
     /// A server's game on the prepared resources with the chunk at the origin
     /// loaded, as `native_machines`' tests make one; None without them.
-    fn server_game<'a>(
+    pub(in crate::game) fn server_game<'a>(
         resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>,
     ) -> Option<Box<Game<'a>>> {
         use crate::game::*;
@@ -1862,76 +1841,8 @@ pub(in crate::game) mod tests {
         run_portal_blast_sulfur_cube_uses_only_positive_cooldown();
     }
 
-    pub(in crate::game) fn run_portal_blast_sulfur_cube_uses_only_positive_cooldown() {
-        use sunrise_client::mobs::Mob;
-        use sunrise_client::nether_portal::PortalState;
-        let mut resources = None;
-        let mut game = server_game(&mut resources).expect("set SUNRISE_TEST_RESOURCES");
-        let portal = game
-            .pack
-            .assets
-            .registry
-            .default_state("minecraft:nether_portal")
-            .unwrap();
-        for (cooldown, silent) in [
-            (1, false),
-            (1, true),
-            (0, false),
-            (0, true),
-            (-1, false),
-            (-1, true),
-        ] {
-            game.world.set(8, 64, 8, portal).unwrap();
-            let kind = game
-                .res
-                .mob_types()
-                .get("minecraft:sulfur_cube")
-                .unwrap()
-                .clone();
-            let mut cube = Mob::new(9123, kind, Vec3::new(8.5, 64.0, 8.5), 0.0);
-            cube.silent = silent;
-            cube.extra.set_body(Some("minecraft:tnt".into()));
-            // Fuse 1: explodes on this tick.
-            cube.extra.sulfur_fuse = sunrise_client::mobs::sulfur_cube::Fuse::set(1);
-            game.mobs.push(cube);
-            game.portals.entities.insert(
-                9123,
-                PortalState {
-                    cooldown,
-                    process: None,
-                },
-            );
-            // The actual level tick orders the portal pass before the mob pass.
-            game.audio.0.heard.clear();
-            game.handle_entity_portals();
-            game.tick_creatures().unwrap();
-            assert_eq!(
-                game.world.block(8, 64, 8) == portal,
-                cooldown > 0,
-                "cooldown {cooldown}, Silent={silent}"
-            );
-            assert_eq!(
-                game.audio
-                    .0
-                    .heard
-                    .get("minecraft:entity.generic.explode")
-                    .copied()
-                    .unwrap_or(0),
-                u32::from(!silent),
-                "cooldown {cooldown}, Silent={silent}"
-            );
-        }
-        // An unrelated native/sourceless blast never inherits the cube's calculator.
-        game.world.set(8, 64, 8, portal).unwrap();
-        game.server_explode(
-            [8.5, 64.0625, 8.5],
-            4.0,
-            super::super::explosion::BlockInteraction::Destroy,
-            false,
-        )
-        .unwrap();
-        assert_ne!(game.world.block(8, 64, 8), portal);
-    }
+    #[allow(unused_imports)]
+    pub(in crate::game) use crate::game::client_side::tnt_client::tests::run_portal_blast_sulfur_cube_uses_only_positive_cooldown;
 
     #[test]
     #[ignore = "daily"]
@@ -2126,62 +2037,8 @@ pub(in crate::game) mod tests {
         run_silent_tnt_keeps_the_blast_without_its_sound();
     }
 
-    pub(in crate::game) fn run_silent_tnt_keeps_the_blast_without_its_sound() {
-        on_big_stack(|| {
-            let mut resources = None;
-            let Some(mut game) = source_silence_game(&mut resources) else {
-                return;
-            };
-            let mut rows = Vec::new();
-            for silent in [false, true, false] {
-                let glass = game
-                    .pack
-                    .assets
-                    .registry
-                    .default_state("minecraft:glass")
-                    .unwrap();
-                game.world.set(8, 64, 8, glass).unwrap();
-                game.audio.0.heard.clear();
-                game.add_primed_tnt(BlockPos::new(8, 64, 8), 0.0, 1, None, None);
-                game.tnts[0].no_gravity = true;
-                game.tnts[0].velocity = Vec3::ZERO;
-                let id = game.tnts[0].id;
-                set_silent(&mut game, id, silent);
-                let before = particle_count(&game);
-                game.tick_one_tnt(0, &[]).unwrap();
-                rows.push(format!(
-                    "explosion {silent} {} {}",
-                    particle_count(&game) > before,
-                    sound_count(&game, "minecraft:entity.generic.explode") != 0
-                ));
-                assert!(game.tnts.is_empty(), "the fuse still expires");
-                assert!(
-                    game.res.facts().is_air(game.world.block(8, 64, 8)),
-                    "silence keeps block destruction"
-                );
-                assert!(particle_count(&game) > before, "the blast remains visible");
-                assert_eq!(
-                    sound_count(&game, "minecraft:entity.generic.explode"),
-                    u32::from(!silent),
-                    "direct source Silent={silent}"
-                );
-                game.audio.0.heard.clear();
-                game.server_explode(
-                    [8.5, 64.0, 8.5],
-                    0.0,
-                    super::super::explosion::BlockInteraction::Keep,
-                    false,
-                )
-                .unwrap();
-                assert_eq!(
-                    game.audio.0.heard.get("minecraft:entity.generic.explode"),
-                    Some(&1),
-                    "a source-free blast stays audible"
-                );
-            }
-            write_silence_output("explosion", &rows);
-        });
-    }
+    #[allow(unused_imports)]
+    pub(in crate::game) use crate::game::client_side::tnt_client::tests::run_silent_tnt_keeps_the_blast_without_its_sound;
 
     #[test]
     #[ignore = "daily"]
@@ -2189,65 +2046,10 @@ pub(in crate::game) mod tests {
         run_silent_potions_keep_the_splash_without_its_sound();
     }
 
-    pub(in crate::game) fn run_silent_potions_keep_the_splash_without_its_sound() {
-        on_big_stack(|| {
-            use sunrise_client::projectiles::{Hit, Projectile, ProjectileKind};
-            let mut resources = None;
-            let Some(mut game) = source_silence_game(&mut resources) else {
-                return;
-            };
-            let mut rows = Vec::new();
-            for kind in ["splash_potion", "lingering_potion"] {
-                for potion in ["awkward", "swiftness", "healing"] {
-                    for silent in [false, true] {
-                        game.audio.0.heard.clear();
-                        let stack = ItemStack::new(&format!("minecraft:{kind}"), 1)
-                            .with_potion(&format!("minecraft:{potion}"));
-                        let mut projectile = Projectile::new(
-                            ProjectileKind::potion(stack),
-                            Vec3::new(8.5, 64.0, 8.5),
-                            None,
-                        );
-                        projectile.id = game.take_entity_id();
-                        set_silent(&mut game, projectile.id, silent);
-                        let before = particle_count(&game);
-                        let clouds = game.breath_clouds.len();
-                        game.projectile_hit(
-                            &projectile,
-                            Hit::Block {
-                                pos: [8, 63, 8],
-                                at: projectile.position,
-                                face: [0, 1, 0],
-                            },
-                        )
-                        .unwrap();
-                        rows.push(format!(
-                            "{kind} {potion} {silent} {} {}",
-                            particle_count(&game) > before,
-                            sound_count(&game, "minecraft:entity.splash_potion.break") != 0
-                        ));
-                        assert!(
-                            particle_count(&game) > before,
-                            "{kind} {potion} Silent={silent}: visible splash"
-                        );
-                        assert_eq!(
-                            sound_count(&game, "minecraft:entity.splash_potion.break"),
-                            u32::from(!silent),
-                            "{kind} {potion} Silent={silent}"
-                        );
-                        assert_eq!(
-                            game.breath_clouds.len() - clouds,
-                            usize::from(kind == "lingering_potion" && potion != "awkward"),
-                            "silence leaves the lingering cloud intact"
-                        );
-                    }
-                }
-            }
-            write_silence_output("potions", &rows);
-        });
-    }
+    #[allow(unused_imports)]
+    pub(in crate::game) use crate::game::client_side::tnt_client::tests::run_silent_potions_keep_the_splash_without_its_sound;
 
-    fn write_silence_output(name: &str, rows: &[String]) {
+    pub(in crate::game) fn write_silence_output(name: &str, rows: &[String]) {
         if let Some(root) = std::env::var_os("SUNRISE_SOURCE_SILENCE_OUTPUT") {
             std::fs::write(
                 std::path::Path::new(&root).join(format!("{name}.txt")),
@@ -2263,40 +2065,8 @@ pub(in crate::game) mod tests {
         run_silent_creeper_keeps_the_blast_after_its_source_is_removed();
     }
 
-    pub(in crate::game) fn run_silent_creeper_keeps_the_blast_after_its_source_is_removed() {
-        on_big_stack(|| {
-            let mut resources = None;
-            let Some(mut game) = source_silence_game(&mut resources) else {
-                return;
-            };
-            for silent in [false, true, false] {
-                let id = game
-                    .spawn_mob(
-                        "minecraft:creeper",
-                        [8.5, 64.0, 8.5],
-                        true,
-                        super::super::creatures::SpawnSite::Plain,
-                    )
-                    .unwrap();
-                let mob = game.mobs.iter_mut().find(|m| m.id == id).unwrap();
-                mob.silent = silent;
-                mob.swell = mob.max_swell;
-                mob.extra.flag = true;
-                let mut events = Vec::new();
-                sunrise_client::mobs::hostile::creeper_tick(mob, &mut events);
-                assert!(mob.removed);
-                game.mobs.retain(|m| m.id != id);
-                game.audio.0.heard.clear();
-                let particles = particle_count(&game);
-                game.handle_mob_events(events).unwrap();
-                assert!(particle_count(&game) > particles);
-                assert_eq!(
-                    sound_count(&game, "minecraft:entity.generic.explode"),
-                    u32::from(!silent)
-                );
-            }
-        });
-    }
+    #[allow(unused_imports)]
+    pub(in crate::game) use crate::game::client_side::tnt_client::tests::run_silent_creeper_keeps_the_blast_after_its_source_is_removed;
 
     #[test]
     #[ignore = "daily"]
@@ -2304,55 +2074,8 @@ pub(in crate::game) mod tests {
         run_silent_launched_potions_and_bottles_keep_their_impact();
     }
 
-    pub(in crate::game) fn run_silent_launched_potions_and_bottles_keep_their_impact() {
-        on_big_stack(|| {
-            let mut resources = None;
-            let Some(mut game) = source_silence_game(&mut resources) else {
-                return;
-            };
-            let stone = game
-                .pack
-                .assets
-                .registry
-                .default_state("minecraft:stone")
-                .unwrap();
-            game.world.set(8, 63, 8, stone).unwrap();
-            for kind in ["splash_potion", "lingering_potion", "experience_bottle"] {
-                for silent in [false, true, false] {
-                    let mut shot = crate::game::potions::thrown_projectile(
-                        ItemStack::new(&format!("minecraft:{kind}"), 1)
-                            .with_potion("minecraft:swiftness"),
-                        Vec3::new(8.5, 64.1, 8.5),
-                        false,
-                    );
-                    shot.velocity = Vec3::new(0.0, -1.0, 0.0);
-                    game.add_projectile(shot);
-                    let id = game.creatures.projectiles.last().unwrap().id;
-                    set_silent(&mut game, id, silent);
-                    game.audio.0.heard.clear();
-                    let particles = particle_count(&game);
-                    let clouds = game.breath_clouds.len();
-                    let xp: u32 = game.orbs.iter().map(|o| o.points() * o.count).sum();
-                    game.tick_creature_entities().unwrap();
-                    assert!(!game.creatures.projectiles.iter().any(|p| p.id == id));
-                    assert!(particle_count(&game) > particles, "{kind} keeps its splash");
-                    assert_eq!(
-                        sound_count(&game, "minecraft:entity.splash_potion.break"),
-                        u32::from(!silent),
-                        "{kind} Silent={silent}"
-                    );
-                    assert_eq!(
-                        game.breath_clouds.len() - clouds,
-                        usize::from(kind == "lingering_potion")
-                    );
-                    let gained = game.orbs.iter().map(|o| o.points() * o.count).sum::<u32>() - xp;
-                    if kind == "experience_bottle" {
-                        assert!((3..=11).contains(&gained), "silence keeps the experience");
-                    }
-                }
-            }
-        });
-    }
+    #[allow(unused_imports)]
+    pub(in crate::game) use crate::game::client_side::tnt_client::tests::run_silent_launched_potions_and_bottles_keep_their_impact;
 
     /// #13201: a dispensed potion or bottle is a level entity
     /// (`ProjectileDispenseBehavior` → `Projectile.spawnProjectileUsingShoot`
@@ -2397,7 +2120,7 @@ pub(in crate::game) mod tests {
         }
     }
 
-    fn set_silent(game: &mut Game<'_>, id: u32, silent: bool) {
+    pub(in crate::game) fn set_silent(game: &mut Game<'_>, id: u32, silent: bool) {
         game.remember_tags(
             id,
             &sunrise_core::nbt::Tag::Compound(
@@ -2411,9 +2134,8 @@ pub(in crate::game) mod tests {
         );
     }
 
-    fn sound_count(game: &Game<'_>, event: &str) -> u32 {
-        game.audio.0.heard.get(event).copied().unwrap_or(0)
-    }
+    #[allow(unused_imports)]
+    pub(in crate::game) use crate::game::client_side::tnt_client::tests::sound_count;
 
     #[test]
     #[ignore = "daily"]
@@ -2476,7 +2198,7 @@ pub(in crate::game) mod tests {
     /// Runs `test` on a thread with an 8 MiB stack. A Game's explosion and potion-impact paths
     /// need more than the 2 MiB test thread in a Windows debug build, where those tests
     /// overflowed it (4 MiB is enough).
-    fn on_big_stack(test: impl FnOnce() + Send + 'static) {
+    pub(in crate::game) fn on_big_stack(test: impl FnOnce() + Send + 'static) {
         let thread = std::thread::Builder::new()
             .stack_size(8 << 20)
             .spawn(test)
@@ -2486,18 +2208,11 @@ pub(in crate::game) mod tests {
         }
     }
 
-    fn source_silence_game(
-        resources: &mut Option<std::sync::Arc<crate::game::Resources>>,
-    ) -> Option<Box<Game<'_>>> {
-        let mut game = server_game(resources)?;
-        // Observe the server's real emission requests without a camera or render tick.
-        game.particles.0.requested = Some(Vec::new());
-        Some(game)
-    }
+    #[allow(unused_imports)]
+    pub(in crate::game) use crate::game::client_side::tnt_client::tests::source_silence_game;
 
-    fn particle_count(game: &Game<'_>) -> usize {
-        game.particles.0.requested.as_ref().unwrap().len()
-    }
+    #[allow(unused_imports)]
+    pub(in crate::game) use crate::game::client_side::tnt_client::tests::particle_count;
 
     /// #10063: TNT lit between level ticks (flint and steel, a command) has its
     /// first tick in the next level tick, so its fuse reads 79 after it, and it
@@ -2577,7 +2292,7 @@ sunrise_client::impl_joined!(PrimedTnt);
 sunrise_mod_runtime::impl_attachment_lifetime!(PrimedTnt);
 
 #[cfg(test)]
-mod entity_collision_tests {
+pub(in crate::game) mod entity_collision_tests {
     use std::sync::Arc;
     use sunrise_client::chunk::Chunk;
     use sunrise_core::position::ChunkPos;

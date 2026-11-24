@@ -5,7 +5,7 @@ use super::*;
 
 /// The renderer's view of an API page: its title, tabs, selected tab and recipes, none of them cut
 /// yet (`RecipePage::new` cuts them). `None` is no recipes, which shows the items again.
-pub(super) fn page_views(
+pub(in crate::game) fn page_views(
     page: Option<mod_api::RecipePage>,
 ) -> (String, Vec<mod_api::Stack>, u32, Vec<NativeRecipeView>) {
     let Some(page) = page else {

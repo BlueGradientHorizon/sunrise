@@ -1,90 +1,6 @@
 //! Core gameplay regression tests.
+#[allow(unused_imports)]
 use mod_api::ServerHost;
-#[test]
-#[ignore = "daily"]
-fn reload_resolves_parts_against_reloaded_tags() {
-    use mod_api::{self, BlockPart, DataPackFilesEvent, Hooks, Registrar};
-    struct TagPart;
-    #[mod_api::sunrise_part]
-    impl BlockPart for TagPart {
-        fn analog_output(
-            &self,
-            _: &mut dyn mod_api::LevelRandomHost,
-            _: &mut mod_api::AnalogOutputEvent,
-        ) {
-        }
-    }
-    struct ReloadMod;
-    #[mod_api::__subscriptions]
-    impl Hooks for ReloadMod {
-        fn register(&self, registrar: &mut dyn Registrar, _: &mod_api::RegistrationContext) {
-            registrar.block_part_tag("test:reload", TagPart);
-        }
-        fn data_pack_files(&self, _: &mut dyn ServerHost, event: &mut DataPackFilesEvent<'_>) {
-            event.files.push((
-                "tags/test:block/reload".into(),
-                br#"{"values":["minecraft:stone"]}"#.to_vec(),
-            ));
-        }
-    }
-    let mods: mod_api::Mods = vec![mod_api::ModEntry::new("reload", Box::new(ReloadMod))].into();
-    crate::game::api_values::install_parts(&mods).unwrap();
-    mod_platform::__private::install(mods);
-    super::native_entity_refs::tests::with_game(|game| {
-        let stone_key = mod_platform::__private::part_tests::block_key("stone");
-        let name = stone_key.id(game).expect("stone is registered").to_owned();
-        let dir = std::env::temp_dir().join(format!("sunrise-key-tags-{}", std::process::id()));
-        game.session_lock.0 = Some(sunrise_client::save::SessionLock::acquire(&dir).unwrap());
-        assert_eq!(game.block_in_tag(stone_key, "test:reload"), Some(false));
-        assert_eq!(
-            game.block_in_tag(stone_key, "base_stone_overworld"),
-            Some(true)
-        );
-        game.load_server_loot();
-        let stack = super::functions::pack_stack(
-            &game.server.world_root,
-            &game.options.resources,
-            &game.pack.data_source,
-            &game.pack.data_changes,
-            game.cmds.0.vanilla_disabled,
-            &game.level.enabled_features,
-            &game.pack.additional_data,
-        );
-        let root = game.options.resources.clone();
-        let previous = std::sync::Arc::new(mod_api::DatapackRegistrySet::from_candidate(
-            mod_api::DatapackCandidate::build(&[], &[]).unwrap(),
-        ));
-        sunrise_client::datapack_net::serve(Some(previous.clone()));
-        let prepared = game.prepare_world_reload(&stack, &root).unwrap();
-        // Preparation must not publish to joining clients.
-        assert!(std::sync::Arc::ptr_eq(
-            &previous,
-            &sunrise_client::datapack_net::served().unwrap(),
-        ));
-        game.install_world_tables(prepared);
-        // A successful empty publication clears the previous world's served registries too.
-        assert!(sunrise_client::datapack_net::served().is_none());
-        game.run_native_advancement_grants();
-        assert_eq!(stone_key.id(game), Some(name.as_str()));
-        assert_eq!(
-            stone_key,
-            mod_platform::__private::part_tests::block_key("minecraft:stone")
-        );
-        assert_eq!(game.block_in_tag(stone_key, "test:reload"), Some(true));
-        assert_eq!(game.block_in_tag(stone_key, "minecraft:logs"), Some(false));
-        assert_eq!(
-            game.block_in_tag(stone_key, "base_stone_overworld"),
-            Some(true)
-        );
-        let stone = game.block_state_default(stone_key).unwrap();
-        assert!(api_values::block_state::block_listens(
-            mod_api::HookId::AnalogOutput,
-            stone
-        ));
-        game.session_lock.0 = None;
-        let _ = std::fs::remove_dir_all(dir);
-    });
-}
 #[test]
 #[ignore = "daily"]
 fn client_option_snapshots_follow_settings() {
@@ -174,31 +90,10 @@ fn weather_follows_the_dimension_type_not_the_id() {
     assert!(!w(true, false, true)); // the End is named by id
 }
 
+#[allow(unused_imports)]
 use super::*;
+#[allow(unused_imports)]
 use sunrise_client::container_screen::{Button, Clicks, Release, Target};
-
-#[test]
-#[ignore = "daily"]
-fn client_modifier_snapshot_tracks_focus_loss() {
-    use mod_api::ClientHost;
-    use winit::{event_loop::ControlFlow, keyboard::ModifiersState};
-    struct TestLoop;
-    impl EventLoopCtl for TestLoop {
-        fn exit(&self) {}
-        fn set_control_flow(&self, _: ControlFlow) {}
-    }
-    super::native_entity_refs::tests::with_client_game(|game| {
-        game.client.modifiers = ModifiersState::SHIFT | ModifiersState::ALT;
-        let snapshot = (game as &dyn ClientHost).modifiers();
-        assert!(snapshot.shift());
-        assert!(snapshot.alt());
-        assert!(!snapshot.control());
-        assert!(!snapshot.super_key());
-        game.handle_window_event_inner(&TestLoop, WindowEvent::Focused(false), None, None);
-        assert_eq!((game as &dyn ClientHost).modifiers().bits, 0);
-        assert_eq!(snapshot.bits, 5);
-    });
-}
 
 #[test]
 #[ignore = "daily"]
@@ -209,90 +104,8 @@ fn blank_inventory_presses_are_handled_and_feed_double_click_history() {
     );
 }
 
-fn exercise_blank_inventory_presses() {
-    use mod_api::{ClientHost, Hooks, ModEntry, ScreenMouseButtonPressedPostEvent};
-    use std::sync::Mutex;
-    use winit::{event::DeviceId, event_loop::ControlFlow};
-
-    struct TestLoop;
-    impl EventLoopCtl for TestLoop {
-        fn exit(&self) {}
-        fn set_control_flow(&self, _: ControlFlow) {}
-    }
-    type Post = (&'static str, bool, bool);
-    struct Observer(Arc<Mutex<Vec<Post>>>);
-    #[mod_api::__subscriptions]
-    impl Hooks for Observer {
-        fn screen_mouse_button_pressed_post(
-            &self,
-            _: &dyn ClientHost,
-            event: &mut ScreenMouseButtonPressedPostEvent<'_>,
-        ) {
-            self.0.lock().unwrap().push((
-                event.screen.id,
-                event.was_click_handled,
-                event.double_click,
-            ));
-        }
-    }
-
-    let posts = Arc::new(Mutex::new(Vec::new()));
-    mod_platform::testing::with_mods(
-        vec![ModEntry::new(
-            "inventory_clicks",
-            Box::new(Observer(posts.clone())),
-        )]
-        .into(),
-        || {
-            super::native_entity_refs::tests::with_client_game(|game| {
-                let _window = super::native_hooks::particle_count_tests::frame_scene(game);
-                let mut millis = 0;
-                for (screen, id) in [
-                    (Screen::Inventory, "inventory"),
-                    (Screen::Creative, "creative"),
-                ] {
-                    game.set_screen(screen);
-                    let renderer = game.renderer.0.as_ref().unwrap();
-                    let batch = HudBatch::new(
-                        [renderer.config.width, renderer.config.height],
-                        game.settings.gui_scale_inputs(),
-                    );
-                    let (x, y) = game.inventory_origin(&batch);
-                    game.client.cursor = (x + 3.0, y + 3.0);
-                    assert_eq!(game.inventory_target(), (None, false));
-                    for button in [
-                        MouseButton::Left,
-                        MouseButton::Right,
-                        MouseButton::Middle,
-                        MouseButton::Other(300),
-                    ] {
-                        for state in [ElementState::Pressed, ElementState::Released].repeat(2) {
-                            let timestamp = (state == ElementState::Pressed).then(|| {
-                                millis += 100;
-                                millis
-                            });
-                            game.handle_window_event_inner(
-                                &TestLoop,
-                                WindowEvent::MouseInput {
-                                    device_id: DeviceId::dummy(),
-                                    state,
-                                    button,
-                                },
-                                None,
-                                timestamp,
-                            );
-                        }
-                        assert_eq!(
-                            std::mem::take(&mut *posts.lock().unwrap()),
-                            [(id, true, false), (id, true, true)],
-                            "{id} with {button:?}",
-                        );
-                    }
-                }
-            });
-        },
-    );
-}
+#[allow(unused_imports)]
+pub(in crate::game) use crate::game::client_side::core_tests_client::exercise_blank_inventory_presses;
 
 /// `ClipContext.Block.OUTLINE` for the SOURCE_ONLY ray (#8180): a ray
 /// through the empty part of a torch's cell is not stopped by it.
@@ -310,198 +123,6 @@ fn the_fluid_ray_passes_through_the_hollow_of_a_torch() {
         .expect("the pillar stops the ray");
     assert_eq!(hit.face, [0, 0, -1]);
     assert!((hit.point[2] - 0.4375).abs() < 1e-9);
-}
-
-#[test]
-#[ignore = "daily"]
-fn right_click_block_controls_cauldron_use() {
-    use mod_api::{self, BlockUpdateFlags, Flow, Hooks, RightClickBlockEvent, TriState};
-    use std::sync::{
-        Arc,
-        atomic::{AtomicBool, AtomicUsize, Ordering},
-    };
-    struct Observer(Arc<AtomicBool>, Arc<AtomicBool>, Arc<AtomicUsize>);
-    #[mod_api::__subscriptions]
-    impl Hooks for Observer {
-        fn right_click_block(
-            &self,
-            _: mod_api::HostSide,
-            event: &mut RightClickBlockEvent<'_>,
-        ) -> Flow {
-            self.2.fetch_add(1, Ordering::SeqCst);
-            if self.1.load(Ordering::SeqCst) {
-                return Flow::Cancel;
-            }
-            *event.use_block = if self.0.load(Ordering::SeqCst) {
-                TriState::True
-            } else {
-                TriState::False
-            };
-            *event.use_item = TriState::False;
-            Flow::Continue
-        }
-    }
-    let allowed = Arc::new(AtomicBool::new(false));
-    let cancel = Arc::new(AtomicBool::new(false));
-    let calls = Arc::new(AtomicUsize::new(0));
-    let mods: mod_api::Mods = Arc::from([mod_api::ModEntry::new(
-        "right-click-observer",
-        Box::new(Observer(allowed.clone(), cancel.clone(), calls.clone())),
-    )]);
-    mod_platform::__private::install(mods);
-    super::native_entity_refs::tests::with_game(|game| {
-        game.options.dedicated = Some(Vec::new());
-        game.world
-            .chunks
-            .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
-        let level = game.level("minecraft:overworld").unwrap();
-        let empty = game
-            .pack
-            .assets
-            .registry
-            .default_state("minecraft:cauldron")
-            .unwrap();
-        assert_eq!(
-            game.level_set_block(level, [0, 64, 0], empty, BlockUpdateFlags::NEIGHBORS),
-            Ok(true)
-        );
-        game.inventory[game.selected] = Some(ItemStack::new("minecraft:water_bucket", 1));
-        let hit = Hit {
-            pos: [0, 64, 0],
-            face: [0, 1, 0],
-            point: [0.5, 65.0, 0.5],
-            inside: false,
-        };
-        game.use_hand(Some(&hit)).unwrap();
-        assert_eq!(game.world.block(0, 64, 0), empty);
-        allowed.store(true, Ordering::SeqCst);
-        game.use_hand(Some(&hit)).unwrap();
-        assert_ne!(game.world.block(0, 64, 0), empty);
-        assert_eq!(
-            game.level_set_block(level, hit.pos, empty, BlockUpdateFlags::NEIGHBORS),
-            Ok(true)
-        );
-        game.inventory[game.selected] = Some(ItemStack::new("minecraft:water_bucket", 1));
-        game.insert_device_key(KeyCode::ShiftLeft);
-        game.use_hand(Some(&hit)).unwrap();
-        assert_ne!(game.world.block(0, 64, 0), empty);
-        game.remove_device_key(&KeyCode::ShiftLeft);
-
-        let campfire = game
-            .pack
-            .assets
-            .registry
-            .default_state("minecraft:campfire")
-            .unwrap();
-        assert_eq!(
-            game.level_set_block(level, hit.pos, campfire, BlockUpdateFlags::NEIGHBORS),
-            Ok(true)
-        );
-        let entity = game.new_block_entity("minecraft:campfire").unwrap();
-        game.world.block_entities.insert((0, 64, 0), entity);
-        game.inventory[game.selected] = Some(ItemStack::new("minecraft:beef", 2));
-        allowed.store(false, Ordering::SeqCst);
-        game.use_hand(Some(&hit)).unwrap();
-        assert_eq!(game.inventory[game.selected].as_ref().unwrap().count, 2);
-        allowed.store(true, Ordering::SeqCst);
-        game.use_hand(Some(&hit)).unwrap();
-        assert_eq!(game.inventory[game.selected].as_ref().unwrap().count, 1);
-
-        // A canceled click on a fence must not tie the player's mob.
-        let fence = game
-            .pack
-            .assets
-            .registry
-            .default_state("minecraft:oak_fence")
-            .unwrap();
-        assert_eq!(
-            game.level_set_block(level, hit.pos, fence, BlockUpdateFlags::NEIGHBORS),
-            Ok(true)
-        );
-        let kind = game.res.mob_types().get("minecraft:cow").unwrap().clone();
-        let mut mob = sunrise_client::mobs::Mob::new(
-            12,
-            kind,
-            sunrise_core::geometry::Vec3::new(1.0, 64.0, 1.0),
-            0.0,
-        );
-        mob.extra.leash = Some(sunrise_client::mobs::leash::Holder::Player);
-        game.mobs.push(mob);
-        game.inventory[game.selected] = Some(ItemStack::new("minecraft:lead", 1));
-        game.server.guest_use = Some(GuestUse::on_block(Hand::Main));
-        game.server.forced_hit = Some(hit);
-        cancel.store(true, Ordering::SeqCst);
-        let before = calls.load(Ordering::SeqCst);
-        game.use_item_as_player().unwrap();
-        assert_eq!(calls.load(Ordering::SeqCst), before + 1);
-        assert_eq!(
-            game.mobs.last().unwrap().extra.leash,
-            Some(sunrise_client::mobs::leash::Holder::Player)
-        );
-
-        // A spectator's packet reaches the event, even when canceled.
-        game.set_mode_id(3);
-        game.server.guest_use = Some(GuestUse::on_block(Hand::Main));
-        game.server.forced_hit = Some(hit);
-        cancel.store(true, Ordering::SeqCst);
-        let before = calls.load(Ordering::SeqCst);
-        game.use_item_as_player().unwrap();
-        assert_eq!(calls.load(Ordering::SeqCst), before + 1);
-    });
-}
-
-#[test]
-#[ignore = "daily"]
-fn fence_ties_without_a_lead_only_on_main_hand() {
-    use mod_api::BlockUpdateFlags;
-    use sunrise_client::mobs::leash::Holder;
-    super::native_entity_refs::tests::with_game(|game| {
-        game.options.dedicated = Some(Vec::new());
-        game.world
-            .chunks
-            .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
-        let level = game.level("minecraft:overworld").unwrap();
-        let fence = game
-            .pack
-            .assets
-            .registry
-            .default_state("minecraft:oak_fence")
-            .unwrap();
-        assert_eq!(
-            game.level_set_block(level, [0, 64, 0], fence, BlockUpdateFlags::NEIGHBORS),
-            Ok(true)
-        );
-        let hit = Hit {
-            pos: [0, 64, 0],
-            face: [0, 1, 0],
-            point: [0.5, 65.0, 0.5],
-            inside: false,
-        };
-        let kind = game.res.mob_types().get("minecraft:cow").unwrap().clone();
-        let mut mob = sunrise_client::mobs::Mob::new(
-            12,
-            kind,
-            sunrise_core::geometry::Vec3::new(1.0, 64.0, 1.0),
-            0.0,
-        );
-        mob.extra.leash = Some(Holder::Player);
-        game.mobs.push(mob);
-        game.server.forced_hit = Some(hit);
-        game.server.guest_use = Some(GuestUse::on_block(Hand::Off));
-        game.with_hand(Hand::Off, |game| game.use_hand(Some(&hit)))
-            .unwrap();
-        assert_eq!(game.mobs[0].extra.leash, Some(Holder::Player));
-        game.offhand = Some(ItemStack::new("minecraft:lead", 1));
-        game.with_hand(Hand::Off, |game| game.use_hand(Some(&hit)))
-            .unwrap();
-        assert_eq!(game.mobs[0].extra.leash, Some(Holder::Knot(hit.pos)));
-        game.mobs[0].extra.leash = Some(Holder::Player);
-        game.offhand = None;
-        game.server.guest_use = Some(GuestUse::on_block(Hand::Main));
-        game.with_hand(Hand::Main, |game| game.use_hand(Some(&hit)))
-            .unwrap();
-        assert_eq!(game.mobs[0].extra.leash, Some(Holder::Knot(hit.pos)));
-    });
 }
 
 #[test]
@@ -704,6 +325,7 @@ fn a_snuffed_candle_and_candle_cake_smoke_at_vanillas_offsets() {
     );
 }
 
+#[allow(unused_imports)]
 use sunrise_client::keymapping::{KeyAction, SNEAK, SPRINT, ToggleKeys};
 
 /// A guest's interact packet names its entity and the server keeps it:
@@ -740,7 +362,7 @@ fn an_interact_packet_cannot_name_a_mob_the_pick_would_refuse() {
 }
 
 #[path = "incoming_tests/pet_order.rs"]
-mod pet_order_tests;
+pub(in crate::game) mod pet_order_tests;
 /// The packet's location is `EntityHitResult.getLocation() -
 /// entity.position()`, the point the view ray met the box at measured
 /// from the mob's feet (`MultiPlayerGameMode.interact`). The old fixed
@@ -1315,40 +937,8 @@ fn eager_saves_keep_dirty_order_cooldowns_and_writer_budget() {
     assert_eq!(chosen, [(4, 0)]);
 }
 
-#[test]
-#[ignore = "daily"]
-fn eager_saves_wait_for_an_open_world_and_for_light() {
-    let mut resources = None;
-    let mut game = crate::game::game_tests::tests::server_game(&mut resources);
-    let dir = std::env::temp_dir().join(format!("sunrise-eager-game-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(&dir).unwrap();
-    game.save.0 = Arc::new(sunrise_client::save::SaveDir::new(
-        dir.clone(),
-        sunrise_client::save::LevelShape::OVERWORLD,
-        Some(Default::default()),
-    ));
-    Arc::make_mut(game.world.chunks.get_mut(&(0, 0)).unwrap()).lit = true;
-    game.world
-        .chunks
-        .insert((1, 0), Arc::new(sunrise_client::chunk::Chunk::empty(1, 0)));
-    game.world.modified.extend([(0, 0), (1, 0)]);
-    game.save_chunks_eagerly(); // no world open: nothing to save into
-    assert!(game.world.modified.contains(&(0, 0)));
-    game.server.world_root = dir.clone();
-    game.save_chunks_eagerly();
-    assert!(!game.world.modified.contains(&(0, 0)));
-    assert!(game.world.modified.contains(&(1, 0))); // not lit yet
-    Arc::make_mut(game.world.chunks.get_mut(&(1, 0)).unwrap()).lit = true;
-    game.save_chunks_eagerly(); // still queued: no new dirty transition needed
-    assert!(!game.world.modified.contains(&(1, 0)));
-    game.save.0.flush().unwrap();
-    assert!(dir.join("region/r.0.0.mca").exists());
-    std::fs::remove_dir_all(dir).unwrap();
-}
-
 #[path = "incoming_tests/knot_command_view.rs"]
-mod knot_command_view_tests;
+pub(in crate::game) mod knot_command_view_tests;
 
 #[test]
 fn the_debug_crosshair_gives_way_to_the_radial_menu() {
@@ -1356,7 +946,7 @@ fn the_debug_crosshair_gives_way_to_the_radial_menu() {
 }
 
 /// Wind charges: where they burst, and what their hit deals.
-mod wind_charge_burst_tests {
+pub(in crate::game) mod wind_charge_burst_tests {
     use super::*;
     use crate::game::wind::above_the_top;
     use std::sync::Arc;

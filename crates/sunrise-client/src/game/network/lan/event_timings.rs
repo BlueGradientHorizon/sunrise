@@ -7,7 +7,7 @@ pub use sunrise_gameplay::lan::event_timings::{EventTimings, UseDetail, event_ki
 
 /// Notes how long the event that started at `started` took (`spans::note`), with what it
 /// was about when `Game::event_detail` said.
-pub(super) fn note_event(
+pub(in crate::game) fn note_event(
     host: &LanHost,
     started: Option<(Instant, EventKind, Option<UseDetail>)>,
     timings: &mut EventTimings<(Option<u32>, Option<String>), UseDetail>,
@@ -28,7 +28,7 @@ fn who(host: &LanHost, conn: Option<u32>, name: Option<String>) -> Option<String
 }
 
 /// A burst's note: `213 x UseItemOn under 10 ms each (…); most from Steve: 140 of them, 710.0 ms`.
-pub(super) fn describe_burst(
+pub(in crate::game) fn describe_burst(
     host: &LanHost,
     burst: &Burst<(Option<u32>, Option<String>), UseDetail>,
 ) -> String {
@@ -49,7 +49,7 @@ pub(super) fn describe_burst(
     line
 }
 
-pub(super) fn describe_event(
+pub(in crate::game) fn describe_event(
     host: &LanHost,
     (kind, conn, name): &EventKind,
     detail: Option<&UseDetail>,

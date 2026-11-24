@@ -4,7 +4,9 @@
 //! its next change of state and push the entities an eruption throws up. The
 //! client's draw the gas clouds and the eruption's plume, play its sound and
 //! push the local player, who moves on its own client and not on the server.
+#[allow(unused_imports)]
 use super::{Game, potions::mob_effect_id};
+#[allow(unused_imports)]
 use sunrise_client::{
     Result,
     block_entities::Pos,
@@ -16,23 +18,28 @@ use sunrise_client::{
         can_be_reached_by_noxious_gas, find_noxious_gas_source_block, unobstructed_block_count,
     },
 };
+#[allow(unused_imports)]
 use sunrise_core::{geometry::Aabb, position::BlockPos, random::RandomSource};
+#[allow(unused_imports)]
 pub(in crate::game) use sunrise_gameplay::potent_sulfur::PassMobs;
+#[allow(unused_imports)]
 use sunrise_gameplay::potent_sulfur::{
     EFFECT_APPLICATION_FREQUENCY_TICKS, EFFECT_DURATION_IN_TICKS, Geyser, PARTICLE_FREQUENCY_TICKS,
     SOUND_FREQUENCY_TICKS, geyser_positional, launch_area, nearby_living_area,
 };
+#[allow(unused_imports)]
 use sunrise_world::{level::flags, registry::BlockStateId};
 
 /// `SoundEvents.GEYSER_ERUPTION_ACTIVE`.
-const GEYSER_ERUPTION_ACTIVE: &str = "minecraft:block.potent_sulfur.geyser_eruption_active";
+pub(in crate::game) const GEYSER_ERUPTION_ACTIVE: &str =
+    "minecraft:block.potent_sulfur.geyser_eruption_active";
 /// `SoundEvents.GEYSER_CONTINUOUS_ACTIVE`.
-const GEYSER_CONTINUOUS_ACTIVE: &str =
+pub(in crate::game) const GEYSER_CONTINUOUS_ACTIVE: &str =
     "minecraft:block.potent_sulfur.geyser_continuous_eruption_active";
 
 /// `PotentSulfurBlockEntity.applyNauseaEffect` on a mob that passed the
 /// `canBeAffected` ask.
-fn apply_nausea_effect_to_mob(mob: &mut Mob) {
+pub(in crate::game) fn apply_nausea_effect_to_mob(mob: &mut Mob) {
     if let Some(nausea) = mob_effect_id("nausea") {
         mob.add_effect(nausea, EFFECT_DURATION_IN_TICKS, 0);
     }
@@ -40,7 +47,7 @@ fn apply_nausea_effect_to_mob(mob: &mut Mob) {
 
 impl Game<'_> {
     /// The `potent_sulfur_state` of the block at `pos`, with its block state.
-    fn potent_sulfur_state(&self, pos: Pos) -> Option<(BlockStateId, Geyser)> {
+    pub(in crate::game) fn potent_sulfur_state(&self, pos: Pos) -> Option<(BlockStateId, Geyser)> {
         let state = self.world.block(pos.0, pos.1, pos.2);
         let value = self
             .pack
@@ -62,7 +69,7 @@ impl Game<'_> {
 
     /// `PotentSulfurBlockEntity.findNoxiousGasSourceBlock` of the sulfur at
     /// `pos`.
-    fn potent_sulfur_source(&self, pos: Pos) -> Option<[i32; 3]> {
+    pub(in crate::game) fn potent_sulfur_source(&self, pos: Pos) -> Option<[i32; 3]> {
         let level = ParticleLevel {
             world: &self.world,
             facts: self.res.facts(),
@@ -100,7 +107,7 @@ impl Game<'_> {
     /// `PotentSulfurBlockEntity.SERVER_NAUSEA_EFFECT_TICKER`: every 10 ticks,
     /// the living entities near the source block that its gas reaches (at
     /// their eyes) get nausea for 4 seconds.
-    fn server_nausea_effect_ticker(&mut self, pos: Pos) {
+    pub(in crate::game) fn server_nausea_effect_ticker(&mut self, pos: Pos) {
         if self.world.game_time % EFFECT_APPLICATION_FREQUENCY_TICKS != 0 {
             return;
         }
@@ -164,7 +171,7 @@ impl Game<'_> {
 
     /// The slots of the mobs whose box may meet `area`, from a grid kept for
     /// the block entity pass; false outside the pass: scan them all.
-    fn mobs_in_pass(&mut self, area: Aabb, out: &mut Vec<u32>) -> bool {
+    pub(in crate::game) fn mobs_in_pass(&mut self, area: Aabb, out: &mut Vec<u32>) -> bool {
         let Some(pass) = self.server.pass_mobs.as_mut() else {
             return false;
         };
@@ -174,7 +181,7 @@ impl Game<'_> {
     /// `PotentSulfurBlockEntity.applyNauseaEffect` on the player acting (a
     /// guest is swapped in as the player) when the gas reaches their eyes;
     /// spectators are not affected.
-    fn apply_nausea_effect_to_player(&mut self, source: [i32; 3]) {
+    pub(in crate::game) fn apply_nausea_effect_to_player(&mut self, source: [i32; 3]) {
         if self.spectator() {
             return;
         }
@@ -209,7 +216,7 @@ impl Game<'_> {
     /// 15 to 30, an erupting one `water - 1` plus 1 or 2, and at zero the
     /// block turns erupting (dormant) or dormant (erupting). `state` is the
     /// block state the tick began with.
-    fn server_waiting_countdown_ticker(
+    pub(in crate::game) fn server_waiting_countdown_ticker(
         &mut self,
         pos: Pos,
         state: BlockStateId,
@@ -275,7 +282,7 @@ impl Game<'_> {
     /// `0.3 + 0.1 * water` upward speed get 0.2 more, unless they ride
     /// something or are of a type geysers do not move. Players are moved by
     /// their own client.
-    fn launch_entity_ticker(&mut self, pos: Pos) {
+    pub(in crate::game) fn launch_entity_ticker(&mut self, pos: Pos) {
         let Some(source) = self.potent_sulfur_source(pos) else {
             return;
         };
@@ -358,7 +365,7 @@ impl Game<'_> {
 
     /// `PotentSulfurBlockEntity.LAUNCH_ENTITY_TICKER` on the client: the local
     /// player in the column, unless spectating, flying or riding.
-    fn launch_local_player_ticker(&mut self, pos: Pos) {
+    pub(in crate::game) fn launch_local_player_ticker(&mut self, pos: Pos) {
         let Some(source) = self.potent_sulfur_source(pos) else {
             return;
         };
@@ -391,90 +398,6 @@ impl Game<'_> {
         }
     }
 
-    /// `PotentSulfurBlockEntity.spawnGeyserParticle`: the eruption particle at
-    /// the bottom of the source block, as high as the water column is deep.
-    fn spawn_geyser_particle(&mut self, sulfur: Pos, source: [i32; 3]) {
-        let water_blocks = source[1] - sulfur.1 - 1;
-        self.particles.0.add(
-            &ParticleOptions::geyser(T::Geyser, water_blocks),
-            [
-                f64::from(source[0]) + 0.5,
-                f64::from(source[1]),
-                f64::from(source[2]) + 0.5,
-            ],
-            [0.0; 3],
-        );
-    }
-
-    /// `PotentSulfurBlockEntity.spawnNoxiousGasCloudParticle` at the centre of
-    /// the source block.
-    fn spawn_noxious_gas_cloud_particle(&mut self, source: [i32; 3]) {
-        self.particles.0.add(
-            &ParticleOptions::simple(T::NoxiousGasCloud),
-            source.map(|c| f64::from(c) + 0.5),
-            [0.0; 3],
-        );
-    }
-
-    /// `PotentSulfurBlock.getTicker` on the client, for the block entity at
-    /// `pos`: a wet or dormant geyser releases gas clouds every second; an
-    /// erupting or continuous one shows its plume every second (from its last
-    /// eruption event), plays its sound every two, and pushes the local
-    /// player.
-    pub(in crate::game) fn client_tick_potent_sulfur(&mut self, pos: Pos) {
-        let Some((_, geyser)) = self.potent_sulfur_state(pos) else {
-            return;
-        };
-        let time = self.world.game_time;
-        // PotentSulfurBlockEntity.setLevel.
-        let eruption_tick = match self.world.block_entities.get_mut(&pos) {
-            Some(BlockEntity::PotentSulfur(sulfur)) => {
-                if sulfur.eruption_tick == -1 {
-                    sulfur.eruption_tick = time;
-                }
-                sulfur.eruption_tick
-            }
-            _ => return,
-        };
-        match geyser {
-            Geyser::Dry => {}
-            // CLIENT_NOXIOUS_GAS_TICKER.
-            Geyser::Wet | Geyser::Dormant => {
-                if time % PARTICLE_FREQUENCY_TICKS == 0
-                    && let Some(source) = self.potent_sulfur_source(pos)
-                {
-                    self.spawn_noxious_gas_cloud_particle(source);
-                }
-            }
-            // CLIENT_GEYSER_PLUME_TICKER, then LAUNCH_ENTITY_TICKER.
-            Geyser::Erupting | Geyser::Continuous => {
-                if let Some(source) = self.potent_sulfur_source(pos) {
-                    let eruption_time = time - eruption_tick;
-                    if eruption_time % PARTICLE_FREQUENCY_TICKS == 0 {
-                        self.spawn_geyser_particle(pos, source);
-                    }
-                    if eruption_time % SOUND_FREQUENCY_TICKS == 0 {
-                        let sound = if geyser == Geyser::Erupting {
-                            GEYSER_ERUPTION_ACTIVE
-                        } else {
-                            GEYSER_CONTINUOUS_ACTIVE
-                        };
-                        let at = source.map(|c| f64::from(c) + 0.5);
-                        // playLocalSound: the seed is the level random's next long; a host's
-                        // guests play their own.
-                        let seed = self.particles.0.level_random().next_long();
-                        if self.remote.is_some() {
-                            self.audio.0.play_seeded(sound, Some(at), 1.0, 1.0, seed);
-                        } else {
-                            self.audio.0.play_unshared(sound, Some(at), 1.0, 1.0);
-                        }
-                    }
-                }
-                self.launch_local_player_ticker(pos);
-            }
-        }
-    }
-
     /// `PotentSulfurBlock.triggerEvent`: the eruption block event stamps the
     /// game time the plume counts from; false when `pos` holds no potent
     /// sulfur block entity.
@@ -491,7 +414,7 @@ impl Game<'_> {
 }
 
 #[cfg(test)]
-mod pass_tests {
+pub(in crate::game) mod pass_tests {
     use super::*;
     use sunrise_core::{geometry::Vec3, random::LegacyRandom};
 

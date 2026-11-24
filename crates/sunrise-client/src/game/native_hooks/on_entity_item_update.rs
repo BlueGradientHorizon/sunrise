@@ -1,5 +1,8 @@
+#[allow(unused_imports)]
 use super::*;
+#[allow(unused_imports)]
 use crate::game::native_ticks;
+#[allow(unused_imports)]
 use sunrise_core::geometry::Vec3;
 
 /// The hook points. Each does nothing in Sunrise.
@@ -88,10 +91,10 @@ impl Game<'_> {
     }
 }
 
-struct ResidentDroppedItem<'g, 'w> {
-    game: &'g mut Game<'w>,
-    subject: mod_api::ItemEntityRef,
-    index: usize,
+pub(in crate::game) struct ResidentDroppedItem<'g, 'w> {
+    pub(in crate::game) game: &'g mut Game<'w>,
+    pub(in crate::game) subject: mod_api::ItemEntityRef,
+    pub(in crate::game) index: usize,
 }
 
 impl mod_api::ResidentItemEntity for ResidentDroppedItem<'_, '_> {
@@ -163,10 +166,10 @@ impl mod_api::ResidentItemEntity for ResidentDroppedItem<'_, '_> {
     }
 }
 
-struct ItemEntityTickAccess<'g, 'w> {
-    game: &'g mut Game<'w>,
-    subject: mod_api::ItemEntityRef,
-    index: usize,
+pub(in crate::game) struct ItemEntityTickAccess<'g, 'w> {
+    pub(in crate::game) game: &'g mut Game<'w>,
+    pub(in crate::game) subject: mod_api::ItemEntityRef,
+    pub(in crate::game) index: usize,
 }
 
 impl mod_api::ItemEntityServerAccess for ItemEntityTickAccess<'_, '_> {
@@ -227,25 +230,30 @@ impl mod_api::ItemEntityServerAccess for ItemEntityTickAccess<'_, '_> {
 }
 
 #[cfg(test)]
-mod on_entity_item_update_tests {
+pub(in crate::game) mod on_entity_item_update_tests {
+    #[allow(unused_imports)]
     use super::*;
+    #[allow(unused_imports)]
     use crate::game::{
         api_values::{STACK_PROJECTIONS, test_snapshot},
         native_entity_refs::tests::with_game,
     };
+    #[allow(unused_imports)]
     use mod_api::{Flow, Hooks, ItemPart, OnEntityItemUpdateEvent, Registrar, RegistrationContext};
+    #[allow(unused_imports)]
     use std::sync::{Arc, Mutex};
+    #[allow(unused_imports)]
     use sunrise_client::chunk::Chunk;
 
     /// An item part that writes the entity's pickup delay to 7 on every update and
     /// records the entities it was told about; `cancels` ends the tick.
     #[derive(Clone)]
-    struct Update {
-        item: &'static str,
-        cancels: bool,
-        remove: bool,
-        mixed: bool,
-        heard: Arc<Mutex<Vec<u32>>>,
+    pub(in crate::game) struct Update {
+        pub(in crate::game) item: &'static str,
+        pub(in crate::game) cancels: bool,
+        pub(in crate::game) remove: bool,
+        pub(in crate::game) mixed: bool,
+        pub(in crate::game) heard: Arc<Mutex<Vec<u32>>>,
     }
 
     #[mod_api::sunrise_part]
@@ -280,12 +288,12 @@ mod on_entity_item_update_tests {
         }
     }
 
-    struct Mod(Vec<Update>, bool);
+    pub(in crate::game) struct Mod(pub(in crate::game) Vec<Update>, pub(in crate::game) bool);
 
-    thread_local! { static ORDER: std::cell::RefCell<Vec<(u32, &'static str)>> = const { std::cell::RefCell::new(Vec::new()) }; }
+    thread_local! { pub(in crate::game) static ORDER: std::cell::RefCell<Vec<(u32, &'static str)>> = const { std::cell::RefCell::new(Vec::new()) }; }
 
     /// Each entity a tick hook was told, in order, with the hook's phase.
-    fn told(entities: &[u32], phase: &'static str) {
+    pub(in crate::game) fn told(entities: &[u32], phase: &'static str) {
         ORDER.with(|order| {
             let mut order = order.borrow_mut();
             order.extend(entities.iter().map(|&entity| (entity, phase)));
@@ -327,7 +335,7 @@ mod on_entity_item_update_tests {
     }
 
     /// A serving level with a stone floor at y 63 and nothing dropped.
-    fn floor(game: &mut Game<'_>) {
+    pub(in crate::game) fn floor(game: &mut Game<'_>) {
         game.options.dedicated = Some(Vec::new());
         game.native_lifecycle
             .begin_open(mod_api::Authority::IntegratedServer);
@@ -349,14 +357,10 @@ mod on_entity_item_update_tests {
         game.dropped.clear();
     }
 
-    /// One stack of `item` at rest on the floor, a pickup delay of 20 ticks.
-    fn rest(game: &mut Game<'_>, item: &str, x: f64, z: f64) -> u32 {
-        game.spawn_item(ItemStack::new(item, 1), [x, 64.0, z], [0.0; 3], 20);
-        game.server.ticked_entities_through = game.server.next_entity;
-        game.dropped.last().unwrap().id
-    }
+    #[allow(unused_imports)]
+pub(in crate::game) use crate::game::server_side::native_hooks_server::on_entity_item_update::on_entity_item_update_tests::rest;
 
-    fn counts(game: &Game<'_>, ids: &[u32]) -> Vec<u32> {
+    pub(in crate::game) fn counts(game: &Game<'_>, ids: &[u32]) -> Vec<u32> {
         game.dropped
             .iter()
             .filter(|item| ids.contains(&item.id))
@@ -386,7 +390,9 @@ mod on_entity_item_update_tests {
         );
     }
 
-    fn a_canceling_part_holds_its_own_item_and_nothing_else_isolated(named: bool) {
+    pub(in crate::game) fn a_canceling_part_holds_its_own_item_and_nothing_else_isolated(
+        named: bool,
+    ) {
         let iron = Update {
             item: "minecraft:iron_ingot",
             cancels: true,

@@ -2,29 +2,40 @@
 //! end crystals on a server's client (`ClientPacketListener.handleAddEntity`
 //! and `handleSetEntityData`): the server simulates them, the client draws
 //! them where it says and interpolates their moves.
+#[allow(unused_imports)]
 use super::{FallingBlock, Game, fireworks::fireworks_of};
+#[allow(unused_imports)]
 use crate::game::native_ticks::{TickRound, places_of, slot_place};
+#[allow(unused_imports)]
 use sunrise_client::items::ItemStack;
+#[allow(unused_imports)]
 use sunrise_client::join_seq::{JoinList, RestoreOrder};
+#[allow(unused_imports)]
 use sunrise_client::particles::{ParticleOptions, ParticleType};
+#[allow(unused_imports)]
 use sunrise_client::projectiles::{Projectile, ProjectileKind};
+#[allow(unused_imports)]
 use sunrise_core::{geometry::Vec3, position::BlockPos, random::RandomSource};
+#[allow(unused_imports)]
 use sunrise_protocol::entity_data::Value;
+#[allow(unused_imports)]
 use sunrise_world::registry::BlockStateId;
 
-pub(super) use sunrise_client_gameplay::remote::projectiles::{
+#[allow(unused_imports)]
+pub(in crate::game) use sunrise_client_gameplay::remote::projectiles::{
     RemoteCloud, TRIDENT, cloud_client_tick, default_cloud_particle, projectile_kind,
     remote_projectile_item, remote_projectile_power, remote_projectile_step,
     shulker_bullet_trail_at,
 };
+#[allow(unused_imports)]
 #[cfg(test)]
-pub(super) use sunrise_client_gameplay::remote::projectiles::{
+pub(in crate::game) use sunrise_client_gameplay::remote::projectiles::{
     remote_bullet_tick, remote_projectile_tick,
 };
 
 /// `AbstractHurtingProjectile.getTrailParticle`: smoke for every one of them
 /// but the wind charges (no trail) and the dragon's fireball (its own).
-pub(super) fn has_smoke_trail(kind: &ProjectileKind) -> bool {
+pub(in crate::game) fn has_smoke_trail(kind: &ProjectileKind) -> bool {
     matches!(
         kind,
         ProjectileKind::SmallFireball
@@ -34,64 +45,10 @@ pub(super) fn has_smoke_trail(kind: &ProjectileKind) -> bool {
 }
 
 impl Game<'_> {
-    /// `Arrow.tick` and `SpectralArrow.tick` on a client: a tipped arrow
-    /// sheds two entity-effect swirls in its colour while flying, one every
-    /// fifth tick in a block; a spectral arrow an effect sparkle at its
-    /// position while flying.
-    fn arrow_effect_particles(&mut self) {
-        let mut puffs: Vec<(Vec3, i32, u32)> = Vec::new();
-        for p in &self.creatures.projectiles {
-            let Some(a) = p.arrow.as_ref().filter(|_| p.is_arrow()) else {
-                continue;
-            };
-            let at = p.position;
-            if p.is_spectral_arrow() {
-                if !p.stuck {
-                    let options = ParticleOptions::simple(ParticleType::Effect);
-                    self.particles.0.add(&options, [at.x, at.y, at.z], [0.0; 3]);
-                }
-                continue;
-            }
-            let count = match (p.stuck, a.in_ground_time % 5) {
-                (true, 0) => 1,
-                (true, _) => 0,
-                (false, _) => 2,
-            };
-            puffs.push((at, a.effect_color, count));
-        }
-        for (at, color, count) in puffs {
-            self.arrow_makeparticle(at, color, count);
-        }
-    }
-
-    /// `Arrow.makeParticle`: `count` entity-effect swirls in `color` (an ARGB
-    /// int, -1 for none) inside the arrow's 0.5 x 0.5 box.
-    fn arrow_makeparticle(&mut self, at: Vec3, color: i32, count: u32) {
-        // `EntityType.ARROW` is 0.5 x 0.5.
-        const SIZE: f64 = 0.5;
-        if color == -1 {
-            return;
-        }
-        // ColorParticleOption.create(ENTITY_EFFECT, colour): ARGB as floats.
-        let channel = |shift: u32| (color as u32 >> shift & 255) as f32 / 255.0;
-        let options = ParticleOptions::colored(
-            ParticleType::EntityEffect,
-            [channel(16), channel(8), channel(0), channel(24)],
-        );
-        for _ in 0..count {
-            // getRandomX(0.5), getRandomY, getRandomZ(0.5).
-            let r = self.particles.0.random();
-            let x = at.x + SIZE * (2.0 * r.next_double() - 1.0) * 0.5;
-            let y = at.y + SIZE * r.next_double();
-            let z = at.z + SIZE * (2.0 * r.next_double() - 1.0) * 0.5;
-            self.particles.0.add(&options, [x, y, z], [0.0; 3]);
-        }
-    }
-
     /// `Arrow.handleEntityEvent(0)`: a tipped arrow stuck for 600 ticks bursts
     /// into twenty particles in its colour. The server turns it into a plain
     /// arrow and does not send the colour again, so it stops here.
-    pub(super) fn remote_arrow_puff(&mut self, id: u32) {
+    pub(in crate::game) fn remote_arrow_puff(&mut self, id: u32) {
         let Some(i) = self.creatures.projectiles.iter().position(|p| p.id == id) else {
             return;
         };
@@ -104,65 +61,8 @@ impl Game<'_> {
         self.arrow_makeparticle(at, color, 20);
     }
 
-    /// `AbstractHurtingProjectile.createParticleTrail`: one smoke puff half a
-    /// block above each position.
-    pub(super) fn smoke_trails(&mut self, at: impl IntoIterator<Item = Vec3>) {
-        let smoke = ParticleOptions::simple(ParticleType::Smoke);
-        for p in at {
-            self.particles
-                .0
-                .add(&smoke, [p.x, p.y + 0.5, p.z], [0.0; 3]);
-        }
-    }
-
-    /// `DragonFireball.getTrailParticle`: dragon breath, where
-    /// `createParticleTrail` puts every hurting projectile's trail.
-    pub(super) fn dragon_breath_trails(&mut self) {
-        let trail = ParticleOptions::simple(ParticleType::DragonBreath);
-        let at: Vec<Vec3> = self
-            .creatures
-            .projectiles
-            .iter()
-            .filter(|p| p.kind == ProjectileKind::DragonFireball)
-            .map(|p| p.position)
-            .collect();
-        for p in at {
-            self.particles
-                .0
-                .add(&trail, [p.x, p.y + 0.5, p.z], [0.0; 3]);
-        }
-    }
-
-    pub(super) fn throwable_bubbles(&mut self, at: Vec<([f64; 3], [f64; 3])>) {
-        let bubble = ParticleOptions::simple(ParticleType::Bubble);
-        for (position, speed) in at {
-            for _ in 0..4 {
-                self.particles.0.add(&bubble, position, speed);
-            }
-        }
-    }
-
-    /// `ShulkerBullet.tick` on a client: two `END_ROD` particles in its
-    /// 0.3125 box (`getRandomX(0.5)`, `getRandomY`, `getRandomZ(0.5)`).
-    pub(super) fn shulker_bullet_trails(&mut self) {
-        let bullets: Vec<Vec3> = self
-            .creatures
-            .projectiles
-            .iter()
-            .filter(|p| matches!(p.kind, ProjectileKind::ShulkerBullet { .. }))
-            .map(|p| p.position)
-            .collect();
-        let options = ParticleOptions::simple(ParticleType::EndRod);
-        for at in bullets {
-            for _ in 0..2 {
-                let p = shulker_bullet_trail_at(at, self.particles.0.random());
-                self.particles.0.add(&options, p, [0.0; 3]);
-            }
-        }
-    }
-
     /// `handleAddEntity` for these types; false when `kind` isn't one.
-    pub(super) fn spawn_remote_projectile(
+    pub(in crate::game) fn spawn_remote_projectile(
         &mut self,
         kind: &str,
         packet: &sunrise_protocol::packets::play::AddEntity,
@@ -174,7 +74,7 @@ impl Game<'_> {
     }
 
     /// Whether the client tracks `id` already: asked by `AddEntity` before it tracks the new one.
-    pub(super) fn tracks_remote_entity(&self, id: i32) -> bool {
+    pub(in crate::game) fn tracks_remote_entity(&self, id: i32) -> bool {
         self.remote
             .as_ref()
             .is_some_and(|r| r.tracked_entity(id).is_some())
@@ -183,7 +83,7 @@ impl Game<'_> {
     /// `AddEntity`'s `spawn_remote_projectile`. Only an id the client already tracked (`replace`)
     /// can still be in `falling` or `tnts`, so a new id skips those passes; the crystals and the
     /// small lists are filtered every time, since the client adds to some of those itself.
-    pub(super) fn spawn_added_projectile(
+    pub(in crate::game) fn spawn_added_projectile(
         &mut self,
         p: &sunrise_protocol::packets::play::AddEntity,
         kind: &str,
@@ -199,146 +99,8 @@ impl Game<'_> {
         }
     }
 
-    /// `spawn_remote_projectile` without first removing an entity under the same id: for
-    /// `AddEntity` of an id the client does not track yet, which no list holds.
-    pub(super) fn spawn_remote_projectile_inner(
-        &mut self,
-        kind: &str,
-        packet: &sunrise_protocol::packets::play::AddEntity,
-        rotation: (f32, f32),
-    ) -> bool {
-        let id = packet.id as u32;
-        let position = packet.position;
-        let velocity = packet.velocity;
-        let data = packet.data;
-        let at = Vec3::new(position[0], position[1], position[2]);
-        let velocity = Vec3::new(velocity[0], velocity[1], velocity[2]);
-        let (yaw, pitch) = rotation;
-        match kind {
-            "minecraft:evoker_fangs" => self.insert_fangs(id, position, yaw, 0, 0),
-            "minecraft:tnt" => self.tnts.push(super::tnt::PrimedTnt {
-                size_answer: None,
-                attachment_lifetime: Default::default(),
-                rotation: [0.0, 0.0],
-                join: Default::default(),
-                no_gravity: false,
-                id,
-                position: at,
-                previous: at,
-                velocity,
-                fuse: 80,
-                ticks: 0,
-                ground: Default::default(),
-                fall_distance: 0.0,
-                stuck: Vec3::ZERO,
-                in_water: false,
-                owner: None,
-                guest: None,
-                power: 4.0,
-                used_portal: false,
-                block_state: None,
-            }),
-            // FallingBlockEntity.recreateFromPacket: the block state is the data.
-            "minecraft:falling_block" => self.falling.push(FallingBlock {
-                size_answer: None,
-                attachment_lifetime: Default::default(),
-                rotation: [0.0, 0.0],
-                join: Default::default(),
-                id,
-                state: BlockStateId(data.max(0) as u32),
-                blocks_building: true,
-                start_pos: BlockPos::default(),
-                position: at,
-                previous: at,
-                velocity,
-                age: 0,
-                no_gravity: false,
-                portal: Default::default(),
-                drop_item: false,
-                fall_distance: 0.0,
-                ground: Default::default(),
-                fire_ticks: 0,
-                sync_velocity: false,
-                stuck: Vec3::ZERO,
-                damage: Default::default(),
-                saved: None,
-            }),
-            "minecraft:trident" => {
-                let mut t = super::trident::ThrownTrident::remote(id, at, yaw, pitch);
-                t.velocity = velocity;
-                // Projectile.getAddEntityPacket: the owner's id is the data.
-                t.owner = data as u32;
-                self.tridents.push(t);
-            }
-            "minecraft:firework_rocket" => {
-                self.rockets
-                    .push(super::fireworks::Rocket::remote(id, at, velocity));
-            }
-            "minecraft:splash_potion"
-            | "minecraft:lingering_potion"
-            | "minecraft:experience_bottle" => {
-                self.potions.add_remote_thrown(id, kind, at, velocity);
-            }
-            "minecraft:area_effect_cloud" => self.potions.clouds.push(RemoteCloud {
-                id,
-                at: position,
-                radius: 3.0,
-                waiting: false,
-                particle: default_cloud_particle(),
-                random: sunrise_client::random_source::entity(),
-            }),
-            "minecraft:eye_of_ender" => {
-                self.end
-                    .add_remote_eye(id, position, [velocity.x, velocity.y, velocity.z])
-            }
-            // FishingHook.recreateFromPacket: the owner's id is the data.
-            "minecraft:fishing_bobber" => self.spawn_remote_hook(
-                id,
-                sunrise_client::lan::playerdata::uuid_ints(packet.uuid),
-                at,
-                velocity,
-                data,
-            ),
-            "minecraft:end_crystal" => {
-                // EndCrystal's constructor starts `time` from the crystal's own
-                // random, so each placed crystal spins from its own phase. The id is the
-                // server's, given in the order its chunks load, so under `SUNRISE_STILL` the
-                // position alone seeds it.
-                let drawn = sunrise_client::mobs::entity_random(id, at)
-                    .next_int_bound(100_000)
-                    .unwrap_or(0);
-                let time = super::dragon::Crystal::start_time(at, drawn, self.clock.still());
-                self.crystals
-                    .push(super::dragon::Crystal::new(id, at, true, time));
-            }
-            _ => {
-                let Some(k) = projectile_kind(kind) else {
-                    return false;
-                };
-                if k == ProjectileKind::LlamaSpit {
-                    self.particles
-                        .0
-                        .llama_spit_burst(position, [velocity.x, velocity.y, velocity.z]);
-                }
-                let mut p = Projectile::new(k, at, None);
-                // SpectralArrow: its own type; its pickup item says so.
-                if kind == "minecraft:spectral_arrow"
-                    && let Some(a) = p.arrow.as_mut()
-                {
-                    a.pickup_item = ItemStack::new("minecraft:spectral_arrow", 1);
-                }
-                p.id = id;
-                p.velocity = velocity;
-                p.yaw = yaw;
-                p.pitch = pitch;
-                self.add_projectile(p);
-            }
-        }
-        true
-    }
-
     /// `handleSetEntityData` for these types: what changes how they look.
-    pub(super) fn remote_projectile_data(&mut self, id: i32, values: &[(u8, i32, Value)]) {
+    pub(in crate::game) fn remote_projectile_data(&mut self, id: i32, values: &[(u8, i32, Value)]) {
         let id = id as u32;
         self.remote_hook_data(id, values);
         if let Some(at) = self
@@ -511,7 +273,11 @@ impl Game<'_> {
     }
 
     /// A move's rotation for a projectile or trident.
-    pub(super) fn turn_remote_projectile(&mut self, id: i32, rotation: Option<(f32, f32)>) {
+    pub(in crate::game) fn turn_remote_projectile(
+        &mut self,
+        id: i32,
+        rotation: Option<(f32, f32)>,
+    ) {
         let (id, Some((yaw, pitch))) = (id as u32, rotation) else {
             return;
         };
@@ -528,7 +294,7 @@ impl Game<'_> {
 
     /// `Entity.getEyePosition` of a projectile's owner: this game's player or
     /// another player the server sent.
-    fn remote_eye(&self, id: u32) -> Option<Vec3> {
+    pub(in crate::game) fn remote_eye(&self, id: u32) -> Option<Vec3> {
         if self.remote_player_id() == Some(id) {
             let eye = self.eye_position()?;
             return Some(Vec3::new(eye[0], eye[1], eye[2]));
@@ -542,7 +308,7 @@ impl Game<'_> {
     }
 
     /// This client's own player's entity id on the server.
-    fn remote_player_id(&self) -> Option<u32> {
+    pub(in crate::game) fn remote_player_id(&self) -> Option<u32> {
         self.remote
             .as_ref()
             .and_then(|r| u32::try_from(r.entity_id).ok())
@@ -551,7 +317,7 @@ impl Game<'_> {
     /// `FireworkRocketEntity.tick` for the rockets attached to this client's
     /// own player, once the player has moved (it ticks before them in
     /// `ClientLevel.tickEntities`), each with its spark.
-    pub(super) fn tick_own_rockets(&mut self) {
+    pub(in crate::game) fn tick_own_rockets(&mut self) {
         let Some(me) = self.remote_player_id() else {
             return;
         };
@@ -576,7 +342,10 @@ impl Game<'_> {
     }
 
     /// One tick of interpolation, as `tick_remote_objects`.
-    pub(super) fn tick_remote_projectiles(&mut self, mut step: impl FnMut(u32, Vec3) -> Vec3) {
+    pub(in crate::game) fn tick_remote_projectiles(
+        &mut self,
+        mut step: impl FnMut(u32, Vec3) -> Vec3,
+    ) {
         self.tick_remote_fangs();
         // PrimedTnt.tick runs on a client too: it falls, bounces and burns its
         // fuse down (the swell and flash follow it) between the server's
@@ -787,29 +556,14 @@ impl Game<'_> {
         self.tick_remote_clouds();
     }
 
-    /// `AreaEffectCloud.clientTick` for each cloud a server tracks.
-    fn tick_remote_clouds(&mut self) {
-        for c in &mut self.potions.clouds {
-            cloud_client_tick(
-                &mut self.particles.0,
-                &self.world,
-                c.at,
-                c.radius,
-                c.waiting,
-                &c.particle,
-                &mut c.random,
-            );
-        }
-    }
-
-    pub(super) fn remove_remote_projectile(&mut self, id: u32) {
+    pub(in crate::game) fn remove_remote_projectile(&mut self, id: u32) {
         self.tnts.retain(|t| t.id != id);
         self.falling.retain(|f| f.id != id);
         self.crystals.retain(|c| c.id != id);
         self.remove_remote_small_projectiles(id);
     }
 
-    pub(super) fn remove_remote_small_projectiles(&mut self, id: u32) {
+    pub(in crate::game) fn remove_remote_small_projectiles(&mut self, id: u32) {
         self.fangs.list.retain(|f| f.id != id);
         self.creatures.projectiles.retain(|p| p.id != id);
         self.tridents.retain(|t| t.id != id);
@@ -821,7 +575,7 @@ impl Game<'_> {
     }
 
     /// Every one a server sent (a new connection, level or dimension).
-    pub(super) fn clear_remote_projectiles(&mut self) {
+    pub(in crate::game) fn clear_remote_projectiles(&mut self) {
         self.fangs.list.clear();
         self.tnts.clear();
         self.falling.clear();
@@ -838,7 +592,7 @@ impl Game<'_> {
     }
 
     /// Their kind and place, for `status`.
-    pub(super) fn projectiles_status(&self) -> Vec<serde_json::Value> {
+    pub(in crate::game) fn projectiles_status(&self) -> Vec<serde_json::Value> {
         use serde_json::json;
         let at = |p: Vec3| [p.x, p.y, p.z];
         let mut out = Vec::new();
@@ -890,7 +644,7 @@ impl Game<'_> {
     /// handles read the live rows; the others tick between, in the same order
     /// and through the same steps as the family's loop, with the views built
     /// again only after a hand-back. A canceled one keeps its state.
-    fn tick_remote_projectiles_told(
+    pub(in crate::game) fn tick_remote_projectiles_told(
         &mut self,
         mut projectiles: JoinList<Projectile, false>,
         mut tridents: JoinList<super::trident::ThrownTrident>,
@@ -1065,7 +819,7 @@ impl Game<'_> {
     /// about one of them, and takes them again. Whether each list came back
     /// written (its write stamp): its rows may then have moved. What spawns
     /// meanwhile goes after them, as at the end of the family's tick.
-    fn remote_projectiles_told(
+    pub(in crate::game) fn remote_projectiles_told(
         &mut self,
         projectiles: JoinList<Projectile, false>,
         tridents: JoinList<super::trident::ThrownTrident>,
@@ -1095,7 +849,7 @@ impl Game<'_> {
 }
 
 #[cfg(test)]
-mod tests {
+pub(in crate::game) mod tests {
     use super::*;
     use sunrise_client::mobs::Who;
     use sunrise_client::projectiles::ProjectileWorld;
@@ -1298,13 +1052,13 @@ mod tests {
 }
 
 #[cfg(test)]
-mod nested_spawn_tests {
+pub(in crate::game) mod nested_spawn_tests {
     use super::*;
     use std::cell::Cell;
     const ID: u32 = 1_900_000_001;
     const AT: Vec3 = Vec3::new(3.5, 80.0, 3.5);
     #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-    pub(super) enum Point {
+    pub(in crate::game) enum Point {
         Falling,
         Projectile,
         Trident,
@@ -1313,7 +1067,7 @@ mod nested_spawn_tests {
     }
     type Spawn = fn(&mut Game<'_>, u32);
     thread_local! { static PENDING: Cell<Option<(Point, Spawn)>> = const { Cell::new(None) }; }
-    pub(super) fn after_lift(game: &mut Game<'_>, point: Point) {
+    pub(in crate::game) fn after_lift(game: &mut Game<'_>, point: Point) {
         if let Some((expected, spawn)) = PENDING.get()
             && point == expected
         {
@@ -1532,7 +1286,7 @@ mod nested_spawn_tests {
 }
 
 #[cfg(test)]
-mod entity_tick_tests {
+pub(in crate::game) mod entity_tick_tests {
     use std::sync::{Arc, Mutex};
 
     /// The tick hooks a listener heard: whether on a client, the phase, entities and kinds.
@@ -1748,7 +1502,11 @@ mod entity_tick_tests {
 
 /// The visit of one entity told alone: a passenger counts before its Pre (`tickPassenger`), a
 /// root once `pre` let it through (`tickNonPassenger`).
-fn told_visit(game: &mut Game<'_>, id: u32, pre: impl FnOnce(&mut Game<'_>) -> bool) {
+pub(in crate::game) fn told_visit(
+    game: &mut Game<'_>,
+    id: u32,
+    pre: impl FnOnce(&mut Game<'_>) -> bool,
+) {
     let passenger = game.client_passenger(id);
     if passenger {
         game.count_client_tick(id);

@@ -2,18 +2,24 @@
 //! a guest teleported, killed or put in spectator mode in the middle of the
 //! tick blocks placement where it is now, as when each turn built the boxes
 //! afresh, not at its box from the start of the tick.
+#[allow(unused_imports)]
 use crate::game::*;
+#[allow(unused_imports)]
 use std::sync::{Arc, atomic::AtomicI32, mpsc};
+#[allow(unused_imports)]
 use sunrise_client::{
     chunk::Chunk,
     lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubConfig},
     motion::PlayerMotion,
 };
+#[allow(unused_imports)]
 use sunrise_protocol::packets::configuration::ClientInformation;
 
-type Boxes = Vec<([f64; 3], [f64; 3])>;
+pub(in crate::game) type Boxes = Vec<([f64; 3], [f64; 3])>;
 
-fn game<'a>(resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>) -> Game<'a> {
+pub(in crate::game) fn game<'a>(
+    resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>,
+) -> Game<'a> {
     let root = std::path::PathBuf::from(
         std::env::var_os("SUNRISE_TEST_RESOURCES")
             .expect("set SUNRISE_TEST_RESOURCES to prepared resources"),
@@ -114,17 +120,16 @@ fn game<'a>(resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>) -
     game
 }
 
-/// The other players' boxes in the Builder's turn: what blocks its placing.
-fn seen_by_builder(game: &mut Game<'_>) -> Boxes {
-    let seen = game.as_guest(3, |g| g.lan_building_boxes.0.boxes(Dim::Overworld));
-
-    seen.unwrap()
-}
+#[allow(unused_imports)]
+pub(in crate::game) use crate::game::server_side::lan_actions_server::tick::building_cache_tests::seen_by_builder;
 
 /// The Builder's view at the start of a tick, after `command` (and, with
 /// `turns`, the guests' turns that follow it in the tick), and the same
 /// without the shared boxes.
-fn the_mover_changed_mid_tick(command: &str, turns: bool) -> (Boxes, Boxes, Boxes) {
+pub(in crate::game) fn the_mover_changed_mid_tick(
+    command: &str,
+    turns: bool,
+) -> (Boxes, Boxes, Boxes) {
     let mut resources = None;
     let mut game = game(&mut resources);
     crate::game::lan_actions::building_cache(game.lan.as_ref());
@@ -139,7 +144,7 @@ fn the_mover_changed_mid_tick(command: &str, turns: bool) -> (Boxes, Boxes, Boxe
     (before, cached, fresh)
 }
 
-fn mover_at(boxes: &Boxes, x: f64) -> bool {
+pub(in crate::game) fn mover_at(boxes: &Boxes, x: f64) -> bool {
     boxes
         .iter()
         .any(|(min, max)| min[0] <= x && x <= max[0] && min[1] <= 100.5 && 100.5 <= max[1])

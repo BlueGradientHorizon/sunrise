@@ -6,7 +6,7 @@ use serde_json::{Value, json};
 use std::{path::PathBuf, sync::mpsc::Sender, time::UNIX_EPOCH};
 use sunrise_client::{Result, title};
 
-pub(super) const HELP: &[&str] = &[
+pub(in crate::game) const HELP: &[&str] = &[
     "worlds                         the saved worlds, newest first: folder, name, mode, last played, version",
     "world-rename FOLDER NAME       rename a world (Edit World; its folder stays)",
     "world-backup FOLDER            zip a world into backups/ (Edit World > Make Backup)",
@@ -20,7 +20,7 @@ fn saves() -> Result<PathBuf> {
 
 impl Game<'_> {
     /// Some(reply) for these commands (Some(None): the reply comes later), None for others.
-    pub(super) fn saves_control(
+    pub(in crate::game) fn saves_control(
         &mut self,
         words: &[&str],
         line: &str,

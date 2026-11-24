@@ -15,12 +15,12 @@ use sunrise_core::{position::BlockPos, random::RandomSource};
 use sunrise_world::registry::BlockStateId;
 
 /// Whether a block type provides the composter's state-backed container ports.
-pub(super) fn is_composter(kind: &str) -> bool {
+pub(in crate::game) fn is_composter(kind: &str) -> bool {
     kind == "minecraft:composter"
 }
 
 /// State-backed container feedback, published only by the outermost successful transaction.
-pub(super) enum Effects {
+pub(in crate::game) enum Effects {
     Insert {
         pos: [i32; 3],
         before: BlockStateId,
@@ -50,7 +50,7 @@ impl Drop for ScopedRandom<'_, '_> {
 
 impl Game<'_> {
     /// The composter's `level` at `pos`, None when it isn't a composter.
-    pub(super) fn composter_level(&self, pos: [i32; 3]) -> Option<i32> {
+    pub(in crate::game) fn composter_level(&self, pos: [i32; 3]) -> Option<i32> {
         let state = self.world.block(pos[0], pos[1], pos[2]);
         let s = self.pack.assets.registry.state(state)?;
         if !is_composter(&s.name) {
@@ -115,7 +115,11 @@ impl Game<'_> {
     /// `ComposterBlock.useItemOn` with the main-hand stack: true when it
     /// consumed the action (SUCCESS; a full composter falls through to
     /// `useWithoutItem`, which empties it).
-    pub(super) fn use_composter(&mut self, pos: [i32; 3], held: Option<&ItemStack>) -> bool {
+    pub(in crate::game) fn use_composter(
+        &mut self,
+        pos: [i32; 3],
+        held: Option<&ItemStack>,
+    ) -> bool {
         let Some(level) = self.composter_level(pos) else {
             return false;
         };
@@ -140,7 +144,7 @@ impl Game<'_> {
     }
     /// `ComposterBlock.useItemOn` on a client's level: whether `held` is
     /// compostable and the composter at `pos` below level 8 (SUCCESS).
-    pub(super) fn composter_takes(&self, pos: [i32; 3], held: Option<&ItemStack>) -> bool {
+    pub(in crate::game) fn composter_takes(&self, pos: [i32; 3], held: Option<&ItemStack>) -> bool {
         self.composter_level(pos).is_some_and(|level| level < 8)
             && held.is_some_and(|stack| {
                 self.res
@@ -151,7 +155,7 @@ impl Game<'_> {
     }
     /// `HopperBlockEntity.addItem` into the composter's `InputContainer`
     /// (levels 0 to 6; one item, compostable, from above): the remainder.
-    pub(super) fn composter_container_insert(
+    pub(in crate::game) fn composter_container_insert(
         &mut self,
         pos: [i32; 3],
         mut stack: ItemStack,
@@ -175,7 +179,11 @@ impl Game<'_> {
 
     /// `InputContainer.setChanged` through an ITEMS port. Slot acceptance and the one-item
     /// limit are the shared container rules; only the state write and feedback are deferred.
-    pub(super) fn composter_capability_insert(&mut self, pos: [i32; 3], stack: &ItemStack) -> bool {
+    pub(in crate::game) fn composter_capability_insert(
+        &mut self,
+        pos: [i32; 3],
+        stack: &ItemStack,
+    ) -> bool {
         if self.composter_level(pos).is_none_or(|level| level >= 7) {
             return false;
         }
@@ -200,7 +208,7 @@ impl Game<'_> {
     }
 
     /// `OutputContainer.setChanged` through an ITEMS port: no item entity or hand sound.
-    pub(super) fn composter_capability_extract(
+    pub(in crate::game) fn composter_capability_extract(
         &mut self,
         pos: [i32; 3],
         max: u32,
@@ -220,7 +228,7 @@ impl Game<'_> {
         Some(ItemStack::new("minecraft:bone_meal", 1))
     }
 
-    pub(super) fn commit_composter_effects(&mut self, effects: Effects) {
+    pub(in crate::game) fn commit_composter_effects(&mut self, effects: Effects) {
         self.with_level(|b, level, ticks| match effects {
             Effects::Insert { pos, before, after } => {
                 b.composter_insert_effects(
@@ -246,7 +254,7 @@ impl Game<'_> {
     /// composter is emptied, then up to 20 wheat or beetroot seeds go in
     /// (keeping 10 of each kind) until the composter reaches level 7. Level
     /// event 1500 plays once, at the end.
-    pub(super) fn villager_compost_items(&mut self, mob: usize, pos: [i32; 3]) {
+    pub(in crate::game) fn villager_compost_items(&mut self, mob: usize, pos: [i32; 3]) {
         let at = BlockPos::new(pos[0], pos[1], pos[2]);
         let Some(mut before) = self.composter_level(pos) else {
             return;
@@ -316,7 +324,7 @@ impl Game<'_> {
     }
     /// `ComposterBlock.handleFill` (level event 1500) on the client: the
     /// fill sound and ten composter particles above the compost.
-    pub(super) fn composter_fill_event(&mut self, pos: BlockPos, success: bool) {
+    pub(in crate::game) fn composter_fill_event(&mut self, pos: BlockPos, success: bool) {
         let center = [
             f64::from(pos.x) + 0.5,
             f64::from(pos.y) + 0.5,

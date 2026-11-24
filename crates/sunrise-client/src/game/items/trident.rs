@@ -3,9 +3,13 @@
 //! 8 damage plus Impaling, the reversed bounce off a hit, sticking, Loyalty's
 //! return to the owner, pickup) with `ThrownTridentRenderer`, and Channeling's
 //! lightning on a hit (`channeling.json`).
+#[allow(unused_imports)]
 use super::level_sounds::LevelSound;
+#[allow(unused_imports)]
 use super::{Game, commands::Target};
+#[allow(unused_imports)]
 use mod_api::{__private::TransactionFrame, SoundSource};
+#[allow(unused_imports)]
 use sunrise_client::{
     arrows::{Pickup, back_off, clip_block_hit},
     collisions::SceneCollisions,
@@ -16,18 +20,20 @@ use sunrise_client::{
     mobs::{Damage, DamageKind, Species, Who, anim::Poses},
     projectiles::{Hit, ProjectileWorld},
 };
+#[allow(unused_imports)]
 use sunrise_core::{
     geometry::{Aabb, Vec3, traverse_blocks},
     position::BlockPos,
     random::RandomSource,
 };
 
-pub(super) use sunrise_gameplay::trident::{HALF, ThrownTrident, breeze_deflect};
+#[allow(unused_imports)]
+pub(in crate::game) use sunrise_gameplay::trident::{HALF, ThrownTrident, breeze_deflect};
 /// `ThrownTrident.tick` on a server's client: it flies on by itself
 /// between the server's updates (`AbstractArrow.tick`: gravity and drag,
 /// a block holds it), and Loyalty pulls it back to its owner; only the
 /// server decides what it hits.
-pub(super) fn remote_tick(
+pub(in crate::game) fn remote_tick(
     t: &mut ThrownTrident,
     w: &impl ProjectileWorld,
     owner_eye: Option<Vec3>,
@@ -82,21 +88,21 @@ pub(super) fn remote_tick(
 }
 /// A player a trident can return to (its owner) or that can pick it up: this
 /// game's own, or a server's guest in this level, which is all a server has.
-struct Catcher {
+pub(in crate::game) struct Catcher {
     /// The guest's connection; `None` for this game's player.
-    guest: Option<u32>,
+    pub(in crate::game) guest: Option<u32>,
     /// The guest's entity id (unused for this game's player).
-    id: i32,
-    feet: Vec3,
-    eye: Vec3,
+    pub(in crate::game) id: i32,
+    pub(in crate::game) feet: Vec3,
+    pub(in crate::game) eye: Vec3,
     /// `Player.aiStep` touches things only while alive and not a spectator.
-    touches: bool,
-    creative: bool,
-    uuid: Option<[i32; 4]>,
+    pub(in crate::game) touches: bool,
+    pub(in crate::game) creative: bool,
+    pub(in crate::game) uuid: Option<[i32; 4]>,
 }
 impl Game<'_> {
     /// The trident stack's maximum damage component, else its item's default.
-    pub(super) fn trident_max_damage(&self, stack: &ItemStack) -> u32 {
+    pub(in crate::game) fn trident_max_damage(&self, stack: &ItemStack) -> u32 {
         stack
             .data()
             .and_then(|data| match data.other("minecraft:max_damage") {
@@ -108,7 +114,7 @@ impl Game<'_> {
     /// `TridentItem.use`: start the throw unless one more use would break it.
     /// Returns false for `InteractionResult.FAIL` (about to break, or Riptide
     /// while dry) so callers neither dip the hand nor consume the click.
-    pub(super) fn use_trident(&mut self, stack: &ItemStack) -> bool {
+    pub(in crate::game) fn use_trident(&mut self, stack: &ItemStack) -> bool {
         if &*stack.item != "minecraft:trident" {
             return false;
         }
@@ -135,7 +141,7 @@ impl Game<'_> {
     /// The `summon_entity` and `play_sound` effects of `channeling.json`: in a
     /// thunderstorm (`weather_check`) a spot that sees the sky (`can_see_sky`)
     /// gets a lightning bolt and the thunder sound.
-    fn channel_lightning(&mut self, at: [f64; 3], guest: Option<u32>) {
+    pub(in crate::game) fn channel_lightning(&mut self, at: [f64; 3], guest: Option<u32>) {
         // Level.isThundering: the thunder level, in dimensions with weather.
         if !self.can_have_weather() || self.weather_levels(1.0).1 <= 0.9 {
             return;
@@ -162,7 +168,12 @@ impl Game<'_> {
     /// `minecraft:hit_block` of Channeling (`AbstractArrow.hitBlockEnchantmentEffects`):
     /// the block the trident's path first hits, if it is a lightning rod, with
     /// the hit location clamped into the block (`BlockPos.clampLocationWithin`).
-    fn channel_rod_hit(&mut self, from: Vec3, velocity: Vec3, guest: Option<u32>) {
+    pub(in crate::game) fn channel_rod_hit(
+        &mut self,
+        from: Vec3,
+        velocity: Vec3,
+        guest: Option<u32>,
+    ) {
         let to = Vec3::new(
             from.x + velocity.x,
             from.y + velocity.y,
@@ -205,7 +216,7 @@ impl Game<'_> {
         );
     }
     /// `TridentItem.releaseUsing`.
-    pub(super) fn release_trident(&mut self, ticks: u32) {
+    pub(in crate::game) fn release_trident(&mut self, ticks: u32) {
         if ticks < 10 {
             return;
         }
@@ -398,7 +409,7 @@ impl Game<'_> {
     }
     /// `settle_dealt_absorbed` for the player who threw a trident: a LAN guest's own
     /// statistics are only reachable inside `as_guest`, so the host is not credited.
-    fn thrower_dealt_absorbed(&mut self, guest: Option<u32>) {
+    pub(in crate::game) fn thrower_dealt_absorbed(&mut self, guest: Option<u32>) {
         let Some(conn) = guest.filter(|c| self.server.lan_acting != Some(*c)) else {
             self.settle_dealt_absorbed(true);
             return;
@@ -410,7 +421,7 @@ impl Game<'_> {
     }
     /// The thrower's `PLAYER_HURT_ENTITY` for a trident hit: run as the
     /// guest that threw it, and not at all once they have left.
-    fn thrower_hit(
+    pub(in crate::game) fn thrower_hit(
         &mut self,
         guest: Option<u32>,
         victim: &sunrise_client::advancements::EntityView,
@@ -426,7 +437,7 @@ impl Game<'_> {
         });
     }
     /// The connection of the guest whose entity id is `id`.
-    fn trident_guest_conn(&self, id: u32) -> Option<u32> {
+    pub(in crate::game) fn trident_guest_conn(&self, id: u32) -> Option<u32> {
         self.lan
             .as_ref()?
             .hub
@@ -438,7 +449,7 @@ impl Game<'_> {
     /// `ThrownTrident.onHitEntity` on the guest `conn`: the hurt runs as them and
     /// `ServerPlayer.hurtServer` refuses it when the `pvp` game rule or their
     /// teams forbid it (`canHarmPlayer`); the trident bounces off either way.
-    fn trident_hits_guest(
+    pub(in crate::game) fn trident_hits_guest(
         &mut self,
         t: &ThrownTrident,
         conn: u32,
@@ -466,7 +477,7 @@ impl Game<'_> {
     /// The players tridents fly back to or land at: this game's player and the
     /// guests in this level. A server has no player of its own, so its
     /// tridents belong to guests.
-    fn trident_catchers(&self) -> Vec<Catcher> {
+    pub(in crate::game) fn trident_catchers(&self) -> Vec<Catcher> {
         let mut out = Vec::new();
         if let Some(eye) = self.eye_position() {
             let feet = self.player.as_ref().map_or(Vec3::ZERO, |p| p.position);
@@ -496,76 +507,9 @@ impl Game<'_> {
         }
         out
     }
-    /// `ThrownTrident.tryPickup` for a trident that has landed or is
-    /// returning: the player takes the item (a creative thrower's trident is
-    /// only removed) and the rest that does not fit drops at their feet.
-    /// False when it could not be given.
-    fn trident_taken(&mut self, t: &ThrownTrident, by: &Catcher) -> bool {
-        let creative_pickup = t.pickup == Pickup::CreativeOnly && by.creative;
-        let returning_to_owner = t.no_physics && t.owner_uuid.is_some() && t.owner_uuid == by.uuid;
-        if !creative_pickup {
-            if t.pickup != Pickup::Allowed && !returning_to_owner {
-                return false;
-            }
-            let rest = match by.guest {
-                None => self.add_stack_to_inventory(t.stack.clone()),
-                Some(conn) => {
-                    let rest = self.as_guest(conn, |g| g.add_stack_to_inventory(t.stack.clone()));
-                    let Some(rest) = rest else {
-                        return false;
-                    };
-                    rest
-                }
-            };
-            if let Some(rest) = rest {
-                self.spawn_item(rest, [by.feet.x, by.feet.y, by.feet.z], [0.0; 3], 0);
-            }
-        }
-        // Player.take, for a creative thrower's trident too: the clients near
-        // play the pickup sound and fly the trident to its collector.
-        if by.guest.is_some()
-            && let Some(host) = self.lan.as_ref()
-        {
-            let at = [t.position.x, t.position.y, t.position.z];
-            host.hub.take_item(t.id as i32, by.id, 1, at);
-        }
-        if by.guest.is_none() {
-            let pitch = ((self.world.random.next_float() - self.world.random.next_float()) * 0.7
-                + 1.0)
-                * 2.0;
-            self.audio.0.play(
-                "minecraft:entity.item.pickup",
-                Some([by.feet.x, by.feet.y, by.feet.z]),
-                0.2,
-                pitch,
-            );
-        }
-        true
-    }
-    /// Apply the environment before impact callbacks can change the world.
-    fn trident_block_effects(&mut self, t: &mut ThrownTrident, from: Vec3, to: Vec3) {
-        let extinguished = {
-            let rain = self.arrow_rain();
-            // Block-contact hooks are already delivered by the game's inside pass.
-            let (ticks, extinguished) =
-                self.arrow_scene(&rain)
-                    .apply_block_effects(from, to, t.fire_ticks, |_, _, _| {});
-            t.fire_ticks = ticks;
-            extinguished
-        };
-        if extinguished {
-            let pitch = 1.6 + (t.random.next_float() - t.random.next_float()) * 0.4;
-            self.audio.0.play(
-                "minecraft:entity.generic.extinguish_fire",
-                Some([to.x, to.y, to.z]),
-                0.7,
-                pitch,
-            );
-        }
-    }
     /// Notify at the contact with the live trident in its owning slot. Return the live row
     /// and whether to skip the hit (veto or invalidated contact). Only removal ends the tick.
-    fn trident_impact(
+    pub(in crate::game) fn trident_impact(
         &mut self,
         index: &mut usize,
         t: ThrownTrident,
@@ -616,7 +560,7 @@ impl Game<'_> {
         None
     }
 
-    pub(super) fn tick_tridents(&mut self) {
+    pub(in crate::game) fn tick_tridents(&mut self) {
         if !self.tridents.is_empty() {
             self.with_late_storage_scope(|game, transaction| {
                 game.tick_tridents_in_scope(transaction)
@@ -624,7 +568,10 @@ impl Game<'_> {
         }
     }
 
-    fn tick_tridents_in_scope(&mut self, transaction: &mut Option<TransactionFrame>) {
+    pub(in crate::game) fn tick_tridents_in_scope(
+        &mut self,
+        transaction: &mut Option<TransactionFrame>,
+    ) {
         let catchers = self.trident_catchers();
         let ticking = self.entity_ticking_area();
         let mut i = 0;
@@ -1208,7 +1155,7 @@ impl Game<'_> {
         }
     }
     /// ThrownTridentRenderer.
-    pub(super) fn trident_geometry(
+    pub(in crate::game) fn trident_geometry(
         &self,
         camera: glam::DVec3,
         alpha: f64,
@@ -1246,114 +1193,12 @@ impl Game<'_> {
             });
         self.draw_tridents(camera, live, out);
     }
-
-    pub(super) fn pickup_trident_geometry(
-        &self,
-        camera: glam::DVec3,
-        alpha: f64,
-        out: &mut Vec<Vertex>,
-    ) {
-        // ItemPickupParticle: a picked-up trident flying to its collector,
-        // drawn with the render state extracted at partial tick 1.
-        let taken = self.pickups.0.live.iter().filter_map(|p| match &p.taken {
-            super::pickups::Taken::Trident(t) => Some((&**t, super::pickups::position(p, alpha))),
-            _ => None,
-        });
-        self.draw_tridents(camera, taken, out);
-    }
-
-    fn draw_tridents<'a>(
-        &self,
-        camera: glam::DVec3,
-        tridents: impl Iterator<Item = (&'a ThrownTrident, [f64; 3])>,
-        out: &mut Vec<Vertex>,
-    ) {
-        let Some(model) = &self.client.trident_model else {
-            return;
-        };
-        let Some(uv) = self
-            .gui
-            .atlas
-            .sprites
-            .get("entity/trident/trident")
-            .map(|r| [r.u0, r.v0, r.u1, r.v1])
-        else {
-            return;
-        };
-        // The texture's OptiFine emissive overlay, drawn again full bright.
-        let glow = self
-            .res
-            .mob_data()
-            .emissive
-            .read()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .overlay("entity/trident/trident")
-            .and_then(|e| self.gui.atlas.sprites.get(e))
-            .map(|r| [r.u0, r.v0, r.u1, r.v1]);
-        for (t, at) in tridents {
-            let p = glam::DVec3::from_array(at) - camera;
-            let base = glam::Mat4::from_translation(p.as_vec3())
-                * glam::Mat4::from_rotation_y((t.yaw - 90.0).to_radians())
-                * glam::Mat4::from_rotation_z((t.pitch + 90.0).to_radians());
-            let l = self.world.light(
-                t.position.x.floor() as i32,
-                t.position.y.floor() as i32,
-                t.position.z.floor() as i32,
-            );
-            if t.fire_ticks > 0 {
-                // The flames face the camera, turned round in the front view.
-                let fire_yaw = if self.client.camera_type
-                    == sunrise_client::camera::CameraType::ThirdPersonFront
-                {
-                    self.yaw + 180.0
-                } else {
-                    self.yaw
-                };
-                sunrise_client::fire_render::flames(
-                    at,
-                    0.5,
-                    0.5,
-                    camera,
-                    fire_yaw,
-                    &self.gui.atlas.sprites,
-                    l,
-                    out,
-                );
-            }
-            let packed = (u32::from(l >> 4) * 16) | ((u32::from(l & 15) * 16) << 8);
-            let poses = Poses::new(model);
-            sunrise_client::mobs::render::draw(
-                model,
-                base,
-                &poses,
-                uv,
-                0xFFFF_FFFF,
-                packed,
-                0,
-                out,
-            );
-            if let Some(glow) = glow {
-                let full = sunrise_client::mobs::render::FULL_BRIGHT;
-                sunrise_client::mobs::render::draw(
-                    model,
-                    base,
-                    &poses,
-                    glow,
-                    0xFFFF_FFFF,
-                    full,
-                    0,
-                    out,
-                );
-            }
-        }
-        self.mark_motion(out.len(), 0);
-    }
 }
 #[cfg(test)]
 #[path = "trident/impact_tests.rs"]
-mod impact_tests;
+pub(in crate::game) mod impact_tests;
 #[cfg(test)]
-mod tests {
+pub(in crate::game) mod tests {
     use super::{ThrownTrident, remote_tick};
     use sunrise_client::{mobs::Who, projectiles::ProjectileWorld};
     use sunrise_core::geometry::{Aabb, Vec3};

@@ -110,7 +110,7 @@ fn a_keyboard_release_keeps_the_sneak_the_pad_went_on_to_hold() {
 #[ignore = "daily"]
 fn pad_smooth_camera_binding_toggles_the_cinematic_camera() {
     if run_fresh_cases(
-        "game::pad::parity_tests::pad_smooth_camera_binding_toggles_the_cinematic_camera",
+        "game::client_side::pad::parity_tests::pad_smooth_camera_binding_toggles_the_cinematic_camera",
         "SUNRISE_PAD_SMOOTH_CAMERA_CHILD",
         &["binding"],
     ) {

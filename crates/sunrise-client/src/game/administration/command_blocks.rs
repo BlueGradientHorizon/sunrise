@@ -2,7 +2,9 @@
 //! tick (`execute`, `executeChain`), `BaseCommandBlock.performCommand`
 //! through the command system with the block's output, and
 //! `CommandBlockEditScreen` with what `handleSetCommandBlock` does with it.
+#[allow(unused_imports)]
 use super::{Game, Screen, commands::execute::Source};
+#[allow(unused_imports)]
 use sunrise_client::{
     chat::Commands,
     command_block::{self, CommandBlock, Mode},
@@ -13,23 +15,29 @@ use sunrise_client::{
     text::Text,
     ui,
 };
+#[allow(unused_imports)]
 use sunrise_core::position::BlockPos;
+#[allow(unused_imports)]
 use sunrise_protocol::packets::play::{self, Clientbound as C, Serverbound as S};
+#[allow(unused_imports)]
 use winit::keyboard::KeyCode;
+#[allow(unused_imports)]
 use {
     sunrise_core::nbt::Tag,
     sunrise_world::{chunk::BlockState, level::flags},
 };
 
+#[allow(unused_imports)]
 pub(in crate::game) use sunrise_client_gameplay::command_block_screen::{
     Button, CommandBlockScreen, previous_y,
 };
+#[allow(unused_imports)]
 pub(in crate::game) use sunrise_gameplay::command_blocks::{
     CommandBlockEdit, CommandBlockTransition, analog_signal, command_block_mut, conditional,
     facing_step, facing_yaw, mark_condition_met, offset, set_powered, state_of,
 };
 
-type Pos = (i32, i32, i32);
+pub(in crate::game) type Pos = (i32, i32, i32);
 
 impl Game<'_> {
     /// `Player.canUseGameMasterBlocks`: creative with game master commands.
@@ -56,17 +64,17 @@ impl Game<'_> {
     }
     /// The `BaseCommandBlock` an edit screen shows: the block entity's or the
     /// minecart's.
-    fn edit_base(&self, s: &CommandBlockScreen) -> Option<&CommandBlock> {
+    pub(in crate::game) fn edit_base(&self, s: &CommandBlockScreen) -> Option<&CommandBlock> {
         match s.cart {
             Some(id) => self.carts.iter().find(|c| c.id == id).map(|c| &c.command),
             None => self.command_block(s.pos),
         }
     }
-    fn block_state_at(&self, pos: Pos) -> Option<&'static BlockState> {
+    pub(in crate::game) fn block_state_at(&self, pos: Pos) -> Option<&'static BlockState> {
         let registry = self.pack.assets.registry;
         state_of(registry, self.world.block(pos.0, pos.1, pos.2))
     }
-    fn schedule_command_block(&mut self, pos: Pos) {
+    pub(in crate::game) fn schedule_command_block(&mut self, pos: Pos) {
         let at = BlockPos::new(pos.0, pos.1, pos.2);
         self.with_level(|b, level, ticks| b.schedule_tick(level, ticks, at, 1));
     }
@@ -90,11 +98,11 @@ impl Game<'_> {
         }
     }
     /// `CommandBlockEntity.scheduleTick`.
-    fn schedule_command_block_tick(&mut self, pos: Pos) {
+    pub(in crate::game) fn schedule_command_block_tick(&mut self, pos: Pos) {
         mark_condition_met(&mut self.world, self.pack.assets.registry, pos);
         self.schedule_command_block(pos);
     }
-    fn update_output_signal(&mut self, pos: Pos) {
+    pub(in crate::game) fn update_output_signal(&mut self, pos: Pos) {
         let at = BlockPos::new(pos.0, pos.1, pos.2);
         self.with_level(|b, level, ticks| b.update_neighbour_for_output_signal(level, ticks, at));
     }
@@ -211,7 +219,7 @@ impl Game<'_> {
     }
     /// `CommandBlock.execute`: the command (or no successes without one),
     /// then the chain in front.
-    fn command_block_execute(&mut self, pos: Pos, state: &BlockState) {
+    pub(in crate::game) fn command_block_execute(&mut self, pos: Pos, state: &BlockState) {
         let has_command = self
             .command_block(pos)
             .is_some_and(|c| !c.command.is_empty());
@@ -224,7 +232,7 @@ impl Game<'_> {
     }
     /// `CommandBlock.executeChain`: the chain command blocks in front, each
     /// facing on to the next, up to `max_command_sequence_length`.
-    fn execute_chain(&mut self, start: Pos, mut step: [i32; 3]) {
+    pub(in crate::game) fn execute_chain(&mut self, start: Pos, mut step: [i32; 3]) {
         let registry = self.pack.assets.registry;
         let limit = self
             .ui
@@ -268,7 +276,7 @@ impl Game<'_> {
     /// `BaseCommandBlock.performCommand`: runs the command as the block, at
     /// game master level, counting the successful results. False when it
     /// already ran this game tick.
-    fn perform_command_block(&mut self, pos: Pos) -> bool {
+    pub(in crate::game) fn perform_command_block(&mut self, pos: Pos) -> bool {
         let game_time = self.world.game_time;
         let Some(c) = command_block_mut(&mut self.world, pos) else {
             return false;
@@ -326,19 +334,6 @@ impl Game<'_> {
             };
         }
         true
-    }
-    /// `Commands.performPrefixedCommand` for a `BaseCommandBlock`: `command`
-    /// from `source` at game master level, and how many of its results
-    /// succeeded.
-    pub(in crate::game) fn run_as_game_master(&mut self, command: &str, source: Source) -> i32 {
-        // performPrefixedCommand: a leading slash is allowed.
-        let line = command.strip_prefix('/').unwrap_or(command).to_owned();
-        let outer = self.cmds.0.results.replace(Vec::new());
-        let level = std::mem::replace(&mut self.ui.registries.permission, 2);
-        self.with_source(source, |g| g.run_command(&line));
-        self.ui.registries.permission = level;
-        let results = std::mem::replace(&mut self.cmds.0.results, outer).unwrap_or_default();
-        results.iter().filter(|(success, _)| *success).count() as i32
     }
     /// `CloseableCommandBlockSource.sendSystemMessage`: the block's last
     /// output, stamped with the time. Nothing when it doesn't track output
@@ -696,7 +691,7 @@ impl Game<'_> {
     }
     /// The edit screen's Done: a server's client sends the packet, the
     /// window's own world applies it (`handleSetCommandBlock`).
-    fn set_command_block(&mut self, s: &CommandBlockScreen) {
+    pub(in crate::game) fn set_command_block(&mut self, s: &CommandBlockScreen) {
         if !self.can_use_game_master_blocks() {
             self.system_message(Text::translate("advMode.notAllowed", &[]));
             return;
@@ -862,7 +857,7 @@ impl Game<'_> {
 }
 
 #[cfg(test)]
-mod tests {
+pub(in crate::game) mod tests {
     use super::*;
 
     /// The edit screen's boxes are re-made at the build's size and its

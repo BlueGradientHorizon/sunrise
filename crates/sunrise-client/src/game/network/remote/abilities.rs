@@ -1,12 +1,14 @@
 //! Client-side `LocalPlayer.abilities` and `PlayerInfo` game mode sync (`ClientPacketListener`).
+#[allow(unused_imports)]
 use super::*;
+#[allow(unused_imports)]
 use sunrise_client::lan::abilities::PlayerAbilities;
 
 /// `Abilities.walkingSpeed` before the server sends one.
-const WALKING_SPEED: f32 = 0.1;
+pub(in crate::game) const WALKING_SPEED: f32 = 0.1;
 
 /// The walking speed `AbstractClientPlayer.getFieldOfViewModifier` divides the movement speed by.
-fn walking_speed(abilities: Option<&PlayerAbilities>) -> f32 {
+pub(in crate::game) fn walking_speed(abilities: Option<&PlayerAbilities>) -> f32 {
     abilities.map_or(WALKING_SPEED, |a| a.walking_speed)
 }
 
@@ -106,7 +108,7 @@ impl Game<'_> {
     /// ClientPacketListener.handleRotatePlayer: the server's yaw and pitch, each added to the
     /// current one when its bit says relative, then sent back as a `Rot` move with both
     /// flags false.
-    pub(super) fn remote_rotation(&mut self, p: &play::PlayerRotation) {
+    pub(in crate::game) fn remote_rotation(&mut self, p: &play::PlayerRotation) {
         self.yaw = if p.relative_yaw {
             self.yaw + p.yaw
         } else {
@@ -128,7 +130,7 @@ impl Game<'_> {
 }
 
 #[cfg(test)]
-mod tests {
+pub(in crate::game) mod tests {
     use super::*;
     use sunrise_client::camera::{FovPlayer, field_of_view_modifier};
 

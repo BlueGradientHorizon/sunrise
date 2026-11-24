@@ -1,24 +1,15 @@
+#[allow(unused_imports)]
 use super::Game;
+#[allow(unused_imports)]
 use mod_api::{Answered, HookId, InlineImageReplacement};
+#[allow(unused_imports)]
 use std::collections::BTreeMap;
+#[allow(unused_imports)]
 use sunrise_client::hud::HudAtlas;
+#[allow(unused_imports)]
 use sunrise_client::text::{InlineObject, Text};
 
 impl Game<'_> {
-    /// Only a subscribed client lays out substituted images. Atlas, dynamic sprite geometry and
-    /// mod toggles can each invalidate layout, but updating a texture's pixels does not.
-    pub(in crate::game) fn inline_images_revision(&self) -> Option<[u64; 3]> {
-        (self.native_window()
-            && mod_api::__private::enabled_listened(HookId::SubstituteInlineImages))
-        .then(|| {
-            [
-                self.gui.atlas.revision,
-                self.client.dynamic_textures.geometry_revision(),
-                mod_api::__private::mods_switched(),
-            ]
-        })
-    }
-
     pub(in crate::game) fn substitute_inline_images(&self, text: &Text) -> Option<Text> {
         substitute(&self.gui.atlas, text, |run, images| {
             self.native_substitute_inline_images(mod_api::__private::SubstituteInlineImagesCall {
@@ -37,7 +28,7 @@ impl Game<'_> {
     }
 }
 
-fn substitute(
+pub(in crate::game) fn substitute(
     atlas: &HudAtlas,
     text: &Text,
     ask: impl Fn(&str, &mut Vec<Answered<InlineImageReplacement>>),
@@ -96,7 +87,7 @@ fn substitute(
 }
 
 #[cfg(test)]
-mod tests {
+pub(in crate::game) mod tests {
     use super::*;
     use mod_api::{ClientHost, Hooks, Identifier, ModEntry, SubstituteInlineImagesEvent};
     use mod_platform::testing::with_mods;

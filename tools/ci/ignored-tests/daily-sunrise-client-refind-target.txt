@@ -8,5 +8,5 @@ sunrise-client game::hanging_refind_tests::a_frame_the_listener_filled_does_not_
 sunrise-client game::hanging_refind_tests::a_frame_the_listener_filled_survives_the_loss_of_its_support lib daily resources
 sunrise-client game::hanging_refind_tests::a_frame_the_listener_removed_does_not_break lib daily resources
 sunrise-client game::hanging_refind_tests::a_painting_the_listener_removed_is_not_removed_again lib daily resources
-sunrise-client game::native_living_effects::tests::effect_writes_on_a_removed_mob_change_nothing lib daily resources
+sunrise-client game::server_side::native_living_effects::tests::effect_writes_on_a_removed_mob_change_nothing lib daily resources
 sunrise-client game::server_side::shear_refind_tests::a_mob_the_listener_removed_is_not_sheared lib daily resources

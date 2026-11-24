@@ -45,7 +45,7 @@ impl Game<'_> {
     /// limits still apply. True means submitted, not necessarily visible: an unknown
     /// provider or missing sprite set draws nothing. False on a server, without a
     /// client player/level, or for non-finite numeric input. API @API:client_particles@.
-    pub(super) fn add_particle(
+    pub(in crate::game) fn add_particle(
         &mut self,
         options: &ParticleOptions,
         at: [f64; 3],
@@ -68,7 +68,7 @@ impl Game<'_> {
         });
         true
     }
-    pub(super) fn level_add_breaking_particles(
+    pub(in crate::game) fn level_add_breaking_particles(
         &mut self,
         level: LevelRef,
         pos: [i32; 3],
@@ -81,7 +81,7 @@ impl Game<'_> {
         Ok(self.add_breaking_particle(pos, state, face))
     }
 
-    pub(super) fn level_add_terrain_particle(
+    pub(in crate::game) fn level_add_terrain_particle(
         &mut self,
         level: LevelRef,
         state: BlockStateId,
@@ -108,7 +108,7 @@ impl Game<'_> {
     /// `audible` as a rocket's by its silence. No entity, no damage, nothing on the server.
     /// True means queued; false on a server, without a client player/level, for non-finite
     /// input or for more than [`MAX_FIREWORK_EXPLOSIONS`] explosions. API @API:client_fireworks@.
-    pub(super) fn create_fireworks(&mut self, request: &FireworksRequest) -> bool {
+    pub(in crate::game) fn create_fireworks(&mut self, request: &FireworksRequest) -> bool {
         use super::api_values::TryIntoEngine;
         if !self.native_window()
             || self.player.is_none()

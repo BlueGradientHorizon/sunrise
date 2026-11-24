@@ -1,15 +1,20 @@
 //! A mod's write to a player in another level reaches their inventory at once. A give drops
 //! overflow in the player's level; a raw throw or block break still needs that level in place.
+#[allow(unused_imports)]
 use super::Dim;
+#[allow(unused_imports)]
 use super::native_entity_refs::tests::run_fresh_cases;
+#[allow(unused_imports)]
 use super::native_guest_turn_tests::with_guests;
+#[allow(unused_imports)]
 use mod_api::{HostTransaction, ItemPlace, ServerHost};
+#[allow(unused_imports)]
 use sunrise_client::{items::ItemStack, lan::playerdata};
 
-const NETHER: &str = "minecraft:the_nether";
+pub(in crate::game) const NETHER: &str = "minecraft:the_nether";
 
 /// How many item entities lie in each of the Overworld and the Nether.
-fn dropped(game: &mut super::Game<'_>) -> [usize; 2] {
+pub(in crate::game) fn dropped(game: &mut super::Game<'_>) -> [usize; 2] {
     let here = game.dim;
     let overworld = game.dropped.len();
     game.enter_level(Dim::Nether).unwrap();
@@ -20,7 +25,7 @@ fn dropped(game: &mut super::Game<'_>) -> [usize; 2] {
 
 /// Guests 12 (the world's owner) and 13 in the Nether with full inventories but for slot 8;
 /// the Overworld in place, as for an Overworld hook. A diamond to give.
-fn in_the_nether(game: &mut super::Game<'_>) -> mod_api::ItemStack {
+pub(in crate::game) fn in_the_nether(game: &mut super::Game<'_>) -> mod_api::ItemStack {
     game.level.player_uuid = Some(playerdata::uuid_ints(12));
     // A level is open while a player is in it.
     game.enter_level(Dim::Nether).unwrap();
@@ -44,13 +49,13 @@ fn in_the_nether(game: &mut super::Game<'_>) -> mod_api::ItemStack {
 }
 
 /// `count` diamonds, as a mod reads them from SNBT.
-fn some_diamonds(game: &super::Game<'_>, count: u32) -> mod_api::ItemStack {
+pub(in crate::game) fn some_diamonds(game: &super::Game<'_>, count: u32) -> mod_api::ItemStack {
     let host: &dyn mod_api::Host = game;
     host.item_from_snbt(&format!(r#"{{id:"minecraft:diamond",count:{count}}}"#))
         .unwrap()
 }
 
-fn diamonds(game: &super::Game<'_>, conn: u32) -> u32 {
+pub(in crate::game) fn diamonds(game: &super::Game<'_>, conn: u32) -> u32 {
     let guest = game.lan.as_ref().unwrap().hub.guest(conn).unwrap();
     let held = guest.inventory.iter().flatten();
     held.filter(|s| &*s.item == "minecraft:diamond")
@@ -179,7 +184,7 @@ fn a_give_to_a_player_in_another_level_drops_overflow_there() {
 }
 
 #[derive(Clone, Default)]
-struct GiveJoin(std::sync::Arc<std::sync::Mutex<Vec<u32>>>);
+pub(in crate::game) struct GiveJoin(pub(in crate::game) std::sync::Arc<std::sync::Mutex<Vec<u32>>>);
 
 #[mod_api::__subscriptions]
 impl mod_api::Hooks for GiveJoin {
@@ -256,97 +261,6 @@ fn a_give_to_a_borrowed_player_drops_in_their_level() {
             ("minecraft:diamond", 1)
         );
         assert_eq!(*joined.0.lock().unwrap(), [item.id]);
-    });
-}
-
-/// A gift that fits uses the recipient's RNG and sounds at their feet in their own level.
-#[test]
-#[ignore = "daily"]
-fn a_give_that_fits_plays_pickup_in_the_players_level() {
-    use std::sync::{Arc, mpsc};
-    use sunrise_client::lan::{Out, PlayerSender};
-    use sunrise_core::random::{EntityRandom, LegacyRandom, RandomSource};
-    use sunrise_protocol::{buf::Reader, packets::play::Clientbound as C};
-
-    if run_fresh_cases(
-        "game::server_side::native_player_level_tests::a_give_that_fits_plays_pickup_in_the_players_level",
-        "SUNRISE_GIVE_OVERFLOW_CHILD",
-        &["sound"],
-    ) {
-        return;
-    }
-    with_guests(|game| {
-        let diamond = in_the_nether(game);
-        let hub = &mut game.lan.as_mut().unwrap().hub;
-        let [overworld, nether] = [12, 13].map(|conn| {
-            let (tx, rx) = mpsc::channel();
-            hub.update_guest(conn, |g| {
-                if conn == 12 {
-                    g.dimension = "minecraft:overworld".to_owned();
-                }
-                g.sender = PlayerSender::new(tx, Arc::default());
-            })
-            .unwrap();
-            rx
-        });
-        let C::Sound(pickup) = hub.sound_packet(
-            "minecraft:entity.item.pickup",
-            [3.0, 64.0, 5.0],
-            0.2,
-            2.0,
-            7,
-            0,
-        ) else {
-            unreachable!()
-        };
-        game.as_guest(13, |g| {
-            g.player.as_mut().unwrap().random = EntityRandom::own(LegacyRandom::new(0x5eed));
-        })
-        .unwrap();
-        game.audio.0.capture = Some(Vec::new());
-        let player = game.player(13).unwrap();
-        let host: &mut dyn ServerHost = game;
-        let given = host.transaction(|host, _| Ok::<_, ()>(player.give_stack(host, diamond)));
-        assert_eq!(given, Ok(Ok(None)));
-        assert_eq!(diamonds(game, 13), 1);
-        assert_eq!(game.dim, Dim::Overworld);
-        game.lan_broadcast_effects();
-
-        let pickups = |rx: mpsc::Receiver<Out>| {
-            rx.try_iter()
-                .flat_map(|out| match out {
-                    Out::Packet(body) => vec![body],
-                    Out::Packets(bodies) => bodies,
-                    Out::Disconnect(_) => vec![],
-                })
-                .filter_map(|body| {
-                    let mut r = Reader::new(&body);
-                    let id = r.varint().unwrap();
-                    match C::decode(id, r.rest()).unwrap() {
-                        C::Sound(s) if s.sound == pickup.sound => {
-                            Some(([s.x, s.y, s.z], s.source, s.volume, s.pitch.to_bits()))
-                        }
-                        _ => None,
-                    }
-                })
-                .collect::<Vec<_>>()
-        };
-        assert!(pickups(overworld).is_empty());
-        // Java Random(0x5eed): four nextFloat draws for the fake item, two for pitch.
-        assert_eq!(pickups(nether), [([24, 512, 40], 7, 0.2, 0x3fdcbf84)]);
-        game.as_guest(13, |g| {
-            assert_eq!(g.player.as_mut().unwrap().random.next_int(), -786623561);
-        })
-        .unwrap();
-        assert_eq!(dropped(game), [0, 1]);
-        game.enter_level(Dim::Nether).unwrap();
-        let fake = game.dropped.last().unwrap();
-        assert_eq!(
-            (&*fake.stack.item, fake.stack.count),
-            ("minecraft:diamond", 1)
-        );
-        assert_eq!((fake.pickup_delay, fake.age), (32767, 5999));
-        assert_eq!((fake.thrower, fake.target), (None, None));
     });
 }
 

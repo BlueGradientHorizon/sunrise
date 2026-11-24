@@ -1,5 +1,6 @@
 //! A subscribed guest's merchant result click is one savepoint. Each take has its own
 //! frozen menu plan, collect and apply; a later refusal aborts every earlier iteration.
+#[allow(unused_imports)]
 use super::{
     Game,
     decided_action::{DecidedTarget, Epoch},
@@ -11,7 +12,9 @@ use super::{
         decision::{Identity, OwnerStamp, Reply, Side},
     },
 };
+#[allow(unused_imports)]
 use std::{cell::RefCell, collections::HashMap};
+#[allow(unused_imports)]
 use sunrise_client::{
     advancements::Advancement,
     items::ItemStack,
@@ -19,22 +22,23 @@ use sunrise_client::{
     menu::{Input, Menu, StackedOutcome},
     merchant::Event,
 };
+#[allow(unused_imports)]
 use sunrise_protocol::packets::play;
 
 /// The live owner's generation covers its slots, offer list, selection, and packet snapshot.
 /// The action's player epoch separately covers the cursor and player-owned destinations.
-struct TakeReads {
-    conn: u32,
-    window: i32,
-    identity: Identity,
-    stamp: OwnerStamp,
-    hub_generation: u64,
-    creative: bool,
-    map_id: Option<i32>,
+pub(in crate::game) struct TakeReads {
+    pub(in crate::game) conn: u32,
+    pub(in crate::game) window: i32,
+    pub(in crate::game) identity: Identity,
+    pub(in crate::game) stamp: OwnerStamp,
+    pub(in crate::game) hub_generation: u64,
+    pub(in crate::game) creative: bool,
+    pub(in crate::game) map_id: Option<i32>,
 }
 
 impl TakeReads {
-    fn fresh(&self, game: &Game<'_>) -> bool {
+    pub(in crate::game) fn fresh(&self, game: &Game<'_>) -> bool {
         let Some(host) = game.lan.as_ref() else {
             return false;
         };
@@ -60,22 +64,22 @@ impl TakeReads {
     }
 }
 
-struct TakePlan {
-    menu: Menu,
-    made: MadeMaps,
-    player_slots: Vec<(usize, Option<ItemStack>)>,
-    offhand: Option<Option<ItemStack>>,
+pub(in crate::game) struct TakePlan {
+    pub(in crate::game) menu: Menu,
+    pub(in crate::game) made: MadeMaps,
+    pub(in crate::game) player_slots: Vec<(usize, Option<ItemStack>)>,
+    pub(in crate::game) offhand: Option<Option<ItemStack>>,
 }
 
 // Keep typed snapshots in closures so no storage's private representation escapes its owner.
-type Restore = Box<dyn FnOnce(&mut Game<'_>)>;
+pub(in crate::game) type Restore = Box<dyn FnOnce(&mut Game<'_>)>;
 #[derive(Default)]
 pub(in crate::game) struct Journal {
-    guests: HashMap<u32, Restore>,
-    windows: HashMap<u32, Restore>,
-    mobs: HashMap<u32, Restore>,
-    sequences: Option<sunrise_client::random_sequences::RandomSequences>,
-    active: Option<u32>,
+    pub(in crate::game) guests: HashMap<u32, Restore>,
+    pub(in crate::game) windows: HashMap<u32, Restore>,
+    pub(in crate::game) mobs: HashMap<u32, Restore>,
+    pub(in crate::game) sequences: Option<sunrise_client::random_sequences::RandomSequences>,
+    pub(in crate::game) active: Option<u32>,
     pub(in crate::game) correct_on_abort: std::collections::BTreeSet<(u32, i32)>,
     pub(in crate::game) refused_clicks: std::collections::BTreeSet<(u32, i32)>,
 }
@@ -203,7 +207,7 @@ impl Game<'_> {
             .any(|level| level.menu_click_active.is_some() || level.trades.active == Some(conn))
     }
 
-    fn run_merchant_take(
+    pub(in crate::game) fn run_merchant_take(
         &mut self,
         conn: u32,
         p: &play::ContainerClick,
@@ -428,7 +432,7 @@ impl Game<'_> {
     }
 
     /// Install only the writes calculated by the plan.
-    fn apply_merchant_take(&mut self, reads: &TakeReads, mut plan: TakePlan) {
+    pub(in crate::game) fn apply_merchant_take(&mut self, reads: &TakeReads, mut plan: TakePlan) {
         let conn = reads.conn;
         let mob = reads.identity.target.id();
         self.journal_guest_merchant(conn);
@@ -610,7 +614,7 @@ impl Game<'_> {
         self.send_merchant_take(conn, window, true);
     }
 
-    fn send_merchant_take(&mut self, conn: u32, window: i32, offers: bool) {
+    pub(in crate::game) fn send_merchant_take(&mut self, conn: u32, window: i32, offers: bool) {
         let Some(host) = self.lan.as_mut() else {
             return;
         };
@@ -661,23 +665,6 @@ impl Game<'_> {
             self.after_commit(After::Trade(Box::new(Effect::Orb(at, value))));
         } else {
             self.add_orb(at, value);
-        }
-    }
-    pub(in crate::game) fn merchant_sound(
-        &mut self,
-        sound: &'static str,
-        at: [f64; 3],
-        pitch: f32,
-    ) {
-        if self.merchant_take_active() {
-            self.defer_effect(super::transactions::DeferredEffect::Sound {
-                sound,
-                at,
-                volume: 1.0,
-                pitch,
-            });
-        } else {
-            self.audio.0.play(sound, Some(at), 1.0, pitch);
         }
     }
 

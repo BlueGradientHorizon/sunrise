@@ -1,3 +1,4 @@
+#[allow(unused_imports)]
 use super::*;
 
 /// The hook points. Each does nothing in Sunrise.
@@ -10,11 +11,13 @@ impl Game<'_> {
 }
 
 #[cfg(test)]
-mod local_sound_tests {
+pub(in crate::game) mod local_sound_tests {
+    #[allow(unused_imports)]
     use mod_api::{ClientHost, Flow, Hooks, ModEntry, RenderGuiPreEvent, SoundPlay};
+    #[allow(unused_imports)]
     use mod_platform::testing::with_mods;
 
-    struct Mod;
+    pub(in crate::game) struct Mod;
     #[mod_api::__subscriptions]
     impl Hooks for Mod {
         fn render_gui_pre(&self, host: &dyn ClientHost, _: &mut RenderGuiPreEvent) -> Flow {
@@ -24,32 +27,5 @@ mod local_sound_tests {
             );
             Flow::Continue
         }
-    }
-
-    /// A sound a screen hook plays through its read-only host is held, then played by the
-    /// next audio update, before its tick.
-    #[test]
-    #[ignore = "daily"]
-    fn a_screen_hooks_sound_reaches_audio_at_the_next_update() {
-        let mods: mod_api::Mods = vec![ModEntry::new("click", Box::new(Mod))].into();
-        with_mods(mods, || {
-            crate::game::native_entity_refs::tests::with_game(|game| {
-                game.options.execution_role = super::ExecutionRole::Client;
-                game.audio.0.heard.clear();
-                game.native_render_gui_pre(&mut false);
-                assert_eq!(
-                    game.client.mod_sounds.queued.borrow().len(),
-                    1,
-                    "held for the audio update"
-                );
-                assert!(!game.audio.0.heard.contains_key("minecraft:ui.button.click"));
-                game.tick_sound_engine();
-                assert!(game.client.mod_sounds.queued.borrow().is_empty());
-                assert_eq!(
-                    game.audio.0.heard.get("minecraft:ui.button.click"),
-                    Some(&1)
-                );
-            });
-        });
     }
 }

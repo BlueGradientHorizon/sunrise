@@ -7,7 +7,7 @@ use sunrise_client::ticket_levels::ViewedTicket;
 
 impl Game<'_> {
     /// The squares the areas in the level in place keep loaded and generated.
-    pub(super) fn viewed_extra(&self) -> Vec<((i32, i32), i32)> {
+    pub(in crate::game) fn viewed_extra(&self) -> Vec<((i32, i32), i32)> {
         self.lan
             .as_ref()
             .map_or_else(Vec::new, |h| h.hub.viewed_extra(self.dim.id()))

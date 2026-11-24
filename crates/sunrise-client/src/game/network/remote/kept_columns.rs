@@ -1,7 +1,9 @@
+#[allow(unused_imports)]
 use super::*;
+#[allow(unused_imports)]
 use sunrise_client::{chunk_map::ClientChunkRange, fast_hash::FxHashSet};
 
-type Column = (i32, i32);
+pub(in crate::game) type Column = (i32, i32);
 
 impl Game<'_> {
     pub(in crate::game) fn remote_chunk_in_range(&self, x: i32, z: i32) -> bool {
@@ -11,7 +13,7 @@ impl Game<'_> {
             })
     }
 
-    pub(super) fn set_remote_chunk_cache_center(&mut self, center: Column) {
+    pub(in crate::game) fn set_remote_chunk_cache_center(&mut self, center: Column) {
         if let Some(r) = self.remote.as_mut() {
             r.chunk_center = center;
             let range = ClientChunkRange::new(center, r.view_distance);
@@ -34,7 +36,7 @@ impl Game<'_> {
         }
     }
 
-    pub(super) fn set_remote_chunk_cache_radius(&mut self, distance: i32) {
+    pub(in crate::game) fn set_remote_chunk_cache_radius(&mut self, distance: i32) {
         self.streaming.radius = crate::game::entity_culling::streaming_radius_for(
             self.settings.render_distance,
             Some(distance),
@@ -62,18 +64,9 @@ impl Game<'_> {
         }
     }
 
-    fn update_remote_chunk_view(&mut self, range: ClientChunkRange) {
-        let (hidden, shown) = self.world.chunks.set_client_chunk_range(range);
-        if let Some(renderer) = &mut self.renderer.0 {
-            renderer.remove_columns(hidden.iter().copied());
-        }
-        self.streaming
-            .remote_chunk_visibility_changed(&mut self.world, &hidden, &shown);
-    }
-
     /// Explicit Forget always removes the requested column's queued light. Only a
     /// visible, exact-coordinate block column can be dropped from the ring.
-    pub(super) fn forget_remote_packets(&mut self, positions: &mut FxHashSet<Column>) {
+    pub(in crate::game) fn forget_remote_packets(&mut self, positions: &mut FxHashSet<Column>) {
         self.forget_remote_light(positions);
         positions.retain(|&(x, z)| {
             self.remote_chunk_in_range(x, z) && self.world.chunks.contains_key(&(x, z))
@@ -114,39 +107,5 @@ impl Game<'_> {
         }
         self.free_remote_columns(gone, keep_terrain);
         freed_at
-    }
-
-    fn free_remote_columns(&mut self, gone: &mut FxHashSet<Column>, keep_terrain: bool) {
-        if gone.is_empty() {
-            return;
-        }
-        let freed =
-            sunrise_client::streaming::Streaming::take_remote_columns(&mut self.world, gone);
-        self.streaming.forget_columns(&mut self.world, gone);
-        if keep_terrain && let Some(lod) = &mut self.lod.0 {
-            for chunk in &freed {
-                lod.observe(chunk.clone(), self.res.facts());
-            }
-        }
-        if let Some(renderer) = self.renderer.0.as_mut() {
-            renderer.remove_columns(gone.iter().copied());
-        }
-        sunrise_client::chunk::free_columns(freed, gone.len());
-        self.be_anims
-            .pots
-            .retain(|[x, _, z], _| !gone.contains(&(*x >> 4, *z >> 4)));
-        sunrise_client::spans::time("unload_block_entities", || {
-            for &column in gone.iter() {
-                self.world.block_entities.unload_column(column);
-            }
-        });
-        if let Some(r) = self.remote.as_mut() {
-            r.attachments.retain(|holder, _| match *holder {
-                Holder::Chunk([x, z]) => !gone.contains(&(x, z)),
-                Holder::BlockEntity([x, _, z]) => !gone.contains(&(x >> 4, z >> 4)),
-                _ => true,
-            });
-        }
-        gone.clear();
     }
 }

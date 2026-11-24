@@ -2,20 +2,25 @@
 //! body (`WindChargedMobEffect.onMobRemoved`) and for a silent source no sound
 //! at all (`ServerLevel.explode`'s `playSound`), and vehicles left alone by a
 //! mob's blast with mob griefing off (`VehicleEntity.ignoreExplosion`).
+#[allow(unused_imports)]
 use crate::game::commands::Target;
+#[allow(unused_imports)]
 use crate::game::{Audio, Game, Options, Progress, Settings, load_resources};
+#[allow(unused_imports)]
 use std::sync::Arc;
+#[allow(unused_imports)]
 use sunrise_client::chunk::Chunk;
+#[allow(unused_imports)]
 use sunrise_world::food::Difficulty;
 
-const BREEZE_BURST: &str = "minecraft:entity.breeze.wind_burst";
-const WIND_CHARGE_BURST: &str = "minecraft:entity.wind_charge.wind_burst";
+pub(in crate::game) const BREEZE_BURST: &str = "minecraft:entity.breeze.wind_burst";
+pub(in crate::game) const WIND_CHARGE_BURST: &str = "minecraft:entity.wind_charge.wind_burst";
 
 /// A windowless integrated-server game on normal difficulty (a level.dat would
 /// set it; the default would discard a zombie as Peaceful does) with chunk
 /// (0, 0) loaded and a stone floor at y 63, which a dead mob falls onto so
 /// that its burst has ground under it. `None` without the prepared resources.
-fn with_game<R>(f: impl FnOnce(&mut Game<'_>) -> R) -> Option<R> {
+pub(in crate::game) fn with_game<R>(f: impl FnOnce(&mut Game<'_>) -> R) -> Option<R> {
     let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES")?);
     let settings = Settings::default();
     let loaded = load_resources(
@@ -60,13 +65,11 @@ fn with_game<R>(f: impl FnOnce(&mut Game<'_>) -> R) -> Option<R> {
     Some(f(&mut game))
 }
 
-/// How many times `sound` was played as a positional sound.
-fn heard(game: &Game<'_>, sound: &str) -> u32 {
-    game.audio.0.heard.get(sound).copied().unwrap_or(0)
-}
+#[allow(unused_imports)]
+pub(in crate::game) use crate::game::client_side::wind_client::wind_charged_tests::heard;
 
 /// An oak boat two blocks east of the burst's centre.
-fn boat(game: &mut Game<'_>) -> u32 {
+pub(in crate::game) fn boat(game: &mut Game<'_>) -> u32 {
     match game
         .summon_with_nbt("minecraft:oak_boat", [6.5, 64.0, 4.5], "{}")
         .unwrap()
@@ -76,7 +79,7 @@ fn boat(game: &mut Game<'_>) -> u32 {
     }
 }
 
-fn boat_speed(game: &Game<'_>, id: u32) -> f64 {
+pub(in crate::game) fn boat_speed(game: &Game<'_>, id: u32) -> f64 {
     let v = game.boats.iter().find(|b| b.id == id).unwrap().velocity;
     (v.x * v.x + v.y * v.y + v.z * v.z).sqrt()
 }
@@ -84,7 +87,7 @@ fn boat_speed(game: &Game<'_>, id: u32) -> f64 {
 /// A zombie at (4.5, 64, 4.5) with the Wind Charged effect, `Silent` or not,
 /// killed and ticked out: `LivingEntity.remove` with KILLED runs its effects
 /// after `LivingEntity.tickDeath`'s twenty ticks.
-fn a_wind_charged_zombie_dies(game: &mut Game<'_>, silent: bool) {
+pub(in crate::game) fn a_wind_charged_zombie_dies(game: &mut Game<'_>, silent: bool) {
     let nbt = if silent { "{Silent:1b}" } else { "{}" };
     game.summon_with_nbt("minecraft:zombie", [4.5, 64.0, 4.5], nbt)
         .unwrap()
@@ -99,103 +102,6 @@ fn a_wind_charged_zombie_dies(game: &mut Game<'_>, silent: bool) {
     for _ in 0..25 {
         game.tick_creatures().unwrap();
     }
-}
-
-/// `WindChargedMobEffect.onMobRemoved` calls `ServerLevel.explode` with
-/// `SoundEvents.BREEZE_WIND_CHARGE_BURST`, so the burst is heard as the
-/// breeze's, not as the wind charge's; `ServerLevel.explode` sends
-/// `playSound = source == null || !source.isSilent()`, so a `Silent` mob's
-/// burst is mute. The particle and the knockback stay either way.
-#[test]
-#[ignore = "daily"]
-fn a_wind_charged_mob_bursts_with_the_breezes_sound_unless_it_is_silent() {
-    let Some(outcome) = with_game(|game| {
-        let mut outcome = Vec::new();
-        for silent in [false, true] {
-            let boat = boat(game);
-            let (breeze, charge) = (heard(game, BREEZE_BURST), heard(game, WIND_CHARGE_BURST));
-            game.particles.0.requested = Some(Vec::new());
-            a_wind_charged_zombie_dies(game, silent);
-            let gust = game.particles.0.requested.take().unwrap_or_default();
-            outcome.push((
-                silent,
-                heard(game, BREEZE_BURST) - breeze,
-                heard(game, WIND_CHARGE_BURST) - charge,
-                gust.iter()
-                    .filter(|(p, _, _)| {
-                        p.ty == sunrise_client::particles::ParticleType::GustEmitterLarge
-                    })
-                    .count(),
-                boat_speed(game, boat) > 0.0,
-            ));
-            game.boats.clear();
-        }
-        outcome
-    }) else {
-        return;
-    };
-    assert_eq!(
-        outcome,
-        vec![
-            // Heard once, as the breeze's, with the gust and the boat thrown.
-            (false, 1, 0, 1, true),
-            // A silent mob's burst is mute, and still pushes and draws.
-            (true, 0, 0, 1, true),
-        ]
-    );
-}
-
-/// `AbstractWindCharge.explode` hands `ServerLevel.explode` the charge itself
-/// as the source, so `playSound` is `!charge.isSilent()`: a `Silent` wind
-/// charge's burst is mute, its gust and its push stay. The sound is the wind
-/// charge's own, as `WindCharge.explode` passes it.
-#[test]
-#[ignore = "daily"]
-fn a_silent_wind_charge_bursts_without_a_sound() {
-    let Some(outcome) = with_game(|game| {
-        let mut outcome = Vec::new();
-        for silent in [false, true] {
-            let boat = boat(game);
-            let (charge, breeze) = (heard(game, WIND_CHARGE_BURST), heard(game, BREEZE_BURST));
-            game.particles.0.requested = Some(Vec::new());
-            let nbt = if silent {
-                "{Silent:1b,Motion:[0.0,-1.0,0.0]}"
-            } else {
-                "{Motion:[0.0,-1.0,0.0]}"
-            };
-            game.summon_with_nbt("minecraft:wind_charge", [4.5, 66.0, 4.5], nbt)
-                .unwrap()
-                .expect("summoned wind charge");
-            for _ in 0..40 {
-                game.tick_creatures().unwrap();
-            }
-            let gust = game.particles.0.requested.take().unwrap_or_default();
-            outcome.push((
-                silent,
-                heard(game, WIND_CHARGE_BURST) - charge,
-                heard(game, BREEZE_BURST) - breeze,
-                gust.iter()
-                    .filter(|(p, _, _)| {
-                        p.ty == sunrise_client::particles::ParticleType::GustEmitterSmall
-                    })
-                    .count(),
-                boat_speed(game, boat) > 0.0,
-            ));
-            game.boats.clear();
-        }
-        outcome
-    }) else {
-        return;
-    };
-    assert_eq!(
-        outcome,
-        vec![
-            // Heard once, as the wind charge's, with the gust and the boat thrown.
-            (false, 1, 0, 1, true),
-            // A silent charge's burst is mute, and still pushes and draws.
-            (true, 0, 0, 1, true),
-        ]
-    );
 }
 
 /// `VehicleEntity.ignoreExplosion` skips a whole blast for a boat or a

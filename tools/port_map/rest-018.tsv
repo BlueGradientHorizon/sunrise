@@ -22,7 +22,7 @@ ServerGamePacketListenerImpl.handleTestInstanceBlockAction	port	crates/sunrise-c
 ServerGamePacketListenerImpl.handleSetJigsawBlock	port	crates/sunrise-client/src/game/administration/jigsaw_blocks.rs::Game::lan_set_jigsaw_block	the six fields go into the block entity (and mark it); a guest's edit through `lan_set_jigsaw_block`, the integrated game's through `block_editor_outcome` -> `apply_set_jigsaw_block`
 ServerGamePacketListenerImpl.handleJigsawGenerate	port	crates/sunrise-client/src/game/administration/jigsaw_blocks.rs::Game::lan_jigsaw_generate	the piece structure is generated around the block for a creative player with game master commands, keeping the levels it writes
 ServerGamePacketListenerImpl.handleSelectTrade	port	crates/sunrise-client/src/game/network/lan_trading.rs::Game::lan_select_trade
-ServerGamePacketListenerImpl.updateBookContents	port	crates/sunrise-client/src/game/interface/books.rs::Game::write_book	writes the pages into the writable book in the slot
+ServerGamePacketListenerImpl.updateBookContents	port	crates/sunrise-client/src/game/interface/books_server.rs::Game::write_book	writes the pages into the writable book in the slot
 ServerGamePacketListenerImpl.filterableFromOutgoing	skip:service		text filter pass-through: with no filter on the LAN host the page is the raw text
 ServerGamePacketListenerImpl.handleEntityTagQuery	port	crates/sunrise-client/src/game/network/lan_actions/packets.rs::Game::level_entity_tag	reached from the EntityTagQuery arm of lan_guest_packet, which checks permission 2 or more
 ServerGamePacketListenerImpl.handleBlockEntityTagQuery	inline	crates/sunrise-client/src/game/network/lan_actions/packets.rs::Game::lan_guest_packet	the BlockEntityTagQuery arm, with debug_keys.rs block_entity_tag
@@ -32,7 +32,7 @@ ServerGamePacketListenerImpl.updateAwaitingTeleport	port	crates/sunrise-client/s
 ServerGamePacketListenerImpl.isEntityCollidingWithAnythingNew	port	crates/sunrise-client/src/lan/hub.rs::Hub::collide
 ServerGamePacketListenerImpl.wasBlockPlacementAttempt	inline	crates/sunrise-client/src/game/network/lan_actions/packets.rs::Game::was_block_placement_attempt	a block item, or a bucket with something in it, that is not cooling down; the build-limit overlay (build_limit_message) is what reads it
 ServerGamePacketListenerImpl.handleUseItemOn	port	crates/sunrise-client/src/game/network/lan_actions/packets.rs::Game::lan_guest_packet	gap: player: the build-limit message is never sent when placing at the top or bottom of the world
-ServerGamePacketListenerImpl.handleUseItem	port	crates/sunrise-client/src/game/network/lan_actions/interaction.rs::Game::guest_use_item	ack/reset in the packet arm; a non-empty enabled stack permits the rotation before game-mode use
+ServerGamePacketListenerImpl.handleUseItem	port	crates/sunrise-client/src/game/network/lan_actions/interaction_server.rs::Game::guest_use_item	ack/reset in the packet arm; a non-empty enabled stack permits the rotation before game-mode use
 ServerGamePacketListenerImpl.handlePaddleBoat	port	crates/sunrise-client/src/game/network/lan_vehicles.rs::Game::guest_paddle_boat
 ServerGamePacketListenerImpl.onDisconnect	port	crates/sunrise-client/src/lan/hub.rs::Hub::remove_guest	the reason is kept and the leave is broadcast
 ServerGamePacketListenerImpl.handleSetCarriedItem	port	crates/sunrise-client/src/game/network/lan_actions/packets.rs::Game::lan_guest_packet	SetCarriedItem arm: hotbar slot set, using item cleared

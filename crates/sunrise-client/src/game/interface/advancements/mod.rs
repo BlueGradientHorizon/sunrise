@@ -1,21 +1,28 @@
 //! The player's advancements in the game: criteria triggered from game
 //! events (`CriteriaTriggers`), awarding with rewards, the toast and the
 //! chat announcement, and `players/advancements/<uuid>.json`.
+#[allow(unused_imports)]
 use super::{Dim, Game, chat::PLAYER_NAME, lan_actions::DisplacedPlayer, stats::Stats};
-mod icons;
+pub(in crate::game) mod icons;
 
 #[cfg(test)]
 #[path = "inventory_changed_tests.rs"]
-mod inventory_changed_tests;
+pub(in crate::game) mod inventory_changed_tests;
+#[allow(unused_imports)]
 use mod_api::{GameMode, ProgressType};
+#[allow(unused_imports)]
 use serde_json::Value;
+#[allow(unused_imports)]
 #[cfg(test)]
 use std::time::Instant;
+#[allow(unused_imports)]
 use std::{
     collections::{BTreeMap, BTreeSet},
     sync::Arc,
 };
+#[allow(unused_imports)]
 use sunrise_client::actions::Action;
+#[allow(unused_imports)]
 use sunrise_client::{
     advancements::{self as adv, EntityView, Frame, ItemView, Progress, Tree},
     effects::PlayerEffects,
@@ -25,15 +32,21 @@ use sunrise_client::{
     text::{self, Style, Text},
     toasts::Slide,
 };
+#[allow(unused_imports)]
 use sunrise_core::geometry::Vec3;
+#[allow(unused_imports)]
 use sunrise_core::random::RandomSource;
+#[allow(unused_imports)]
 use sunrise_protocol::packets::play::Clientbound as C;
 
 #[cfg(test)]
-mod progress_tests;
+pub(in crate::game) mod progress_tests;
 
 /// Capture the owning progress without changing its dates or requirement semantics.
-fn progress_snapshot(a: &adv::Advancement, progress: &Progress) -> mod_api::AdvancementProgress {
+pub(in crate::game) fn progress_snapshot(
+    a: &adv::Advancement,
+    progress: &Progress,
+) -> mod_api::AdvancementProgress {
     let obtained = progress.criteria.get(&a.id);
     mod_api::AdvancementProgress::new(
         a.criteria
@@ -53,22 +66,22 @@ fn progress_snapshot(a: &adv::Advancement, progress: &Progress) -> mod_api::Adva
     )
 }
 
-pub(super) struct Toast {
-    icon: ItemStack,
-    frame: Frame,
-    title: Text,
-    description: Option<Text>,
-    slide: Slide,
+pub(in crate::game) struct Toast {
+    pub(in crate::game) icon: ItemStack,
+    pub(in crate::game) frame: Frame,
+    pub(in crate::game) title: Text,
+    pub(in crate::game) description: Option<Text>,
+    pub(in crate::game) slide: Slide,
     /// A `RecipeToast`: the crafting station and result of each display
     /// unlocked while it lasts (`recipeItems`); empty for an advancement.
-    recipes: Vec<(String, ItemStack)>,
+    pub(in crate::game) recipes: Vec<(String, ItemStack)>,
     /// `RecipeToast.changed` and `lastChanged`.
-    changed: bool,
-    last_changed: i64,
+    pub(in crate::game) changed: bool,
+    pub(in crate::game) last_changed: i64,
 }
 impl Toast {
     /// `RecipeToast.addOrUpdate` on a new toast.
-    pub(super) fn recipe(items: Vec<(String, ItemStack)>) -> Self {
+    pub(in crate::game) fn recipe(items: Vec<(String, ItemStack)>) -> Self {
         Self {
             icon: ItemStack::new("minecraft:air", 0),
             frame: Frame::Task,
@@ -80,25 +93,25 @@ impl Toast {
             last_changed: 0,
         }
     }
-    pub(super) fn is_recipe(&self) -> bool {
+    pub(in crate::game) fn is_recipe(&self) -> bool {
         !self.recipes.is_empty()
     }
     /// `RecipeToast.addItem`: more displays on a toast still queued or shown.
-    pub(super) fn add_recipes(&mut self, items: Vec<(String, ItemStack)>) {
+    pub(in crate::game) fn add_recipes(&mut self, items: Vec<(String, ItemStack)>) {
         self.recipes.extend(items);
         self.changed = true;
     }
-    pub(super) fn is_challenge(&self) -> bool {
+    pub(in crate::game) fn is_challenge(&self) -> bool {
         !self.is_recipe() && self.frame == Frame::Challenge
     }
-    pub(super) fn update(&mut self, multiplier: f64) -> (Option<bool>, bool) {
+    pub(in crate::game) fn update(&mut self, multiplier: f64) -> (Option<bool>, bool) {
         let mut slide = std::mem::take(&mut self.slide);
         let result = slide.update_now(|fully| self.wants_show(fully, multiplier));
         self.slide = slide;
         result
     }
     /// `Toast.update` with `fullyVisibleForMs`: whether it wants to be shown.
-    fn wants_show(&mut self, fully_for: i64, multiplier: f64) -> bool {
+    pub(in crate::game) fn wants_show(&mut self, fully_for: i64, multiplier: f64) -> bool {
         let time = 5000.0 * multiplier;
         if self.recipes.is_empty() {
             // AdvancementToast.
@@ -112,7 +125,7 @@ impl Toast {
     }
     /// `RecipeToast.displayedRecipeIndex`: the displays take turns over the
     /// toast's display time.
-    fn displayed_recipe(&self, fully_for: i64, multiplier: f64) -> usize {
+    pub(in crate::game) fn displayed_recipe(&self, fully_for: i64, multiplier: f64) -> usize {
         let n = self.recipes.len() as f64;
         (fully_for as f64 / (5000.0 * multiplier / n).max(1.0) % n) as usize
     }
@@ -121,74 +134,74 @@ impl Toast {
 /// last hit the player, and the effects the last tick saw (`ServerPlayer`'s
 /// fields of the same names). A guest keeps their own, as `levitation` does.
 #[derive(Clone, Debug, Default)]
-pub(super) struct TravelMarks {
+pub(in crate::game) struct TravelMarks {
     /// `startingToFallPosition`.
-    pub(super) fall: Option<[f64; 3]>,
+    pub(in crate::game) fall: Option<[f64; 3]>,
     /// `currentExplosionImpactPos` and `currentExplosionCause` (the entity
     /// that made the blast, if any).
-    pub(super) blast: Option<([f64; 3], Option<EntityView>)>,
+    pub(in crate::game) blast: Option<([f64; 3], Option<EntityView>)>,
     /// `enteredLavaOnVehiclePosition`.
-    pub(super) lava_ride: Option<[f64; 3]>,
+    pub(in crate::game) lava_ride: Option<[f64; 3]>,
     /// `enteredNetherPosition`.
-    pub(super) nether: Option<[f64; 3]>,
+    pub(in crate::game) nether: Option<[f64; 3]>,
     /// The (effect, amplifier) pairs `EffectsChangedTrigger` last saw.
-    pub(super) effects: Vec<(&'static str, i32)>,
+    pub(in crate::game) effects: Vec<(&'static str, i32)>,
     /// `PlayerEffects::changes` as the last tick saw it.
-    pub(super) effect_changes: u32,
+    pub(in crate::game) effect_changes: u32,
 }
 #[derive(Default)]
-pub(super) struct AdvState {
-    pub(super) tree: Arc<Tree>,
-    pub(super) remote_tree: Option<RemoteTree>,
+pub(in crate::game) struct AdvState {
+    pub(in crate::game) tree: Arc<Tree>,
+    pub(in crate::game) remote_tree: Option<RemoteTree>,
     /// `ClientAdvancements.selectedTab`: the connection remembers the root
     /// independently of the open screen's tabs and the current tree.
-    pub(super) selected_tab: Option<String>,
-    pub(super) progress: Progress,
-    pub(super) loaded: bool,
+    pub(in crate::game) selected_tab: Option<String>,
+    pub(in crate::game) progress: Progress,
+    pub(in crate::game) loaded: bool,
     /// Awards skip the toast (`/advancement grant ... everything`).
-    pub(super) quiet: bool,
+    pub(in crate::game) quiet: bool,
     /// The inventory last seen by `inventory_changed`.
-    pub(super) last_inventory: u64,
+    pub(in crate::game) last_inventory: u64,
     /// `ServerPlayer.levitationStartPos` and `levitationStartTime`.
-    pub(super) levitation: Option<([f64; 3], u64)>,
+    pub(in crate::game) levitation: Option<([f64; 3], u64)>,
     /// The fall, lava ride, Nether trip, blast and effects `tick_marks` follows.
-    pub(super) marks: TravelMarks,
+    pub(in crate::game) marks: TravelMarks,
     /// While the game acts for a network player (`as_guest`): the
     /// advancements whose progress changed (`progressChanged`), the recipes
     /// unlocked and the announcements, for their client and everyone's.
-    pub(super) changed: BTreeSet<usize>,
-    pub(super) unlocked: Vec<String>,
-    pub(super) announced: Vec<Text>,
+    pub(in crate::game) changed: BTreeSet<usize>,
+    pub(in crate::game) unlocked: Vec<String>,
+    pub(in crate::game) announced: Vec<Text>,
     /// `inventory_changed`'s criteria by item, built for `tree`.
-    inventory_index: Option<(Arc<Tree>, Arc<adv::InventoryIndex>)>,
+    pub(in crate::game) inventory_index: Option<(Arc<Tree>, Arc<adv::InventoryIndex>)>,
 }
 impl AdvState {
     /// Drop the index built for the previous tree after a new one is installed.
-    pub(super) fn reset_tree(&mut self) {
+    pub(in crate::game) fn reset_tree(&mut self) {
         self.inventory_index = None;
     }
 }
 /// The packet tree's insertion-time links. The current ID table in `Tree`
 /// can replace a node without replacing the node its parent or children know.
 #[derive(Default)]
-pub(super) struct RemoteTree {
-    pub(super) positions: Vec<(f32, f32)>,
+pub(in crate::game) struct RemoteTree {
+    pub(in crate::game) positions: Vec<(f32, f32)>,
     /// Node identity for each ID in `Tree::list` order.
-    current: Vec<usize>,
-    nodes: Vec<RemoteNode>,
+    pub(in crate::game) current: Vec<usize>,
+    pub(in crate::game) nodes: Vec<RemoteNode>,
 }
 
-struct RemoteNode {
-    id: String,
-    parent: Option<usize>,
-    children: Vec<usize>,
-    displayed: bool,
+pub(in crate::game) struct RemoteNode {
+    pub(in crate::game) id: String,
+    pub(in crate::game) parent: Option<usize>,
+    pub(in crate::game) children: Vec<usize>,
+    pub(in crate::game) displayed: bool,
 }
 
 impl RemoteTree {
     /// Root and nearest displayed parent of each current node, resolved by
     /// ID only after walking the actual insertion-time ancestors.
-    pub(super) fn widget_links<'a>(
+    pub(in crate::game) fn widget_links<'a>(
         &'a self,
         tree: &'a Tree,
     ) -> impl Iterator<Item = (Option<usize>, Option<usize>)> + 'a {
@@ -220,7 +233,7 @@ impl RemoteTree {
 
     /// Release identities no current node can reach in either direction.
     /// A removed or overwritten node remains as long as its links still matter.
-    fn prune_unreachable(&mut self) {
+    pub(in crate::game) fn prune_unreachable(&mut self) {
         if self.nodes.len() == self.current.len() {
             return;
         }
@@ -259,17 +272,17 @@ impl RemoteTree {
 }
 
 /// The live parts of a player's entity predicate view, wherever the turn keeps them.
-struct PlayerEntityState<'a> {
-    body: &'a PlayerMotion,
-    name: &'a str,
-    mode: GameMode,
-    input_sneak: bool,
-    main_hand: Option<&'a ItemStack>,
-    off_hand: Option<&'a ItemStack>,
-    armor: &'a [Option<ItemStack>; 4],
-    effects: &'a PlayerEffects,
-    riding: Option<u32>,
-    look: Option<(f32, f32)>,
+pub(in crate::game) struct PlayerEntityState<'a> {
+    pub(in crate::game) body: &'a PlayerMotion,
+    pub(in crate::game) name: &'a str,
+    pub(in crate::game) mode: GameMode,
+    pub(in crate::game) input_sneak: bool,
+    pub(in crate::game) main_hand: Option<&'a ItemStack>,
+    pub(in crate::game) off_hand: Option<&'a ItemStack>,
+    pub(in crate::game) armor: &'a [Option<ItemStack>; 4],
+    pub(in crate::game) effects: &'a PlayerEffects,
+    pub(in crate::game) riding: Option<u32>,
+    pub(in crate::game) look: Option<(f32, f32)>,
 }
 
 /// The game's world for predicates.
@@ -411,11 +424,12 @@ impl TagSources<'_> {
         }
     }
 }
-type Tags = std::collections::HashMap<String, std::collections::HashSet<String>>;
+pub(in crate::game) type Tags =
+    std::collections::HashMap<String, std::collections::HashSet<String>>;
 /// The game's own `worldgen/structure` tags (a world without data packs has
 /// no `WorldTables` to hold them), loaded once for the resource root first
 /// asked for.
-fn vanilla_structure_tags(root: &std::path::Path) -> &'static Tags {
+pub(in crate::game) fn vanilla_structure_tags(root: &std::path::Path) -> &'static Tags {
     static TAGS: std::sync::OnceLock<Tags> = std::sync::OnceLock::new();
     TAGS.get_or_init(|| {
         sunrise_client::items::load_tags(
@@ -426,7 +440,7 @@ fn vanilla_structure_tags(root: &std::path::Path) -> &'static Tags {
         .unwrap_or_default()
     })
 }
-fn now_text() -> String {
+pub(in crate::game) fn now_text() -> String {
     let secs = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_or(0, |d| d.as_secs()) as i64;
@@ -434,12 +448,12 @@ fn now_text() -> String {
 }
 impl Game<'_> {
     /// `ItemPredicate.test` (the `item_filter` of a filtered item modifier).
-    pub(super) fn loot_item_filter(&self, predicate: &Value, s: &ItemStack) -> bool {
+    pub(in crate::game) fn loot_item_filter(&self, predicate: &Value, s: &ItemStack) -> bool {
         adv::item(predicate, &item_view(s), &View(self))
     }
     /// `BaseContainerBlockEntity.canOpen`: whether the `lock` of the block
     /// entity at `key` keeps a player with this main hand out (`LockCode`).
-    pub(super) fn container_locked_for(
+    pub(in crate::game) fn container_locked_for(
         &self,
         key: (i32, i32, i32),
         spectator: bool,
@@ -455,7 +469,7 @@ impl Game<'_> {
 }
 /// `MinMaxBounds.Doubles.matchesSqr`: `sqr` against the bounds squared
 /// (a missing one matches anything).
-fn matches_sqr(v: &Value, sqr: f64) -> bool {
+pub(in crate::game) fn matches_sqr(v: &Value, sqr: f64) -> bool {
     let (min, max) = match v {
         Value::Null => (None, None),
         Value::Number(n) => (n.as_f64(), n.as_f64()),
@@ -467,7 +481,7 @@ fn matches_sqr(v: &Value, sqr: f64) -> bool {
     };
     !min.is_some_and(|m| m * m > sqr) && !max.is_some_and(|m| m * m < sqr)
 }
-pub(super) fn item_view(s: &ItemStack) -> ItemView {
+pub(in crate::game) fn item_view(s: &ItemStack) -> ItemView {
     ItemView {
         id: s.item.to_string(),
         count: s.count,
@@ -483,7 +497,7 @@ pub(super) fn item_view(s: &ItemStack) -> ItemView {
     }
 }
 impl Game<'_> {
-    fn adv_path(&self) -> Option<std::path::PathBuf> {
+    pub(in crate::game) fn adv_path(&self) -> Option<std::path::PathBuf> {
         Some(super::stats::player_json(
             &self.server.world_root,
             "advancements",
@@ -492,11 +506,11 @@ impl Game<'_> {
     }
     /// A server with no player of its own and nobody it acts for: there is
     /// no player for advancements and statistics.
-    pub(super) fn no_player_here(&self) -> bool {
+    pub(in crate::game) fn no_player_here(&self) -> bool {
         self.options.dedicated.is_some() && self.server.lan_acting.is_none()
     }
     /// Load the local tree once; an empty server tree is still authoritative.
-    pub(super) fn advancement_tree(&mut self) -> Arc<Tree> {
+    pub(in crate::game) fn advancement_tree(&mut self) -> Arc<Tree> {
         if self.adv.remote_tree.is_none() && self.adv.tree.list.is_empty() {
             let overlay = self.pack_files();
             self.adv.tree = Tree::shared(&self.options.resources.join("data"), &overlay);
@@ -505,7 +519,7 @@ impl Game<'_> {
         self.adv.tree.clone()
     }
     /// `inventory_changed`'s criteria by item, for the tree in place.
-    fn inventory_index(&mut self) -> Arc<adv::InventoryIndex> {
+    pub(in crate::game) fn inventory_index(&mut self) -> Arc<adv::InventoryIndex> {
         let tree = self.adv.tree.clone();
         if let Some((built, index)) = &self.adv.inventory_index
             && Arc::ptr_eq(built, &tree)
@@ -523,7 +537,7 @@ impl Game<'_> {
         self.adv.inventory_index = Some((tree, index.clone()));
         index
     }
-    pub(super) fn load_advancements(&mut self) {
+    pub(in crate::game) fn load_advancements(&mut self) {
         if self.adv.loaded || self.remote.is_some() || self.no_player_here() {
             return;
         }
@@ -550,7 +564,7 @@ impl Game<'_> {
             self.grant_rewards(&tree.list[index]);
         }
     }
-    pub(super) fn save_advancements(&self) {
+    pub(in crate::game) fn save_advancements(&self) {
         if !self.adv.loaded
             || self.remote.is_some()
             || self.no_player_here()
@@ -574,7 +588,7 @@ impl Game<'_> {
     }
     /// The player as predicates see it.
     /// The predicate view of a command target.
-    pub(super) fn entity_view_of(&self, t: super::commands::Target) -> EntityView {
+    pub(in crate::game) fn entity_view_of(&self, t: super::commands::Target) -> EntityView {
         use super::commands::Target;
         match t {
             Target::Player => self.player_entity(),
@@ -618,7 +632,7 @@ impl Game<'_> {
         }
     }
     /// A `ContextAwarePredicate` for `this` at `origin`.
-    pub(super) fn conditions_hold(
+    pub(in crate::game) fn conditions_hold(
         &self,
         v: &Value,
         this: Option<&EntityView>,
@@ -643,7 +657,7 @@ impl Game<'_> {
     }
     /// `ExecuteCommand.checkCustomPredicate`: no seed/sequence override;
     /// reached literal chance leaves use this active level's random source.
-    pub(super) fn command_conditions_hold(
+    pub(in crate::game) fn command_conditions_hold(
         &mut self,
         v: &Value,
         this: Option<&EntityView>,
@@ -667,7 +681,7 @@ impl Game<'_> {
         })
     }
     /// The player as a command's predicates see it: with what it looks at.
-    pub(super) fn player_entity(&self) -> EntityView {
+    pub(in crate::game) fn player_entity(&self) -> EntityView {
         self.player_entity_looking(true)
     }
     /// [`Self::entity_view_of`] for testing `predicate` (a predicate, a list
@@ -700,7 +714,7 @@ impl Game<'_> {
         view
     }
     /// [`Self::entity_view_of`] with the player's records `asked` names.
-    pub(super) fn entity_view_asking(
+    pub(in crate::game) fn entity_view_asking(
         &self,
         t: super::commands::Target,
         asked: adv::FactsAsked,
@@ -717,7 +731,11 @@ impl Game<'_> {
     /// [`Self::player_facts`] of a server's player who is not in place
     /// (selectors leave out the one in place): its own records, kept on the
     /// hub while another acts.
-    fn guest_facts(&self, conn: u32, asked: adv::FactsAsked) -> adv::PlayerFacts {
+    pub(in crate::game) fn guest_facts(
+        &self,
+        conn: u32,
+        asked: adv::FactsAsked,
+    ) -> adv::PlayerFacts {
         let Some(host) = self.lan.as_ref() else {
             return adv::PlayerFacts::default();
         };
@@ -745,7 +763,7 @@ impl Game<'_> {
     /// when one of them may ask (a ray against every entity and copies of
     /// the player's records otherwise), and its compound only when one of
     /// them may test `nbt`.
-    pub(super) fn player_entity_for(&mut self, trigger: &str) -> EntityView {
+    pub(in crate::game) fn player_entity_for(&mut self, trigger: &str) -> EntityView {
         let mut me = self.player_entity_for_any(&[trigger]);
         if self.adv.tree.may_test_nbt(trigger) {
             me.nbt = self.player_nbt();
@@ -754,7 +772,7 @@ impl Game<'_> {
     }
     /// [`Self::player_entity_for`] for the criteria of several triggers,
     /// without the player's compound (building it needs `&mut self`).
-    pub(super) fn player_entity_for_any(&self, triggers: &[&str]) -> EntityView {
+    pub(in crate::game) fn player_entity_for_any(&self, triggers: &[&str]) -> EntityView {
         let tree = &self.adv.tree;
         let mut me = self.player_entity_looking(triggers.iter().any(|t| tree.may_look(t)));
         let asked = (triggers.iter()).fold(adv::FactsAsked::default(), |all, t| {
@@ -764,7 +782,7 @@ impl Game<'_> {
         me
     }
     /// `KilledTrigger` takes the actual killer, not the player borrowing the acting slot.
-    pub(super) fn displaced_player_entity_for(
+    pub(in crate::game) fn displaced_player_entity_for(
         &self,
         frame: &DisplacedPlayer,
         body: &PlayerMotion,
@@ -798,7 +816,7 @@ impl Game<'_> {
         );
         Some(view)
     }
-    fn player_facts(&self, asked: adv::FactsAsked) -> adv::PlayerFacts {
+    pub(in crate::game) fn player_facts(&self, asked: adv::FactsAsked) -> adv::PlayerFacts {
         let Some(p) = self.player.as_ref() else {
             return adv::PlayerFacts::default();
         };
@@ -812,7 +830,7 @@ impl Game<'_> {
         )
     }
     /// Only copy the records named by `PlayerPredicate`; unloaded records stay absent.
-    fn player_facts_from(
+    pub(in crate::game) fn player_facts_from(
         &self,
         asked: adv::FactsAsked,
         body: &PlayerMotion,
@@ -832,7 +850,7 @@ impl Game<'_> {
         }
     }
     /// The player as predicates see it, with what it looks at when `looking`.
-    pub(super) fn player_entity_looking(&self, looking: bool) -> EntityView {
+    pub(in crate::game) fn player_entity_looking(&self, looking: bool) -> EntityView {
         let Some(body) = self.player.as_ref() else {
             return EntityView::default();
         };
@@ -849,7 +867,7 @@ impl Game<'_> {
             look: looking.then_some((self.yaw, self.pitch)),
         })
     }
-    fn player_entity_from(&self, state: PlayerEntityState<'_>) -> EntityView {
+    pub(in crate::game) fn player_entity_from(&self, state: PlayerEntityState<'_>) -> EntityView {
         let p = state.body;
         let mut eq: [Option<ItemView>; 7] = Default::default();
         eq[0] = state.main_hand.map(item_view);
@@ -912,7 +930,7 @@ impl Game<'_> {
         }
     }
     /// The player as a passenger of the vehicle `id` (`Entity.getPassengers`).
-    fn rider_entity(&self, id: u32) -> Option<EntityView> {
+    pub(in crate::game) fn rider_entity(&self, id: u32) -> Option<EntityView> {
         let p = self.player.as_ref().filter(|_| self.riding == Some(id))?;
         Some(EntityView {
             kind: "minecraft:player".into(),
@@ -923,7 +941,7 @@ impl Game<'_> {
     }
     /// A boat as the predicates see it: its type, and its passengers (the
     /// mobs seated on it, then the player riding it).
-    pub(super) fn boat_entity(&self, b: &super::boats::Boat) -> EntityView {
+    pub(in crate::game) fn boat_entity(&self, b: &super::boats::Boat) -> EntityView {
         EntityView {
             kind: b.entity_type(),
             position: [b.position.x, b.position.y, b.position.z],
@@ -939,7 +957,10 @@ impl Game<'_> {
         }
     }
     /// A dropped item as the predicates see it.
-    pub(super) fn item_entity_view(&self, e: &sunrise_client::entities::ItemEntity) -> EntityView {
+    pub(in crate::game) fn item_entity_view(
+        &self,
+        e: &sunrise_client::entities::ItemEntity,
+    ) -> EntityView {
         EntityView {
             kind: "minecraft:item".into(),
             position: [e.position.x, e.position.y, e.position.z],
@@ -950,7 +971,7 @@ impl Game<'_> {
     }
     /// `Entity.get`: the mob's live custom-name component and type variants,
     /// alongside the other state the entity predicate asks for.
-    pub(super) fn mob_entity(&self, m: &sunrise_client::mobs::Mob) -> EntityView {
+    pub(in crate::game) fn mob_entity(&self, m: &sunrise_client::mobs::Mob) -> EntityView {
         // mainhand, offhand, head, chest, legs, feet.
         let slot = |i: Option<&str>| i.map(|id| item_view(&ItemStack::new(id, 1)));
         let mut equipment: [Option<ItemView>; 7] = Default::default();
@@ -1049,7 +1070,11 @@ impl Game<'_> {
     }
     /// `SimpleCriterionTrigger.trigger`: test each open criterion of the
     /// trigger and award what it completes.
-    pub(super) fn trigger(&mut self, name: &str, test: impl Fn(&Value, &dyn adv::World) -> bool) {
+    pub(in crate::game) fn trigger(
+        &mut self,
+        name: &str,
+        test: impl Fn(&Value, &dyn adv::World) -> bool,
+    ) {
         if self.server.lan_acting_fake || self.remote.is_some() || self.no_player_here() {
             return;
         }
@@ -1062,7 +1087,7 @@ impl Game<'_> {
     }
     /// `trigger` for some of a trigger's criteria: (advancement, criterion)
     /// indexes in `tree`, in tree order.
-    fn trigger_criteria(
+    pub(in crate::game) fn trigger_criteria(
         &mut self,
         tree: &Tree,
         list: &[(usize, usize)],
@@ -1103,7 +1128,7 @@ impl Game<'_> {
         }
     }
     /// `PlayerAdvancements.award` / `revoke` after a criterion's progress changed.
-    fn advancement_progress(
+    pub(in crate::game) fn advancement_progress(
         &mut self,
         advancement: &adv::Advancement,
         criterion: &str,
@@ -1133,7 +1158,7 @@ impl Game<'_> {
     }
     /// Lend the hub each guest turn's actual advancement storage, without
     /// moving it back into a record while that turn is still active.
-    pub(super) fn with_advancement_hub<R>(
+    pub(in crate::game) fn with_advancement_hub<R>(
         &mut self,
         run: impl FnOnce(
             &mut sunrise_client::lan::hub::Hub,
@@ -1156,7 +1181,7 @@ impl Game<'_> {
 
     /// Grant the hub's tick criteria one at a time: each hook sees the new
     /// progress before the completion's rewards and packets are applied.
-    pub(super) fn run_native_advancement_grants(&mut self) {
+    pub(in crate::game) fn run_native_advancement_grants(&mut self) {
         let Some(host) = self.lan.as_mut() else {
             return;
         };
@@ -1231,7 +1256,7 @@ impl Game<'_> {
         });
     }
     /// `PlayerAdvancements.progressChanged`, kept for a network player's client.
-    fn progress_changed(&mut self, index: usize) {
+    pub(in crate::game) fn progress_changed(&mut self, index: usize) {
         if self.server.lan_acting.is_some() {
             self.adv.changed.insert(index);
         }
@@ -1240,7 +1265,7 @@ impl Game<'_> {
     /// `recipe_unlocked` trigger of each recipe now known. Returns the
     /// number of recipe displays taken back out because a mod refused their
     /// discovery.
-    pub(super) fn recipe_unlocked(&mut self, unlocked: &[String]) -> usize {
+    pub(in crate::game) fn recipe_unlocked(&mut self, unlocked: &[String]) -> usize {
         let mut allowed = Vec::with_capacity(unlocked.len());
         let mut refused = Vec::new();
         let mut taken_back = 0;
@@ -1297,7 +1322,7 @@ impl Game<'_> {
         taken_back
     }
     /// `ServerPlayer.awardRecipes`: fake players learn no recipes.
-    pub(super) fn award_recipes(&mut self, recipes: &[String]) -> usize {
+    pub(in crate::game) fn award_recipes(&mut self, recipes: &[String]) -> usize {
         if self.server.lan_acting_fake {
             return 0;
         }
@@ -1311,7 +1336,7 @@ impl Game<'_> {
     /// vanilla's `Invalid recipe: {}` and knows nothing. Whether the click
     /// ends here: `InteractionResult.SUCCESS` does and swings, `FAIL` leaves
     /// the other hand its turn (`Minecraft.startUseItem`).
-    pub(super) fn use_knowledge_book(&mut self, stack: &ItemStack) -> bool {
+    pub(in crate::game) fn use_knowledge_book(&mut self, stack: &ItemStack) -> bool {
         if &*stack.item != "minecraft:knowledge_book" {
             return false;
         }
@@ -1345,24 +1370,9 @@ impl Game<'_> {
             }
         }
     }
-    /// `AdvancementRewards.grant`'s pickup: volume 0.2 at the player's feet,
-    /// pitch `(nextFloat - nextFloat) * 0.7 + 1`, times 2. `playSound(null, …)`
-    /// so the player hears it. The draws are the player's own random
-    /// (`player.getRandom()`), which no level draw shares.
-    fn advancement_pickup_sound(&mut self) {
-        let Some(p) = self.player.as_ref() else {
-            return;
-        };
-        let at = [p.position.x, p.position.y, p.position.z];
-        let mut random = sunrise_client::random_source::entity();
-        let pitch = ((random.next_float() - random.next_float()) * 0.7 + 1.0) * 2.0;
-        self.audio
-            .0
-            .play("minecraft:entity.item.pickup", Some(at), 0.2, pitch);
-    }
     /// `PlayerAdvancements.award` once done: `AdvancementRewards.grant`,
     /// then toast and announcement.
-    fn award(&mut self, index: usize) {
+    pub(in crate::game) fn award(&mut self, index: usize) {
         if self.server.lan_acting_fake {
             return;
         }
@@ -1370,7 +1380,7 @@ impl Game<'_> {
         self.award_definition(&tree.list[index]);
     }
 
-    fn award_definition(&mut self, a: &adv::Advancement) {
+    pub(in crate::game) fn award_definition(&mut self, a: &adv::Advancement) {
         if self.server.lan_acting_fake {
             return;
         }
@@ -1387,7 +1397,7 @@ impl Game<'_> {
     }
 
     /// Publish a completed advancement's rewards after its tentative criterion commits.
-    pub(super) fn commit_merchant_reward(&mut self, a: &adv::Advancement) {
+    pub(in crate::game) fn commit_merchant_reward(&mut self, a: &adv::Advancement) {
         let rewards = self.grant_rewards(a);
         if let Some(d) = &a.display {
             // A network player's client shows its own toast.
@@ -1445,7 +1455,7 @@ impl Game<'_> {
     /// a finished advancement, and the recipes it unlocked for the
     /// `recipe_unlocked` trigger, which the caller runs after its toast and
     /// announcement. Returns those recipes.
-    fn grant_rewards(&mut self, a: &adv::Advancement) -> Vec<String> {
+    pub(in crate::game) fn grant_rewards(&mut self, a: &adv::Advancement) -> Vec<String> {
         // AdvancementRewards.grant: giveExperiencePoints runs even for 0.
         self.give_experience_points(a.rewards.experience);
         // ServerPlayer.awardRecipesByKey: the rewards that name a recipe.
@@ -1491,7 +1501,7 @@ impl Game<'_> {
         unlocked
     }
     /// `InventoryChangeTrigger`, checked when the inventory changes.
-    pub(super) fn check_inventory_trigger(&mut self) {
+    pub(in crate::game) fn check_inventory_trigger(&mut self) {
         use std::hash::{Hash, Hasher};
         // A player in another level than the one in place has their criteria and rewards
         // judged in their own level, from their own tick (`tick_advancements`, which sees the
@@ -1602,7 +1612,7 @@ impl Game<'_> {
         });
     }
     /// Per-tick checks for the player already in place, without a guest connection turn.
-    pub(super) fn tick_advancements(&mut self) {
+    pub(in crate::game) fn tick_advancements(&mut self) {
         self.tick_level_advancements();
         if let Some(player) = &self.player
             && player.health.tick_count % 20 == 0
@@ -1612,7 +1622,7 @@ impl Game<'_> {
     }
 
     /// Criteria on the level path (`ServerPlayer.tick`).
-    pub(super) fn tick_level_advancements(&mut self) {
+    pub(in crate::game) fn tick_level_advancements(&mut self) {
         if self.player.is_none() || self.remote.is_some() {
             return;
         }
@@ -1656,7 +1666,7 @@ impl Game<'_> {
     }
 
     /// `ServerPlayer.doTick` fires LOCATION after the player body, every 20 entity ticks.
-    pub(super) fn trigger_location_advancement(&mut self) {
+    pub(in crate::game) fn trigger_location_advancement(&mut self) {
         let me = self.player_entity_for("minecraft:location");
         self.trigger("minecraft:location", |c, w| {
             let ctx = adv::Entities {
@@ -1671,7 +1681,7 @@ impl Game<'_> {
         });
     }
     /// A player condition plus one entity (`player`, `entity` keys).
-    pub(super) fn trigger_entity(&mut self, name: &str, key: &str, target: &EntityView) {
+    pub(in crate::game) fn trigger_entity(&mut self, name: &str, key: &str, target: &EntityView) {
         let me = self.player_entity_for(name);
         let target = target.clone();
         let key = key.to_owned();
@@ -1697,13 +1707,17 @@ impl Game<'_> {
     }
     /// `KilledTrigger` (`player_killed_entity`): the entity killed and the
     /// killing blow's damage source (none: any `killing_blow` fails).
-    pub(super) fn trigger_killed(&mut self, target: &EntityView, blow: Option<&adv::DamageView>) {
+    pub(in crate::game) fn trigger_killed(
+        &mut self,
+        target: &EntityView,
+        blow: Option<&adv::DamageView>,
+    ) {
         self.trigger_killed_as("minecraft:player_killed_entity", target, blow);
     }
     /// `KilledTrigger.trigger` for any of its three instances
     /// (`player_killed_entity`, `entity_killed_player`,
     /// `kill_mob_near_sculk_catalyst`).
-    pub(super) fn trigger_killed_as(
+    pub(in crate::game) fn trigger_killed_as(
         &mut self,
         name: &str,
         target: &EntityView,
@@ -1717,7 +1731,7 @@ impl Game<'_> {
         });
     }
     /// `KilledByArrowTrigger`: what the arrow killed and the weapon it came from.
-    pub(super) fn trigger_killed_by_arrow(
+    pub(in crate::game) fn trigger_killed_by_arrow(
         &mut self,
         victims: &[EntityView],
         weapon: Option<&ItemStack>,
@@ -1731,7 +1745,7 @@ impl Game<'_> {
     }
     /// `LevitationTrigger`: how far the player rose from where it started
     /// levitating, and for how long.
-    fn trigger_levitation(&mut self, start: [f64; 3], duration: i64) {
+    pub(in crate::game) fn trigger_levitation(&mut self, start: [f64; 3], duration: i64) {
         let me = self.player_entity_for("minecraft:levitation");
         self.trigger("minecraft:levitation", move |c, w| {
             let pctx = adv::Entities {
@@ -1751,7 +1765,7 @@ impl Game<'_> {
     /// (`resetFallDistance`), `trackEnteredOrExitedLavaOnVehicle`, the way back
     /// from the Nether, and `onEffectAdded`, `onEffectUpdated` and
     /// `onEffectsRemoved`, which are seen as each tick ends.
-    fn tick_marks(&mut self) {
+    pub(in crate::game) fn tick_marks(&mut self) {
         let Some(p) = self.player.as_ref() else {
             return;
         };
@@ -1807,7 +1821,7 @@ impl Game<'_> {
         }
     }
     /// The (effect, amplifier) pairs `marks.effects` compares.
-    fn effects_seen(&self) -> Vec<(&'static str, i32)> {
+    pub(in crate::game) fn effects_seen(&self) -> Vec<(&'static str, i32)> {
         self.potions
             .effects
             .list
@@ -1817,14 +1831,14 @@ impl Game<'_> {
     }
     /// `EffectsChangedTrigger` for a change the caller knows the source of;
     /// the end-of-tick check then does not fire it a second time.
-    pub(super) fn trigger_effects_changed_by(&mut self, source: Option<EntityView>) {
+    pub(in crate::game) fn trigger_effects_changed_by(&mut self, source: Option<EntityView>) {
         self.adv.marks.effects = self.effects_seen();
         self.adv.marks.effect_changes = self.potions.effects.changes;
         self.trigger_effects_changed(source);
     }
     /// `DistanceTrigger`: the player's `player` condition, `start_position`
     /// at `start`, and the `distance` from `start` to the player.
-    pub(super) fn trigger_distance(&mut self, name: &str, start: [f64; 3]) {
+    pub(in crate::game) fn trigger_distance(&mut self, name: &str, start: [f64; 3]) {
         self.trigger_distance_at(name, start, None);
     }
 
@@ -1857,7 +1871,11 @@ impl Game<'_> {
     /// `impact` (made by `cause`, or by nothing), measured to where the
     /// player is now. `matches` tests `cause` only when the instance has one,
     /// and a missing cause fails it.
-    fn trigger_fall_after_explosion(&mut self, impact: [f64; 3], cause: Option<EntityView>) {
+    pub(in crate::game) fn trigger_fall_after_explosion(
+        &mut self,
+        impact: [f64; 3],
+        cause: Option<EntityView>,
+    ) {
         let me = self.player_entity_for("minecraft:fall_after_explosion");
         self.trigger("minecraft:fall_after_explosion", move |c, w| {
             let pctx = adv::Entities {
@@ -1887,7 +1905,7 @@ impl Game<'_> {
     }
     /// `EffectsChangedTrigger`: the player's `effects`, and for an effect that
     /// `source` gave, that entity (`source`).
-    fn trigger_effects_changed(&mut self, source: Option<EntityView>) {
+    pub(in crate::game) fn trigger_effects_changed(&mut self, source: Option<EntityView>) {
         let me = self.player_entity_for("minecraft:effects_changed");
         self.trigger("minecraft:effects_changed", move |c, w| {
             let pctx = adv::Entities {
@@ -1925,7 +1943,7 @@ impl Game<'_> {
     /// damage and `new_damage` the unclamped damage value it is about to get.
     /// `durability` tests `maxDamage - newDamage`, `delta` tests
     /// `damageValue - newDamage`.
-    pub(super) fn trigger_item_durability(&mut self, stack: &ItemStack, new_damage: i32) {
+    pub(in crate::game) fn trigger_item_durability(&mut self, stack: &ItemStack, new_damage: i32) {
         if self.remote.is_some() || self.no_player_here() {
             return;
         }
@@ -1962,7 +1980,7 @@ impl Game<'_> {
         });
     }
     /// `ServerPlayer.updateUsingItem`: USING_ITEM for the item in use.
-    pub(super) fn trigger_using_item(&mut self, stack: &ItemStack) {
+    pub(in crate::game) fn trigger_using_item(&mut self, stack: &ItemStack) {
         if self.remote.is_some() || self.no_player_here() {
             return;
         }
@@ -1982,7 +2000,7 @@ impl Game<'_> {
     }
     /// `UsedEnderEyeTrigger.trigger`: the player threw an eye of ender toward
     /// a structure `sqr_distance` (squared, horizontal) away.
-    pub(super) fn trigger_used_ender_eye(&mut self, sqr_distance: f64) {
+    pub(in crate::game) fn trigger_used_ender_eye(&mut self, sqr_distance: f64) {
         if self.remote.is_some() || self.no_player_here() {
             return;
         }
@@ -2002,7 +2020,11 @@ impl Game<'_> {
     /// The entity a 100 block ray from the eyes meets first, if no block is
     /// in the way (`ProjectileUtil.getEntityHitResult` over every entity but
     /// the player that is not a spectator, then `hasLineOfSight`).
-    fn looking_at_entity(&self, eye: [f64; 3], dir: [f64; 3]) -> Option<EntityView> {
+    pub(in crate::game) fn looking_at_entity(
+        &self,
+        eye: [f64; 3],
+        dir: [f64; 3],
+    ) -> Option<EntityView> {
         use super::commands::Target;
         use super::entity::{Entity as _, entity_lists_of, for_each_entity};
         use sunrise_core::geometry::Aabb;
@@ -2053,7 +2075,7 @@ impl Game<'_> {
         })
     }
     /// `PlayerHurtEntityTrigger`: the player, the damage and the victim.
-    pub(super) fn trigger_player_hurt_entity(
+    pub(in crate::game) fn trigger_player_hurt_entity(
         &mut self,
         victim: &EntityView,
         damage: &adv::DamageView,
@@ -2081,7 +2103,7 @@ impl Game<'_> {
     /// The player's hit on `victim` as `LivingEntity.hurtServer` reports it:
     /// `kind` damage of `amount` from `direct` (the player's own hand when
     /// `None`), nothing blocked.
-    pub(super) fn player_hit(
+    pub(in crate::game) fn player_hit(
         &mut self,
         victim: &EntityView,
         kind: &str,
@@ -2103,7 +2125,7 @@ impl Game<'_> {
         );
     }
     /// `EntityHurtPlayerTrigger`: the player and the damage it took.
-    pub(super) fn trigger_entity_hurt_player(&mut self, damage: &adv::DamageView) {
+    pub(in crate::game) fn trigger_entity_hurt_player(&mut self, damage: &adv::DamageView) {
         let me = self.player_entity_for("minecraft:entity_hurt_player");
         let damage = damage.clone();
         self.trigger("minecraft:entity_hurt_player", move |c, w| {
@@ -2120,7 +2142,7 @@ impl Game<'_> {
         });
     }
     /// A player condition plus one item (`item` key).
-    pub(super) fn trigger_item(&mut self, name: &str, stack: &ItemStack) {
+    pub(in crate::game) fn trigger_item(&mut self, name: &str, stack: &ItemStack) {
         let me = self.player_entity_for(name);
         let it = item_view(stack);
         self.trigger(name, move |c, w| {
@@ -2135,7 +2157,7 @@ impl Game<'_> {
             adv::conditions(&c["player"], &pctx, w) && adv::item(&c["item"], &it, w)
         });
     }
-    pub(super) fn trigger_item_entity(
+    pub(in crate::game) fn trigger_item_entity(
         &mut self,
         name: &str,
         stack: &ItemStack,
@@ -2151,7 +2173,7 @@ impl Game<'_> {
     /// what is left after a partial take. An owner that is that player also
     /// fires `LivingEntity.onItemPickup` (the by-entity trigger); one that is
     /// gone, or another player, fires nothing here.
-    pub(super) fn trigger_thrown_picked_up_by_player(
+    pub(in crate::game) fn trigger_thrown_picked_up_by_player(
         &mut self,
         stack: &ItemStack,
         thrower: [i32; 4],
@@ -2175,7 +2197,7 @@ impl Game<'_> {
         self.trigger_item_entity("minecraft:thrown_item_picked_up_by_player", stack, &target);
     }
     /// `ConstructBeaconTrigger`: the pyramid levels of the new beacon.
-    pub(super) fn trigger_construct_beacon(&mut self, levels: i32) {
+    pub(in crate::game) fn trigger_construct_beacon(&mut self, levels: i32) {
         let me = self.player_entity_for("minecraft:construct_beacon");
         self.trigger("minecraft:construct_beacon", move |c, w| {
             let pctx = adv::Entities {
@@ -2190,7 +2212,7 @@ impl Game<'_> {
         });
     }
     /// `EnchantedItemTrigger`: the enchanted item and the levels it cost.
-    pub(super) fn trigger_enchanted_item(&mut self, stack: &ItemStack, levels: i32) {
+    pub(in crate::game) fn trigger_enchanted_item(&mut self, stack: &ItemStack, levels: i32) {
         let me = self.player_entity_for("minecraft:enchanted_item");
         let it = item_view(stack);
         self.trigger("minecraft:enchanted_item", move |c, w| {
@@ -2209,7 +2231,7 @@ impl Game<'_> {
     }
     /// `BrewedPotionTrigger`: the potion contents of a stack taken from a
     /// brewing stand.
-    pub(super) fn trigger_brewed_potion(&mut self, stack: &ItemStack) {
+    pub(in crate::game) fn trigger_brewed_potion(&mut self, stack: &ItemStack) {
         let me = self.player_entity_for("minecraft:brewed_potion");
         let potion = stack.potion().map(str::to_owned);
         self.trigger("minecraft:brewed_potion", move |c, w| {
@@ -2226,7 +2248,7 @@ impl Game<'_> {
         });
     }
     /// `TradeTrigger`: the villager and the item the trade gave.
-    pub(super) fn trigger_trade(&mut self, villager: &EntityView, stack: &ItemStack) {
+    pub(in crate::game) fn trigger_trade(&mut self, villager: &EntityView, stack: &ItemStack) {
         let me = self.player_entity_for("minecraft:villager_trade");
         let villager = villager.clone();
         let it = item_view(stack);
@@ -2250,7 +2272,7 @@ impl Game<'_> {
     }
     /// `FishingRodHookedTrigger`: the rod, what the hook is in (or the hook)
     /// and the items it caught.
-    pub(super) fn trigger_fishing_rod_hooked(
+    pub(in crate::game) fn trigger_fishing_rod_hooked(
         &mut self,
         rod: &ItemStack,
         hooked: &EntityView,
@@ -2280,7 +2302,10 @@ impl Game<'_> {
         });
     }
     /// `EnterBlockTrigger`: the block, its state properties and the player.
-    pub(super) fn trigger_enter_block(&mut self, state: sunrise_world::registry::BlockStateId) {
+    pub(in crate::game) fn trigger_enter_block(
+        &mut self,
+        state: sunrise_world::registry::BlockStateId,
+    ) {
         let Some(definition) = self.pack.assets.registry.state(state).cloned() else {
             return;
         };
@@ -2304,7 +2329,7 @@ impl Game<'_> {
         });
     }
     /// `SlideDownBlockTrigger`: match the actual block and its state.
-    pub(super) fn trigger_honey_slide(&mut self, pos: [i32; 3]) {
+    pub(in crate::game) fn trigger_honey_slide(&mut self, pos: [i32; 3]) {
         let me = self.player_entity_for("minecraft:slide_down_block");
         self.trigger("minecraft:slide_down_block", move |c, w| {
             let ctx = adv::Entities {
@@ -2320,7 +2345,7 @@ impl Game<'_> {
     }
     /// `TargetBlockTrigger`: signal and projectile conditions are evaluated in
     /// the shooter's context, including distance from the shooter.
-    pub(super) fn trigger_target_hit(&mut self, projectile: &EntityView, strength: i32) {
+    pub(in crate::game) fn trigger_target_hit(&mut self, projectile: &EntityView, strength: i32) {
         let me = self.player_entity_for("minecraft:target_hit");
         let projectile = projectile.clone();
         self.trigger("minecraft:target_hit", move |c, w| {
@@ -2342,7 +2367,7 @@ impl Game<'_> {
         });
     }
     /// `ItemUsedOnLocationTrigger` (placed_block, item_used_on_block).
-    pub(super) fn trigger_block(&mut self, name: &str, pos: [i32; 3], stack: &ItemStack) {
+    pub(in crate::game) fn trigger_block(&mut self, name: &str, pos: [i32; 3], stack: &ItemStack) {
         #[cfg(test)]
         crate::game::block_use_completion_tests::record(name, Some(stack));
         let me = self.player_entity_for(name);
@@ -2361,16 +2386,21 @@ impl Game<'_> {
     }
     /// `DefaultBlockInteractionTrigger` (default_block_use): the player, and
     /// the block's `BLOCK_USE` context at its centre, with no tool.
-    pub(super) fn trigger_default_block_use(&mut self, pos: [i32; 3]) {
+    pub(in crate::game) fn trigger_default_block_use(&mut self, pos: [i32; 3]) {
         self.trigger_block_use("minecraft:default_block_use", pos, None);
     }
     /// `AnyBlockInteractionTrigger` (any_block_use): the player, and the
     /// block's `ADVANCEMENT_LOCATION` context at its centre with the original
     /// stack and its in-place edits, as documented on `Game::finish_block_use`.
-    pub(super) fn trigger_any_block_use(&mut self, pos: [i32; 3], stack: &ItemStack) {
+    pub(in crate::game) fn trigger_any_block_use(&mut self, pos: [i32; 3], stack: &ItemStack) {
         self.trigger_block_use("minecraft:any_block_use", pos, Some(stack));
     }
-    fn trigger_block_use(&mut self, name: &str, pos: [i32; 3], stack: Option<&ItemStack>) {
+    pub(in crate::game) fn trigger_block_use(
+        &mut self,
+        name: &str,
+        pos: [i32; 3],
+        stack: Option<&ItemStack>,
+    ) {
         #[cfg(test)]
         crate::game::block_use_completion_tests::record(name, stack);
         let me = self.player_entity_for(name);
@@ -2397,7 +2427,11 @@ impl Game<'_> {
     }
     /// `LightningStrikeTrigger`: the bolt, and the mobs around it that it did
     /// not hit (`bystander`), each tested from this player's position.
-    pub(super) fn trigger_lightning_strike(&mut self, bolt: &EntityView, viewers: &[EntityView]) {
+    pub(in crate::game) fn trigger_lightning_strike(
+        &mut self,
+        bolt: &EntityView,
+        viewers: &[EntityView],
+    ) {
         let me = self.player_entity_for("minecraft:lightning_strike");
         let (bolt, viewers) = (bolt.clone(), viewers.to_vec());
         self.trigger("minecraft:lightning_strike", move |c, w| {
@@ -2430,7 +2464,7 @@ impl Game<'_> {
     }
     /// `ChanneledLightningTrigger`: each victim condition matched by some
     /// mob the bolt hit, from the player who channelled it.
-    pub(super) fn trigger_channeled_lightning(&mut self, victims: &[EntityView]) {
+    pub(in crate::game) fn trigger_channeled_lightning(&mut self, victims: &[EntityView]) {
         let me = self.player_entity_for("minecraft:channeled_lightning");
         let victims = victims.to_vec();
         self.trigger("minecraft:channeled_lightning", move |c, w| {
@@ -2458,7 +2492,7 @@ impl Game<'_> {
         });
     }
     /// `SpearMobsTrigger`: the living entities the spear stabbed in this use.
-    pub(super) fn trigger_spear_mobs(&mut self, stabbed: usize) {
+    pub(in crate::game) fn trigger_spear_mobs(&mut self, stabbed: usize) {
         let me = self.player_entity_for("minecraft:spear_mobs");
         self.trigger("minecraft:spear_mobs", move |c, w| {
             let pctx = adv::Entities {
@@ -2475,7 +2509,7 @@ impl Game<'_> {
     }
     /// `BeeNestDestroyedTrigger`: the nest's block state, the tool that broke
     /// it and the bees left inside.
-    pub(super) fn trigger_bee_nest_destroyed(
+    pub(in crate::game) fn trigger_bee_nest_destroyed(
         &mut self,
         state: sunrise_world::registry::BlockStateId,
         tool: Option<&ItemStack>,
@@ -2509,7 +2543,7 @@ impl Game<'_> {
     }
     /// `Entity.startRiding`'s `sendEventAndTriggers`: `START_RIDING_TRIGGER`
     /// for every `ServerPlayer` in `entityToRide.getIndirectPassengersStream()`.
-    pub(super) fn trigger_started_riding(&mut self, vehicle: u32) {
+    pub(in crate::game) fn trigger_started_riding(&mut self, vehicle: u32) {
         let mounts: Vec<(u32, Option<u32>)> =
             self.mobs.iter().map(|m| (m.id, m.extra.mount)).collect();
         let aboard = super::boarding::passenger_vehicles(vehicle, &mounts);
@@ -2520,7 +2554,7 @@ impl Game<'_> {
         });
     }
     /// A trigger with only the player condition (slept_in_bed, started_riding).
-    pub(super) fn trigger_player(&mut self, name: &str) {
+    pub(in crate::game) fn trigger_player(&mut self, name: &str) {
         let me = self.player_entity_for(name);
         self.trigger(name, move |c, w| {
             let pctx = adv::Entities {
@@ -2536,7 +2570,7 @@ impl Game<'_> {
     }
     /// `RecipeCraftedTrigger`: the recipe and the stacks that went into it
     /// (`ServerPlayer.triggerRecipeCrafted`); an empty slot is air.
-    pub(super) fn trigger_recipe_crafted(
+    pub(in crate::game) fn trigger_recipe_crafted(
         &mut self,
         recipe: &str,
         ingredients: &[Option<ItemStack>],
@@ -2571,7 +2605,7 @@ impl Game<'_> {
     }
     /// `LootTableTrigger`: a container's loot table unpacked for this player
     /// (`RandomizableContainer.unpackLootTable`).
-    pub(super) fn trigger_loot_table(&mut self, table: &str) {
+    pub(in crate::game) fn trigger_loot_table(&mut self, table: &str) {
         let me = self.player_entity_for("minecraft:player_generates_container_loot");
         let table = table.to_owned();
         self.trigger("minecraft:player_generates_container_loot", move |c, w| {
@@ -2588,7 +2622,7 @@ impl Game<'_> {
         });
     }
     /// `BredAnimalsTrigger`.
-    pub(super) fn trigger_bred(
+    pub(in crate::game) fn trigger_bred(
         &mut self,
         parent: &EntityView,
         partner: &EntityView,
@@ -2636,7 +2670,7 @@ impl Game<'_> {
     /// `ChangeDimensionTrigger`, and `ServerPlayer.enteredNetherPosition`: the
     /// Overworld position the player went into the Nether from (`at`) is kept
     /// for the way back, and any other trip drops it.
-    pub(super) fn trigger_dimension(&mut self, from: Dim, to: Dim, at: [f64; 3]) {
+    pub(in crate::game) fn trigger_dimension(&mut self, from: Dim, to: Dim, at: [f64; 3]) {
         self.trigger_changed_dimension(from, to);
         if from == Dim::Overworld && to == Dim::Nether {
             self.adv.marks.nether = Some(at);
@@ -2649,29 +2683,16 @@ impl Game<'_> {
     /// `ServerPlayer.triggerDimensionChangeTriggers`: a respawn after the
     /// credits triggers the criterion (`END` → `OVERWORLD`, whatever level
     /// the point is in) and leaves that position as it is.
-    pub(super) fn trigger_changed_dimension(&mut self, from: Dim, to: Dim) {
+    pub(in crate::game) fn trigger_changed_dimension(&mut self, from: Dim, to: Dim) {
         let (from_id, to_id) = (from.id().to_owned(), to.id().to_owned());
         self.trigger("minecraft:changed_dimension", move |c, _| {
             c["from"].as_str().is_none_or(|f| adv::full(f) == from_id)
                 && c["to"].as_str().is_none_or(|t| adv::full(t) == to_id)
         });
     }
-    pub(super) fn add_advancement_toast(&mut self, mut toast: Toast) {
-        let kind = if toast.is_recipe() {
-            mod_api::ToastKind::Recipe
-        } else {
-            mod_api::ToastKind::Advancement
-        };
-        if self.admit_toast(kind, &mut toast.title, &mut toast.description) {
-            self.client
-                .toast_manager
-                .queued
-                .push_back(super::toast_manager::Toast::Advancement(toast));
-        }
-    }
 
     /// The `AdvancementToast` or `RecipeToast` in its slot at `y`.
-    pub(super) fn draw_advancement_toast(
+    pub(in crate::game) fn draw_advancement_toast(
         &self,
         batch: &mut HudBatch,
         t: &Toast,
@@ -2740,7 +2761,7 @@ impl Game<'_> {
 }
 /// The toast's frame label and its colour (`AdvancementToast`: -30465, pink,
 /// for a challenge, else -256, yellow), packed as `hud::rgba` for the batch.
-fn toast_label(frame: Frame) -> (&'static str, u32) {
+pub(in crate::game) fn toast_label(frame: Frame) -> (&'static str, u32) {
     match frame {
         Frame::Task => ("advancements.toast.task", rgba(255, 255, 0, 255)),
         Frame::Goal => ("advancements.toast.goal", rgba(255, 255, 0, 255)),
@@ -2749,7 +2770,7 @@ fn toast_label(frame: Frame) -> (&'static str, u32) {
 }
 /// `Advancement.name`: the bracketed title in the frame's colour, with the
 /// description on hover; the id when there is no display.
-pub(super) fn adv_name(a: &adv::Advancement) -> Text {
+pub(in crate::game) fn adv_name(a: &adv::Advancement) -> Text {
     let Some(d) = &a.display else {
         return Text::literal(a.id.clone());
     };
@@ -2760,7 +2781,7 @@ pub(super) fn adv_name(a: &adv::Advancement) -> Text {
     });
     Text::translate("chat.square_brackets", &[title]).with_color(color)
 }
-fn frame_color(frame: Frame) -> u32 {
+pub(in crate::game) fn frame_color(frame: Frame) -> u32 {
     match frame {
         Frame::Challenge => text::DARK_PURPLE,
         _ => text::GREEN,
@@ -2772,7 +2793,7 @@ fn frame_color(frame: Frame) -> u32 {
 /// Built on the title's JSON (a list as its first element with the rest as
 /// siblings): a parsed Text moves a styled root's style down a level once it
 /// has siblings.
-fn decorate_name(d: &adv::Display) -> Text {
+pub(in crate::game) fn decorate_name(d: &adv::Display) -> Text {
     let mut component = match sunrise_client::scoreboard::canonical_component(&d.title) {
         Value::String(s) => serde_json::json!({ "text": s }),
         c => c,
@@ -2790,7 +2811,11 @@ fn decorate_name(d: &adv::Display) -> Text {
 impl Game<'_> {
     /// `AdvancementCommands.Action.GRANT` on one advancement (or one of
     /// its criteria): false when nothing changed.
-    pub(super) fn grant_advancement(&mut self, index: usize, criterion: Option<&str>) -> bool {
+    pub(in crate::game) fn grant_advancement(
+        &mut self,
+        index: usize,
+        criterion: Option<&str>,
+    ) -> bool {
         if self.server.lan_acting_fake {
             return false;
         }
@@ -2819,7 +2844,11 @@ impl Game<'_> {
         changed || criterion.is_none()
     }
     /// `AdvancementCommands.Action.REVOKE`.
-    pub(super) fn revoke_advancement(&mut self, index: usize, criterion: Option<&str>) -> bool {
+    pub(in crate::game) fn revoke_advancement(
+        &mut self,
+        index: usize,
+        criterion: Option<&str>,
+    ) -> bool {
         if self.server.lan_acting_fake {
             return false;
         }
@@ -2839,7 +2868,11 @@ impl Game<'_> {
     }
     /// `PlayerAdvancements.revoke(holder, criterion)`: the progress change and
     /// the hook for it.
-    fn revoke_criterion(&mut self, advancement: &adv::Advancement, criterion: &str) -> bool {
+    pub(in crate::game) fn revoke_criterion(
+        &mut self,
+        advancement: &adv::Advancement,
+        criterion: &str,
+    ) -> bool {
         let revoked = self.adv.progress.revoke(&advancement.id, criterion);
         if revoked {
             self.advancement_progress(advancement, criterion, ProgressType::Revoke);
@@ -2850,7 +2883,7 @@ impl Game<'_> {
 impl Game<'_> {
     /// `ClientAdvancements.update`: update the tree before applying progress.
     /// Incremental removals forget nodes, not the progress stored by id.
-    pub(super) fn remote_advancements(
+    pub(in crate::game) fn remote_advancements(
         &mut self,
         p: sunrise_protocol::packets::play::UpdateAdvancements,
     ) {
@@ -2895,7 +2928,7 @@ impl Game<'_> {
 
     /// `AdvancementTree.remove` and `AdvancementTree.addAll`: prune whole
     /// subtrees, then admit additions in the order their parents become available.
-    fn update_remote_advancement_tree(
+    pub(in crate::game) fn update_remote_advancement_tree(
         &mut self,
         reset: bool,
         removed: &[String],
@@ -2998,7 +3031,7 @@ impl Game<'_> {
 
     /// Convert the admitted packet's network icon, components and requirements
     /// into the definition used by the screen and toast.
-    fn remote_advancement(
+    pub(in crate::game) fn remote_advancement(
         &self,
         a: sunrise_protocol::packets::play::Advancement,
     ) -> adv::Advancement {
@@ -3039,12 +3072,13 @@ impl Game<'_> {
 }
 /// An advancement's title or description: a whole component (ComponentSerialization.CODEC),
 /// with its siblings and styles, as a plugin's `{"text":"","extra":[...]}` needs.
-pub(super) fn text_of(v: &Value) -> Text {
+pub(in crate::game) fn text_of(v: &Value) -> Text {
     sunrise_client::scoreboard::comp_text(v)
 }
 
 #[cfg(test)]
-mod tests {
+pub(in crate::game) mod tests {
+    #[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -3087,186 +3121,6 @@ mod tests {
             assert!(game.adv.progress.has(ID, "worn"));
         });
         std::fs::remove_dir_all(scratch).unwrap();
-    }
-
-    #[test]
-    #[ignore = "daily"]
-    fn toast_admission_cancels_edits_and_preserves_queue_behavior() {
-        crate::game::in_own_process(
-            "game::advancements::tests::toast_admission_cancels_edits_and_preserves_queue_behavior",
-            || {
-                use crate::game::toast_manager::{SystemToastId, Toast as QueuedToast};
-                use mod_api::{ClientHost, Flow, Hooks, ModEntry, ToastAddEvent, ToastKind};
-                use std::time::Duration;
-                use sunrise_client::toasts::SystemToast;
-                struct Listener;
-                #[mod_api::__subscriptions]
-                impl Hooks for Listener {
-                    fn toast_add(&self, _: &dyn ClientHost, event: &mut ToastAddEvent<'_>) -> Flow {
-                        match event.description.as_ref().map(|text| &text.content) {
-                            Some(mod_api::text::TextContent::Literal(value))
-                                if value == "cancel" =>
-                            {
-                                Flow::Cancel
-                            }
-                            Some(mod_api::text::TextContent::Literal(value)) if value == "edit" => {
-                                *event.title = mod_api::Text::literal("replacement");
-                                event.title.style.color = Some("#123456".into());
-                                *event.description = Some(mod_api::Text::literal("changed"));
-                                Flow::Continue
-                            }
-                            _ => Flow::Continue,
-                        }
-                    }
-                }
-                let mods: mod_api::Mods = vec![ModEntry::new("toasts", Box::new(Listener))].into();
-                mod_platform::testing::with_mods(mods, || {
-                    super::super::native_entity_refs::tests::with_game(|game| {
-                        game.options.execution_role =
-                            super::super::execution_role::ExecutionRole::Client;
-                        let advancement = |name: &str| Toast {
-                            icon: ItemStack::new("minecraft:stone", 1),
-                            frame: Frame::Challenge,
-                            title: Text::translate("advancements.toast.challenge", &[]),
-                            description: Some(Text::literal(name)),
-                            slide: Slide::default(),
-                            recipes: vec![],
-                            changed: false,
-                            last_changed: 0,
-                        };
-                        game.add_advancement_toast(advancement("cancel"));
-                        assert!(game.client.toast_manager.queued.is_empty());
-                        game.add_advancement_toast(advancement("untouched"));
-                        let QueuedToast::Advancement(original) =
-                            &game.client.toast_manager.queued[0]
-                        else {
-                            panic!("expected advancement toast")
-                        };
-                        assert_eq!(
-                            original.title.component(),
-                            serde_json::json!({"translate": "advancements.toast.challenge"})
-                        );
-                        assert_eq!(original.description.as_ref().unwrap().plain(), "untouched");
-                        assert_eq!(original.icon, ItemStack::new("minecraft:stone", 1));
-                        assert!(
-                            original.slide.origin.is_none(),
-                            "not animated before admission"
-                        );
-                        game.add_advancement_toast(advancement("edit"));
-                        let QueuedToast::Advancement(edited) = &game.client.toast_manager.queued[1]
-                        else {
-                            panic!("expected advancement toast")
-                        };
-                        assert_eq!(edited.title.plain(), "replacement");
-                        assert_eq!(edited.title.component()["color"], "#123456");
-                        assert_eq!(edited.description.as_ref().unwrap().plain(), "changed");
-                        assert_eq!(edited.frame, Frame::Challenge);
-                        for kind in [
-                            ToastKind::Recipe,
-                            ToastKind::Tutorial,
-                            ToastKind::System,
-                            ToastKind::Other,
-                        ] {
-                            let mut title = Text::literal("title");
-                            let mut description = Some(Text::literal("cancel"));
-                            assert!(!game.admit_toast(kind, &mut title, &mut description));
-                        }
-                        let mut system =
-                            sunrise_client::toasts::SystemToast::new("system".into(), None);
-                        system.message = Some(Text::literal("edit"));
-                        assert!(game.add_system_toast(None, system));
-                        let Some(QueuedToast::System(_, system)) =
-                            game.client.toast_manager.queued.back()
-                        else {
-                            panic!("expected system toast")
-                        };
-                        assert_eq!(system.title.plain(), "replacement");
-                        assert_eq!(system.message.as_ref().unwrap().plain(), "changed");
-                        for id in [SystemToastId::PackLoadFailure, SystemToastId::Narrator] {
-                            assert!(game.add_system_toast(
-                                Some(id),
-                                SystemToast::new("Other notice".into(), None)
-                            ));
-                        }
-                        assert_eq!(
-                            game.client.toast_manager.update(1.0),
-                            (None, true),
-                            "both challenges share a promotion sound"
-                        );
-                        assert_eq!(game.client.toast_manager.visible.len(), 5);
-                        assert_eq!(game.client.toast_manager.update(1.0), (Some(true), false));
-
-                        game.add_toast(mod_api::ModToast::new(mod_api::Text::literal(
-                            "Older mod toast",
-                        )))
-                        .unwrap();
-                        game.admit_mod_toasts();
-                        game.add_advancement_toast(advancement("newer advancement"));
-                        let fading = game
-                            .client
-                            .toast_manager
-                            .system_mut(SystemToastId::PackLoadFailure)
-                            .unwrap();
-                        fading.slide.origin = Some(Instant::now() - Duration::from_secs(1));
-                        fading.force_hide();
-                        assert_eq!(game.client.toast_manager.update(1.0), (Some(false), false));
-                        assert_eq!(
-                            game.client.toast_manager.queued.len(),
-                            2,
-                            "a sliding-out toast still owns its slot"
-                        );
-                        game.client
-                            .toast_manager
-                            .system_mut(SystemToastId::PackLoadFailure)
-                            .unwrap()
-                            .slide
-                            .origin = Some(Instant::now() - Duration::from_secs(2));
-                        assert_eq!(game.client.toast_manager.update(1.0), (None, false));
-                        assert!(matches!(
-                            game.client
-                                .toast_manager
-                                .visible
-                                .last()
-                                .map(|entry| &entry.toast),
-                            Some(QueuedToast::Mod(_))
-                        ));
-                        assert!(matches!(
-                            game.client.toast_manager.queued.front(),
-                            Some(QueuedToast::Advancement(_))
-                        ));
-
-                        let narrator = game
-                            .client
-                            .toast_manager
-                            .system_mut(SystemToastId::Narrator)
-                            .unwrap();
-                        narrator.slide.origin = Some(Instant::now() - Duration::from_secs(1));
-                        narrator.force_hide();
-                        assert_eq!(
-                            game.client.toast_manager.update(1.0),
-                            (Some(false), false),
-                            "the first visibility change wins, even while another family slides in"
-                        );
-
-                        for role in [
-                            super::super::execution_role::ExecutionRole::IntegratedServer,
-                            super::super::execution_role::ExecutionRole::DedicatedServer,
-                        ] {
-                            game.options.execution_role = role;
-                            let mut title = Text::literal("server");
-                            let mut description = Some(Text::literal("edit"));
-                            assert!(!game.admit_toast(
-                                ToastKind::Advancement,
-                                &mut title,
-                                &mut description
-                            ));
-                            assert_eq!(title.plain(), "server", "server must not invoke listener");
-                            assert_eq!(description.unwrap().plain(), "edit");
-                        }
-                    });
-                });
-            },
-        );
     }
 
     #[test]
@@ -3540,7 +3394,7 @@ mod tests {
         );
     }
 
-    fn recipes(n: usize) -> Toast {
+    pub(in crate::game) fn recipes(n: usize) -> Toast {
         Toast::recipe(
             (0..n)
                 .map(|i| {
@@ -3552,7 +3406,12 @@ mod tests {
     }
     /// Drives a toast frame by frame (every `step` ms) and returns the slide
     /// portions at the given times and when it finished.
-    fn run(toast: &mut Toast, step: i64, until: i64, at: &[i64]) -> (Vec<f32>, Option<i64>) {
+    pub(in crate::game) fn run(
+        toast: &mut Toast,
+        step: i64,
+        until: i64,
+        at: &[i64],
+    ) -> (Vec<f32>, Option<i64>) {
         let mut slide = Slide::default();
         let mut seen = Vec::new();
         for now in (0..=until).step_by(step as usize) {
@@ -3587,7 +3446,7 @@ mod tests {
         );
     }
 
-    fn announced(title: Value, description: Value) -> adv::Advancement {
+    pub(in crate::game) fn announced(title: Value, description: Value) -> adv::Advancement {
         adv::Advancement {
             id: "quests:board".into(),
             parent: None,
@@ -3607,7 +3466,7 @@ mod tests {
         }
     }
     /// The chat hover: the JSON a client receives, and the spans drawn here.
-    fn hover(a: &adv::Advancement) -> (Value, Text) {
+    pub(in crate::game) fn hover(a: &adv::Advancement) -> (Value, Text) {
         let local = decorate_name(a.display.as_ref().unwrap());
         let sent = adv_name(a).component()["with"][0]["hover_event"]["value"].clone();
         (sent, local)
@@ -3726,7 +3585,7 @@ mod tests {
     }
 }
 #[cfg(test)]
-mod structure_tag_tests {
+pub(in crate::game) mod structure_tag_tests {
     use super::View;
     use crate::game::{Audio, Game, Options, Progress, Settings, load_resources};
     use serde_json::json;
@@ -3838,7 +3697,7 @@ mod structure_tag_tests {
 }
 
 #[cfg(test)]
-mod random_chance_command_tests {
+pub(in crate::game) mod random_chance_command_tests {
     use super::*;
     use crate::game::commands::Target;
     use sunrise_core::nbt::Tag;
@@ -3965,7 +3824,7 @@ mod random_chance_command_tests {
 }
 
 #[cfg(test)]
-mod custom_data_equipment_tests {
+pub(in crate::game) mod custom_data_equipment_tests {
     use super::*;
     use sunrise_client::{mobs::finalize, save};
     use sunrise_core::nbt::{Tag, parse_snbt};
@@ -4107,7 +3966,7 @@ mod custom_data_equipment_tests {
 }
 
 #[cfg(test)]
-mod movement_predicate_tests {
+pub(in crate::game) mod movement_predicate_tests {
     use crate::game::game_tests::tests::server_game;
     use serde_json::json;
     use sunrise_core::geometry::Vec3;
@@ -4222,7 +4081,7 @@ mod movement_predicate_tests {
 /// A player's 41 slots in `Inventory` numbering, for
 /// `native_player_inventory_changed`: the main inventory (0..36), the armour
 /// feet to head (36..40; `armor` holds it head first), the off hand (40).
-pub(super) fn inventory_slots(
+pub(in crate::game) fn inventory_slots(
     inventory: &[Option<ItemStack>],
     armor: &[Option<ItemStack>; 4],
     offhand: &Option<ItemStack>,

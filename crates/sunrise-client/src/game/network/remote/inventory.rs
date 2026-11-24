@@ -2,7 +2,7 @@ use super::*;
 
 /// A click sent to a server: its slot, button and input, the slots it
 /// changed and the carried stack after it.
-pub(super) type Predicted = (
+pub(in crate::game) type Predicted = (
     i16,
     i32,
     Input,
@@ -11,12 +11,12 @@ pub(super) type Predicted = (
 );
 
 /// How many stacks the creative screen keeps in step with the server (`Remote::synced`).
-pub(super) const CREATIVE_SYNCED: usize = 41;
+pub(in crate::game) const CREATIVE_SYNCED: usize = 41;
 
 /// The player's stacks in `Remote::synced` order: the 36 inventory slots, the off hand, then
 /// the armour from the head down. `CreativeInventoryListener.slotChanged` sends every
 /// InventoryMenu slot the creative screen changes, the armour slots too.
-pub(super) fn creative_sync_stacks(
+pub(in crate::game) fn creative_sync_stacks(
     inventory: &[Option<ItemStack>],
     offhand: &Option<ItemStack>,
     armor: &[Option<ItemStack>; 4],
@@ -29,7 +29,7 @@ pub(super) fn creative_sync_stacks(
 }
 
 /// Entries of `creative_sync_stacks` that went from `before` to `now` are synced as `now`.
-pub(super) fn mark_synced(
+pub(in crate::game) fn mark_synced(
     synced: &mut [Option<ItemStack>],
     before: &[Option<ItemStack>],
     now: Vec<Option<ItemStack>>,
@@ -45,7 +45,7 @@ pub(super) fn mark_synced(
 
 /// InventoryMenu's slot for entry `i` of `creative_sync_stacks`: the hotbar is 36..=44, the
 /// main inventory 9..=35, the off hand 45 and the armour 5..=8 (head first).
-pub(super) fn creative_sync_slot(i: usize) -> i16 {
+pub(in crate::game) fn creative_sync_slot(i: usize) -> i16 {
     (match i {
         0..9 => 36 + i,
         36 => 45,
@@ -60,7 +60,7 @@ pub(super) fn creative_sync_slot(i: usize) -> i16 {
 /// `AbstractContainerMenu.doClick` (a THROW, a click outside the window, a
 /// swap or a result move with no room left) is `Prediction.PREDICTED`.
 /// None when the engine refuses a click.
-pub(super) fn predict_clicks(
+pub(in crate::game) fn predict_clicks(
     m: &mut sunrise_client::menu::Menu,
     env: &sunrise_client::menu::Env,
     clicks: &[(i16, i32, Input)],
@@ -101,13 +101,13 @@ pub(in crate::game) fn predict_clicks_with(
     Some((predicted, dropped))
 }
 
-pub(super) fn menu_items(m: &sunrise_client::menu::Menu) -> Vec<Option<ItemStack>> {
+pub(in crate::game) fn menu_items(m: &sunrise_client::menu::Menu) -> Vec<Option<ItemStack>> {
     (0..m.slot_count()).map(|i| m.slot(i).cloned()).collect()
 }
 
 /// The slots whose stack is no longer `before`'s (`ItemStack.matches`).
 /// `MultiPlayerGameMode.handleContainerInput`'s changed slots, in the order the packet writes them.
-pub(super) fn changed_slots(
+pub(in crate::game) fn changed_slots(
     before: &[Option<ItemStack>],
     m: &sunrise_client::menu::Menu,
 ) -> Vec<(i16, Option<ItemStack>)> {
@@ -126,7 +126,7 @@ pub(super) fn changed_slots(
 /// then the table from its last position down; a key sits at `HashCommon.mix(key) & mask` or the
 /// next free position. The table starts at 32 (16 expected, load factor 0.75) and doubles when an
 /// insert finds it holding 24 (`size++ >= maxFill`), re-inserting from its last position down.
-pub(super) fn open_hash_order(keys: &[i16]) -> Vec<i16> {
+pub(in crate::game) fn open_hash_order(keys: &[i16]) -> Vec<i16> {
     fn mix(key: i16) -> usize {
         let h = i32::from(key).wrapping_mul(0x9E37_79B9_u32 as i32);
         (h ^ ((h as u32) >> 16) as i32) as u32 as usize
@@ -318,13 +318,18 @@ impl Game<'_> {
             _ => return None,
         })
     }
-    pub(super) fn open_menu_name(&self, container: i32) -> String {
+    pub(in crate::game) fn open_menu_name(&self, container: i32) -> String {
         match self.remote.as_ref().and_then(|r| r.menu.as_ref()) {
             Some((id, name)) if *id == container && container != 0 => name.clone(),
             _ => "inventory".into(),
         }
     }
-    pub(super) fn set_menu_slot(&mut self, container: i32, slot: i32, item: Option<ItemStack>) {
+    pub(in crate::game) fn set_menu_slot(
+        &mut self,
+        container: i32,
+        slot: i32,
+        item: Option<ItemStack>,
+    ) {
         let menu = self.open_menu_name(container);
         if menu == "minecraft:lectern" {
             if slot == 0 {
@@ -399,7 +404,7 @@ impl Game<'_> {
     /// updates of a hand's slot count as the held stack changing in place,
     /// as this client doesn't predict every use the way vanilla's does
     /// (a thrown snowball's stack shrinks only when the server says so).
-    pub(super) fn remote_hand_slot_set(&mut self, slot: usize, changed: bool) {
+    pub(in crate::game) fn remote_hand_slot_set(&mut self, slot: usize, changed: bool) {
         let hand = if slot == crate::game::shield::OFFHAND_SLOT {
             1
         } else if slot == self.selected {

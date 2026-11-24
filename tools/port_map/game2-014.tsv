@@ -5,7 +5,7 @@ HoneyBlock.maybeDoSlideAchievement	port	crates/sunrise-client/src/game/interface
 HoneyBlock.doSlideMovement	inline	crates/sunrise-client/src/motion.rs::MotionWorld::honey_block_inside	velocity damping and fall distance reset
 HoneyBlock.showParticles	port	crates/sunrise-client/src/game/blocks/block_particles.rs::Game::honey_slide_particles	five honey block particles at the entity
 IceBlock.randomTick	port	crates/sunrise-world/src/level/tick.rs::Sim::random_tick_block	melts through Sim::ice_melt when block light is above 11 minus dampening
-InfestedBlock.spawnInfestation	inline	crates/sunrise-client/src/game.rs::Game::break_block_as_player	silverfish at the broken block's bottom centre when blocks drop and there is no silk touch; poof via mob_poof
+InfestedBlock.spawnInfestation	inline	crates/sunrise-client/src/game/game_server.rs::Game::break_block_as_player	silverfish at the broken block's bottom centre when blocks drop and there is no silk touch; poof via mob_poof
 InfestedBlock.infestedStateByHost	inline	crates/sunrise-client/src/game/mobs/creatures/mod.rs::Game::handle_mob_events	the name swap minecraft:X to minecraft:infested_X in MobEvent::Infest; the host list is checked by the silverfish goals
 InfestedBlock.getNewStateWithProperties	inline	crates/sunrise-client/src/game/mobs/creatures/mod.rs::Game::handle_mob_events	property copy is the same name swap; the map cache is java
 IronBarsBlock.getStateForPlacement	port	crates/sunrise-world/src/level/place.rs::Sim::placement_class	arms per horizontal side and waterlogged from the replaced fluid
@@ -36,9 +36,9 @@ LeavesBlock.getStateForPlacement	port	crates/sunrise-world/src/level/place.rs::S
 LecternBlock.getStateForPlacement	port	crates/sunrise-world/src/level/place.rs::Sim::placement_class	gap: minor: a Book in the placed item's data does not set HAS_BOOK here; apply_placed_item fills the block entity only
 LecternBlock.rotate	port	crates/sunrise-world/src/worldgen/structure.rs::StateTransforms::rotate	facing through the rotate table
 LecternBlock.createBlockStateDefinition	skip:data	-	state properties come from the data tables
-LecternBlock.tryPlaceBook	port	crates/sunrise-client/src/game/interface/books.rs::Game::use_lectern	a book goes onto an empty lectern
-LecternBlock.placeBook	inline	crates/sunrise-client/src/game/interface/books.rs::Game::use_lectern	consumes the held book, sets has_book from the placing player through `resetBookState`, which posts `minecraft:block_change`, and plays the put sound
-LecternBlock.resetBookState	port	crates/sunrise-client/src/game/interface/books.rs::Game::lectern_menu_done	book removal clears powered and has_book, and `set_lectern_has_book` posts `minecraft:block_change`
+LecternBlock.tryPlaceBook	port	crates/sunrise-client/src/game/interface/books_server.rs::Game::use_lectern	a book goes onto an empty lectern
+LecternBlock.placeBook	inline	crates/sunrise-client/src/game/interface/books_server.rs::Game::use_lectern	consumes the held book, sets has_book from the placing player through `resetBookState`, which posts `minecraft:block_change`, and plays the put sound
+LecternBlock.resetBookState	port	crates/sunrise-client/src/game/interface/books_server.rs::Game::lectern_menu_done	book removal clears powered and has_book, and `set_lectern_has_book` posts `minecraft:block_change`
 LecternBlock.changePowered	port	crates/sunrise-client/src/game/interface/books.rs::Game::set_lectern_powered
 LecternBlock.updateBelow	inline	crates/sunrise-client/src/game/interface/books.rs::Game::set_lectern_powered	neighbour update below the lectern
 LecternBlock.affectNeighborsAfterRemoval	port	crates/sunrise-world/src/level/hooks.rs::Sim::affect_neighbors_after_removal	powered lectern updates the block below on removal
@@ -124,7 +124,7 @@ NetherPortalBlock.animateTick	port	crates/sunrise-client/src/animate_tick.rs::bl
 NetherPortalBlock.rotate	port	crates/sunrise-world/src/worldgen/structure.rs::StateTransforms::rotate	axis swap through the rotate table
 NoteBlock.updateShape	port	crates/sunrise-world/src/level/shapes.rs::Sim::update_shape_class	instrument follows the block below
 NoteBlock.neighborChanged	port	crates/sunrise-world/src/level/redstone.rs::Sim::note_neighbor_changed
-NoteBlock.getCustomSoundId	inline	crates/sunrise-client/src/game.rs::Game::process_level_events
+NoteBlock.getCustomSoundId	inline	crates/sunrise-client/src/game/game_server.rs::Game::process_level_events
 NoteBlock.createBlockStateDefinition	skip:data	-	state properties come from the data tables
 PathBlock.getStateForPlacement	port	crates/sunrise-world/src/level/place.rs::Sim::placement_class	pushes entities up when the path would not survive
 PathBlock.updateShape	port	crates/sunrise-world/src/level/shapes.rs::Sim::update_shape_class	schedules a tick when the block above changes

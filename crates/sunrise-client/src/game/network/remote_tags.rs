@@ -1,22 +1,26 @@
 //! The server's tags on this client (`ClientPacketListener.handleUpdateTags`, and configuration's
 //! `RegistryDataCollector`): install gameplay tags, then notify native mods.
+#[allow(unused_imports)]
 use super::Game;
+#[allow(unused_imports)]
 use std::sync::Arc;
+#[allow(unused_imports)]
 use sunrise_client::items::{Items, TagRegistry};
+#[allow(unused_imports)]
 use sunrise_protocol::{item::Names, packets::configuration::UpdateTags, registry::SyncedNames};
 
 /// The registries whose tags the tag helpers read.
-const READ_REGISTRIES: [(&str, TagRegistry); 3] = [
+pub(in crate::game) const READ_REGISTRIES: [(&str, TagRegistry); 3] = [
     ("minecraft:block", TagRegistry::Block),
     ("minecraft:item", TagRegistry::Item),
     ("minecraft:fluid", TagRegistry::Fluid),
 ];
 /// The synced registry whose tags `Tags::damage_type_in_tag` reads.
-const DAMAGE_TYPE: &str = "minecraft:damage_type";
+pub(in crate::game) const DAMAGE_TYPE: &str = "minecraft:damage_type";
 
 impl Game<'_> {
     /// `ClientboundUpdateTagsPacket` in play.
-    pub(super) fn remote_update_tags(&mut self, tags: &UpdateTags) {
+    pub(in crate::game) fn remote_update_tags(&mut self, tags: &UpdateTags) {
         if let Some(r) = self.remote.as_mut() {
             Arc::make_mut(&mut r.registries).add_tags(tags);
         }
@@ -34,7 +38,7 @@ impl Game<'_> {
         }
     }
 
-    pub(super) fn refresh_creative_search_tags(&mut self) {
+    pub(in crate::game) fn refresh_creative_search_tags(&mut self) {
         let tags = self.remote.as_ref().and_then(|r| {
             let ids = r.builtin.get("minecraft:item")?;
             let tags = r.registries.tags.get("minecraft:item")?;
@@ -55,7 +59,7 @@ impl Game<'_> {
 
     /// Make the server's tags what native mods read, then tell them. Snapshot client
     /// enchant answers only after the tags, rebound parts and tag listeners are published.
-    pub(super) fn install_remote_tags(&mut self) {
+    pub(in crate::game) fn install_remote_tags(&mut self) {
         if mod_api::__private::mods().is_empty() {
             self.resolve_enchant_particles();
             return;
@@ -130,31 +134,37 @@ impl Game<'_> {
 }
 
 #[cfg(test)]
-mod tests {
+pub(in crate::game) mod tests {
+    #[allow(unused_imports)]
     use crate::game::native_entity_refs::tests::with_client_game;
+    #[allow(unused_imports)]
     use mod_api::{Hooks, Identifier, ModEntry, TagMembers, TagsUpdateCause, TagsUpdatedEvent};
+    #[allow(unused_imports)]
     use mod_platform::__private::part_tests::block_key;
+    #[allow(unused_imports)]
     use std::sync::{Arc, Mutex};
+    #[allow(unused_imports)]
     use sunrise_protocol::packets::{
         configuration::{RegistryTags, TagEntry, UpdateTags},
         play::{self, Clientbound as C},
     };
+    #[allow(unused_imports)]
     use sunrise_protocol::registry::Builtin;
 
     /// What a listener read of the tags during its notice.
     #[derive(Debug, PartialEq)]
-    struct Seen {
-        cause: TagsUpdateCause,
-        items: TagMembers<mod_api::ItemKey>,
-        empty_items: TagMembers<mod_api::ItemKey>,
-        fluids: TagMembers<mod_api::FluidKey>,
-        stone_in_block_tag: Option<bool>,
-        dirt_in_block_tag: Option<bool>,
-        stick_in_item_tag: Option<bool>,
-        lava_in_fluid_tag: Option<bool>,
+    pub(in crate::game) struct Seen {
+        pub(in crate::game) cause: TagsUpdateCause,
+        pub(in crate::game) items: TagMembers<mod_api::ItemKey>,
+        pub(in crate::game) empty_items: TagMembers<mod_api::ItemKey>,
+        pub(in crate::game) fluids: TagMembers<mod_api::FluidKey>,
+        pub(in crate::game) stone_in_block_tag: Option<bool>,
+        pub(in crate::game) dirt_in_block_tag: Option<bool>,
+        pub(in crate::game) stick_in_item_tag: Option<bool>,
+        pub(in crate::game) lava_in_fluid_tag: Option<bool>,
     }
 
-    struct Probe(Arc<Mutex<Vec<Seen>>>);
+    pub(in crate::game) struct Probe(pub(in crate::game) Arc<Mutex<Vec<Seen>>>);
     #[mod_api::__subscriptions]
     impl Hooks for Probe {
         fn tags_updated(&self, context: &dyn mod_api::ReloadContext, event: &mut TagsUpdatedEvent) {
@@ -179,7 +189,7 @@ mod tests {
         }
     }
 
-    fn update(builtin: &Builtin, tags: &[(&str, &str, &[&str])]) -> UpdateTags {
+    pub(in crate::game) fn update(builtin: &Builtin, tags: &[(&str, &str, &[&str])]) -> UpdateTags {
         let mut registries = std::collections::BTreeMap::<_, Vec<_>>::new();
         for &(registry, tag, members) in tags {
             let names = builtin.get(registry).unwrap();
@@ -199,7 +209,7 @@ mod tests {
         }
     }
 
-    fn login() -> C {
+    pub(in crate::game) fn login() -> C {
         C::Login(play::Login {
             player_id: 7,
             hardcore: false,
@@ -238,7 +248,7 @@ mod tests {
         use mod_api::Tags;
 
         if run_fresh_cases(
-            "game::remote_tags::tests::item_tag_lists_follow_server_reload_and_client_packets",
+            "game::client_side::remote_tags::tests::item_tag_lists_follow_server_reload_and_client_packets",
             "SUNRISE_ITEM_TAG_LIST_FIXTURE",
             &["reload"],
         ) {
@@ -556,272 +566,7 @@ mod tests {
         });
     }
 
-    #[test]
-    #[ignore = "daily"]
-    fn reload_publishes_retained_and_bound_empty_tags_to_loot_and_clients() {
-        use crate::game::{
-            Game,
-            lan::sync,
-            native_entity_refs::tests::{run_fresh_cases, with_game},
-        };
-        use std::path::Path;
-        use sunrise_protocol::{
-            buf::{Codec, Reader},
-            item::Stack,
-            packets::recipes::{HolderSet, SlotDisplay, UpdateRecipes},
-        };
-        use sunrise_world::{level::classes::is_generated_tag, loot::LootTags};
-
-        const FIXTURE: &str = "SUNRISE_TAG_RELOAD_FIXTURE";
-        if run_fresh_cases(
-            "game::remote_tags::tests::reload_publishes_retained_and_bound_empty_tags_to_loot_and_clients",
-            FIXTURE,
-            &["tags", "packed-damage"],
-        ) {
-            return;
-        }
-        let packed_damage = std::env::var(FIXTURE).unwrap() == "packed-damage";
-        let damage_type = if packed_damage {
-            "tag_reload:impact"
-        } else {
-            "minecraft:stalagmite"
-        };
-        let save = tempfile::tempdir().unwrap();
-        let pack = save.path().join("datapacks/test");
-        let write = |path: &Path, bytes: &[u8]| {
-            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
-            std::fs::write(path, bytes).unwrap();
-        };
-        write(
-            &save.path().join("datapacks.json"),
-            br#"{"enabled":["vanilla","file/test"],"disabled":[]}"#,
-        );
-        write(
-            &pack.join("pack.mcmeta"),
-            br#"{"pack":{"description":"fixture","min_format":94,"max_format":94}}"#,
-        );
-        let write_tag = |registry: &str, name: &str, bytes: &[u8]| {
-            let (ns, path) = name.split_once(':').unwrap();
-            write(
-                &pack.join(format!("data/{ns}/tags/{registry}/{path}.json")),
-                bytes,
-            );
-        };
-        let members = [
-            ("item", ["minecraft:potion", "minecraft:stick"]),
-            ("block", ["minecraft:stone", "minecraft:dirt"]),
-            ("fluid", ["minecraft:water", "minecraft:lava"]),
-            ("damage_type", [damage_type, "minecraft:fall"]),
-        ];
-        if packed_damage {
-            write(
-                &pack.join("data/tag_reload/damage_type/impact.json"),
-                br#"{"message_id":"impact","scaling":"never","exhaustion":0.0}"#,
-            );
-        }
-        write(
-            &pack.join("data/tag_reload/advancement/damage_probe.json"),
-            br##"{"criteria":{"probe":{"trigger":"minecraft:entity_hurt_player","conditions":{"damage":{"type":{"tags":[{"id":"#tag_reload:probe","expected":true}]}}}}}}"##,
-        );
-        for (registry, values) in members {
-            let json = serde_json::json!({ "values": values });
-            write_tag(registry, "tag_reload:probe", json.to_string().as_bytes());
-        }
-        write_tag(
-            "item",
-            "tag_reload:old",
-            br#"{"values":["minecraft:stick"]}"#,
-        );
-        write(
-            &pack.join("data/tag_reload/loot_table/check.json"),
-            br##"{"pools":[{"rolls":1,"entries":[{"type":"minecraft:tag","items":"#tag_reload:probe","expand":false}]}]}"##,
-        );
-        write(
-            &pack.join("data/tag_reload/recipe/retained.json"),
-            br##"{"type":"minecraft:stonecutting","ingredient":"#tag_reload:probe","result":{"id":"minecraft:diamond"}}"##,
-        );
-        let key =
-            |name: &str| mod_api::__private::tag_key(&Identifier::parse(name).unwrap()).unwrap();
-        fn resolved<K>(ids: &[&str], resolve: impl Fn(&str) -> Option<K>) -> TagMembers<K> {
-            TagMembers::Members(ids.iter().map(|id| resolve(id).unwrap()).collect())
-        }
-        let check_host = |game: &Game<'_>, keep: usize| {
-            let probe = key("tag_reload:probe");
-            assert_eq!(
-                mod_api::Tags::items(game, probe),
-                resolved(&members[0].1[..keep], mod_api::__private::item_key)
-            );
-            assert_eq!(
-                mod_api::Tags::blocks(game, probe),
-                resolved(&members[1].1[..keep], mod_api::__private::block_key)
-            );
-            assert_eq!(
-                mod_api::Tags::fluids(game, probe),
-                resolved(&members[2].1[..keep], mod_api::__private::fluid_key)
-            );
-            assert_eq!(
-                mod_api::Tags::items(game, key("tag_reload:old")),
-                if keep == 0 {
-                    TagMembers::Missing
-                } else {
-                    resolved(&["minecraft:stick"], mod_api::__private::item_key)
-                }
-            );
-        };
-        let mut snapshots = Vec::new();
-        with_game(|game| {
-            let mut request = crate::game::world_loading::WorldRequest::new(
-                "tag-reload",
-                Some("test"),
-                Some(1),
-                true,
-                None,
-                std::sync::Arc::new(sunrise_client::gamerules::RuleRegistry::vanilla()),
-            )
-            .unwrap();
-            request.save_root = save.path().to_owned();
-            game.load_world(request).unwrap();
-            let rejected = br#"{"replace":true,"values":["tag_reload:missing_member"]}"#;
-            for (registry, tags) in game.items().ordered_tags() {
-                for tag in tags
-                    .keys()
-                    .filter(|tag| registry != "block" || !is_generated_tag(tag))
-                {
-                    write_tag(registry, tag, rejected);
-                }
-            }
-            for tag in game.health_resources.damage.tags() {
-                write_tag("damage_type", tag, rejected);
-            }
-            // Definitions force an eager wire load; a tag-only world still exercises
-            // reload before the first wire snapshot. Neither case has a joined client.
-            assert_eq!(sync::cached_reload_sync().is_some(), packed_damage);
-            for expect_empty in [false, true] {
-                if expect_empty {
-                    // These recipes name item tags that this stage deliberately removes.
-                    let recipes = sunrise_world::json_folder::read(
-                        &game.options.resources.join("data/minecraft/recipe"),
-                    )
-                    .unwrap();
-                    for file in &recipes.files {
-                        write(
-                            &pack.join(format!("data/minecraft/recipe/{}.json", file.name)),
-                            br#"{"neoforge:conditions":[{"type":"neoforge:never"}]}"#,
-                        );
-                    }
-                    for (registry, _) in members {
-                        write_tag(
-                            registry,
-                            "tag_reload:probe",
-                            br#"{"replace":true,"values":[]}"#,
-                        );
-                    }
-                }
-                game.reload_datapacks(true, &game.level.enabled_features.clone())
-                    .unwrap();
-                let keep = if expect_empty { 0 } else { 2 };
-                check_host(game, keep);
-                let entry = game
-                    .registry_entry("minecraft:damage_type", damage_type)
-                    .unwrap();
-                assert_eq!(
-                    game.registry_entry_in_tag(&entry, "tag_reload:probe"),
-                    Some(!expect_empty)
-                );
-                game.trigger_entity_hurt_player(&sunrise_client::advancements::DamageView {
-                    kind: damage_type.into(),
-                    ..Default::default()
-                });
-                assert_eq!(
-                    game.adv.progress.revoke("tag_reload:damage_probe", "probe"),
-                    !expect_empty
-                );
-                let loot = game.server_loot.0.get().unwrap();
-                for (registry, values) in members {
-                    let expected: Vec<_> = values[..keep].iter().map(|id| id.to_string()).collect();
-                    assert_eq!(loot.members(registry, "tag_reload:probe"), Some(expected));
-                }
-                let drops = loot.roll(
-                    "tag_reload:check",
-                    &mut sunrise_core::random::LegacyRandom::new(0),
-                    0.0,
-                    None,
-                    None,
-                );
-                assert_eq!(
-                    drops
-                        .iter()
-                        .map(|drop| drop.item.as_str())
-                        .collect::<Vec<_>>(),
-                    members[0].1[..keep]
-                );
-                let wire = sync::sync_data(
-                    &game.options.resources,
-                    &game.res.core.item_data,
-                    game.items(),
-                    &game.pack_files(),
-                )
-                .unwrap();
-                if !expect_empty {
-                    let recipe = UpdateRecipes::read(&mut Reader::new(&wire.recipes)).unwrap();
-                    let diamond = wire.id("minecraft:item", "minecraft:diamond").unwrap();
-                    assert!(recipe.stonecutter.contains(&(
-                        HolderSet::Tag("tag_reload:probe".into()),
-                        SlotDisplay::ItemStack(Stack::new(diamond, 1)),
-                    )));
-                    for item in members[0].1 {
-                        assert_eq!(
-                            wire.stonecutter_buttons.recipe(item, 0),
-                            Some("tag_reload:retained")
-                        );
-                    }
-                }
-                snapshots.push(wire);
-            }
-        });
-        // The client only installs tag tables for Host reads when there is a mod.
-        struct TagReader;
-        #[mod_api::__subscriptions]
-        impl Hooks for TagReader {}
-        mod_platform::testing::with_mods(
-            vec![ModEntry::new("tag_reload", Box::new(TagReader))].into(),
-            || {
-                with_client_game(|game| {
-                    let (pipe, _server) = sunrise_protocol::connection::Pipe::pair();
-                    game.connect_local(pipe, "Steve").unwrap();
-                    let remote = game.remote.as_mut().unwrap();
-                    remote.registries = Arc::new(snapshots[0].dynamic.clone());
-                    Arc::make_mut(&mut remote.registries).add_tags(&snapshots[0].tags);
-                    game.handle_packet(login()).unwrap();
-                    check_host(game, 2);
-                    let ids = members[3]
-                        .1
-                        .map(|id| snapshots[0].id("minecraft:damage_type", id).unwrap());
-                    assert_eq!(
-                        game.remote
-                            .as_ref()
-                            .unwrap()
-                            .registries
-                            .tag("minecraft:damage_type", "tag_reload:probe"),
-                        Some(&ids[..])
-                    );
-                    game.handle_packet(C::UpdateTags(snapshots[1].tags.clone()))
-                        .unwrap();
-                    check_host(game, 0);
-                    assert_eq!(
-                        game.remote
-                            .as_ref()
-                            .unwrap()
-                            .registries
-                            .tag("minecraft:damage_type", "tag_reload:probe"),
-                        Some(&[][..])
-                    );
-                });
-            },
-        );
-    }
-
-    fn power_update(builtin: &Builtin, tags: &[(&str, &[&str])]) -> UpdateTags {
+    pub(in crate::game) fn power_update(builtin: &Builtin, tags: &[(&str, &[&str])]) -> UpdateTags {
         let blocks = builtin.get("minecraft:block").unwrap();
         UpdateTags {
             registries: vec![RegistryTags {
@@ -1002,7 +747,7 @@ mod tests {
         use crate::game::native_entity_refs::tests::run_fresh_cases;
         use mod_api::{LevelHost, Tags};
         if run_fresh_cases(
-            "game::remote_tags::tests::a_client_reads_the_damage_type_tags_its_server_sent",
+            "game::client_side::remote_tags::tests::a_client_reads_the_damage_type_tags_its_server_sent",
             "SUNRISE_TEST_CLIENT_DAMAGE_TYPE_TAGS",
             &["client", "no_group"],
         ) {

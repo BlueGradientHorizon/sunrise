@@ -4,7 +4,8 @@
 use super::native_entity_refs::tests::{run_fresh_cases, with_client_game};
 use crate::game::native_hooks::particle_count_tests::frame_scene;
 
-const NAME: &str = "game::pack_sources_tests::terrain_sources_are_kept_only_while_a_pack_is_loaded";
+const NAME: &str =
+    "game::client_side::pack_sources_tests::terrain_sources_are_kept_only_while_a_pack_is_loaded";
 const CASE: &str = "SUNRISE_PACK_SOURCES_CASE";
 
 const VERTEX: &str = "#version 120\nattribute vec4 mc_Entity;\nvarying vec4 glcolor;\nvoid main() {\n    gl_Position = ftransform();\n    glcolor = vec4(mc_Entity.x);\n}\n";

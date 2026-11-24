@@ -5,10 +5,10 @@ DragonFireballRenderer.vertex	inline	crates/sunrise-client/src/game/mobs/dragon.
 EndCrystalRenderer.submit	port	crates/sunrise-client/src/game/world/end.rs::Game::end_crystal_geometry	model at scale 2 and the beam to the target
 EndCrystalRenderer.extractRenderState	inline	crates/sunrise-client/src/game/world/end.rs::Game::end_crystal_geometry	age, show-bottom and beam target read from the crystal there
 EndCrystalRenderer.shouldRender	inline	crates/sunrise-client/src/game/world/end.rs::Game::end_crystal_geometry	gap: minor: no frustum test; crystals within 256 blocks always draw, beam included
-EnderDragonRenderer.submit	port	crates/sunrise-client/src/game/mobs/dragon.rs::Game::dragon_geometry
+EnderDragonRenderer.submit	port	crates/sunrise-client/src/game/mobs/dragon_client.rs::Game::dragon_geometry
 EnderDragonRenderer.submitRays	port	crates/sunrise-client/src/game/mobs/dragon.rs::Game::dragon_rays
 EnderDragonRenderer.submitCrystalBeams	port	crates/sunrise-client/src/game/mobs/dragon.rs::Game::crystal_beam
-EnderDragonRenderer.extractRenderState	inline	crates/sunrise-client/src/game/mobs/dragon.rs::Game::dragon_geometry	flap, death fade, hurt overlay, nearest-crystal beam and egg distance read there
+EnderDragonRenderer.extractRenderState	inline	crates/sunrise-client/src/game/mobs/dragon_client.rs::Game::dragon_geometry	flap, death fade, hurt overlay, nearest-crystal beam and egg distance read there
 EndermanRenderer.getRenderOffset	port	crates/sunrise-client/src/mobs/render.rs::enderman_render_offset	EndermanRenderer.getRenderOffset's random side offset for a creepy enderman, 0.02 * minecraft:scale per axis
 EndermanRenderer.extractRenderState	inline	crates/sunrise-client/src/mobs/enderman.rs::anim	gap: minor: carried block is drawn by game/mobs/mob_blocks.rs, not from this pose
 Entity.getLightProbePosition	port	crates/sunrise-client/src/mobs/living.rs::eye_probe_cell	the eye height over Mth.lerp(partialTick, xo, x) on each axis for a mob (`Mob::light_probe`) and a projectile (`Projectile::light_probe_y`); ArmorStand's marker scan overrides it (`entities.rs::ArmorStand::light_probe`)
@@ -20,12 +20,12 @@ EntityRenderDispatcher.fillRendererDetails	skip:debug		crash report detail
 EntityRenderDispatcher.onResourceManagerReload	skip:data		renderer rebuild on resource reload; Sunrise loads its assets from files
 EntityRenderer.getBoundingBoxForCulling	port	crates/sunrise-client-gameplay/src/entity_occlusion.rs::cull_box	Entity.getInterpolatedBoundingBox(partialTick) - the box at the frame's position - grown by 0.5 for the frustum test; the renderer overrides have their own rows, and a dropped item's is game/interface/item_draw.rs::dropped_item_cull_box
 EntityRenderer.getBlockLightLevel	port	crates/sunrise-client/src/game/mobs/creatures/mod.rs::Game::mob_geometry	burning mobs, projectiles and dropped items drawn at full block light (game/mobs/creatures/mod.rs::Game::mob_geometry, game/interface/item_draw.rs::Game::dropped_item_geometry); other entities use world light
-EntityRenderer.submit	inline	crates/sunrise-client/src/game.rs::Game::entity_geometry	leash ropes and name tags drawn in their own passes from there
+EntityRenderer.submit	inline	crates/sunrise-client/src/game/game_client.rs::Game::entity_geometry	leash ropes and name tags drawn in their own passes from there
 EntityRenderer.shouldShowName	port	crates/sunrise-client/src/game/interface/names.rs::Game::name_tags	named mob under the crosshair
 EntityRenderer.submitNameDisplay	port	crates/sunrise-client/src/game/interface/names.rs::Game::name_tag_geometry
 EntityRenderer.createRenderState	skip:java		allocates the render-state object
-EntityRenderer.extractRenderState	inline	crates/sunrise-client/src/game.rs::Game::entity_geometry	positions, invisibility, leash state, outline colour and light read there
-EntityRenderer.finalizeRenderState	inline	crates/sunrise-client/src/game.rs::Game::entity_geometry	shadow pass after the entities
+EntityRenderer.extractRenderState	inline	crates/sunrise-client/src/game/game_client.rs::Game::entity_geometry	positions, invisibility, leash state, outline colour and light read there
+EntityRenderer.finalizeRenderState	inline	crates/sunrise-client/src/game/game_client.rs::Game::entity_geometry	shadow pass after the entities
 EntityRenderer.extractShadowPiece	port	crates/sunrise-client/src/shadows.rs::shadow	block-top shadow pieces with fall-off
 EntityRenderer.getServerSideEntity	skip:other		no callers in vanilla (dead code)
 EntityRenderers.createEntityRenderers	skip:data		renderer registration table
@@ -33,18 +33,18 @@ EntityRenderers.createAvatarRenderers	skip:data		renderer registration table
 EntityRenderers.validateRegistrations	skip:debug		startup check that every type has a renderer
 EvokerFangsRenderer.submit	port	crates/sunrise-client/src/game/mobs/fangs.rs::Game::fangs_geometry	bite progress and facing
 EvokerFangsRenderer.extractRenderState	inline	crates/sunrise-client/src/game/mobs/fangs.rs::Game::fangs_geometry	yaw and bite progress read there
-ExperienceOrbRenderer.getBlockLightLevel	port	crates/sunrise-client/src/game.rs::Game::entity_geometry	the level's block light plus seven, clamped, the sky light left alone, at the orb's eye (`ExperienceOrb::render_light`, `light_probe_y`)
-ExperienceOrbRenderer.submit	inline	crates/sunrise-client/src/game.rs::Game::entity_geometry	orb billboards with the pulsing colour, in the entity pass
-ExperienceOrbRenderer.vertex	inline	crates/sunrise-client/src/game.rs::Game::entity_geometry	vertex built inline
+ExperienceOrbRenderer.getBlockLightLevel	port	crates/sunrise-client/src/game/game_client.rs::Game::entity_geometry	the level's block light plus seven, clamped, the sky light left alone, at the orb's eye (`ExperienceOrb::render_light`, `light_probe_y`)
+ExperienceOrbRenderer.submit	inline	crates/sunrise-client/src/game/game_client.rs::Game::entity_geometry	orb billboards with the pulsing colour, in the entity pass
+ExperienceOrbRenderer.vertex	inline	crates/sunrise-client/src/game/game_client.rs::Game::entity_geometry	vertex built inline
 FallingBlockRenderer.shouldRender	port	crates/sunrise-client/src/game.rs::falling_block_visible	a falling block whose own state is the state of the cell its feet are in is not drawn, so a NoGravity block or one that has just landed shows no model; the entity draw skips it and a unit test covers both cases
-FallingBlockRenderer.submit	inline	crates/sunrise-client/src/game.rs::Game::entity_geometry	falling block pass with its baked block model
-FallingBlockRenderer.extractRenderState	inline	crates/sunrise-client/src/game.rs::Game::entity_geometry	position, state, biome tint and light read there
+FallingBlockRenderer.submit	inline	crates/sunrise-client/src/game/game_client.rs::Game::entity_geometry	falling block pass with its baked block model
+FallingBlockRenderer.extractRenderState	inline	crates/sunrise-client/src/game/game_client.rs::Game::entity_geometry	position, state, biome tint and light read there
 FireworkEntityRenderer.extractRenderState	port	crates/sunrise-client/src/game/entities/fireworks.rs::Game::rocket_geometry	angled rocket keeps its direction
 FishingHookRenderer.shouldRender	inline	crates/sunrise-client/src/game/items/fishing.rs::Game::fishing_geometry	hook drawn only with an owner
 FishingHookRenderer.submit	port	crates/sunrise-client/src/game/items/fishing.rs::Game::fishing_geometry	hook quad and line
 FishingHookRenderer.vertex	inline	crates/sunrise-client/src/game/items/fishing.rs::Game::fishing_geometry	hook quad vertex
 FishingHookRenderer.stringVertex	inline	crates/sunrise-client/src/game/items/fishing.rs::Game::fishing_line	line strip vertices
-FishingHookRenderer.extractRenderState	port	crates/sunrise-client/src/game/items/fishing.rs::Game::rod_hand_position	line origin from the rod hand
+FishingHookRenderer.extractRenderState	port	crates/sunrise-client/src/game/items/fishing_client.rs::Game::rod_hand_position	line origin from the rod hand
 FoxRenderer.extractRenderState	port	crates/sunrise-client/src/mobs/body_anim.rs::fox	crouch, sleep, sit, faceplant, pounce and head roll
 FrogRenderer.extractRenderState	port	crates/sunrise-client/src/mobs/body_anim.rs::frog	jump, croak, tongue and swim animations; climate texture in mobs/render.rs::body
 GiantMobRenderer.extractRenderState	port	crates/sunrise-client/src/mobs/anim.rs::humanoid	gap: minor: giant model comes from the species table (giant#main), not a separate renderer
@@ -72,10 +72,10 @@ IronGolemRenderer.extractRenderState	port	crates/sunrise-client/src/mobs/golem.r
 IronGolemRenderer.setupRotations	port	crates/sunrise-client/src/mobs/render.rs::base_transform_at	the 6.5-degree triangle wave over a 13-block walk phase
 ItemEntityRenderer.extractRenderState	port	crates/sunrise-client/src/game/interface/item_draw.rs::Game::dropped_item_geometry	bob offset, spin and spread; the light is Entity.getLightProbePosition's eye (0.2125 up, on the frame's position) over getBlockLightLevel's isOnFire rule (`entities.rs::ItemEntity::light_probe`, `render_light`)
 ItemEntityRenderer.renderMultipleFromCount	port	crates/sunrise-client/src/item_render.rs::cluster_poses	copies of a stack laid out by depth
-ItemFrameRenderer.submit	port	crates/sunrise-client/src/game/entities/frames.rs::Game::frame_geometry	frame model, item or map
-ItemFrameRenderer.getRenderOffset	inline	crates/sunrise-client/src/game/entities/frames.rs::Game::frame_geometry	offset in front of the wall
-ItemFrameRenderer.extractRenderState	inline	crates/sunrise-client/src/game/entities/frames.rs::Game::frame_geometry	direction, item, rotation, glow and map read there
-LeashKnotRenderer.submit	port	crates/sunrise-client/src/game/entities/leads.rs::Game::leash_geometry	knot drawn with the rope pass
+ItemFrameRenderer.submit	port	crates/sunrise-client/src/game/entities/frames_client.rs::Game::frame_geometry	frame model, item or map
+ItemFrameRenderer.getRenderOffset	inline	crates/sunrise-client/src/game/entities/frames_client.rs::Game::frame_geometry	offset in front of the wall
+ItemFrameRenderer.extractRenderState	inline	crates/sunrise-client/src/game/entities/frames_client.rs::Game::frame_geometry	direction, item, rotation, glow and map read there
+LeashKnotRenderer.submit	port	crates/sunrise-client/src/game/entities/leads_client.rs::Game::leash_geometry	knot drawn with the rope pass
 LightningBoltRenderer.quad	inline	crates/sunrise-client-render/src/gfx/lightning.rs::geometry	quad built inline
 LivingEntityRenderer.getBoundingBoxForCulling	port	crates/sunrise-client-gameplay/src/entity_occlusion.rs::cull_box	inflate(0.5) all round for a living entity wearing a dragon head
 LivingEntityRenderer.isEntityUpsideDown	port	crates/sunrise-client/src/mobs/render.rs::base_transform_at	upside-down flip for Dinnerbone and Grumm
@@ -139,9 +139,9 @@ ThrownItemRenderer.extractRenderState	inline	crates/sunrise-client/src/game/mobs
 ThrownTridentRenderer.submit	port	crates/sunrise-client/src/game/items/trident.rs::Game::trident_geometry	gap: minor: foil glint is not drawn on a thrown trident
 ThrownTridentRenderer.extractRenderState	inline	crates/sunrise-client/src/game/items/trident.rs::Game::trident_geometry	yaw, pitch and foil read there
 TippableArrowRenderer.extractRenderState	port	crates/sunrise-client/src/projectiles.rs::Projectile::arrow_effect_color	brewing::potion_color gives a tipped arrow its potion colour
-TntMinecartRenderer.submitMinecartContents	port	crates/sunrise-client/src/game/entities/minecarts.rs::Game::cart_geometry	TNT block swell and white flash
-TntMinecartRenderer.submitWhiteSolidBlock	inline	crates/sunrise-client/src/game/entities/minecarts.rs::Game::cart_geometry	white overlay built inline
-TntMinecartRenderer.extractRenderState	inline	crates/sunrise-client/src/game/entities/minecarts.rs::Game::cart_geometry	fuse read from the cart
+TntMinecartRenderer.submitMinecartContents	port	crates/sunrise-client/src/game/entities/minecarts_client.rs::Game::cart_geometry	TNT block swell and white flash
+TntMinecartRenderer.submitWhiteSolidBlock	inline	crates/sunrise-client/src/game/entities/minecarts_client.rs::Game::cart_geometry	white overlay built inline
+TntMinecartRenderer.extractRenderState	inline	crates/sunrise-client/src/game/entities/minecarts_client.rs::Game::cart_geometry	fuse read from the cart
 TntRenderer.submit	port	crates/sunrise-client/src/game/entities/tnt.rs::Game::tnt_geometry	swell and white flash
 TntRenderer.getSwellAmount	inline	crates/sunrise-client/src/game/entities/tnt.rs::Game::tnt_geometry	swell curve folded in
 TntRenderer.isLit	inline	crates/sunrise-client/src/game/entities/tnt.rs::Game::tnt_geometry	flash every 5 ticks

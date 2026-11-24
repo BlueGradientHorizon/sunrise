@@ -1,10 +1,11 @@
+#[allow(unused_imports)]
 use super::*;
 
 impl Game<'_> {
     /// `Level.playSound(player, ...)`: a guest's client already predicted the
     /// fire-starter sound, so play it locally on the server and forward it to
     /// the other guests without leaving it in the broadcast capture.
-    pub(super) fn play_block_use_sound(&mut self, sound: &str, at: [f64; 3], pitch: f32) {
+    pub(in crate::game) fn play_block_use_sound(&mut self, sound: &str, at: [f64; 3], pitch: f32) {
         if self.server.lan_acting.is_some() {
             self.client_audio_play_unshared(sound, Some(at), 1.0, pitch);
             self.server
@@ -684,7 +685,7 @@ impl Game<'_> {
 }
 
 impl Game<'_> {
-    pub(super) fn apply_consume_effect(
+    pub(in crate::game) fn apply_consume_effect(
         &mut self,
         consumed: &sunrise_client::items::ItemStack,
         effect: &sunrise_client::items::ConsumeEffect,
@@ -810,7 +811,7 @@ impl Game<'_> {
     /// BowItem.releaseUsing: power from charge time, arrows at power * 3, as
     /// many as the weapon's `projectile_count` says, fanned by its
     /// `projectile_spread`.
-    pub(super) fn release_bow(&mut self, stack: &ItemStack, ticks: u32) {
+    pub(in crate::game) fn release_bow(&mut self, stack: &ItemStack, ticks: u32) {
         let ammo = self.get_projectile(stack);
         let mut charge = i32::try_from(ticks).unwrap_or(i32::MAX);
         let mut canceled = false;
@@ -926,7 +927,7 @@ impl Game<'_> {
     /// `EnchantmentHelper.processProjectileCount` and `processProjectileSpread`
     /// for `weapon`: the arrows a shot draws (1, plus Multishot's 2) and the
     /// spread they fan over (0, plus Multishot's 10 degrees).
-    fn bow_volley(&mut self, weapon: &ItemStack) -> (usize, f32) {
+    pub(in crate::game) fn bow_volley(&mut self, weapon: &ItemStack) -> (usize, f32) {
         let ctx = sunrise_client::enchant::EffectContext {
             this: Some("minecraft:player"),
             items: Some(world_items!(self)),
@@ -951,7 +952,7 @@ impl Game<'_> {
     }
     /// `EnchantmentHelper.getPiercingCount` for `ammo`: the weapon's
     /// `projectile_piercing` (Piercing, one entity per level).
-    fn bow_pierce(&mut self, weapon: &ItemStack, ammo: &ItemStack) -> u8 {
+    pub(in crate::game) fn bow_pierce(&mut self, weapon: &ItemStack, ammo: &ItemStack) -> u8 {
         let ctx = sunrise_client::enchant::EffectContext {
             tool: Some(&ammo.item),
             items: Some(world_items!(self)),
@@ -970,12 +971,12 @@ impl Game<'_> {
 
 #[cfg(test)]
 #[path = "tests/scaffolding_inside_tests.rs"]
-mod scaffolding_inside_tests;
+pub(in crate::game) mod scaffolding_inside_tests;
 
 #[cfg(test)]
 #[path = "tests/adventure_use_on_tests.rs"]
-mod adventure_use_on_tests;
+pub(in crate::game) mod adventure_use_on_tests;
 
 #[cfg(test)]
 #[path = "tests/bow_enchantment_tests.rs"]
-mod bow_enchantment_tests;
+pub(in crate::game) mod bow_enchantment_tests;

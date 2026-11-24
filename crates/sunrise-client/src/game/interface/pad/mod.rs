@@ -3,12 +3,19 @@
 //! the vanilla key mappings they are bound to, the left stick as an analog
 //! move vector and the right stick turning the view. `sunrise-ctl pad`
 //! injects a virtual pad on top of the real one.
+#[allow(unused_imports)]
 use super::event_loop::EventLoopCtl;
+#[allow(unused_imports)]
 use super::{Game, Screen};
+#[allow(unused_imports)]
 use serde_json::{Value, json};
+#[allow(unused_imports)]
 use std::time::{Duration, Instant};
+#[allow(unused_imports)]
 use sunrise_client::actions::Action;
+#[allow(unused_imports)]
 use sunrise_client::held::Source;
+#[allow(unused_imports)]
 use sunrise_client::{
     Result,
     controller_notice::Notice,
@@ -20,11 +27,14 @@ use sunrise_client::{
     keymapping::SNEAK,
     pad_glyph::{Glyph, Glyphs},
 };
+#[allow(unused_imports)]
 use sunrise_client_input::radial;
+#[allow(unused_imports)]
 use winit::event::MouseButton;
+#[allow(unused_imports)]
 use winit::keyboard::KeyCode;
 
-pub(super) const HELP: &[&str] = &[
+pub(in crate::game) const HELP: &[&str] = &[
     "pad BUTTON down|up|tap         a virtual controller button (south east west north lb rb lt rt select start ls rs up down left right)",
     "pad stick left|right X Y       tilt a virtual stick (-1..1, up positive); 0 0 centres it",
     "pad trigger left|right VALUE   pull a virtual trigger (0..1)",
@@ -36,7 +46,7 @@ pub(super) const HELP: &[&str] = &[
 ];
 
 /// A pad family `pad` names; `auto` is a pad of no known maker.
-fn style_named(name: &str) -> Result<GlyphStyle> {
+pub(in crate::game) fn style_named(name: &str) -> Result<GlyphStyle> {
     GlyphStyle::ALL
         .into_iter()
         .find(|style| style.name() == name)
@@ -47,113 +57,113 @@ fn style_named(name: &str) -> Result<GlyphStyle> {
 
 /// The controllers and the state the game last acted on.
 #[derive(Default)]
-pub(super) struct Pads {
+pub(in crate::game) struct Pads {
     /// The real controllers and the DualSense's output.
     #[cfg(feature = "controllers")]
-    devices: hardware::Devices,
+    pub(in crate::game) devices: hardware::Devices,
     /// The virtual pad of `sunrise-ctl pad`.
-    injected: PadState,
+    pub(in crate::game) injected: PadState,
     /// The virtual pad was in use at the last poll.
-    virtual_input: bool,
+    pub(in crate::game) virtual_input: bool,
     /// Buttons a `pad ... tap` releases at the next poll.
-    taps: Vec<Button>,
-    pub(super) edges: Edges,
-    activity: gamepad::Activity,
-    context: Option<Context>,
-    blocked_sticks: [bool; 2],
+    pub(in crate::game) taps: Vec<Button>,
+    pub(in crate::game) edges: Edges,
+    pub(in crate::game) activity: gamepad::Activity,
+    pub(in crate::game) context: Option<Context>,
+    pub(in crate::game) blocked_sticks: [bool; 2],
     /// Releases use the action that received the press, even after a rebind.
-    actions: [Vec<&'static str>; 16],
+    pub(in crate::game) actions: [Vec<&'static str>; 16],
     /// The game tick each button went down in, and releases held back until
     /// a tick has passed: vanilla samples keys once per tick, so a click
     /// shorter than that (a quick stick click for sprint) would be lost.
-    pressed_at: [Option<u64>; 16],
-    late_releases: Vec<Button>,
+    pub(in crate::game) pressed_at: [Option<u64>; 16],
+    pub(in crate::game) late_releases: Vec<Button>,
     /// The merged state of the last poll.
-    pub(super) state: PadState,
+    pub(in crate::game) state: PadState,
     /// The hardware's buttons at the last poll, for `input-log`'s `pad`
     /// events: the merged state hides which source moved.
-    last_hardware: PadState,
+    pub(in crate::game) last_hardware: PadState,
     /// The pad drove the game last (the mouse and keyboard hand control back).
-    pub(super) in_use: bool,
+    pub(in crate::game) in_use: bool,
     /// A key or mouse button was pressed in play since the pad was last touched: the keyboard and
     /// mouse have it, though only moving the mouse takes the pad out of use.
-    pub(super) keyboard_took_over: bool,
-    pub(super) style: GlyphStyle,
+    pub(in crate::game) keyboard_took_over: bool,
+    pub(in crate::game) style: GlyphStyle,
     /// The controller driving this player, or else the first one its own reader sees.
-    pub(super) device: Option<Device>,
+    pub(in crate::game) device: Option<Device>,
     /// Controllers that came and went at this game's own reader since the last poll.
-    connections: Vec<Connection>,
+    pub(in crate::game) connections: Vec<Connection>,
     /// The right stick's turn still easing out under the cinematic camera.
-    look: gamepad::SmoothLook,
+    pub(in crate::game) look: gamepad::SmoothLook,
     /// The cursor the pad drives in menus.
-    pub(super) menu: super::pad_menu::MenuCursor,
+    pub(in crate::game) menu: super::pad_menu::MenuCursor,
     /// The radial menu while its opener is held, and the page it stays on.
-    pub(super) radial: radial::RadialMenu,
+    pub(in crate::game) radial: radial::RadialMenu,
     /// What the radial menu ran, for `pad status`.
-    radial_runs: RadialRuns,
+    pub(in crate::game) radial_runs: RadialRuns,
     /// The moments the radial menu's overlay moves from (`radial_overlay::Look`).
-    pub(super) radial_look: sunrise_client_render::radial_overlay::Look,
+    pub(in crate::game) radial_look: sunrise_client_render::radial_overlay::Look,
     /// The D-pad's quiet after the menu closed on a D-pad opener.
-    radial_settle: radial::DpadSettle,
+    pub(in crate::game) radial_settle: radial::DpadSettle,
     /// The narrator said the page shown, and the slot selected.
-    radial_page_said: bool,
-    radial_said: radial::Settle<(usize, usize)>,
+    pub(in crate::game) radial_page_said: bool,
+    pub(in crate::game) radial_said: radial::Settle<(usize, usize)>,
     /// A page turn's second tick, when the pages went round an end.
-    radial_rumble_due: Option<(Instant, Rumble)>,
+    pub(in crate::game) radial_rumble_due: Option<(Instant, Rumble)>,
     /// The furthest each stick leant (left, right) between the last two polls, from the pad's
     /// own events: a flick out and back between two frames still reaches the radial menu.
-    peaks: [[f32; 2]; 2],
+    pub(in crate::game) peaks: [[f32; 2]; 2],
     /// With Either selecting: the stick that last leant past its select tilt (0 left, 1 right),
     /// and whether each was past it at the last poll.
-    radial_either: Option<usize>,
-    radial_over: [bool; 2],
+    pub(in crate::game) radial_either: Option<usize>,
+    pub(in crate::game) radial_over: [bool; 2],
     /// While the radial menu is open with Either: each stick has been at rest since the open, so
     /// it may take over. A thumb still on the walking stick can't commit for the other.
-    radial_rested: [bool; 2],
+    pub(in crate::game) radial_rested: [bool; 2],
     /// The last vibration asked for, for `pad status`.
-    last_rumble: Option<(&'static str, gamepad::Pulse)>,
+    pub(in crate::game) last_rumble: Option<(&'static str, gamepad::Pulse)>,
     /// The drop button, while it is held in play.
-    held_drop: Option<gamepad::HeldDrop>,
+    pub(in crate::game) held_drop: Option<gamepad::HeldDrop>,
     /// The drop about to happen is the pad's stack form: it has no Control for `drop_whole_stack`.
     /// On a server the drop waits for the tick.
-    pub(super) drop_stack: bool,
+    pub(in crate::game) drop_stack: bool,
     /// The player's health between polls (a drop is damage taken).
-    health: HealthWatch,
+    pub(in crate::game) health: HealthWatch,
     /// The gameplay guide's facts and the tick they were read in.
-    guide_facts: Option<(u64, sunrise_client::gameplay_guide::Facts)>,
+    pub(in crate::game) guide_facts: Option<(u64, sunrise_client::gameplay_guide::Facts)>,
     /// The guide's rows as last drawn.
-    pub(super) guide_shown: Vec<guide::Shown>,
+    pub(in crate::game) guide_shown: Vec<guide::Shown>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
-struct Context {
-    screen: u64,
-    focus_navigation: bool,
-    focused: bool,
-    osk: bool,
-    dialog: bool,
-    enabled: bool,
+pub(in crate::game) struct Context {
+    pub(in crate::game) screen: u64,
+    pub(in crate::game) focus_navigation: bool,
+    pub(in crate::game) focused: bool,
+    pub(in crate::game) osk: bool,
+    pub(in crate::game) dialog: bool,
+    pub(in crate::game) enabled: bool,
 }
 
-mod capture;
-mod guide;
+pub(in crate::game) mod capture;
+pub(in crate::game) mod guide;
 #[cfg(feature = "controllers")]
-mod hardware;
+pub(in crate::game) mod hardware;
 #[cfg(test)]
-mod parity_tests;
-mod radial_play;
+pub(in crate::game) mod parity_tests;
+pub(in crate::game) mod radial_play;
 
 /// How many of the radial menu's last actions `pad status` lists.
-const RADIAL_RUNS_KEPT: usize = 16;
+pub(in crate::game) const RADIAL_RUNS_KEPT: usize = 16;
 
 /// What the radial menu ran: how many actions in all, and the last few, last one last.
 #[derive(Default)]
-struct RadialRuns {
-    count: u64,
-    last: std::collections::VecDeque<&'static str>,
+pub(in crate::game) struct RadialRuns {
+    pub(in crate::game) count: u64,
+    pub(in crate::game) last: std::collections::VecDeque<&'static str>,
 }
 impl RadialRuns {
-    fn push(&mut self, action: &'static str) {
+    pub(in crate::game) fn push(&mut self, action: &'static str) {
         self.count += 1;
         if self.last.len() == RADIAL_RUNS_KEPT {
             self.last.pop_front();
@@ -163,14 +173,14 @@ impl RadialRuns {
 }
 
 /// The volume of a UI button's click (`AbstractButton.playDownSound`).
-const UI_CLICK_VOLUME: f32 = 0.25;
+pub(in crate::game) const UI_CLICK_VOLUME: f32 = 0.25;
 
 /// How long the death screen's confirm ignores cancelling (`ConfirmScreen`).
-const DEATH_CONFIRM_WAIT: Duration = Duration::from_secs(1);
+pub(in crate::game) const DEATH_CONFIRM_WAIT: Duration = Duration::from_secs(1);
 
 /// A controller coming or going, for this player's notice (`pad_connection_notice`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum Connection {
+pub(in crate::game) enum Connection {
     /// A controller of this glyph family connected.
     Connected(GlyphStyle),
     /// One disconnected; `active`: it was driving this player.
@@ -180,23 +190,23 @@ enum Connection {
 /// A build without the `controllers` feature (the server build, which must not need libudev): no
 /// hardware pads, only `sunrise-ctl pad`'s virtual one.
 #[cfg(not(feature = "controllers"))]
-mod hardware {
+pub(in crate::game) mod hardware {
     use super::{super::Game, Pads};
     use serde_json::{Value, json};
     use sunrise_client::gamepad::{PadState, Pulse, Rumble};
 
     impl Pads {
-        pub(super) fn read(&mut self) -> PadState {
+        pub(in crate::game) fn read(&mut self) -> PadState {
             PadState::default()
         }
     }
 
     impl Game<'_> {
-        pub(super) fn pad_output_off(&mut self) {}
-        pub(super) fn pad_output_frame(&mut self) {}
+        pub(in crate::game) fn pad_output_off(&mut self) {}
+        pub(in crate::game) fn pad_output_frame(&mut self) {}
         pub(in crate::game) fn pad_close_output(&mut self) {}
-        pub(super) fn pad_vibrate(&mut self, _: Rumble, _: Pulse) {}
-        pub(super) fn pad_devices_status(&self) -> Value {
+        pub(in crate::game) fn pad_vibrate(&mut self, _: Rumble, _: Pulse) {}
+        pub(in crate::game) fn pad_devices_status(&self) -> Value {
             json!({ "backend": false, "controllers": [] })
         }
     }
@@ -204,7 +214,7 @@ mod hardware {
 
 impl Pads {
     /// The digital buttons the person's pad changed since the last poll.
-    pub(super) fn hardware_edges(&mut self, hardware: PadState) -> Vec<(Button, bool)> {
+    pub(in crate::game) fn hardware_edges(&mut self, hardware: PadState) -> Vec<(Button, bool)> {
         let edges = Button::ALL
             .into_iter()
             .filter_map(|button| {
@@ -218,11 +228,11 @@ impl Pads {
     }
 
     /// A replay's pad button, in place of `pad`'s line.
-    pub(super) fn inject_button(&mut self, button: Button, down: bool) {
+    pub(in crate::game) fn inject_button(&mut self, button: Button, down: bool) {
         self.injected.set(button, down);
     }
     /// The device the controller settings name: a real one, else `sunrise-ctl`'s virtual pad.
-    pub(super) fn device_or_virtual(&self) -> Option<Device> {
+    pub(in crate::game) fn device_or_virtual(&self) -> Option<Device> {
         self.device.clone().or_else(|| {
             self.in_use.then(|| Device {
                 name: "Virtual controller".to_owned(),
@@ -232,7 +242,7 @@ impl Pads {
         })
     }
     /// A replay ended: let go of everything it held.
-    pub(super) fn clear_injected(&mut self) {
+    pub(in crate::game) fn clear_injected(&mut self) {
         self.menu.armed = None;
         self.radial.cancel();
         self.menu.stop_craft();
@@ -243,7 +253,7 @@ impl Pads {
     /// simulation tick. What the press reached, not what the button is bound to now: a press the
     /// radial menu swallowed holds nothing, while a sneak held since before the menu opened is
     /// still held through it.
-    pub(super) fn holds_action(&self, action: &str) -> bool {
+    pub(in crate::game) fn holds_action(&self, action: &str) -> bool {
         Button::ALL.into_iter().any(|button| {
             self.actions[button as usize].contains(&action)
                 && (self.edges.is_held(button) || self.late_releases.contains(&button))
@@ -253,12 +263,12 @@ impl Pads {
     /// A new player entity took over (spawn, respawn, a server joined, a
     /// dimension change): its health is not compared with the old one's.
     /// The radial menu closes with it, in `Game::pad_player_replaced`.
-    pub(super) fn player_replaced(&mut self) {
+    pub(in crate::game) fn player_replaced(&mut self) {
         self.health.forget();
     }
 
     /// The active pad is a Nintendo one going by its letters.
-    fn by_letter(&self, settings: &gamepad::PadSettings) -> bool {
+    pub(in crate::game) fn by_letter(&self, settings: &gamepad::PadSettings) -> bool {
         settings.by_letter(self.style)
     }
 }
@@ -267,7 +277,7 @@ impl Game<'_> {
     /// The glyph for what a button does, in this player's glyphs (`ui.options.pad_glyphs`, a
     /// Nintendo pad's letters included): the way gameplay asks for one. None while an action is
     /// unbound.
-    pub(super) fn glyph(&self, of: impl Into<GlyphOf>) -> Option<Glyph> {
+    pub(in crate::game) fn glyph(&self, of: impl Into<GlyphOf>) -> Option<Glyph> {
         Glyph::of(
             of.into(),
             &self.settings.controller,
@@ -276,11 +286,11 @@ impl Game<'_> {
     }
 
     /// A menu job's glyph in this player's glyphs.
-    pub(super) fn menu_glyph(&self, job: MenuJob) -> Glyph {
+    pub(in crate::game) fn menu_glyph(&self, job: MenuJob) -> Glyph {
         Glyph::menu(job, self.ui.options.pad_glyphs)
     }
 
-    fn pad_context(&self) -> Context {
+    pub(in crate::game) fn pad_context(&self) -> Context {
         Context {
             screen: self.key_screen(),
             focus_navigation: self.pad_navigation_mode(),
@@ -292,7 +302,7 @@ impl Game<'_> {
     }
 
     /// Once per loop iteration: read the pads and act on button changes.
-    pub(super) fn poll_pads(&mut self, event_loop: &dyn EventLoopCtl) {
+    pub(in crate::game) fn poll_pads(&mut self, event_loop: &dyn EventLoopCtl) {
         self.pad.0.virtual_input = self.pad.0.injected != PadState::default();
         let context = self.pad_context();
         if let Some(old) = self.pad.0.context.filter(|old| *old != context) {
@@ -426,7 +436,12 @@ impl Game<'_> {
         self.pad_menu_frame(event_loop);
     }
 
-    fn pad_edge(&mut self, event_loop: &dyn EventLoopCtl, button: Button, down: bool) {
+    pub(in crate::game) fn pad_edge(
+        &mut self,
+        event_loop: &dyn EventLoopCtl,
+        button: Button,
+        down: bool,
+    ) {
         let ticking =
             self.title.0.is_none() && self.client.screen == Screen::Playing && !self.pause;
         if down {
@@ -444,7 +459,7 @@ impl Game<'_> {
     }
 
     /// End held actions and captures before another context receives input.
-    fn pad_cancel_inputs(&mut self, event_loop: &dyn EventLoopCtl) {
+    pub(in crate::game) fn pad_cancel_inputs(&mut self, event_loop: &dyn EventLoopCtl) {
         // Before the releases below: a cancelled press must not click, a cancelled trigger
         // change the recipe book's category as it comes up, nor a cancelled radial menu
         // commit when its opener comes up.
@@ -482,14 +497,19 @@ impl Game<'_> {
         self.pad_cancel_menu(event_loop);
     }
 
-    pub(super) fn pad_yield_input(&mut self, event_loop: &dyn EventLoopCtl) {
+    pub(in crate::game) fn pad_yield_input(&mut self, event_loop: &dyn EventLoopCtl) {
         if self.pad.0.in_use {
             self.pad.0.in_use = false;
             self.pad_cancel_inputs(event_loop);
         }
     }
 
-    fn pad_button_logged(&mut self, event_loop: &dyn EventLoopCtl, button: Button, down: bool) {
+    pub(in crate::game) fn pad_button_logged(
+        &mut self,
+        event_loop: &dyn EventLoopCtl,
+        button: Button,
+        down: bool,
+    ) {
         if let Err(e) = self.pad_button(event_loop, button, down) {
             log::warn!("Sunrise: controller {}: {e}", button.name());
         }
@@ -497,23 +517,23 @@ impl Game<'_> {
 
     /// Input from the pad counts while the window has focus, or always for
     /// the virtual pad (a script can't focus the window).
-    fn pad_focused(&self) -> bool {
+    pub(in crate::game) fn pad_focused(&self) -> bool {
         self.pad_has_window() || self.pad.0.virtual_input
     }
 
     /// The window has focus, or the player lets the pad play without it (Play in Background).
-    pub(super) fn pad_has_window(&self) -> bool {
+    pub(in crate::game) fn pad_has_window(&self) -> bool {
         self.client.focused || self.settings.controller.play_in_background
     }
 
     /// Losing focus doesn't pause a game the pad is playing in the background.
-    pub(super) fn pad_keeps_playing_unfocused(&self) -> bool {
+    pub(in crate::game) fn pad_keeps_playing_unfocused(&self) -> bool {
         self.settings.controller.enabled
             && self.settings.controller.play_in_background
             && self.pad.0.in_use
     }
 
-    fn pad_button(
+    pub(in crate::game) fn pad_button(
         &mut self,
         event_loop: &dyn EventLoopCtl,
         button: Button,
@@ -573,7 +593,7 @@ impl Game<'_> {
 
     /// A bound action: a vanilla mapping acts as its default key or mouse
     /// button, like a rebound keyboard key.
-    fn pad_action(&mut self, action: &str, down: bool) -> Result<()> {
+    pub(in crate::game) fn pad_action(&mut self, action: &str, down: bool) -> Result<()> {
         let Some(route) = gamepad::route(action) else {
             log::warn!("Sunrise: controller action {action} has no handler");
             return Ok(());
@@ -677,7 +697,7 @@ impl Game<'_> {
     }
 
     /// Each poll: a held drop button, as a held Q's key repeats reach the mapping.
-    fn pad_drop_frame(&mut self) {
+    pub(in crate::game) fn pad_drop_frame(&mut self) {
         if self.pad_in_menu() || self.screen_over_playing() || self.pad_radial_captures() {
             return;
         }
@@ -735,7 +755,7 @@ impl Game<'_> {
     }
 
     /// The left stick as the move vector, while playing.
-    pub(super) fn pad_move(&self) -> Option<[f32; 2]> {
+    pub(in crate::game) fn pad_move(&self) -> Option<[f32; 2]> {
         let settings = &self.settings.controller;
         if !settings.enabled
             || self.pad_in_menu()
@@ -749,7 +769,7 @@ impl Game<'_> {
 
     /// A changed stick component is input for that direction, even below the digital
     /// threshold. Positive and negative travel take over their own mappings only.
-    fn resume_stick_mappings(&mut self, previous: Option<[f32; 2]>) {
+    pub(in crate::game) fn resume_stick_mappings(&mut self, previous: Option<[f32; 2]>) {
         let before = previous.unwrap_or_default();
         let after = self.pad_move().unwrap_or_default();
         for (axis, (positive, negative)) in [
@@ -769,7 +789,7 @@ impl Game<'_> {
     }
 
     /// The right stick turns the view, once per frame (`Entity.turn`).
-    pub(super) fn pad_look(&mut self, seconds: f32) {
+    pub(in crate::game) fn pad_look(&mut self, seconds: f32) {
         let settings = &self.settings.controller;
         if !settings.enabled
             || self.pad_in_menu()
@@ -796,7 +816,7 @@ impl Game<'_> {
 
     /// Vibrate the active pad, when vibration is on and the pad is the one
     /// playing (a pad lying idle while the mouse plays stays still).
-    pub(super) fn pad_rumble(&mut self, rumble: Rumble) {
+    pub(in crate::game) fn pad_rumble(&mut self, rumble: Rumble) {
         let settings = &self.settings.controller;
         if !settings.enabled || !settings.vibration || !self.pad.0.in_use {
             return;
@@ -809,7 +829,7 @@ impl Game<'_> {
     }
 
     /// Show a controller connection change without changing which device drives the game.
-    fn pad_connection_notice(&mut self, change: Connection) {
+    pub(in crate::game) fn pad_connection_notice(&mut self, change: Connection) {
         // The pad that was playing is gone: nothing is driving until another is touched.
         if matches!(change, Connection::Disconnected { active: true }) {
             self.pad.0.in_use = false;
@@ -837,7 +857,7 @@ impl Game<'_> {
     }
 
     /// Connection notices sit below the boss bars and last as long as a toast.
-    pub(super) fn draw_controller_notice(&mut self, batch: &mut HudBatch) {
+    pub(in crate::game) fn draw_controller_notice(&mut self, batch: &mut HudBatch) {
         let shown_for = Duration::from_secs_f64(5.0 * self.settings.notification_display_time);
         self.client.controller_notice.draw(
             batch,
@@ -848,7 +868,7 @@ impl Game<'_> {
     }
 
     /// `sunrise-ctl pad ...`.
-    pub(super) fn pad_command(&mut self, words: &[&str]) -> Result<Value> {
+    pub(in crate::game) fn pad_command(&mut self, words: &[&str]) -> Result<Value> {
         let arg = |i: usize| -> Result<&str> {
             words
                 .get(i)

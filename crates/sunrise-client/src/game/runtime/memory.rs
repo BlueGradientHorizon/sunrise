@@ -3,49 +3,63 @@
 //! the census of the columns, the server's entities, players and chunk send
 //! caches, the renderer's bookkeeping and the GPU allocator's resources by
 //! label say where it goes. `unattributed_mb` is what the named parts leave.
+#[allow(unused_imports)]
 use super::Game;
+#[allow(unused_imports)]
 use super::owner_link::{ControlRequest, OwnerRequest};
+#[allow(unused_imports)]
 use serde::Serialize;
+#[allow(unused_imports)]
 use serde_json::Value;
+#[allow(unused_imports)]
 use std::collections::BTreeMap;
+#[allow(unused_imports)]
 use std::mem::size_of;
+#[allow(unused_imports)]
 use std::sync::{
     Arc,
     atomic::{AtomicBool, Ordering},
     mpsc::{Receiver, Sender, channel, sync_channel},
 };
+#[allow(unused_imports)]
 use std::task::Poll;
+#[allow(unused_imports)]
 use std::thread::{Builder, JoinHandle};
+#[allow(unused_imports)]
 use sunrise_client::chunk::{Chunk, ColumnCensus, Section};
+#[allow(unused_imports)]
 use sunrise_client::fast_hash::FxHashSet;
+#[allow(unused_imports)]
 use sunrise_client::lan::hub::Hub;
+#[allow(unused_imports)]
 use sunrise_client::server_perf::MemoryCost;
+#[allow(unused_imports)]
 use sunrise_client_render::gfx::RendererMemorySnapshot;
 
-const MB: f64 = 1048576.0;
+pub(in crate::game) const MB: f64 = 1048576.0;
 /// Entity types and players listed apart; the rest only count in the totals.
-const TOP: usize = 30;
-const TOP_PLAYERS: usize = 50;
+pub(in crate::game) const TOP: usize = 30;
+pub(in crate::game) const TOP_PLAYERS: usize = 50;
 
-fn mb(bytes: impl TryInto<u64>) -> f64 {
+pub(in crate::game) fn mb(bytes: impl TryInto<u64>) -> f64 {
     let bytes: u64 = bytes.try_into().unwrap_or(0);
     (bytes as f64 / MB * 10.0).round() / 10.0
 }
 
-fn mb_signed(bytes: i64) -> f64 {
+pub(in crate::game) fn mb_signed(bytes: i64) -> f64 {
     (bytes as f64 / MB * 10.0).round() / 10.0
 }
 
-fn vec_bytes<T>(v: &Vec<T>) -> usize {
+pub(in crate::game) fn vec_bytes<T>(v: &Vec<T>) -> usize {
     v.capacity() * size_of::<T>()
 }
 
-fn string_bytes(s: &Option<String>) -> usize {
+pub(in crate::game) fn string_bytes(s: &Option<String>) -> usize {
     s.as_ref().map_or(0, String::capacity)
 }
 
 /// Counts each section once however many columns (or worlds) share it.
-fn census(chunks: &[Arc<Chunk>]) -> (ColumnCensus, FxHashSet<*const Section>) {
+pub(in crate::game) fn census(chunks: &[Arc<Chunk>]) -> (ColumnCensus, FxHashSet<*const Section>) {
     let mut census = ColumnCensus::default();
     let mut seen = FxHashSet::default();
     for chunk in chunks {
@@ -55,25 +69,25 @@ fn census(chunks: &[Arc<Chunk>]) -> (ColumnCensus, FxHashSet<*const Section>) {
 }
 
 #[derive(Serialize)]
-struct Columns {
-    total_mb: f64,
-    columns: usize,
-    sections: usize,
-    unique_sections: usize,
-    uniform_block_sections: usize,
-    light_arrays: usize,
-    blocks_mb: f64,
-    biomes_mb: f64,
-    light_mb: f64,
-    heightmaps_mb: f64,
-    section_records_mb: f64,
-    column_records_mb: f64,
+pub(in crate::game) struct Columns {
+    pub(in crate::game) total_mb: f64,
+    pub(in crate::game) columns: usize,
+    pub(in crate::game) sections: usize,
+    pub(in crate::game) unique_sections: usize,
+    pub(in crate::game) uniform_block_sections: usize,
+    pub(in crate::game) light_arrays: usize,
+    pub(in crate::game) blocks_mb: f64,
+    pub(in crate::game) biomes_mb: f64,
+    pub(in crate::game) light_mb: f64,
+    pub(in crate::game) heightmaps_mb: f64,
+    pub(in crate::game) section_records_mb: f64,
+    pub(in crate::game) column_records_mb: f64,
     #[serde(skip)]
-    bytes: usize,
+    pub(in crate::game) bytes: usize,
 }
 
 impl Columns {
-    fn new(c: &ColumnCensus) -> Self {
+    pub(in crate::game) fn new(c: &ColumnCensus) -> Self {
         Self {
             total_mb: mb(c.total_bytes()),
             columns: c.columns,
@@ -94,7 +108,7 @@ impl Columns {
 
 /// The sections that are also in `others` (by address), and their heap
 /// bytes: what one copy of them costs.
-fn shared<'a>(
+pub(in crate::game) fn shared<'a>(
     entries: impl IntoIterator<Item = &'a Arc<Section>>,
     mut others: FxHashSet<*const Section>,
 ) -> SharedSections {
@@ -113,35 +127,35 @@ fn shared<'a>(
 }
 
 #[derive(Serialize)]
-struct SharedSections {
-    sections: usize,
-    mb: f64,
+pub(in crate::game) struct SharedSections {
+    pub(in crate::game) sections: usize,
+    pub(in crate::game) mb: f64,
     #[serde(skip)]
-    bytes: usize,
+    pub(in crate::game) bytes: usize,
 }
 
 #[derive(Serialize)]
-struct Generation {
-    protos: usize,
-    protos_mb: f64,
-    proto_blocks_mb: f64,
-    proto_section_lists_mb: f64,
-    proto_heightmaps_mb: f64,
-    proto_other_terrain_mb: f64,
-    proto_biomes_mb: f64,
-    proto_records_mb: f64,
-    proto_sections_by_bits: [usize; 16],
-    light_views: usize,
-    light_views_mb: f64,
+pub(in crate::game) struct Generation {
+    pub(in crate::game) protos: usize,
+    pub(in crate::game) protos_mb: f64,
+    pub(in crate::game) proto_blocks_mb: f64,
+    pub(in crate::game) proto_section_lists_mb: f64,
+    pub(in crate::game) proto_heightmaps_mb: f64,
+    pub(in crate::game) proto_other_terrain_mb: f64,
+    pub(in crate::game) proto_biomes_mb: f64,
+    pub(in crate::game) proto_records_mb: f64,
+    pub(in crate::game) proto_sections_by_bits: [usize; 16],
+    pub(in crate::game) light_views: usize,
+    pub(in crate::game) light_views_mb: f64,
     /// Name, entries and megabytes where the cache can say.
-    caches: Vec<(&'static str, usize, Option<f64>)>,
-    stages: Vec<(&'static str, usize)>,
+    pub(in crate::game) caches: Vec<(&'static str, usize, Option<f64>)>,
+    pub(in crate::game) stages: Vec<(&'static str, usize)>,
     #[serde(skip)]
-    bytes: usize,
+    pub(in crate::game) bytes: usize,
 }
 
 impl Generation {
-    fn of(streaming: &sunrise_client::streaming::Streaming) -> Self {
+    pub(in crate::game) fn of(streaming: &sunrise_client::streaming::Streaming) -> Self {
         let c = streaming.proto_census();
         let [blocks, lists, heightmaps, other, biomes, records] = c.bytes;
         let protos: usize = c.bytes.iter().sum();
@@ -171,108 +185,108 @@ impl Generation {
 
 /// Entities of every level by registry id: how many, and the bytes of their records.
 #[derive(Serialize)]
-struct Entities {
-    count: usize,
-    total_mb: f64,
+pub(in crate::game) struct Entities {
+    pub(in crate::game) count: usize,
+    pub(in crate::game) total_mb: f64,
     /// The `TOP` types holding the most bytes: id, count, megabytes.
-    by_type: Vec<(String, usize, f64)>,
+    pub(in crate::game) by_type: Vec<(String, usize, f64)>,
     #[serde(skip)]
-    bytes: usize,
+    pub(in crate::game) bytes: usize,
 }
 
 /// The connected players: queues and what each is owed or holds, the biggest first.
 #[derive(Default, Serialize)]
-struct Players {
-    count: usize,
-    total_mb: f64,
+pub(in crate::game) struct Players {
+    pub(in crate::game) count: usize,
+    pub(in crate::game) total_mb: f64,
     /// Name, packets and megabytes waiting to be sent.
-    send_queue: Vec<(String, usize, f64)>,
-    chunks_waiting: Vec<(String, usize)>,
-    chunks_sent: Vec<(String, usize)>,
-    tracked_entities: Vec<(String, usize)>,
+    pub(in crate::game) send_queue: Vec<(String, usize, f64)>,
+    pub(in crate::game) chunks_waiting: Vec<(String, usize)>,
+    pub(in crate::game) chunks_sent: Vec<(String, usize)>,
+    pub(in crate::game) tracked_entities: Vec<(String, usize)>,
     #[serde(skip)]
-    bytes: usize,
+    pub(in crate::game) bytes: usize,
 }
 
 #[derive(Default, Serialize)]
-struct Cached {
-    entries: usize,
-    size_mb: f64,
+pub(in crate::game) struct Cached {
+    pub(in crate::game) entries: usize,
+    pub(in crate::game) size_mb: f64,
 }
 
 /// What the hub keeps to send chunks: encoded sections, heightmaps and compressed frames.
 #[derive(Default, Serialize)]
-struct ChunkSend {
-    total_mb: f64,
-    sections: Cached,
-    heightmaps: Cached,
-    frames: Cached,
+pub(in crate::game) struct ChunkSend {
+    pub(in crate::game) total_mb: f64,
+    pub(in crate::game) sections: Cached,
+    pub(in crate::game) heightmaps: Cached,
+    pub(in crate::game) frames: Cached,
     #[serde(skip)]
-    bytes: usize,
+    pub(in crate::game) bytes: usize,
 }
 
 #[derive(Serialize)]
-struct Queue {
-    len: usize,
-    size_mb: f64,
+pub(in crate::game) struct Queue {
+    pub(in crate::game) len: usize,
+    pub(in crate::game) size_mb: f64,
 }
 
 #[derive(Serialize)]
-struct Process {
-    resident_mb: Option<f64>,
-    allocator_commit_mb: f64,
-    allocator_peak_commit_mb: f64,
+pub(in crate::game) struct Process {
+    pub(in crate::game) resident_mb: Option<f64>,
+    pub(in crate::game) allocator_commit_mb: f64,
+    pub(in crate::game) allocator_peak_commit_mb: f64,
 }
 
 #[derive(Serialize)]
-struct Allocator {
+pub(in crate::game) struct Allocator {
     #[serde(skip_serializing_if = "Option::is_none")]
-    live_heap_mb: Option<f64>,
-    commit_mb: f64,
-    peak_commit_mb: f64,
+    pub(in crate::game) live_heap_mb: Option<f64>,
+    pub(in crate::game) commit_mb: f64,
+    pub(in crate::game) peak_commit_mb: f64,
     /// Committed minus the pages in use.
     #[serde(skip_serializing_if = "Option::is_none")]
-    overhead_mb: Option<f64>,
+    pub(in crate::game) overhead_mb: Option<f64>,
 }
 
 #[derive(Serialize)]
-struct FarTiles {
-    active: usize,
-    cached: usize,
-    kept: usize,
-    kept_mb: f64,
+pub(in crate::game) struct FarTiles {
+    pub(in crate::game) active: usize,
+    pub(in crate::game) cached: usize,
+    pub(in crate::game) kept: usize,
+    pub(in crate::game) kept_mb: f64,
 }
 
 #[derive(Serialize)]
-struct Gpu {
-    allocated_mb: f64,
-    reserved_mb: f64,
-    by_label_mb: Vec<(String, f64)>,
+pub(in crate::game) struct Gpu {
+    pub(in crate::game) allocated_mb: f64,
+    pub(in crate::game) reserved_mb: f64,
+    pub(in crate::game) by_label_mb: Vec<(String, f64)>,
 }
 
 #[derive(Serialize)]
-struct Renderer {
-    section_arenas_mb: f64,
-    section_vertices_mb: f64,
-    cpu: BTreeMap<String, f64>,
-    gpu: Option<Gpu>,
+pub(in crate::game) struct Renderer {
+    pub(in crate::game) section_arenas_mb: f64,
+    pub(in crate::game) section_vertices_mb: f64,
+    pub(in crate::game) cpu: BTreeMap<String, f64>,
+    pub(in crate::game) gpu: Option<Gpu>,
 }
 
 /// A serving game's own parts: the columns it holds, its generation, entities, players, chunk send caches and queues.
-pub(super) struct ServerSide {
-    chunks: Vec<Arc<Chunk>>,
-    generation: Generation,
-    entities: Entities,
-    players: Players,
-    chunk_send: ChunkSend,
-    light_queue: Queue,
-    generation_queue: Queue,
-    queue_bytes: usize,
+pub(in crate::game) struct ServerSide {
+    pub(in crate::game) chunks: Vec<Arc<Chunk>>,
+    pub(in crate::game) generation: Generation,
+    pub(in crate::game) entities: Entities,
+    pub(in crate::game) players: Players,
+    pub(in crate::game) chunk_send: ChunkSend,
+    pub(in crate::game) light_queue: Queue,
+    pub(in crate::game) generation_queue: Queue,
+    pub(in crate::game) queue_bytes: usize,
 }
 
 impl ServerSide {
     /// The bytes of every part this side names.
-    fn bytes(&self) -> usize {
+    pub(in crate::game) fn bytes(&self) -> usize {
         self.generation.bytes
             + self.entities.bytes
             + self.players.bytes
@@ -282,49 +296,53 @@ impl ServerSide {
 }
 
 /// How often a running capture records what holds the memory.
-pub(super) const MEMORY_EVERY_S: f64 = 10.0;
+pub(in crate::game) const MEMORY_EVERY_S: f64 = 10.0;
 
 /// `sunrise-ctl memory`'s report. Every `*_mb` is rounded to a tenth; the parts' bytes are summed unrounded.
 #[derive(Serialize)]
-pub(super) struct MemoryReport {
-    process: Process,
-    allocator: Allocator,
-    render_distance: i32,
+pub(in crate::game) struct MemoryReport {
+    pub(in crate::game) process: Process,
+    pub(in crate::game) allocator: Allocator,
+    pub(in crate::game) render_distance: i32,
     /// The window's columns; a dedicated server has no window and names them `columns`.
     #[serde(skip_serializing_if = "Option::is_none")]
-    client_columns: Option<Columns>,
+    pub(in crate::game) client_columns: Option<Columns>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    columns: Option<Columns>,
-    server_columns: Option<Columns>,
-    shared_with_server: Option<SharedSections>,
-    server_generation: Option<Generation>,
-    entities: Option<Entities>,
-    players: Option<Players>,
-    chunk_send: Option<ChunkSend>,
-    light_queue: Option<Queue>,
-    generation_queue: Option<Queue>,
-    far_tiles: Option<FarTiles>,
-    renderer: Option<Renderer>,
+    pub(in crate::game) columns: Option<Columns>,
+    pub(in crate::game) server_columns: Option<Columns>,
+    pub(in crate::game) shared_with_server: Option<SharedSections>,
+    pub(in crate::game) server_generation: Option<Generation>,
+    pub(in crate::game) entities: Option<Entities>,
+    pub(in crate::game) players: Option<Players>,
+    pub(in crate::game) chunk_send: Option<ChunkSend>,
+    pub(in crate::game) light_queue: Option<Queue>,
+    pub(in crate::game) generation_queue: Option<Queue>,
+    pub(in crate::game) far_tiles: Option<FarTiles>,
+    pub(in crate::game) renderer: Option<Renderer>,
     /// A build with the `alloc-census` feature: the live heap by the
     /// startup step, span or pool job that allocated it, else its thread.
-    heap_by_tag_mb: Option<Vec<(String, f64)>>,
+    pub(in crate::game) heap_by_tag_mb: Option<Vec<(String, f64)>>,
     /// The columns, generation, entities, players, chunk send caches, queues, renderer CPU data and far tiles together.
-    named_mb: f64,
+    pub(in crate::game) named_mb: f64,
     /// Resident memory minus `named_mb`: what no census reaches (it can be negative where the parts overlap).
-    unattributed_mb: Option<f64>,
+    pub(in crate::game) unattributed_mb: Option<f64>,
 }
 
 /// Values owned by the game or renderer. Count the shared sections while the
 /// copy-on-write handles still keep their identities alive.
-struct MemoryInputs {
-    render_distance: i32,
-    client: Option<Vec<Arc<Chunk>>>,
-    renderer: Option<RendererMemorySnapshot>,
-    far: Option<(FarTiles, usize)>,
+pub(in crate::game) struct MemoryInputs {
+    pub(in crate::game) render_distance: i32,
+    pub(in crate::game) client: Option<Vec<Arc<Chunk>>>,
+    pub(in crate::game) renderer: Option<RendererMemorySnapshot>,
+    pub(in crate::game) far: Option<(FarTiles, usize)>,
 }
 
 impl MemoryInputs {
-    fn report(self, server: Option<ServerSide>, active: impl Fn() -> bool) -> Option<MemoryReport> {
+    pub(in crate::game) fn report(
+        self,
+        server: Option<ServerSide>,
+        active: impl Fn() -> bool,
+    ) -> Option<MemoryReport> {
         let (commit, peak_commit) = sunrise_threads::allocator_commit();
         let live = sunrise_threads::allocator_stats::live_bytes();
         let resident = sunrise_threads::process_memory::resident_bytes();
@@ -439,18 +457,18 @@ impl MemoryInputs {
 }
 
 /// `resident - named` in megabytes, None without a resident size.
-fn unattributed(resident: Option<u64>, named: usize) -> Option<f64> {
+pub(in crate::game) fn unattributed(resident: Option<u64>, named: usize) -> Option<f64> {
     resident.map(|r| mb_signed(r as i64 - named as i64))
 }
 
 /// `sunrise-ctl memory`'s report as a capture's rows: `a.b` paths, `key[name]` for `[name, value]` lists.
-pub(super) fn flatten_report(report: &Value) -> Vec<(String, f64)> {
+pub(in crate::game) fn flatten_report(report: &Value) -> Vec<(String, f64)> {
     let mut rows = Vec::new();
     flatten(String::new(), report, &mut rows);
     rows
 }
 
-fn flatten(path: String, value: &Value, rows: &mut Vec<(String, f64)>) {
+pub(in crate::game) fn flatten(path: String, value: &Value, rows: &mut Vec<(String, f64)>) {
     match value {
         Value::Number(n) => rows.extend(n.as_f64().map(|n| (path, n))),
         Value::Object(fields) => {
@@ -481,14 +499,17 @@ fn flatten(path: String, value: &Value, rows: &mut Vec<(String, f64)>) {
 }
 
 /// The `limit` rows with the biggest key first, ties by name.
-fn biggest<K: Copy + Ord, V>(mut rows: Vec<(String, K, V)>, limit: usize) -> Vec<(String, K, V)> {
+pub(in crate::game) fn biggest<K: Copy + Ord, V>(
+    mut rows: Vec<(String, K, V)>,
+    limit: usize,
+) -> Vec<(String, K, V)> {
     rows.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
     rows.truncate(limit);
     rows
 }
 
 /// The hub's players: what waits in each one's send queue and what the hub tracks for it.
-fn player_census(hub: &Hub) -> Players {
+pub(in crate::game) fn player_census(hub: &Hub) -> Players {
     let set = |len: usize| len * (size_of::<(i32, i32)>() + 1);
     let mut rows = Vec::new();
     let mut bytes = 0usize;
@@ -537,7 +558,7 @@ fn player_census(hub: &Hub) -> Players {
     }
 }
 
-fn chunk_send_census(hub: &Hub) -> ChunkSend {
+pub(in crate::game) fn chunk_send_census(hub: &Hub) -> ChunkSend {
     let [sections, heights] = hub.encoder.cache_census();
     let frames = sunrise_client::lan::conn::shared_frame_census();
     let cached = |(entries, bytes): (usize, usize)| Cached {
@@ -556,7 +577,7 @@ fn chunk_send_census(hub: &Hub) -> ChunkSend {
 
 impl Game<'_> {
     /// Copy one Arc per column, not its sections or block data.
-    fn census_chunks(&self) -> Vec<Arc<Chunk>> {
+    pub(in crate::game) fn census_chunks(&self) -> Vec<Arc<Chunk>> {
         std::iter::once(&self.world)
             .chain(self.levels.0.parked_worlds())
             .flat_map(|w| w.chunks.values().cloned())
@@ -564,7 +585,7 @@ impl Game<'_> {
     }
 
     /// The entities of every level by type; a record's bytes are its struct and the buffers its fields own.
-    fn entity_census(&self) -> Entities {
+    pub(in crate::game) fn entity_census(&self) -> Entities {
         let record = [
             size_of::<sunrise_client::entities::ItemEntity>(),
             size_of::<sunrise_client::entities::ExperienceOrb>(),
@@ -627,7 +648,7 @@ impl Game<'_> {
     }
 
     /// This game's own server parts: it is a dedicated server, or the single-player server thread.
-    pub(super) fn server_side(&self) -> ServerSide {
+    pub(in crate::game) fn server_side(&self) -> ServerSide {
         let (players, chunk_send) = match &self.lan {
             Some(host) => (player_census(&host.hub), chunk_send_census(&host.hub)),
             None => (Players::default(), ChunkSend::default()),
@@ -659,30 +680,7 @@ impl Game<'_> {
         }
     }
 
-    fn memory_inputs(&self) -> MemoryInputs {
-        let far = self.lod.0.as_ref().map(|lod| {
-            let ((active, cached), (kept, kept_bytes)) = (lod.stats(), lod.kept());
-            let tiles = FarTiles {
-                active,
-                cached,
-                kept,
-                kept_mb: mb(kept_bytes),
-            };
-            (tiles, kept_bytes)
-        });
-        MemoryInputs {
-            render_distance: self.streaming.radius,
-            client: self
-                .options
-                .dedicated
-                .is_none()
-                .then(|| self.census_chunks()),
-            renderer: self.renderer.0.as_ref().map(|r| r.memory_snapshot()),
-            far,
-        }
-    }
-
-    pub(super) fn memory_report(&self) -> MemoryReport {
+    pub(in crate::game) fn memory_report(&self) -> MemoryReport {
         let inputs = self.memory_inputs();
         let server = if self.options.dedicated.is_some() {
             Some(self.server_side())
@@ -697,23 +695,23 @@ impl Game<'_> {
     }
 
     /// The report as JSON, for a manual control-socket request or a dedicated capture.
-    pub(super) fn memory_value(&self) -> Value {
+    pub(in crate::game) fn memory_value(&self) -> Value {
         serde_json::to_value(self.memory_report()).unwrap_or(Value::Null)
     }
 }
 
-type MemoryRows = Vec<(String, f64)>;
+pub(in crate::game) type MemoryRows = Vec<(String, f64)>;
 
 /// The integrated owner answers directly to the worker, never to the window.
 /// A stopped capture's queued request does not collect a server snapshot.
-pub(super) struct ServerMemoryRequest {
-    reply: Option<Sender<Option<ServerSide>>>,
-    cancelled: Arc<AtomicBool>,
-    cost: MemoryCost,
+pub(in crate::game) struct ServerMemoryRequest {
+    pub(in crate::game) reply: Option<Sender<Option<ServerSide>>>,
+    pub(in crate::game) cancelled: Arc<AtomicBool>,
+    pub(in crate::game) cost: MemoryCost,
 }
 
 impl ServerMemoryRequest {
-    pub(super) fn collect(mut self, collect: impl FnOnce() -> ServerSide) {
+    pub(in crate::game) fn collect(mut self, collect: impl FnOnce() -> ServerSide) {
         if self.cancelled.load(Ordering::Acquire) {
             return;
         }
@@ -733,13 +731,13 @@ impl Drop for ServerMemoryRequest {
     }
 }
 
-struct MemoryCancellation {
-    cancelled: Arc<AtomicBool>,
-    wake_worker: Option<Sender<Option<ServerSide>>>,
+pub(in crate::game) struct MemoryCancellation {
+    pub(in crate::game) cancelled: Arc<AtomicBool>,
+    pub(in crate::game) wake_worker: Option<Sender<Option<ServerSide>>>,
 }
 
 impl MemoryCancellation {
-    fn cancel(&mut self) {
+    pub(in crate::game) fn cancel(&mut self) {
         self.cancelled.store(true, Ordering::Release);
         if let Some(wake) = self.wake_worker.take() {
             let _ = wake.send(None);
@@ -755,14 +753,14 @@ impl Drop for MemoryCancellation {
 
 /// One slot across captures: stop cancels the sample but does not release the
 /// slot until the worker is finished, including dropping its snapshots.
-pub(super) struct PendingMemory {
-    cancel: MemoryCancellation,
-    worker: JoinHandle<()>,
-    rows: Receiver<MemoryRows>,
+pub(in crate::game) struct PendingMemory {
+    pub(in crate::game) cancel: MemoryCancellation,
+    pub(in crate::game) worker: JoinHandle<()>,
+    pub(in crate::game) rows: Receiver<MemoryRows>,
 }
 
 impl PendingMemory {
-    pub(super) fn start(game: &Game<'_>, cost: MemoryCost) -> Option<Self> {
+    pub(in crate::game) fn start(game: &Game<'_>, cost: MemoryCost) -> Option<Self> {
         cost.measure(|| {
             let inputs = game.memory_inputs();
             let (job, request) = match Self::spawn(
@@ -788,11 +786,11 @@ impl PendingMemory {
         })
     }
 
-    pub(super) fn cancel(&mut self) {
+    pub(in crate::game) fn cancel(&mut self) {
         self.cancel.cancel();
     }
 
-    pub(super) fn poll(&self) -> Poll<Option<MemoryRows>> {
+    pub(in crate::game) fn poll(&self) -> Poll<Option<MemoryRows>> {
         // The worker and the queued owner request each hold the cancellation
         // bit until done. Do not queue more work while either still owns it.
         if !self.worker.is_finished() || Arc::strong_count(&self.cancel.cancelled) != 1 {
@@ -804,7 +802,7 @@ impl PendingMemory {
         Poll::Ready(self.rows.try_recv().ok())
     }
 
-    fn spawn(
+    pub(in crate::game) fn spawn(
         cost: MemoryCost,
         from_server: bool,
         report: impl FnOnce(Option<ServerSide>, &AtomicBool) -> Option<MemoryRows> + Send + 'static,
@@ -854,7 +852,7 @@ impl PendingMemory {
 }
 
 #[cfg(test)]
-mod tests {
+pub(in crate::game) mod tests {
     use super::{MemoryCost, PendingMemory, biggest, flatten_report, shared, unattributed};
     use serde_json::json;
     use std::sync::{Arc, mpsc::channel};

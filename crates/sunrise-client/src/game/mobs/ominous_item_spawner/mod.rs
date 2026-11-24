@@ -2,8 +2,11 @@
 //! fight. It floats, growing and turning (`OminousItemSpawnerRenderer`), for
 //! 60 to 120 ticks, then falls as an item or is fired straight down as a
 //! projectile (`spawnItem`). Saved with its chunk's entities (persist.rs).
+#[allow(unused_imports)]
 use super::Game;
+#[allow(unused_imports)]
 use sunrise_assets::item_model::DisplayContext;
+#[allow(unused_imports)]
 use sunrise_client::{
     block_entity_render::vertex_light,
     item_render,
@@ -11,14 +14,15 @@ use sunrise_client::{
     mesher::Vertex,
     particles::{ParticleOptions, ParticleType},
 };
+#[allow(unused_imports)]
 use sunrise_core::{geometry::Vec3, random::RandomSource};
 
 /// `TICKS_BEFORE_ABOUT_TO_SPAWN_SOUND`.
-const ABOUT_TO_SPAWN: i64 = 36;
+pub(in crate::game) const ABOUT_TO_SPAWN: i64 = 36;
 /// `OminousItemSpawnerRenderer`: grows over its first 50 ticks, turning 40
 /// degrees a tick.
-const TICKS_SCALING: f32 = 50.0;
-const ROTATION_SPEED: f32 = 40.0;
+pub(in crate::game) const TICKS_SCALING: f32 = 50.0;
+pub(in crate::game) const ROTATION_SPEED: f32 = 40.0;
 
 pub(in crate::game) struct OminousItemSpawner {
     /// Entity-owned registration metadata; content clones are detached.
@@ -31,7 +35,7 @@ pub(in crate::game) struct OminousItemSpawner {
     pub(in crate::game) item: ItemStack,
     pub(in crate::game) position: [f64; 3],
     pub(in crate::game) spawn_item_after: i64,
-    tick_count: i64,
+    pub(in crate::game) tick_count: i64,
     /// `Entity.remainingFireTicks`, counted down by `baseTick`.
     pub(in crate::game) fire_ticks: i32,
     /// `Entity.DATA_SHARED_FLAGS_ID` on-fire bit, set after `baseTick` fire processing.
@@ -49,7 +53,7 @@ sunrise_mod_runtime::impl_attachment_lifetime!(OminousItemSpawner);
 
 /// `ProjectileItem.DispenseConfig` of the items fired down: power,
 /// uncertainty and `overrideDispenseEvent`; None for items that just fall.
-fn projectile(item: &str) -> Option<(f32, f32, Option<i32>)> {
+pub(in crate::game) fn projectile(item: &str) -> Option<(f32, f32, Option<i32>)> {
     Some(match item {
         "minecraft:fire_charge" => (1.0, 6.666_666_5, Some(1018)),
         "minecraft:wind_charge" => (1.0, 6.666_666_5, Some(1051)),
@@ -68,7 +72,7 @@ fn projectile(item: &str) -> Option<(f32, f32, Option<i32>)> {
     })
 }
 
-fn block(p: [f64; 3]) -> [i32; 3] {
+pub(in crate::game) fn block(p: [f64; 3]) -> [i32; 3] {
     p.map(|v| v.floor() as i32)
 }
 
@@ -220,7 +224,7 @@ impl Game<'_> {
     }
     /// `spawnItem`: a projectile shot down, or an item entity; level event
     /// 3021 and the entity_place game event.
-    fn spawn_ominous_item(&mut self, s: &OminousItemSpawner) {
+    pub(in crate::game) fn spawn_ominous_item(&mut self, s: &OminousItemSpawner) {
         // An empty item spawns nothing, and no event marks it.
         if &*s.item.item == "minecraft:air" {
             return;
@@ -241,22 +245,6 @@ impl Game<'_> {
         }
         self.level_event_at(3021, at, 1);
         self.post_block_game_event("minecraft:entity_place", at, None, None);
-    }
-    /// `OminousItemSpawner.addParticles`: one to three ominous spawning
-    /// particles from the spawner out to points around it.
-    fn ominous_spawner_particles(&mut self, at: [f64; 3]) {
-        let options = ParticleOptions::simple(ParticleType::OminousSpawning);
-        let r = self.particles.0.random();
-        let count = r.next_int_between_inclusive(1, 3).unwrap_or(1);
-        let mut flights = Vec::new();
-        for _ in 0..count {
-            let mut spread = || 0.4 * (r.next_gaussian() - r.next_gaussian());
-            let from = [at[0] + spread(), at[1] + spread(), at[2] + spread()];
-            flights.push([from[0] - at[0], from[1] - at[1], from[2] - at[2]]);
-        }
-        for v in flights {
-            self.particles.0.add(&options, at, v);
-        }
     }
     /// `OminousItemSpawnerRenderer`: the item, full bright, growing over its
     /// first 50 ticks and turning.
@@ -303,4 +291,4 @@ impl Game<'_> {
 }
 
 #[cfg(test)]
-mod warning_tests;
+pub(in crate::game) mod warning_tests;

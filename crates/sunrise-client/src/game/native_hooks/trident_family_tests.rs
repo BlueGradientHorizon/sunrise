@@ -1,13 +1,19 @@
 //! `WitherBoss.hurtServer` and `Shulker.hurtServer` inspect the direct AbstractArrow,
 //! not the damage type: ThrownTrident extends AbstractArrow but /damage does not.
+#[allow(unused_imports)]
 use crate::game::Game;
+#[allow(unused_imports)]
 use crate::game::api_values::TryIntoApi;
+#[allow(unused_imports)]
 use crate::game::native_entity_refs::tests::{bind_local_player, with_game};
+#[allow(unused_imports)]
 use mod_api::{
     Flow, HitHost, Hooks, HurtSource, LivingDeathEvent, LivingIncomingDamageEvent, ModEntry,
     ServerHost,
 };
+#[allow(unused_imports)]
 use std::sync::{Arc, Mutex};
+#[allow(unused_imports)]
 use sunrise_client::{
     chunk::Chunk,
     items::ItemStack,
@@ -15,19 +21,24 @@ use sunrise_client::{
     motion::PlayerMotion,
     projectiles::{Projectile, ProjectileKind},
 };
+#[allow(unused_imports)]
 use sunrise_core::{geometry::Vec3, nbt::Tag, position::ChunkPos};
 
 #[derive(Clone, Debug, PartialEq)]
-struct Hit {
-    entity: u32,
-    damage_type: String,
-    causing: i32,
-    direct: i32,
-    position: Option<[f64; 3]>,
-    weapon: Option<mod_api::ItemStack>,
+pub(in crate::game) struct Hit {
+    pub(in crate::game) entity: u32,
+    pub(in crate::game) damage_type: String,
+    pub(in crate::game) causing: i32,
+    pub(in crate::game) direct: i32,
+    pub(in crate::game) position: Option<[f64; 3]>,
+    pub(in crate::game) weapon: Option<mod_api::ItemStack>,
 }
 impl Hit {
-    fn new(entity: u32, source: &HurtSource<'_>, weapon: Option<&mod_api::ItemStack>) -> Self {
+    pub(in crate::game) fn new(
+        entity: u32,
+        source: &HurtSource<'_>,
+        weapon: Option<&mod_api::ItemStack>,
+    ) -> Self {
         Self {
             entity,
             damage_type: source.damage_type.into(),
@@ -39,11 +50,11 @@ impl Hit {
     }
 }
 #[derive(Default)]
-struct Seen {
-    incoming: Vec<Hit>,
-    deaths: Vec<Hit>,
+pub(in crate::game) struct Seen {
+    pub(in crate::game) incoming: Vec<Hit>,
+    pub(in crate::game) deaths: Vec<Hit>,
 }
-struct Probe(Arc<Mutex<Seen>>);
+pub(in crate::game) struct Probe(pub(in crate::game) Arc<Mutex<Seen>>);
 #[mod_api::__subscriptions]
 impl Hooks for Probe {
     fn living_incoming_damage(
@@ -67,38 +78,9 @@ impl Hooks for Probe {
         Flow::Continue
     }
 }
-fn fixture(run: impl FnOnce(&mut Game<'_>, &Arc<Mutex<Seen>>)) {
-    crate::entry::install_client_hooks();
-    let seen = Arc::new(Mutex::new(Seen::default()));
-    mod_platform::testing::with_mods(
-        vec![ModEntry::new(
-            "trident-family",
-            Box::new(Probe(seen.clone())),
-        )]
-        .into(),
-        || {
-            with_game(|game| {
-                game.build_registries();
-                game.load_server_loot();
-                game.set_allow_commands(true);
-                game.world
-                    .chunks
-                    .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
-                game.block_ticks
-                    .add_empty_chunk(ChunkPos::new(0, 0))
-                    .unwrap();
-                assert!(game.run_command("fill 0 79 0 15 79 15 stone"));
-                game.player =
-                    Some(PlayerMotion::new(game.motion, Vec3::new(4.5, 80.0, 4.5)).unwrap());
-                bind_local_player(game, 11, 123);
-                game.set_mode_id(0);
-                game.server.next_entity = 100;
-                run(game, &seen);
-            })
-        },
-    );
-}
-fn victim(game: &mut Game<'_>, name: &str) -> f32 {
+#[allow(unused_imports)]
+pub(in crate::game) use crate::game::server_side::native_hooks_server::trident_family_tests::fixture;
+pub(in crate::game) fn victim(game: &mut Game<'_>, name: &str) -> f32 {
     let kind = game.res.mob_types().get(name).unwrap().clone();
     let mut mob = Mob::new(41, kind, Vec3::new(6.0, 80.0, 4.5), 0.0);
     mob.persistent = true;
@@ -112,7 +94,7 @@ fn victim(game: &mut Game<'_>, name: &str) -> f32 {
     game.mobs.push(mob);
     health
 }
-fn weapon() -> ItemStack {
+pub(in crate::game) fn weapon() -> ItemStack {
     let mut stack = ItemStack::new("minecraft:trident", 1);
     stack.damage = 7;
     stack.data_mut().set_other(
@@ -125,7 +107,7 @@ fn weapon() -> ItemStack {
     );
     stack
 }
-fn throw_player(game: &mut Game<'_>) -> (u32, ItemStack) {
+pub(in crate::game) fn throw_player(game: &mut Game<'_>) -> (u32, ItemStack) {
     game.inventory[game.selected] = Some(weapon());
     game.release_trident(10);
     assert_eq!(
@@ -139,7 +121,7 @@ fn throw_player(game: &mut Game<'_>) -> (u32, ItemStack) {
     shot.velocity = Vec3::new(4.0, 0.0, 0.0);
     (shot.id, shot.stack.clone())
 }
-fn throw_mob(game: &mut Game<'_>) -> (u32, ItemStack) {
+pub(in crate::game) fn throw_mob(game: &mut Game<'_>) -> (u32, ItemStack) {
     // A non-undead owner ensures WitherBoss's separate WITHER_FRIENDS filter
     // cannot hide a missing direct-projectile immunity.
     let kind = game.res.mob_types().get("minecraft:pig").unwrap().clone();
@@ -160,7 +142,7 @@ fn throw_mob(game: &mut Game<'_>) -> (u32, ItemStack) {
     game.creatures.projectiles.push(shot);
     (id, stack)
 }
-fn step(game: &mut Game<'_>, player: bool) {
+pub(in crate::game) fn step(game: &mut Game<'_>, player: bool) {
     if player {
         game.tick_tridents();
     } else {

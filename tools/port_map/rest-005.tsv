@@ -1,5 +1,5 @@
 RemotePlayer.shouldRenderAtSqrDistance	port	crates/sunrise-client-gameplay/src/entity_occlusion.rs::entity_view_scale	every entity's draw distance is scaled by the view scale and the limit, remote players included
-RemotePlayer.aiStep	inline	crates/sunrise-client/src/game/network/remote/tick.rs::Game::tick_remote_entities	gap: minor: the head yaws over its lerp steps; the smoothed delta movement and the push step are not ported
+RemotePlayer.aiStep	inline	crates/sunrise-client/src/game/network/remote/tick_client.rs::Game::tick_remote_entities	gap: minor: the head yaws over its lerp steps; the smoothed delta movement and the push step are not ported
 RemotePlayer.lerpMotion	missing		unsure: no lerp of received remote-player motion found in game/network/remote/mod.rs
 Hotbar.storeFrom	port	crates/sunrise-client/src/game/items/creative_hotbar.rs::Game::hotbar_load_or_save	save copies the nine slots into the hotbar.nbt row
 Hotbar.isEmpty	inline	crates/sunrise-client/src/game/items/creative_hotbar.rs::Game::refresh_saved_hotbars	the empty creative hotbar row carries the inventory.hotbarInfo hint
@@ -107,25 +107,25 @@ ArgumentVisitor.visitArguments	port	crates/sunrise-client/src/game/network/lan_c
 ArgumentVisitor.visitNodeArguments	inline	crates/sunrise-client/src/game/network/lan_chat.rs::Game::signable_arguments	per-node walk folded into the collector
 CacheableFunction.get	skip:java		caches the resolved function; no behaviour of its own
 CacheableFunction.equals	skip:java		identity helper for the function cache
-CommandResultCallback.chain	inline	crates/sunrise-client/src/game/administration/commands/execute.rs::Game::deliver	callbacks are chained and called in deliver
-CommandSourceStack.withSource	port	crates/sunrise-client/src/game/administration/commands/execute.rs::Game::with_source	source swapped for a call
+CommandResultCallback.chain	inline	crates/sunrise-client/src/game/administration/commands/execute_server.rs::Game::deliver	callbacks are chained and called in deliver
+CommandSourceStack.withSource	port	crates/sunrise-client/src/game/administration/commands/execute_server.rs::Game::with_source	source swapped for a call
 CommandSourceStack.withEntity	inline	crates/sunrise-client/src/game/administration/commands/execute.rs::Game::modify	execute as
 CommandSourceStack.withPosition	inline	crates/sunrise-client/src/game/administration/commands/execute.rs::Game::modify	execute at and positioned
 CommandSourceStack.withRotation	inline	crates/sunrise-client/src/game/administration/commands/execute.rs::Game::modify	execute rotated
-CommandSourceStack.withCallback	inline	crates/sunrise-client/src/game/administration/commands/execute.rs::Game::run_leaf	result callback set per leaf
+CommandSourceStack.withCallback	inline	crates/sunrise-client/src/game/administration/commands/execute_server.rs::Game::run_leaf	result callback set per leaf
 CommandSourceStack.withPermission	missing		minor: unsure: no per-source permission level found in execute.rs
 CommandSourceStack.withAnchor	inline	crates/sunrise-client/src/game/administration/commands/execute.rs::Game::modify	execute anchored
 CommandSourceStack.withSigningContext	skip:service		chat message signing
-CommandSourceStack.getPlayer	port	crates/sunrise-client/src/game/administration/commands/players.rs::Game::source_entity	the source entity; callers check for a player
+CommandSourceStack.getPlayer	port	crates/sunrise-client/src/game/administration/commands/players_server.rs::Game::source_entity	the source entity; callers check for a player
 CommandSourceStack.shouldFilterMessageTo	skip:service		chat text filtering
 CommandSourceStack.sendChatMessage	port	crates/sunrise-client/src/lan/hub.rs::Hub::chat	gap: minor: console and command block sources are not sent here
 CommandSourceStack.suggestRegistryElements	port	crates/sunrise-command/src/args.rs::suggest_resources	registry tags and elements
 CommandSourceStack.getLookup	skip:data		registry lookup; registries come from tables
 Commands.<init>	port	crates/sunrise-command/src/vanilla.rs::build	registers the command tree
-Commands.mapSource	inline	crates/sunrise-client/src/game/administration/commands/execute.rs::Game::with_source	source mapped onto the parse
-Commands.performPrefixedCommand	port	crates/sunrise-client/src/game/administration/commands/mod.rs::Game::run_command	the leading slash is trimmed by the callers
+Commands.mapSource	inline	crates/sunrise-client/src/game/administration/commands/execute_server.rs::Game::with_source	source mapped onto the parse
+Commands.performPrefixedCommand	port	crates/sunrise-client/src/game/administration/commands/mod_server.rs::Game::run_command	the leading slash is trimmed by the callers
 Commands.finishParsing	port	crates/sunrise-client/src/game/administration/commands/mod.rs::Game::syntax_failure	parse error with the <--[HERE] context
-Commands.executeCommandInContext	port	crates/sunrise-client/src/game/administration/commands/execute.rs::Game::run_chain	gap: minor: max_command_forks is not enforced
+Commands.executeCommandInContext	port	crates/sunrise-client/src/game/administration/commands/execute_server.rs::Game::run_chain	gap: minor: max_command_forks is not enforced
 Commands.validate	skip:debug		startup check of the command tree
 Commands.createCompilationContext	skip:data		datapack compile-time context
 ParserUtils.readWhile	port	crates/sunrise-command/src/lib.rs::Reader::read_unquoted_string	reads while characters are allowed

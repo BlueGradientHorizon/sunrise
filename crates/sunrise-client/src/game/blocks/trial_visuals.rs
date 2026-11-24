@@ -57,7 +57,7 @@ impl Game<'_> {
         );
     }
     /// `LevelEventHandler.levelEvent` 3011 to 3021.
-    pub(super) fn trial_level_event(&mut self, id: i32, pos: [i32; 3], data: i32) {
+    pub(in crate::game) fn trial_level_event(&mut self, id: i32, pos: [i32; 3], data: i32) {
         // TrialSpawner.FlameParticle.decode.
         let spawn_flame = if data == 1 {
             T::SoulFireFlame
@@ -173,7 +173,7 @@ impl Game<'_> {
     }
     /// `TrialSpawner.tickClient`: the state's particles, the spin of the
     /// mob shown inside and the ambient sound.
-    pub(super) fn client_tick_trial_spawner(&mut self, key: Pos) {
+    pub(in crate::game) fn client_tick_trial_spawner(&mut self, key: Pos) {
         let Some((state, ominous)) = self.trial_spawner_block(key) else {
             return;
         };
@@ -233,7 +233,7 @@ impl Game<'_> {
         self.update_spawner_display(key);
     }
     /// `VaultBlockEntity.Client.tick`.
-    pub(super) fn client_tick_vault(&mut self, key: Pos) {
+    pub(in crate::game) fn client_tick_vault(&mut self, key: Pos) {
         let Some(TakenVault {
             lease,
             mut vault,

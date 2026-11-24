@@ -91,7 +91,7 @@ StagedVertexBuffer.GpuBufferPool.endFrame	skip:other		fence bookkeeping for GPU 
 StagedVertexBuffer.GpuBufferPool.close	skip:other		releases buffers; Rust drops them
 StagedVertexBuffer.GpuBufferPool.PendingRecycle.tryRecycle	skip:other		fence wait for GPU reuse; Sunrise has no fence here
 SubmitNodeCollection.<init>	skip:other		builds the phase lists (improved transparency or not); Sunrise has fixed passes in gfx.rs
-SubmitNodeCollection.submitShadow	port	crates/sunrise-client/src/game.rs::Game::entity_geometry	entity shadow quads (misc/shadow) when the entity_shadows option is on
+SubmitNodeCollection.submitShadow	port	crates/sunrise-client/src/game/game_client.rs::Game::entity_geometry	entity shadow quads (misc/shadow) when the entity_shadows option is on
 SubmitNodeCollection.nameTag	port	crates/sunrise-client/src/game/interface/names.rs::Game::name_tag_geometry	name tags
 SubmitNodeCollection.submitNameTagPart	port	crates/sunrise-client/src/game/interface/names.rs::Game::name_tag_quads	adds the text quads of one name tag part
 SubmitNodeCollection.canRenderAsSolid	inline	crates/sunrise-client/src/game/interface/names.rs::Game::name_tag_geometry	the choice between the opaque and see-through pass
@@ -99,7 +99,7 @@ SubmitNodeCollection.submitText	port	crates/sunrise-client/src/game/entities/tex
 SubmitNodeCollection.submitTextBackground	inline	crates/sunrise-client/src/game/entities/text_displays.rs::Game::text_display_geometry	background quad of a text display
 SubmitNodeCollection.submitTextPart	inline	crates/sunrise-client/src/game/entities/text_displays.rs::Game::text_display_geometry	the see-through or opaque choice for a text part
 SubmitNodeCollection.submitFlame	port	crates/sunrise-client/src/fire_render.rs::flames	entity fire flames
-SubmitNodeCollection.submitLeash	port	crates/sunrise-client/src/game/entities/leads.rs::Game::leash_geometry	lead rope from a leashed mob to its holder
+SubmitNodeCollection.submitLeash	port	crates/sunrise-client/src/game/entities/leads_client.rs::Game::leash_geometry	lead rope from a leashed mob to its holder
 SubmitNodeCollection.submitModel	port	crates/sunrise-client/src/game/mobs/creatures/mod.rs::Game::mob_geometry	mob models
 SubmitNodeCollection.submitCrumblingOverlay	port	crates/sunrise-client/src/game.rs::Game::cracks	block break cracks (destroy_stage sprites) over a block
 SubmitNodeCollection.submitMovingBlock	port	crates/sunrise-client/src/game/blocks/moving_pistons.rs::Game::moving_piston_geometry	moving piston blocks

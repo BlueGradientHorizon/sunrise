@@ -1,10 +1,15 @@
 //! Shared holder/context resolution before SlotCollection read or live-write consumption.
+#[allow(unused_imports)]
 use super::{Game, Owner, R, err};
+#[allow(unused_imports)]
 use serde_json::Value;
+#[allow(unused_imports)]
 use std::collections::BTreeSet;
+#[allow(unused_imports)]
 use sunrise_client::datapack::DataStore;
+#[allow(unused_imports)]
 use sunrise_core::nbt::Tag;
-fn id(raw: &str) -> String {
+pub(in crate::game) fn id(raw: &str) -> String {
     if raw.contains(':') {
         raw.to_owned()
     } else {
@@ -13,7 +18,7 @@ fn id(raw: &str) -> String {
 }
 /// `LimitSlotSource`'s limit is `Codec.INT`: any number's `Number.intValue()`,
 /// so a pack's `2.5` and a command's `2.5d` both select two slots.
-pub(super) fn limit(source: &Value) -> usize {
+pub(in crate::game) fn limit(source: &Value) -> usize {
     let limit = &source["limit"];
     let value = match limit.as_i64() {
         Some(whole) => whole as i32,
@@ -24,7 +29,7 @@ pub(super) fn limit(source: &Value) -> usize {
 }
 /// A typed source as the consumers read it. `tag_to_json` reads a byte as a
 /// boolean; a limit keeps its number (`limit:1b`).
-fn typed_source(tag: &Tag) -> Value {
+pub(in crate::game) fn typed_source(tag: &Tag) -> Value {
     fn keep_byte_limits(tag: &Tag, value: &mut Value) {
         match tag {
             Tag::List(terms) => {
@@ -111,30 +116,15 @@ pub(in crate::game) fn expand(store: &DataStore, source: &Value) -> Result<Value
     resolve(store, source, &mut BTreeSet::new())
 }
 impl Game<'_> {
-    /// Literal ranges retain priority; all remaining consumers resolve the same holder snapshot.
-    pub(super) fn resolved_slot_source(&self, raw: &str) -> R<Option<Value>> {
-        if sunrise_client::command::args::slot_ranges()
-            .iter()
-            .any(|(name, _)| name == raw)
-        {
-            return Ok(None);
-        }
-        let value = if self.fns.0.store.slot_sources.contains_key(&id(raw)) {
-            Value::String(id(raw))
-        } else {
-            let (tag, _) = sunrise_core::nbt::parse_snbt(raw)
-                .map_err(|error| err("argument.resource_or_id.failed_to_parse", &[&error]))?;
-            typed_source(&tag)
-        };
-        expand(&self.fns.0.store, &value)
-            .map(Some)
-            .map_err(|error| err("argument.resource_or_id.failed_to_parse", &[&error]))
-    }
     /// ItemCommands.getSlotsFromProvider binds CONTAINER separately from THIS_ENTITY.
     /// THIS_ENTITY is `CommandSourceStack.getEntity`: the player who typed the command, the
     /// entity `execute as` names, nobody for the console or a function.
     /// Other valid context targets are absent in COMMAND_SLOT_SOURCE, never Player fallbacks.
-    pub(super) fn slot_source_owner(&self, container: &Owner, source: &Value) -> Option<Owner> {
+    pub(in crate::game) fn slot_source_owner(
+        &self,
+        container: &Owner,
+        source: &Value,
+    ) -> Option<Owner> {
         match source["source"].as_str().unwrap_or("container") {
             "container" => Some(container.clone()),
             "this" => self.source_entity().map(Owner::Entity),
@@ -144,7 +134,7 @@ impl Game<'_> {
 }
 
 #[cfg(test)]
-mod tests {
+pub(in crate::game) mod tests {
     use super::*;
     use serde_json::json;
     #[test]

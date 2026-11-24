@@ -1,17 +1,21 @@
 // Client reads of vanilla state for mods (#4677), on a window joined to a server through
 // memory and fed the server's packets as it would receive them.
+#[allow(unused_imports)]
 use crate::game::{Game, Screen, native_entity_refs::tests::with_client_game};
+#[allow(unused_imports)]
 use mod_api::ClientHost;
+#[allow(unused_imports)]
 use sunrise_client::chunk::Chunk;
+#[allow(unused_imports)]
 use sunrise_protocol::{
     connection::{ConnReader, ConnWriter},
     packets::play::{self, Clientbound as C},
 };
 
 /// The window's own player.
-const PLAYER: u32 = 7;
+pub(in crate::game) const PLAYER: u32 = 7;
 
-fn spawn() -> play::SpawnInfo {
+pub(in crate::game) fn spawn() -> play::SpawnInfo {
     play::SpawnInfo {
         dimension_type: 0,
         dimension: "minecraft:overworld".into(),
@@ -26,38 +30,11 @@ fn spawn() -> play::SpawnInfo {
     }
 }
 
-/// The server's teleport that makes the local player, on a stone floor, with the level loaded.
-fn stand(game: &mut Game<'_>, teleport: i32) {
-    game.streaming
-        .insert_remote(&mut game.world, Chunk::empty(0, 0));
-    let stone = game
-        .pack
-        .assets
-        .registry
-        .default_state("minecraft:stone")
-        .unwrap();
-    for x in 0..16 {
-        for z in 0..16 {
-            game.world.set(x, 63, z, stone).unwrap();
-        }
-    }
-    game.handle_packet(C::PlayerPosition(play::PlayerPosition {
-        teleport,
-        position: [0.5, 64.0, 0.5],
-        delta: [0.0; 3],
-        yaw: 0.0,
-        pitch: 0.0,
-        relatives: 0,
-    }))
-    .unwrap();
-    let remote = game.remote.as_mut().unwrap();
-    remote.loaded_sent = true;
-    remote.level_load.finish();
-    game.client.screen = Screen::Playing;
-}
+#[allow(unused_imports)]
+pub(in crate::game) use crate::game::client_side::remote_client::tests::client_vanilla_reads_tests::stand;
 
 /// Joins as entity [`PLAYER`] in the overworld.
-fn join(game: &mut Game<'_>) -> (ConnReader, ConnWriter) {
+pub(in crate::game) fn join(game: &mut Game<'_>) -> (ConnReader, ConnWriter) {
     let connection = super::connect_menu_test(game);
     game.handle_packet(C::Login(play::Login {
         player_id: PLAYER as i32,
@@ -79,7 +56,7 @@ fn join(game: &mut Game<'_>) -> (ConnReader, ConnWriter) {
 }
 
 /// The server adds entity `id` of `kind` beside the player.
-fn add(game: &mut Game<'_>, id: u32, kind: &str) {
+pub(in crate::game) fn add(game: &mut Game<'_>, id: u32, kind: &str) {
     let kind = game
         .remote
         .as_ref()
@@ -104,7 +81,7 @@ fn add(game: &mut Game<'_>, id: u32, kind: &str) {
 }
 
 /// `EntityRef::tick_count` of entity `id`, read through a client host.
-fn tick_count(game: &Game<'_>, id: u32) -> Option<i32> {
+pub(in crate::game) fn tick_count(game: &Game<'_>, id: u32) -> Option<i32> {
     game.entity(id)?.tick_count(game as &dyn ClientHost)
 }
 

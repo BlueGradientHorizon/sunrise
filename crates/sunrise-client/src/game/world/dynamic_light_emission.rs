@@ -9,7 +9,7 @@ use sunrise_client::fast_hash::FxHashMap;
 impl Game<'_> {
     /// The chunks the workers brought into this level in this update, asked before any
     /// light job reads them (`Chunk::dynamic_pending`).
-    pub(super) fn ask_loaded_light_emission(&mut self) {
+    pub(in crate::game) fn ask_loaded_light_emission(&mut self) {
         if !self.pack.context.light.any_dynamic() {
             return;
         }
@@ -21,13 +21,13 @@ impl Game<'_> {
     /// Every `dynamic_light` cell of the resident chunk `key` asked, its answers replacing
     /// the chunk's, and the chunk let through to the light jobs. A server's column is asked
     /// as it is taken in, before any light job can read it.
-    pub(super) fn ask_chunk_light_emission(&mut self, key: (i32, i32)) {
+    pub(in crate::game) fn ask_chunk_light_emission(&mut self, key: (i32, i32)) {
         let dimension = self.current_light_emission_dimension();
         self.ask_level_chunk_light_emission(None, dimension, key);
     }
     /// [`Self::ask_chunk_light_emission`] in the level in place (`parked: None`) or in the
     /// parked level whose dimension is `parked`, its cells asked as `dimension`'s.
-    pub(super) fn ask_level_chunk_light_emission(
+    pub(in crate::game) fn ask_level_chunk_light_emission(
         &mut self,
         parked: Option<&str>,
         dimension: LevelDimension,
@@ -78,7 +78,7 @@ impl Game<'_> {
     /// The cells this update's edits and light checks left in a `dynamic_light` state,
     /// asked before the light engine relights them (`Streaming::relight_edits`).
     /// `Chunk::set` already dropped the answers of the states they replaced.
-    pub(super) fn ask_edited_light_emission(&mut self) {
+    pub(in crate::game) fn ask_edited_light_emission(&mut self) {
         // The checks queued so far are asked now: a later one at the same cell queues again.
         self.world.light_checks.clear();
         if self.world.light_edits.is_empty() || !self.pack.context.light.any_dynamic() {
@@ -108,7 +108,11 @@ impl Game<'_> {
     /// server's took (the server asked before it relit them). A Sunrise addition: the contract
     /// reads emission again on no light packet, but a part's answer may read data the client
     /// receives later.
-    pub(super) fn ask_updated_light_emission(&mut self, key: (i32, i32), sections: &[usize]) {
+    pub(in crate::game) fn ask_updated_light_emission(
+        &mut self,
+        key: (i32, i32),
+        sections: &[usize],
+    ) {
         if sections.is_empty() || !self.pack.context.light.any_dynamic() {
             return;
         }

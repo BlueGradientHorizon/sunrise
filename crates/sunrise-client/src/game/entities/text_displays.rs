@@ -1,6 +1,9 @@
 //! Server text displays: metadata, interpolation, billboard transforms and world text.
+#[allow(unused_imports)]
 use super::Game;
+#[allow(unused_imports)]
 use sunrise_assets::item_model::DisplayContext;
+#[allow(unused_imports)]
 use sunrise_client::{
     gfx::{
         TEXT_POLYGON_OFFSET_OVERLAY, TEXT_POLYGON_OFFSET_SOLID_OVERLAY, TRANSLUCENT_DRAW_FLIP,
@@ -11,7 +14,9 @@ use sunrise_client::{
     text::Text,
     text_display::{self, CachedQuads, TextDisplayData},
 };
+#[allow(unused_imports)]
 use sunrise_protocol::entity_data::Value;
+#[allow(unused_imports)]
 use sunrise_world::registry::BlockStateId;
 
 /// What a display shows besides its transformation: its text (in `data`),
@@ -35,7 +40,7 @@ impl Shows {
     }
 
     /// The display's entity type, as the tick hooks name it.
-    fn kind(self) -> &'static str {
+    pub(in crate::game) fn kind(self) -> &'static str {
         match self {
             Self::Text => "minecraft:text_display",
             Self::Block => "minecraft:block_display",
@@ -47,54 +52,54 @@ impl Shows {
 pub(in crate::game) struct RemoteTextDisplay {
     pub data: TextDisplayData,
     pub(in crate::game) join: sunrise_client::join_seq::JoinSeq,
-    shows: Shows,
+    pub(in crate::game) shows: Shows,
     /// Pending synced sub-state fields (`BlockDisplay` id 23, `ItemDisplay` ids 23-24).
-    pending_block: Option<BlockStateId>,
-    pending_item: Option<ItemStack>,
-    pending_item_display: u8,
+    pub(in crate::game) pending_block: Option<BlockStateId>,
+    pub(in crate::game) pending_item: Option<ItemStack>,
+    pub(in crate::game) pending_item_display: u8,
     /// Committed sub-state updated inside `tick()` only when `dirty` (`updateRenderSubState`).
-    shown_block: Option<BlockStateId>,
-    shown_item: Option<ItemStack>,
-    shown_item_display: u8,
-    from: TextDisplayData,
-    shown: TextDisplayData,
+    pub(in crate::game) shown_block: Option<BlockStateId>,
+    pub(in crate::game) shown_item: Option<ItemStack>,
+    pub(in crate::game) shown_item_display: u8,
+    pub(in crate::game) from: TextDisplayData,
+    pub(in crate::game) shown: TextDisplayData,
     /// True when the committed render state uses interpolated (`from -> shown`) rather than constant (`shown`).
-    interpolated: bool,
-    position: glam::DVec3,
-    previous: glam::DVec3,
-    target: glam::DVec3,
-    last_pos: glam::DVec3,
-    rotation: [f32; 2],
-    old_rotation: [f32; 2],
-    target_rotation: [f32; 2],
-    last_rot: [f32; 2],
+    pub(in crate::game) interpolated: bool,
+    pub(in crate::game) position: glam::DVec3,
+    pub(in crate::game) previous: glam::DVec3,
+    pub(in crate::game) target: glam::DVec3,
+    pub(in crate::game) last_pos: glam::DVec3,
+    pub(in crate::game) rotation: [f32; 2],
+    pub(in crate::game) old_rotation: [f32; 2],
+    pub(in crate::game) target_rotation: [f32; 2],
+    pub(in crate::game) last_rot: [f32; 2],
     /// `Display.cullingBoundingBox` and `Entity.noCulling`, updated by `updateCulling()`.
-    culling_box: (glam::DVec3, glam::DVec3),
-    no_culling: bool,
+    pub(in crate::game) culling_box: (glam::DVec3, glam::DVec3),
+    pub(in crate::game) no_culling: bool,
     /// `LinearInterpolationHandler` length (raw client synced id 10, unclamped) and steps left.
-    interp_length: i32,
-    steps: i32,
+    pub(in crate::game) interp_length: i32,
+    pub(in crate::game) steps: i32,
     /// `Entity.tickCount`: wraps as Java `int` (`i32`) before widening to `i64` in `start`.
-    age: i32,
-    start: i64,
-    duration: i32,
-    dirty: bool,
-    start_dirty: bool,
-    duration_dirty: bool,
+    pub(in crate::game) age: i32,
+    pub(in crate::game) start: i64,
+    pub(in crate::game) duration: i32,
+    pub(in crate::game) dirty: bool,
+    pub(in crate::game) start_dirty: bool,
+    pub(in crate::game) duration_dirty: bool,
     /// `Display.renderState != null`: false until the first tick after a render-state sync.
-    render_state_ready: bool,
+    pub(in crate::game) render_state_ready: bool,
     /// `Display.lastProgress`: the progress the last drawn frame evaluated (untouched when culled
     /// or while `duration <= 0`).
-    last_progress: f32,
+    pub(in crate::game) last_progress: f32,
     /// `Entity.DATA_SHARED_FLAGS_ID` (id 0): bit 0 = on fire, bit 1 = shift/discrete,
     /// bit 5 = invisible, bit 6 = glowing.
-    shared_flags: u8,
+    pub(in crate::game) shared_flags: u8,
     /// `Entity.DATA_CUSTOM_NAME` (id 2) and `DATA_CUSTOM_NAME_VISIBLE` (id 3).
-    custom_name: Option<Text>,
-    custom_name_visible: bool,
+    pub(in crate::game) custom_name: Option<Text>,
+    pub(in crate::game) custom_name_visible: bool,
     /// Local text geometry from the last visited frame; world poses do not
     /// invalidate `TextDisplay.clientDisplayCache` or the glyph vertices.
-    lines: Option<CachedQuads>,
+    pub(in crate::game) lines: Option<CachedQuads>,
     /// `Entity.vehicle`: the mob it rides (`SetPassengers`), which places it
     /// every tick (`positionRider`), as NPC plugins hang a name over a head.
     pub(in crate::game) vehicle: Option<u32>,
@@ -104,8 +109,8 @@ pub(in crate::game) struct RemoteTextDisplay {
 /// and see-through text displays) together in one `TranslucentFeatureRenderPhase`.
 #[derive(Default)]
 pub(in crate::game) struct SeeThroughCollector {
-    verts: Vec<Vertex>,
-    submits: Vec<(f32, usize, std::ops::Range<usize>)>,
+    pub(in crate::game) verts: Vec<Vertex>,
+    pub(in crate::game) submits: Vec<(f32, usize, std::ops::Range<usize>)>,
 }
 
 impl SeeThroughCollector {
@@ -149,24 +154,29 @@ pub(in crate::game) fn submit_distance_sq(x: f32, y: f32, z: f32) -> f32 {
 /// boundaries with `TRANSLUCENT_DRAW_FLIP` so classic upload sorting never mixes draws.
 #[derive(Default)]
 pub(in crate::game) struct TranslucentDisplayCollector {
-    verts: Vec<Vertex>,
-    submits: Vec<(f32, usize, u8, std::ops::Range<usize>)>,
-    scratch: Vec<Vertex>,
+    pub(in crate::game) verts: Vec<Vertex>,
+    pub(in crate::game) submits: Vec<(f32, usize, u8, std::ops::Range<usize>)>,
+    pub(in crate::game) scratch: Vec<Vertex>,
 }
 
 impl TranslucentDisplayCollector {
-    fn clear(&mut self) {
+    pub(in crate::game) fn clear(&mut self) {
         self.verts.clear();
         self.submits.clear();
         self.scratch.clear();
     }
-    fn push(&mut self, dist_sq: f32, feature: u8, range: std::ops::Range<usize>) {
+    pub(in crate::game) fn push(
+        &mut self,
+        dist_sq: f32,
+        feature: u8,
+        range: std::ops::Range<usize>,
+    ) {
         if !range.is_empty() {
             let order = self.submits.len();
             self.submits.push((dist_sq, order, feature, range));
         }
     }
-    fn flush(&mut self, out: &mut Vec<Vertex>) {
+    pub(in crate::game) fn flush(&mut self, out: &mut Vec<Vertex>) {
         if self.submits.is_empty() {
             return;
         }
@@ -192,7 +202,7 @@ impl TranslucentDisplayCollector {
 
 /// `Display.RENDER_STATE_IDS` and each subclass's render-state synced data IDs (not view range,
 /// width, height, or glow colour).
-fn renders(shows: Shows, id: u8) -> bool {
+pub(in crate::game) fn renders(shows: Shows, id: u8) -> bool {
     let shared = match id {
         11..=16 | 18 | 19 => true,
         23..=27 => shows == Shows::Text,
@@ -208,7 +218,7 @@ fn renders(shows: Shows, id: u8) -> bool {
 
 /// `Mth.lerp(double, double, double)` applied per axis (`Vec3.lerp`), avoiding `glam::DVec3::lerp`'s
 /// `a * (1 - t) + b * t` 1-ULP drift.
-fn lerp_dvec3(start: glam::DVec3, end: glam::DVec3, delta: f64) -> glam::DVec3 {
+pub(in crate::game) fn lerp_dvec3(start: glam::DVec3, end: glam::DVec3, delta: f64) -> glam::DVec3 {
     glam::DVec3::new(
         start.x + delta * (end.x - start.x),
         start.y + delta * (end.y - start.y),
@@ -217,7 +227,7 @@ fn lerp_dvec3(start: glam::DVec3, end: glam::DVec3, delta: f64) -> glam::DVec3 {
 }
 
 /// `Mth.wrapDegrees(float)`.
-fn wrap_degrees(value: f32) -> f32 {
+pub(in crate::game) fn wrap_degrees(value: f32) -> f32 {
     let mut f = value % 360.0;
     if f >= 180.0 {
         f -= 360.0;
@@ -229,7 +239,7 @@ fn wrap_degrees(value: f32) -> f32 {
 }
 
 /// `Mth.wrapDegrees(double)`.
-fn wrap_degrees_f64(value: f64) -> f64 {
+pub(in crate::game) fn wrap_degrees_f64(value: f64) -> f64 {
     let mut d = value % 360.0;
     if d >= 180.0 {
         d -= 360.0;
@@ -241,17 +251,17 @@ fn wrap_degrees_f64(value: f64) -> f64 {
 }
 
 /// `Mth.rotLerp(double, double, double)`.
-fn rot_lerp_f64(delta: f64, start: f64, end: f64) -> f64 {
+pub(in crate::game) fn rot_lerp_f64(delta: f64, start: f64, end: f64) -> f64 {
     start + delta * wrap_degrees_f64(end - start)
 }
 
 /// `Mth.rotLerp(float, float, float)`.
-fn rot_lerp(delta: f32, start: f32, end: f32) -> f32 {
+pub(in crate::game) fn rot_lerp(delta: f32, start: f32, end: f32) -> f32 {
     start + delta * wrap_degrees(end - start)
 }
 
 /// `Math.clamp(value, -90.0F, 90.0F)` matching `PositionMoveRotation.calculateAbsolute` / `Entity.setXRot`.
-fn clamp_pitch(pitch: f32) -> f32 {
+pub(in crate::game) fn clamp_pitch(pitch: f32) -> f32 {
     if pitch.is_nan() {
         f32::NAN
     } else {
@@ -319,24 +329,24 @@ impl RemoteTextDisplay {
         self
     }
     /// `Entity.setYRot(float)`: stores raw finite yaw without `% 360.0`; discards non-finite.
-    fn set_y_rot_raw(&mut self, yaw: f32) {
+    pub(in crate::game) fn set_y_rot_raw(&mut self, yaw: f32) {
         if yaw.is_finite() {
             self.rotation[0] = yaw;
         }
     }
     /// `Entity.setXRot(float)`: reduces `% 360.0` before clamping to `[-90, 90]`; discards non-finite.
-    fn set_x_rot_raw(&mut self, pitch: f32) {
+    pub(in crate::game) fn set_x_rot_raw(&mut self, pitch: f32) {
         if pitch.is_finite() {
             self.rotation[1] = (pitch % 360.0).clamp(-90.0, 90.0);
         }
     }
     /// `Entity.setRot(float, float)`: reduces both yaw and pitch `% 360.0` before setters.
-    fn set_rot(&mut self, yaw: f32, pitch: f32) {
+    pub(in crate::game) fn set_rot(&mut self, yaw: f32, pitch: f32) {
         self.set_y_rot_raw(yaw % 360.0);
         self.set_x_rot_raw(pitch % 360.0);
     }
     /// `Display.updateCulling`: refreshes `no_culling` and `culling_box` from current position, width and height.
-    fn update_culling(&mut self) {
+    pub(in crate::game) fn update_culling(&mut self) {
         let (w, h) = (self.data.width, self.data.height);
         self.no_culling = text_display::no_culling(w, h);
         self.culling_box = if self.no_culling {
@@ -346,12 +356,12 @@ impl RemoteTextDisplay {
         };
     }
     /// `Entity.setPos(Vec3)` -> `setPosRaw` + `updateCulling`.
-    fn set_pos(&mut self, pos: glam::DVec3) {
+    pub(in crate::game) fn set_pos(&mut self, pos: glam::DVec3) {
         self.position = pos;
         self.update_culling();
     }
     /// `Entity.snapTo(double, double, double, float, float)`.
-    fn snap_to(&mut self, pos: glam::DVec3, yaw: f32, pitch: f32) {
+    pub(in crate::game) fn snap_to(&mut self, pos: glam::DVec3, yaw: f32, pitch: f32) {
         self.position = pos;
         self.set_y_rot_raw(yaw);
         self.set_x_rot_raw(pitch);
@@ -363,11 +373,11 @@ impl RemoteTextDisplay {
     pub(in crate::game) fn is_interpolating(&self) -> bool {
         self.steps > 0
     }
-    fn cancel_interpolation(&mut self) {
+    pub(in crate::game) fn cancel_interpolation(&mut self) {
         self.steps = 0;
     }
     /// `Entity.getClientPositionAndRotation`.
-    fn client_pos_rot(&self) -> (glam::DVec3, [f32; 2]) {
+    pub(in crate::game) fn client_pos_rot(&self) -> (glam::DVec3, [f32; 2]) {
         if self.is_interpolating() {
             (self.target, self.target_rotation)
         } else {
@@ -475,14 +485,14 @@ impl RemoteTextDisplay {
             ((sky << 4) | block) as u8
         }
     }
-    fn eval_render_state(&self, progress: f32) -> TextDisplayData {
+    pub(in crate::game) fn eval_render_state(&self, progress: f32) -> TextDisplayData {
         if self.interpolated {
             self.shown.blend(&self.from, progress)
         } else {
             self.shown.clone()
         }
     }
-    fn progress(&self, partial: f32) -> f32 {
+    pub(in crate::game) fn progress(&self, partial: f32) -> f32 {
         if self.duration <= 0 {
             1.0
         } else {
@@ -491,7 +501,7 @@ impl RemoteTextDisplay {
         }
     }
     /// `Display.calculateInterpolationProgress`: only updates `last_progress` when `duration > 0`.
-    fn calculate_interpolation_progress(&mut self, partial: f32) -> f32 {
+    pub(in crate::game) fn calculate_interpolation_progress(&mut self, partial: f32) -> f32 {
         if self.duration <= 0 {
             return 1.0;
         }
@@ -559,7 +569,7 @@ impl RemoteTextDisplay {
             self.update_culling();
         }
     }
-    fn tick(&mut self) {
+    pub(in crate::game) fn tick(&mut self) {
         self.age = self.age.wrapping_add(1);
         self.previous = self.position;
         self.old_rotation = self.rotation;
@@ -620,7 +630,11 @@ impl RemoteTextDisplay {
     /// `AbstractInterpolationHandler.interpolateTo` / `LinearInterpolationHandler.startInterpolating`:
     /// resolves omitted components against the active target (or current pose) before checking
     /// `interp_length == 0`, and leaves an active matching target untouched even when `interp_length < 0`.
-    fn move_to_opt(&mut self, position: Option<[f64; 3]>, rotation: Option<(f32, f32)>) {
+    pub(in crate::game) fn move_to_opt(
+        &mut self,
+        position: Option<[f64; 3]>,
+        rotation: Option<(f32, f32)>,
+    ) {
         let (cur_pos, cur_rot) = self.client_pos_rot();
         let next_pos = position.map(glam::DVec3::from).unwrap_or(cur_pos);
         let (next_y, next_x) = rotation.unwrap_or((cur_rot[0], cur_rot[1]));
@@ -640,7 +654,7 @@ impl RemoteTextDisplay {
             self.last_rot = self.rotation;
         }
     }
-    fn move_to(&mut self, position: [f64; 3], rotation: Option<(f32, f32)>) {
+    pub(in crate::game) fn move_to(&mut self, position: [f64; 3], rotation: Option<(f32, f32)>) {
         self.move_to_opt(Some(position), rotation);
     }
     /// `ClientPacketListener.handleEntityPositionSync`: checks `isTicking` and distance `> 4096`
@@ -789,7 +803,7 @@ impl Game<'_> {
     }
     /// A display a packet moved without interpolation changes section at once (`Entity.setPos`
     /// through the level callback), before its riders are seated.
-    fn file_snapped_display(&mut self, id: i32) {
+    pub(in crate::game) fn file_snapped_display(&mut self, id: i32) {
         if let Some(at) = self
             .text_displays
             .0
@@ -801,7 +815,7 @@ impl Game<'_> {
     }
     /// Re-seats the local player and snaps `previous_position` after a non-interpolated vehicle
     /// snap (`handleEntityPositionSync` / `handleTeleportEntity`).
-    fn seat_local_player_after_display_snap(&mut self) {
+    pub(in crate::game) fn seat_local_player_after_display_snap(&mut self) {
         self.position_riders();
         if let Some(id) = self.riding {
             let index = std::collections::HashMap::new();
@@ -828,7 +842,7 @@ impl Game<'_> {
         let cz = pos.z.floor() as i32 >> 4;
         self.world.chunks.contains_key(&(cx, cz))
     }
-    fn entity_has_ancestor(&self, passenger: u32, ancestor: u32) -> bool {
+    pub(in crate::game) fn entity_has_ancestor(&self, passenger: u32, ancestor: u32) -> bool {
         let Some(mut cur) = self.entity(passenger) else {
             return false;
         };
@@ -843,12 +857,12 @@ impl Game<'_> {
         }
         false
     }
-    fn entity_is_player(&self, id: u32) -> bool {
+    pub(in crate::game) fn entity_is_player(&self, id: u32) -> bool {
         self.remote
             .as_ref()
             .is_some_and(|r| r.entity_id as u32 == id || r.level_players.contains_key(&(id as i32)))
     }
-    fn entity_position_for_tick(&self, id: u32) -> Option<glam::DVec3> {
+    pub(in crate::game) fn entity_position_for_tick(&self, id: u32) -> Option<glam::DVec3> {
         if self
             .remote
             .as_ref()
@@ -903,7 +917,7 @@ impl Game<'_> {
         false
     }
     /// `Entity.countPlayerPassengers() > 0`.
-    fn entity_has_indirect_player(&self, id: u32) -> bool {
+    pub(in crate::game) fn entity_has_indirect_player(&self, id: u32) -> bool {
         if self.display_has_indirect_local_player(id) {
             return true;
         }
@@ -932,7 +946,12 @@ impl Game<'_> {
         }
     }
     /// `ClientLevel.tickEntities` + `tickPassenger`: whether this display ticks on this client tick.
-    fn display_should_tick(&self, id: i32, display: &RemoteTextDisplay, running: bool) -> bool {
+    pub(in crate::game) fn display_should_tick(
+        &self,
+        id: i32,
+        display: &RemoteTextDisplay,
+        running: bool,
+    ) -> bool {
         if !self.is_display_ticking(display.position) {
             return false;
         }
@@ -960,7 +979,7 @@ impl Game<'_> {
     /// The displays' tick on a client (`ClientLevel.tickEntities` + `tickPassenger`).
     /// EntityTickEvent: once for the family, or each alone of a type a mod named, right before
     /// and right after its own tick; a canceled one keeps its state.
-    fn tick_and_file_display(&mut self, id: i32) {
+    pub(in crate::game) fn tick_and_file_display(&mut self, id: i32) {
         if let Some(display) = self.text_displays.0.get_mut(&id) {
             let from = display.position();
             display.tick();
@@ -1031,7 +1050,7 @@ impl Game<'_> {
     }
     /// Active render `Camera` yaw and pitch (`DisplayRenderer.extractRenderState`), sharing the
     /// same camera source of truth as `particle_rotation` (`ThirdPersonFront` already baked in).
-    fn display_camera_angles(&self) -> [f32; 2] {
+    pub(in crate::game) fn display_camera_angles(&self) -> [f32; 2] {
         if self.client.studio.flying() {
             return [
                 self.client.studio.freecam.yaw,
@@ -1046,7 +1065,7 @@ impl Game<'_> {
     }
     /// `DisplayRenderer.getBlockLightLevel` and `getSkyLightLevel`: the
     /// brightness override, else the light at the entity (block light 15 when on fire).
-    fn display_light(
+    pub(in crate::game) fn display_light(
         world: &sunrise_client::world::World,
         d: &TextDisplayData,
         position: glam::DVec3,
@@ -1070,7 +1089,7 @@ impl Game<'_> {
     /// `view_range`) and, when culling is active, `EntityRenderer.shouldRender` with
     /// `Display.getInterpolatedBoundingBox` inflated by 0.5 and `±2` fallback only on NaN or
     /// zero size.
-    fn display_in_view_with_frustum(
+    pub(in crate::game) fn display_in_view_with_frustum(
         camera: glam::DVec3,
         display: &RemoteTextDisplay,
         partial: f32,
@@ -1137,7 +1156,11 @@ impl Game<'_> {
     }
     /// `Display.getTeamColor` + `EntityRenderer.extractRenderState` outline color: live
     /// `glow_color` override when != -1, else team color, when shared flag 6 is set.
-    fn display_outline(&self, id: i32, display: &RemoteTextDisplay) -> Option<u32> {
+    pub(in crate::game) fn display_outline(
+        &self,
+        id: i32,
+        display: &RemoteTextDisplay,
+    ) -> Option<u32> {
         let vanilla = display.is_glowing().then(|| {
             if display.data.glow_color != -1 {
                 display.data.glow_color as u32 & 0xFF_FFFF
@@ -1429,7 +1452,7 @@ impl Game<'_> {
 
 /// Whether vanilla's built-in block models give this block a special model,
 /// drawn by its block-entity renderer.
-fn has_special_model(block: &str) -> bool {
+pub(in crate::game) fn has_special_model(block: &str) -> bool {
     matches!(
         block,
         "bell"
@@ -1451,7 +1474,8 @@ fn has_special_model(block: &str) -> bool {
 }
 
 #[cfg(test)]
-mod tests {
+pub(in crate::game) mod tests {
+    #[allow(unused_imports)]
     use super::*;
     #[test]
     fn culled_display_keeps_quads_across_frame_rollover() {
@@ -1570,47 +1594,6 @@ mod tests {
         d.tick();
         assert_eq!(d.position.x, 2.0);
         assert_eq!(d.shown.blend(&d.from, d.progress(0.0)).translation[0], 2.0);
-    }
-
-    #[test]
-    #[ignore = "daily"]
-    fn handle_teleport_keeps_display_easing() {
-        use crate::game::{commands::OtherEntity, native_entity_refs::tests::with_game};
-        use sunrise_core::geometry::Vec3;
-        use sunrise_core::nbt::{Compound, Tag};
-
-        with_game(|game| {
-            game.others.0.push(OtherEntity {
-                size_answer: None,
-                attachment_lifetime: Default::default(),
-                knot_check: None,
-                eye: None,
-                join: Default::default(),
-                item_transformation: None,
-                interaction: None,
-                id: 12,
-                kind: "minecraft:text_display".into(),
-                position: Vec3::ZERO,
-                yaw: 0.0,
-                pitch: 0.0,
-            });
-            let mut tag = Compound::new();
-            tag.insert("teleport_duration".into(), Tag::Int(4));
-            game.persist.raw.insert(12, Tag::Compound(tag));
-            let entity = game.entity(12).unwrap();
-            assert!(entity.teleport_to(game, [8.0, 0.0, 0.0], None));
-            let metadata =
-                sunrise_client::text_display::display_data(&game.persist.raw[&12], false);
-            let mut client = RemoteTextDisplay::new(Shows::Text, [0.0; 3], 0.0);
-            client.metadata(&metadata);
-            client.move_to(entity.position(game).unwrap(), None);
-            client.tick();
-            assert_eq!(client.position.x, 2.0);
-            for _ in 0..3 {
-                client.tick();
-            }
-            assert_eq!(client.position.x, 8.0);
-        });
     }
 
     /// A display riding a vehicle sits where `positionRider` (`ride`) places it after `tick()`,
@@ -1780,4 +1763,4 @@ mod tests {
 
 #[cfg(test)]
 #[path = "text_displays/display_parity_tests.rs"]
-mod display_parity_tests;
+pub(in crate::game) mod display_parity_tests;

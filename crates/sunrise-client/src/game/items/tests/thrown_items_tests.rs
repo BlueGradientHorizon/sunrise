@@ -2,18 +2,26 @@
 //! own (`Entity.random`, `LivingEntity.createItemStackToDrop`) or a client's
 //! (`ClientPacketListener.random`), never the level's, whose draws are what
 //! random ticks, leaf decay and spawns come from.
+#[allow(unused_imports)]
 use super::*;
+#[allow(unused_imports)]
 use crate::game::game_tests::tests::server_game;
+#[allow(unused_imports)]
 use crate::game::{Audio, Options, Progress, Settings, load_resources};
+#[allow(unused_imports)]
 use std::sync::Arc;
+#[allow(unused_imports)]
 use sunrise_client::chunk::Chunk;
+#[allow(unused_imports)]
 use sunrise_client::entities::{ExperienceOrb, ItemEntity};
+#[allow(unused_imports)]
 use sunrise_client::items::ItemStack;
+#[allow(unused_imports)]
 use sunrise_protocol::packets::play::{self, Clientbound as C};
 
 /// A game with the player standing at 8.5 70 8.5 in a ticking chunk, with the
 /// positional sounds it plays recorded.
-fn standing_game<'a>(
+pub(in crate::game) fn standing_game<'a>(
     resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>,
 ) -> Game<'a> {
     let mut game = server_game(resources);
@@ -30,15 +38,8 @@ fn standing_game<'a>(
     game
 }
 
-/// The one sound `event` played since the last call, with its volume.
-fn sound(game: &mut Game<'_>, event: &str) -> (f32, f32) {
-    let heard = game.audio.0.capture.replace(Vec::new()).unwrap_or_default();
-    let sound = heard
-        .iter()
-        .find(|s| s.event == event)
-        .unwrap_or_else(|| panic!("no {event} sound among {heard:?}"));
-    (sound.volume, sound.pitch)
-}
+#[allow(unused_imports)]
+pub(in crate::game) use crate::game::client_side::item_entities_client::thrown_items_tests::sound;
 
 /// `Player.createItemStackToDrop(false)`: the drop key's throw is 0.3 along
 /// the view (level facing, so +z) and 0.1 up, scattered by the thrower's own
@@ -173,43 +174,8 @@ fn a_pickup_pitch_is_not_drawn_from_the_levels_random() {
     });
 }
 
-/// A window joined to a server through memory, with the sounds it plays
-/// recorded: the client half of a pickup (`ClientPacketListener`).
-pub(in crate::game) fn with_remote_game<R>(f: impl FnOnce(&mut Game<'_>) -> R) -> R {
-    let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
-    let settings = Settings::default();
-    let loaded = load_resources(
-        sunrise_assets::resource_source::ResourceRoot::directory(root.clone()),
-        Vec::new(),
-        None,
-        &root,
-        &settings,
-        std::time::Instant::now(),
-        false,
-        crate::game::execution_role::ExecutionRole::IntegratedServer,
-        &Progress::new(),
-        &mut |_, _| unreachable!(),
-    )
-    .unwrap();
-    let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
-    options.resources = root.clone();
-    let mut game = Game::new(
-        &loaded.resources,
-        loaded.pack,
-        loaded.gui.unwrap(),
-        options,
-        settings,
-        Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
-            root.to_path_buf(),
-        )),
-        None,
-    )
-    .unwrap();
-    let (pipe, _server) = sunrise_protocol::connection::Pipe::pair();
-    game.connect_local(pipe, "Steve").unwrap();
-    game.audio.0.capture = Some(Vec::new());
-    f(&mut game)
-}
+#[allow(unused_imports)]
+pub(in crate::game) use crate::game::client_side::item_entities_client::thrown_items_tests::with_remote_game;
 
 /// `ClientPacketListener.handleTakeItemEntity`: a client pitches an item's and
 /// an orb's pickup from its own random (`ClientPacketListener.random`), so a

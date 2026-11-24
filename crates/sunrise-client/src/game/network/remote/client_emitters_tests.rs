@@ -1,18 +1,23 @@
+#[allow(unused_imports)]
 use super::super::{C, Game, play};
+#[allow(unused_imports)]
 use crate::game::{
     native_entity_refs::tests::with_client_game, native_hotbar_slot::hotbar_slot_tests::logged_in,
 };
+#[allow(unused_imports)]
 use sunrise_client::particles::ParticleType::{self, Crit, EnchantedHit};
+#[allow(unused_imports)]
 use sunrise_core::random::{LegacyRandom, RandomSource};
+#[allow(unused_imports)]
 use sunrise_protocol::entity_data::{Value, serializer};
 
-fn with_isolated_client(name: &str, body: impl FnOnce()) {
+pub(in crate::game) fn with_isolated_client(name: &str, body: impl FnOnce()) {
     let (_, module) = module_path!().split_once("::").unwrap();
     let test = format!("{module}::{name}");
     crate::game::in_own_process(&test, body);
 }
 
-fn registry_id(game: &Game<'_>, registry: &str, name: &str) -> i32 {
+pub(in crate::game) fn registry_id(game: &Game<'_>, registry: &str, name: &str) -> i32 {
     game.remote
         .as_ref()
         .unwrap()
@@ -23,7 +28,13 @@ fn registry_id(game: &Game<'_>, registry: &str, name: &str) -> i32 {
         .unwrap()
 }
 
-fn add_entity(game: &Game<'_>, id: i32, uuid: u128, kind: &str, position: [f64; 3]) -> C {
+pub(in crate::game) fn add_entity(
+    game: &Game<'_>,
+    id: i32,
+    uuid: u128,
+    kind: &str,
+    position: [f64; 3],
+) -> C {
     C::AddEntity(play::AddEntity {
         id,
         uuid,
@@ -37,61 +48,22 @@ fn add_entity(game: &Game<'_>, id: i32, uuid: u128, kind: &str, position: [f64; 
     })
 }
 
-fn deliver(game: &mut Game<'_>, packet: C) {
+pub(in crate::game) fn deliver(game: &mut Game<'_>, packet: C) {
     let bytes = packet.encode();
     let mut reader = sunrise_protocol::buf::Reader::new(&bytes);
     game.handle_packet(C::decode(reader.varint().unwrap(), reader.rest()).unwrap())
         .unwrap();
 }
 
-fn animate(game: &mut Game<'_>, id: i32, action: u8) {
+pub(in crate::game) fn animate(game: &mut Game<'_>, id: i32, action: u8) {
     deliver(game, C::Animate(play::Animate { id, action }));
 }
 
-fn capture_requests(game: &mut Game<'_>) -> LegacyRandom {
-    const SEED: i64 = 719;
-    game.particles.0.seed_randoms(SEED, 11, 12);
-    game.particles.0.requested = Some(Vec::new());
-    LegacyRandom::new(SEED)
-}
+#[allow(unused_imports)]
+pub(in crate::game) use crate::game::client_side::remote_client::tests::client_emitters_tests::capture_requests;
 
-// Capture the level requests, before the limiter or providers consume random
-// draws. The expected sequence uses the 26.3 TrackingEmitter sampling contract
-// and independent feet/dimensions, never the packet handler's body lookup.
-fn assert_bursts(
-    game: &mut Game<'_>,
-    random: &mut LegacyRandom,
-    bodies: &[(ParticleType, [f64; 3], f32, f32)],
-) {
-    let mut expected = Vec::new();
-    for &(ty, [x, y, z], width, height) in bodies {
-        for _ in 0..16 {
-            let [dx, dy, dz] = std::array::from_fn(|_| f64::from(random.next_float()) * 2.0 - 1.0);
-            if dx * dx + dy * dy + dz * dz <= 1.0 {
-                let at = [
-                    x + f64::from(width) * (0.25 * dx),
-                    y + f64::from(height) * (0.5 + 0.25 * dy),
-                    z + f64::from(width) * (0.25 * dz),
-                ];
-                expected.push((
-                    ty,
-                    at.map(f64::to_bits),
-                    [dx, dy + 0.2, dz].map(f64::to_bits),
-                ));
-            }
-        }
-    }
-    let actual: Vec<_> = game
-        .particles
-        .0
-        .requested
-        .as_mut()
-        .unwrap()
-        .drain(..)
-        .map(|(options, at, motion)| (options.ty, at.map(f64::to_bits), motion.map(f64::to_bits)))
-        .collect();
-    assert_eq!(actual, expected);
-}
+#[allow(unused_imports)]
+pub(in crate::game) use crate::game::client_side::remote_client::tests::client_emitters_tests::assert_bursts;
 
 #[test]
 #[ignore = "daily"]

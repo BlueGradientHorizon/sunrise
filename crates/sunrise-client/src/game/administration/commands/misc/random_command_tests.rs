@@ -1,13 +1,18 @@
 //! `/random`'s roll line: who hears it and who it names, and the names
 //! `/random reset` completes (RandomCommand).
+#[allow(unused_imports)]
 use super::*;
+#[allow(unused_imports)]
 use crate::game::{Dim, game_tests::tests::server_game};
+#[allow(unused_imports)]
 use std::sync::{Arc, atomic::AtomicI32, mpsc};
+#[allow(unused_imports)]
 use sunrise_client::lan::{Joined, NetConfig, Out, PlayerSender, guest::Guest, hub::HubConfig};
+#[allow(unused_imports)]
 use sunrise_protocol::packets::{configuration::ClientInformation, play::Clientbound};
 
 /// The packets a guest's connection was sent, encoded.
-fn packets(receiver: &mpsc::Receiver<Out>) -> Vec<Vec<u8>> {
+pub(in crate::game) fn packets(receiver: &mpsc::Receiver<Out>) -> Vec<Vec<u8>> {
     let mut out = Vec::new();
     for sent in receiver.try_iter() {
         match sent {
@@ -20,7 +25,7 @@ fn packets(receiver: &mpsc::Receiver<Out>) -> Vec<Vec<u8>> {
 }
 
 /// The system lines a guest's connection was sent (`ClientboundSystemChatPacket`).
-fn chats(receiver: &mpsc::Receiver<Out>) -> Vec<String> {
+pub(in crate::game) fn chats(receiver: &mpsc::Receiver<Out>) -> Vec<String> {
     let mut out = Vec::new();
     for body in packets(receiver) {
         let mut reader = sunrise_protocol::buf::Reader::new(&body);
@@ -39,7 +44,7 @@ fn chats(receiver: &mpsc::Receiver<Out>) -> Vec<String> {
 }
 
 /// The completions a guest was sent (`ClientboundCommandSuggestionsPacket`).
-fn suggestions(receiver: &mpsc::Receiver<Out>) -> Vec<String> {
+pub(in crate::game) fn suggestions(receiver: &mpsc::Receiver<Out>) -> Vec<String> {
     let mut out = Vec::new();
     for body in packets(receiver) {
         let mut r = sunrise_protocol::buf::Reader::new(&body);
@@ -58,7 +63,7 @@ fn suggestions(receiver: &mpsc::Receiver<Out>) -> Vec<String> {
 }
 
 /// A server with two guests on it (`conn` 2 and 7).
-fn server_with_guests<'a>(
+pub(in crate::game) fn server_with_guests<'a>(
     resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>,
 ) -> (Game<'a>, Vec<mpsc::Receiver<Out>>) {
     let mut game = server_game(resources);
@@ -158,41 +163,6 @@ fn a_guests_roll_reaches_every_player_once() {
         1,
         "{own:?}"
     );
-}
-
-/// CommandSourceStack.getDisplayName: a command block names itself, the
-/// console says "Server".
-#[test]
-#[ignore = "daily"]
-fn a_blocks_roll_names_the_block_and_the_console_says_server() {
-    let mut resources = None;
-    let mut game = server_game(&mut resources);
-    game.build_registries();
-    game.set_allow_commands(true);
-    assert!(game.run_command(
-        r#"setblock 0 200 0 minecraft:command_block{Command:"random roll 1..2",CustomName:{text:"Dice"}}"#
-    ));
-    let roll = |game: &mut Game<'_>, source: crate::game::commands::execute::Source| {
-        let outer = game.server.command_source.replace(source);
-        game.server.chat_capture = Some(Vec::new());
-        assert!(game.run_command("random roll 1..2"));
-        game.server.command_source = outer;
-        let lines = game.server.chat_capture.take().unwrap();
-        assert_eq!(lines.len(), 1, "{:?}", lines[0].plain());
-        lines[0].plain()
-    };
-    let block = crate::game::commands::execute::Source {
-        entity: None,
-        block: Some((0, 200, 0)),
-        ..game.server_source()
-    };
-    let named = roll(&mut game, block);
-    assert!(named.starts_with("Dice rolled "), "{named}");
-    assert!(named.ends_with(" (from 1 to 2)"), "{named}");
-    let console = game.server_source();
-    let named = roll(&mut game, console);
-    assert!(named.starts_with("Server rolled "), "{named}");
-    assert!(named.ends_with(" (from 1 to 2)"), "{named}");
 }
 
 /// RandomSequences.forAllSequences: the server's answer to the chat box's

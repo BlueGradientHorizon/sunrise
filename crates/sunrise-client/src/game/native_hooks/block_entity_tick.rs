@@ -1,25 +1,32 @@
+#[allow(unused_imports)]
 use super::*;
+#[allow(unused_imports)]
 use crate::game::{
     Dim,
     api_values::{TryIntoApi, TryIntoEngine},
     transactions::OpenTransactions,
 };
+#[allow(unused_imports)]
 use mod_api::{
     BlockEntityAccess, BlockEntityItemError, BlockEntityRef, BlockEntityScope, BlockEntityView,
     ResidentBlockEntity, ServerHost, TransactionContext, TransactionScopeError,
     TransactionUnavailable,
 };
+#[allow(unused_imports)]
 use std::collections::HashMap;
+#[allow(unused_imports)]
 use sunrise_client::{
     block_entities::BlockEntityLoan, chunk_map::ChunkMap, fast_hash::FxHashMap,
     world::ModifiedChunks,
 };
+#[allow(unused_imports)]
 use sunrise_core::nbt::{Compound, JavaString, Tag};
+#[allow(unused_imports)]
 use sunrise_items::items::Items;
 
 #[cfg(test)]
 #[path = "block_entity_tick/tests.rs"]
-mod tests;
+pub(in crate::game) mod tests;
 
 impl Game<'_> {
     /// `LevelChunk.BoundTickingBlockEntity.tick` for a resident mod block entity.
@@ -69,12 +76,12 @@ impl Game<'_> {
     }
 }
 
-fn valid_tick_subject(block: &str, entity: &EngineBlockEntity) -> bool {
+pub(in crate::game) fn valid_tick_subject(block: &str, entity: &EngineBlockEntity) -> bool {
     sunrise_client::block_entity_types::valid(block, entity.id()) == Some(true)
 }
 
 #[derive(Clone, Copy)]
-enum Loan {
+pub(in crate::game) enum Loan {
     // Reuse the ticker's validity result for this instance and state.
     Tick(Option<BlockStateId>),
     Menu(BlockStateId),
@@ -82,14 +89,18 @@ enum Loan {
 }
 
 pub(in crate::game) struct ResidentBlockEntityAccess<'g, 'w> {
-    game: &'g mut Game<'w>,
-    subject: Option<BlockEntityRef>,
-    loan: Loan,
-    items_changed: bool,
+    pub(in crate::game) game: &'g mut Game<'w>,
+    pub(in crate::game) subject: Option<BlockEntityRef>,
+    pub(in crate::game) loan: Loan,
+    pub(in crate::game) items_changed: bool,
 }
 
 impl<'g, 'w> ResidentBlockEntityAccess<'g, 'w> {
-    fn new(game: &'g mut Game<'w>, subject: Option<BlockEntityRef>, loan: Loan) -> Self {
+    pub(in crate::game) fn new(
+        game: &'g mut Game<'w>,
+        subject: Option<BlockEntityRef>,
+        loan: Loan,
+    ) -> Self {
         Self {
             game,
             subject,
@@ -110,7 +121,7 @@ impl<'g, 'w> ResidentBlockEntityAccess<'g, 'w> {
         Self::new(game, None, Loan::OnLoad)
     }
 
-    pub(super) fn on_load(game: &'g mut Game<'w>, subject: BlockEntityRef) -> Self {
+    pub(in crate::game) fn on_load(game: &'g mut Game<'w>, subject: BlockEntityRef) -> Self {
         Self::new(game, Some(subject), Loan::OnLoad)
     }
 
@@ -135,120 +146,26 @@ impl Game<'_> {
     }
 }
 
-impl BlockEntityAccess for ResidentBlockEntityAccess<'_, '_> {
-    fn with_view(&mut self, call: &mut dyn FnMut(BlockEntityView<'_>)) {
-        use mod_api::__private::game::Fields;
-        let Some(subject) = self.subject else { return };
-        let target = subject.fields();
-        let [x, y, z] = target.position;
-        if !self.game.level_in_place(target.level) || !self.game.world.loaded(x, z) {
-            return;
-        }
-        let live_state = self.game.world.block(x, y, z);
-        if matches!(self.loan, Loan::Menu(admitted) if admitted != live_state) {
-            return;
-        }
-        let Ok(state) = live_state.try_into_api() else {
-            return;
-        };
-        let slot_count = self
-            .game
-            .world
-            .block_entities
-            .mod_container(live_state.0)
-            .map_or(0, |c| c.slots);
-        let pos = (x, y, z);
-        let Some(loan) = self
-            .game
-            .world
-            .block_entities
-            .loan_mod_entity(pos, target.generation)
-        else {
-            return;
-        };
-        if let Loan::Tick(checked) = &mut self.loan
-            && *checked != Some(live_state)
-        {
-            if !valid_tick_subject(&self.game.res.facts().get(live_state).name, loan.entity) {
-                return;
-            }
-            *checked = Some(live_state);
-        }
-        let mut data = ServerBlockEntityData {
-            dim: self.game.dim,
-            pos,
-            loan,
-            slot_count,
-            items: self.game.res.items(),
-            journal: &mut self.game.transactions,
-            chunks: &self.game.world.chunks,
-            names: &self.game.world.block_names,
-            hoppers: &self.game.server.hoppers,
-            menu: matches!(self.loan, Loan::Menu(_))
-                .then_some((&mut self.game.world.modified, &mut self.items_changed)),
-            dirty: false,
-        };
-        call(BlockEntityView::new(subject, state, &mut data));
-    }
-
-    fn host(&mut self) -> &mut dyn ServerHost {
-        self.game
-    }
-
-    fn with_current_transaction_scope(
-        &mut self,
-        callback: &mut dyn for<'loan> FnMut(
-            &'loan mut dyn BlockEntityAccess,
-            &'loan TransactionContext,
-        ),
-    ) -> Result<(), TransactionUnavailable> {
-        let frame = self
-            .game
-            .current_storage_frame()
-            .ok_or(TransactionUnavailable)?;
-        frame.lend(|tx| callback(self, tx));
-        Ok(())
-    }
-
-    fn with_transaction_scope(
-        &mut self,
-        call: &mut dyn for<'loan> FnMut(
-            &'loan mut dyn BlockEntityAccess,
-            &'loan TransactionContext,
-        ) -> bool,
-    ) -> Result<bool, TransactionScopeError> {
-        let (subject, loan) = (self.subject, self.loan);
-        let committed = self.game.scoped_storage(|game, tx| {
-            let mut child = ResidentBlockEntityAccess::new(game, subject, loan);
-            call(&mut child, tx).then_some(child.items_changed)
-        })?;
-        if let Some(changed) = committed {
-            self.items_changed |= changed;
-        }
-        Ok(committed.is_some())
-    }
-}
-
-struct ServerBlockEntityData<'a> {
-    pub(super) dim: Dim,
-    pub(super) pos: Pos,
-    pub(super) loan: BlockEntityLoan<'a>,
-    pub(super) slot_count: usize,
-    pub(super) items: &'a Items,
-    pub(super) journal: &'a mut OpenTransactions,
-    pub(super) chunks: &'a ChunkMap,
-    pub(super) names: &'a FxHashMap<Pos, Tag>,
-    pub(super) hoppers: &'a HashMap<Pos, super::super::machines::HopperState>,
-    menu: Option<(&'a mut ModifiedChunks, &'a mut bool)>,
-    dirty: bool,
+pub(in crate::game) struct ServerBlockEntityData<'a> {
+    pub(in crate::game) dim: Dim,
+    pub(in crate::game) pos: Pos,
+    pub(in crate::game) loan: BlockEntityLoan<'a>,
+    pub(in crate::game) slot_count: usize,
+    pub(in crate::game) items: &'a Items,
+    pub(in crate::game) journal: &'a mut OpenTransactions,
+    pub(in crate::game) chunks: &'a ChunkMap,
+    pub(in crate::game) names: &'a FxHashMap<Pos, Tag>,
+    pub(in crate::game) hoppers: &'a HashMap<Pos, super::super::machines::HopperState>,
+    pub(in crate::game) menu: Option<(&'a mut ModifiedChunks, &'a mut bool)>,
+    pub(in crate::game) dirty: bool,
 }
 
 impl ServerBlockEntityData<'_> {
-    fn entity(&self) -> &EngineBlockEntity {
+    pub(in crate::game) fn entity(&self) -> &EngineBlockEntity {
         self.loan.entity
     }
 
-    fn edit(&mut self, saved: bool) -> &mut EngineBlockEntity {
+    pub(in crate::game) fn edit(&mut self, saved: bool) -> &mut EngineBlockEntity {
         self.dirty |= saved;
         self.journal.journal_block_entity_loan(
             self.dim,

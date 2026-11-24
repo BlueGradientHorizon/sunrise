@@ -3,7 +3,7 @@ use sunrise_client::mobs::Extra;
 use sunrise_protocol::entity_data::{Value, serializer};
 
 /// Enderman carried block, creepy and stared-at data, including reset defaults.
-pub(super) fn enderman(
+pub(in crate::game) fn enderman(
     extra: &Extra,
     meta: &mut Vec<(u8, i32, Value)>,
     defaults: &mut Vec<(u8, i32, Value)>,

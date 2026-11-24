@@ -1,13 +1,13 @@
 SmithingTemplateItem.createArmorTrimTemplate	port	crates/sunrise-gameplay/src/smithing_icons.rs::smithing_slot_icons	the empty template slot cycles the armour trim and netherite upgrade template icons, the base slot the helmet to boots and the additions slot the ingot to amethyst shard, as CyclingSlotBackground (30 ticks, a 4 tick fade)
 SmithingTemplateItem.createNetheriteUpgradeTemplate	port	crates/sunrise-gameplay/src/smithing_icons.rs::smithing_slot_icons	the netherite upgrade template: the 11 tool and armour icons in the base slot and the ingot in the additions slot
 SmithingTemplateItem.createNetheriteUpgradeIconList	port	crates/sunrise-gameplay/src/smithing_icons.rs::smithing_slot_icons	the 11 tool and armour icons the base slot cycles for a netherite upgrade template (smithing_slot_icons)
-SpawnEggItem.spawnMob	port	crates/sunrise-client/src/game/mobs/creatures/mod.rs::Game::use_spawn_egg	the egg spawns the mob on the clicked face and posts `minecraft:entity_place` there (the dispenser path posts it too); the egg is consumed and the ITEM_USED stat is awarded
-SpawnEggItem.getType	port	crates/sunrise-client/src/game/mobs/creatures/mod.rs::Game::use_spawn_egg	kind taken from the item id suffix (*_spawn_egg), not an ENTITY_DATA component
+SpawnEggItem.spawnMob	port	crates/sunrise-client/src/game/mobs/creatures/mod_server.rs::Game::use_spawn_egg	the egg spawns the mob on the clicked face and posts `minecraft:entity_place` there (the dispenser path posts it too); the egg is consumed and the ITEM_USED stat is awarded
+SpawnEggItem.getType	port	crates/sunrise-client/src/game/mobs/creatures/mod_server.rs::Game::use_spawn_egg	kind taken from the item id suffix (*_spawn_egg), not an ENTITY_DATA component
 TridentItem.createAttributes	skip:data		attack damage 8 and attack speed -2.9 are item table data (sunrise-items attack_speed modifier)
 TridentItem.asProjectile	skip:other		ProjectileItem override that no code calls: no dispenser behaviour is registered for the trident in vanilla
 WindChargeItem.asProjectile	port	crates/sunrise-client/src/game/blocks/dispenser.rs::Game::shoot_projectile_item	gap: minor: aims with the level random as vanilla does, then shoots with the dispenser uncertainty (6.67); vanilla's shoot is a no-op for wind charges, so the spread is wider in Sunrise
 WindChargeItem.createDispenseConfig	port	crates/sunrise-client/src/game/blocks/dispenser.rs::Game::dispense_projectile	position function, uncertainty 6.6666665, power 1.0 and event 1051 match
-alchemy/Potion.hasInstantEffects	inline	crates/sunrise-client/src/game/items/potions.rs::Game::splash	the instant check is written inline for the splash level event and sound (2007/1054 vs 2002/1053)
+alchemy/Potion.hasInstantEffects	inline	crates/sunrise-client/src/game/items/potions_server.rs::Game::splash	the instant check is written inline for the splash level event and sound (2007/1054 vs 2002/1053)
 PotionContents.createItemStack	port	crates/sunrise-items/src/item_data.rs::ItemStack::with_potion	item stack plus the potion in its data
 PotionContents.is	inline	crates/sunrise-client/src/cauldron.rs::interact	gap: minor: only the water check is here; other callers compare the potion id themselves (dispenser.rs, Enderman)
 PotionContents.isPotionWithoutCustomEffects	inline	crates/sunrise-client-render/src/effects.rs::PlayerEffects::potion_effects	Sunrise has no custom effects on a potion stack, so this is always the potion alone
@@ -15,7 +15,7 @@ PotionContents.getAllEffects	port	crates/sunrise-client-render/src/effects.rs::P
 PotionContents.withPotion	port	crates/sunrise-items/src/item_data.rs::ItemStack::with_potion	sets the potion and keeps the other data
 PotionContents.withEffectAdded	inline	crates/sunrise-client/src/game/mobs/dragon.rs::Game::tick_breath	gap: minor: the dragon fireball cloud's instant damage (12) is hard-coded in the tick, not an added effect; the breath cloud's 6 is the same path
 PotionContents.getColorOptional	port	crates/sunrise-client-core/src/potions.rs::potion_color	amplifier-weighted mix; base colour when there are no effects
-PotionContents.hasEffects	inline	crates/sunrise-client/src/game/items/potions.rs::Game::splash	a lingering cloud is made only when the potion has effects
+PotionContents.hasEffects	inline	crates/sunrise-client/src/game/items/potions_server.rs::Game::splash	a lingering cloud is made only when the potion has effects
 PotionContents.getPotionDescription	port	crates/sunrise-client-render/src/brewing.rs::tooltip	effect name with potency; joined with a space, not the potion.withAmplifier translation
 PotionContents.onConsume	port	crates/sunrise-client/src/game/items/potions.rs::Game::tick_drinking	gap: minor: duration scale is always 1.0; POTION_DURATION_SCALE is not read
 AttackRange.defaultFor	inline	crates/sunrise-client/src/game/items/hand.rs::attack_range_contains	gap: minor: fixed reach 0 to 3 with a 0.3 margin; no entity interaction range attribute
@@ -78,7 +78,7 @@ ResolvableProfile.Static.name	skip:other		no callers in the vanilla source
 ResolvableProfile.Static.equals	skip:java		value equality
 ResolvableProfile.Static.hashCode	skip:java		hash for collections
 Tool.Rule.minesAndDrops	port	crates/sunrise-items/src/items.rs::Items::load_with	rule read from the item JSON: speed and correct_for_drops set to true
-TooltipDisplay.withHidden	port	crates/sunrise-client/src/game/administration/commands/items.rs::Game::apply_item_modifier	both `/item modify toggle_tooltips` and the loot table's `minecraft:toggle_tooltips` (`loot.rs::Context::run`) keep the component's hidden ids; the raid banner's hidden pattern is read in `item_tooltip` shows()
+TooltipDisplay.withHidden	port	crates/sunrise-client/src/game/administration/commands/items_server.rs::Game::apply_item_modifier	both `/item modify toggle_tooltips` and the loot table's `minecraft:toggle_tooltips` (`loot.rs::Context::run`) keep the component's hidden ids; the raid banner's hidden pattern is read in `item_tooltip` shows()
 WrittenBookContent.craftCopy	port	crates/sunrise-client/src/crafting.rs::Special::assemble	book copy: generation plus one, pages kept
 WrittenBookContent.resolveForItem	port	crates/sunrise-client/src/game/interface/books.rs::Game::resolve_held_book	the book in the acting hand resolves when `use_book` opens it, as `ServerPlayer.openItemGui` does before the book screen reads it
 WrittenBookContent.resolve	port	crates/sunrise-items/src/item_data.rs::WrittenBook::resolve	every page's selectors and scores become their text (`extra` and `with` recurse), and the book is marked resolved

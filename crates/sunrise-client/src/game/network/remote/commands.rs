@@ -3,7 +3,7 @@ use sunrise_protocol::packets::play::CommandSuggestions;
 
 impl Game<'_> {
     /// `ClientPacketListener.handleCommandSuggestions`: forward the reply to the command edit box.
-    pub(super) fn handle_command_suggestions(&mut self, packet: CommandSuggestions) {
+    pub(in crate::game) fn handle_command_suggestions(&mut self, packet: CommandSuggestions) {
         let lang = self
             .remote
             .as_ref()

@@ -71,7 +71,7 @@ Item.getBarColor	port	crates/sunrise-client-render/src/hud_overlays.rs::damage_b
 Item.mineBlock	port	crates/sunrise-client/src/game/blocks/block_breaking.rs::Game::mine_block_with_held
 Item.isCorrectToolForDrops	port	crates/sunrise-items/src/items.rs::Items::correct_for_drops
 Item.getUseAnimation	port	crates/sunrise-items/src/use_animation.rs::consumable_animation	consumable animation; the block and spear poses are handled by the item pose code
-Item.getPlayerPOVHitResult	port	crates/sunrise-client/src/game.rs::Game::pick	the view ray from the eyes; the fluid variant is Game::pick_fluid
+Item.getPlayerPOVHitResult	port	crates/sunrise-client/src/game/game_server.rs::Game::pick	the view ray from the eyes; the fluid variant is Game::pick_fluid
 Item.Properties.food	skip:data		registration builder; Sunrise reads item data from tables
 Item.Properties.usingConvertsTo	skip:data		registration builder
 Item.Properties.durability	skip:data		registration builder

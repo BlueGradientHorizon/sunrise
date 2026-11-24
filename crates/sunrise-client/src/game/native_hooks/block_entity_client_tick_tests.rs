@@ -5,50 +5,59 @@
 //! while paused or frozen; a type that didn't declare them never; a copy removed or whose column
 //! the server forgets not again; and a server, the world's own ticks, never. A spawner between
 //! them in the ticker list ticks between them, from the same list.
+#[allow(unused_imports)]
 use crate::game::native_entity_refs::tests::{run_fresh_cases, with_game_at};
+#[allow(unused_imports)]
 use crate::game::world_loading::WorldRequest;
+#[allow(unused_imports)]
 use mod_api::{
     BlockEntityClientTickEvent, BlockEntityClientTicksEvent, BlockEntityDataReceivedEvent,
     BlockEntityPart, BlockPart, BlocksEvent, ClientHost, ClientTickPostEvent, ClientTickPreEvent,
     Hooks, HostSide, LevelTickPostEvent, LevelTickPreEvent, Registrar, RegistrationContext,
 };
+#[allow(unused_imports)]
 use std::path::{Path, PathBuf};
+#[allow(unused_imports)]
 use std::sync::Arc;
+#[allow(unused_imports)]
 use std::sync::Mutex;
+#[allow(unused_imports)]
 use std::time::{Duration, Instant};
+#[allow(unused_imports)]
 use sunrise_client::containers::BlockEntity;
+#[allow(unused_imports)]
 use sunrise_core::nbt::{Compound, Tag};
 
-const HUM: &str = "client_tick_probe:hum";
-const QUIET: &str = "client_tick_probe:quiet";
+pub(in crate::game) const HUM: &str = "client_tick_probe:hum";
+pub(in crate::game) const QUIET: &str = "client_tick_probe:quiet";
 /// A mod block named as vanilla's shulker boxes are: its ticker is its own type's.
-const CRATE: &str = "client_tick_probe:crate_shulker_box";
+pub(in crate::game) const CRATE: &str = "client_tick_probe:crate_shulker_box";
 /// Chunk (100, 100): far from the spawn.
-const CHUNK: (i32, i32) = (100, 100);
-const HUMS: [[i32; 3]; 2] = [[1610, 70, 1613], [1601, 64, 1602]];
-const QUIET_AT: [i32; 3] = [1605, 64, 1605];
+pub(in crate::game) const CHUNK: (i32, i32) = (100, 100);
+pub(in crate::game) const HUMS: [[i32; 3]; 2] = [[1610, 70, 1613], [1601, 64, 1602]];
+pub(in crate::game) const QUIET_AT: [i32; 3] = [1605, 64, 1605];
 /// A hum in the next column, which stays.
-const OTHER: [i32; 3] = [1620, 64, 1600];
-const CRATE_AT: [i32; 3] = [1621, 64, 1600];
+pub(in crate::game) const OTHER: [i32; 3] = [1620, 64, 1600];
+pub(in crate::game) const CRATE_AT: [i32; 3] = [1621, 64, 1600];
 /// A spawner that arrives after the second hum and before the first.
-const SPAWNER_AT: [i32; 3] = [1603, 64, 1608];
+pub(in crate::game) const SPAWNER_AT: [i32; 3] = [1603, 64, 1608];
 
 /// What the probe heard, in order: the client tick's and level's brackets, each client tick
 /// (`tick`, its position and `rpm`) and each synced data notice (`data`).
-static EVENTS: Mutex<Vec<String>> = Mutex::new(Vec::new());
+pub(in crate::game) static EVENTS: Mutex<Vec<String>> = Mutex::new(Vec::new());
 /// How many particles the game had requested at each client tick told
 /// (`sunrise_client::particles::requested_count`), in order.
-static TICK_PARTICLES: Mutex<Vec<u64>> = Mutex::new(Vec::new());
+pub(in crate::game) static TICK_PARTICLES: Mutex<Vec<u64>> = Mutex::new(Vec::new());
 
-fn note(event: String) {
+pub(in crate::game) fn note(event: String) {
     EVENTS.lock().unwrap().push(event);
 }
 
-fn take_events() -> Vec<String> {
+pub(in crate::game) fn take_events() -> Vec<String> {
     std::mem::take(&mut *EVENTS.lock().unwrap())
 }
 
-fn rpm_of(nbt: &Compound) -> i32 {
+pub(in crate::game) fn rpm_of(nbt: &Compound) -> i32 {
     match nbt.get(&"rpm".into()) {
         Some(Tag::Int(rpm)) => *rpm,
         _ => -1,
@@ -57,7 +66,7 @@ fn rpm_of(nbt: &Compound) -> i32 {
 
 /// A client tick's event, once its scoped view is checked to read its position and its state to
 /// be its block's.
-fn record(event: &mut BlockEntityClientTickEvent<'_>) {
+pub(in crate::game) fn record(event: &mut BlockEntityClientTickEvent<'_>) {
     let (handle, pos, block, id, rpm) = event
         .subject
         .with_view(|view| {
@@ -82,7 +91,7 @@ fn record(event: &mut BlockEntityClientTickEvent<'_>) {
 }
 
 /// Declares client ticks.
-struct Hum;
+pub(in crate::game) struct Hum;
 #[mod_api::sunrise_part]
 impl BlockPart for Hum {}
 #[mod_api::sunrise_part]
@@ -107,7 +116,7 @@ impl BlockEntityPart for Hum {
 }
 
 /// Has a client tick but never declares one.
-struct Quiet;
+pub(in crate::game) struct Quiet;
 #[mod_api::sunrise_part]
 impl BlockPart for Quiet {}
 #[mod_api::sunrise_part]
@@ -117,7 +126,7 @@ impl BlockEntityPart for Quiet {
     }
 }
 
-struct Probe;
+pub(in crate::game) struct Probe;
 #[mod_api::__subscriptions]
 impl Hooks for Probe {
     fn register(&self, r: &mut dyn Registrar, _: &RegistrationContext) {
@@ -156,7 +165,7 @@ impl Hooks for Probe {
     }
 }
 
-fn install() {
+pub(in crate::game) fn install() {
     let mods: mod_api::Mods =
         vec![mod_api::ModEntry::new("client_tick_probe", Box::new(Probe))].into();
     mod_platform::__private::install(mods.clone());
@@ -164,7 +173,7 @@ fn install() {
 }
 
 /// The prepared resources with the installed mods' content.
-fn prepared_root() -> PathBuf {
+pub(in crate::game) fn prepared_root() -> PathBuf {
     let base = PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
     crate::game::mods::content_root(&base, &Default::default())
         .unwrap()
@@ -172,7 +181,7 @@ fn prepared_root() -> PathBuf {
         .to_path_buf()
 }
 
-fn rpm(rpm: i32) -> Compound {
+pub(in crate::game) fn rpm(rpm: i32) -> Compound {
     let mut nbt = Compound::new();
     nbt.insert("rpm".into(), Tag::Int(rpm));
     nbt
@@ -180,186 +189,21 @@ fn rpm(rpm: i32) -> Compound {
 
 /// One frame: what the server sent is handled (`update_world`, which a frame runs before its
 /// ticks), then `steps` client ticks. Returns what the probe heard.
-fn frame(game: &mut crate::game::Game<'_>, steps: u32) -> Vec<String> {
+pub(in crate::game) fn frame(game: &mut crate::game::Game<'_>, steps: u32) -> Vec<String> {
     game.update_world();
     game.client_tick_steps(steps, None).unwrap();
     take_events()
 }
 
 /// The events of one client tick that ticks the level, its client ticks being `ticks`.
-fn ticked(ticks: &[([i32; 3], i32)]) -> Vec<String> {
+pub(in crate::game) fn ticked(ticks: &[([i32; 3], i32)]) -> Vec<String> {
     let mut events = vec!["client_pre".to_owned(), "level_pre".to_owned()];
     events.extend(ticks.iter().map(|(pos, rpm)| format!("tick {pos:?} {rpm}")));
     events.extend(["level_post".to_owned(), "client_post".to_owned()]);
     events
 }
 
-#[test]
-#[ignore = "daily"]
-fn a_clients_frames_tick_its_declared_copies_until_they_go() {
-    use crate::game::execution_role::ExecutionRole;
-    use sunrise_client::{
-        chunk::Chunk,
-        containers::{ModBlockEntity, ModBlockEntityFields},
-    };
-    use sunrise_protocol::packets::play;
-    if run_fresh_cases(
-        "game::native_hooks::block_entity_client_tick_tests::a_clients_frames_tick_its_declared_copies_until_they_go",
-        "SUNRISE_BLOCK_ENTITY_CLIENT_TICK_CHILD",
-        &["game"],
-    ) {
-        return;
-    }
-    install();
-    let types = [
-        "client_tick_probe:hum",
-        "client_tick_probe:quiet",
-        "client_tick_probe:crate_shulker_box",
-    ];
-    with_game_at(prepared_root(), |game| {
-        game.options.execution_role = ExecutionRole::Client;
-        game.options.dedicated = None;
-
-        // Not connected yet: no client level, nothing told.
-        game.tick_client_block_entities();
-        assert!(take_events().is_empty(), "told without a client level");
-
-        let (_sent, mut server) = crate::game::remote::tests::connect_menu_test(game);
-        let remote = game.remote.as_mut().unwrap();
-        remote.logged_in = true;
-        Arc::make_mut(&mut remote.builtin).registries.insert(
-            "minecraft:block_entity_type".into(),
-            sunrise_protocol::registry::Ids::from_names(types.map(str::to_owned).to_vec()),
-        );
-        for (x, z) in [CHUNK, (101, 100)] {
-            game.streaming
-                .insert_remote(&mut game.world, Chunk::empty(x, z));
-        }
-        let registry = game.pack.assets.registry;
-        let hum = registry.default_state(HUM).unwrap();
-        let quiet = registry.default_state(QUIET).unwrap();
-        let boxed = registry.default_state(CRATE).unwrap();
-        // Arrival order: the second hum, the quiet one, the first hum, the other column's.
-        let placed = [
-            (HUMS[1], hum, HUM, 10),
-            (QUIET_AT, quiet, QUIET, 20),
-            (HUMS[0], hum, HUM, 30),
-            (OTHER, hum, HUM, 40),
-            (CRATE_AT, boxed, CRATE, 50),
-        ];
-        for (n, ([x, y, z], state, id, speed)) in placed.into_iter().enumerate() {
-            game.world.set(x, y, z, state).unwrap();
-            let entity = ModBlockEntity::new(
-                id.into(),
-                ModBlockEntityFields {
-                    nbt: rpm(speed),
-                    ..Default::default()
-                },
-            );
-            game.world
-                .block_entities
-                .insert((x, y, z), BlockEntity::Mod(Box::new(entity)));
-            if n == 0 {
-                // A spawner that sees a player at any range: two particles each client tick.
-                let mut pig = Compound::new();
-                pig.insert("id".into(), Tag::String("minecraft:pig".into()));
-                let spawner = sunrise_client::chunk::block_entity::Spawner {
-                    required_player_range: -1,
-                    next: Some(sunrise_client::chunk::block_entity::Next::Own(
-                        sunrise_client::chunk::block_entity::SpawnData {
-                            entity: pig,
-                            ..Default::default()
-                        },
-                    )),
-                    ..Default::default()
-                };
-                let [x, y, z] = SPAWNER_AT;
-                let state = registry.default_state("minecraft:spawner").unwrap();
-                game.world.set(x, y, z, state).unwrap();
-                game.world
-                    .block_entities
-                    .insert((x, y, z), BlockEntity::Spawner(Box::new(spawner)));
-            }
-        }
-        // The player the spawner looks for (`hasNearbyAlivePlayer` needs one, whatever the range).
-        let [x, y, z] = SPAWNER_AT.map(f64::from);
-        game.player = Some(
-            sunrise_client::motion::PlayerMotion::new(
-                game.motion,
-                sunrise_core::geometry::Vec3::new(x, y + 2.0, z),
-            )
-            .unwrap(),
-        );
-        take_events();
-
-        // Each declared copy once per tick, in arrival order, inside the level's brackets; the
-        // quiet type never. The spawner ticks between the second hum and the first, as it arrived:
-        // its two particles come between their ticks.
-        let all = |first| ticked(&[(HUMS[1], 10), (HUMS[0], first), (OTHER, 40), (CRATE_AT, 50)]);
-        game.particles.0.requested = Some(Vec::new());
-        TICK_PARTICLES.lock().unwrap().clear();
-        assert_eq!(frame(game, 1), all(30));
-        let seen = std::mem::take(&mut *TICK_PARTICLES.lock().unwrap());
-        assert_eq!([seen[1] - seen[0], seen[2] - seen[1]], [2, 0], "{seen:?}");
-        game.particles.0.requested = None;
-        assert_eq!(frame(game, 2), [all(30), all(30)].concat());
-
-        // The server's update reaches the next frame's drain: the notice comes first, and both
-        // of that frame's ticks see the merged data directly from the resident block entity.
-        server
-            .send(
-                &play::Clientbound::BlockEntityData(play::BlockEntityData {
-                    pos: HUMS[0],
-                    kind: 0,
-                    tag: Tag::Compound(rpm(31)),
-                })
-                .encode(),
-            )
-            .unwrap();
-        // The frame whose drain (`update_world`) handles it, once the connection has it.
-        let deadline = Instant::now() + Duration::from_secs(10);
-        while EVENTS.lock().unwrap().is_empty() {
-            assert!(Instant::now() < deadline, "the update did not arrive");
-            std::thread::sleep(Duration::from_millis(1));
-            game.update_world();
-        }
-        game.client_tick_steps(2, None).unwrap();
-        let data = format!("data {:?} 31", HUMS[0]);
-        assert_eq!(take_events(), [vec![data], all(31), all(31)].concat());
-
-        // Paused, the client tick runs but not the level; frozen, the level runs but not its
-        // block entities.
-        game.pause = true;
-        assert_eq!(
-            frame(game, 1),
-            ["client_pre", "client_post"].map(str::to_owned)
-        );
-        game.pause = false;
-        game.clock.set_frozen(true);
-        assert_eq!(frame(game, 1), ticked(&[]));
-        game.clock.set_frozen(false);
-
-        // A copy removed is not told again; its column's other hum still is.
-        let [x, y, z] = HUMS[1];
-        game.world.block_entities.remove(&(x, y, z));
-        assert_eq!(
-            frame(game, 1),
-            ticked(&[(HUMS[0], 31), (OTHER, 40), (CRATE_AT, 50)])
-        );
-
-        // The server forgets the column: its hums are not told again, the other column's is.
-        game.forget_remote_columns(&mut [CHUNK].into_iter().collect(), true);
-        for _ in 0..2 {
-            assert_eq!(frame(game, 1), ticked(&[(OTHER, 40), (CRATE_AT, 50)]));
-        }
-
-        // The level going leaves nothing to tell.
-        game.forget_all_remote_columns();
-        assert_eq!(frame(game, 1), ticked(&[]));
-    });
-}
-
-fn request(world: &Path) -> WorldRequest {
+pub(in crate::game) fn request(world: &Path) -> WorldRequest {
     let rules = std::sync::Arc::new(sunrise_client::gamerules::RuleRegistry::vanilla());
     let options = sunrise_client::title::WorldOptions {
         world_type: sunrise_client::save::WorldPreset::Flat,

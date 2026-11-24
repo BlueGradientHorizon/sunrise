@@ -65,9 +65,9 @@ impl IncomingRecipes {
 }
 
 #[derive(Default)]
-pub(super) struct RecipeTables {
+pub(in crate::game) struct RecipeTables {
     tables: Option<Arc<Recipes>>,
-    pub(super) books: Option<
+    pub(in crate::game) books: Option<
         Result<
             sunrise_client::recipe_book::ModBookIndex,
             sunrise_client::recipe_book::DisplayLoadError,
@@ -81,7 +81,7 @@ pub(super) struct RecipeTables {
     /// The display numbers of those recipes: the server numbers its book's
     /// displays over its own recipe set, a world's data pack recipes
     /// included, so the book numbers them the same (`Game::display_index`).
-    pub(super) synced_index: Option<sunrise_client::recipe_book::RecipeIndex>,
+    pub(in crate::game) synced_index: Option<sunrise_client::recipe_book::RecipeIndex>,
     /// The recipe content's parts so far, until its last.
     incoming: IncomingRecipes,
     /// The types that came before the player did: the mods hear of them
@@ -122,7 +122,7 @@ impl Index {
 
 /// A stack's components beyond its item's, as vanilla's item syntax writes
 /// them (`[minecraft:potion_contents={potion:"minecraft:swiftness"}]`), or "".
-pub(super) fn components(s: &ItemStack) -> String {
+pub(in crate::game) fn components(s: &ItemStack) -> String {
     use sunrise_core::nbt::Tag;
     let Some(Tag::Compound(entries)) = sunrise_client::item_data::component_snapshot(s) else {
         return String::new();
@@ -158,7 +158,7 @@ fn recipe(id: String, kind: RecipeKind) -> Recipe {
 
 impl Game<'_> {
     /// The engine's matchers, shared with crafting and station menus; no mod-side rematching.
-    pub(super) fn level_recipe_for(
+    pub(in crate::game) fn level_recipe_for(
         &self,
         level: LevelRef,
         recipe_type: &mod_api::Identifier,
@@ -288,7 +288,7 @@ impl Game<'_> {
             _ => Err(NotMatchable),
         }
     }
-    pub(super) fn registered_recipe_book_category(
+    pub(in crate::game) fn registered_recipe_book_category(
         &mut self,
         kind: &str,
     ) -> Option<mod_api::item::recipe_book::RecipeBookCategory> {
@@ -303,7 +303,7 @@ impl Game<'_> {
             .cloned()
     }
     /// `place_recipe`: refused as `recipes.place` refuses it.
-    pub(super) fn recipe_place(&mut self, book_id: i32, all: bool) -> Result<(), String> {
+    pub(in crate::game) fn recipe_place(&mut self, book_id: i32, all: bool) -> Result<(), String> {
         if !self.mod_recipe_screen() {
             return Err("no screen that takes recipes is open".into());
         }
@@ -319,7 +319,7 @@ impl Game<'_> {
     /// to the stack's own maximum, then `MultiPlayerGameMode.handleCreativeModeItemAdd` for
     /// every slot it changed, sent now: the end of the tick's sync skips creative slots while
     /// a server menu is open. What did not fit comes back and is not dropped.
-    pub(super) fn creative_give_stack(
+    pub(in crate::game) fn creative_give_stack(
         &mut self,
         stack: &mod_api::ItemStack,
     ) -> Result<Option<mod_api::ItemStack>, CreativeGiveError> {
@@ -361,7 +361,7 @@ impl Game<'_> {
     }
     /// The tables, made on the first call; none while the world resources
     /// they come from are still loading behind the title on a slow start.
-    pub(super) fn made_recipes(&mut self) -> Option<Arc<Recipes>> {
+    pub(in crate::game) fn made_recipes(&mut self) -> Option<Arc<Recipes>> {
         self.res.rest.get()?;
         if self.recipe_tables.tables.is_none() {
             self.recipe_tables.tables = Some(Arc::new(self.make_mod_recipes()));
@@ -369,7 +369,7 @@ impl Game<'_> {
         self.recipe_tables.tables.clone()
     }
     /// The `book_id`s the player's recipe book holds now.
-    pub(super) fn known_displays(&mut self) -> Arc<[i32]> {
+    pub(in crate::game) fn known_displays(&mut self) -> Arc<[i32]> {
         if self.res.rest.get().is_none() {
             return Arc::from([]);
         }
@@ -562,19 +562,19 @@ impl Game<'_> {
 impl Game<'_> {
     /// The server's recipes a client was sent, over its own; None on a
     /// server and until a server sends any.
-    pub(super) fn synced_recipes(&self) -> Option<&sunrise_client::crafting::Recipes> {
+    pub(in crate::game) fn synced_recipes(&self) -> Option<&sunrise_client::crafting::Recipes> {
         self.recipe_tables.synced.as_ref()
     }
     /// The display numbers the recipe book reads: the server's recipes',
     /// once a server sent them, else the world's own.
-    pub(super) fn display_index(&self) -> &sunrise_client::recipe_book::RecipeIndex {
+    pub(in crate::game) fn display_index(&self) -> &sunrise_client::recipe_book::RecipeIndex {
         match &self.recipe_tables.synced_index {
             Some(index) => index,
             None => &self.stations().recipe_index,
         }
     }
     /// A new play session (`Login`): what the last server sent is gone.
-    pub(super) fn forget_synced_recipes(&mut self) {
+    pub(in crate::game) fn forget_synced_recipes(&mut self) {
         self.recipe_tables.synced = None;
         self.recipe_tables.synced_index = None;
         self.recipe_tables.incoming = IncomingRecipes::default();
@@ -585,7 +585,7 @@ impl Game<'_> {
     /// `native_recipes_received` for the types that came, once the window
     /// has its player: the recipes of a join come before it, and the helpers
     /// answer nothing until then. Once a frame.
-    pub(super) fn recipes_received_now(&mut self) {
+    pub(in crate::game) fn recipes_received_now(&mut self) {
         if self.player.is_some()
             && let Some(types) = self.recipe_tables.received.take()
         {
@@ -596,7 +596,7 @@ impl Game<'_> {
     /// A `sunrise:recipe_content` part the server sent the window. On the
     /// last, the window's tables take the server's recipes of those types in
     /// place of its own, and the mods hear of it (`RecipesReceivedEvent`).
-    pub(super) fn remote_recipe_content(&mut self, data: &[u8]) {
+    pub(in crate::game) fn remote_recipe_content(&mut self, data: &[u8]) {
         let part = match sunrise_client::lan::recipes::ContentPart::decode(data) {
             Ok(part) => part,
             Err(e) => {

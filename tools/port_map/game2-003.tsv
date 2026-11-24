@@ -137,7 +137,7 @@ Hoglin.mobInteract	port	crates/sunrise-client/src/game/mobs/creatures/mod.rs::Ga
 Hoglin.finishConversion	port	crates/sunrise-client/src/mobs/piglin.rs::zombification_tick	zombification turns it into a zoglin with nausea
 Hoglin.addAdditionalSaveData	port	crates/sunrise-client/src/entity_nbt.rs::mob_to_nbt	gap: minor: CannotBeHunted is not written
 Hoglin.readAdditionalSaveData	port	crates/sunrise-client/src/entity_nbt/mob_load.rs::mob_from_nbt	gap: minor: CannotBeHunted is not read
-Hoglin.getBreedOffspring	port	crates/sunrise-client/src/game/mobs/creatures/mod.rs::Game::breed	gap: minor: the hoglin child is not made persistent
+Hoglin.getBreedOffspring	port	crates/sunrise-client/src/game/mobs/creatures/mod_server.rs::Game::breed	gap: minor: the hoglin child is not made persistent
 HoglinAi.initCoreActivity	inline	crates/sunrise-client/src/mobs/piglin.rs::register_hoglin	gap: minor: look-at-target and move-to-target sinks are not separate; the goal set stands in for them
 HoglinAi.initIdleActivity	inline	crates/sunrise-client/src/mobs/piglin.rs::register_hoglin	gap: player: hoglins do not walk away from adult piglins within 8 blocks; the rest of the idle is there
 HoglinAi.initFightActivity	inline	crates/sunrise-client/src/mobs/piglin.rs::register_hoglin	MeleeAttack.create(40) for adults and create(15) for babies (`MeleeAttack::intervals(40, 15)`); the brain's own order has no tick parity here (the probe has no hoglin brain)

@@ -42,7 +42,7 @@ CLIENT_WITNESS_NAME = 'sulfur_cube_fuse_client.txt'
 WITNESS_ENV = 'SUNRISE_SULFUR_CUBE_FUSE_WITNESS_DIR'
 CLIENT_TESTS = [
     'game::server_side::lan::sources_tests::a_loaded_sulfur_cube_fuse_matches_the_pinned_oracle',
-    'game::remote_mob_data::tests::sulfur_cube_max_fuse_sets_the_client_fuse',
+    'game::client_side::remote_mob_data::tests::sulfur_cube_max_fuse_sets_the_client_fuse',
 ]
 LIB_TEST = 'mobs::sulfur_cube::tnt_rule_tests::a_loaded_fuse_is_kept_as_it_is_and_leaves_invulnerable_alone'
 

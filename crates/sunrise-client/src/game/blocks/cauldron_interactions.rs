@@ -1,5 +1,7 @@
 //! Prepared cauldron callbacks and their server-side dispatch.
+#[allow(unused_imports)]
 use super::*;
+#[allow(unused_imports)]
 use mod_api::{
     __private::{
         RetainedCallback,
@@ -7,17 +9,19 @@ use mod_api::{
     },
     HookId,
 };
+#[allow(unused_imports)]
 use std::{cell::RefCell, collections::BTreeSet, sync::Arc};
+#[allow(unused_imports)]
 use sunrise_client::cauldron::interactions::Dispatcher;
 
 #[derive(Clone)]
 pub(in crate::game) struct Callback {
     pub(in crate::game) handler: Arc<dyn mod_api::Interaction>,
     pub(in crate::game) owner: &'static str,
-    guard: Option<RetainedCallback>,
+    pub(in crate::game) guard: Option<RetainedCallback>,
 }
 impl Callback {
-    fn new(handler: Arc<dyn mod_api::Interaction>) -> Self {
+    pub(in crate::game) fn new(handler: Arc<dyn mod_api::Interaction>) -> Self {
         let owner = mod_api::__private::cauldron_owner();
         let guard = mod_api::__private::mod_index(owner)
             .map(|index| RetainedCallback::new(owner, index, "cauldron_interaction", ""));
@@ -30,7 +34,7 @@ impl Callback {
 }
 pub(in crate::game) type Table = Dispatcher<Callback>;
 thread_local! {
-    static TABLE: RefCell<Arc<Table>> = RefCell::new(Arc::new(Table::default()));
+    pub(in crate::game) static TABLE: RefCell<Arc<Table>> = RefCell::new(Arc::new(Table::default()));
 }
 pub(in crate::game) fn snapshot() -> Arc<Table> {
     TABLE.with_borrow(Arc::clone)
@@ -42,7 +46,7 @@ pub(in crate::game) fn install(table: Arc<Table>) {
     TABLE.with_borrow_mut(|old| *old = table);
 }
 
-fn discard_callback(callback: Callback) {
+pub(in crate::game) fn discard_callback(callback: Callback) {
     discard_registration(
         (
             HookId::RegisterCauldronInteraction,
@@ -54,7 +58,7 @@ fn discard_callback(callback: Callback) {
 }
 
 /// One admitted cauldron registration edit, replayed in registration order at `finish`.
-enum Edit {
+pub(in crate::game) enum Edit {
     Item {
         block: String,
         item: String,
@@ -75,7 +79,7 @@ enum Edit {
     },
 }
 impl Edit {
-    fn into_callback(self) -> Callback {
+    pub(in crate::game) fn into_callback(self) -> Callback {
         match self {
             Self::Item { callback, .. }
             | Self::AllItem { callback, .. }
@@ -85,20 +89,23 @@ impl Edit {
     }
 }
 pub(in crate::game) struct Registrar<'a> {
-    items: &'a Items,
-    registry: &'a sunrise_world::registry::BlockRegistry,
-    edits: Vec<Edit>,
-    error: Option<mod_api::CauldronRegistrationError>,
+    pub(in crate::game) items: &'a Items,
+    pub(in crate::game) registry: &'a sunrise_world::registry::BlockRegistry,
+    pub(in crate::game) edits: Vec<Edit>,
+    pub(in crate::game) error: Option<mod_api::CauldronRegistrationError>,
 }
 /// A tag as entries keep it: its resource location, without `#`.
-fn tag_id(tag: &str) -> Option<String> {
+pub(in crate::game) fn tag_id(tag: &str) -> Option<String> {
     let tag = tag.strip_prefix('#').unwrap_or(tag);
     mod_api::Identifier::parse(tag)
         .ok()
         .map(|id| id.to_string())
 }
 impl<'a> Registrar<'a> {
-    fn new(items: &'a Items, registry: &'a sunrise_world::registry::BlockRegistry) -> Self {
+    pub(in crate::game) fn new(
+        items: &'a Items,
+        registry: &'a sunrise_world::registry::BlockRegistry,
+    ) -> Self {
         Self {
             items,
             registry,
@@ -126,14 +133,14 @@ impl<'a> Registrar<'a> {
     }
 
     /// Record an admission error, which fails the whole preparation when it finishes.
-    fn refuse(
+    pub(in crate::game) fn refuse(
         &mut self,
         error: mod_api::CauldronRegistrationError,
     ) -> std::result::Result<(), mod_api::CauldronRegistrationError> {
         self.error = Some(error);
         Err(error)
     }
-    fn finish(self) -> Result<Arc<Table>> {
+    pub(in crate::game) fn finish(self) -> Result<Arc<Table>> {
         let Self { edits, error, .. } = self;
         if let Some(error) = error {
             for edit in edits {
@@ -368,4 +375,4 @@ impl Game<'_> {
 
 #[cfg(test)]
 #[path = "cauldron_interactions/tests.rs"]
-mod tests;
+pub(in crate::game) mod tests;

@@ -1,25 +1,33 @@
 //! #795, the mob slice: a handle fired inside a mob's own tick resolves the
 //! mob the tick holds out of the game, without a copy or a placeholder.
+#[allow(unused_imports)]
 use super::*;
+#[allow(unused_imports)]
 use crate::game::Dim;
+#[allow(unused_imports)]
 use crate::game::native_entity_refs::tests::with_game;
+#[allow(unused_imports)]
 use mod_api::{
     Despawn, EntityTickListenedEvent, EntityTickPreEvent, HostSide, ModEntry, ServerHost,
 };
+#[allow(unused_imports)]
 use std::sync::{
     Arc, Mutex,
     atomic::{AtomicU32, Ordering},
 };
+#[allow(unused_imports)]
 use sunrise_client::chunk::Chunk;
 
 /// The `mob_despawn` facts a listener reads through its handle: its own
 /// position, and another mob's through a nested lookup.
 #[derive(Debug, Default)]
-struct DespawnRecords(Vec<(u32, Option<[f64; 3]>, Option<[f64; 3]>)>);
+pub(in crate::game) struct DespawnRecords(
+    pub(in crate::game) Vec<(u32, Option<[f64; 3]>, Option<[f64; 3]>)>,
+);
 
-struct DespawnProbe {
-    records: Arc<Mutex<DespawnRecords>>,
-    allow: Arc<AtomicU32>,
+pub(in crate::game) struct DespawnProbe {
+    pub(in crate::game) records: Arc<Mutex<DespawnRecords>>,
+    pub(in crate::game) allow: Arc<AtomicU32>,
 }
 
 #[mod_api::__subscriptions]
@@ -39,9 +47,9 @@ impl mod_api::Hooks for DespawnProbe {
 }
 
 /// Reads and moves the mob in its `entity_tick_pre`, through its handle.
-struct MoveOnPre {
-    id: u32,
-    seen: Arc<Mutex<Vec<Option<[f64; 3]>>>>,
+pub(in crate::game) struct MoveOnPre {
+    pub(in crate::game) id: u32,
+    pub(in crate::game) seen: Arc<Mutex<Vec<Option<[f64; 3]>>>>,
 }
 
 #[mod_api::__subscriptions]
@@ -67,45 +75,15 @@ impl mod_api::Hooks for MoveOnPre {
     }
 }
 
-/// Two idle pigs in an entity-ticking chunk, at x = 1 and x = 2, ready for
-/// the real creature pass.
-fn with_two_pigs(test: impl FnOnce(&mut Game<'_>)) {
-    let root = std::env::temp_dir().join(format!(
-        "sunrise-mob-tick-access-{}-{:?}",
-        std::process::id(),
-        std::thread::current().id()
-    ));
-    let _ = std::fs::remove_dir_all(&root);
-    with_game(|game| {
-        game.server.world_root = root.clone();
-        game.enter_level(Dim::Overworld).unwrap();
-        game.options.dedicated = Some(Vec::new());
-        game.world
-            .chunks
-            .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
-        assert!(
-            game.entity_ticking_area()(1, 0),
-            "fixture chunk is not entity-ticking"
-        );
-        let kind = game.res.mob_types().get("minecraft:pig").unwrap().clone();
-        for (id, x) in [(71u32, 1.0f64), (72u32, 2.0f64)] {
-            let mut mob = Mob::new(id, kind.clone(), Vec3::new(x, 80.0, 0.5), 0.0);
-            mob.no_ai = true;
-            mob.no_gravity = true;
-            mob.ground.on_ground = true;
-            game.mobs.push(mob);
-        }
-        test(game);
-    });
-    let _ = std::fs::remove_dir_all(&root);
-}
+#[allow(unused_imports)]
+pub(in crate::game) use crate::game::server_side::creatures_server::borrowed_tick::mob_tick_access_tests::with_two_pigs;
 
 /// Removes the mob it names, and records what every despawn callback reads of
 /// that mob's handle: the victim's own callback runs before the removal, a
 /// later callback after it.
-struct RemovedPeerProbe {
-    victim: u32,
-    records: Arc<Mutex<Vec<(u32, Option<[f64; 3]>)>>>,
+pub(in crate::game) struct RemovedPeerProbe {
+    pub(in crate::game) victim: u32,
+    pub(in crate::game) records: Arc<Mutex<Vec<(u32, Option<[f64; 3]>)>>>,
 }
 
 #[mod_api::__subscriptions]
@@ -244,15 +222,15 @@ fn entity_tick_pre_reads_and_moves_the_ticking_mob() {
 /// Observations made by the actual scoped despawn hook, not by the spawn
 /// fixture or a replacement host.
 #[derive(Debug, PartialEq)]
-struct PassObservation {
-    actor: u32,
-    peer_velocity: Option<[f64; 3]>,
-    spawned_position: Option<[f64; 3]>,
-    spawned_handles: [bool; 3],
+pub(in crate::game) struct PassObservation {
+    pub(in crate::game) actor: u32,
+    pub(in crate::game) peer_velocity: Option<[f64; 3]>,
+    pub(in crate::game) spawned_position: Option<[f64; 3]>,
+    pub(in crate::game) spawned_handles: [bool; 3],
 }
 
-struct PassProbe {
-    records: Arc<Mutex<Vec<PassObservation>>>,
+pub(in crate::game) struct PassProbe {
+    pub(in crate::game) records: Arc<Mutex<Vec<PassObservation>>>,
 }
 
 #[mod_api::__subscriptions]
@@ -355,8 +333,8 @@ fn scoped_despawn_view_tracks_peer_turns_and_defers_mid_pass_spawns() {
 }
 
 /// Extends the lifetime of the dropped item it names, through `extra_life`.
-struct ExtendLife {
-    id: Arc<AtomicU32>,
+pub(in crate::game) struct ExtendLife {
+    pub(in crate::game) id: Arc<AtomicU32>,
 }
 
 #[mod_api::__subscriptions]
@@ -368,65 +346,12 @@ impl mod_api::Hooks for ExtendLife {
     }
 }
 
-/// The item family keeps its own contract while the mob slice changes: the
-/// item tick still lifts its list, and an `item_expire` listener still edits
-/// the item's lifetime, which the engine applies when the tick ends.
-#[test]
-#[ignore = "daily"]
-fn item_lifetime_edit_in_the_item_tick_still_lands() {
-    let named = Arc::new(AtomicU32::new(0));
-    let mods: mod_api::Mods = vec![ModEntry::new(
-        "item-lifetime-access",
-        Box::new(ExtendLife { id: named.clone() }),
-    )]
-    .into();
-    mod_platform::testing::with_mods(mods, || {
-        let root = std::env::temp_dir().join(format!(
-            "sunrise-item-lifetime-{}-{:?}",
-            std::process::id(),
-            std::thread::current().id()
-        ));
-        let _ = std::fs::remove_dir_all(&root);
-        with_game(|game| {
-            game.server.world_root = root.clone();
-            game.enter_level(Dim::Overworld).unwrap();
-            game.options.dedicated = Some(Vec::new());
-            game.world
-                .chunks
-                .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
-            game.push_item_entity(
-                ItemStack::new("minecraft:apple", 1),
-                [1.5, 64.0, 1.5],
-                Some([0.0, 0.0, 0.0]),
-                0,
-                None,
-            );
-            let id = game.dropped.last().unwrap().id;
-            named.store(id, Ordering::Relaxed);
-            game.server.ticked_entities_through = id;
-            game.dropped.last_mut().unwrap().age = 6000;
-            let mut round = game.native_tick_round();
-            game.tick_dropped_items(&mut round);
-            let item = game
-                .dropped
-                .iter()
-                .find(|item| item.id == id)
-                .expect("the extended item stayed");
-            assert_eq!(
-                item.age, 5900,
-                "the listener's 100 ticks landed on the item's age"
-            );
-        });
-        let _ = std::fs::remove_dir_all(&root);
-    });
-}
-
 /// Discards another mob from the first mob's `entity_tick_pre`: a hook that
 /// re-enters the entity handles while a tick is running.
-struct DiscardOnPre {
-    id: u32,
-    victim: u32,
-    seen: Arc<Mutex<Vec<(u32, bool, bool)>>>,
+pub(in crate::game) struct DiscardOnPre {
+    pub(in crate::game) id: u32,
+    pub(in crate::game) victim: u32,
+    pub(in crate::game) seen: Arc<Mutex<Vec<(u32, bool, bool)>>>,
 }
 
 #[mod_api::__subscriptions]
@@ -479,57 +404,16 @@ fn a_tick_hook_discards_another_mob_nested() {
     });
 }
 
-/// A mob in a loaded chunk whose own status is below entity-ticking is not on the entity tick
-/// list: it fires no `mob_despawn` and stays, while a mob in the forced chunk beside it checks
-/// despawning as usual.
-#[test]
-#[ignore = "daily"]
-fn a_mob_outside_the_entity_tick_list_checks_no_despawn() {
-    let records = Arc::new(Mutex::new(DespawnRecords::default()));
-    let mods: mod_api::Mods = vec![ModEntry::new(
-        "mob-tick-listed",
-        Box::new(DespawnProbe {
-            records: records.clone(),
-            allow: Arc::new(AtomicU32::new(72)),
-        }),
-    )]
-    .into();
-    mod_platform::testing::with_mods(mods, || {
-        with_two_pigs(|game| {
-            game.world
-                .chunks
-                .insert((1, 0), Arc::new(Chunk::empty(1, 0)));
-            game.mobs[1].position = Vec3::new(24.5, 80.0, 0.5);
-            // Only chunk (0, 0) is forced: (1, 0) is loaded at the next level out.
-            game.tickets
-                .0
-                .update(Some(sunrise_client::ticket_levels::Sources {
-                    forced: vec![(0, 0)],
-                    ..Default::default()
-                }));
-            assert!(game.entity_tick_listed_area()(1, 0));
-            assert!(game.world.loaded(24, 0) && !game.entity_tick_listed_area()(24, 0));
-            game.tick_creature_entities().unwrap();
-            let heard: Vec<u32> = records.lock().unwrap().0.iter().map(|r| r.0).collect();
-            assert_eq!(heard, [71], "only the listed mob checks despawning");
-            assert!(
-                game.mobs.iter().any(|mob| mob.id == 72),
-                "the unlisted mob stays, though its listener would allow the despawn"
-            );
-        });
-    });
-}
-
 /// What a tick listener heard: each call's phase and entities, and at a Post where the first
 /// of them stands. Names the types of `named` to `entity_tick_each`.
-struct TickTiming {
-    named: &'static [&'static str],
-    replace_cancels: bool,
-    heard: Arc<Mutex<TickCalls>>,
+pub(in crate::game) struct TickTiming {
+    pub(in crate::game) named: &'static [&'static str],
+    pub(in crate::game) replace_cancels: bool,
+    pub(in crate::game) heard: Arc<Mutex<TickCalls>>,
 }
 
 /// A tick listener's calls, in order: (phase, entities, the first one's position at a Post).
-type TickCalls = Vec<(&'static str, Vec<u32>, Option<[f64; 3]>)>;
+pub(in crate::game) type TickCalls = Vec<(&'static str, Vec<u32>, Option<[f64; 3]>)>;
 
 #[mod_api::__subscriptions]
 impl mod_api::Hooks for TickTiming {
@@ -564,7 +448,7 @@ impl mod_api::Hooks for TickTiming {
 }
 
 /// The two pigs' tick hooks through the real creature pass; the first pig falls in its tick.
-fn pig_ticks(named: bool, replace_cancels: bool) -> TickCalls {
+pub(in crate::game) fn pig_ticks(named: bool, replace_cancels: bool) -> TickCalls {
     let heard = Arc::new(Mutex::new(Vec::new()));
     let mods: mod_api::Mods = vec![ModEntry::new(
         "mob-tick-timing",
@@ -641,61 +525,10 @@ fn an_unnamed_family_hears_one_pre_and_one_post() {
     assert_eq!(phases, [("pre", vec![71, 72]), ("post", vec![71, 72])]);
 }
 
-/// Two arrows of a type a mod names, on the server: each told alone, its Post right after its own
-/// flight and before the next arrow's Pre, and a Post handle reads where its flight took it.
-#[test]
-#[ignore = "daily"]
-fn named_projectiles_hear_each_their_own_pre_and_post() {
-    let heard = Arc::new(Mutex::new(Vec::new()));
-    let mods: mod_api::Mods = vec![ModEntry::new(
-        "projectile-tick-timing",
-        Box::new(TickTiming {
-            named: &["minecraft:arrow"],
-            replace_cancels: false,
-            heard: heard.clone(),
-        }),
-    )]
-    .into();
-    let mut ids = Vec::new();
-    mod_platform::testing::with_mods(mods, || {
-        with_two_pigs(|game| {
-            game.build_registries();
-            game.set_allow_commands(true);
-            for z in [0.5, 2.5] {
-                assert!(game.run_command(&format!(
-                    "summon minecraft:arrow 1.5 80.5 {z} {{NoGravity:1b,Motion:[0.5d,0.0d,0.0d]}}"
-                )));
-            }
-            ids = game.creatures.projectiles.iter().map(|p| p.id).collect();
-            game.server.ticked_entities_through = u32::MAX;
-            game.tick_projectiles().unwrap();
-        });
-    });
-    let heard = heard.lock().unwrap();
-    let phases: Vec<_> = heard
-        .iter()
-        .map(|(phase, entities, _)| (*phase, entities.clone()))
-        .collect();
-    assert_eq!(
-        phases,
-        [
-            ("pre", vec![ids[0]]),
-            ("post", vec![ids[0]]),
-            ("pre", vec![ids[1]]),
-            ("post", vec![ids[1]]),
-        ]
-    );
-    let first = heard[1].2.expect("the Post reads the first arrow");
-    assert!(
-        first[0] > 1.5,
-        "the first arrow flew in its own tick: {first:?}"
-    );
-}
-
 /// Moves pig 72 into a second arrow's path in the Post of the arrow `first` (an arrow named to
 /// `entity_tick_each`, so told alone).
-struct MoveOnArrowPost {
-    first: Arc<AtomicU32>,
+pub(in crate::game) struct MoveOnArrowPost {
+    pub(in crate::game) first: Arc<AtomicU32>,
 }
 
 #[mod_api::__subscriptions]
@@ -715,44 +548,4 @@ impl mod_api::Hooks for MoveOnArrowPost {
     fn register(&self, r: &mut dyn mod_api::Registrar, _: &mod_api::RegistrationContext) {
         r.entity_tick_each("minecraft:arrow");
     }
-}
-
-/// As on NeoForge, where each projectile ticks in turn: a mod that moves a mob in one arrow's
-/// Post moves it for the next arrow of the same tick, which hits it there.
-#[test]
-#[ignore = "daily"]
-fn a_mob_moved_in_one_arrows_post_is_hit_by_the_next_arrow() {
-    let first = Arc::new(AtomicU32::new(0));
-    let mods: mod_api::Mods = vec![ModEntry::new(
-        "projectile-post-move",
-        Box::new(MoveOnArrowPost {
-            first: first.clone(),
-        }),
-    )]
-    .into();
-    mod_platform::testing::with_mods(mods, || {
-        with_two_pigs(|game| {
-            game.build_registries();
-            game.set_allow_commands(true);
-            // The first arrow far from both pigs; the second flies east along z = 5.5, where
-            // no pig stands until the first arrow's Post moves one there.
-            for command in [
-                "summon minecraft:arrow 1.5 80.5 12.5 {NoGravity:1b,Motion:[0.1d,0.0d,0.0d]}",
-                "summon minecraft:arrow 1.5 80.5 5.5 {NoGravity:1b,Motion:[3.0d,0.0d,0.0d]}",
-            ] {
-                assert!(game.run_command(command), "{command}");
-            }
-            first.store(game.creatures.projectiles[0].id, Ordering::Relaxed);
-            let health = game.mobs.iter().find(|m| m.id == 72).unwrap().health;
-            game.server.ticked_entities_through = u32::MAX;
-            game.tick_projectiles().unwrap();
-            let pig = game.mobs.iter().find(|m| m.id == 72).unwrap();
-            assert_eq!(pig.position.z, 5.5, "the first arrow's Post moved the pig");
-            assert!(
-                pig.health < health,
-                "the second arrow hit the pig where the Post moved it: {} of {health}",
-                pig.health
-            );
-        });
-    });
 }

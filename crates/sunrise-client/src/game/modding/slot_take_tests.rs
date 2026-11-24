@@ -634,7 +634,7 @@ fn a_pickup_hears_what_left_the_slot_and_what_stayed() {
 #[ignore = "daily"]
 fn each_part_take_hears_its_live_remainder_before_the_next_take() {
     crate::game::in_own_process(
-        "game::slot_take_tests::each_part_take_hears_its_live_remainder_before_the_next_take",
+        "game::server_side::slot_take_tests::each_part_take_hears_its_live_remainder_before_the_next_take",
         || {
             let parts = TakeMod {
                 menu_slot_take: true,
@@ -656,7 +656,7 @@ fn each_part_take_hears_its_live_remainder_before_the_next_take() {
 #[ignore = "daily"]
 fn a_pending_part_cursor_write_does_not_overwrite_a_take_listeners_transfer() {
     crate::game::in_own_process(
-        "game::slot_take_tests::a_pending_part_cursor_write_does_not_overwrite_a_take_listeners_transfer",
+        "game::server_side::slot_take_tests::a_pending_part_cursor_write_does_not_overwrite_a_take_listeners_transfer",
         || {
             let parts = TakeMod {
                 menu_slot_take: true,
@@ -681,7 +681,7 @@ fn a_pending_part_cursor_write_does_not_overwrite_a_take_listeners_transfer() {
 #[ignore = "daily"]
 fn closing_on_the_first_part_take_returns_only_its_owed_cursor() {
     crate::game::in_own_process(
-        "game::slot_take_tests::closing_on_the_first_part_take_returns_only_its_owed_cursor",
+        "game::server_side::slot_take_tests::closing_on_the_first_part_take_returns_only_its_owed_cursor",
         || {
             let parts = TakeMod {
                 menu_slot_take: true,
@@ -1105,7 +1105,7 @@ fn slot_replies(
 #[ignore = "daily"]
 fn a_click_sends_the_other_slots_written_by_contents_changed() {
     crate::game::in_own_process(
-        "game::slot_take_tests::a_click_sends_the_other_slots_written_by_contents_changed",
+        "game::server_side::slot_take_tests::a_click_sends_the_other_slots_written_by_contents_changed",
         || {
             // A slot-take subscriber would flush these writes before the click computes
             // its changed-slot list, hiding whether the last-sent comparison works.
@@ -1164,7 +1164,7 @@ fn a_damage_only_repair_reaches_the_open_menu_and_inventory() {
     use sunrise_protocol::item::{Component, Hashed, component};
 
     crate::game::in_own_process(
-        "game::slot_take_tests::a_damage_only_repair_reaches_the_open_menu_and_inventory",
+        "game::server_side::slot_take_tests::a_damage_only_repair_reaches_the_open_menu_and_inventory",
         || {
             with_pot(pot_type(SLOTS, None), |game| {
                 // A damageable stack whose base item has no damage component. Zero is a patch,

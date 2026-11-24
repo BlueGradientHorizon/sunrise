@@ -25,7 +25,7 @@ impl Remote {
     }
 
     /// Resolve registry keys only when registries or the dimension change.
-    pub(super) fn resolve_clocks(&mut self) {
+    pub(in crate::game) fn resolve_clocks(&mut self) {
         self.overworld_clock = self
             .registries
             .id("minecraft:world_clock", "minecraft:overworld");
@@ -47,7 +47,7 @@ impl Remote {
         }
     }
 
-    pub(super) fn clock_time(&self, id: Option<i32>) -> i64 {
+    pub(in crate::game) fn clock_time(&self, id: Option<i32>) -> i64 {
         id.and_then(|id| self.clocks.get(&id))
             .map_or(0, |c| c.total_ticks)
     }
@@ -91,7 +91,7 @@ impl Remote {
     }
 
     /// `PlayerInfo.getMessageValidator().updateAndValidate(message)` for `message.sender`.
-    pub(super) fn validate_chat(
+    pub(in crate::game) fn validate_chat(
         &mut self,
         message: &secure_chat::Incoming,
         now: i64,
@@ -113,7 +113,10 @@ impl Remote {
     /// keys vouch for makes a keyed validator, anything else the fallback of
     /// `enforcesSecureChat()` (`canValidateProfileKeys() && serverEnforcesSecureChat`). `false`
     /// while the keys are not known yet.
-    pub(super) fn new_chat_validator(&self, sender: u128) -> (secure_chat::MessageValidator, bool) {
+    pub(in crate::game) fn new_chat_validator(
+        &self,
+        sender: u128,
+    ) -> (secure_chat::MessageValidator, bool) {
         let keys = self.services_keys.lock().unwrap_or_else(|e| e.into_inner());
         let certificate_keys = match &*keys {
             ServicesKeys::Pending => {
@@ -155,7 +158,7 @@ impl Remote {
 
     /// A player entity's profile name: the one it was created with, else its
     /// player-list entry's (an entity the list named after it spawned).
-    pub(super) fn level_player_name(&self, id: i32, uuid: &u128) -> Option<&str> {
+    pub(in crate::game) fn level_player_name(&self, id: i32, uuid: &u128) -> Option<&str> {
         self.level_player_names
             .get(&id)
             .or_else(|| self.players.get(uuid))
@@ -173,7 +176,7 @@ impl Remote {
     }
 
     /// Another player's profile UUID, by their entity id (None for the local player).
-    pub(super) fn player_uuid(&self, id: u32) -> Option<u128> {
+    pub(in crate::game) fn player_uuid(&self, id: u32) -> Option<u128> {
         let uuid = *self.level_players.get(&(id as i32))?;
         (uuid != self.profile).then_some(uuid)
     }

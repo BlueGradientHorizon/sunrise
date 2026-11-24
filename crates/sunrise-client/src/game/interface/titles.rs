@@ -1,26 +1,13 @@
 //! Titles, the action bar and the selected item name: the state and layout
 //! live in `hud_overlays` (`Titles`, `ToolHighlight`); this feeds and draws them.
+#[allow(unused_imports)]
 use super::Game;
-pub(super) use sunrise_client::hud_overlays::Titles;
+#[allow(unused_imports)]
+pub(in crate::game) use sunrise_client::hud_overlays::Titles;
+#[allow(unused_imports)]
 use sunrise_client::{hud::HudBatch, hud_layout, hud_overlays::HeldName, text::Text};
 
 impl Game<'_> {
-    /// `ServerPlayer.sendOverlayMessage`: the steady player sees it on this
-    /// game's HUD; a server client receives it as a packet.
-    pub(super) fn send_overlay_message(&mut self, message: Text) {
-        if self.server.lan_acting.is_some() {
-            self.server.guest_packets.push(
-                sunrise_protocol::packets::play::Clientbound::SystemChat(
-                    sunrise_protocol::packets::play::SystemChat {
-                        content: sunrise_client::lan::data::component_nbt(&message.component()),
-                        overlay: true,
-                    },
-                ),
-            );
-        } else if self.options.dedicated.is_none() {
-            self.set_hud_overlay(message);
-        }
-    }
     #[inline(always)]
     pub(in crate::game) fn set_hud_overlay(&mut self, message: Text) {
         self.client.titles.set_overlay(message, false);
@@ -34,7 +21,7 @@ impl Game<'_> {
     }
 
     /// `Hud.extractOverlayMessage`: the action bar.
-    pub(super) fn draw_overlay_message(&self, batch: &mut HudBatch) {
+    pub(in crate::game) fn draw_overlay_message(&self, batch: &mut HudBatch) {
         let (w, h) = (batch.width as i32, batch.height as i32);
         let partial = self.clock.fraction() as f32;
         let background = self.settings.text_background(0.0);
@@ -46,7 +33,7 @@ impl Game<'_> {
         hud_layout::paint(batch, &self.gui.atlas, &draws);
     }
     /// `Hud.extractTitle`.
-    pub(super) fn draw_title(&self, batch: &mut HudBatch) {
+    pub(in crate::game) fn draw_title(&self, batch: &mut HudBatch) {
         let (w, h) = (batch.width as i32, batch.height as i32);
         let partial = self.clock.fraction() as f32;
         let background = self.settings.text_background(0.0);
@@ -56,7 +43,7 @@ impl Game<'_> {
     }
     /// `Hud.extractSavingIndicator`, under the screens: the option, then the
     /// fading "Saving world" text.
-    pub(super) fn draw_saving_indicator(&self, batch: &mut HudBatch) {
+    pub(in crate::game) fn draw_saving_indicator(&self, batch: &mut HudBatch) {
         if !self.settings.autosave_indicator {
             return;
         }
@@ -71,7 +58,7 @@ impl Game<'_> {
         hud_layout::paint(batch, &self.gui.atlas, &draws);
     }
     /// The selected stack as `Hud.tick` compares it for the name highlight.
-    fn held_name(&self) -> Option<HeldName> {
+    pub(in crate::game) fn held_name(&self) -> Option<HeldName> {
         let stack = self.inventory.get(self.selected)?.as_ref()?;
         let custom = stack.data().is_some_and(|data| data.custom_name.is_some());
         let previous = self
@@ -93,7 +80,7 @@ impl Game<'_> {
         })
     }
     /// The title, action bar and selected-item parts of `Hud.tick`.
-    pub(super) fn tick_hud(&mut self) {
+    pub(in crate::game) fn tick_hud(&mut self) {
         self.client.titles.tick();
         // Hud.tick: the vignette after the titles, before the held item's name. (A local world,
         // which has no `Gui.tick` here, eases it in its level tick, `tick_particles`.)
@@ -113,7 +100,7 @@ impl Game<'_> {
     }
     /// `IItemExtension.getHighlightTip` of the selected stack, while its name
     /// shows and a part of its item listens.
-    fn highlight_tip(&self) -> Option<Text> {
+    pub(in crate::game) fn highlight_tip(&self) -> Option<Text> {
         let last = self.client.tool_highlight.last.as_ref()?;
         if self.client.tool_highlight.timer <= 0 {
             return None;
@@ -127,7 +114,7 @@ impl Game<'_> {
         Some(name)
     }
     /// `Hud.extractSelectedItemName`.
-    pub(super) fn draw_selected_name(&self, batch: &mut HudBatch, can_hurt: bool) {
+    pub(in crate::game) fn draw_selected_name(&self, batch: &mut HudBatch, can_hurt: bool) {
         let draws = self.client.tool_highlight.draw(
             batch.width as i32,
             batch.height as i32,
@@ -140,7 +127,7 @@ impl Game<'_> {
 }
 
 #[cfg(test)]
-mod tests {
+pub(in crate::game) mod tests {
     use super::Game;
     use mod_api::{ClientHost, Text, TextFormError};
 
@@ -155,7 +142,7 @@ mod tests {
     #[ignore = "daily"]
     fn a_mods_overlay_line_replaces_the_action_bar_and_restarts_its_timer() {
         crate::game::in_own_process(
-            "game::titles::tests::a_mods_overlay_line_replaces_the_action_bar_and_restarts_its_timer",
+            "game::client_side::titles::tests::a_mods_overlay_line_replaces_the_action_bar_and_restarts_its_timer",
             || {
                 crate::game::native_entity_refs::tests::with_client_game(|game| {
                     let chat = game.ui.chat.recent_lines(usize::MAX);

@@ -4,14 +4,18 @@
 //! stand's `noPhysics` enter nothing), and `LocalPlayer.handlePortalTransitionEffect`
 //! closes only the screens whose `Screen.isAllowedInPortal` is false.
 
+#[allow(unused_imports)]
 use super::*;
+#[allow(unused_imports)]
 use crate::game::game_tests::tests::server_game;
+#[allow(unused_imports)]
 use sunrise_client::entities::ArmorStand;
+#[allow(unused_imports)]
 use sunrise_client::motion::PlayerMotion;
 
 /// `ArmorStand`'s portal: stone at `y`, nether portal blocks at `y + 1` and
 /// `y + 2` in the column of `(x, z)`.
-fn put_portal(game: &mut Game<'_>, x: i32, z: i32) {
+pub(in crate::game) fn put_portal(game: &mut Game<'_>, x: i32, z: i32) {
     let registry = game.pack.assets.registry;
     let stone = registry.default_state("minecraft:stone").unwrap();
     let portal = registry.default_state("minecraft:nether_portal").unwrap();
@@ -70,35 +74,5 @@ fn armor_stands_in_a_nether_portal_go_through_and_cool_down() {
     assert_eq!(
         sunrise_client::save::number(arrival.tag.get("PortalCooldown")),
         Some(i64::from(ENTITY_DELAY))
-    );
-}
-
-#[test]
-#[ignore = "daily"]
-fn the_portal_effect_keeps_the_screens_that_allow_it() {
-    let mut resources = None;
-    let mut game = server_game(&mut resources);
-    // `Screen.isAllowedInPortal` is `isPauseScreen` for these: the pause menu,
-    // the options over it and the chat stay open while the effect grows.
-    for screen in [Screen::Paused, Screen::Options, Screen::Chat] {
-        game.client.screen = screen;
-        game.portals.client_inside = true;
-        assert!(game.client_portal_effect(), "the effect grows");
-        assert!(game.client.screen == screen, "{} stayed open", screen.id());
-    }
-    // A container screen does not: `Gui.setScreen(null)` closes it.
-    game.client.screen = Screen::Inventory;
-    game.portals.client_inside = true;
-    assert!(game.client_portal_effect(), "the effect grows");
-    assert!(
-        game.client.screen == Screen::Playing,
-        "the inventory closed in the portal"
-    );
-    // And no screen at all is nothing to close.
-    game.portals.client_inside = true;
-    assert!(game.client_portal_effect(), "the effect grows");
-    assert!(
-        game.client.screen == Screen::Playing,
-        "playing stays playing"
     );
 }

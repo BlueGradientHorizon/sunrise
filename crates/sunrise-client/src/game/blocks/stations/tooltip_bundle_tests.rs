@@ -23,7 +23,7 @@ impl Hooks for Edit {
 
 fn run_bundle_case(name: &str) -> bool {
     crate::game::native_entity_refs::tests::run_fresh_cases(
-        &format!("game::stations::tooltip::bundle_tests::{name}"),
+        &format!("game::client_side::stations::tooltip::bundle_tests::{name}"),
         "SUNRISE_BUNDLE_TOOLTIP_CASE",
         &["bundle"],
     )

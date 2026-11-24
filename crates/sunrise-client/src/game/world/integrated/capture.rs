@@ -324,7 +324,7 @@ impl Game<'_> {
     }
 
     /// One tick of the server thread, timed for the health history and the capture.
-    pub(super) fn tick_server_measured(&mut self, paused: bool) -> crate::Result<()> {
+    pub(in crate::game) fn tick_server_measured(&mut self, paused: bool) -> crate::Result<()> {
         self.serve_perf_asked();
         let Some(mut side) = self.profile.server.take() else {
             return self.tick_server_timed(paused);

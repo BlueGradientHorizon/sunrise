@@ -6,7 +6,9 @@
 //! objective displayed below names. Other players' names (on a LAN host
 //! or a server) show whenever `LivingEntityRenderer.shouldShowName` allows,
 //! and the player's own in third person with the `ownNameTag` extra.
+#[allow(unused_imports)]
 use super::{Game, billboard_axes};
+#[allow(unused_imports)]
 use sunrise_client::{
     block_entity_render::vertex_light,
     hud::{HudAtlas, HudBatch, HudVertex},
@@ -18,31 +20,31 @@ use sunrise_client::{
 };
 
 /// The world size of one text pixel in a name tag: `Matrix4f.scale(0.025F, -0.025F, 0.025F)`.
-pub(super) const NAME_TAG_UNIT: f32 = 0.025;
+pub(in crate::game) const NAME_TAG_UNIT: f32 = 0.025;
 /// Options.getBackgroundOpacity(0.25) black, as ARGB.color.
-const BACKGROUND: u32 = 0x3F00_0000;
+pub(in crate::game) const BACKGROUND: u32 = 0x3F00_0000;
 
 /// Local glyph quads only: camera transforms and lighting stay per frame.
 /// Slots follow submission order; comparing the whole styled text also handles entity reorder,
 /// team/score changes and native name hooks without keeping entity IDs alive.
 #[derive(Default)]
-pub(super) struct NameTagLayouts {
-    epoch: (u64, u64, bool),
-    next: usize,
-    lines: Vec<Option<NameTagLine>>,
+pub(in crate::game) struct NameTagLayouts {
+    pub(in crate::game) epoch: (u64, u64, bool),
+    pub(in crate::game) next: usize,
+    pub(in crate::game) lines: Vec<Option<NameTagLine>>,
 }
 
-struct NameTagLine {
-    text: Text,
-    alpha: u32,
-    background: u32,
-    y: f32,
-    behind: usize,
-    vertices: Vec<HudVertex>,
+pub(in crate::game) struct NameTagLine {
+    pub(in crate::game) text: Text,
+    pub(in crate::game) alpha: u32,
+    pub(in crate::game) background: u32,
+    pub(in crate::game) y: f32,
+    pub(in crate::game) behind: usize,
+    pub(in crate::game) vertices: Vec<HudVertex>,
 }
 
 impl NameTagLayouts {
-    fn begin_frame(&mut self, atlas: &HudAtlas) {
+    pub(in crate::game) fn begin_frame(&mut self, atlas: &HudAtlas) {
         let epoch = (
             atlas.revision,
             atlas.font.epoch(),
@@ -55,11 +57,11 @@ impl NameTagLayouts {
         self.next = 0;
     }
 
-    fn end_frame(&mut self) {
+    pub(in crate::game) fn end_frame(&mut self) {
         self.lines.truncate(self.next);
     }
 
-    fn name_tag(
+    pub(in crate::game) fn name_tag(
         &mut self,
         batch: &mut HudBatch,
         atlas: &HudAtlas,
@@ -110,51 +112,9 @@ impl NameTagLayouts {
 }
 
 impl Game<'_> {
-    /// A named name tag names the mob under the crosshair.
-    pub(super) fn name_mob(&mut self, index: usize) -> bool {
-        // `NameTagItem`: the mob takes the tag's `custom_name` component, style and all.
-        let Some((name, text)) = self
-            .held()
-            .filter(|h| &*h.item == "minecraft:name_tag")
-            .and_then(|h| {
-                let text = h.data()?.other("minecraft:custom_name");
-                Some((
-                    h.custom_name()?,
-                    text.map(sunrise_client::entity_nbt::name_text),
-                ))
-            })
-        else {
-            return false;
-        };
-        let m = &mut self.mobs[index];
-        if !m.alive() {
-            return false;
-        }
-        let entity_id = m.id;
-        let entity_name = name.clone();
-        m.custom_name = Some(name);
-        m.custom_name_text = text;
-        m.persistent = true;
-        let at = [m.position.x, m.position.y, m.position.z];
-        // itemStack.shrink(1); `Player.interactOn` puts a creative player's
-        // count back, which `consume_held` skips for them.
-        self.consume_held();
-        // `Mob.interact`: the tag consumed the use, so
-        // `gameEvent(GameEvent.ENTITY_INTERACT, player)` at the mob.
-        let ctx = self.who_context(Some(Who::Player), None);
-        self.post_game_event("minecraft:entity_interact", at, ctx);
-        self.swing_arm();
-        if let (Some(player), Some(player_name)) = (
-            self.server.lan_acting_uuid,
-            self.server.lan_acting_name.clone(),
-        ) {
-            self.native_player_name_entity(player, &player_name, entity_id, &entity_name);
-        }
-        true
-    }
     /// `Entity.belowNameDisplay`: the score holder's score in the objective
     /// shown below names, then a space and the objective's name.
-    fn below_name_text(&self, holder: &str) -> Option<Text> {
+    pub(in crate::game) fn below_name_text(&self, holder: &str) -> Option<Text> {
         let board = &self.score.board;
         let objective = board.display_objective(sb::SLOT_BELOW_NAME)?;
         let score = board.score(holder, &objective.name)?;
@@ -171,7 +131,7 @@ impl Game<'_> {
         Some(t)
     }
     /// The other players' models and names: the players a server sends.
-    fn other_players(&self) -> Vec<(&Mob, String)> {
+    pub(in crate::game) fn other_players(&self) -> Vec<(&Mob, String)> {
         let mut out = Vec::new();
         let indices = first_mob_indices(&self.mobs);
         for (id, name) in self.remote_player_names() {
@@ -184,7 +144,7 @@ impl Game<'_> {
     /// Sunrise's own name tag extra (`ownNameTag`): the player's own model and
     /// name, while that model shows in third person. Vanilla never names the
     /// camera entity (`LivingEntityRenderer.shouldShowName`).
-    fn own_name_tag(&self) -> Option<(&Mob, String)> {
+    pub(in crate::game) fn own_name_tag(&self) -> Option<(&Mob, String)> {
         if !self.settings.extras.own_name_tag
             || !self.controls_camera()
             || self.client.camera_type.is_first_person()
@@ -200,7 +160,7 @@ impl Game<'_> {
     }
     /// The local player's profile name as others see it: the session's on a
     /// server (single player's server thread included), else the local player's.
-    pub(super) fn own_profile_name(&self) -> String {
+    pub(in crate::game) fn own_profile_name(&self) -> String {
         match self.remote.as_ref() {
             Some(r) if !r.profile_name.is_empty() => r.profile_name.clone(),
             _ => self.acting_player_name().to_owned(),
@@ -214,13 +174,18 @@ impl Game<'_> {
             .collect()
     }
     /// Each name tag this frame.
-    fn name_tags(&self, camera: glam::DVec3, alpha: f64) -> Vec<NameTag> {
+    pub(in crate::game) fn name_tags(&self, camera: glam::DVec3, alpha: f64) -> Vec<NameTag> {
         self.name_tags_with_hooks(camera, alpha, !mod_api::__private::mods().is_empty())
     }
-    fn name_tags_with_hooks(&self, camera: glam::DVec3, alpha: f64, hooks: bool) -> Vec<NameTag> {
+    pub(in crate::game) fn name_tags_with_hooks(
+        &self,
+        camera: glam::DVec3,
+        alpha: f64,
+        hooks: bool,
+    ) -> Vec<NameTag> {
         self.collect_name_tags(camera, alpha, hooks, None)
     }
-    fn collect_name_tags(
+    pub(in crate::game) fn collect_name_tags(
         &self,
         camera: glam::DVec3,
         alpha: f64,
@@ -648,7 +613,7 @@ impl Game<'_> {
     /// `SubmitNodeCollection.submitNameTag`: a discrete name is drawn once,
     /// faded, on its background; any other in full over the world, its faded
     /// copy and background in `see_through`, over everything.
-    pub(super) fn name_tag_geometry(
+    pub(in crate::game) fn name_tag_geometry(
         &mut self,
         camera: glam::DVec3,
         alpha: f64,
@@ -727,7 +692,7 @@ impl Game<'_> {
     /// (in `text_layer` like the glyphs, a hair behind) when `background`.
     /// Returns the glyph pixels the atlas still needs.
     #[allow(clippy::too_many_arguments)]
-    pub(super) fn name_tag_quads(
+    pub(in crate::game) fn name_tag_quads(
         &self,
         o: glam::DVec3,
         lines: &[(Text, f64)],
@@ -753,7 +718,7 @@ impl Game<'_> {
 
     /// [`Self::name_tag_quads`] on a `background` of its own (ARGB, none when its alpha is 0).
     #[allow(clippy::too_many_arguments)]
-    pub(super) fn styled_name_tag_quads(
+    pub(in crate::game) fn styled_name_tag_quads(
         &self,
         o: glam::DVec3,
         lines: &[(Text, f64)],
@@ -834,7 +799,7 @@ impl Game<'_> {
 }
 
 /// Use the renderer's camera-relative clip test before measuring or emitting text.
-fn name_tag_in_view(
+pub(in crate::game) fn name_tag_in_view(
     frustum: Option<&impl sunrise_client::gfx::Cull>,
     distance_sqr: f64,
     min: glam::Vec3,
@@ -845,7 +810,7 @@ fn name_tag_in_view(
         && frustum.is_none_or(|view| view.intersects(min, max))
 }
 
-fn first_mob_indices(mobs: &[Mob]) -> std::collections::HashMap<u32, usize> {
+pub(in crate::game) fn first_mob_indices(mobs: &[Mob]) -> std::collections::HashMap<u32, usize> {
     let mut indices = std::collections::HashMap::with_capacity(mobs.len());
     for (index, mob) in mobs.iter().enumerate() {
         // Match iter().find even if a transient snapshot contains duplicate IDs.
@@ -867,7 +832,7 @@ fn first_mob_indices(mobs: &[Mob]) -> std::collections::HashMap<u32, usize> {
 /// If the local player's remote entity ID is in the set, ID 0 (`player_model`) is also
 /// added so that Sunrise's own name tag extra (`ownNameTag`) recognizes that the player
 /// is ridden and suppresses the duplicate tag (#9477).
-fn collect_vehicle_ids(
+pub(in crate::game) fn collect_vehicle_ids(
     mobs: &[Mob],
     passenger_vehicles: impl IntoIterator<Item = u32>,
     local_riding: Option<u32>,
@@ -905,7 +870,9 @@ fn collect_vehicle_ids(
 /// other on every server that names its players this way. The set is small --
 /// the players in view -- and `other_players` has already allocated a name
 /// string for each, so skipping it saved very little.
-fn named_by_player_list(players: &[(&Mob, String)]) -> std::collections::HashSet<u32> {
+pub(in crate::game) fn named_by_player_list(
+    players: &[(&Mob, String)],
+) -> std::collections::HashSet<u32> {
     players.iter().map(|(player, _)| player.id).collect()
 }
 /// `EntityAttachment.NAME_TAG` of the entity's current pose
@@ -914,7 +881,7 @@ fn named_by_player_list(players: &[(&Mob, String)]) -> std::collections::HashSet
 /// `Pose::dimensions(1.0)`.
 /// shortcut: the scale attribute is not in the tag height, add `model_scale`
 /// when tags on scaled players matter.
-pub(super) fn name_tag_at(m: &Mob, alpha: f64) -> glam::DVec3 {
+pub(in crate::game) fn name_tag_at(m: &Mob, alpha: f64) -> glam::DVec3 {
     glam::DVec3::new(
         m.previous.x + (m.position.x - m.previous.x) * alpha,
         m.previous.y + (m.position.y - m.previous.y) * alpha + m.name_tag_height() + 0.5,
@@ -924,16 +891,16 @@ pub(super) fn name_tag_at(m: &Mob, alpha: f64) -> glam::DVec3 {
 
 /// A name tag: where it hangs, its lines (text, lift), the packed light at
 /// the entity and whether it is discrete.
-struct NameTag {
-    at: glam::DVec3,
-    lines: Vec<(Text, f64)>,
-    light: u8,
-    discrete: bool,
+pub(in crate::game) struct NameTag {
+    pub(in crate::game) at: glam::DVec3,
+    pub(in crate::game) lines: Vec<(Text, f64)>,
+    pub(in crate::game) light: u8,
+    pub(in crate::game) discrete: bool,
 }
 
 /// `Entity.DATA_CUSTOM_NAME` of a mob named `name`: its component with its style (a name
 /// summoned or set as `{text: "..", color: "red"}` keeps its colour), else the plain text.
-pub(super) fn name_component(m: &Mob, name: &str) -> sunrise_core::nbt::Tag {
+pub(in crate::game) fn name_component(m: &Mob, name: &str) -> sunrise_core::nbt::Tag {
     match &m.custom_name_text {
         Some(text) => sunrise_client::scoreboard::component_tag(&text.component()),
         None => sunrise_protocol::text::literal(name),
@@ -942,10 +909,10 @@ pub(super) fn name_component(m: &Mob, name: &str) -> sunrise_core::nbt::Tag {
 
 #[cfg(test)]
 #[path = "tests/name_tag_tests.rs"]
-mod name_tag_tests;
+pub(in crate::game) mod name_tag_tests;
 
 #[cfg(test)]
-mod tests {
+pub(in crate::game) mod tests {
     use super::*;
     use std::sync::Arc;
     use sunrise_client::mobs::{Anim, Brain, MobType, Part, Species};

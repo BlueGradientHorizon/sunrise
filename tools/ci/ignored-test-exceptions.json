@@ -10,7 +10,7 @@
   {
     "package": "sunrise-client",
     "target": "lib",
-    "test": "game::end::cooldown_tests::gateway_counters_match_actual_vanilla_methods",
+    "test": "game::server_side::end::cooldown_tests::gateway_counters_match_actual_vanilla_methods",
     "path": "crates/sunrise-client/src/game/world/end/gateway_cooldown_tests.rs",
     "reason": "needs explicit SUNRISE_TEST_RESOURCES and SUNRISE_PORTAL_REFERENCE",
     "rationale": "Existing separately supplied input SUNRISE_PORTAL_REFERENCE in tools/ci/ignored-tests/harness-inputs.txt; its dedicated workflow/harness must supply this input, which ordinary prepared resources do not contain. needs explicit SUNRISE_TEST_RESOURCES and SUNRISE_PORTAL_REFERENCE"
@@ -34,7 +34,7 @@
   {
     "package": "sunrise-client",
     "target": "lib",
-    "test": "game::fishing::tests::breeze_hook_parity_fixture",
+    "test": "game::server_side::fishing::tests::breeze_hook_parity_fixture",
     "path": "crates/sunrise-client/src/game/items/fishing.rs",
     "reason": "run by tools/test_breeze_hook_parity.py",
     "rationale": "Existing parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_breeze_hook_parity.py supplies its independent oracle/private fixture and drives it separately, not as a prepared-resource daily test."
@@ -42,7 +42,7 @@
   {
     "package": "sunrise-client",
     "target": "lib",
-    "test": "game::fishing::tests::fishing_retrieve_reference",
+    "test": "game::server_side::fishing::tests::fishing_retrieve_reference",
     "path": "crates/sunrise-client/src/game/items/fishing.rs",
     "reason": "requires prepared resources and the vanilla fishing reference",
     "rationale": "tools/test_fishing_rng_parity.py:120-125 supplies SUNRISE_FISHING_RESOURCES and the independent SUNRISE_FISHING_REFERENCE JSON and exact-selects this test; the ordinary prepared-resource daily leg has neither oracle input."
@@ -90,7 +90,7 @@
   {
     "package": "sunrise-client",
     "target": "lib",
-    "test": "game::maps::save_tests::saved_map_codec_fixture",
+    "test": "game::server_side::maps::save_tests::saved_map_codec_fixture",
     "path": "crates/sunrise-client/src/game/blocks/maps/save_tests.rs",
     "reason": "run through tools/test_map_saved_data_parity.py",
     "rationale": "Existing parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_map_saved_data_parity.py supplies its independent oracle/private fixture and drives it separately, not as a prepared-resource daily test."
@@ -154,7 +154,7 @@
   {
     "package": "sunrise-client",
     "target": "lib",
-    "test": "game::native_recipes::tests::craft_cost",
+    "test": "game::client_side::native_recipes::tests::craft_cost",
     "path": "crates/sunrise-client/src/game/modding/native_recipes.rs",
     "reason": "a benchmark: run it in release with SUNRISE_TEST_RESOURCES",
     "rationale": "Opt-in measurement, not an ordinary daily correctness check: a benchmark: run it in release with SUNRISE_TEST_RESOURCES. Run by hand on an idle machine with the optimized profile and its explicitly requested inputs; all assertions remain in the test."
@@ -170,7 +170,7 @@
   {
     "package": "sunrise-client",
     "target": "lib",
-    "test": "game::nether_portal::cooldown_tests::portal_contact_and_waiting_handoff_match_vanilla_counters",
+    "test": "game::server_side::nether_portal::cooldown_tests::portal_contact_and_waiting_handoff_match_vanilla_counters",
     "path": "crates/sunrise-client/src/game/blocks/tests/portal_cooldown_tests.rs",
     "reason": "needs explicit SUNRISE_TEST_RESOURCES and SUNRISE_PORTAL_REFERENCE",
     "rationale": "Existing separately supplied input SUNRISE_PORTAL_REFERENCE in tools/ci/ignored-tests/harness-inputs.txt; its dedicated workflow/harness must supply this input, which ordinary prepared resources do not contain. needs explicit SUNRISE_TEST_RESOURCES and SUNRISE_PORTAL_REFERENCE"
@@ -178,7 +178,7 @@
   {
     "package": "sunrise-client",
     "target": "lib",
-    "test": "game::potions::arrow_contents::actual_arrow_contents_match_pinned_methods",
+    "test": "game::client_side::potions::arrow_contents::actual_arrow_contents_match_pinned_methods",
     "path": "crates/sunrise-client/src/game/items/potions.rs",
     "reason": "explicit SUNRISE_TEST_RESOURCES and isolated potion oracle input/output",
     "rationale": "Existing separately supplied input SUNRISE_POTION_INPUT in tools/ci/ignored-tests/harness-inputs.txt; its dedicated workflow/harness must supply this input, which ordinary prepared resources do not contain. explicit SUNRISE_TEST_RESOURCES and isolated potion oracle input/output"
@@ -186,7 +186,7 @@
   {
     "package": "sunrise-client",
     "target": "lib",
-    "test": "game::remote_mob_data::tests::mob_air_parity_fixture",
+    "test": "game::client_side::remote_mob_data::tests::mob_air_parity_fixture",
     "path": "crates/sunrise-client/src/game/network/remote_mob_data.rs",
     "reason": "run by tools/test_mob_air_parity.py",
     "rationale": "Existing parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_mob_air_parity.py supplies its independent oracle/private fixture and drives it separately, not as a prepared-resource daily test."
@@ -194,7 +194,7 @@
   {
     "package": "sunrise-client",
     "target": "lib",
-    "test": "game::remote_mob_data::tests::raider_celebration_parity_fixture",
+    "test": "game::client_side::remote_mob_data::tests::raider_celebration_parity_fixture",
     "path": "crates/sunrise-client/src/game/network/remote_mob_data.rs",
     "reason": "run by tools/test_raider_celebration_parity.py",
     "rationale": "Existing parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_raider_celebration_parity.py supplies its independent oracle/private fixture and drives it separately, not as a prepared-resource daily test."
@@ -1114,7 +1114,7 @@
   {
     "package": "sunrise-client",
     "target": "lib",
-    "test": "game::fishing::fishing_targets_tests::witness_fishing_bobber_targets",
+    "test": "game::server_side::fishing::fishing_targets_tests::witness_fishing_bobber_targets",
     "path": "crates/sunrise-client/src/game/items/fishing_tests/fishing_targets_tests.rs",
     "reason": "run by tools/test_projectile_targets_parity.py",
     "rationale": "Parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_projectile_targets_parity.py records the vanilla 26.3 projectile witnesses into .local and runs this test against them through SUNRISE_PROJECTILE_WITNESS_DIR, so no recorded vanilla data is committed."
@@ -1210,7 +1210,7 @@
   {
     "package": "sunrise-client",
     "target": "lib",
-    "test": "game::remote_mob_data::tests::sulfur_cube_max_fuse_sets_the_client_fuse",
+    "test": "game::client_side::remote_mob_data::tests::sulfur_cube_max_fuse_sets_the_client_fuse",
     "path": "crates/sunrise-client/src/game/network/remote_mob_data.rs",
     "reason": "run by tools/test_sulfur_cube_fuse_parity.py",
     "rationale": "Parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_sulfur_cube_fuse_parity.py records the vanilla 26.3 sulfur cube fuse witnesses into .local and runs this test against them through SUNRISE_SULFUR_CUBE_FUSE_WITNESS_DIR, so no recorded vanilla data is committed."
@@ -1282,7 +1282,7 @@
   {
     "package": "sunrise-client",
     "target": "lib",
-    "test": "game::falling_blocks::moving_piston_tests::a_falling_block_resting_in_a_moving_piston_cell_stays",
+    "test": "game::server_side::falling_blocks::moving_piston_tests::a_falling_block_resting_in_a_moving_piston_cell_stays",
     "path": "crates/sunrise-client/src/game/blocks/falling_blocks/moving_piston_tests.rs",
     "reason": "run by tools/test_falling_moving_piston_parity.py",
     "rationale": "Parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_falling_moving_piston_parity.py records the vanilla 26.3 moving-piston falling-block witness into .local and runs this test against it through SUNRISE_FALLING_MOVING_PISTON_WITNESS, so no recorded vanilla data is committed."
@@ -1362,7 +1362,7 @@
   {
     "package": "sunrise-client",
     "target": "lib",
-    "test": "game::dragon::tests::the_scanning_turn_matches_the_pinned_oracle",
+    "test": "game::server_side::dragon::tests::the_scanning_turn_matches_the_pinned_oracle",
     "path": "crates/sunrise-client/src/game/mobs/dragon.rs",
     "reason": "run by tools/test_mob_turn_parity.py",
     "rationale": "Parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_mob_turn_parity.py records the vanilla 26.3 mob-turn witnesses into .local and runs this test against them through SUNRISE_MOB_TURN_WITNESS_DIR, so no recorded vanilla data is committed."
@@ -1378,7 +1378,7 @@
   {
     "package": "sunrise-client",
     "target": "lib",
-    "test": "game::fangs::ticking_tests::fangs_and_an_ominous_item_spawner_outside_the_ticking_chunks_do_not_tick",
+    "test": "game::server_side::fangs::ticking_tests::fangs_and_an_ominous_item_spawner_outside_the_ticking_chunks_do_not_tick",
     "path": "crates/sunrise-client/src/game/mobs/fangs/ticking_tests.rs",
     "reason": "run by tools/test_fangs_ticking_gate_parity.py",
     "rationale": "Parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_fangs_ticking_gate_parity.py records the vanilla 26.3 fangs/spawner ticking-gate witness into .local and runs this test against it through SUNRISE_FANGS_TICKING_GATE_WITNESS, so no recorded vanilla data is committed."
@@ -1386,7 +1386,7 @@
   {
     "package": "sunrise-client",
     "target": "lib",
-    "test": "game::fangs::ticking_tests::fangs_and_an_ominous_item_spawner_pause_on_scheduled_ticket_removal_and_resume_26_3",
+    "test": "game::server_side::fangs::ticking_tests::fangs_and_an_ominous_item_spawner_pause_on_scheduled_ticket_removal_and_resume_26_3",
     "path": "crates/sunrise-client/src/game/mobs/fangs/ticking_tests.rs",
     "reason": "run by tools/test_fangs_ticking_gate_parity.py",
     "rationale": "Parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_fangs_ticking_gate_parity.py records the vanilla 26.3 fangs/spawner ticking-gate witness into .local and runs this test against it through SUNRISE_FANGS_TICKING_GATE_WITNESS, so no recorded vanilla data is committed."
@@ -1426,7 +1426,7 @@
   {
     "package": "sunrise-client",
     "target": "lib",
-    "test": "game::potions::cloud_water_tests::a_cloud_in_water_resets_its_fall_distance_and_a_dry_one_keeps_it",
+    "test": "game::client_side::potions::cloud_water_tests::a_cloud_in_water_resets_its_fall_distance_and_a_dry_one_keeps_it",
     "path": "crates/sunrise-client/src/game/items/potions/cloud_water_tests.rs",
     "reason": "run by tools/test_cloud_water_parity.py",
     "rationale": "Parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_cloud_water_parity.py records the vanilla 26.3 cloud-water witness into .local and runs this test against it through SUNRISE_CLOUD_WATER_WITNESS, so no recorded vanilla data is committed."
@@ -1434,7 +1434,7 @@
   {
     "package": "sunrise-client",
     "target": "lib",
-    "test": "game::fangs::current_tests::fangs_in_a_current_are_pushed_and_fangs_in_still_water_are_not",
+    "test": "game::server_side::fangs::current_tests::fangs_in_a_current_are_pushed_and_fangs_in_still_water_are_not",
     "path": "crates/sunrise-client/src/game/mobs/fangs/current_tests.rs",
     "reason": "run by tools/test_fangs_fluid_current_parity.py",
     "rationale": "Parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_fangs_fluid_current_parity.py records the vanilla 26.3 fangs fluid-current witness into .local and runs this test against it through SUNRISE_FANGS_FLUID_CURRENT_WITNESS, so no recorded vanilla data is committed."

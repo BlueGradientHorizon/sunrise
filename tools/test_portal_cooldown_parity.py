@@ -16,7 +16,7 @@ except ImportError:
     import lab
     import test_rust_parity as base
 
-TEST = 'game::nether_portal::cooldown_tests::portal_contact_and_waiting_handoff_match_vanilla_counters'
+TEST = 'game::server_side::nether_portal::cooldown_tests::portal_contact_and_waiting_handoff_match_vanilla_counters'
 
 
 def main():

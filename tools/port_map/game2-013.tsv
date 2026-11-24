@@ -37,7 +37,7 @@ DaylightDetectorBlock.getTicker	port	crates/sunrise-world/src/level/mod.rs::Beha
 DaylightDetectorBlock.createBlockStateDefinition	skip:data		power and inverted properties come from the block state tables
 DecoratedPotBlock.updateShape	port	crates/sunrise-world/src/level/shapes.rs::Sim::update_shape_class	DecoratedPot arm: waterlogged tick then the default shape update
 DecoratedPotBlock.getStateForPlacement	port	crates/sunrise-world/src/level/place.rs::Sim::placement_class	DecoratedPot arm: facing from the player, waterlogged from the spot, cracked false
-DecoratedPotBlock.useWithoutItem	port	crates/sunrise-client/src/game/blocks/decorated_pot.rs::Game::use_decorated_pot	empty-hand path plays insert_fail, negative wobble and block change
+DecoratedPotBlock.useWithoutItem	port	crates/sunrise-client/src/game/blocks/decorated_pot_client.rs::Game::use_decorated_pot	empty-hand path plays insert_fail, negative wobble and block change
 DecoratedPotBlock.createBlockStateDefinition	skip:data		facing, waterlogged and cracked properties come from the block state tables
 DecoratedPotBlock.getFluidState	skip:data		waterlogged water source comes from the per-state fluid facts table (Level::fluid)
 DecoratedPotBlock.onProjectileHit	port	crates/sunrise-client/src/game/mobs/creatures/mod.rs::Game::projectile_breaks_block	the pot is cracked first, then shattered
@@ -96,7 +96,7 @@ EndGatewayBlock.getPortalDestination	port	crates/sunrise-client/src/game/world/e
 EndPortalFrameBlock.getStateForPlacement	port	crates/sunrise-world/src/level/place.rs::Sim::placement_class	EndPortalFrame arm: facing opposite the player and eye set to false
 EndPortalFrameBlock.rotate	skip:data		rotation results come from the exported BlockState rotate table (worldgen/structure.rs)
 EndPortalFrameBlock.createBlockStateDefinition	skip:data		facing and eye properties come from the block state tables
-EntityBlock.getListener	inline	crates/sunrise-client/src/game/blocks/sculk.rs::Game::post_game_event	gap: minor: listeners within reach are found in post_game_event, which reads only the sculk listener tables
+EntityBlock.getListener	inline	crates/sunrise-client/src/game/blocks/sculk_server.rs::Game::post_game_event	gap: minor: listeners within reach are found in post_game_event, which reads only the sculk listener tables
 EyeblossomBlock.randomTick	port	crates/sunrise-world/src/level/timeline.rs::Sim::eyeblossom_tick	random tick runs tryChangingState and picks the long switch sound
 FaceAttachedHorizontalDirectionalBlock.canAttach	inline	crates/sunrise-world/src/level/survive.rs::Sim::can_survive_class	the sturdy-face test on the attached side is inline in the FaceAttached arm
 FaceAttachedHorizontalDirectionalBlock.getStateForPlacement	port	crates/sunrise-world/src/level/place.rs::Sim::placement_class	FaceAttached arm: tries the nearest looking directions and keeps the first that survives

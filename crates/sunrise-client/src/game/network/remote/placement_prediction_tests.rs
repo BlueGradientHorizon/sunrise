@@ -1,18 +1,21 @@
+#[allow(unused_imports)]
 use super::*;
+#[allow(unused_imports)]
 use crate::game::{
     native_connection_groups::ReceivedGroup, native_entity_refs::tests::with_game_role,
 };
+#[allow(unused_imports)]
 use mod_api::{
     BlockPart, BlockState, CanSurviveEvent, CanSustainPlantEvent, FenceGateInWallEvent, Hooks,
     LevelSide, MayPlaceOnEvent, Registrar, StateForPlacementEvent,
 };
 
 /// Every answer below is a client's: the hooks are asked by its placement prediction.
-fn client(level: LevelSide<'_>) {
+pub(in crate::game) fn client(level: LevelSide<'_>) {
     assert!(matches!(level, LevelSide::Client(_)));
 }
 
-struct Refuse;
+pub(in crate::game) struct Refuse;
 #[mod_api::sunrise_part]
 impl BlockPart for Refuse {
     fn state_for_placement(
@@ -25,7 +28,7 @@ impl BlockPart for Refuse {
     }
 }
 
-struct Fall;
+pub(in crate::game) struct Fall;
 #[mod_api::sunrise_part]
 impl BlockPart for Fall {
     fn can_survive(&self, level: LevelSide<'_>, _: &mut CanSurviveEvent) -> Option<bool> {
@@ -34,7 +37,7 @@ impl BlockPart for Fall {
     }
 }
 
-struct Soil;
+pub(in crate::game) struct Soil;
 #[mod_api::sunrise_part]
 impl BlockPart for Soil {
     fn can_sustain_plant(
@@ -47,7 +50,7 @@ impl BlockPart for Soil {
     }
 }
 
-struct Hardy;
+pub(in crate::game) struct Hardy;
 #[mod_api::sunrise_part]
 impl BlockPart for Hardy {
     fn may_place_on(&self, level: LevelSide<'_>, _: &mut MayPlaceOnEvent) -> Option<bool> {
@@ -56,7 +59,7 @@ impl BlockPart for Hardy {
     }
 }
 
-struct PlaceMod;
+pub(in crate::game) struct PlaceMod;
 #[mod_api::__subscriptions]
 impl Hooks for PlaceMod {
     fn register(&self, r: &mut dyn Registrar, _: &mod_api::RegistrationContext) {
@@ -73,7 +76,7 @@ impl Hooks for PlaceMod {
 
 /// `test` on a survival-mode client game with `mods`' parts, connected to a server and with
 /// chunk (0, 0) loaded and empty.
-fn on_a_client(mods: mod_api::Mods, test: impl FnOnce(&mut Game<'_>)) {
+pub(in crate::game) fn on_a_client(mods: mod_api::Mods, test: impl FnOnce(&mut Game<'_>)) {
     let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
     crate::game::api_values::install_parts(&mods).unwrap();
     mod_platform::testing::with_mods(mods, || {
@@ -95,7 +98,7 @@ fn on_a_client(mods: mod_api::Mods, test: impl FnOnce(&mut Game<'_>)) {
 }
 
 /// The click at the top of `[x, 64, z]`.
-fn top_of(x: i32, z: i32) -> crate::game::Hit {
+pub(in crate::game) fn top_of(x: i32, z: i32) -> crate::game::Hit {
     crate::game::Hit {
         pos: [x, 64, z],
         face: [0, 1, 0],
@@ -133,7 +136,7 @@ fn client_placement_prediction_asks_placement_and_survival_parts() {
     });
 }
 
-struct StorageFacing;
+pub(in crate::game) struct StorageFacing;
 #[mod_api::sunrise_part]
 impl BlockPart for StorageFacing {
     fn state_for_placement(
@@ -152,7 +155,7 @@ impl BlockPart for StorageFacing {
     }
 }
 
-struct StoragePort;
+pub(in crate::game) struct StoragePort;
 impl mod_api::ResourceHandler<mod_api::ItemResource> for StoragePort {
     fn size(&self, _: &mut dyn mod_api::ServerHost) -> usize {
         0
@@ -193,7 +196,7 @@ impl mod_api::ResourceHandler<mod_api::ItemResource> for StoragePort {
     }
 }
 
-struct PlacementStorageMod;
+pub(in crate::game) struct PlacementStorageMod;
 #[mod_api::__subscriptions]
 impl Hooks for PlacementStorageMod {
     fn register(&self, r: &mut dyn Registrar, _: &mod_api::RegistrationContext) {
@@ -370,7 +373,7 @@ fn placement_and_prediction_choose_from_their_local_item_providers() {
     });
 }
 
-struct BedInstead;
+pub(in crate::game) struct BedInstead;
 #[mod_api::sunrise_part]
 impl BlockPart for BedInstead {
     fn state_for_placement(
@@ -385,7 +388,7 @@ impl BlockPart for BedInstead {
     }
 }
 
-struct BedPlacementMod;
+pub(in crate::game) struct BedPlacementMod;
 #[mod_api::__subscriptions]
 impl Hooks for BedPlacementMod {
     fn register(&self, r: &mut dyn Registrar, _: &mod_api::RegistrationContext) {
@@ -437,7 +440,7 @@ fn predicts_the_selected_beds_component_adjusted_head() {
 }
 
 /// A dandelion that stands while a cobblestone is east of it, as its level shows it.
-struct BesideCobblestone;
+pub(in crate::game) struct BesideCobblestone;
 #[mod_api::sunrise_part]
 impl BlockPart for BesideCobblestone {
     fn can_survive(&self, level: LevelSide<'_>, event: &mut CanSurviveEvent) -> Option<bool> {
@@ -449,7 +452,7 @@ impl BlockPart for BesideCobblestone {
     }
 }
 
-struct NeighbourMod;
+pub(in crate::game) struct NeighbourMod;
 #[mod_api::__subscriptions]
 impl Hooks for NeighbourMod {
     fn register(&self, r: &mut dyn Registrar, _: &mod_api::RegistrationContext) {
@@ -458,14 +461,14 @@ impl Hooks for NeighbourMod {
     }
 }
 
-type BreakRead = (
+pub(in crate::game) type BreakRead = (
     sunrise_core::position::BlockPos,
     Option<BlockState>,
     Option<BlockState>,
 );
 
 #[derive(Clone, Default)]
-struct BreakObserver(Arc<std::sync::Mutex<Vec<BreakRead>>>);
+pub(in crate::game) struct BreakObserver(pub(in crate::game) Arc<std::sync::Mutex<Vec<BreakRead>>>);
 
 #[mod_api::sunrise_part]
 impl BlockPart for BreakObserver {
@@ -487,7 +490,7 @@ impl BlockPart for BreakObserver {
     }
 }
 
-struct BreakMod(BreakObserver);
+pub(in crate::game) struct BreakMod(pub(in crate::game) BreakObserver);
 #[mod_api::__subscriptions]
 impl Hooks for BreakMod {
     fn register(&self, r: &mut dyn Registrar, context: &mod_api::RegistrationContext) {
@@ -725,9 +728,10 @@ fn a_denied_break_restores_wall_sign_text_and_synced_attachments() {
     });
 }
 
-static GUIDE_ASKS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+pub(in crate::game) static GUIDE_ASKS: std::sync::atomic::AtomicUsize =
+    std::sync::atomic::AtomicUsize::new(0);
 
-struct Counted;
+pub(in crate::game) struct Counted;
 #[mod_api::sunrise_part]
 impl BlockPart for Counted {
     fn state_for_placement(
@@ -741,7 +745,7 @@ impl BlockPart for Counted {
 }
 
 /// A dandelion's survival, asked from a neighbour's shape update.
-struct CountedSurvival;
+pub(in crate::game) struct CountedSurvival;
 #[mod_api::sunrise_part]
 impl BlockPart for CountedSurvival {
     fn can_survive(&self, _: LevelSide<'_>, _: &mut CanSurviveEvent) -> Option<bool> {
@@ -750,7 +754,7 @@ impl BlockPart for CountedSurvival {
     }
 }
 
-struct CountedWall;
+pub(in crate::game) struct CountedWall;
 #[mod_api::sunrise_part]
 impl BlockPart for CountedWall {
     fn fence_gate_in_wall(
@@ -764,7 +768,7 @@ impl BlockPart for CountedWall {
     }
 }
 
-struct GuideMod;
+pub(in crate::game) struct GuideMod;
 #[mod_api::__subscriptions]
 impl Hooks for GuideMod {
     fn register(&self, r: &mut dyn Registrar, _: &mod_api::RegistrationContext) {
@@ -860,10 +864,11 @@ fn the_guide_s_look_asks_no_placement_or_survival_part_and_the_click_does() {
 }
 
 /// The comparator east of the clicked block's spot and what its part read of its signal.
-const COMPARATOR: [i32; 3] = [2, 65, 0];
-static COMPARATOR_READS: std::sync::Mutex<Vec<Option<i32>>> = std::sync::Mutex::new(Vec::new());
+pub(in crate::game) const COMPARATOR: [i32; 3] = [2, 65, 0];
+pub(in crate::game) static COMPARATOR_READS: std::sync::Mutex<Vec<Option<i32>>> =
+    std::sync::Mutex::new(Vec::new());
 
-struct ReadsComparator;
+pub(in crate::game) struct ReadsComparator;
 #[mod_api::sunrise_part]
 impl BlockPart for ReadsComparator {
     fn can_survive(&self, level: LevelSide<'_>, _: &mut CanSurviveEvent) -> Option<bool> {
@@ -876,7 +881,7 @@ impl BlockPart for ReadsComparator {
     }
 }
 
-struct ComparatorMod;
+pub(in crate::game) struct ComparatorMod;
 #[mod_api::__subscriptions]
 impl Hooks for ComparatorMod {
     fn register(&self, r: &mut dyn Registrar, _: &mod_api::RegistrationContext) {
@@ -1033,80 +1038,6 @@ fn a_prediction_asks_the_live_level_over_its_writes() {
     assert_eq!(ask(&guess), Some(true));
     guess.asks_mods = false;
     assert_eq!(ask(&guess), None);
-}
-
-#[test]
-#[ignore = "daily"]
-fn an_active_vault_ends_a_held_item_s_click_on_the_client() {
-    crate::game::native_entity_refs::tests::with_client_game(|game| {
-        let (mut peer, _writer) = super::tests::connect_menu_test(game);
-        peer.set_read_timeout(Some(std::time::Duration::from_millis(50)))
-            .unwrap();
-        game.set_local_mode(sunrise_client::command::args::GameMode::Survival);
-        game.player = Some(PlayerMotion::new(game.motion, Vec3::new(0.5, 64.0, 3.5)).unwrap());
-        game.world
-            .chunks
-            .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
-        game.sync_tick_chunks();
-        let hit = top_of(0, 0);
-        game.server.forced_hit = Some(hit);
-        let registry = game.pack.assets.registry;
-        let vault = |state: &str| {
-            registry
-                .resolve(&sunrise_world::chunk::BlockState {
-                    name: "minecraft:vault".into(),
-                    properties: [
-                        ("facing", "north"),
-                        ("ominous", "false"),
-                        ("vault_state", state),
-                    ]
-                    .into_iter()
-                    .map(|(key, value)| (key.into(), value.into()))
-                    .collect(),
-                })
-                .unwrap()
-        };
-        // VaultBlock.useItemOn: SUCCESS_SERVER for any held item on an ACTIVE vault, so the
-        // click ends with UseItemOn and the hand swings only when the server says so.
-        game.world.set(0, 64, 0, vault("active")).unwrap();
-        for (hand, expected) in [
-            (Hand::Main, &[(0, 1)][..]),
-            (Hand::Off, &[(0, 1), (1, 2)][..]),
-        ] {
-            for item in ["minecraft:trial_key", "minecraft:stick"] {
-                game.inventory[game.selected] =
-                    (hand == Hand::Main).then(|| ItemStack::new(item, 1));
-                game.offhand = (hand == Hand::Off).then(|| ItemStack::new(item, 1));
-                let sequence = game.remote.as_ref().unwrap().sequence;
-                let swings = game.swings_started;
-                game.remote_use(mod_api::InteractionAttempt::Press);
-                let mut uses = Vec::new();
-                while let Ok((id, body)) = peer.recv() {
-                    match S::decode(id, &body).unwrap() {
-                        S::UseItemOn(packet) => {
-                            assert_eq!(packet.pos, hit.pos);
-                            uses.push((packet.hand, packet.sequence - sequence));
-                        }
-                        S::UseItem(_) => panic!("unexpected UseItem for {hand:?} {item}"),
-                        _ => {}
-                    }
-                }
-                assert_eq!(uses.as_slice(), expected, "{hand:?} {item}");
-                assert_eq!(
-                    game.remote.as_ref().unwrap().sequence - sequence,
-                    expected.len() as i32
-                );
-                assert_eq!(game.swings_started, swings, "{hand:?} {item}");
-            }
-        }
-        // TRY_WITH_EMPTY_HAND otherwise: the vault has no useWithoutItem, so the click goes on.
-        let (empty, _) = game.remote_block_reacts(&hit, None, true);
-        assert!(!empty.consumes_action());
-        game.world.set(0, 64, 0, vault("unlocking")).unwrap();
-        let key = ItemStack::new("minecraft:trial_key", 1);
-        let (unlocking, _) = game.remote_block_reacts(&hit, Some(&key), true);
-        assert!(!unlocking.consumes_action());
-    });
 }
 
 #[test]

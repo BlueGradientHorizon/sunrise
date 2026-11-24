@@ -1,19 +1,24 @@
 //! `TestCommand`'s `locate`, `pos` and `create`.
+#[allow(unused_imports)]
 use super::{Arg, Context, Game, R, err};
+#[allow(unused_imports)]
 use crate::game::test_instances::TestDef;
+#[allow(unused_imports)]
 use sunrise_client::{
     containers::BlockEntity,
     test_instance_block::{Status, TestInstanceBlock},
     text::{self, ClickEvent, Style, Text},
 };
+#[allow(unused_imports)]
 use sunrise_protocol::packets::play::{self, Clientbound as C};
+#[allow(unused_imports)]
 use sunrise_world::worldgen::structure::Rotation;
 
-type Pos = (i32, i32, i32);
+pub(in crate::game) type Pos = (i32, i32, i32);
 
 /// `Rotation.rotate(Direction.NORTH)` as (dx, dz) and the `toYRot` of the
 /// opposite direction.
-fn north_turned(rotation: Rotation) -> ((i32, i32), i32) {
+pub(in crate::game) fn north_turned(rotation: Rotation) -> ((i32, i32), i32) {
     match rotation {
         Rotation::None => ((0, -1), 0),
         Rotation::Clockwise90 => ((1, 0), 90),
@@ -23,7 +28,7 @@ fn north_turned(rotation: Rotation) -> ((i32, i32), i32) {
 }
 
 /// `String.format("/execute in %s run tp @s %d %d %d %d 0", ..)` of `locate`.
-fn locate_command(dimension: &str, at: Pos, y_rot: i32) -> String {
+pub(in crate::game) fn locate_command(dimension: &str, at: Pos, y_rot: i32) -> String {
     format!(
         "/execute in {dimension} run tp @s {} {} {} {y_rot} 0",
         at.0, at.1, at.2
@@ -31,14 +36,14 @@ fn locate_command(dimension: &str, at: Pos, y_rot: i32) -> String {
 }
 
 /// `Mth.floor(Mth.sqrt(dx * dx + dz * dz))` over ints.
-fn horizontal_distance(dx: i32, dz: i32) -> i32 {
+pub(in crate::game) fn horizontal_distance(dx: i32, dz: i32) -> i32 {
     ((dx.wrapping_mul(dx).wrapping_add(dz.wrapping_mul(dz))) as f32)
         .sqrt()
         .floor() as i32
 }
 
 /// The text of a clickable bracketed position.
-fn link(inner: Text, color: u32, command: String) -> Text {
+pub(in crate::game) fn link(inner: Text, color: u32, command: String) -> Text {
     Text::literal("[")
         .append(inner)
         .append("]")
@@ -52,91 +57,13 @@ fn link(inner: Text, color: u32, command: String) -> Text {
         })
 }
 
-fn path_of(dimension: &str) -> &str {
+pub(in crate::game) fn path_of(dimension: &str) -> &str {
     dimension.split_once(':').map_or(dimension, |(_, p)| p)
 }
 
 impl Game<'_> {
-    /// `TestCommand.locate`.
-    pub(super) fn test_locate(&mut self, ctx: &Context) -> R<i32> {
-        let selected: Vec<String> = match ctx.get("tests") {
-            Some(Arg::Str(pattern)) => sunrise_client::command::args::select_resources(
-                self.ui.registries.ids("minecraft:test_instance"),
-                pattern,
-            )
-            .into_iter()
-            .cloned()
-            .collect(),
-            _ => Vec::new(),
-        };
-        // CommandSourceStack.sendSystemMessage: no feedback rule.
-        if !self.server.command_source.is_some_and(|s| s.silent) {
-            self.system_message(Text::translate("commands.test.locate.started", &[]));
-        }
-        let center = self.test_source_block();
-        let source_dim = self.dim;
-        // findSelectedTestPositionsAcrossDimensions: every level's test
-        // blocks within 250 blocks whose test was selected.
-        let mut found: Vec<(Pos, String, Rotation)> = Vec::new();
-        if !selected.is_empty() {
-            for dim in self.loaded_dims() {
-                let back = self.enter_command_level(dim);
-                for pos in self.find_test_instance_blocks(center, 250) {
-                    let key = self.test_instance_at(pos).and_then(|b| b.data.test.clone());
-                    let key = key.map(|k| {
-                        if k.contains(':') {
-                            k
-                        } else {
-                            format!("minecraft:{k}")
-                        }
-                    });
-                    if key.is_some_and(|k| selected.contains(&k)) {
-                        found.push((pos, dim.id().to_owned(), self.test_rotation(pos)));
-                    }
-                }
-                if let Some(back) = back {
-                    self.enter_command_level(back);
-                }
-            }
-        }
-        let mut dimensions: Vec<String> = Vec::new();
-        for (pos, dimension, rotation) in &found {
-            if !dimensions.contains(dimension) {
-                dimensions.push(dimension.clone());
-            }
-            let ((dx, dz), y_rot) = north_turned(*rotation);
-            let tp = (pos.0 + dx * 3, pos.1, pos.2 + dz * 3);
-            let command = locate_command(dimension, tp, y_rot);
-            let coordinates = link(
-                Text::tr("chat.coordinates", &[&pos.0, &pos.1, &pos.2])
-                    .append(format!(" ->[{}]", path_of(dimension))),
-                text::GREEN,
-                command,
-            );
-            let distance = if *dimension == source_dim.id() {
-                horizontal_distance(center.0 - pos.0, center.2 - pos.2).to_string()
-            } else {
-                "N/A".to_owned()
-            };
-            self.feedback_unbroadcast(Text::translate(
-                "commands.test.locate.found",
-                &[coordinates, Text::literal(distance)],
-            ));
-        }
-        let count = found.len() as i32;
-        if count == 0 {
-            return Err(err("commands.test.error.no_test_instances", &[]));
-        }
-        self.output_player_coordinates(&dimensions);
-        self.feedback(Text::translate(
-            "commands.test.locate.done",
-            &[Text::literal(count.to_string())],
-        ));
-        Ok(count)
-    }
-
     /// `outputPlayerCoordinates`.
-    fn output_player_coordinates(&mut self, test_dimensions: &[String]) {
+    pub(in crate::game) fn output_player_coordinates(&mut self, test_dimensions: &[String]) {
         let Some(player) = self.player.as_ref() else {
             return;
         };
@@ -177,90 +104,8 @@ impl Game<'_> {
         self.feedback_unbroadcast(coordinates);
     }
 
-    /// `TestCommand.showPos`, but for the highlight the client draws
-    /// (`ClientboundGameTestHighlightPosPacket`).
-    pub(super) fn test_show_pos(&mut self, ctx: &Context) -> R<i32> {
-        // `source.getPlayerOrException().pick(10, 1, false)`: the source
-        // player's own eyes and view. A connected player's are in place only
-        // for the pick; the test is looked up, and the issuer told, here.
-        let target = match self.server.command_source.map(|s| s.entity) {
-            Some(Some(super::Target::Guest(conn))) => self
-                .for_player(super::Target::Guest(conn), |g| g.test_pick_block())
-                .ok_or_else(|| err("permissions.requires.player", &[]))?,
-            _ => {
-                self.source_player()?;
-                self.test_pick_block()
-            }
-        };
-        let var = match ctx.get("var") {
-            Some(Arg::Str(v)) => v.clone(),
-            _ => "pos".to_owned(),
-        };
-        let target = (target[0], target[1], target[2]);
-        let containing = |game: &Self, radius: i32| {
-            game.find_test_instance_blocks(target, radius)
-                .into_iter()
-                .find(|&p| {
-                    game.test_structure_box(p).is_some_and(|b| {
-                        (0..3).all(|i| {
-                            let t = [target.0, target.1, target.2][i];
-                            t >= b.min[i] && t <= b.max[i]
-                        })
-                    })
-                })
-        };
-        let found = containing(self, 15).or_else(|| containing(self, 250));
-        let Some(block) = found else {
-            return Err(err(
-                "commands.test.error.no_test_containing_pos",
-                &[&target.0, &target.1, &target.2],
-            ));
-        };
-        let Some(origin) = self.test_structure_box(block).map(|b| b.min) else {
-            return Err(err("commands.test.error.test_instance_not_found", &[]));
-        };
-        let relative = [
-            target.0 - origin[0],
-            target.1 - origin[1],
-            target.2 - origin[2],
-        ];
-        let description = format!("{}, {}, {}", relative[0], relative[1], relative[2]);
-        let coords = Text::translate(
-            "commands.test.coordinates",
-            &relative.map(|v| Text::literal(v.to_string())),
-        )
-        .with_style(&Style {
-            bold: Some(true),
-            click: Some(ClickEvent::CopyToClipboard(format!(
-                "final BlockPos {var} = new BlockPos({description});"
-            ))),
-            hover: Some(std::sync::Arc::new(Text::translate(
-                "commands.test.coordinates.copy",
-                &[],
-            ))),
-            ..Style::color(text::GREEN)
-        });
-        let name = self.test_name(block).plain();
-        self.feedback_unbroadcast(Text::translate(
-            "commands.test.relative_position",
-            &[Text::literal(name), coords],
-        ));
-        // `player.connection.send(new ClientboundGameTestHighlightPosPacket(..))`.
-        if self.server.lan_acting.is_some() {
-            self.server
-                .guest_packets
-                .push(C::GameTestHighlightPos(play::GameTestHighlightPos {
-                    absolute: [target.0, target.1, target.2],
-                    relative,
-                }));
-        } else {
-            self.highlight_test_pos([target.0, target.1, target.2], relative);
-        }
-        Ok(1)
-    }
-
     /// `TestCommand.createNewStructure`.
-    pub(super) fn test_create(&mut self, ctx: &Context) -> R<i32> {
+    pub(in crate::game) fn test_create(&mut self, ctx: &Context) -> R<i32> {
         let int = |name: &str, default: i32| match ctx.get(name) {
             Some(Arg::Int(v)) => *v,
             _ => default,
@@ -308,7 +153,7 @@ impl Game<'_> {
 
 impl Game<'_> {
     /// `StructureUtils.createNewEmptyTest`.
-    fn create_empty_test(&mut self, key: &str, at: Pos, size: [i32; 3]) {
+    pub(in crate::game) fn create_empty_test(&mut self, key: &str, at: Pos, size: [i32; 3]) {
         let padding = self.test_def(key).map_or(0, |d: TestDef| d.padding);
         let corner =
             TestInstanceBlock::structure_pos_of([at.0 + padding, at.1 + padding, at.2 + padding]);
@@ -342,7 +187,7 @@ impl Game<'_> {
 }
 
 #[cfg(test)]
-mod tests {
+pub(in crate::game) mod tests {
     use super::*;
 
     #[test]

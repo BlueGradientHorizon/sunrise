@@ -2,50 +2,26 @@
 //! flint and steel leaves the cart alone (`Entity.interact` passes), and
 //! `primeFuse` plays `entity.tnt.primed` on the blocks source only when the
 //! cart is not silent.
+#[allow(unused_imports)]
 use super::super::*;
+#[allow(unused_imports)]
 use super::{CartKind, Minecart};
+#[allow(unused_imports)]
 use crate::game::game_tests::tests::server_game;
+#[allow(unused_imports)]
 use sunrise_client::items::ItemStack;
 
 /// A server's game on the prepared resources, or None when they are absent
 /// (CI has none: the tests then skip quietly).
-fn server(resources: &mut Option<std::sync::Arc<crate::game::Resources>>) -> Option<Game<'_>> {
+pub(in crate::game) fn server(
+    resources: &mut Option<std::sync::Arc<crate::game::Resources>>,
+) -> Option<Game<'_>> {
     std::env::var_os("SUNRISE_TEST_RESOURCES")?;
     Some(server_game(resources))
 }
 
-/// A lone TNT cart at (0.5, 64, 0.5); a silent one keeps `Silent:1b` where
-/// `Entity.saveWithoutId` does.
-fn tnt_cart(game: &mut Game<'_>, id: u32, silent: bool) {
-    game.carts.clear();
-    game.carts
-        .push(Minecart::new(id, CartKind::Tnt, Vec3::new(0.5, 64.0, 0.5)));
-    game.persist.raw.remove(&id);
-    game.server.lan_entity_events.clear();
-    if silent {
-        let (tag, _) = sunrise_core::nbt::parse_snbt("{Silent:1b}").unwrap();
-        game.persist.raw.insert(id, tag);
-    }
-}
-
-#[test]
-fn flint_and_steel_passes_on_a_tnt_cart_without_lighting_it() {
-    let mut resources = None;
-    let Some(mut game) = server(&mut resources) else {
-        return;
-    };
-    tnt_cart(&mut game, 42, false);
-    game.inventory[game.selected] = Some(ItemStack::new("minecraft:flint_and_steel", 1));
-    game.audio.0.capture = Some(Vec::new());
-    let used = game.interact_cart(Some(InteractTarget {
-        id: 42,
-        location: [0.0, 0.0, 0.0],
-    }));
-    assert!(!used, "Entity.interact passes to the held item");
-    assert_eq!(game.carts[0].fuse, -1, "flint and steel lit the cart");
-    let sounds = game.audio.0.capture.take().unwrap();
-    assert!(sounds.is_empty(), "{sounds:?}");
-}
+#[allow(unused_imports)]
+pub(in crate::game) use crate::game::server_side::minecarts_server::minecart_tnt_tests::tnt_cart;
 
 #[test]
 fn a_silent_tnt_cart_primes_without_its_sound() {

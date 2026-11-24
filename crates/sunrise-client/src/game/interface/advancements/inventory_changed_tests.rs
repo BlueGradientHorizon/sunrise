@@ -39,7 +39,7 @@ impl Hooks for Probe {
 #[ignore = "daily"]
 fn a_changed_inventory_is_heard_once_with_its_41_slots() {
     crate::game::in_own_process(
-        "game::advancements::inventory_changed_tests::a_changed_inventory_is_heard_once_with_its_41_slots",
+        "game::server_side::advancements::inventory_changed_tests::a_changed_inventory_is_heard_once_with_its_41_slots",
         a_changed_inventory_is_heard_once_with_its_41_slots_isolated,
     );
 }

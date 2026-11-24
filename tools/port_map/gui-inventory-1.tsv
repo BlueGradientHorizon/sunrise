@@ -25,10 +25,10 @@ AbstractContainerScreen.isHovering	port	crates/sunrise-client/src/game/interface
 AbstractContainerScreen.onMouseClickAction	inline	crates/sunrise-client/src/game.rs::Game::menu_ops	Shift click or swap clears a bundle's selection
 AbstractContainerScreen.keyPressed	port	crates/sunrise-client/src/game/interface/inventory_input.rs::Game::inventory_hotkey	number keys, F and Q over a slot; keyPickItem bound to a keyboard key does not clone the hovered slot
 AbstractContainerScreen.checkHotbarKeyPressed	port	crates/sunrise-client/src/game/interface/inventory_input.rs::Game::inventory_hotkey	hotbar and off hand swaps while the hand is empty
-AbstractContainerScreen.removed	port	crates/sunrise-client/src/game.rs::Game::close_container	carried stack and crafting grid go back to the inventory or are thrown
+AbstractContainerScreen.removed	port	crates/sunrise-client/src/game/game_server.rs::Game::close_container	carried stack and crafting grid go back to the inventory or are thrown
 AbstractContainerScreen.tick	missing		no closeContainer for a dead player: death only swaps to the death screen, so a chest or furnace open at death stays counted as open (lid up)
 AbstractContainerScreen.quickCraftToSlots	port	crates/sunrise-client/src/game/interface/inventory_input.rs::Game::inventory_release	start, one add per slot, end
-AbstractContainerScreen.onClose	port	crates/sunrise-client/src/game.rs::Game::close_container	closes the container and clears the bundle selection
+AbstractContainerScreen.onClose	port	crates/sunrise-client/src/game/game_server.rs::Game::close_container	closes the container and clears the bundle selection
 AbstractFurnaceScreen.init	inline	crates/sunrise-client/src/game/interface/inventory_slots.rs::Game::draw_inventory	furnace arm centres the title
 AbstractFurnaceScreen.getRecipeBookButtonPosition	port	crates/sunrise-client/src/game/items/recipe_book.rs::Game::book_button_pos
 AbstractFurnaceScreen.extractBackground	inline	crates/sunrise-client/src/game/interface/inventory_slots.rs::Game::draw_inventory	furnace arm draws the flame and the arrow
@@ -77,7 +77,7 @@ BookEditScreen.pageBack	port	crates/sunrise-client/src/game/interface/books.rs::
 BookEditScreen.pageForward	port	crates/sunrise-client/src/game/interface/books.rs::Game::turn_page	adds a page up to 100 when on the last one
 BookEditScreen.updatePageContent	inline	crates/sunrise-client/src/game/interface/books.rs::Game::turn_page	loads the page text into the edit box
 BookEditScreen.eraseEmptyTrailingPages	inline	crates/sunrise-client/src/game/interface/books.rs::Game::save_book	keeps at least one page
-BookEditScreen.updateLocalCopy	inline	crates/sunrise-client/src/game/interface/books.rs::Game::write_book	the book in hand takes the pages
+BookEditScreen.updateLocalCopy	inline	crates/sunrise-client/src/game/interface/books_server.rs::Game::write_book	the book in hand takes the pages
 BookEditScreen.appendPageToBook	inline	crates/sunrise-client/src/game/interface/books.rs::Game::turn_page	pushes an empty page below the 100 page cap
 BookEditScreen.extractRenderState	port	crates/sunrise-client/src/game/interface/books.rs::Game::draw_book
 BookEditScreen.visitText	inline	crates/sunrise-client/src/game/interface/books.rs::Game::draw_book	page number at the top right
@@ -110,7 +110,7 @@ CommandBlockEditScreen.updateGui	inline	crates/sunrise-client/src/game/administr
 CommandBlockEditScreen.populateAndSendPacket	port	crates/sunrise-client/src/game/administration/command_blocks.rs::Game::set_command_block	SetCommandBlock on a server, applied here otherwise
 ContainerScreen.extractBackground	port	crates/sunrise-client/src/game/world/storage.rs::Game::draw_chest_screen
 CrafterScreen.init	inline	crates/sunrise-client/src/game/blocks/machines/crafter.rs::Game::draw_crafter_screen	title centred
-CrafterScreen.updateSlotState	port	crates/sunrise-client/src/game/blocks/machines/crafter.rs::Game::crafter_slot_clicked	menu state, ContainerSlotStateChanged and the click sound
+CrafterScreen.updateSlotState	port	crates/sunrise-client/src/game/blocks/machines/crafter_client.rs::Game::crafter_slot_clicked	menu state, ContainerSlotStateChanged and the click sound
 CrafterScreen.extractSlot	port	crates/sunrise-client/src/screen_layout.rs::crafter	disabled slot sprite; no pointing-hand cursor over crafter slots
 CrafterScreen.extractDisabledSlot	port	crates/sunrise-client/src/screen_layout.rs::crafter
 CrafterScreen.extractRenderState	port	crates/sunrise-client/src/game/blocks/machines/crafter.rs::Game::draw_crafter_screen	the Click to disable slot tooltip is crafter_tooltip

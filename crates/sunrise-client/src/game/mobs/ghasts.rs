@@ -11,7 +11,7 @@ use sunrise_world::registry::BlockStateId;
 
 impl Game<'_> {
     /// `HappyGhast.mobInteract`. Returns whether the click was used.
-    pub(super) fn interact_happy_ghast(&mut self, index: usize, item: &str) -> bool {
+    pub(in crate::game) fn interact_happy_ghast(&mut self, index: usize, item: &str) -> bool {
         let m = &self.mobs[index];
         if !m.alive() || Some(m.id) == self.riding {
             return false;
@@ -82,7 +82,7 @@ impl Game<'_> {
         false
     }
     /// Getting off lands on top of it.
-    pub(super) fn dismount_happy_ghast(&mut self, id: u32) {
+    pub(in crate::game) fn dismount_happy_ghast(&mut self, id: u32) {
         // removePassenger: held still for half a second, and with no one
         // aboard the ghast forgets its home.
         if let Some(m) = self.mobs.iter_mut().find(|m| m.id == id) {
@@ -101,7 +101,7 @@ impl Game<'_> {
         let _ = self.handle_mob_events(vec![up]);
     }
     /// `DriedGhastBlock.spawnGhastling`: a ghastling facing the way the block did.
-    pub(super) fn spawn_ghastling(&mut self, pos: [i32; 3], state: BlockStateId) {
+    pub(in crate::game) fn spawn_ghastling(&mut self, pos: [i32; 3], state: BlockStateId) {
         let at = [
             f64::from(pos[0]) + 0.5,
             f64::from(pos[1]),

@@ -5,7 +5,7 @@
 use super::Game;
 use serde_json::Value as Json;
 use sunrise_client_core::gamerules::Value;
-pub(super) use sunrise_gameplay::test_environments::{
+pub(in crate::game) use sunrise_gameplay::test_environments::{
     Activation, Environment, Saved, WeatherType, parse,
 };
 
@@ -24,7 +24,7 @@ impl Game<'_> {
     }
 
     /// The definition of a batch's environment (`batch()` of its tests).
-    pub(super) fn test_environment(&self, id: &str) -> Option<Environment> {
+    pub(in crate::game) fn test_environment(&self, id: &str) -> Option<Environment> {
         parse(
             &Json::String(id.to_owned()),
             &|i| self.read_test_environment_json(i),
@@ -34,13 +34,16 @@ impl Game<'_> {
     }
 
     /// `TestEnvironmentDefinition.activate`.
-    pub(super) fn activate_test_environment(&mut self, environment: Environment) -> Activation {
+    pub(in crate::game) fn activate_test_environment(
+        &mut self,
+        environment: Environment,
+    ) -> Activation {
         let saved = self.set_up_environment(&environment);
         Activation { environment, saved }
     }
 
     /// `Activation.teardown`.
-    pub(super) fn tear_down_test_environment(&mut self, activation: Activation) {
+    pub(in crate::game) fn tear_down_test_environment(&mut self, activation: Activation) {
         self.tear_down_environment(&activation.environment, activation.saved);
     }
 

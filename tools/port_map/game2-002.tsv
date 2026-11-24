@@ -1,21 +1,21 @@
 ItemFrame.defineSynchedData	skip:other		entity data defaults; ItemFrame starts with item None and rotation 0 in place_item_frame
-ItemFrame.setDirection	inline	crates/sunrise-client/src/game/entities/frames.rs::Game::frame_geometry	facing sets the pose in frame_geometry; the box comes from ItemFrame::bounds
+ItemFrame.setDirection	inline	crates/sunrise-client/src/game/entities/frames_client.rs::Game::frame_geometry	facing sets the pose in frame_geometry; the box comes from ItemFrame::bounds
 ItemFrame.recalculateBoundingBox	inline	crates/sunrise-client/src/entities.rs::ItemFrame::bounds	boxes are computed on demand; the position sync codec is network-only
 ItemFrame.shouldDamageDropItem	inline	crates/sunrise-client/src/game/entities/explosion.rs::Game::explosion_hurt_entities	a blast breaks a frame in reach and drops its item (`explosion_breaks_frames`)
 ItemFrame.canHurtWhenFixed	port	crates/sunrise-client/src/game/entities/frames.rs::attack_frame	a fixed frame refuses a non-creative hit (attack_ticks reset, no break) and lets a creative player break it
 ItemFrame.hurtClient	inline	crates/sunrise-client/src/game/entities/frames.rs::Game::attack_frame	gap: minor: no separate client-side fixed-frame gate; the creative exception is missing
 ItemFrame.removeFramedMap	port	crates/sunrise-client/src/game/blocks/maps/mod.rs::Game::remove_framed_map	the map the frame holds forgets the frame (`MapItemSavedData.removedFromFrame`: the decoration and the frames entry); drop_frame_items calls it when the frame breaks, and skips it only when the drops are off and a player caused the break, which is vanilla's null `causedBy`; live Item replacement calls it with the old frame before adoption
-ItemFrame.getSlot	inline	crates/sunrise-client/src/game/administration/commands/items.rs::Game::slot_get	slots_named maps container.0 and contents on a frame to Slot::Frame; slot_get reads the frame's item and slot_set writes it
+ItemFrame.getSlot	inline	crates/sunrise-client/src/game/administration/commands/items_server.rs::Game::slot_get	slots_named maps container.0 and contents on a frame to Slot::Frame; slot_get reads the frame's item and slot_set writes it
 ItemFrame.onSyncedDataUpdated	skip:other		network data-sync hook; the item is read from the frame field on demand
 ItemFrame.setRotation	inline	crates/sunrise-client/src/game/entities/frames.rs::Game::interact_frame	the rotate-by-one step; the neighbour update is in frame_output_changed
 ItemFrame.readAdditionalSaveData	port	crates/sunrise-client/src/entity_nbt/hanging.rs::item_frame_from_nbt	live command adoption preserves immutable frame type and detaches changed old stacks before replacement; absent Facing defaults to Direction.DOWN
 ItemFrame.getFrameItemStackWithData	port	crates/sunrise-client/src/entities.rs::ItemFrame::item_stack_with_data	drop_frame_items spawns that stack, so a broken item frame or glow item frame keeps its custom name
-ItemFrame.getVisualRotationYInDegrees	inline	crates/sunrise-client/src/game/entities/frames.rs::Game::frame_geometry	the 45 degree step per rotation step is drawn in frame_geometry
+ItemFrame.getVisualRotationYInDegrees	inline	crates/sunrise-client/src/game/entities/frames_client.rs::Game::frame_geometry	the 45 degree step per rotation step is drawn in frame_geometry
 LeashFenceKnotEntity.recalculateBoundingBox	port	crates/sunrise-client/src/mobs/leash.rs::knot_state	position and box from the block position
 LeashFenceKnotEntity.getOrCreateKnot	inline	crates/sunrise-client/src/game/entities/leads.rs::Game::interact_knot	knots are not entities in game; the knot is used when a lead is tied
 LeashFenceKnotEntity.getKnot	inline	crates/sunrise-client/src/game/entities/leads.rs::Game::interact_knot	the existing knot is the leashed-holder check at the fence position
 LeashFenceKnotEntity.createKnot	inline	crates/sunrise-client/src/game/entities/leads.rs::Game::interact_knot	no in-game knot entity is created; LAN knot ids are assigned in lan_assign_ids
-LeashFenceKnotEntity.interact	port	crates/sunrise-client/src/game/entities/leads.rs::Game::use_knot	a client sends it for the knot its crosshair meets (remote_knot_hit); Sunrise attacks still go to the fence behind
+LeashFenceKnotEntity.interact	port	crates/sunrise-client/src/game/entities/leads_client.rs::Game::use_knot	a client sends it for the knot its crosshair meets (remote_knot_hit); Sunrise attacks still go to the fence behind
 Painting.defineSynchedData	skip:other		entity data default variant; Sunrise picks the variant in place_painting
 Painting.get	port	crates/sunrise-gameplay/src/painting_variants.rs::PaintingVariants::get	lookup of the variant by id; there is no component getter
 Painting.applyImplicitComponent	inline	crates/sunrise-client/src/game/entities/paintings.rs::Game::place_painting	the stack's painting/variant replaces the random pick (PaintingVariants::of_stack), and that variant has to survive where it goes
@@ -37,7 +37,7 @@ ItemEntity.hurtClient	skip:other		client-side hurt prediction; items are not att
 ItemEntity.hurtServer	inline	crates/sunrise-client/src/game/entities/explosion.rs::Game::explosion_hurt_entities	gap: minor: explosions destroy items at damage 5 without subtracting health; fire and lava hurt are in environment_tick
 ItemEntity.addAdditionalSaveData	port	crates/sunrise-client/src/entity_nbt.rs::item_entity_to_nbt
 ItemEntity.readAdditionalSaveData	port	crates/sunrise-client/src/entity_nbt.rs::item_entity_from_nbt	a missing Item returns None, which matches the discard
-ItemEntity.getName	inline	crates/sunrise-client/src/game/administration/commands/mod.rs::Game::target_name	the command target's name for a dropped item: its saved CustomName, else the stack's `item_name` (minecraft:item_name), else the item's display name
+ItemEntity.getName	inline	crates/sunrise-client/src/game/administration/commands/mod_server.rs::Game::target_name	the command target's name for a dropped item: its saved CustomName, else the stack's `item_name` (minecraft:item_name), else the item's display name
 ItemEntity.teleport	port	crates/sunrise-client/src/game/blocks/nether_portal.rs::Game::spawn_teleported_entity	the recreated item immediately calls merge_with_neighbours after either portal arrival or an explicit cross-level teleport, before its first tick
 ItemEntity.getVisualRotationYInDegrees	inline	crates/sunrise-client/src/game/interface/item_draw.rs::Game::dropped_item_geometry	spin is applied in radians there; no degree conversion
 ItemEntity.getSlot	missing		a dropped item is not addressable as an entity slot: `game/administration/commands/mod.rs` has no item entity case

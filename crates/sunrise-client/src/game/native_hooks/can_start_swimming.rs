@@ -1,5 +1,8 @@
+#[allow(unused_imports)]
 use super::*;
+#[allow(unused_imports)]
 use mod_api::SwimmingCheck;
+#[allow(unused_imports)]
 use sunrise_client::{motion::SwimEntry, sprint};
 
 impl Game<'_> {
@@ -16,25 +19,6 @@ impl Game<'_> {
 
     pub(in crate::game) fn has_swim_eligibility_listener(&self) -> bool {
         mod_api::__private::listened(mod_api::HookId::CanStartSwimming)
-    }
-
-    fn ask_swim_eligibility(&self, check: SwimmingCheck) -> Option<bool> {
-        let (player, side) = if self.remote.is_some() {
-            (self.local_player()?, LogicalSide::Client)
-        } else {
-            let uuid = self.server.lan_acting_uuid.or_else(|| {
-                self.level
-                    .player_uuid
-                    .map(sunrise_client::lan::playerdata::ints_uuid)
-            })?;
-            (self.player(uuid)?, LogicalSide::Server)
-        };
-        if Some(player.entity().id()) != self.player.as_ref().map(|p| p.entity_id as u32) {
-            return None;
-        }
-        let mut answer = None;
-        self.native_can_start_swimming(player, side, check, &mut answer);
-        answer
     }
 
     pub(in crate::game) fn ask_swim_entry(

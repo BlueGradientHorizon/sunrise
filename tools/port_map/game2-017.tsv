@@ -1,6 +1,6 @@
 BellBlockEntity.serverTick	port	crates/sunrise-client/src/game/blocks/block_entity_anims.rs::Game::tick_bell_servers	world-owned ringing bells tick without a renderer; clients animate their separate copy
 BellBlockEntity.areRaidersNearby	inline	crates/sunrise-client-render/src/block_entity_anim.rs::Bell::tick	resonation start check (raider within 32 blocks) folded into Bell::tick
-BellBlockEntity.makeRaidersGlow	port	crates/sunrise-client/src/game/blocks/block_entity_anims.rs::Game::tick_bell	GLOWING 60 applied to the raiders Bell::tick returns
+BellBlockEntity.makeRaidersGlow	port	crates/sunrise-client/src/game/blocks/block_entity_anims_client.rs::Game::tick_bell	GLOWING 60 applied to the raiders Bell::tick returns
 BellBlockEntity.showBellParticles	port	crates/sunrise-client-render/src/block_entity_anim.rs::Bell::tick	particle positions and colours computed here; emitted in Game::tick_bell
 BellBlockEntity.isRaiderWithinRange	inline	crates/sunrise-client-render/src/block_entity_anim.rs::Bell::tick	raider_in closure (48 blocks)
 BlockEntity.validateBlockState	skip:other		guard that throws on a wrong block state; no player behaviour
@@ -63,7 +63,7 @@ DecoratedPotBlockEntity.loadAdditional	port	crates/sunrise-client/src/game/block
 DecoratedPotBlockEntity.collectImplicitComponents	port	crates/sunrise-client/src/block_entity_item.rs::collect	sherds and item as components
 DecoratedPotBlockEntity.applyImplicitComponents	port	crates/sunrise-client/src/block_entity_item.rs::place	sherds and item as components
 DecoratedPotBlockEntity.splitTheItem	missing		`decorated_pot.rs` has no split-count step for the pot's item
-DecoratedPotBlockEntity.wobble	port	crates/sunrise-client/src/game/blocks/decorated_pot.rs::Game::use_decorated_pot	wobble event sent on a hit
+DecoratedPotBlockEntity.wobble	port	crates/sunrise-client/src/game/blocks/decorated_pot_client.rs::Game::use_decorated_pot	wobble event sent on a hit
 DispenserBlockEntity.insertItem	port	crates/sunrise-client/src/game/blocks/machines/mod.rs::Game::add_item	slot-by-slot insert, as hoppers use it
 DispenserBlockEntity.loadAdditional	port	crates/sunrise-client/src/save/block_entity_decode.rs::decode_block_entity	Items (9 slots)
 DispenserBlockEntity.saveAdditional	port	crates/sunrise-client/src/save/block_entity_encode.rs::encode	Items (9 slots)
@@ -90,20 +90,20 @@ JukeboxBlockEntity.setTheItem	port	crates/sunrise-client/src/game/blocks/jukebox
 JukeboxBlockEntity.canPlaceItem	port	crates/sunrise-client/src/game/blocks/machines/mod.rs::Containers::can_place	a playable disc into the empty single slot (`Jukebox.items`, which `BlockEntity.slots` now exposes), so a hopper reaches a jukebox
 JukeboxBlockEntity.setSongItemWithoutPlaying	skip:other		@VisibleForTesting setter; no player behaviour
 JukeboxBlockEntity.tryForcePlaySong	skip:other		@VisibleForTesting hook; no player behaviour
-LecternBlockEntity.hasBook	inline	crates/sunrise-client/src/game/interface/books.rs::Game::use_lectern	book-present check before a book is placed
-LecternBlockEntity.onBookItemRemove	port	crates/sunrise-client/src/game/interface/books.rs::Game::lectern_menu_done	book gone: has_book off, container changed
+LecternBlockEntity.hasBook	inline	crates/sunrise-client/src/game/interface/books_server.rs::Game::use_lectern	book-present check before a book is placed
+LecternBlockEntity.onBookItemRemove	port	crates/sunrise-client/src/game/interface/books_server.rs::Game::lectern_menu_done	book gone: has_book off, container changed
 LecternBlockEntity.resolveBook	missing		`books.rs::view_pages` reads a written book's pages for the lectern's screen as they are: no selector, score or translatable resolution
 LecternBlockEntity.createCommandSourceStack	missing		only `resolveBook` builds it; a page's RunCommand goes through `click_command`, which has no lectern source, so a relative coordinate resolves at the player
 LecternBlockEntity.loadAdditional	port	crates/sunrise-client/src/save/block_entity_decode.rs::decode_block_entity	Book and Page, the page clamped to the book's first and last page
 LecternBlockEntity.saveAdditional	port	crates/sunrise-client/src/save/block_entity_encode.rs::encode	Book and Page
-SculkCatalystBlockEntity.CatalystListener.tryAwardItSpreadsAdvancement	port	crates/sunrise-client/src/game/mobs/creatures/mod.rs::Game::mob_die	kill_mob_near_sculk_catalyst fires when the catalyst takes a mob's experience
+SculkCatalystBlockEntity.CatalystListener.tryAwardItSpreadsAdvancement	port	crates/sunrise-client/src/game/mobs/creatures/mod_server.rs::Game::mob_die	kill_mob_near_sculk_catalyst fires when the catalyst takes a mob's experience
 SculkShriekerBlockEntity.loadAdditional	port	crates/sunrise-client/src/save/block_entity_decode.rs::decode_block_entity	shrieker state from the sculk arm
 SculkShriekerBlockEntity.saveAdditional	port	crates/sunrise-client/src/save/block_entity_encode.rs::encode	shrieker state from the sculk arm
 SculkShriekerBlockEntity.tryGetPlayer	inline	crates/sunrise-client/src/game/blocks/sculk.rs::Game::sculk_listen	ctx.player flag decides whether a player set it off
 SculkShriekerBlockEntity.tryToWarn	port	crates/sunrise-client/src/game/blocks/sculk.rs::Game::try_to_warn
 SculkShriekerBlockEntity.tryRespond	port	crates/sunrise-client/src/game/blocks/sculk.rs::Game::shrieker_respond
 SculkShriekerBlockEntity.playWardenReplySound	port	crates/sunrise-client/src/game/blocks/sculk.rs::Game::warden_reply_sound
-SculkShriekerBlockEntity.trySummonWarden	port	crates/sunrise-client/src/game/blocks/sculk.rs::Game::try_summon_warden
+SculkShriekerBlockEntity.trySummonWarden	port	crates/sunrise-client/src/game/blocks/sculk_server.rs::Game::try_summon_warden
 SculkShriekerBlockEntity.VibrationUser.canReceiveVibration	port	crates/sunrise-client/src/game/blocks/sculk.rs::Game::sculk_listen	not shrieking and a player is the source
 SculkShriekerBlockEntity.VibrationUser.onReceiveVibration	port	crates/sunrise-client/src/game/blocks/sculk.rs::Game::try_shriek
 ShelfBlockEntity.loadAdditional	skip:other		no own code: the raw saved tag keeps Items (shelf_signal reads it)

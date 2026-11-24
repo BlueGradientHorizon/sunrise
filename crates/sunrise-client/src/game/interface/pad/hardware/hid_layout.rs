@@ -3,7 +3,7 @@
 use gilrs::{Axis, Button, Gamepad, MappingSource};
 
 /// Whether this pad has its right stick on `ABS_Z`/`ABS_RZ`, as an Xbox pad over Bluetooth does.
-pub(super) fn right_stick_on_z(pad: &Gamepad) -> bool {
+pub(in crate::game) fn right_stick_on_z(pad: &Gamepad) -> bool {
     cfg!(target_os = "linux")
         && stick_on_z(
             pad.mapping_source(),
@@ -19,7 +19,7 @@ pub(super) fn right_stick_on_z(pad: &Gamepad) -> bool {
 
 /// Whether HID's numbered buttons reach us as A, B, C, X, Y, Z: this layout's X and Y are the
 /// fourth and fifth buttons, and C and Z are the third and sixth, which nothing presses.
-pub(super) fn numbered_buttons(pad: &Gamepad) -> bool {
+pub(in crate::game) fn numbered_buttons(pad: &Gamepad) -> bool {
     right_stick_on_z(pad)
         && [Button::C, Button::Z]
             .iter()
@@ -34,7 +34,7 @@ fn stick_on_z(source: MappingSource, axes: [bool; 4]) -> bool {
 
 /// The right stick from those axes. gilrs reverses Y only on the axes it calls Y, so RZ, which
 /// grows downward like every Linux Y axis, is turned over here to match them.
-pub(super) fn right_stick([z, rz]: [f32; 2]) -> [f32; 2] {
+pub(in crate::game) fn right_stick([z, rz]: [f32; 2]) -> [f32; 2] {
     [z, -rz]
 }
 

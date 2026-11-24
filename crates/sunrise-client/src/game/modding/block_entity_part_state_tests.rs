@@ -150,7 +150,7 @@ fn stored(game: &mut Game<'_>, entity: BlockEntityRef) -> Option<i32> {
 #[test]
 #[ignore = "daily"]
 fn part_state_is_per_block_entity_through_ticks_transactions_and_replacement() {
-    const NAME: &str = "game::block_entity_part_state_tests::part_state_is_per_block_entity_through_ticks_transactions_and_replacement";
+    const NAME: &str = "game::server_side::block_entity_part_state_tests::part_state_is_per_block_entity_through_ticks_transactions_and_replacement";
     with_state_mod(NAME, |game| {
         let (a, b) = (press(game, (1, 64, 1)), press(game, (2, 64, 1)));
         // Reads insert nothing.
@@ -321,7 +321,7 @@ fn part_state_is_per_block_entity_through_ticks_transactions_and_replacement() {
 #[test]
 #[ignore = "daily"]
 fn part_state_saves_with_its_chunk_and_reloads_under_a_fresh_handle() {
-    const NAME: &str = "game::block_entity_part_state_tests::part_state_saves_with_its_chunk_and_reloads_under_a_fresh_handle";
+    const NAME: &str = "game::server_side::block_entity_part_state_tests::part_state_saves_with_its_chunk_and_reloads_under_a_fresh_handle";
     with_state_mod(NAME, |game| {
         // A column far from the player, kept by a forced ticket while it is edited.
         let key = (80, 80);
@@ -381,8 +381,7 @@ fn part_state_saves_with_its_chunk_and_reloads_under_a_fresh_handle() {
 #[test]
 #[ignore = "daily"]
 fn item_slot_writes_save_but_menu_data_is_transient() {
-    const NAME: &str =
-        "game::block_entity_part_state_tests::item_slot_writes_save_but_menu_data_is_transient";
+    const NAME: &str = "game::server_side::block_entity_part_state_tests::item_slot_writes_save_but_menu_data_is_transient";
     with_state_mod(NAME, |game| {
         use super::api_values::TryIntoApi;
         use sunrise_client::items::ItemStack;
@@ -436,7 +435,7 @@ fn item_slot_writes_save_but_menu_data_is_transient() {
 #[test]
 #[ignore = "daily"]
 fn an_item_write_commits_in_its_own_level_despite_an_unrelated_transaction() {
-    const NAME: &str = "game::block_entity_part_state_tests::an_item_write_commits_in_its_own_level_despite_an_unrelated_transaction";
+    const NAME: &str = "game::server_side::block_entity_part_state_tests::an_item_write_commits_in_its_own_level_despite_an_unrelated_transaction";
     with_state_mod(NAME, |game| {
         let chunk = (0, 0);
         let pos = (1, 64, 1);
@@ -527,8 +526,7 @@ fn indexed(game: &Game<'_>, entity: BlockEntityRef) -> Option<i32> {
 #[test]
 #[ignore = "daily"]
 fn a_removal_retires_its_state_only_at_the_root_commit() {
-    const NAME: &str =
-        "game::block_entity_part_state_tests::a_removal_retires_its_state_only_at_the_root_commit";
+    const NAME: &str = "game::server_side::block_entity_part_state_tests::a_removal_retires_its_state_only_at_the_root_commit";
     with_state_mod(NAME, |game| {
         let pos = (1, 64, 1);
         let a = press(game, pos);
@@ -573,7 +571,7 @@ fn a_removal_retires_its_state_only_at_the_root_commit() {
 #[test]
 #[ignore = "daily"]
 fn a_save_or_unload_during_a_transaction_writes_only_committed_state() {
-    const NAME: &str = "game::block_entity_part_state_tests::a_save_or_unload_during_a_transaction_writes_only_committed_state";
+    const NAME: &str = "game::server_side::block_entity_part_state_tests::a_save_or_unload_during_a_transaction_writes_only_committed_state";
     with_state_mod(NAME, |game| {
         let (key, pos) = ((80, 80), (1283, 100, 1283));
         game.streaming.paused = false;
@@ -631,7 +629,7 @@ fn a_save_or_unload_during_a_transaction_writes_only_committed_state() {
 #[test]
 #[ignore = "daily"]
 fn one_position_replaced_twice_in_an_aborted_transaction_gets_its_original_back() {
-    const NAME: &str = "game::block_entity_part_state_tests::one_position_replaced_twice_in_an_aborted_transaction_gets_its_original_back";
+    const NAME: &str = "game::server_side::block_entity_part_state_tests::one_position_replaced_twice_in_an_aborted_transaction_gets_its_original_back";
     with_state_mod(NAME, |game| {
         let pos = (1, 64, 1);
         let original = press(game, pos);
@@ -711,8 +709,7 @@ fn tick_in(game: &mut Game<'_>, pos: (i32, i32, i32), mode: i32) {
 #[test]
 #[ignore = "daily"]
 fn part_state_counts_ticks_across_chunk_reload() {
-    const NAME: &str =
-        "game::block_entity_part_state_tests::part_state_counts_ticks_across_chunk_reload";
+    const NAME: &str = "game::server_side::block_entity_part_state_tests::part_state_counts_ticks_across_chunk_reload";
     if super::native_entity_refs::tests::run_fresh_cases(
         NAME,
         "SUNRISE_PART_STATE_CHILD",

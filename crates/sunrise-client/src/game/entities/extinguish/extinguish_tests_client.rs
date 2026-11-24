@@ -1,0 +1,35 @@
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use super::*;
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::game_tests::tests::server_game;
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::server_side::extinguish::extinguish_tests::block;
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::server_side::extinguish::extinguish_tests::burn_in;
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::server_side::extinguish::extinguish_tests::outside_the_border;
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::server_side::extinguish::extinguish_tests::server;
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::server_side::extinguish::extinguish_tests::state;
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::server_side::extinguish::extinguish_tests::*;
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use sunrise_client::motion::{MotionWorld, PlayerMotion};
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use sunrise_core::geometry::Vec3;
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use sunrise_world::chunk::BlockState;
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use sunrise_world::entity_move::MovementRecord;
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use sunrise_world::registry::BlockStateId;
+
+pub(in crate::game) fn heard(game: &Game<'_>) -> u32 {
+    game.audio
+        .0
+        .heard
+        .get("minecraft:entity.generic.extinguish_fire")
+        .copied()
+        .unwrap_or(0)
+}

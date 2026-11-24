@@ -79,12 +79,12 @@ pub fn use_item_on_block(_: HostSide<'_>, event: &mut mod_api::UseItemOnBlockEve
     Flow::Cancel
 }
 
-pub(super) fn begin(controls: [u8; 6]) {
+pub(in crate::game) fn begin(controls: [u8; 6]) {
     let mut state = STATE.lock().unwrap();
     state.0 = controls;
     state.1.clear();
 }
 
-pub(super) fn finish() -> Vec<u8> {
+pub(in crate::game) fn finish() -> Vec<u8> {
     std::mem::take(&mut STATE.lock().unwrap().1)
 }

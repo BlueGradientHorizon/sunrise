@@ -3,14 +3,22 @@
 //! so (glowstone's 15 light, bedrock's `never`), and `EntityType.spawn` plays
 //! the new piglin's ambient sound once it is in the level, before the spawn
 //! sets its portal cooldown.
+#[allow(unused_imports)]
 use super::super::*;
+#[allow(unused_imports)]
 use std::sync::Arc;
+#[allow(unused_imports)]
 use sunrise_client::chunk::Chunk;
+#[allow(unused_imports)]
 use sunrise_client::motion::PlayerMotion;
+#[allow(unused_imports)]
 use sunrise_core::geometry::Vec3;
+#[allow(unused_imports)]
 use sunrise_core::position::ChunkPos;
 
-fn game<'a>(resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>) -> Game<'a> {
+pub(in crate::game) fn game<'a>(
+    resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>,
+) -> Game<'a> {
     let root = std::path::PathBuf::from(
         std::env::var_os("SUNRISE_TEST_RESOURCES")
             .expect("set SUNRISE_TEST_RESOURCES to prepared resources"),
@@ -58,7 +66,7 @@ fn game<'a>(resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>) -
 }
 
 /// A portal block at (0, 64, 0) standing on `floor`.
-fn portal_on(game: &mut Game<'_>, floor: &str) {
+pub(in crate::game) fn portal_on(game: &mut Game<'_>, floor: &str) {
     assert!(game.run_command(&format!("setblock 0 63 0 minecraft:{floor}")));
     assert!(game.run_command("setblock 0 64 0 minecraft:nether_portal"));
     let state = game.world.block(0, 64, 0);
@@ -69,7 +77,7 @@ fn portal_on(game: &mut Game<'_>, floor: &str) {
     );
 }
 
-fn spawned(game: &Game<'_>) -> Vec<String> {
+pub(in crate::game) fn spawned(game: &Game<'_>) -> Vec<String> {
     game.mobs.iter().map(|m| m.kind.id.clone()).collect()
 }
 
@@ -90,41 +98,4 @@ fn a_portal_over_glowstone_or_bedrock_spawns_no_piglin() {
             "a portal over {floor} spawns no piglin"
         );
     }
-}
-
-/// On obsidian the piglin spawns, grunts (`EntityType.spawn`'s
-/// `Mob.playAmbientSound`: its ambient sound at its feet, volume 1.0, at its
-/// voice pitch 1.0 ± 0.2) and waits out its 300-tick portal cooldown.
-#[test]
-#[ignore = "daily"]
-fn a_portal_over_obsidian_spawns_a_grunting_piglin() {
-    let mut resources = None;
-    let mut game = game(&mut resources);
-    portal_on(&mut game, "obsidian");
-    game.audio.0.capture = Some(Vec::new());
-    game.portal_spawn([0, 64, 0]);
-    assert_eq!(
-        spawned(&game),
-        vec!["minecraft:zombified_piglin".to_owned()],
-        "obsidian floor"
-    );
-    let id = game.mobs[0].id;
-    // setPortalCooldown: Entity.getDimensionChangingDelay.
-    assert_eq!(
-        game.portals.entities.get(&id).map(|p| p.cooldown),
-        Some(300),
-        "the new piglin's portal cooldown"
-    );
-    let sounds = game.audio.0.capture.take().unwrap_or_default();
-    assert_eq!(sounds.len(), 1, "{sounds:?}");
-    assert_eq!(sounds[0].event, "minecraft:entity.zombified_piglin.ambient");
-    assert_eq!(sounds[0].position, [0.5, 64.0, 0.5], "at the piglin's feet");
-    assert_eq!(sounds[0].volume, 1.0);
-    // LivingEntity.getVoicePitch of an adult: 1.0 ± 0.2. (Zombie.finalizeSpawn's
-    // 5 % baby roll is not modelled yet, so a portal piglin is always grown.)
-    assert!(
-        (0.8..=1.2).contains(&sounds[0].pitch),
-        "voice pitch {}",
-        sounds[0].pitch
-    );
 }

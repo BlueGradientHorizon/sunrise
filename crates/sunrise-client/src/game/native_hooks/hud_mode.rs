@@ -1,3 +1,4 @@
+#[allow(unused_imports)]
 use super::*;
 
 impl Game<'_> {
@@ -5,17 +6,10 @@ impl Game<'_> {
     pub(in crate::game) fn hud_mode(&self) -> mod_api::HudMode {
         self.ui.hud_mode()
     }
-
-    /// Set HUD and hand visibility outside a borrowed server guest's turn.
-    pub(in crate::game) fn set_hud_mode(&mut self, mode: mod_api::HudMode) {
-        if self.native_window() && self.server.lan_acting.is_none() {
-            self.ui.set_hud_mode(mode);
-        }
-    }
 }
 
 #[cfg(test)]
-mod tests {
+pub(in crate::game) mod tests {
     use super::*;
     use mod_api::{ClientHost, ClientTickPreEvent, Hooks, HudMode, ModEntry};
     use mod_platform::testing::with_mods;

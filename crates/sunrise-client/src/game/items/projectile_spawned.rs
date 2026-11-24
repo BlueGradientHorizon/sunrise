@@ -3,22 +3,27 @@
 //! made from, then of an arrow's weapon, run on it
 //! (`EnchantmentHelper.onProjectileSpawned`). One path for every spawn site:
 //! bows, crossbows, thrown items, dispensers, mobs and the mod host.
+#[allow(unused_imports)]
 use super::{Game, enchant_effects::look_impulse};
+#[allow(unused_imports)]
 use serde_json::Value;
+#[allow(unused_imports)]
 use sunrise_client::{
     enchant::{EffectContext, level_value},
     items::ItemStack,
     projectiles::Projectile,
 };
+#[allow(unused_imports)]
 use sunrise_world::worldgen::value_provider::FloatProvider;
 
+#[allow(unused_imports)]
 use super::projectile_spawned_validation::{requirements_supported, valid_ranges};
 
-const COMPONENT: &str = "minecraft:projectile_spawned";
+pub(in crate::game) const COMPONENT: &str = "minecraft:projectile_spawned";
 
 /// An `EnchantmentEntityEffect` this path applies to a new projectile.
 #[derive(Clone, Copy)]
-enum SpawnedEffect {
+pub(in crate::game) enum SpawnedEffect {
     AllOf,
     Ignite,
     Impulse,
@@ -30,7 +35,7 @@ enum SpawnedEffect {
 
 /// The effect `effect` names, None for one this path does not apply yet. A
 /// bare type name is minecraft's own.
-fn spawned_effect(effect: &Value) -> Option<SpawnedEffect> {
+pub(in crate::game) fn spawned_effect(effect: &Value) -> Option<SpawnedEffect> {
     let kind = effect["type"].as_str()?;
     Some(match kind.strip_prefix("minecraft:").unwrap_or(kind) {
         "all_of" => SpawnedEffect::AllOf,
@@ -43,7 +48,7 @@ fn spawned_effect(effect: &Value) -> Option<SpawnedEffect> {
 }
 
 /// Whether this path applies `effect`, with everything an `all_of` holds.
-fn applied(effect: &Value) -> bool {
+pub(in crate::game) fn applied(effect: &Value) -> bool {
     match spawned_effect(effect) {
         Some(SpawnedEffect::AllOf) => effect["effects"]
             .as_array()
@@ -58,7 +63,7 @@ fn applied(effect: &Value) -> bool {
 /// `PlaySoundEffect`'s sound for `level`: its list's entry at `level - 1`,
 /// clamped to the list (`Mth.clamp`). An entry is a sound id or a
 /// `{sound_id, range}` event.
-fn level_sound(effect: &Value, level: u32) -> Option<&str> {
+pub(in crate::game) fn level_sound(effect: &Value, level: u32) -> Option<&str> {
     fn name(v: &Value) -> Option<&str> {
         v.as_str().or_else(|| v["sound_id"].as_str())
     }
@@ -73,7 +78,7 @@ fn level_sound(effect: &Value, level: u32) -> Option<&str> {
 }
 
 /// A `FloatProvider` field of an effect (a number or a provider object).
-fn float_provider(v: &Value) -> Option<FloatProvider> {
+pub(in crate::game) fn float_provider(v: &Value) -> Option<FloatProvider> {
     FloatProvider::from_json(&v.to_string()).ok()
 }
 
@@ -82,7 +87,11 @@ impl Game<'_> {
     /// to the level, then runs `applyOnProjectileSpawned` with `stack`, the
     /// item it was made from (the held or dispensed stack, an arrow's ammo).
     /// The projectile's id.
-    pub(super) fn spawn_projectile(&mut self, projectile: Projectile, stack: &ItemStack) -> u32 {
+    pub(in crate::game) fn spawn_projectile(
+        &mut self,
+        projectile: Projectile,
+        stack: &ItemStack,
+    ) -> u32 {
         let id = self.add_projectile(projectile);
         self.apply_on_projectile_spawned(id, stack);
         id
@@ -92,7 +101,7 @@ impl Game<'_> {
     /// ammo, the mobs' other projectiles from fresh stacks with no
     /// enchantments. `Projectile.tick` posts on the first tick, through the
     /// shared arrow-state continuation for ordinary arrows and tridents.
-    pub(super) fn spawn_mob_projectile(&mut self, projectile: Projectile) {
+    pub(in crate::game) fn spawn_mob_projectile(&mut self, projectile: Projectile) {
         let ammo = projectile.arrow.as_ref().map(|a| a.pickup_item.clone());
         let id = self.add_projectile(projectile);
         if let Some(ammo) = ammo {
@@ -104,7 +113,7 @@ impl Game<'_> {
     /// in the level: `stack`'s effects, then for an arrow those of the weapon
     /// it was fired from (its own copy, `AbstractArrow.getWeaponItem`) when
     /// that is another item than `stack`.
-    pub(super) fn apply_on_projectile_spawned(&mut self, id: u32, stack: &ItemStack) {
+    pub(in crate::game) fn apply_on_projectile_spawned(&mut self, id: u32, stack: &ItemStack) {
         self.on_projectile_spawned(id, stack);
         let weapon = self
             .spawned_projectile(id)
@@ -119,7 +128,7 @@ impl Game<'_> {
 
     /// Whether every `projectile_spawned` effect of `stack`'s enchantments is
     /// one this path applies, so a spawn from it loses none.
-    pub(super) fn projectile_spawned_effects_applied(&self, stack: &ItemStack) -> bool {
+    pub(in crate::game) fn projectile_spawned_effects_applied(&self, stack: &ItemStack) -> bool {
         stack.all_enchantments().iter().all(|(enchantment, _)| {
             world_stations!(self)
                 .enchantments
@@ -144,7 +153,7 @@ impl Game<'_> {
     /// tested just before it would apply, against the projectile as `this`
     /// with the level's random (the loot context has no seed of its own); an
     /// effect draws from the projectile's own random.
-    fn on_projectile_spawned(&mut self, id: u32, stack: &ItemStack) {
+    pub(in crate::game) fn on_projectile_spawned(&mut self, id: u32, stack: &ItemStack) {
         for (enchantment, level) in stack.all_enchantments().iter() {
             // Copied out only when the enchantment has the component: an
             // effect may change what the next requirement reads.
@@ -191,71 +200,13 @@ impl Game<'_> {
         }
     }
 
-    /// `EnchantmentEntityEffect.apply` on the new projectile `id`, at its
-    /// position.
-    fn apply_spawned_effect(&mut self, id: u32, effect: &Value, level: u32) {
-        let Some(kind) = spawned_effect(effect) else {
-            return;
-        };
-        if let SpawnedEffect::AllOf = kind {
-            for e in effect["effects"].as_array().into_iter().flatten() {
-                self.apply_spawned_effect(id, e, level);
-            }
-            return;
-        }
-        let Some(index) = self.creatures.projectiles.iter().position(|p| p.id == id) else {
-            return;
-        };
-        let sound = self.creatures.projectiles.update(index, |p| match kind {
-            SpawnedEffect::Ignite => {
-                p.ignite_for_seconds(level_value(&effect["duration"], level));
-                None
-            }
-            // Entity.addDeltaMovement skips a non-finite impulse; the motion
-            // is sent either way (syncVelocity).
-            SpawnedEffect::Impulse => {
-                let impulse = look_impulse(effect, level, p.yaw, p.pitch);
-                if impulse.is_finite() {
-                    p.velocity = p.velocity.add_vector(impulse);
-                }
-                p.needs_sync = true;
-                None
-            }
-            // A new projectile is never silent: the volume, then the pitch,
-            // from its random, at its position.
-            SpawnedEffect::Sound => {
-                let sound = level_sound(effect, level)?;
-                let volume = float_provider(&effect["volume"])?;
-                let pitch = float_provider(&effect["pitch"])?;
-                let volume = volume.sample(&mut p.random.0);
-                let pitch = pitch.sample(&mut p.random.0);
-                Some((
-                    sound,
-                    [p.position.x, p.position.y, p.position.z],
-                    volume,
-                    pitch,
-                ))
-            }
-            SpawnedEffect::AllOf | SpawnedEffect::Inert => None,
-        });
-        if let Some((sound, at, volume, pitch)) = sound {
-            self.audio.0.play_on(
-                mod_api::SoundSource::Neutral as usize,
-                sound,
-                Some(at),
-                volume,
-                pitch,
-            );
-        }
-    }
-
-    fn spawned_projectile(&self, id: u32) -> Option<&Projectile> {
+    pub(in crate::game) fn spawned_projectile(&self, id: u32) -> Option<&Projectile> {
         self.creatures.projectiles.iter().find(|p| p.id == id)
     }
 }
 
 #[cfg(test)]
-mod tests {
+pub(in crate::game) mod tests {
     use serde_json::json;
 
     /// `PlaySoundEffect.apply`: `Mth.clamp(level - 1, 0, size - 1)` picks the

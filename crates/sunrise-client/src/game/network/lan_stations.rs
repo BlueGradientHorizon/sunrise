@@ -20,12 +20,12 @@ use sunrise_protocol::packets::play::{self, Clientbound as C};
 
 /// A guest's open workstation menu.
 #[derive(Clone)]
-pub(super) struct GuestStation {
-    pub(super) window: i32,
+pub(in crate::game) struct GuestStation {
+    pub(in crate::game) window: i32,
     state: i32,
-    pub(super) kind: StationKind,
-    pub(super) pos: [i32; 3],
-    pub(super) menu: Box<Menu>,
+    pub(in crate::game) kind: StationKind,
+    pub(in crate::game) pos: [i32; 3],
+    pub(in crate::game) menu: Box<Menu>,
     /// The data slots the client was last sent. `None` is not sent yet,
     /// which is not a cost: an anvil's signed cost may be `i32::MIN`.
     sent_data: Vec<Option<i32>>,
@@ -35,10 +35,10 @@ pub(super) struct GuestStation {
 
 /// A guest's open lectern: `LecternMenu` over the block entity, made on the
 /// menu engine for each click (`Game::lectern_menu`).
-pub(super) struct GuestLectern {
-    pub(super) window: i32,
+pub(in crate::game) struct GuestLectern {
+    pub(in crate::game) window: i32,
     state: i32,
-    pub(super) key: (i32, i32, i32),
+    pub(in crate::game) key: (i32, i32, i32),
     /// Persistent quick-craft (drag) state across rebuilt lectern menus.
     drag: QuickCraftDrag,
     /// The book and page the client was last sent (`broadcastChanges`).
@@ -47,7 +47,9 @@ pub(super) struct GuestLectern {
 
 /// The `MenuType`, the engine's menu and the input slots
 /// (`clearContainer`'s container) of a station a guest can use.
-pub(super) fn menu_of(kind: StationKind) -> Option<(&'static str, Kind, std::ops::Range<usize>)> {
+pub(in crate::game) fn menu_of(
+    kind: StationKind,
+) -> Option<(&'static str, Kind, std::ops::Range<usize>)> {
     Some(match kind {
         StationKind::Loom => ("minecraft:loom", Kind::Loom, 0..3),
         StationKind::Stonecutter => ("minecraft:stonecutter", Kind::Stonecutter, 0..1),
@@ -64,7 +66,7 @@ pub(super) fn menu_of(kind: StationKind) -> Option<(&'static str, Kind, std::ops
 impl Game<'_> {
     /// A reload changes what a stonecutter button number means. Close that window
     /// before publishing the new recipe generation so queued old buttons cannot act on it.
-    pub(super) fn close_stonecutters_for_reload(&mut self) {
+    pub(in crate::game) fn close_stonecutters_for_reload(&mut self) {
         let Some(host) = self.lan.as_ref() else {
             return;
         };
@@ -86,7 +88,7 @@ impl Game<'_> {
 
     /// A workstation a guest's use opened (`ServerPlayer.openMenu`); false
     /// when guests can't use that one yet.
-    pub(super) fn lan_open_station(&mut self, conn: u32, station: &Station) -> bool {
+    pub(in crate::game) fn lan_open_station(&mut self, conn: u32, station: &Station) -> bool {
         let Some((menu_type, kind, _)) = menu_of(station.kind) else {
             return false;
         };
@@ -362,14 +364,14 @@ impl Game<'_> {
 
     /// How many slots of its own the guest's open station menu has before the
     /// player's inventory (`slot_count - 36`), if one is open.
-    pub(super) fn lan_station_own_slots(&self, conn: u32) -> Option<usize> {
+    pub(in crate::game) fn lan_station_own_slots(&self, conn: u32) -> Option<usize> {
         let gs = self.lan.as_ref()?.menus.get(&conn)?.station.as_ref()?;
         Some(gs.menu.slot_count() - 36)
     }
 
     /// `LecternBlock.openScreen` for a guest: `minecraft:lectern` over the
     /// block entity, with its book and page.
-    pub(super) fn lan_open_lectern(&mut self, conn: u32, key: (i32, i32, i32)) {
+    pub(in crate::game) fn lan_open_lectern(&mut self, conn: u32, key: (i32, i32, i32)) {
         if self.guest_may_open(conn, "minecraft:lectern", Some([key.0, key.1, key.2])) != Some(true)
         {
             return;
@@ -515,7 +517,11 @@ impl Game<'_> {
     }
 
     /// A click on the guest's lectern window; false for other windows.
-    pub(super) fn lan_lectern_click(&mut self, conn: u32, p: &play::ContainerClick) -> bool {
+    pub(in crate::game) fn lan_lectern_click(
+        &mut self,
+        conn: u32,
+        p: &play::ContainerClick,
+    ) -> bool {
         let click = super::lan_pickup::click_of(p);
         self.lan_lectern_op_clicked(conn, p.container, Some(click), |menu, env| {
             let _ = menu.click(env, click.0, click.1, click.2);
@@ -769,7 +775,7 @@ impl Game<'_> {
 
     /// `ServerGamePacketListenerImpl.handleRenameItem`: the guest's anvil
     /// takes the name (`AnvilMenu.setItemName`).
-    pub(super) fn lan_station_rename(&mut self, conn: u32, name: &str) {
+    pub(in crate::game) fn lan_station_rename(&mut self, conn: u32, name: &str) {
         let anvil = self
             .lan
             .as_ref()
@@ -798,7 +804,11 @@ impl Game<'_> {
     }
 
     /// A click on the guest's station window; false for other windows.
-    pub(super) fn lan_station_click(&mut self, conn: u32, p: &play::ContainerClick) -> bool {
+    pub(in crate::game) fn lan_station_click(
+        &mut self,
+        conn: u32,
+        p: &play::ContainerClick,
+    ) -> bool {
         let click = super::lan_pickup::click_of(p);
         self.lan_station_op_clicked(conn, Some(p.container), Some(click), |menu, env| {
             let _ = menu.click(env, click.0, click.1, click.2);
@@ -807,7 +817,7 @@ impl Game<'_> {
 
     /// `ServerGamePacketListenerImpl.handleContainerButtonClick`:
     /// `clickMenuButton`, then `broadcastChanges` when the menu took it.
-    pub(super) fn lan_station_button(&mut self, conn: u32, window: i32, id: i32) {
+    pub(in crate::game) fn lan_station_button(&mut self, conn: u32, window: i32, id: i32) {
         // Route to the active menu type's listeners. Only a validated `Slots::Block`
         // supplies the optional position and entity backing.
         let mod_menu = self.lan.as_ref().and_then(|host| {
@@ -925,7 +935,7 @@ impl Game<'_> {
 
     /// The whole station menu and its changed data slots for the client
     /// (`sendAllDataToRemote` / `broadcastChanges`).
-    pub(super) fn lan_send_station(&mut self, conn: u32) {
+    pub(in crate::game) fn lan_send_station(&mut self, conn: u32) {
         let Some(host) = self.lan.as_mut() else {
             return;
         };
@@ -989,11 +999,11 @@ impl Game<'_> {
     /// None closes it whichever it is): the carried stack and the inputs go
     /// back to the inventory, what doesn't fit is dropped. False when no such
     /// window is open.
-    pub(super) fn lan_station_closed(&mut self, conn: u32, window: Option<i32>) -> bool {
+    pub(in crate::game) fn lan_station_closed(&mut self, conn: u32, window: Option<i32>) -> bool {
         self.lan_station_removed(conn, window, super::lan_crafting::MenuRemoval::Live)
     }
 
-    pub(super) fn lan_station_removed(
+    pub(in crate::game) fn lan_station_removed(
         &mut self,
         conn: u32,
         window: Option<i32>,
@@ -1073,7 +1083,7 @@ impl Game<'_> {
     /// beacon menu takes the powers (`BeaconMenu.updateEffects`), and they
     /// become the block entity's (`dataAccess.set`: the power_select sound
     /// while the beam is up).
-    pub(super) fn lan_station_beacon(
+    pub(in crate::game) fn lan_station_beacon(
         &mut self,
         conn: u32,
         primary: Option<i32>,
@@ -1166,7 +1176,7 @@ impl Game<'_> {
 
     /// `ServerPlayer.doTick`'s `stillValid`: a guest's station closes once its
     /// block is gone or the guest is out of reach (`isWithinBlockInteractionRange(pos, 4)`).
-    pub(super) fn lan_stations_tick(&mut self) {
+    pub(in crate::game) fn lan_stations_tick(&mut self) {
         self.lan_lecterns_tick();
         let conns: Vec<u32> = self
             .lan
@@ -1227,7 +1237,7 @@ impl Game<'_> {
 impl Game<'_> {
     /// A station menu's `stillValid`: its block is still that station and the
     /// guest is within `isWithinBlockInteractionRange(pos, 4)`.
-    pub(super) fn lan_station_valid(
+    pub(in crate::game) fn lan_station_valid(
         &self,
         g: &sunrise_client::lan::guest::Guest,
         gs: &GuestStation,
@@ -1240,7 +1250,7 @@ impl Game<'_> {
     /// `LecternMenu.stillValid` (`Container.stillValidBlockEntity`): the block
     /// entity still holds a book and the guest is within the interaction
     /// range and its buffer.
-    pub(super) fn lan_lectern_valid(
+    pub(in crate::game) fn lan_lectern_valid(
         &self,
         g: &sunrise_client::lan::guest::Guest,
         key: (i32, i32, i32),
@@ -1289,7 +1299,7 @@ impl Game<'_> {
 }
 
 /// What `clearContainer` gives back from a station's menu.
-pub(super) fn station_inputs(gs: &GuestStation) -> Vec<ItemStack> {
+pub(in crate::game) fn station_inputs(gs: &GuestStation) -> Vec<ItemStack> {
     menu_of(gs.kind)
         .map(|(_, _, inputs)| inputs.filter_map(|s| gs.menu.slot(s).cloned()).collect())
         .unwrap_or_default()

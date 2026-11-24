@@ -121,7 +121,7 @@ fn with_no_listener_the_bobber_falls() {
 #[ignore = "daily"]
 fn a_mods_medium_floats_the_bobber_and_its_catch_rolls_the_checked_table() {
     if run_fresh_cases(
-        "game::fishing::fishing_medium_tests::a_mods_medium_floats_the_bobber_and_its_catch_rolls_the_checked_table",
+        "game::server_side::fishing::fishing_medium_tests::a_mods_medium_floats_the_bobber_and_its_catch_rolls_the_checked_table",
         "SUNRISE_FISHING_MEDIUM_CASE",
         &["float-and-catch"],
     ) {

@@ -2,19 +2,19 @@ use super::Game;
 use sunrise_client::projectiles::Projectile;
 use sunrise_core::geometry::Vec3;
 
-pub(super) struct Steps {
+pub(in crate::game) struct Steps {
     enabled: bool,
     seen: Vec<u32>,
 }
 
-pub(super) fn begin(game: &mut Game<'_>) -> Steps {
+pub(in crate::game) fn begin(game: &mut Game<'_>) -> Steps {
     Steps {
         enabled: game.entity_section_scope().is_some(),
         seen: std::mem::take(&mut game.native_lifecycle.entity_sections.projectile_ids),
     }
 }
 
-pub(super) fn record(
+pub(in crate::game) fn record(
     game: &mut Game<'_>,
     steps: &mut Steps,
     projectile: Option<&Projectile>,
@@ -38,7 +38,7 @@ pub(super) fn record(
     true
 }
 
-pub(super) fn finish(game: &mut Game<'_>, mut steps: Steps) {
+pub(in crate::game) fn finish(game: &mut Game<'_>, mut steps: Steps) {
     if steps.enabled {
         {
             let live = &mut game.native_lifecycle.entity_sections.projectile_live;
@@ -69,7 +69,7 @@ pub(super) fn finish(game: &mut Game<'_>, mut steps: Steps) {
     game.native_lifecycle.entity_sections.projectile_ids = steps.seen;
 }
 
-pub(super) fn teleport_player(game: &mut Game<'_>, to: Vec3) {
+pub(in crate::game) fn teleport_player(game: &mut Game<'_>, to: Vec3) {
     game.stop_riding();
     let from = game.player.as_ref().map(|player| player.position);
     if let Some(player) = game.player.as_mut() {

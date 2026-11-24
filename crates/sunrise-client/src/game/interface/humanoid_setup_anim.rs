@@ -48,7 +48,7 @@ impl anim::HumanoidSetup for Game<'_> {
 
 impl Game<'_> {
     /// Lends the live pose to listeners at the shared humanoid seam.
-    pub(super) fn setup_humanoid_parts(
+    pub(in crate::game) fn setup_humanoid_parts(
         &self,
         entity_id: u32,
         entity_type: &str,

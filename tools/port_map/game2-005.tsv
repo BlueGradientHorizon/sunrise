@@ -94,7 +94,7 @@ Player.canPlayerFitWithinBlocksAndEntitiesWhen	port	crates/sunrise-client/src/po
 Player.increaseScore	skip:other		the score is experience.total in Sunrise (death screen); there is no separate score counter
 Player.getWeaponItem	missing		the riptide spin attack keeps only `auto_spin_attack_ticks` and `auto_spin_attack_dmg`, not the stack it started with (`autoSpinAttackItemStack`), so there is no item to answer with mid-spin
 Player.destroyVanishingCursedItems	port	crates/sunrise-client/src/game/item_entities.rs::Game::drop_inventory	vanishing-curse stacks are removed from the death drops
-Player.hasCorrectToolForDrops	port	crates/sunrise-client/src/game.rs::Game::tick_mining	the correct-tool test for harvest drops
+Player.hasCorrectToolForDrops	port	crates/sunrise-client/src/game/game_server.rs::Game::tick_mining	the correct-tool test for harvest drops
 Player.canDropItems	inline	crates/sunrise-client/src/lan/menu.rs::click	THROW is not acted on while the client has dropped items too fast
 Player.readAdditionalSaveData	port	crates/sunrise-client/src/save/level.rs::Level::read_player
 Player.addAdditionalSaveData	port	crates/sunrise-client/src/save/level.rs::Level::player_tag
@@ -105,14 +105,14 @@ Player.deflectProjectile	port	crates/sunrise-client/src/game/items/deflect.rs::G
 Player.baseDamageScaleFactor	inline	crates/sunrise-client/src/game/items/mace.rs::Game::sweep_damage
 Player.isEffectiveAi	skip:other		client-side AI gate; Sunrise has no effective-AI check in its loop
 Player.hasContainerOpen	missing		no test for an open container menu: screens are `self.screen`, and nothing distinguishes a container menu from the inventory menu
-Player.startSleepInBed	port	crates/sunrise-client/src/game.rs::Game::try_sleep
-Player.isSleepingLongEnough	port	crates/sunrise-client/src/game/network/lan_actions/sleep.rs::sleep_counts	100 ticks in bed is what counts a sleeper as deep for SleepStatus.update
+Player.startSleepInBed	port	crates/sunrise-client/src/game/game_server.rs::Game::try_sleep
+Player.isSleepingLongEnough	port	crates/sunrise-client/src/game/network/lan_actions/sleep_server.rs::sleep_counts	100 ticks in bed is what counts a sleeper as deep for SleepStatus.update
 Player.updateSwimming	port	crates/sunrise-client/src/motion.rs::MotionWorld::swimming
 Player.getXpNeededForNextLevel	port	crates/sunrise-client/src/entities.rs::Experience::needed
 Player.hasEnoughFoodToDoExhaustiveManoeuvres	inline	crates/sunrise-client/src/sprint.rs::Conditions::possible	the food-or-mayfly test is the sprint gate's `enough_food || may_fly`: `enough_food` is `FoodData::has_enough_food` (food level above 6) filled in `motion.rs`, and `player_food::enough_food_for_manoeuvres` is the same test as a probed free function
 Player.mayUseItemAt	port	crates/sunrise-client/src/game/use_hand.rs::Game::use_hand	the may-build test before use-on in adventure mode
 Player.isSwimming	port	crates/sunrise-client/src/motion.rs::MotionWorld::swimming
-Player.decorateDisplayNameComponent	port	crates/sunrise-client/src/game/administration/commands/mod.rs::player_display_name	click suggests /tell, hover shows the player entity, plus the insertion
+Player.decorateDisplayNameComponent	port	crates/sunrise-client/src/game/administration/commands/mod_server.rs::player_display_name	click suggests /tell, hover shows the player entity, plus the insertion
 Player.getSlot	port	crates/sunrise-client/src/game/administration/commands/items.rs::Game::slots_named	gap: minor: numeric slots 499 (carried item) and 500-503 (crafting grid) are not addressed
 Player.extractParrotVariant	port	crates/sunrise-client/src/game/mobs/shoulders.rs::shoulder_variants	the saved Variant of the shoulder parrot, clamped by Parrot.Variant.byId
 Player.convertParrotVariant	skip:java		Optional and OptionalInt conversion of the synched parrot variant; Sunrise stores the id directly
@@ -142,5 +142,5 @@ EvokerFangs.addAdditionalSaveData	port	crates/sunrise-client/src/entity_nbt.rs::
 EvokerFangs.getAnimationProgress	port	crates/sunrise-client/src/game/mobs/fangs.rs::Game::fangs_geometry	the bite progress that positions the fang model
 EyeOfEnder.setItem	skip:ui		the item sprite a flying eye shows; Sunrise draws the eye itself
 EyeOfEnder.shouldRenderAtSqrDistance	skip:ui		render distance culling only
-EyeOfEnder.spawnParticles	port	crates/sunrise-client/src/game/world/end.rs::Game::eye_break_particles	the portal crumbs drawn in toward the eye
+EyeOfEnder.spawnParticles	port	crates/sunrise-client/src/game/world/end_client.rs::Game::eye_break_particles	the portal crumbs drawn in toward the eye
 EyeOfEnder.readAdditionalSaveData	missing		a flying eye of ender is not saved: `entity_nbt.rs` has no writer for it (nor `saved_with_chunk` a kind for it), so a save mid-flight loses it

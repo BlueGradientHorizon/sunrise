@@ -1,85 +1,25 @@
 //! Shulker boxes (`ShulkerBoxBlockEntity`: 27 slots that refuse other boxes,
 //! kept in the dropped item's `container` component) and ender chests (the
 //! player's `PlayerEnderChestContainer`, saved as `EnderItems`).
+#[allow(unused_imports)]
 use super::Game;
+#[allow(unused_imports)]
 use sunrise_client::{
     containers::{BlockEntity, is_chest_block},
     items::ItemStack,
     text::Text,
 };
+#[allow(unused_imports)]
 use sunrise_core::random::RandomSource;
 
-pub(super) use sunrise_gameplay::chests::{chest_connected_pos, is_shulker_box};
+#[allow(unused_imports)]
+pub(in crate::game) use sunrise_gameplay::chests::{chest_connected_pos, is_shulker_box};
+#[allow(unused_imports)]
 use sunrise_gameplay::chests::{chest_half, facing_step};
 impl Game<'_> {
-    /// `ServerPlayerGameMode.useItemOn` for a spectator: the block's menu
-    /// (`BlockState.getMenuProvider`) opens, and nothing else happens. The
-    /// lid, its sound and the `container_open` game event come from
-    /// `ContainerOpenersCounter`, which spectators never join
-    /// (`ChestBlockEntity.startOpen`); the stat, the piglins' anger and the
-    /// shulker box's room check are `useWithoutItem`'s, which is not called.
-    /// Only the block containers whose clicks the server takes back from a
-    /// spectator (`handleContainerClick`) open here: storage, the furnaces,
-    /// the brewing stand and the crafter.
-    pub(super) fn spectator_open_menu(&mut self, pos: [i32; 3]) {
-        if self.fake_blocks(mod_api::FakeEffect::Menu) {
-            return;
-        }
-        let key = (pos[0], pos[1], pos[2]);
-        let name = self
-            .res
-            .facts()
-            .get(self.world.block(pos[0], pos[1], pos[2]))
-            .name
-            .clone();
-        let container = is_shulker_box(&name)
-            || matches!(
-                name.trim_start_matches("minecraft:"),
-                "chest"
-                    | "trapped_chest"
-                    | "barrel"
-                    | "hopper"
-                    | "dispenser"
-                    | "dropper"
-                    | "furnace"
-                    | "blast_furnace"
-                    | "smoker"
-                    | "brewing_stand"
-                    | "crafter"
-            );
-        // ChestBlock.getMenuProvider: none while either half is blocked.
-        if !container || self.chest_menu_blocked(key, &name) {
-            return;
-        }
-        // BaseContainerBlockEntity.canOpen: a spectator opens no container that still
-        // has a loot table to unpack (it clears while it rolls, on first open).
-        // ServerPlayer.openMenu sends the refused spectator a red action bar.
-        if self
-            .world
-            .chunks
-            .get(&(key.0 >> 4, key.2 >> 4))
-            .and_then(|c| c.saved.as_ref())
-            .is_some_and(|s| s.pending_loot.contains_key(&key))
-        {
-            self.send_overlay_message(
-                Text::translate("container.spectatorCantOpen", &[])
-                    .with_color(sunrise_client::text::RED),
-            );
-            return;
-        }
-        let Some(entity) = BlockEntity::for_block(&name) else {
-            return;
-        };
-        self.world.block_entities.get_or_insert_with(key, || entity);
-        self.container = Some(key);
-        self.server.open_container_slots = Some((key, self.open_container_size()));
-        self.set_screen(super::Screen::Inventory);
-        self.capture(false);
-        self.set_mapping_held("key.use", false);
-    }
     /// The custom name of the open container, or its default title
     /// (a double chest is named by whichever half has a name).
-    pub(super) fn container_title(&self, default: String) -> String {
+    pub(in crate::game) fn container_title(&self, default: String) -> String {
         self.container_parts()
             .iter()
             .find_map(|(key, _)| self.block_name_plain(*key))
@@ -90,7 +30,11 @@ impl Game<'_> {
     /// cannot unlock refuses the menu with `sendChestLockedNotifications` -
     /// the action bar names the container and one chest-locked sound plays.
     /// True when the open is refused.
-    pub(super) fn refuse_locked_container(&mut self, key: (i32, i32, i32), name: &str) -> bool {
+    pub(in crate::game) fn refuse_locked_container(
+        &mut self,
+        key: (i32, i32, i32),
+        name: &str,
+    ) -> bool {
         // A carrier transfer fence holds this cell: its block entity's
         // container does not open while the operation runs.
         if self.world.carrier_fences.locks_cell(&[key.0, key.1, key.2]) {
@@ -154,23 +98,15 @@ impl Game<'_> {
         true
     }
     /// ShulkerBoxSlot.mayPlace: no shulker box inside a shulker box.
-    pub(super) fn refuses(&self, slot: usize, stack: &ItemStack) -> bool {
+    pub(in crate::game) fn refuses(&self, slot: usize, stack: &ItemStack) -> bool {
         (300..400).contains(&slot)
             && is_shulker_box(&stack.item)
             && self.container.is_some_and(|k| {
                 is_shulker_box(&self.res.facts().get(self.world.block(k.0, k.1, k.2)).name)
             })
     }
-    /// Opening an ender chest shows the player's ender inventory in its place.
-    pub(super) fn open_ender_chest(&mut self, key: (i32, i32, i32)) {
-        self.world
-            .block_entities
-            .insert(key, BlockEntity::Chest(self.server.ender_items.clone()));
-        self.container = Some(key);
-        self.server.ender_open = Some(key);
-    }
     /// The block above `key` is a redstone conductor.
-    fn conductor_above(&self, key: (i32, i32, i32)) -> bool {
+    pub(in crate::game) fn conductor_above(&self, key: (i32, i32, i32)) -> bool {
         let above = self.world.block(key.0, key.1 + 1, key.2);
         self.res.behaviours().facts(above).flags
             & sunrise_world::level::data::state_flags::CONDUCTOR
@@ -178,13 +114,13 @@ impl Game<'_> {
     }
     /// `ChestBlock.isChestBlockedAt`: a redstone conductor above the chest or
     /// a cat sitting on it.
-    fn chest_blocked_at(&self, key: (i32, i32, i32)) -> bool {
+    pub(in crate::game) fn chest_blocked_at(&self, key: (i32, i32, i32)) -> bool {
         self.conductor_above(key) || super::machines::cat_sitting_above(&self.mobs, key)
     }
     /// `ChestBlock.getMenuProvider` (`combine(.., false)`) and
     /// `EnderChestBlock.useWithoutItem`: a blocked chest, or a double chest
     /// with either half blocked, opens no menu.
-    pub(super) fn chest_menu_blocked(&self, key: (i32, i32, i32), name: &str) -> bool {
+    pub(in crate::game) fn chest_menu_blocked(&self, key: (i32, i32, i32), name: &str) -> bool {
         match name {
             n if is_chest_block(n) => {
                 self.chest_blocked_at(key)
@@ -197,19 +133,6 @@ impl Game<'_> {
             _ => false,
         }
     }
-    /// Closing it copies the items back and keeps the block entity, as vanilla's
-    /// `EnderChestBlockEntity` persists across open/close (`close_ender_chest`
-    /// must not remove it, or `/data get block` loses it after a use).
-    pub(super) fn close_ender_chest(&mut self) {
-        let Some(key) = self.server.ender_open.take() else {
-            return;
-        };
-        // The items go back to the player: an `EnderChestBlockEntity` holds none, so
-        // nothing of theirs stays in the chunk or in `/data get block`.
-        if let Some(BlockEntity::Chest(items)) = self.world.block_entities.get_mut(&key) {
-            self.server.ender_items = std::mem::replace(items, vec![None; 27]);
-        }
-    }
 }
 
 // ---- chest menus: double chests, titles and shift-click ----
@@ -217,7 +140,10 @@ impl Game<'_> {
 impl Game<'_> {
     /// The other half of the open double chest and whether the open one is
     /// the right half (`ChestBlock.getConnectedDirection`).
-    pub(super) fn chest_partner(&self, key: (i32, i32, i32)) -> Option<((i32, i32, i32), bool)> {
+    pub(in crate::game) fn chest_partner(
+        &self,
+        key: (i32, i32, i32),
+    ) -> Option<((i32, i32, i32), bool)> {
         let registry = self.pack.assets.registry;
         let state = registry.state(self.world.block(key.0, key.1, key.2))?;
         if !is_chest_block(&state.name) {
@@ -238,7 +164,7 @@ impl Game<'_> {
     /// A double chest sounds from the middle of both halves, a barrel from its
     /// opening face (`BarrelBlockEntity.playSound`), and other containers from
     /// the block center. Resolve this before notifying game-event listeners.
-    pub(super) fn resolve_container_sound(
+    pub(in crate::game) fn resolve_container_sound(
         &self,
         key: (i32, i32, i32),
         name: &str,
@@ -297,7 +223,7 @@ impl Game<'_> {
         Some((sound, at))
     }
 
-    pub(super) fn play_container_sound(&mut self, sound: &str, at: [f64; 3]) {
+    pub(in crate::game) fn play_container_sound(&mut self, sound: &str, at: [f64; 3]) {
         let pitch = self.world.random.next_float() * 0.1 + 0.9;
         // A server's `playSound(null, …)`: every player around, the opener too.
         // `Audio::play` captures the sound while the world is open to the
@@ -307,7 +233,7 @@ impl Game<'_> {
     }
     /// Play the current block's sound when its opener count crosses zero
     /// (`ContainerOpenersCounter.onOpen` / `onClose`).
-    pub(super) fn container_edge_sound(&mut self, key: (i32, i32, i32), open: bool) {
+    pub(in crate::game) fn container_edge_sound(&mut self, key: (i32, i32, i32), open: bool) {
         let state = self.world.block(key.0, key.1, key.2);
         let name = &self.res.facts().get(state).name;
         if let Some((sound, at)) = self.resolve_container_sound(key, name, open) {
@@ -315,12 +241,15 @@ impl Game<'_> {
         }
     }
     /// The other half of a double chest at `key`, for neighbour updates.
-    pub(super) fn chest_other_half(&self, key: (i32, i32, i32)) -> Option<(i32, i32, i32)> {
+    pub(in crate::game) fn chest_other_half(
+        &self,
+        key: (i32, i32, i32),
+    ) -> Option<(i32, i32, i32)> {
         self.chest_partner(key).map(|p| p.0)
     }
     /// The block entities of the open container in menu order, with their
     /// sizes: a double chest is its right half then its left half.
-    pub(super) fn container_parts(&self) -> Vec<((i32, i32, i32), usize)> {
+    pub(in crate::game) fn container_parts(&self) -> Vec<((i32, i32, i32), usize)> {
         let Some(key) = self.container else {
             return Vec::new();
         };
@@ -334,77 +263,16 @@ impl Game<'_> {
             None => vec![own],
         }
     }
-    /// `Container.stillValidBlockEntity`: the open block container closes once
-    /// the player's eyes are out of reach of any of its blocks (a 4-block buffer).
-    pub(super) fn tick_container_reach(&mut self) {
-        // A server's menu ends when the server closes it.
-        if self.remote.is_some() {
-            return;
-        }
-        let Some(eye) = self.eye_position() else {
-            return;
-        };
-        if self
-            .container
-            .is_none_or(|k| k.1 == super::minecarts::CART_KEY_Y)
-        {
-            return;
-        }
-        // `Container.stillValidBlockEntity`: the menu holds a block entity per
-        // part, and a part that went away (`getBlockEntity(pos) != this`) ends
-        // it. A double chest whose other half broke would otherwise show a
-        // shorter container.
-        if self
-            .server
-            .open_container_slots
-            .is_some_and(|(open, slots)| {
-                self.container == Some(open) && self.open_container_size() < slots
-            })
-        {
-            self.close_container();
-            self.tick_container_reach_client();
-            return;
-        }
-        let range = self.reach() + 4.0;
-        let near = self.container_parts().iter().all(|&((x, y, z), _)| {
-            sunrise_client::lan::guest::within_block_range(eye, range, [x, y, z])
-        });
-        if !near {
-            self.close_container();
-            self.set_screen(super::Screen::Playing);
-            self.capture(true);
-        }
-    }
     #[inline(always)]
     pub(in crate::game) fn tick_container_reach_client(&mut self) {
         self.client.screen = super::Screen::Playing;
         self.capture(true);
     }
-    /// `CraftingMenu.stillValid`: the open crafting table closes once its
-    /// block is no longer a crafting table or the player's eyes are out of
-    /// reach (a 4-block buffer).
-    pub(super) fn tick_craft_table(&mut self) {
-        // A server's menu ends when the server closes it.
-        if self.remote.is_some() || self.craft_size != 3 {
-            return;
-        }
-        let (Some(pos), Some(eye)) = (self.server.craft_table, self.eye_position()) else {
-            return;
-        };
-        let state = self.world.block(pos[0], pos[1], pos[2]);
-        let table = &*self.res.facts().get(state).name == "minecraft:crafting_table";
-        let range = self.reach() + 4.0;
-        if !(table && sunrise_client::lan::guest::within_block_range(eye, range, pos)) {
-            self.close_container();
-            self.set_screen(super::Screen::Playing);
-            self.capture(true);
-        }
-    }
     /// The number of slots of the open container.
-    pub(super) fn open_container_size(&self) -> usize {
+    pub(in crate::game) fn open_container_size(&self) -> usize {
         self.container_parts().iter().map(|p| p.1).sum()
     }
-    pub(super) fn container_slot(&self, mut n: usize) -> &Option<ItemStack> {
+    pub(in crate::game) fn container_slot(&self, mut n: usize) -> &Option<ItemStack> {
         for (pos, size) in self.container_parts() {
             if n < size {
                 return self
@@ -419,7 +287,7 @@ impl Game<'_> {
         &self.scratch_slot
     }
     /// Container slot `n` (menu slot `300 + n`).
-    pub(super) fn container_slot_mut(&mut self, mut n: usize) -> &mut Option<ItemStack> {
+    pub(in crate::game) fn container_slot_mut(&mut self, mut n: usize) -> &mut Option<ItemStack> {
         let mut target = None;
         for (pos, size) in self.container_parts() {
             if n < size {
@@ -438,12 +306,12 @@ impl Game<'_> {
             None => &mut self.scratch_slot,
         }
     }
-    pub(super) fn container_block_is_shulker(&self) -> bool {
+    pub(in crate::game) fn container_block_is_shulker(&self) -> bool {
         self.container_block()
             .as_deref()
             .is_some_and(is_shulker_box)
     }
-    fn container_block(&self) -> Option<std::sync::Arc<str>> {
+    pub(in crate::game) fn container_block(&self) -> Option<std::sync::Arc<str>> {
         let k = self.container?;
         Some(
             self.res
@@ -455,7 +323,7 @@ impl Game<'_> {
     }
     /// Rows of the open generic 9-wide container (`ChestMenu`), or None for
     /// the other menus (hoppers, dispensers, shulker boxes, furnaces...).
-    pub(super) fn chest_rows(&self) -> Option<usize> {
+    pub(in crate::game) fn chest_rows(&self) -> Option<usize> {
         if let Some((rows, _)) = self.remote_chest_menu() {
             return Some(rows);
         }
@@ -470,7 +338,7 @@ impl Game<'_> {
         generic.then(|| self.open_container_size() / 9)
     }
     /// The title of the open chest-like menu.
-    fn chest_title(&self, rows: usize) -> Text {
+    pub(in crate::game) fn chest_title(&self, rows: usize) -> Text {
         if let Some((_, title)) = self.remote_chest_menu() {
             return title;
         }
@@ -488,7 +356,7 @@ impl Game<'_> {
     }
     /// `ContainerScreen` / `ShulkerBoxScreen`: the background with its
     /// container rows, the title and the inventory label.
-    pub(super) fn draw_chest_screen(
+    pub(in crate::game) fn draw_chest_screen(
         &self,
         batch: &mut sunrise_client::hud::HudBatch,
         ox: f32,
@@ -561,13 +429,13 @@ impl Game<'_> {
     /// `quickMoveStack` of the open chest-like, hopper, dispenser or furnace
     /// menu for a shift-click on `slot`, run by the verified menu engine
     /// (`sunrise_client::menu`); false when the menu has none.
-    pub(super) fn container_quick_move(&mut self, slot: usize) -> bool {
+    pub(in crate::game) fn container_quick_move(&mut self, slot: usize) -> bool {
         self.click_open_inventory(Some(slot), 0, sunrise_client::menu::Input::QuickMove)
     }
 }
 
 #[cfg(test)]
-mod tests {
+pub(in crate::game) mod tests {
     use super::*;
     use sunrise_client::containers::ChestHalf;
 
@@ -647,7 +515,7 @@ mod tests {
 }
 
 #[cfg(test)]
-mod reach_tests {
+pub(in crate::game) mod reach_tests {
     use super::super::game_tests::tests::server_game;
     use sunrise_client::{containers::BlockEntity, motion::PlayerMotion};
     use sunrise_core::geometry::Vec3;
@@ -700,7 +568,7 @@ mod reach_tests {
 }
 
 #[cfg(test)]
-mod lock_tests {
+pub(in crate::game) mod lock_tests {
     use super::super::game_tests::tests::server_game;
     use sunrise_client::{containers::BlockEntity, items::ItemStack};
     use sunrise_core::nbt::Tag;

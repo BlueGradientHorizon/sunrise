@@ -1,6 +1,10 @@
+#[allow(unused_imports)]
 use super::*;
+#[allow(unused_imports)]
 use sunrise_client::entities::ItemEntity;
+#[allow(unused_imports)]
 use sunrise_client::join_seq::JoinList;
+#[allow(unused_imports)]
 use sunrise_core::random::RandomSource;
 
 impl Game<'_> {
@@ -154,26 +158,11 @@ impl Game<'_> {
         }
     }
 
-    /// The take animation of `item` toward the host's player, and its sound at `feet`.
-    fn native_take_item(&mut self, item: ItemEntity, feet: [f64; 3]) {
-        self.add_pickup(
-            crate::game::pickups::Taken::Item(Box::new(item)),
-            crate::game::pickups::Collector::Player,
-        );
-        // handleTakeItemEntity: the random pitch of a full pickup.
-        // `ClientPacketListener.random`, the listener's own stream, never the level's.
-        let mut random = sunrise_client::random_source::create();
-        let pitch = ((random.next_float() - random.next_float()) * 0.7 + 1.0) * 2.0;
-        self.audio
-            .0
-            .play("minecraft:entity.item.pickup", Some(feet), 0.2, pitch);
-    }
-
     /// `notice` with the lifted `items[i]` lent back to the level, holding
     /// `during`, where mods reach it: the notice's answer, and the stack the
     /// item held before when a mod removed it meanwhile. An item that is still
     /// there goes back to its place in `items` holding that stack.
-    fn native_pickup_lent(
+    pub(in crate::game) fn native_pickup_lent(
         &mut self,
         items: &mut JoinList<ItemEntity>,
         i: usize,

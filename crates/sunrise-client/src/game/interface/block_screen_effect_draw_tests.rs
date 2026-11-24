@@ -1,15 +1,21 @@
 //! Selected block overlay renderers in a real game: what they submit and where those quads land.
+#[allow(unused_imports)]
 use super::native_entity_refs::tests::{fixture_root, run_fresh_cases, with_client_game};
+#[allow(unused_imports)]
 use super::{Game, PackResources, Screen};
+#[allow(unused_imports)]
 use BlockScreenEffect::{Block, Fire, Water};
+#[allow(unused_imports)]
 use mod_api::{
     BlockScreenEffect, BlockScreenEffectRender, BlockScreenEffectRenderer, CameraSubmersionEvent,
     ClientHost, ExtractBlockScreenEffectEvent, Flow, GuiRenderPostEvent, Hooks, ModEntry, Mods,
 };
+#[allow(unused_imports)]
 use std::{
     sync::{Arc, Mutex},
     time::Duration,
 };
+#[allow(unused_imports)]
 use sunrise_client::{
     camera::{CameraType, hand_projection},
     chunk::Chunk,
@@ -19,13 +25,14 @@ use sunrise_client::{
     motion::{MotionWorld, PlayerMotion, WATER},
     screen_effects::{Blend, ScreenQuad},
 };
+#[allow(unused_imports)]
 use sunrise_core::{geometry::Vec3, position::BlockPos};
 
-const RED: u32 = 0xFFFF0000;
+pub(in crate::game) const RED: u32 = 0xFFFF0000;
 /// Half-transparent blue: it shows what is under it.
-const CLEAR_BLUE: u32 = 0x800000FF;
+pub(in crate::game) const CLEAR_BLUE: u32 = 0x800000FF;
 /// A quad a quarter of a block from the view's centre, at vanilla's depth.
-const QUAD: [[f32; 3]; 4] = [
+pub(in crate::game) const QUAD: [[f32; 3]; 4] = [
     [-0.25, -0.25, -0.5],
     [0.25, -0.25, -0.5],
     [0.25, 0.25, -0.5],
@@ -34,39 +41,39 @@ const QUAD: [[f32; 3]; 4] = [
 
 /// What the mod does with each overlay.
 #[derive(Clone, Copy)]
-struct Plan {
-    custom: &'static [BlockScreenEffect],
-    cancel: &'static [BlockScreenEffect],
-    replace: &'static [BlockScreenEffect],
+pub(in crate::game) struct Plan {
+    pub(in crate::game) custom: &'static [BlockScreenEffect],
+    pub(in crate::game) cancel: &'static [BlockScreenEffect],
+    pub(in crate::game) replace: &'static [BlockScreenEffect],
 }
-const LEAVE: Plan = Plan {
+pub(in crate::game) const LEAVE: Plan = Plan {
     custom: &[],
     cancel: &[],
     replace: &[],
 };
 /// One submission of a selected renderer.
 #[derive(Debug, PartialEq)]
-struct Asked {
-    effect: BlockScreenEffect,
-    state: mod_api::BlockState,
-    pos: BlockPos,
-    partial_tick: f32,
-    hide_gui: bool,
+pub(in crate::game) struct Asked {
+    pub(in crate::game) effect: BlockScreenEffect,
+    pub(in crate::game) state: mod_api::BlockState,
+    pub(in crate::game) pos: BlockPos,
+    pub(in crate::game) partial_tick: f32,
+    pub(in crate::game) hide_gui: bool,
 }
-static PLAN: Mutex<Plan> = Mutex::new(LEAVE);
-static ASKED: Mutex<Vec<Asked>> = Mutex::new(Vec::new());
+pub(in crate::game) static PLAN: Mutex<Plan> = Mutex::new(LEAVE);
+pub(in crate::game) static ASKED: Mutex<Vec<Asked>> = Mutex::new(Vec::new());
 /// The partial tick each extract event held.
-static EXTRACTED: Mutex<Vec<(BlockScreenEffect, f32)>> = Mutex::new(Vec::new());
+pub(in crate::game) static EXTRACTED: Mutex<Vec<(BlockScreenEffect, f32)>> = Mutex::new(Vec::new());
 
 /// The mod's colour for what it draws over `effect`.
-fn marker(effect: BlockScreenEffect) -> u32 {
+pub(in crate::game) fn marker(effect: BlockScreenEffect) -> u32 {
     match effect {
         Block => 0xFF010000,
         Water => 0xFF020000,
         Fire => 0xFF030000,
     }
 }
-struct Planned;
+pub(in crate::game) struct Planned;
 #[mod_api::__subscriptions]
 impl Hooks for Planned {
     fn extract_block_screen_effect(
@@ -90,7 +97,7 @@ impl Hooks for Planned {
     }
 }
 
-struct PlannedRenderer;
+pub(in crate::game) struct PlannedRenderer;
 impl BlockScreenEffectRenderer for PlannedRenderer {
     fn submit(&self, _: &dyn ClientHost, render: BlockScreenEffectRender<'_>) -> bool {
         ASKED.lock().unwrap().push(Asked {
@@ -106,7 +113,7 @@ impl BlockScreenEffectRenderer for PlannedRenderer {
 }
 
 /// A player on fire in first person, with their eye in block (0, 65, 0).
-fn burning_player(game: &mut Game<'_>) {
+pub(in crate::game) fn burning_player(game: &mut Game<'_>) {
     game.world.chunks.insert(
         (0, 0),
         Arc::new(Chunk::with_layout(0, 0, game.world.layout())),
@@ -116,43 +123,16 @@ fn burning_player(game: &mut Game<'_>) {
     player.fire_ticks = 100;
     game.player = Some(player);
 }
-/// Sample the player's fluid state as a tick would, without advancing their fire timer.
-fn sample_eye_in_water(game: &mut Game<'_>) -> bool {
-    // The fluid scan requires the chunks around the interaction box to be loaded too.
-    let layout = game.world.layout();
-    for (x, z) in [(-1, -1), (-1, 0), (0, -1)] {
-        if !game.world.chunks.contains_key(&(x, z)) {
-            game.world
-                .chunks
-                .insert((x, z), Arc::new(Chunk::with_layout(x, z, layout)));
-        }
-    }
-    let side = game_side!(game);
-    let mut motion = MotionWorld {
-        side: &side,
-        entities: &[],
-        player: game.player.as_mut().unwrap(),
-        scene: &mut game.world,
-        assets: &game.pack.assets,
-        collision_binding: game.collision,
-        resources: game.motion,
-        health: &game.health_resources,
-        loop_context: &game.loop_context,
-        damage_hooks: &game.damage_hooks,
-        tag_items: None,
-        block_registries: None,
-    };
-    motion.update_fluids().unwrap();
-    motion.player.is_eye_in_fluid(WATER)
-}
+#[allow(unused_imports)]
+pub(in crate::game) use crate::game::server_side::block_screen_effect_draw_tests_server::sample_eye_in_water;
 
 /// The frame's quads at 2:1 with the hand's usual 70 degrees.
-fn quads(game: &Game<'_>) -> Vec<ScreenQuad> {
+pub(in crate::game) fn quads(game: &Game<'_>) -> Vec<ScreenQuad> {
     let projection = hand_projection(70.0, 1000.0, 500.0, 1000.0);
     game.screen_quads(0.25, [1000, 500], 1.0, projection)
 }
 /// Names the block overlays' quads in draw order, the HUD's camera overlays left out.
-fn names(quads: &[ScreenQuad]) -> Vec<&'static str> {
+pub(in crate::game) fn names(quads: &[ScreenQuad]) -> Vec<&'static str> {
     quads
         .iter()
         .filter(|quad| quad.blend == Blend::Alpha)
@@ -170,11 +150,11 @@ fn names(quads: &[ScreenQuad]) -> Vec<&'static str> {
         })
         .collect()
 }
-fn asked() -> Vec<BlockScreenEffect> {
+pub(in crate::game) fn asked() -> Vec<BlockScreenEffect> {
     let mut asked = ASKED.lock().unwrap();
     asked.drain(..).map(|ask| ask.effect).collect()
 }
-fn close_to(actual: [f32; 4], expected: [f32; 4]) {
+pub(in crate::game) fn close_to(actual: [f32; 4], expected: [f32; 4]) {
     for (a, e) in actual.iter().zip(expected) {
         assert!((a - e).abs() < 1e-4, "{actual:?} is not {expected:?}");
     }
@@ -494,7 +474,7 @@ fn a_panicking_renderer_discards_its_quads_and_is_skipped_on_later_frames() {
     });
 }
 
-struct Choice(u32);
+pub(in crate::game) struct Choice(pub(in crate::game) u32);
 impl BlockScreenEffectRenderer for Choice {
     fn submit(&self, _: &dyn ClientHost, render: BlockScreenEffectRender<'_>) -> bool {
         assert!(render.draw.quad(QUAD, self.0));
@@ -503,14 +483,17 @@ impl BlockScreenEffectRenderer for Choice {
 }
 
 #[derive(Debug, PartialEq)]
-struct OverlayInput {
-    state: mod_api::BlockState,
-    pos: BlockPos,
-    partial_tick: f32,
-    player_partial_tick: f32,
+pub(in crate::game) struct OverlayInput {
+    pub(in crate::game) state: mod_api::BlockState,
+    pub(in crate::game) pos: BlockPos,
+    pub(in crate::game) partial_tick: f32,
+    pub(in crate::game) player_partial_tick: f32,
 }
 
-struct ObserveOverlay(BlockScreenEffect, Arc<Mutex<Option<OverlayInput>>>);
+pub(in crate::game) struct ObserveOverlay(
+    pub(in crate::game) BlockScreenEffect,
+    pub(in crate::game) Arc<Mutex<Option<OverlayInput>>>,
+);
 #[mod_api::__subscriptions]
 impl Hooks for ObserveOverlay {
     fn extract_block_screen_effect(
@@ -533,7 +516,10 @@ impl Hooks for ObserveOverlay {
     }
 }
 
-fn observe_overlay(effect: BlockScreenEffect, run: impl FnOnce()) -> Option<OverlayInput> {
+pub(in crate::game) fn observe_overlay(
+    effect: BlockScreenEffect,
+    run: impl FnOnce(),
+) -> Option<OverlayInput> {
     let seen = Arc::new(Mutex::new(None));
     let mods = vec![ModEntry::new(
         "observe-overlay",
@@ -710,7 +696,7 @@ fn a_dead_players_water_overlay_uses_the_last_sample_after_removal() {
     });
 }
 
-struct InvertWater;
+pub(in crate::game) struct InvertWater;
 #[mod_api::__subscriptions]
 impl Hooks for InvertWater {
     fn camera_submersion(&self, _: &dyn ClientHost, event: &mut CameraSubmersionEvent<'_>) {
@@ -819,7 +805,7 @@ fn extraction_keeps_player_interpolation_when_world_interpolation_is_frozen() {
     });
 }
 
-struct FirstChoice(bool);
+pub(in crate::game) struct FirstChoice(pub(in crate::game) bool);
 #[mod_api::__subscriptions]
 impl Hooks for FirstChoice {
     #[listener(priority = 10)]
@@ -838,7 +824,7 @@ impl Hooks for FirstChoice {
     }
 }
 
-struct ReceiveCancelled;
+pub(in crate::game) struct ReceiveCancelled;
 #[mod_api::__subscriptions]
 impl Hooks for ReceiveCancelled {
     #[listener(receive_cancelled)]
@@ -854,7 +840,7 @@ impl Hooks for ReceiveCancelled {
     }
 }
 
-struct LastChoice;
+pub(in crate::game) struct LastChoice;
 #[mod_api::__subscriptions]
 impl Hooks for LastChoice {
     #[listener(priority = -10)]
@@ -911,7 +897,7 @@ fn only_the_last_eligible_renderer_submits() {
 }
 
 /// A frame's pixels, RGBA.
-fn drawn_frame(game: &mut Game<'_>) -> (Vec<u8>, usize) {
+pub(in crate::game) fn drawn_frame(game: &mut Game<'_>) -> (Vec<u8>, usize) {
     game.renderer.0.as_mut().unwrap().screenshot = Some(ScreenshotRequest {
         path: "unused.png".into(),
         size: None,
@@ -927,8 +913,9 @@ fn drawn_frame(game: &mut Game<'_>) -> (Vec<u8>, usize) {
 }
 
 /// Whether the frame's mod draws: off for the frame to compare with.
-static DRAWING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
-struct Painter;
+pub(in crate::game) static DRAWING: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+pub(in crate::game) struct Painter;
 #[mod_api::__subscriptions]
 impl Hooks for Painter {
     fn extract_block_screen_effect(
@@ -979,7 +966,7 @@ impl BlockScreenEffectRenderer for Painter {
 #[test]
 #[ignore = "daily"]
 fn screen_effect_quads_draw_over_the_level_and_under_the_gui() {
-    let name = "game::block_screen_effect_draw_tests::screen_effect_quads_draw_over_the_level_and_under_the_gui";
+    let name = "game::client_side::block_screen_effect_draw_tests::screen_effect_quads_draw_over_the_level_and_under_the_gui";
     if run_fresh_cases(name, "SUNRISE_SCREEN_EFFECT_PASS_CHILD", &["pixels"]) {
         return;
     }

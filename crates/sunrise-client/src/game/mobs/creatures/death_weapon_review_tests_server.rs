@@ -1,0 +1,56 @@
+#[allow(unused_imports)]
+pub(in crate::game::server_side) use super::tests::{WeaponProbe, isolated};
+#[allow(unused_imports)]
+pub(in crate::game::server_side) use super::*;
+#[allow(unused_imports)]
+pub(in crate::game::server_side) use crate::game::creatures::death_weapon::review_tests::arrow;
+#[allow(unused_imports)]
+pub(in crate::game::server_side) use crate::game::creatures::death_weapon::review_tests::fixture;
+#[allow(unused_imports)]
+pub(in crate::game::server_side) use crate::game::creatures::death_weapon::review_tests::hit;
+#[allow(unused_imports)]
+pub(in crate::game::server_side) use crate::game::creatures::death_weapon::review_tests::player;
+#[allow(unused_imports)]
+pub(in crate::game::server_side) use crate::game::creatures::death_weapon::review_tests::victim;
+#[allow(unused_imports)]
+pub(in crate::game::server_side) use crate::game::creatures::death_weapon::review_tests::*;
+#[allow(unused_imports)]
+pub(in crate::game::server_side) use std::sync::{Arc, Mutex};
+
+pub(in crate::game) fn fixture_with_source(
+    expected: Option<ItemStack>,
+    expected_source: Option<(&'static str, i32)>,
+    run: impl FnOnce(&mut Game<'_>),
+) {
+    crate::game::native_entity_refs::tests::with_game(|game| {
+        let scratch = tempfile::tempdir().unwrap();
+        game.server.world_root = scratch.path().to_path_buf();
+        game.save.0 = Arc::new(sunrise_client::save::SaveDir::new(
+            scratch.path().join("save"),
+            sunrise_client::save::LevelShape::OVERWORLD,
+            Some(Default::default()),
+        ));
+        game.build_registries();
+        game.server.next_entity = 1000;
+        let loot = sunrise_world::loot::LootData::load(
+            &game.options.resources,
+            &Default::default(),
+            game.res.item_defaults(),
+        )
+        .unwrap();
+        game.server_loot.0.set(Some(Arc::new(loot)));
+        let seen = Arc::new(Mutex::new(0));
+        let mods = vec![mod_api::ModEntry::new(
+            "review_weapon",
+            Box::new(WeaponProbe {
+                expected: expected.map(|stack| stack.try_into_api().unwrap()),
+                expected_source,
+                swap: None,
+                seen: seen.clone(),
+            }),
+        )]
+        .into();
+        mod_platform::testing::with_mods(mods, || run(game));
+        assert_eq!(*seen.lock().unwrap(), 1);
+    });
+}

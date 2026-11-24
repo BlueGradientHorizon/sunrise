@@ -6,20 +6,26 @@
 //! the armor attribute effects (respiration, depth strider, ...), Soul
 //! Speed's `location_changed` and `tick` effects and the
 //! `minecraft:location_changed` disk effect (frost walker).
+#[allow(unused_imports)]
 use super::Game;
+#[allow(unused_imports)]
 use super::durability::Wearer;
+#[allow(unused_imports)]
 use serde_json::Value;
+#[allow(unused_imports)]
 use sunrise_client::{
     enchant::{EffectContext, Enchantments, level_value},
     items::{ItemStack, Items},
     mobs::{Damage, DamageKind, Who},
     random_source,
 };
+#[allow(unused_imports)]
 use sunrise_core::{
     geometry::Vec3,
     position::BlockPos,
     random::{LegacyRandom, RandomSource},
 };
+#[allow(unused_imports)]
 use sunrise_world::{fluid::FluidKind, level::LevelAccess, registry::BlockStateId};
 
 /// Shared weapon damage effects; callers choose live RNG for an attack or a snapshot for a read.
@@ -34,11 +40,12 @@ pub(in crate::game) fn stack_enchanted_damage(
 }
 
 /// `EquipmentSlot.getName` of each `mobs::finalize` slot (hands, feet to head).
-const MOB_SLOTS: [&str; 6] = ["mainhand", "offhand", "feet", "legs", "chest", "head"];
+pub(in crate::game) const MOB_SLOTS: [&str; 6] =
+    ["mainhand", "offhand", "feet", "legs", "chest", "head"];
 
 /// One of the player's equipment slots (`EnchantedItemInUse.inSlot`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum PlayerSlot {
+pub(in crate::game) enum PlayerSlot {
     Main,
     Off,
     /// An `armor` index (head first).
@@ -48,7 +55,7 @@ enum PlayerSlot {
 /// `EquipmentSlot.VALUES` over what the player holds and wears: the main
 /// hand, the off hand, then feet, legs, chest and head (`armor` holds head
 /// first).
-const PLAYER_SLOTS: [PlayerSlot; 6] = [
+pub(in crate::game) const PLAYER_SLOTS: [PlayerSlot; 6] = [
     PlayerSlot::Main,
     PlayerSlot::Off,
     PlayerSlot::Armor(3),
@@ -59,14 +66,14 @@ const PLAYER_SLOTS: [PlayerSlot; 6] = [
 
 impl PlayerSlot {
     /// `EquipmentSlot.getName`.
-    fn name(self) -> &'static str {
+    pub(in crate::game) fn name(self) -> &'static str {
         match self {
             Self::Main => "mainhand",
             Self::Off => "offhand",
             Self::Armor(i) => ["head", "chest", "legs", "feet"][i],
         }
     }
-    fn equipment_slot(self) -> mod_api::EquipmentSlot {
+    pub(in crate::game) fn equipment_slot(self) -> mod_api::EquipmentSlot {
         use mod_api::EquipmentSlot;
         match self {
             Self::Main => EquipmentSlot::MainHand,
@@ -116,13 +123,13 @@ pub(in crate::game) fn look_impulse(effect: &Value, level: u32, yaw: f32, pitch:
 }
 /// `Player.getDestroySpeed` multiplies by `BLOCK_BREAK_SPEED`; a player
 /// without the attribute keeps the vanilla default of 1.0.
-fn block_break_speed_factor(value: Option<f64>) -> f32 {
+pub(in crate::game) fn block_break_speed_factor(value: Option<f64>) -> f32 {
     value.map_or(1.0, |value| value as f32)
 }
 
 /// Says once per item that its parts' `xp_repair_ratio` answered `ratio`,
 /// which isn't finite.
-fn refuse_xp_repair_ratio(item: &str, ratio: f32) {
+pub(in crate::game) fn refuse_xp_repair_ratio(item: &str, ratio: f32) {
     static REFUSED: std::sync::Mutex<std::collections::BTreeSet<String>> =
         std::sync::Mutex::new(std::collections::BTreeSet::new());
     if REFUSED
@@ -188,7 +195,7 @@ impl Game<'_> {
         self.damage_item_loss(stack, loss, wearer)
     }
     /// `EnchantmentHelper.processDurabilityChange` (unbreaking) for `amount` points.
-    fn unbreaking_loss(&mut self, stack: &ItemStack, amount: u32) -> u32 {
+    pub(in crate::game) fn unbreaking_loss(&mut self, stack: &ItemStack, amount: u32) -> u32 {
         let e = &world_stations!(self).enchantments;
         if !e.has_component(stack, "minecraft:item_damage") {
             return amount;
@@ -537,59 +544,14 @@ impl Game<'_> {
             self.apply_piercing_effect(&effect, level);
         }
     }
-    /// One `post_piercing_attack` effect on the player: `AllOf`,
-    /// `ChangeItemDamage`, `ApplyExhaustion`, `ApplyEntityImpulse` and
-    /// `PlaySoundEffect`.
-    fn apply_piercing_effect(&mut self, effect: &serde_json::Value, level: u32) {
-        let amount = || level_value(&effect["amount"], level);
-        match effect["type"].as_str() {
-            Some("minecraft:all_of") => {
-                for e in effect["effects"].as_array().into_iter().flatten() {
-                    self.apply_piercing_effect(e, level);
-                }
-            }
-            Some("minecraft:change_item_damage") => self.damage_held(amount() as u32),
-            Some("minecraft:apply_exhaustion") => {
-                if let Some(p) = self.player.as_mut() {
-                    p.cause_food_exhaustion(amount());
-                }
-            }
-            // The direction turned by the look (`Entity.getLookQuaternion`:
-            // pitch about x, then yaw about y), scaled by coordinate_scale
-            // and the magnitude, added to the velocity (the guest's client
-            // is told of it by `guest_hit_by`).
-            Some("minecraft:apply_impulse") => {
-                let impulse = look_impulse(effect, level, self.yaw, self.pitch);
-                if let Some(p) = self.player.as_mut() {
-                    p.velocity = p.velocity.add_vector(impulse);
-                }
-            }
-            // The sound for the level (a list picks by level), heard by all.
-            Some("minecraft:play_sound") => {
-                let sounds: Vec<&str> = match &effect["sound"] {
-                    serde_json::Value::Array(list) => {
-                        list.iter().filter_map(|s| s.as_str()).collect()
-                    }
-                    one => one.as_str().into_iter().collect(),
-                };
-                let index = (level as usize).saturating_sub(1);
-                if let Some(sound) = sounds.get(index.min(sounds.len().saturating_sub(1))) {
-                    let float = |key: &str| effect[key].as_f64().unwrap_or(1.0) as f32;
-                    let at = self
-                        .player
-                        .as_ref()
-                        .map(|p| [p.position.x, p.position.y, p.position.z]);
-                    self.audio
-                        .0
-                        .play(sound, at, float("volume"), float("pitch"));
-                }
-            }
-            _ => {}
-        }
-    }
     /// `ApplyMobEffect.apply`: one of `to_apply` (a single id or a list) for a
     /// random duration and amplifier between the level-based bounds.
-    fn apply_mob_effect(&mut self, mob: usize, effect: &serde_json::Value, level: u32) {
+    pub(in crate::game) fn apply_mob_effect(
+        &mut self,
+        mob: usize,
+        effect: &serde_json::Value,
+        level: u32,
+    ) {
         use sunrise_client::enchant::level_value;
         let Some(m) = self.mobs.get_mut(mob) else {
             return;
@@ -739,7 +701,7 @@ impl Game<'_> {
     /// (`Enchantment.damageContext`), then each `damage_entity` handed to `hit` (min,
     /// max) and each `change_item_damage` worn off the piece, in the effect's
     /// order. The attacker being dead stops neither the rolls nor the wear.
-    fn player_thorns(&mut self, mut hit: impl FnMut(&mut Self, f32, f32)) {
+    pub(in crate::game) fn player_thorns(&mut self, mut hit: impl FnMut(&mut Self, f32, f32)) {
         for slot in PLAYER_SLOTS {
             let Some(stack) = self.player_slot(slot).clone() else {
                 continue;
@@ -791,7 +753,7 @@ impl Game<'_> {
     }
     /// `AllOf.apply`, `DamageEntity.apply` and `ChangeItemDamage.apply` of one
     /// Thorns-like effect of the piece in `slot`.
-    fn thorns_effect(
+    pub(in crate::game) fn thorns_effect(
         &mut self,
         effect: &Value,
         level: u32,
@@ -822,7 +784,7 @@ impl Game<'_> {
     /// `ItemStack.hurtAndBreak` for what the player has in `slot`: nothing for
     /// an item that takes no wear or a creative player, Unbreaking's share
     /// from the level's random, and a piece worn out leaves the slot.
-    fn wear_player_piece(&mut self, slot: PlayerSlot, amount: u32) {
+    pub(in crate::game) fn wear_player_piece(&mut self, slot: PlayerSlot, amount: u32) {
         self.damage_player_equipment(slot.equipment_slot(), amount.min(i32::MAX as u32) as i32);
     }
     /// `EnchantmentHelper.doPostAttackEffectsWithItemSource`'s victim loop:
@@ -932,7 +894,7 @@ impl Game<'_> {
     /// `DamageEntity.apply`, `ChangeItemDamage.apply` (on the piece) and
     /// `AllOf` for one `post_attack` effect of the piece the mob `wearer` has
     /// in `slot`, on the entity that hit it.
-    fn victim_effect(
+    pub(in crate::game) fn victim_effect(
         &mut self,
         effect: &Value,
         level: u32,
@@ -1003,7 +965,7 @@ impl Game<'_> {
     /// `slot`: Unbreaking takes its share from the level's random, and a
     /// piece worn out leaves the slot with its break event
     /// (`LivingEntity.onEquippedItemBroken`).
-    fn wear_mob_piece(&mut self, id: u32, slot: usize, amount: u32) {
+    pub(in crate::game) fn wear_mob_piece(&mut self, id: u32, slot: usize, amount: u32) {
         use sunrise_client::mobs::finalize as f;
         let (at, stack, is_stand) = if let Some(m) = self.mobs.iter().find(|m| m.id == id) {
             let at = [m.position.x, m.position.y, m.position.z];
@@ -1131,7 +1093,7 @@ impl Game<'_> {
     /// `0..=i32::MAX`. A ratio left as it arrived keeps `vanilla` exactly, and
     /// one that isn't finite is refused for it. `player` is the acting player,
     /// `None` when no server runs (no part is asked then).
-    fn xp_repair(
+    pub(in crate::game) fn xp_repair(
         &self,
         player: Option<u128>,
         stack: &ItemStack,
@@ -1164,14 +1126,14 @@ impl Game<'_> {
             .min(f64::from(i32::MAX)) as u32
     }
     /// `LivingEntity.getItemBySlot` for the player.
-    fn player_slot(&self, slot: PlayerSlot) -> &Option<ItemStack> {
+    pub(in crate::game) fn player_slot(&self, slot: PlayerSlot) -> &Option<ItemStack> {
         match slot {
             PlayerSlot::Main => &self.inventory[self.selected],
             PlayerSlot::Off => &self.offhand,
             PlayerSlot::Armor(i) => &self.armor[i],
         }
     }
-    fn player_slot_mut(&mut self, slot: PlayerSlot) -> &mut Option<ItemStack> {
+    pub(in crate::game) fn player_slot_mut(&mut self, slot: PlayerSlot) -> &mut Option<ItemStack> {
         match slot {
             PlayerSlot::Main => &mut self.inventory[self.selected],
             PlayerSlot::Off => &mut self.offhand,
@@ -1294,7 +1256,7 @@ impl Game<'_> {
     }
     /// `ItemStack.hurtAndBreak` on the worn boots (`change_item_damage`):
     /// Unbreaking applies, and they break when worn out.
-    fn wear_boots(&mut self, amount: u32) {
+    pub(in crate::game) fn wear_boots(&mut self, amount: u32) {
         self.damage_player_equipment(
             mod_api::EquipmentSlot::Feet,
             amount.min(i32::MAX as u32) as i32,
@@ -1420,7 +1382,13 @@ impl Game<'_> {
     }
     /// `ReplaceDisk.apply`: the blocks of the disk around `at` that pass the
     /// predicate become the effect's state, and each placement is a game event.
-    fn replace_disk(&mut self, effect: &Value, level: u32, at: [f64; 3], who: Who) {
+    pub(in crate::game) fn replace_disk(
+        &mut self,
+        effect: &Value,
+        level: u32,
+        at: [f64; 3],
+        who: Who,
+    ) {
         let registry = self.pack.assets.registry;
         let spec = &effect["block_state"];
         let Some(default) = spec["id"].as_str().and_then(|n| registry.default_state(n)) else {
@@ -1468,7 +1436,12 @@ impl Game<'_> {
     }
     /// The `BlockPredicate` subset the disk effect uses, tested at `pos`; no
     /// predicate matches everything.
-    fn disk_predicate(&mut self, p: &Value, pos: [i32; 3], placed: BlockStateId) -> bool {
+    pub(in crate::game) fn disk_predicate(
+        &mut self,
+        p: &Value,
+        pos: [i32; 3],
+        placed: BlockStateId,
+    ) -> bool {
         if p.is_null() {
             return true;
         }
@@ -1562,7 +1535,7 @@ impl Game<'_> {
 
 /// `EnchantmentHelper.runLocationChangedEffects`: the replace-disk effects of
 /// active equipment slots, with the wearer's ground/passenger requirements.
-fn location_disks<'a>(
+pub(in crate::game) fn location_disks<'a>(
     enchantments: &Enchantments,
     equipment: impl IntoIterator<Item = (&'a Option<ItemStack>, &'static str)>,
     on_ground: bool,
@@ -1600,7 +1573,7 @@ fn location_disks<'a>(
 
 /// Soul Speed's `attribute` effects at `level` (attribute, id, amount, operation),
 /// the id taking the boots slot like `EnchantmentAttributeEffect.idForSlot`.
-fn soul_speed_modifiers(
+pub(in crate::game) fn soul_speed_modifiers(
     enchantments: &Enchantments,
     level: u32,
 ) -> Vec<(String, String, f64, String)> {
@@ -1624,7 +1597,7 @@ fn soul_speed_modifiers(
 }
 
 /// An effect's or predicate's `offset` vector (zero when absent).
-fn cell_offset(v: &Value) -> [i32; 3] {
+pub(in crate::game) fn cell_offset(v: &Value) -> [i32; 3] {
     let at = |i: usize| {
         v["offset"]
             .get(i)
@@ -1635,7 +1608,7 @@ fn cell_offset(v: &Value) -> [i32; 3] {
 }
 /// The loot-condition subset a `location_changed` effect requires of the
 /// wearer: standing on the ground and not riding (frost walker).
-fn location_requirements(req: &Value, on_ground: bool, riding: bool) -> bool {
+pub(in crate::game) fn location_requirements(req: &Value, on_ground: bool, riding: bool) -> bool {
     match req["type"].as_str().unwrap_or("") {
         "" if req.is_null() => true,
         "minecraft:all_of" => req["terms"]
@@ -1657,7 +1630,7 @@ fn location_requirements(req: &Value, on_ground: bool, riding: bool) -> bool {
 
 /// `LivingEntity.collectEquipmentChanges`: which armor slots differ from the
 /// `snapshot` taken at the last look, which is then brought up to date.
-fn armor_changes(
+pub(in crate::game) fn armor_changes(
     snapshot: &mut [Option<ItemStack>; 4],
     armor: &[Option<ItemStack>; 4],
 ) -> [bool; 4] {
@@ -1671,7 +1644,11 @@ fn armor_changes(
     changed
 }
 
-fn mending_entries(stack: &ItemStack, slot: PlayerSlot, enchantments: &Enchantments) -> usize {
+pub(in crate::game) fn mending_entries(
+    stack: &ItemStack,
+    slot: PlayerSlot,
+    enchantments: &Enchantments,
+) -> usize {
     if stack.damage == 0 {
         return 0;
     }
@@ -1694,7 +1671,7 @@ fn mending_entries(stack: &ItemStack, slot: PlayerSlot, enchantments: &Enchantme
 /// repairs at the stack's `repair_with_xp` xp-per-point rate. Vanilla's
 /// `Enchantment.itemContext` puts the repaired stack in
 /// `LootContextParams.TOOL`, so `minecraft:match_tool` judges that item.
-fn repair_from_xp(
+pub(in crate::game) fn repair_from_xp(
     enchantments: &Enchantments,
     items: Option<&Items>,
     stack: &ItemStack,
@@ -1720,7 +1697,7 @@ fn repair_from_xp(
 /// (`amount - repair * amount / toRepairFromXpAmount`, in vanilla's integer
 /// order). Vanilla divides only when it repairs something, so a rate of zero
 /// keeps all of `amount`.
-fn repaired_and_left(amount: u32, damage: u32, to_repair: u32) -> (u32, u32) {
+pub(in crate::game) fn repaired_and_left(amount: u32, damage: u32, to_repair: u32) -> (u32, u32) {
     let repaired = to_repair.min(damage);
     if repaired == 0 {
         return (0, amount);
@@ -1733,7 +1710,7 @@ fn repaired_and_left(amount: u32, damage: u32, to_repair: u32) -> (u32, u32) {
 /// `EnchantmentHelper.getRandomItemWith(REPAIR_WITH_XP, player, ItemStack::isDamaged)`:
 /// collects damaged effect-bearing pieces in `EquipmentSlot.VALUES` order and picks
 /// one with the player's own random (`Entity.random`), never the level's.
-fn pick_mending_slot(
+pub(in crate::game) fn pick_mending_slot(
     slots: [(PlayerSlot, &Option<ItemStack>); 6],
     enchantments: &Enchantments,
     random: &mut impl RandomSource,
@@ -1761,7 +1738,7 @@ fn pick_mending_slot(
 /// `minecraft:tick` effects: the sound's `random_chance` (35%) draws from
 /// `level_random` (`Enchantment.entityContext`), while the particle coordinates
 /// and sound pitch draw from `wearer_random` (`entity.getRandom()`).
-fn soul_speed_tick(
+pub(in crate::game) fn soul_speed_tick(
     position: [f64; 3],
     moved: [f64; 3],
     width: f32,
@@ -1791,7 +1768,7 @@ fn soul_speed_tick(
 }
 
 #[cfg(test)]
-mod tests {
+pub(in crate::game) mod tests {
     use crate::game::damage_item_tests::{Rule, with_wear_part};
     use sunrise_client::mobs::{Mob, finalize};
     use sunrise_core::geometry::Vec3;
@@ -2158,7 +2135,7 @@ mod tests {
 }
 
 #[cfg(test)]
-mod impulse_rounding_tests {
+pub(in crate::game) mod impulse_rounding_tests {
     #[test]
     fn impulse_matches_pinned_joml_components() {
         let effect =

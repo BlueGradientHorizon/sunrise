@@ -13,11 +13,15 @@ impl Game<'_> {
         )
     }
 
-    pub(super) fn level_entity_ticking(&self, level: LevelRef, pos: [i32; 3]) -> Option<bool> {
+    pub(in crate::game) fn level_entity_ticking(
+        &self,
+        level: LevelRef,
+        pos: [i32; 3],
+    ) -> Option<bool> {
         Some(self.native_tick_position(level, pos)? && self.entity_ticking_area()(pos[0], pos[2]))
     }
 
-    pub(super) fn level_should_tick_blocks_at(
+    pub(in crate::game) fn level_should_tick_blocks_at(
         &self,
         level: LevelRef,
         pos: [i32; 3],

@@ -59,13 +59,13 @@ GameRenderer.update	port	crates/sunrise-client-render/src/camera.rs::AvatarBob::
 GameRenderer.extract	skip:other		render-state copy for the vanilla render thread; Sunrise renders from game state
 GameRenderer.preparePostEffects	port	crates/sunrise-client-render/src/post_chain.rs::PostEffects::apply	vanilla post chains are made on first use from the request the game builds
 GameRenderer.applyPostEffects	port	crates/sunrise-client-render/src/post_chain.rs::PostEffects::apply	the same chain runs after the world pass
-GameRenderer.tryTakeScreenshotIfNeeded	port	crates/sunrise-client/src/game/world/saving.rs::Game::tick_world_icon	a local world without an icon requests a 64x64 ScreenshotRequest for saves/<folder>/icon.png once the streamer, uploads and backlog are idle and more than 10 sections are drawn
-GameRenderer.takeAutoScreenshot	inline	crates/sunrise-client/src/game/world/saving.rs::Game::tick_world_icon	the same retry, once a second until the file exists; the path comes from game/world/integrated.rs:485
+GameRenderer.tryTakeScreenshotIfNeeded	port	crates/sunrise-client/src/game/world/saving_client.rs::Game::tick_world_icon	a local world without an icon requests a 64x64 ScreenshotRequest for saves/<folder>/icon.png once the streamer, uploads and backlog are idle and more than 10 sections are drawn
+GameRenderer.takeAutoScreenshot	inline	crates/sunrise-client/src/game/world/saving_client.rs::Game::tick_world_icon	the same retry, once a second until the file exists; the path comes from game/world/integrated.rs:485
 GameRenderer.integrate3DHudDepth	inline	crates/sunrise-client-render/src/post_chain.rs::PostEffects::apply	runs with a post chain applied, which is vanilla's consistentDepthRequired condition
 GameRenderer.extractWindow	skip:other		render-state copy of the window size; Sunrise reads the window directly
 GameRenderer.extractOptions	skip:other		render-state copy of options; Sunrise reads settings directly
 GameRenderer.extractCamera	skip:other		render-state copy of camera and fog; Sunrise computes them in camera.rs and fog.rs
-GameRenderer.resetData	inline	crates/sunrise-client/src/game.rs::Game::finish_close_world	boss overlay reset on world close; camera and map-texture resets not verified here
+GameRenderer.resetData	inline	crates/sunrise-client/src/game/game_client.rs::Game::finish_close_world	boss overlay reset on world close; camera and map-texture resets not verified here
 GameRenderer.projectPointToScreen	skip:other		no callers in vanilla 26.3
 GameRenderer.useImprovedTransparency	port	crates/sunrise-client-render/src/gfx.rs::Renderer::draw_frame	the option builds the OIT pass
 GlobalSettingsUniform.update	skip:other		global uniform (window size, time, gamma, glint) written per pass; Sunrise sets its own uniforms
@@ -74,12 +74,12 @@ GpuWarnlistManager.compilePatterns	missing		minor: no GPU driver warnlist patter
 GpuWarnlistManager.parseJson	missing		minor: no GPU driver warnlist JSON
 GpuWarnlistManager.Preparations.matchAny	missing		minor: no GPU driver warnlist matching
 LevelEventHandler.playJukeboxSong	port	crates/sunrise-client/src/game/blocks/jukebox.rs::Game::start_song	song starts and the now-playing overlay is shown
-LevelEventHandler.stopJukeboxSong	port	crates/sunrise-client/src/game/blocks/jukebox.rs::Game::stop_song	song sound stops for that jukebox
+LevelEventHandler.stopJukeboxSong	port	crates/sunrise-client/src/game/blocks/jukebox_server.rs::Game::stop_song	song sound stops for that jukebox
 LevelRenderer.<init>	port	crates/sunrise-client-render/src/gfx.rs::Renderer::new	targets, pipelines and buffers built once
 LevelRenderer.submitFeatures	port	crates/sunrise-client-render/src/gfx.rs::Renderer::draw_frame	entities, block entities, crumbling, particles, outline and gizmos are submitted and drawn in the frame
 LevelRenderer.repositionCamera	port	crates/sunrise-client-render/src/gfx/resident.rs::camera_column	camera section column that the section grid is centred on; gap: minor: world border invalidation is not part of it
 LevelRenderer.addMainPass	port	crates/sunrise-client-render/src/gfx.rs::Renderer::draw_frame	gap: minor: the Improved transparency targets (depth bounds, transmittance, accumulate) are not created
-LevelRenderer.executeAlwaysOnTop	port	crates/sunrise-client/src/game.rs::Game::render	always-on-top debug lines and crosshair drawn over the world
+LevelRenderer.executeAlwaysOnTop	port	crates/sunrise-client/src/game/game_client.rs::Game::render	always-on-top debug lines and crosshair drawn over the world
 LevelRenderer.executeSolid	port	crates/sunrise-client-render/src/gfx.rs::Renderer::draw_sections	solid section draws in arena page order
 LevelRenderer.prepareTranslucents	port	crates/sunrise-client-render/src/gfx/translucency.rs::Sorter::sort	translucent quads sorted from the camera each frame
 LevelRenderer.executeOit	port	crates/sunrise-client-render/src/gfx/oit.rs::Oit::run	translucent geometry is marked and resolved by the OIT pass
@@ -100,16 +100,16 @@ LevelRenderer.invalidateCompiledGeometry	port	crates/sunrise-client-render/src/g
 LevelRenderer.scheduleTranslucentSectionResort	port	crates/sunrise-client-render/src/gfx/translucency.rs::SortState::update	resort scheduled when the camera point of view changes
 LevelRenderer.scheduleResort	port	crates/sunrise-client-render/src/gfx/translucency.rs::SortState::update	per-section resort gated by point-of-view change and translucent geometry
 LevelRenderer.resetLevelRenderData	port	crates/sunrise-client-render/src/gfx.rs::Renderer::clear_sections	section data released when a level is left
-LevelRenderer.hasRenderedAllSections	inline	crates/sunrise-client/src/game/world/saving.rs::Game::tick_world_icon	renderer.drawn_sections > 10: the icon waits on the same count vanilla's hasRenderedAllSections asks for
+LevelRenderer.hasRenderedAllSections	inline	crates/sunrise-client/src/game/world/saving_client.rs::Game::tick_world_icon	renderer.drawn_sections > 10: the icon waits on the same count vanilla's hasRenderedAllSections asks for
 LevelRenderer.isSectionCompiledAndVisible	port	crates/sunrise-client-render/src/gfx/resident.rs::Resident::contains	gap: minor: no section fade-in, so the 0.3 visibility threshold is not checked
 LevelRenderer.finalizeGizmoCollection	port	crates/sunrise-client/src/game/interface/debug_keys.rs::Game::debug_gizmos	debug gizmos collected for the frame
 LevelTargetBundle.replace	skip:other		render-target bundle for post chains; Sunrise has no frame graph
 LevelTargetBundle.get	skip:other		render-target bundle for post chains; Sunrise has no frame graph
 Lightmap.render	port	crates/sunrise-client-render/src/gfx.rs::Renderer::update_lightmap	lightmap pass from sky, block, darkness, gamma, night vision, flicker and boss darkening
 LightmapRenderStateExtractor.calculateDarknessScale	port	crates/sunrise-client/src/game/blocks/sculk.rs::Game::darkness_lighting	pulsing darkness scale from the darkness blend and the option
-LightmapRenderStateExtractor.extract	port	crates/sunrise-client/src/game.rs::Game::render	lightmap inputs gathered into the frame; the end flash is added to sky_light_factor in end.rs::end_flash_sky
-MapRenderer.extractRenderState	port	crates/sunrise-client/src/game/blocks/maps/mod.rs::Game::map_vertices	map texture and decorations gathered for drawing
-MapRenderer.extractDecorationRenderState	port	crates/sunrise-client/src/game/blocks/maps/mod.rs::Game::map_vertices	decoration sprite, position and rotation drawn per map
+LightmapRenderStateExtractor.extract	port	crates/sunrise-client/src/game/game_client.rs::Game::render	lightmap inputs gathered into the frame; the end flash is added to sky_light_factor in end.rs::end_flash_sky
+MapRenderer.extractRenderState	port	crates/sunrise-client/src/game/blocks/maps/mod_client.rs::Game::map_vertices	map texture and decorations gathered for drawing
+MapRenderer.extractDecorationRenderState	port	crates/sunrise-client/src/game/blocks/maps/mod_client.rs::Game::map_vertices	decoration sprite, position and rotation drawn per map
 MappableRingBuffer.currentBuffer	skip:other		GPU ring buffer bookkeeping
 MappableRingBuffer.rotate	skip:other		GPU ring buffer bookkeeping
 MappableRingBuffer.close	skip:other		GPU buffer release

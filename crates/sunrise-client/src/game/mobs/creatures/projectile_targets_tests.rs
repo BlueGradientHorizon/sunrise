@@ -1,71 +1,78 @@
 //! Witness-driven parity tests for projectiles hitting non-mob pickable entities (#119).
+#[allow(unused_imports)]
 use crate::game::{Game, commands::Target};
+#[allow(unused_imports)]
 use serde::Deserialize;
+#[allow(unused_imports)]
 use std::collections::BTreeMap;
+#[allow(unused_imports)]
 use std::path::PathBuf;
+#[allow(unused_imports)]
 use sunrise_client::mobs::{Who, leash::Holder};
+#[allow(unused_imports)]
 use sunrise_core::geometry::{Aabb, Vec3};
+#[allow(unused_imports)]
 use sunrise_core::random::{LegacyRandom, RandomSource};
 
 #[derive(Deserialize)]
-struct Witness {
-    game_version: String,
-    projectile_seed: i64,
-    level_seed: i64,
-    cases: Vec<Case>,
+pub(in crate::game) struct Witness {
+    pub(in crate::game) game_version: String,
+    pub(in crate::game) projectile_seed: i64,
+    pub(in crate::game) level_seed: i64,
+    pub(in crate::game) cases: Vec<Case>,
 }
 
 #[derive(Deserialize)]
-struct Case {
-    projectile: String,
-    target: String,
-    spawn_y: f64,
-    target_initial_box: [f64; 6],
-    hit_tick: Option<usize>,
-    ticks: Vec<TickSnap>,
+pub(in crate::game) struct Case {
+    pub(in crate::game) projectile: String,
+    pub(in crate::game) target: String,
+    pub(in crate::game) spawn_y: f64,
+    pub(in crate::game) target_initial_box: [f64; 6],
+    pub(in crate::game) hit_tick: Option<usize>,
+    pub(in crate::game) ticks: Vec<TickSnap>,
 }
 
 #[derive(Deserialize)]
-struct TickSnap {
-    tick: usize,
-    projectile: ProjSnap,
-    target: TargetSnap,
-    game_events: Vec<GameEventSnap>,
-    drops: Vec<DropSnap>,
+pub(in crate::game) struct TickSnap {
+    pub(in crate::game) tick: usize,
+    pub(in crate::game) projectile: ProjSnap,
+    pub(in crate::game) target: TargetSnap,
+    pub(in crate::game) game_events: Vec<GameEventSnap>,
+    pub(in crate::game) drops: Vec<DropSnap>,
 }
 
 #[derive(Deserialize)]
-struct ProjSnap {
-    alive: bool,
-    pos_bits: [String; 3],
-    vel_bits: [String; 3],
-    in_ground: Option<bool>,
-    dealt_damage: Option<bool>,
+pub(in crate::game) struct ProjSnap {
+    pub(in crate::game) alive: bool,
+    pub(in crate::game) pos_bits: [String; 3],
+    pub(in crate::game) vel_bits: [String; 3],
+    pub(in crate::game) in_ground: Option<bool>,
+    pub(in crate::game) dealt_damage: Option<bool>,
 }
 
 #[derive(Deserialize)]
-struct TargetSnap {
-    alive: bool,
-    fire_ticks: i32,
-    item: Option<String>,
-    block_at_floor: Option<String>,
-    pig_leashed: Option<bool>,
+pub(in crate::game) struct TargetSnap {
+    pub(in crate::game) alive: bool,
+    pub(in crate::game) fire_ticks: i32,
+    pub(in crate::game) item: Option<String>,
+    pub(in crate::game) block_at_floor: Option<String>,
+    pub(in crate::game) pig_leashed: Option<bool>,
 }
 
 #[derive(Deserialize)]
-struct GameEventSnap {
-    id: String,
-    pos_bits: [String; 3],
-    source: Option<String>,
+pub(in crate::game) struct GameEventSnap {
+    pub(in crate::game) id: String,
+    pub(in crate::game) pos_bits: [String; 3],
+    pub(in crate::game) source: Option<String>,
 }
 
 #[derive(Deserialize)]
-struct DropSnap {
-    item: String,
-    count: u32,
+pub(in crate::game) struct DropSnap {
+    pub(in crate::game) item: String,
+    pub(in crate::game) count: u32,
 }
 
-fn load_witness() -> Witness {
+pub(in crate::game) fn load_witness() -> Witness {
     let dir = std::env::var_os("SUNRISE_PROJECTILE_WITNESS_DIR").unwrap_or_else(|| {
         panic!(
             "SUNRISE_PROJECTILE_WITNESS_DIR is unset; run tools/test_projectile_targets_parity.py"
@@ -83,15 +90,17 @@ fn load_witness() -> Witness {
     witness
 }
 
-fn bits(v: f64) -> String {
+pub(in crate::game) fn bits(v: f64) -> String {
     format!("{:016x}", v.to_bits())
 }
 
-fn vec_bits(v: Vec3) -> [String; 3] {
+pub(in crate::game) fn vec_bits(v: Vec3) -> [String; 3] {
     [bits(v.x), bits(v.y), bits(v.z)]
 }
 
-fn setup_game<'a>(resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>) -> Game<'a> {
+pub(in crate::game) fn setup_game<'a>(
+    resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>,
+) -> Game<'a> {
     let mut game = crate::game::game_tests::tests::server_game(resources);
     game.build_registries();
     game.set_allow_commands(true);
@@ -117,30 +126,10 @@ fn setup_game<'a>(resources: &'a mut Option<std::sync::Arc<crate::game::Resource
     game
 }
 
-fn clear_entities(game: &mut Game<'_>) {
-    game.mobs.clear();
-    game.dropped.clear();
-    game.boats.clear();
-    game.carts.clear();
-    game.armor_stands.clear();
-    game.tnts.clear();
-    game.falling.clear();
-    game.orbs.clear();
-    game.creatures.projectiles.clear();
-    game.rockets.clear();
-    game.tridents.clear();
-    game.item_frames.clear();
-    game.paintings.clear();
-    game.cushions.clear();
-    game.others.0.clear();
-    game.server.knot_ids.clear();
-    game.server.broken_knots.clear();
-    game.resident_entities.knots.clear();
-    game.reset_entity_residency();
-    game.bind_local_player_residency();
-}
+#[allow(unused_imports)]
+pub(in crate::game) use crate::game::server_side::creatures_server::projectile_targets_tests::clear_entities;
 
-fn reset_arena(game: &mut Game<'_>, target: &str) {
+pub(in crate::game) fn reset_arena(game: &mut Game<'_>, target: &str) {
     clear_entities(game);
     let _ = game.run_command("fill 0 63 0 9 63 9 minecraft:stone");
     let _ = game.run_command("fill 0 64 0 9 70 9 minecraft:air");
@@ -163,7 +152,7 @@ fn reset_arena(game: &mut Game<'_>, target: &str) {
 }
 
 #[derive(Clone, Copy)]
-enum TrackedTarget {
+pub(in crate::game) enum TrackedTarget {
     Stand(u32),
     Painting(u32),
     Frame(u32),
@@ -174,151 +163,18 @@ enum TrackedTarget {
 }
 
 #[derive(Clone, Copy)]
-enum TrackedProj {
+pub(in crate::game) enum TrackedProj {
     Projectile(u32),
     Trident(u32),
 }
 
-fn summon_target(game: &mut Game<'_>, target: &str) -> TrackedTarget {
-    match target {
-        "armor_stand" => {
-            assert!(game.run_command("summon minecraft:armor_stand 3.5 64.0 4.5 {}"));
-            TrackedTarget::Stand(game.armor_stands.last().unwrap().id)
-        }
-        "armor_stand_equipped" => {
-            assert!(game.run_command(
-                r#"summon minecraft:armor_stand 3.5 64.0 4.5 {equipment:{head:{id:"minecraft:iron_helmet",count:1}}}"#
-            ));
-            TrackedTarget::Stand(game.armor_stands.last().unwrap().id)
-        }
-        "armor_stand_marker" => {
-            assert!(game.run_command("summon minecraft:armor_stand 3.5 64.0 4.5 {Marker:1b}"));
-            TrackedTarget::Stand(game.armor_stands.last().unwrap().id)
-        }
-        "armor_stand_small" | "armor_stand_small_high" => {
-            assert!(game.run_command("summon minecraft:armor_stand 3.5 64.0 4.5 {Small:1b}"));
-            TrackedTarget::Stand(game.armor_stands.last().unwrap().id)
-        }
-        "armor_stand_nogravity" => {
-            assert!(game.run_command("summon minecraft:armor_stand 3.5 64.0 4.5 {NoGravity:1b}"));
-            TrackedTarget::Stand(game.armor_stands.last().unwrap().id)
-        }
-        "armor_stand_invisible" => {
-            assert!(game.run_command("summon minecraft:armor_stand 3.5 64.0 4.5 {Invisible:1b}"));
-            TrackedTarget::Stand(game.armor_stands.last().unwrap().id)
-        }
-        "painting" => {
-            assert!(game.run_command(
-                r#"summon minecraft:painting 3.5 64.5 4.5 {block_pos:[I;3,64,4],facing:1b,variant:"minecraft:kebab"}"#
-            ));
-            TrackedTarget::Painting(game.paintings.last().unwrap().id)
-        }
-        "item_frame" => {
-            assert!(game.run_command(
-                r#"summon minecraft:item_frame 3.5 64.5 4.5 {block_pos:[I;3,64,4],Facing:4b,Item:{id:"minecraft:diamond",count:1}}"#
-            ));
-            TrackedTarget::Frame(game.item_frames.last().unwrap().id)
-        }
-        "item_frame_empty" => {
-            assert!(game.run_command(
-                "summon minecraft:item_frame 3.5 64.5 4.5 {block_pos:[I;3,64,4],Facing:4b}"
-            ));
-            TrackedTarget::Frame(game.item_frames.last().unwrap().id)
-        }
-        "item_frame_fixed" => {
-            assert!(game.run_command(
-                r#"summon minecraft:item_frame 3.5 64.5 4.5 {block_pos:[I;3,64,4],Facing:4b,Fixed:1b,Item:{id:"minecraft:diamond",count:1}}"#
-            ));
-            TrackedTarget::Frame(game.item_frames.last().unwrap().id)
-        }
-        "glow_item_frame" => {
-            assert!(game.run_command(
-                r#"summon minecraft:glow_item_frame 3.5 64.5 4.5 {block_pos:[I;3,64,4],Facing:4b,Item:{id:"minecraft:diamond",count:1}}"#
-            ));
-            TrackedTarget::Frame(game.item_frames.last().unwrap().id)
-        }
-        "glow_item_frame_empty" => {
-            assert!(game.run_command(
-                "summon minecraft:glow_item_frame 3.5 64.5 4.5 {block_pos:[I;3,64,4],Facing:4b}"
-            ));
-            TrackedTarget::Frame(game.item_frames.last().unwrap().id)
-        }
-        "leash_knot" => {
-            assert!(game.run_command("summon minecraft:leash_knot 3.5 64.375 4.5 {}"));
-            TrackedTarget::ExplicitKnot(game.others.0.last().unwrap().id)
-        }
-        "leash_knot_tied" => {
-            assert!(game.run_command(
-                "summon minecraft:pig 3.5 64.0 6.5 {NoAI:1b,Silent:1b,leash:[I;3,64,4]}"
-            ));
-            let pig_id = game.mobs.last().unwrap().id;
-            game.tick_server(false).unwrap();
-            let id = *game
-                .server
-                .knot_ids
-                .get(&[3, 64, 4])
-                .expect("natural leash knot created on fence");
-            TrackedTarget::NaturalKnot { id, pig_id }
-        }
-        "falling_block" => {
-            assert!(game.run_command(
-                r#"summon minecraft:falling_block 3.5 65.0 4.5 {BlockState:"minecraft:sand",Time:1,Motion:[0.0d,0.0d,0.0d]}"#
-            ));
-            TrackedTarget::Falling(game.falling.last().unwrap().id)
-        }
-        "cushion" => {
-            assert!(game.run_command(
-                r#"summon minecraft:cushion 3.5 64.0 4.5 {block_pos:[I;3,64,4],color:"white"}"#
-            ));
-            TrackedTarget::Cushion(game.cushions.last().unwrap().id)
-        }
-        other => panic!("unexpected witness target {other}"),
-    }
-}
+#[allow(unused_imports)]
+pub(in crate::game) use crate::game::server_side::creatures_server::projectile_targets_tests::summon_target;
 
-fn target_bounds(game: &Game<'_>, target: TrackedTarget) -> Aabb {
-    match target {
-        TrackedTarget::Stand(id) => {
-            let a = game.armor_stands.iter().find(|a| a.id == id).unwrap();
-            if a.marker {
-                Aabb::new(a.position, a.position)
-            } else {
-                a.bounds()
-            }
-        }
-        TrackedTarget::Painting(id) => game
-            .selector_target_bounds(Target::Painting(id))
-            .expect("painting bounds"),
-        TrackedTarget::Frame(id) => game
-            .selector_target_bounds(Target::Frame(id))
-            .expect("frame bounds"),
-        TrackedTarget::Cushion(id) => game
-            .selector_target_bounds(Target::Cushion(id))
-            .expect("cushion bounds"),
-        TrackedTarget::Falling(id) => game
-            .selector_target_bounds(Target::Falling(id))
-            .expect("falling block bounds"),
-        TrackedTarget::ExplicitKnot(id) => {
-            let o = game.others.0.iter().find(|o| o.id == id).unwrap();
-            let b = sunrise_core::position::BlockPos::containing(o.position);
-            let k = sunrise_client::mobs::leash::knot_state([b.x, b.y, b.z]);
-            let half = k.width / 2.0;
-            Aabb::new(
-                Vec3::new(k.position.x - half, k.position.y, k.position.z - half),
-                Vec3::new(
-                    k.position.x + half,
-                    k.position.y + k.height,
-                    k.position.z + half,
-                ),
-            )
-        }
-        TrackedTarget::NaturalKnot { id, .. } => game
-            .selector_target_bounds(Target::Knot(id))
-            .expect("natural knot bounds"),
-    }
-}
+#[allow(unused_imports)]
+pub(in crate::game) use crate::game::server_side::creatures_server::projectile_targets_tests::target_bounds;
 
-fn summon_projectile(
+pub(in crate::game) fn summon_projectile(
     game: &mut Game<'_>,
     proj: &str,
     y0: f64,
@@ -403,21 +259,15 @@ fn summon_projectile(
     }
 }
 
-fn target_alive(game: &Game<'_>, target: TrackedTarget) -> bool {
-    match target {
-        TrackedTarget::Stand(id) => game.armor_stands.iter().any(|a| a.id == id),
-        TrackedTarget::Painting(id) => game.paintings.iter().any(|p| p.id == id),
-        TrackedTarget::Frame(id) => game.item_frames.iter().any(|f| f.id == id),
-        TrackedTarget::Cushion(id) => game.cushions.iter().any(|c| c.id == id),
-        TrackedTarget::Falling(id) => game.falling.iter().any(|f| f.id == id),
-        TrackedTarget::ExplicitKnot(id) => game.others.0.iter().any(|o| o.id == id),
-        TrackedTarget::NaturalKnot { id, .. } => {
-            game.resident_entities.knots.iter().any(|k| k.id == id)
-        }
-    }
-}
+#[allow(unused_imports)]
+pub(in crate::game) use crate::game::server_side::creatures_server::projectile_targets_tests::target_alive;
 
-fn check_case(game: &mut Game<'_>, case: &Case, proj_seed: i64, level_seed: i64) -> Vec<String> {
+pub(in crate::game) fn check_case(
+    game: &mut Game<'_>,
+    case: &Case,
+    proj_seed: i64,
+    level_seed: i64,
+) -> Vec<String> {
     let label = format!("{} x {}", case.target, case.projectile);
     let mut errors = Vec::new();
     reset_arena(game, &case.target);
@@ -695,7 +545,7 @@ fn check_case(game: &mut Game<'_>, case: &Case, proj_seed: i64, level_seed: i64)
     errors
 }
 
-fn run_family(filter: impl Fn(&str) -> bool) {
+pub(in crate::game) fn run_family(filter: impl Fn(&str) -> bool) {
     let witness = load_witness();
     let mut resources = None;
     let mut game = setup_game(&mut resources);

@@ -1,0 +1,82 @@
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use super::*;
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::native_hooks::client_input_reads::*;
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use keybinds::VanillaMappingSlot;
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use mod_api::{MappingError, VanillaKeyMappingRef};
+
+/// Helpers for native mods, kept as stable as the hook points.
+// Native mods use these; nothing in Sunrise does.
+impl Game<'_> {
+    /// The current window modifier keys in the same GLFW encoding as input hooks.
+    /// Cleared when the window loses focus; available even outside a world.
+    pub(in crate::game) fn modifiers(&self) -> ClientModifiers {
+        ClientModifiers::new(crate::game::glfw_modifiers(self.client.modifiers))
+    }
+    /// Playing, with nothing over the world: keys and zoom apply.
+    pub(in crate::game) fn playing(&self) -> bool {
+        self.client.screen == Screen::Playing
+            && self.title.0.is_none()
+            && self.client.sign_edit.is_none()
+            && self.client.book.is_none()
+    }
+    pub(in crate::game) fn vanilla_key_mapping(
+        &self,
+        name: &str,
+    ) -> Result<VanillaKeyMappingRef, MappingError> {
+        if !self.options.execution_role.is_client() {
+            return Err(MappingError::Unavailable);
+        }
+        let generation = self
+            .client
+            .mod_keys
+            .client_generation()
+            .ok_or(MappingError::Unavailable)?;
+        let slot = VanillaMappingSlot::by_name(name)
+            .ok_or_else(|| MappingError::Unknown { key: name.into() })?;
+        Ok(mod_api::__private::vanilla_key_mapping_ref(
+            generation,
+            slot.index(),
+        ))
+    }
+    pub(in crate::game) fn vanilla_key_mapping_is_down(
+        &self,
+        mapping: VanillaKeyMappingRef,
+    ) -> Result<bool, MappingError> {
+        let slot = self.vanilla_mapping_slot(mapping)?;
+        Ok(
+            if let ("movement", Some(Ok(key))) = (slot.definition().2, slot.default_input()) {
+                self.movement_key_held(key)
+            } else {
+                self.client.vanilla_mappings.is_down(slot)
+            },
+        )
+    }
+    pub(in crate::game) fn vanilla_key_mapping_physical_down(
+        &self,
+        mapping: VanillaKeyMappingRef,
+    ) -> Result<bool, MappingError> {
+        let slot = self.vanilla_mapping_slot(mapping)?;
+        Ok(match self.settings.keys.physical_at(slot) {
+            Some(Ok(key)) => self.client.physical_keys.contains(&key),
+            Some(Err(button)) => self.client.physical_buttons.contains(&button),
+            None => false,
+        })
+    }
+    /// Validate an API mapping handle before using it to index the current bindings.
+    pub(in crate::game) fn vanilla_mapping_slot(
+        &self,
+        mapping: VanillaKeyMappingRef,
+    ) -> Result<VanillaMappingSlot, MappingError> {
+        if !self.options.execution_role.is_client() {
+            return Err(MappingError::Unavailable);
+        }
+        let (generation, index) = mod_api::__private::vanilla_key_mapping_parts(mapping);
+        if self.client.mod_keys.client_generation() != Some(generation) {
+            return Err(MappingError::Stale);
+        }
+        VanillaMappingSlot::from_index(index).ok_or(MappingError::Stale)
+    }
+}

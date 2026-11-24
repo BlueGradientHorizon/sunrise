@@ -17,7 +17,7 @@ fn occupied(extra: &Tag, key: &str) -> bool {
 /// `ServerPlayer.extractParrotVariant` for both slots: the variant of the
 /// parrot kept there (`Parrot.Variant.byId` clamps the saved `Variant`, 0
 /// when absent), `None` for an empty slot or another entity.
-pub(super) fn shoulder_variants(extra: Option<&Tag>) -> [Option<i32>; 2] {
+pub(in crate::game) fn shoulder_variants(extra: Option<&Tag>) -> [Option<i32>; 2] {
     KEYS.map(|key| {
         let parrot = extra?.get(key)?;
         match parrot.get("id") {
@@ -34,7 +34,7 @@ pub(super) fn shoulder_variants(extra: Option<&Tag>) -> [Option<i32>; 2] {
 impl Game<'_> {
     /// `ServerPlayer.setEntityOnShoulder` for a parrot that touched its
     /// owner: stored in the first free slot, the parrot gone from the world.
-    pub(super) fn parrot_to_shoulder(&mut self, mob: u32) {
+    pub(in crate::game) fn parrot_to_shoulder(&mut self, mob: u32) {
         let Some(i) = self
             .mobs
             .iter()
@@ -76,7 +76,7 @@ impl Game<'_> {
     /// `ServerPlayer.handleShoulderEntities`: the parrots leave the shoulder
     /// of a player who falls, swims, flies, sleeps, is hurt, dying, a
     /// spectator or spinning with a riptide.
-    pub(super) fn handle_shoulder_entities(&mut self) {
+    pub(in crate::game) fn handle_shoulder_entities(&mut self) {
         for key in KEYS {
             self.play_shoulder_entity_ambient_sound(key);
         }

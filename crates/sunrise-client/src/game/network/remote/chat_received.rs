@@ -5,16 +5,16 @@ use super::*;
 /// Receipt-time context for `ChatListener.handleMessage`. Its presentation,
 /// including trust evaluation, decoration, the mod hook, and checks against
 /// current social/visibility options, waits until the queue accepts it.
-pub(super) struct QueuedChat {
+pub(in crate::game) struct QueuedChat {
     /// The valid player signature (also the deletion key), or the invalid
     /// signature an error only acknowledges. Disguised chat has neither.
-    pub(super) signature: Option<Signature>,
+    pub(in crate::game) signature: Option<Signature>,
     /// The player's UUID, 0 for disguised chat (`Util.NIL_UUID`).
-    pub(super) sender: u128,
-    pub(super) kind: QueuedChatKind,
+    pub(in crate::game) sender: u128,
+    pub(in crate::game) kind: QueuedChatKind,
 }
 
-pub(super) enum QueuedChatKind {
+pub(in crate::game) enum QueuedChatKind {
     Player {
         chat_type: play::ChatTypeBound,
         signed: bool,
@@ -47,7 +47,10 @@ pub(super) enum QueuedChatKind {
 
 /// `PlayerChatMessage` of a `ClientboundPlayerChatPacket`, for
 /// `ClientChatReceivedEvent.Player`; `signed` when its signature validated.
-pub(super) fn player_chat_info(p: &play::PlayerChat, signed: bool) -> mod_api::PlayerChatInfo {
+pub(in crate::game) fn player_chat_info(
+    p: &play::PlayerChat,
+    signed: bool,
+) -> mod_api::PlayerChatInfo {
     use sunrise_client::scoreboard::{comp_text, tag_to_json};
     let filter = match p.filter.0 {
         1 => mod_api::ChatFilter::FullyFiltered,
@@ -72,7 +75,7 @@ impl Game<'_> {
     /// NeoForge's `ClientChatReceivedEvent` (`ClientHooks.onClientChat`,
     /// `onClientPlayerChat` and `onClientSystemChat`): mods may replace
     /// `line` or cancel it. False when cancelled.
-    pub(super) fn chat_received(
+    pub(in crate::game) fn chat_received(
         &mut self,
         system: bool,
         overlay: bool,

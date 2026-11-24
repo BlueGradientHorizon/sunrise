@@ -2,7 +2,12 @@
 use super::{Game, Vec3, Who};
 
 impl Game<'_> {
-    pub(super) fn hoglin_attack_target(&mut self, mob: u32, target: Who, player: Option<u32>) {
+    pub(in crate::game) fn hoglin_attack_target(
+        &mut self,
+        mob: u32,
+        target: Who,
+        player: Option<u32>,
+    ) {
         let places: Vec<(u32, Vec3)> = self
             .mobs
             .iter()

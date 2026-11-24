@@ -21,7 +21,7 @@ const DPAD: [Button; 4] = [
 
 /// One step of a poll's button changes.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(super) enum PollStep {
+pub(in crate::game) enum PollStep {
     /// A release held back from the poll before, until a simulation tick had passed.
     Late(Button),
     Edge(Button, bool),
@@ -30,7 +30,7 @@ pub(super) enum PollStep {
 /// The order a poll acts on its changes in: the releases held back first, then this poll's
 /// presses and releases. While the radial menu is open its presses come before every release, the
 /// held-back ones too: B in the same poll as the opener's release (however late) still cancels.
-pub(super) fn poll_order(
+pub(in crate::game) fn poll_order(
     late: Vec<Button>,
     edges: Vec<(Button, bool)>,
     radial_open: bool,

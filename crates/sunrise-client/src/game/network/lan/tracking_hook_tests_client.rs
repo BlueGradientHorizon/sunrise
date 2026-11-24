@@ -1,0 +1,92 @@
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::Game;
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::native_entity_refs::tests::with_game;
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::native_item_places::tests::{guest, open_to_lan};
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::server_side::lan::tracking_hook_tests::CHANNEL;
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::server_side::lan::tracking_hook_tests::Heard;
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::server_side::lan::tracking_hook_tests::Probe;
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::server_side::lan::tracking_hook_tests::Sent;
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::server_side::lan::tracking_hook_tests::at;
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::server_side::lan::tracking_hook_tests::read;
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::server_side::lan::tracking_hook_tests::sorted;
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::server_side::lan::tracking_hook_tests::tick_until_heard;
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::server_side::lan::tracking_hook_tests::with_two_items;
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::server_side::lan::tracking_hook_tests::words_after_removal;
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use crate::game::server_side::lan::tracking_hook_tests::*;
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use mod_api::{
+    Hooks, ModEntry, PayloadBytes, PayloadId, Registrar, ServerHost,
+};
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use std::sync::{Arc, Mutex};
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use sunrise_client::{
+    chunk::Chunk,
+    items::ItemStack,
+    lan::{PlayerSender, hub::HostEvent},
+    raw_payloads::{Side, Transport},
+};
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use sunrise_protocol::{
+    buf::Reader, ids::play::clientbound as id,
+};
+
+/// A stop whose removal waits for a captured sound: the item's sound comes after one from an
+/// emitter the players must be paired with first, so its removal is held until both sounds are out
+/// (`Hub::prepare_captured_sounds`, `finish_captured_sounds`). The mod hears the stop only then,
+/// and its word reaches each player after that removal.
+#[test]
+#[ignore = "daily"]
+fn a_stop_waiting_for_a_sound_is_heard_after_its_removal() {
+    with_two_items(|game, heard, [first, second], [_, near]| {
+        let _ = tick_until_heard(game, heard);
+        game.spawn_item(
+            ItemStack::new("minecraft:diamond", 1),
+            [8.5, 64.0, 12.5],
+            [0.0; 3],
+            32767,
+        );
+        let fresh = game.dropped.last().unwrap().id;
+        let index = game.dropped.iter().position(|d| d.id == near).unwrap();
+        let _ = game.dropped.remove(index);
+        let sound = |entity: u32| sunrise_client::audio::CapturedSound {
+            event: "minecraft:entity.item.pickup".into(),
+            position: [8.5, 64.0, 8.5],
+            volume: 1.0,
+            pitch: 1.0,
+            source: 7,
+            entity: Some(entity),
+            except_entity: None,
+            seed: 0,
+            particles_before: 0,
+        };
+        game.audio.0.capture = Some(vec![sound(fresh), sound(near)]);
+        let told = tick_until_heard(game, heard);
+        assert_eq!(
+            told.iter().filter(|h| **h == Heard::Stop(near)).count(),
+            2,
+            "{told:?}"
+        );
+        for sent in [first(), second()] {
+            let removed = sent
+                .iter()
+                .position(|s| matches!(s, Sent::Remove(ids) if ids.contains(&near)))
+                .unwrap_or_else(|| panic!("no removal of {near}: {sent:?}"));
+            let said = at(&sent, &Sent::Said(format!("stop {near}")));
+            assert!(removed < said, "the word came before the removal: {sent:?}");
+        }
+    });
+}

@@ -1,54 +1,24 @@
 //! `Pufferfish.playerTouch`: the sting game event (`ClientboundGameEventPacket.PUFFER_FISH_STING`)
 //! goes out only inside the `hurtServer` branch, and only when the fish is not
 //! silent; the poison follows it.
+#[allow(unused_imports)]
 use crate::game::Game;
+#[allow(unused_imports)]
 use sunrise_client::mobs::Mob;
+#[allow(unused_imports)]
 use sunrise_client::motion::PlayerMotion;
+#[allow(unused_imports)]
 use sunrise_core::geometry::Vec3;
+#[allow(unused_imports)]
 use sunrise_protocol::packets::play::Clientbound;
 
-/// A game whose window player touches one puffed (state 2) pufferfish. The
-/// server acts for the guest `lan_acting`: `playerTouch` runs there, and the
-/// event it sends reaches that player's own client.
-fn with_fish(silent: bool, test: impl FnOnce(&mut Game<'_>)) {
-    crate::game::native_entity_refs::tests::with_game(|game| {
-        game.creative = false;
-        // The acting body is the guest's, not a second local player with the same ID.
-        let mut body = PlayerMotion::new(game.motion, Vec3::new(8.5, 66.0, 8.5)).unwrap();
-        body.entity_id = 1;
-        game.player = Some(body);
-        game.server.lan_acting_entity = Some(1);
-        game.server.lan_acting_uuid = Some(1);
-        game.server.lan_acting = Some(7);
-        game.server.lan_acting_name = Some("PufferfishTest".into());
-        crate::game::native_entity_refs::tests::bind_acting_guest(game);
-        let kind = game
-            .res
-            .mob_types()
-            .get("minecraft:pufferfish")
-            .unwrap()
-            .clone();
-        let mut fish = Mob::new(9001, kind, Vec3::new(8.5, 66.0, 8.5), 0.0);
-        fish.extra.size = 2;
-        fish.silent = silent;
-        game.mobs.push(fish);
-        test(game);
-    });
-}
+#[allow(unused_imports)]
+pub(in crate::game) use crate::game::server_side::creatures_server::pufferfish_player::pufferfish_sting_tests::with_fish;
 
-/// The game events the stung player's client was sent, as `(event, parameter)`.
-fn stings(game: &Game<'_>) -> Vec<(u8, f32)> {
-    game.server
-        .guest_packets
-        .iter()
-        .filter_map(|packet| match packet {
-            Clientbound::GameEvent(e) => Some((e.event, e.param)),
-            _ => None,
-        })
-        .collect()
-}
+#[allow(unused_imports)]
+pub(in crate::game) use crate::game::server_side::creatures_server::pufferfish_player::pufferfish_sting_tests::stings;
 
-fn health(game: &Game<'_>) -> f32 {
+pub(in crate::game) fn health(game: &Game<'_>) -> f32 {
     game.player.as_ref().unwrap().health.health()
 }
 

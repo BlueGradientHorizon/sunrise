@@ -16,7 +16,7 @@ const BLOCK: &str = "minecraft:chiseled_bookshelf";
 
 impl Game<'_> {
     /// The bookshelf's item or empty-hand method, on the captured block state.
-    pub(super) fn use_chiseled_bookshelf(
+    pub(in crate::game) fn use_chiseled_bookshelf(
         &mut self,
         hit: &Hit,
         state: sunrise_world::registry::BlockStateId,
@@ -137,7 +137,7 @@ impl Game<'_> {
     /// `ChiseledBookShelfBlockEntity.updateState`: `slot` becomes the last
     /// one touched, the block state takes the slots' occupancy
     /// (`setBlockAndUpdate`) and `BLOCK_CHANGE` goes out.
-    pub(super) fn chiseled_bookshelf_update_state(&mut self, pos: [i32; 3], slot: usize) {
+    pub(in crate::game) fn chiseled_bookshelf_update_state(&mut self, pos: [i32; 3], slot: usize) {
         let key = (pos[0], pos[1], pos[2]);
         self.journal_block_entity(key);
         let Some(BlockEntity::ChiseledBookshelf(b)) = self.world.block_entities.get_mut(&key)
@@ -176,7 +176,7 @@ impl Game<'_> {
     /// The books a hopper or dropper put in or took out: the slot whose
     /// occupancy no longer matches the block state is the one `setItem` or
     /// `removeItem` updated.
-    pub(super) fn chiseled_bookshelf_synced(&mut self, pos: (i32, i32, i32)) {
+    pub(in crate::game) fn chiseled_bookshelf_synced(&mut self, pos: (i32, i32, i32)) {
         let Some(BlockEntity::ChiseledBookshelf(b)) = self.world.block_entities.get(&pos) else {
             return;
         };

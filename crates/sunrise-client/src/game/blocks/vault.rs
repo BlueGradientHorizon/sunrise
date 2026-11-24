@@ -2,11 +2,14 @@
 //! (`vault`), the block's state as it changes, the rewards it ejects, the
 //! keys players insert (`VaultBlock.useItemOn`) and the display item spinning
 //! inside (`VaultRenderer`).
+#[allow(unused_imports)]
 use super::{
     Game,
     item_draw::{BlockItemDraw, block_entity_pose},
 };
+#[allow(unused_imports)]
 use sunrise_assets::item_model::DisplayContext;
+#[allow(unused_imports)]
 use sunrise_client::{
     Result,
     block_entities::BlockEntityLease,
@@ -18,10 +21,12 @@ use sunrise_client::{
     mesher::Vertex,
     vault::{Vault, VaultEvent, VaultLevel, VaultPlayer, VaultState},
 };
+#[allow(unused_imports)]
 use sunrise_client_render::block_entity_reach::Reach;
+#[allow(unused_imports)]
 use sunrise_core::random::{LegacyRandom, LevelRandom};
 
-type Pos = (i32, i32, i32);
+pub(in crate::game) type Pos = (i32, i32, i32);
 
 pub(in crate::game) struct TakenVault {
     pub(in crate::game) lease: BlockEntityLease,
@@ -33,19 +38,19 @@ pub(in crate::game) struct TakenVault {
 /// What a key insertion supplies to the reward roll
 /// (`VaultBlockEntity.resolveItemsToEject`): the player, the inserted stack and
 /// the player's luck.
-struct VaultEject {
-    player: sunrise_world::loot::LootEntity,
-    tool: sunrise_world::loot::LootStack,
-    luck: f32,
+pub(in crate::game) struct VaultEject {
+    pub(in crate::game) player: sunrise_world::loot::LootEntity,
+    pub(in crate::game) tool: sunrise_world::loot::LootStack,
+    pub(in crate::game) luck: f32,
 }
 
 /// What a vault reads: the game time and the players. The players are listed
 /// at the first ask: a vault looks for them only when its state may change
 /// (`stateUpdatingResumesAt`, once a second), not at every tick.
-struct Players<'g, 'a> {
-    time: i64,
-    game: &'g Game<'a>,
-    players: std::cell::OnceCell<Vec<VaultPlayer>>,
+pub(in crate::game) struct Players<'g, 'a> {
+    pub(in crate::game) time: i64,
+    pub(in crate::game) game: &'g Game<'a>,
+    pub(in crate::game) players: std::cell::OnceCell<Vec<VaultPlayer>>,
 }
 impl VaultLevel for Players<'_, '_> {
     fn game_time(&self) -> i64 {
@@ -59,7 +64,7 @@ impl VaultLevel for Players<'_, '_> {
 }
 
 impl Game<'_> {
-    fn vault_players(&self) -> Vec<VaultPlayer> {
+    pub(in crate::game) fn vault_players(&self) -> Vec<VaultPlayer> {
         let host = self.player.as_ref().map(|p| VaultPlayer {
             uuid: self.acting_uuid(),
             block: [p.position.x, p.position.y, p.position.z].map(|v| v.floor() as i32),
@@ -112,7 +117,7 @@ impl Game<'_> {
     }
     /// Runs `f` on the vault at `key` with the level random and a loot roll,
     /// then applies its events.
-    fn with_vault<T>(
+    pub(in crate::game) fn with_vault<T>(
         &mut self,
         key: Pos,
         eject: Option<&VaultEject>,
@@ -255,34 +260,8 @@ impl Game<'_> {
         self.trigger_block("minecraft:item_used_on_block", pos, &stack);
         Ok(true)
     }
-    fn vault_events(&mut self, key: Pos, events: Vec<VaultEvent>) -> Result<()> {
-        let pos = [key.0, key.1, key.2];
-        let center = pos.map(|v| f64::from(v) + 0.5);
-        for event in events {
-            match event {
-                VaultEvent::State(state) => self.set_vault_state(key, state)?,
-                VaultEvent::BlockUpdated => self.mark_block_entity_updated(key),
-                VaultEvent::LevelEvent(id, data) => self.level_event_at(id, pos, data),
-                VaultEvent::Sound(name, volume, pitch) => {
-                    self.audio
-                        .0
-                        .play(&format!("minecraft:{name}"), Some(center), volume, pitch)
-                }
-                // Vec3.atBottomCenterOf(pos).relative(UP, 1.2), lowered by spawnItem.
-                VaultEvent::Eject(stack, v) => {
-                    self.native_vault_loot(pos, &stack.item);
-                    self.spawn_item_thrown(
-                        stack,
-                        [center[0], center[1] + 0.7 - 0.125, center[2]],
-                        v,
-                    )
-                }
-            }
-        }
-        Ok(())
-    }
     /// `setBlockAndUpdate` with the new `vault_state`.
-    fn set_vault_state(&mut self, key: Pos, state: VaultState) -> Result<()> {
+    pub(in crate::game) fn set_vault_state(&mut self, key: Pos, state: VaultState) -> Result<()> {
         let current = self.world.block(key.0, key.1, key.2);
         let Some(mut block) = self.pack.assets.registry.state(current).cloned() else {
             return Ok(());

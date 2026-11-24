@@ -1,98 +1,33 @@
 //! `handlePlayerPositionChange`: a move that goes up ends the guest's fall.
+#[allow(unused_imports)]
 use super::guest;
+#[allow(unused_imports)]
 use crate::game::Game;
+#[allow(unused_imports)]
 use std::{path::Path, sync::Arc};
+#[allow(unused_imports)]
 use sunrise_client::lan::guest::InboxItem;
+#[allow(unused_imports)]
 use sunrise_client::{
     advancements::Tree,
     chunk::Chunk,
     items::ItemStack,
     lan::{NetConfig, hub::HubConfig},
 };
+#[allow(unused_imports)]
 use sunrise_core::position::ChunkPos;
+#[allow(unused_imports)]
 use sunrise_protocol::packets::{Empty, play, play::Serverbound as S};
 
-const NAME: &str = "GuestBodyTest";
+pub(in crate::game) const NAME: &str = "GuestBodyTest";
 /// `fall_from_height` with no condition, then with a fall of at most 1 block, and of 5.
-const CRITERIA: [&str; 3] = ["any", "short", "five"];
+pub(in crate::game) const CRITERIA: [&str; 3] = ["any", "short", "five"];
 
-/// A server with one survival guest in the air at 12.5 110 12.5, over a stone floor at y 99.
-fn scene<'a>(resources: &'a mut Option<Arc<crate::game::Resources>>, scratch: &Path) -> Game<'a> {
-    let mut g = crate::game::game_tests::tests::server_game(resources);
-    g.build_registries();
-    g.set_allow_commands(true);
-    let folder = scratch.join("data/fall/advancement");
-    std::fs::create_dir_all(&folder).unwrap();
-    g.server.world_root = scratch.to_path_buf();
-    for (name, distance) in CRITERIA.into_iter().zip([
-        serde_json::Value::Null,
-        serde_json::json!({"max": 1.0}),
-        serde_json::json!({"min": 4.9, "max": 5.1}),
-    ]) {
-        let mut criterion = serde_json::json!({"trigger": "minecraft:fall_from_height"});
-        if !distance.is_null() {
-            criterion["conditions"] = serde_json::json!({"distance": {"y": distance}});
-        }
-        let advancement = serde_json::json!({"criteria": {name: criterion}});
-        std::fs::write(folder.join(format!("{name}.json")), advancement.to_string()).unwrap();
-    }
-    g.adv.tree = Arc::new(Tree::load(&scratch.join("data")));
-    assert_eq!(g.adv.tree.list.len(), CRITERIA.len());
-    let stone = g.pack.assets.registry.default_state("minecraft:stone");
-    let mut chunk = Chunk::empty(0, 0);
-    for x in 0..16 {
-        for z in 0..16 {
-            chunk.set(x, 99, z, stone.unwrap().0);
-        }
-    }
-    g.world.chunks.insert((0, 0), Arc::new(chunk));
-    g.block_ticks.add_empty_chunk(ChunkPos::new(0, 0)).unwrap();
-    assert!(g.run_command("forceload add 0 0"));
-    assert!(g.run_command("tick freeze"));
-    g.lan_host(
-        crate::game::lan::LanSettings {
-            port: 0,
-            guest_commands: true,
-            force_game_mode: false,
-        },
-        NetConfig {
-            listen: false,
-            announce: false,
-            ..NetConfig::loopback(0, "guest-fall-reset".into(), 2)
-        },
-        HubConfig {
-            default_game_mode: 0,
-            guest_commands: true,
-            force_game_mode: false,
-            hardcore: false,
-            view_distance: 2,
-            simulation_distance: 2,
-            dimension: "minecraft:overworld".into(),
-            allow_flight: false,
-            seed: 0,
-            max_players: 2,
-            integrated: false,
-            levels: Default::default(),
-            level_seeds: Default::default(),
-        },
-    )
-    .unwrap();
-    let mut guest = guest(1);
-    guest.position = [12.5, 110.0, 12.5];
-    guest.placed = true;
-    guest.loaded = true;
-    guest.dimension = "minecraft:overworld".into();
-    guest.game_mode = 0;
-    guest.on_ground = false;
-    guest.load_timeout = 0;
-    g.lan.as_mut().unwrap().hub.guests.push(guest);
-    g.sync_tick_chunks();
-    g.server.ticked_entities_through = g.server.next_entity;
-    g
-}
+#[allow(unused_imports)]
+pub(in crate::game) use crate::game::server_side::lan_actions_server::guest_body::tests::fall_reset::scene;
 
 /// One server packet drain; put a client-tick marker between reports.
-fn drain_moves(g: &mut Game<'_>, reports: impl IntoIterator<Item = (f64, u8)>) {
+pub(in crate::game) fn drain_moves(g: &mut Game<'_>, reports: impl IntoIterator<Item = (f64, u8)>) {
     g.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
         guest
             .inbox
@@ -116,7 +51,7 @@ fn drain_moves(g: &mut Game<'_>, reports: impl IntoIterator<Item = (f64, u8)>) {
 }
 
 /// One server tick in which the guest's client sent these airborne positions.
-fn tick_with_moves(
+pub(in crate::game) fn tick_with_moves(
     g: &mut Game<'_>,
     heights: &[f64],
     before_level: (f64, Option<[f64; 3]>, [bool; 3]),
@@ -130,7 +65,7 @@ fn tick_with_moves(
 }
 
 /// The guest's fall distance, where its tracked fall began, and which criteria it has.
-fn fall(g: &Game<'_>) -> (f64, Option<[f64; 3]>, [bool; 3]) {
+pub(in crate::game) fn fall(g: &Game<'_>) -> (f64, Option<[f64; 3]>, [bool; 3]) {
     let host = g.lan.as_ref().unwrap();
     let guest = &host.hub.guests[0];
     let done = CRITERIA.map(|name| {
@@ -248,7 +183,7 @@ fn entering_water_ends_a_tracked_fall_before_the_next_move() {
     );
 }
 
-fn lethal_landing(totem: bool) {
+pub(in crate::game) fn lethal_landing(totem: bool) {
     let mut resources = None;
     let scratch = tempfile::tempdir().unwrap();
     let mut g = scene(&mut resources, scratch.path());

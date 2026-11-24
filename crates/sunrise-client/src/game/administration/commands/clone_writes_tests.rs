@@ -1,12 +1,18 @@
 //! `/clone` counts what it wrote and needs every column of both boxes loaded
 //! (`CloneCommands.clone`: `Level.setBlock`'s result is the count, and
 //! `Level.hasChunksAt` covers the whole box, not just its corners).
+#[allow(unused_imports)]
 use super::super::*;
+#[allow(unused_imports)]
 use std::sync::Arc;
+#[allow(unused_imports)]
 use sunrise_client::chunk::Chunk;
+#[allow(unused_imports)]
 use sunrise_core::position::ChunkPos;
 
-fn game<'a>(resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>) -> Game<'a> {
+pub(in crate::game) fn game<'a>(
+    resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>,
+) -> Game<'a> {
     let root = std::path::PathBuf::from(
         std::env::var_os("SUNRISE_TEST_RESOURCES")
             .expect("set SUNRISE_TEST_RESOURCES to prepared resources"),
@@ -47,7 +53,7 @@ fn game<'a>(resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>) -
 }
 
 /// Gives the current level the empty chunk at `x, z`, as an opened world has it.
-fn load_chunk(game: &mut Game<'_>, x: i32, z: i32) {
+pub(in crate::game) fn load_chunk(game: &mut Game<'_>, x: i32, z: i32) {
     game.world
         .chunks
         .insert((x, z), Arc::new(Chunk::empty(x, z)));
@@ -56,7 +62,7 @@ fn load_chunk(game: &mut Game<'_>, x: i32, z: i32) {
 
 /// Opens `dim`'s level through the same adapter the clone uses, gives it the
 /// empty chunk at the origin, and returns to `back`.
-fn load_chunk_in(game: &mut Game<'_>, dim: Dim, back: Dim) {
+pub(in crate::game) fn load_chunk_in(game: &mut Game<'_>, dim: Dim, back: Dim) {
     game.enter_command_level(dim);
     assert_eq!(game.dim, dim, "the level is in place");
     load_chunk(game, 0, 0);
@@ -64,16 +70,11 @@ fn load_chunk_in(game: &mut Game<'_>, dim: Dim, back: Dim) {
     assert_eq!(game.dim, back, "back in the first level");
 }
 
-/// Runs `command`: whether it succeeded and what it said first.
-fn run(game: &mut Game<'_>, command: &str) -> (bool, Option<String>) {
-    game.server.chat_capture = Some(Vec::new());
-    let ok = game.run_command(command);
-    let said = game.server.chat_capture.take().unwrap_or_default();
-    (ok, said.first().map(sunrise_client::text::Text::plain))
-}
+#[allow(unused_imports)]
+pub(in crate::game) use crate::game::server_side::commands_server::clone_writes_tests::run;
 
 /// The value `/clone` returned, through `execute store result`.
-fn cloned(game: &mut Game<'_>, command: &str) -> (bool, Option<String>, i32) {
+pub(in crate::game) fn cloned(game: &mut Game<'_>, command: &str) -> (bool, Option<String>, i32) {
     assert!(game.run_command("scoreboard players set r h236 -1"));
     let said = run(
         game,

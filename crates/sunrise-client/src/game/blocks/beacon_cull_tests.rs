@@ -19,7 +19,7 @@ fn game<'a>(resources: &'a mut Option<Arc<crate::game::Resources>>) -> Game<'a> 
 
 /// A game loaded from the prepared resources as `role`: a client also loads what it draws with
 /// (the GUI and item atlas, baked block models).
-pub(super) fn game_as<'a>(
+pub(in crate::game) fn game_as<'a>(
     resources: &'a mut Option<Arc<crate::game::Resources>>,
     role: execution_role::ExecutionRole,
 ) -> Game<'a> {

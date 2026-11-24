@@ -2,10 +2,15 @@
 //! falling, `interactAt` equipment swaps by clicked height, the two-hit break
 //! of `hurtServer` (creative breaks at once), and `ArmorStandRenderer` with
 //! the default pose, the hit wobble and humanoid armor layers.
+#[allow(unused_imports)]
 use super::entity::Entity;
+#[allow(unused_imports)]
 use super::{Game, InteractTarget};
+#[allow(unused_imports)]
 use std::{collections::HashMap, sync::Arc};
+#[allow(unused_imports)]
 use sunrise_assets::resource_source::ResourceSource;
+#[allow(unused_imports)]
 use sunrise_client::{
     Result,
     cit::{Hand, Kind, Rule},
@@ -16,13 +21,14 @@ use sunrise_client::{
     mobs::{Mob, Part, Species, Who, anim::Poses},
     trims::{TrimOverride, TrimRegistry, TrimTexture},
 };
+#[allow(unused_imports)]
 use sunrise_core::{
     geometry::{Aabb, Vec3},
     random::RandomSource,
 };
-pub(super) const TYPE_ID: &str = "minecraft:armor_stand";
+pub(in crate::game) const TYPE_ID: &str = "minecraft:armor_stand";
 /// Build the living-drops input at the loot-source boundary, before equipment pops.
-fn armor_stand_dying_drops<'a>(
+pub(in crate::game) fn armor_stand_dying_drops<'a>(
     stand: &ArmorStand,
     mob_drops: bool,
     dying: super::creatures::DyingDrops<'a>,
@@ -46,7 +52,7 @@ fn armor_stand_dying_drops<'a>(
 }
 
 #[cfg(test)]
-mod death_loot_tests {
+pub(in crate::game) mod death_loot_tests {
     use super::*;
 
     #[test]
@@ -100,17 +106,17 @@ mod death_loot_tests {
 
 /// Velocity `AbstractMinecart.push` adds: the cart, and a quarter on the stand.
 #[derive(Clone, Copy, Debug, PartialEq)]
-struct CartShove {
-    cart_x: f64,
-    cart_z: f64,
-    stand_x: f64,
-    stand_z: f64,
+pub(in crate::game) struct CartShove {
+    pub(in crate::game) cart_x: f64,
+    pub(in crate::game) cart_z: f64,
+    pub(in crate::game) stand_x: f64,
+    pub(in crate::game) stand_z: f64,
 }
 /// `ArmorStand.pushEntities` for one cart. `None` when the cart is not the
 /// plain rideable kind, the boxes miss, `distanceToSqr` is past 0.2, the
 /// stand is a passenger of the cart, or the horizontal gap is under
 /// `1.0E-4F` (where `AbstractMinecart.push` does nothing).
-fn armor_stand_cart_shove(
+pub(in crate::game) fn armor_stand_cart_shove(
     stand_pos: Vec3,
     stand_box: Aabb,
     cart_pos: Vec3,
@@ -143,7 +149,11 @@ fn armor_stand_cart_shove(
 /// `EquipmentLayerRenderer.getColorForLayer`: a dyeable layer takes the stack's
 /// `minecraft:dyed_color`, else its optional undyed colour, else zero to skip it.
 /// Nondyeable layers stay white. The result uses the renderer's byte order (R and B swapped).
-pub(super) fn layer_color(dyeable: bool, undyed: Option<u32>, stack: Option<&ItemStack>) -> u32 {
+pub(in crate::game) fn layer_color(
+    dyeable: bool,
+    undyed: Option<u32>,
+    stack: Option<&ItemStack>,
+) -> u32 {
     let dyed = stack
         .and_then(|s| s.data())
         .and_then(|d| d.dyed_color)
@@ -159,7 +169,7 @@ pub(super) fn layer_color(dyeable: bool, undyed: Option<u32>, stack: Option<&Ite
 
 /// Armor stand models and the humanoid layers of every equipment asset.
 #[derive(Default)]
-pub(super) struct ArmorStandAssets {
+pub(in crate::game) struct ArmorStandAssets {
     /// Shared (`Arc`) so the GPU path (`mobs::skin`) keeps one stored copy of each.
     pub main: Option<Arc<Part>>,
     pub small: Option<Arc<Part>>,
@@ -283,7 +293,7 @@ impl ArmorStandAssets {
     }
     /// `TrimTextureKey`: the trim texture of `stack` on its humanoid
     /// layer (`humanoid` or `humanoid_leggings`), if it has a trim.
-    pub(super) fn trim_texture(
+    pub(in crate::game) fn trim_texture(
         &self,
         asset: &str,
         kind: &str,
@@ -301,7 +311,7 @@ impl ArmorStandAssets {
 impl Game<'_> {
     /// OptiFine CIT: the winning armour or elytra rule (`kind`) of the worn `stack`. No lookup
     /// without CIT rules.
-    pub(super) fn cit_worn_rule(&self, kind: Kind, stack: &ItemStack) -> Option<&Rule> {
+    pub(in crate::game) fn cit_worn_rule(&self, kind: Kind, stack: &ItemStack) -> Option<&Rule> {
         let rules = &self.pack.item_renderer.cit.as_ref()?.rules;
         let item_max = self.items().get(&stack.item).map_or(0, |i| i.max_damage);
         sunrise_client::item_render::cit::worn_rule(rules, kind, stack, item_max)
@@ -309,11 +319,11 @@ impl Game<'_> {
     }
     /// `HumanoidArmorLayer` for the player: (model, texture rect, colour,
     /// overlay) of each worn piece, head to feet.
-    pub(super) fn player_armor_layers(&self) -> Vec<(&Part, [f32; 4], u32, u32, bool)> {
+    pub(in crate::game) fn player_armor_layers(&self) -> Vec<(&Part, [f32; 4], u32, u32, bool)> {
         self.stack_armor_layers(&self.armor)
     }
     /// `HumanoidArmorLayer` for worn stacks (head to feet), trims included.
-    pub(super) fn stack_armor_layers(
+    pub(in crate::game) fn stack_armor_layers(
         &self,
         armor: &[Option<ItemStack>; 4],
     ) -> Vec<(&Part, [f32; 4], u32, u32, bool)> {
@@ -325,128 +335,21 @@ impl Game<'_> {
     }
     /// `HumanoidArmorLayer` for another player's model: the armour it wears
     /// (`extra.equipment`, head to feet).
-    pub(super) fn worn_armor_layers(&self, m: &Mob) -> Vec<(&Part, [f32; 4], u32, u32, bool)> {
+    pub(in crate::game) fn worn_armor_layers(
+        &self,
+        m: &Mob,
+    ) -> Vec<(&Part, [f32; 4], u32, u32, bool)> {
         let e = &m.extra;
         self.armor_layers(
             sunrise_items::equipment::ARMOR
                 .map(|slot| e.slot_stack(slot).map(|stack| (&*stack.item, Some(stack)))),
         )
     }
-    /// The layers of the armour items `worn` (with their stacks when known,
-    /// for trims and CIT armour rules), head to feet.
-    fn armor_layers(
-        &self,
-        worn: [Option<(&str, Option<&ItemStack>)>; 4],
-    ) -> Vec<(&Part, [f32; 4], u32, u32, bool)> {
-        let assets = &self.armor_stand_assets.0;
-        let mut out = Vec::new();
-        for (item, (layer, slot)) in worn.into_iter().zip([
-            ("helmet", "head"),
-            ("chestplate", "chest"),
-            ("leggings", "legs"),
-            ("boots", "feet"),
-        ]) {
-            let Some((item, stack)) = item else {
-                continue;
-            };
-            let Some(piece) = self.equipment_piece(item, stack, slot, layer == "leggings", false)
-            else {
-                continue;
-            };
-            let Some(part) = assets.player.get(layer) else {
-                continue;
-            };
-            for material in
-                self.equipment_materials(&piece, stack, super::equipment_piece::EquipmentPass::Draw)
-            {
-                out.push((
-                    material.model.map_or(part, |model| &**model),
-                    material.binding.uv,
-                    material.color,
-                    material.overlay,
-                    material.glows,
-                ));
-            }
-        }
-        out
-    }
-    /// `PalettedTextureManager.getOrPrepare` for the trims drawn this frame
-    /// (the player's armour and the armour stands'): each generated texture
-    /// goes into an atlas trim slot, a free one, else the least recently
-    /// drawn. Reuse the completed preparation while the requests and atlas stay the same.
-    pub(super) fn prepare_trims(&mut self) {
-        let assets = &self.armor_stand_assets.0;
-        let items = self.items();
-        let mut wanted: Vec<TrimTexture> = Vec::new();
-        let guests = self.lan.iter().flat_map(|host| host.hub.guests.iter());
-        let stacks =
-            self.armor
-                .iter()
-                .chain(guests.flat_map(|g| g.armor.iter()))
-                .chain(self.mobs.iter().flat_map(|m| {
-                    sunrise_items::equipment::ARMOR.map(|slot| &m.extra.equipment[slot])
-                }))
-                .zip(
-                    ["helmet", "chestplate", "leggings", "boots"]
-                        .into_iter()
-                        .cycle(),
-                )
-                .chain(self.armor_stands.iter().flat_map(|a| {
-                    [5usize, 4, 3, 2]
-                        .map(|slot| &a.equipment[slot])
-                        .into_iter()
-                        .zip(["helmet", "chestplate", "leggings", "boots"])
-                }));
-        // The smithing screen's preview stand wears the result slot's item.
-        let preview = self
-            .station
-            .as_ref()
-            .filter(|s| s.kind == super::stations::Kind::Smithing)
-            .and_then(|s| s.result.as_ref())
-            .map(|stack| {
-                let equip = items.get(&stack.item).and_then(|i| i.equip_slot.as_deref());
-                let layer = match preview_slot(equip) {
-                    2 => "boots",
-                    3 => "leggings",
-                    4 => "chestplate",
-                    5 => "helmet",
-                    _ => "",
-                };
-                (Some(stack), layer)
-            });
-        let stacks = stacks.map(|(s, l)| (s.as_ref(), l)).chain(preview);
-        for (stack, layer) in stacks {
-            let Some(stack) = stack.filter(|s| s.extra.is_some()) else {
-                continue;
-            };
-            let Some(asset) =
-                sunrise_client::item_sync::equippable(stack, items).and_then(|e| e.asset_id)
-            else {
-                continue;
-            };
-            let kind = if layer == "leggings" {
-                "humanoid_leggings"
-            } else {
-                "humanoid"
-            };
-            if let Some(t) = assets.trim_texture(&asset, kind, stack)
-                && !wanted.contains(&t)
-            {
-                wanted.push(t);
-            }
-        }
-        self.client.trim_slots.prepare(
-            wanted,
-            &assets.root,
-            &mut self.gui.atlas,
-            &mut self.client.map_patches,
-        );
-    }
     /// `ArmorStandItem.useOn`.
     /// `ArmorStandItem.useOn` up to its `FAIL`s, which a client checks too:
     /// not on a bottom face, and nothing in the new stand's box. The block it
     /// stands in and the stand.
-    pub(super) fn armor_stand_spawn(
+    pub(in crate::game) fn armor_stand_spawn(
         &self,
         hit: &super::Hit,
         stack: &ItemStack,
@@ -499,7 +402,11 @@ impl Game<'_> {
         }
         Some((pos, stand))
     }
-    pub(super) fn place_armor_stand(&mut self, hit: &super::Hit, stack: &ItemStack) -> bool {
+    pub(in crate::game) fn place_armor_stand(
+        &mut self,
+        hit: &super::Hit,
+        stack: &ItemStack,
+    ) -> bool {
         if &*stack.item != "minecraft:armor_stand" {
             return false;
         }
@@ -561,7 +468,7 @@ impl Game<'_> {
         true
     }
     /// The armor stand under the crosshair, its distance and the hit point.
-    pub(super) fn armor_stand_hit(&self) -> Option<(usize, f64, [f64; 3])> {
+    pub(in crate::game) fn armor_stand_hit(&self) -> Option<(usize, f64, [f64; 3])> {
         if let Some(hit) = self.cached_entity_pick() {
             let (entity, distance, point) = hit?;
             let index = self.armor_stands.iter().position(|f| f.id == entity.id())?;
@@ -589,7 +496,7 @@ impl Game<'_> {
         }
         best
     }
-    fn equipment_slot(&self, stack: &ItemStack) -> usize {
+    pub(in crate::game) fn equipment_slot(&self, stack: &ItemStack) -> usize {
         match self
             .res
             .items()
@@ -606,7 +513,7 @@ impl Game<'_> {
     }
     /// `ArmorStand.interactAt` for the stand under the crosshair, or for the
     /// stand a guest's interact packet named (its client's click point).
-    pub(super) fn interact_armor_stand(&mut self, target: Option<InteractTarget>) -> bool {
+    pub(in crate::game) fn interact_armor_stand(&mut self, target: Option<InteractTarget>) -> bool {
         let Some((mut i, d, point)) = (match target {
             // interactAt gets the packet's location, measured from the stand's
             // position, so getClickedSlot reads the height the client clicked.
@@ -775,7 +682,7 @@ impl Game<'_> {
         true
     }
     /// `ArmorStand.hurtServer` from a player attack.
-    pub(super) fn attack_armor_stand(&mut self) -> bool {
+    pub(in crate::game) fn attack_armor_stand(&mut self) -> bool {
         let Some((i, d, _)) = self.armor_stand_hit() else {
             return false;
         };
@@ -823,7 +730,7 @@ impl Game<'_> {
     /// stand's box and id) and `Player.itemAttackInteraction`, which treats
     /// the stand as a living target: the held weapon's hit and post-attack
     /// effects.
-    pub(super) fn hit_armor_stand(
+    pub(in crate::game) fn hit_armor_stand(
         &mut self,
         i: usize,
         before_weapon: impl FnOnce(&mut Self, Aabb, u32),
@@ -841,42 +748,10 @@ impl Game<'_> {
         }
         hurt
     }
-    /// `ArmorStand.showBreakingParticles`: ten oak plank crumbs from the box,
-    /// spread by a quarter of its width and height, sent like `sendParticles`.
-    fn show_breaking_particles(&mut self, at: [f64; 3], width: f64, height: f64) {
-        let Some(state) = self
-            .pack
-            .assets
-            .registry
-            .default_state("minecraft:oak_planks")
-        else {
-            return;
-        };
-        let block = [
-            at[0].floor() as i32,
-            at[1].floor() as i32,
-            at[2].floor() as i32,
-        ];
-        let Some((sprite, tint)) = self.particle_sprite(state, block) else {
-            return;
-        };
-        let options = sunrise_client::particles::ParticleOptions::block(
-            sunrise_client::particles::ParticleType::Block,
-            sprite,
-            tint,
-        );
-        // Entity.getY(2/3): the box's height is scaled by 2/3 from the feet.
-        let centre = [at[0], at[1] + height * (2.0 / 3.0), at[2]];
-        let spread = [width / 4.0, height / 4.0, width / 4.0];
-        self.particles
-            .0
-            .send_particles(&options, centre, spread, 0.05, 10);
-        self.lan_level_particles(&options, centre, spread, 0.05, 10, Some(state));
-    }
     /// `ArmorStand.hurtServer` for a player's attack (also a sweep's): a
     /// creative player breaks it, otherwise the first hit wobbles it and a
     /// second within five ticks breaks it.
-    pub(super) fn punch_armor_stand(&mut self, i: usize) -> bool {
+    pub(in crate::game) fn punch_armor_stand(&mut self, i: usize) -> bool {
         // `Entity.isInvulnerableTo` before ArmorStand's own branches (#916):
         // the saved flag or window refuses the hit — past only for
         // #bypasses_invulnerability damage and a creative player's hit
@@ -908,79 +783,10 @@ impl Game<'_> {
             attacker as u32,
         )
     }
-    /// The end of `ArmorStand.hurtServer` for `#can_break_armor_stand` or `#always_kills_armor_stands`.
-    fn break_armor_stand_by_hit(
-        &mut self,
-        i: usize,
-        creative: bool,
-        always_kills: bool,
-        by: Option<super::commands::Target>,
-        damage_type: &str,
-        causing_id: u32,
-    ) -> bool {
-        let time = self.world.game_time;
-        let at = self.armor_stands[i].position;
-        let at = [at.x, at.y, at.z];
-        if creative {
-            let id = self.armor_stands[i].id;
-            let (width, height) = stand_box(&self.armor_stands[i]);
-            if !self.remove_armor_stand_after(id, |game| {
-                game.audio
-                    .0
-                    .play("minecraft:entity.armor_stand.break", Some(at), 1.0, 1.0);
-                game.show_breaking_particles(at, f64::from(width), f64::from(height));
-            }) {
-                return false;
-            }
-            // ArmorStand.kill(level, the causing entity).
-            self.stand_game_event("minecraft:entity_die", at, by);
-            return true;
-        }
-        if time - self.armor_stands[i].last_hit > 5 && !always_kills {
-            // First hit: entity event 32, the wobble and the hit sound, then entity_damage.
-            self.audio
-                .0
-                .play("minecraft:entity.armor_stand.hit", Some(at), 0.3, 1.0);
-            self.stand_game_event("minecraft:entity_damage", at, by);
-            self.armor_stands[i].last_hit = time;
-            return true;
-        }
-        // brokenByPlayer: the stand item, then brokenByAnything: the equipment.
-        let a = self.armor_stands[i].clone();
-        let removed = self.remove_armor_stand_after(a.id, |game| {
-            let (width, height) = stand_box(&a);
-            let center = [at[0], at[1] + if a.small { 0.4875 } else { 0.9875 }, at[2]];
-            let mut stand = ItemStack::new("minecraft:armor_stand", 1);
-            if let Some(name) = &a.custom_name {
-                stand
-                    .data_mut()
-                    .set_loot_name("minecraft:custom_name", &name.component());
-            }
-            game.spawn_item(stand, center, [0.0; 3], 10);
-            game.audio
-                .0
-                .play("minecraft:entity.armor_stand.break", Some(at), 1.0, 1.0);
-            game.armor_stand_death_drops(&a, damage_type, causing_id);
-            for stack in a.equipment.into_iter().flatten() {
-                let r = &mut game.world.random;
-                let v = [
-                    f64::from(r.next_float()) * 0.2 - 0.1,
-                    0.2,
-                    f64::from(r.next_float()) * 0.2 - 0.1,
-                ];
-                game.spawn_item(stack, center, v, 10);
-            }
-            game.show_breaking_particles(at, f64::from(width), f64::from(height));
-        });
-        if removed {
-            self.stand_game_event("minecraft:entity_die", at, by);
-        }
-        removed
-    }
     /// `Entity.gameEvent(event, attributedTo)` for a stand at `at`: the
     /// causing player (a LAN guest too) or mob, else the stand itself (which
     /// no listener tells apart from none).
-    fn stand_game_event(
+    pub(in crate::game) fn stand_game_event(
         &mut self,
         event: &'static str,
         at: [f64; 3],
@@ -990,7 +796,7 @@ impl Game<'_> {
     }
     /// Run stand turns that precede the level's first shulker. The mob tick
     /// interleaves the remaining turns with shulkers before applying each lid push.
-    pub(super) fn begin_armor_stand_ticks(&mut self) -> Result<()> {
+    pub(in crate::game) fn begin_armor_stand_ticks(&mut self) -> Result<()> {
         self.server.ordered.armor_stands.extend(
             self.armor_stands
                 .iter()
@@ -1014,7 +820,7 @@ impl Game<'_> {
         self.tick_armor_stands_before(first_shulker.unwrap_or(JoinSeq::MAX))
     }
 
-    pub(super) fn tick_armor_stands_before(&mut self, cut: JoinSeq) -> Result<()> {
+    pub(in crate::game) fn tick_armor_stands_before(&mut self, cut: JoinSeq) -> Result<()> {
         if self
             .server
             .ordered
@@ -1034,12 +840,15 @@ impl Game<'_> {
     }
 
     #[cfg(test)]
-    pub(super) fn tick_armor_stands(&mut self) -> Result<()> {
+    pub(in crate::game) fn tick_armor_stands(&mut self) -> Result<()> {
         let joins: Vec<_> = self.armor_stands.iter().map(|stand| stand.join).collect();
         self.tick_armor_stand_turns(joins)
     }
 
-    fn tick_armor_stand_turns(&mut self, joins: impl IntoIterator<Item = JoinSeq>) -> Result<()> {
+    pub(in crate::game) fn tick_armor_stand_turns(
+        &mut self,
+        joins: impl IntoIterator<Item = JoinSeq>,
+    ) -> Result<()> {
         let mut dead = Vec::new();
         let mut drowned = Vec::new();
         // ServerLevel.tick: only entities in entity-ticking chunks tick.
@@ -1384,7 +1193,7 @@ impl Game<'_> {
     /// `NoGravity`). Mob lids act on the shulker's turn; block-entity lids act
     /// after the entity ticks.
     /// `grid` holds the stands' obstacles, built once per lid at its first stand.
-    pub(super) fn shoves_armor_stand(
+    pub(in crate::game) fn shoves_armor_stand(
         &mut self,
         i: usize,
         mover: sunrise_world::entity_move::MoverType,
@@ -1417,7 +1226,7 @@ impl Game<'_> {
     /// ravager's box grown by 4) takes `strongKnockback` from the ravager at
     /// `from`. Its `mobAttack` leaves the stand whole (`ArmorStand.hurtServer`:
     /// not a damage type that breaks one).
-    pub(super) fn roar_pushes_armor_stands(&mut self, area: Aabb, from: [f64; 3]) {
+    pub(in crate::game) fn roar_pushes_armor_stands(&mut self, area: Aabb, from: [f64; 3]) {
         for a in self.armor_stands.iter_mut() {
             let (width, height) = stand_box(a);
             let half = f64::from(width) / 2.0;
@@ -1444,7 +1253,7 @@ impl Game<'_> {
     /// (`Entity.push(double)` does not consult `isPushable`). A stand with no
     /// physics (`Marker` or `NoGravity`, `ArmorStand.hasPhysics` / `noPhysics`)
     /// or one riding that cart does not shove it.
-    fn push_rideable_minecarts(&mut self, i: usize) {
+    pub(in crate::game) fn push_rideable_minecarts(&mut self, i: usize) {
         let stand = &self.armor_stands[i];
         if stand.marker || stand.no_gravity {
             return;
@@ -1488,7 +1297,11 @@ impl Game<'_> {
     /// in 100 while it is on the ground (`LivingEntity.aiStep`'s
     /// `applyEffectsFromBlocks`, after `travel`, so a marker that has landed
     /// still steps). `canDestroyEgg` wants mob griefing before the level's roll.
-    fn armor_stand_turtle_eggs(&mut self, i: usize, landed: bool) -> Result<()> {
+    pub(in crate::game) fn armor_stand_turtle_eggs(
+        &mut self,
+        i: usize,
+        landed: bool,
+    ) -> Result<()> {
         let stand = &self.armor_stands[i];
         if !stand.ground.on_ground
             || self.remote.is_some()
@@ -1529,7 +1342,12 @@ impl Game<'_> {
     /// `ArmorStand.brokenByAnything` rolls the stand's entity loot table before
     /// the equipment. The resulting list crosses the existing living-drops hook;
     /// the stand item and equipment pop outside it, as in vanilla.
-    fn armor_stand_death_drops(&mut self, stand: &ArmorStand, damage_type: &str, causing: u32) {
+    pub(in crate::game) fn armor_stand_death_drops(
+        &mut self,
+        stand: &ArmorStand,
+        damage_type: &str,
+        causing: u32,
+    ) {
         let source = (!mod_api::__private::mods().is_empty())
             .then(|| super::creatures::death_hurt_source(damage_type, causing));
         let dying = super::creatures::DyingDrops {
@@ -1580,7 +1398,7 @@ impl Game<'_> {
             |_| None,
         );
     }
-    pub(super) fn remove_armor_stand_after(
+    pub(in crate::game) fn remove_armor_stand_after(
         &mut self,
         id: u32,
         effects: impl FnOnce(&mut Self),
@@ -1593,37 +1411,6 @@ impl Game<'_> {
         .is_some()
     }
 
-    /// `ArmorStand.brokenByAnything`, then `kill`, as burning out or a blast
-    /// breaks a stand: its equipment pops above its block, the stand item does
-    /// not drop.
-    pub(super) fn break_armor_stand_by_anything(
-        &mut self,
-        i: usize,
-        damage_type: &str,
-        causing: u32,
-    ) -> bool {
-        let a = self.armor_stands[i].clone();
-        let id = a.id;
-        let at = a.position.components();
-        let removed = self.remove_armor_stand_after(id, |game| {
-            game.audio
-                .0
-                .play("minecraft:entity.armor_stand.break", Some(at), 1.0, 1.0);
-            game.armor_stand_death_drops(&a, damage_type, causing);
-            let (pos, drops) = broken_armor_stand_equipment(a);
-            for stack in drops {
-                game.pop_resource(pos, stack);
-            }
-            game.world.modified.insert((pos[0] >> 4, pos[2] >> 4));
-        });
-        if removed {
-            let source = self
-                .level_entity(causing as i32)
-                .or(Some(super::commands::Target::Stand(id)));
-            self.entity_killed_event_by(at, source);
-        }
-        removed
-    }
     /// `ArmorStand.hurtServer` for a command's damage of `damage_type` from the
     /// causing entity `causing`, up to its sources that act and still return
     /// false: a blast breaks the stand (`brokenByAnything`, `kill`), fire that
@@ -1632,7 +1419,7 @@ impl Game<'_> {
     /// `#can_break_armor_stand` or `#always_kills_armor_stands` hurts the
     /// stand as a player's hit does and returns true; every other source is
     /// refused (false), as `/damage` fails for it in vanilla.
-    pub(super) fn command_damage_stand(
+    pub(in crate::game) fn command_damage_stand(
         &mut self,
         id: u32,
         damage_type: &str,
@@ -1644,7 +1431,7 @@ impl Game<'_> {
         self.hurt_armor_stand(id, damage_type, causing, direct, None)
     }
     /// `ArmorStand.hurtServer`: shared damage entry for commands and projectiles.
-    pub(super) fn hurt_armor_stand(
+    pub(in crate::game) fn hurt_armor_stand(
         &mut self,
         id: u32,
         damage_type: &str,
@@ -1765,7 +1552,7 @@ impl Game<'_> {
     /// `EnchantmentHelper.isImmuneToDamage` for the stand at `i`: whether an
     /// enchantment on an active equipment slot has a `minecraft:damage_immunity`
     /// effect whose requirements hold for `damage_type` and `causing`.
-    fn stand_immune_to_damage(
+    pub(in crate::game) fn stand_immune_to_damage(
         &mut self,
         i: usize,
         damage_type: &str,
@@ -1831,7 +1618,13 @@ impl Game<'_> {
     }
     /// `ArmorStand.causeDamage`: the health less `amount`, broken by anything
     /// at 0.5 or less.
-    fn cause_stand_damage(&mut self, i: usize, amount: f32, damage_type: &str, causing: u32) {
+    pub(in crate::game) fn cause_stand_damage(
+        &mut self,
+        i: usize,
+        amount: f32,
+        damage_type: &str,
+        causing: u32,
+    ) {
         let health = self.armor_stands[i].health - amount;
         if health <= 0.5 {
             self.break_armor_stand_by_anything(i, damage_type, causing);
@@ -1845,104 +1638,14 @@ impl Game<'_> {
             );
         }
     }
-    /// ArmorStandRenderer: the stand with its default pose, then armor layers.
-    pub(super) fn armor_stand_geometry(
-        &self,
-        camera: glam::DVec3,
-        alpha: f64,
-        out: &mut Vec<Vertex>,
-        run: std::ops::Range<usize>,
-    ) {
-        // The stands' models posed on the GPU path (`mobs::skin`), when it runs this frame.
-        let skinning = self.skinning();
-        for a in self.armor_stands[run]
-            .iter()
-            .filter(|a| !self.hides_as_camera(a.id))
-        {
-            // ArmorStand.shouldRenderAtSqrDistance: 256 times the box's mean
-            // edge (4 for a marker's empty box), whatever the entity distance.
-            // LivingEntityRenderer grows the culling box by 0.5 for a dragon head.
-            let (width, height) = match (a.marker, a.small) {
-                (true, _) => (0.0, 0.0),
-                (false, true) => (0.25, 0.9875),
-                (false, false) => (0.5, 1.975),
-            };
-            let edge = (width + height + width) / 3.0 * 4.0;
-            // 26.3 compares the size with RenderSystem.DEFAULT_DEPTH_CLEAR_VALUE,
-            // which is 0.0 (reverse Z; the bytecode is `dconst_0`): an empty
-            // marker box falls back to 4, so a visible marker stand draws.
-            // Holograms stay hidden through the invisible flag instead.
-            let range = if edge == 0.0 { 4.0 } else { edge } * 64.0;
-            let dragon = a.equipment[5]
-                .as_ref()
-                .is_some_and(|i| &*i.item == "minecraft:dragon_head");
-            if !self.standing_entity_in_view(
-                camera,
-                super::entity_culling::at(a.previous),
-                super::entity_culling::at(a.position),
-                alpha,
-                width,
-                height,
-                range,
-                if dragon { 0.5 } else { 0.0 },
-            ) {
-                continue;
-            }
-            let culling = self.entity_cull_decision(a, alpha);
-            if culling.hides_entity() {
-                continue;
-            }
-            let entity_start = out.len();
-            self.mark_motion(entity_start, Self::MOTION_OBJECT | u64::from(a.id));
-            // EntityRenderer: drawn between last tick's position and this one's.
-            let at = a.render_position(alpha);
-            let p = super::entity_culling::at(at) - camera;
-            // setupRotations: 180 - body yaw, plus the wobble for 5 ticks after a hit.
-            let wiggle = (self.world.game_time - a.last_hit) as f32 + alpha as f32;
-            let wobble = if wiggle < 5.0 {
-                (wiggle / 1.5 * std::f32::consts::PI).sin() * 3.0
-            } else {
-                0.0
-            };
-            let base = glam::Mat4::from_translation(p.as_vec3())
-                * glam::Mat4::from_rotation_y(
-                    (180.0 - a.render_yaw(alpha as f32) + wobble).to_radians(),
-                )
-                * glam::Mat4::from_scale(glam::Vec3::new(-1.0, -1.0, 1.0))
-                * glam::Mat4::from_translation(glam::Vec3::new(0.0, -1.501, 0.0));
-            // `EntityRenderer.getPackedLightCoords`: the block
-            // `ArmorStand.getLightProbePosition` gives - the brightest cell of a
-            // marker's own box, else the stand's eye - at 15 block light while
-            // it burns.
-            let probe = a.light_probe(alpha, |x, y, z| self.world.light(x, y, z));
-            let light = self.world.light(probe[0], probe[1], probe[2]);
-            let packed = a.render_light(light);
-            let skinned = if skinning {
-                let mut models = self.skin_models.0.borrow_mut();
-                let mut frame = self.client.skin_frame.borrow_mut();
-                let mark = frame.mark();
-                let mut skin = sunrise_client::mobs::skin::Skin::new(&mut models, &mut frame);
-                self.armor_stand_vertices(
-                    a,
-                    Some(alpha as f32),
-                    base,
-                    packed,
-                    Some(&mut skin),
-                    out,
-                );
-                Some((mark, skin.bounds))
-            } else {
-                self.armor_stand_vertices(a, Some(alpha as f32), base, packed, None, out);
-                None
-            };
-            if !self.tracked_entity_glowing(a.id) {
-                self.cull_skinned(out, entity_start, skinned);
-            }
-        }
-    }
     /// `ArmorStandArmorModel.setupAnim`: humanoid preparation and posing first,
     /// then saved rotations. Position writes at the humanoid seam survive.
-    fn setup_armor_stand_pose(&self, a: &ArmorStand, partial: f32, poses: &mut Poses) {
+    pub(in crate::game) fn setup_armor_stand_pose(
+        &self,
+        a: &ArmorStand,
+        partial: f32,
+        poses: &mut Poses,
+    ) {
         use sunrise_client::mobs::anim::{self, ArmPose};
         let state = anim::State {
             pos: 0.0,
@@ -1982,210 +1685,12 @@ impl Game<'_> {
         });
         apply_pose(poses, &a.pose);
     }
-
-    /// `ArmorStandRenderer.submit` for stand `a` under `base` (its
-    /// `setupRotations`): the body, the hand and head items, the armour and
-    /// the wings, at packed light `packed`. `world_partial` is absent in the GUI preview.
-    /// With `skin`, supported meshes are posed on the GPU.
-    fn armor_stand_vertices(
-        &self,
-        a: &ArmorStand,
-        world_partial: Option<f32>,
-        base: glam::Mat4,
-        packed: u32,
-        mut skin: Option<&mut sunrise_client::mobs::skin::Skin>,
-        out: &mut Vec<Vertex>,
-    ) {
-        use sunrise_client::mobs::render::put;
-        let assets = &self.armor_stand_assets.0;
-        let sprites = &self.gui.atlas.sprites;
-        let uv_of = |name: &str| sprites.get(name).map(|r| [r.u0, r.v0, r.u1, r.v1]);
-        // A texture's OptiFine emissive overlay. The lock is read per lookup and let go:
-        // `wings_geometry` below reads it too.
-        let glow_of = |texture: &str| {
-            let emissive = self
-                .res
-                .mob_data()
-                .emissive
-                .read()
-                .unwrap_or_else(std::sync::PoisonError::into_inner);
-            emissive.overlay(texture).and_then(uv_of)
-        };
-        let Some(wood) = uv_of("entity/armorstand/armorstand") else {
-            return;
-        };
-        let Some(model) = (if a.small { &assets.small } else { &assets.main }) else {
-            return;
-        };
-        let mut poses = Poses::new(model);
-        let partial = world_partial.unwrap_or(0.0);
-        self.setup_armor_stand_pose(a, partial, &mut poses);
-        // Item layers pose from the hidden arms too (`visible` only skips drawing).
-        let posed = poses.clone();
-        let mut hide = |name: &str| {
-            if poses.has(name) {
-                let pose = poses.get(name);
-                pose[6] = 0.0;
-                pose[7] = 0.0;
-                pose[8] = 0.0;
-            }
-        };
-        if !a.show_arms {
-            hide("left_arm");
-            hide("right_arm");
-        }
-        if a.no_base_plate {
-            hide("base_plate");
-        }
-        // LivingEntityRenderer.submit: an invisible stand has no body render type, but its
-        // layers (held items, custom head, armour) are submitted all the same.
-        if !a.invisible {
-            put(
-                &mut skin,
-                model,
-                base,
-                &poses,
-                wood,
-                0.0,
-                0xFFFF_FFFF,
-                packed,
-                0,
-                out,
-            );
-            if let Some(glow) = glow_of("entity/armorstand/armorstand") {
-                let full = sunrise_client::mobs::render::FULL_BRIGHT;
-                put(
-                    &mut skin,
-                    model,
-                    base,
-                    &poses,
-                    glow,
-                    0.0,
-                    0xFFFF_FFFF,
-                    full,
-                    0,
-                    out,
-                );
-            }
-        }
-        self.armor_stand_items(
-            a,
-            model,
-            base,
-            &posed,
-            world_partial,
-            packed,
-            skin.as_deref_mut(),
-            out,
-        );
-        // HumanoidArmorLayer: head, chest, legs, feet. One pose map for every layer
-        // (`reset` keeps its capacity).
-        let mut layer_poses = Poses::default();
-        for (slot, layer, worn) in [
-            (5usize, "helmet", "head"),
-            (4, "chestplate", "chest"),
-            (3, "leggings", "legs"),
-            (2, "boots", "feet"),
-        ] {
-            let Some(stack) = &a.equipment[slot] else {
-                continue;
-            };
-            let Some(piece) =
-                self.equipment_piece(&stack.item, Some(stack), worn, layer == "leggings", false)
-            else {
-                continue;
-            };
-            let Some(part) = assets.layers.get(&(layer, a.small)) else {
-                continue;
-            };
-            // ArmorStandArmorModel.setupAnim runs humanoid setup independently.
-            layer_poses.reset(part);
-            self.setup_armor_stand_pose(a, partial, &mut layer_poses);
-            for material in self.equipment_materials(
-                &piece,
-                Some(stack),
-                super::equipment_piece::EquipmentPass::Draw,
-            ) {
-                put(
-                    &mut skin,
-                    material.model.unwrap_or(part),
-                    base,
-                    &layer_poses,
-                    material.binding.uv,
-                    0.0,
-                    material.color,
-                    if material.glows {
-                        sunrise_client::mobs::render::FULL_BRIGHT
-                    } else {
-                        packed
-                    },
-                    material.overlay,
-                    out,
-                );
-            }
-        }
-        // WingsLayer: ArmorStandRenderer adds it after the armour layers. A stand
-        // never crouches or glides, so its wings rest folded.
-        self.wings_geometry(
-            a.equipment[4].as_ref().map(|s| &*s.item),
-            a.equipment[4].as_ref(),
-            None,
-            a.small,
-            base,
-            sunrise_client::mobs::ElytraAnimation::RESTING,
-            false,
-            packed,
-            self.wings_overlay(a.equipment[4].as_ref()),
-            out,
-        );
-    }
-    /// `SmithingScreen`'s armour stand: `updateArmorStandPreview` puts the
-    /// result on a stand without its base plate and with its arms, turned to
-    /// 210 degrees, and `extractEntityInInventory` draws it at scale 25 in
-    /// the box (x0, y0) to (x1, y1), moved up 1 and tilted by `ARMOR_STAND_ANGLE`.
-    pub(super) fn draw_smithing_armor_stand(
-        &self,
-        batch: &mut sunrise_client::hud::HudBatch,
-        result: Option<&ItemStack>,
-        [x0, y0, x1, y1]: [f32; 4],
-    ) {
-        let mut stand = ArmorStand::new(0, Vec3::ZERO, 210.0);
-        stand.no_base_plate = true;
-        stand.show_arms = true;
-        if let Some(stack) = result {
-            let equip = self
-                .res
-                .items()
-                .get(&stack.item)
-                .and_then(|i| i.equip_slot.clone());
-            stand.equipment[preview_slot(equip.as_deref())] = Some(stack.clone());
-        }
-        // LivingEntityRenderer: setupRotations (180 - body yaw), the flip and
-        // the 1.501 drop, at full light.
-        let base = glam::Mat4::from_rotation_y((180.0 - stand.yaw).to_radians())
-            * glam::Mat4::from_scale(glam::Vec3::new(-1.0, -1.0, 1.0))
-            * glam::Mat4::from_translation(glam::Vec3::new(0.0, -1.501, 0.0));
-        let mut verts = Vec::new();
-        self.armor_stand_vertices(&stand, None, base, 240 | 240 << 8, None, &mut verts);
-        // ARMOR_STAND_ANGLE: rotationXYZ(0.43633232, 0, PI).
-        let gui =
-            glam::Mat4::from_translation(glam::Vec3::new((x0 + x1) / 2.0, (y0 + y1) / 2.0, 0.0))
-                * glam::Mat4::from_scale(glam::Vec3::new(25.0, 25.0, -25.0))
-                * glam::Mat4::from_translation(glam::Vec3::new(0.0, 1.0, 0.0))
-                * glam::Mat4::from_rotation_x(0.436_332_32)
-                * glam::Mat4::from_rotation_z(std::f32::consts::PI);
-        let glints =
-            super::perspective::preview_glint_quads(&verts, gui, 0..0, self.client.glint_frame);
-        let quads =
-            super::perspective::player_preview_quads(verts, gui, None, &self.gui.atlas.sprites);
-        super::perspective::emit_preview(batch, quads, glints, [x0, y0, x1, y1]);
-    }
 }
 /// The stand's slot (`ArmorStand::SLOTS` order) for an item whose
 /// `equippable` slot is `equip` (`SmithingScreen.updateArmorStandPreview`):
 /// worn in a head, chest, legs or feet slot, else (no `equippable`, or any
 /// other slot: main hand, off hand, body, saddle) held in the left hand.
-fn preview_slot(equip: Option<&str>) -> usize {
+pub(in crate::game) fn preview_slot(equip: Option<&str>) -> usize {
     match equip {
         Some("feet") => 2,
         Some("legs") => 3,
@@ -2196,7 +1701,7 @@ fn preview_slot(equip: Option<&str>) -> usize {
 }
 /// The `Pose` rotations on the parts of an armor stand model or its armor
 /// (`ArmorStandArmorModel.setupAnim`); the body also turns the sticks.
-fn apply_pose(poses: &mut Poses, pose: &[[f32; 3]; 6]) {
+pub(in crate::game) fn apply_pose(poses: &mut Poses, pose: &[[f32; 3]; 6]) {
     let parts: [&[&str]; 6] = [
         &["head"],
         &[
@@ -2221,7 +1726,7 @@ fn apply_pose(poses: &mut Poses, pose: &[[f32; 3]; 6]) {
         }
     }
 }
-fn overlaps(a: Aabb, b: Aabb) -> bool {
+pub(in crate::game) fn overlaps(a: Aabb, b: Aabb) -> bool {
     let (a0, a1, b0, b1) = (
         a.min_position(),
         a.max_position(),
@@ -2234,10 +1739,10 @@ fn overlaps(a: Aabb, b: Aabb) -> bool {
 /// checks: the piece worn in the slot, the hand, and the old piece bound for
 /// the inventory.
 #[derive(Debug, PartialEq)]
-struct ArmorSwap {
-    worn: ItemStack,
-    hand: Option<ItemStack>,
-    to_inventory: Option<ItemStack>,
+pub(in crate::game) struct ArmorSwap {
+    pub(in crate::game) worn: ItemStack,
+    pub(in crate::game) hand: Option<ItemStack>,
+    pub(in crate::game) to_inventory: Option<ItemStack>,
 }
 /// `Equippable.swapWithEquipmentSlot` after its checks. A single item swaps
 /// with the worn piece: the hand gets the worn piece (`copyAndClear`), or
@@ -2245,7 +1750,7 @@ struct ArmorSwap {
 /// (`copy` instead of `copyAndClear`). From a larger stack one item is worn
 /// (`consumeAndReturn`, which takes none in creative) and the worn piece goes
 /// to the inventory.
-fn swap_with_equipment_slot(
+pub(in crate::game) fn swap_with_equipment_slot(
     stack: &ItemStack,
     current: Option<ItemStack>,
     creative: bool,
@@ -2280,7 +1785,7 @@ impl Game<'_> {
     /// `Equippable.swapWithEquipmentSlot`: right-clicking armor swaps it into
     /// its slot (the worn piece comes back to the hand). It runs on a client
     /// too (`Item.use`), as the prediction the server's slot packets confirm.
-    pub(super) fn equip_from_hand(&mut self, stack: &ItemStack) -> bool {
+    pub(in crate::game) fn equip_from_hand(&mut self, stack: &ItemStack) -> bool {
         let Some(info) = self.items().get(&stack.item) else {
             return false;
         };
@@ -2373,149 +1878,8 @@ impl Game<'_> {
         true
     }
 }
-impl Game<'_> {
-    /// `ItemInHandLayer` and `CustomHeadLayer` of an armour stand: the hand
-    /// items in the third-person contexts, and a non-armour head item on the
-    /// head (`translateToHead`: down a quarter, turned, 0.625 scale). With
-    /// `skin`, items that can are posed on the GPU with the stand.
-    #[allow(clippy::too_many_arguments)]
-    fn armor_stand_items(
-        &self,
-        a: &ArmorStand,
-        model: &Part,
-        base: glam::Mat4,
-        poses: &Poses,
-        world_partial: Option<f32>,
-        light: u32,
-        mut skin: Option<&mut sunrise_client::mobs::skin::Skin>,
-        out: &mut Vec<Vertex>,
-    ) {
-        let lights = sunrise_client::block_entity_render::diffuse_lights(self.nether_lighting());
-        let mut submit = |state: &sunrise_client::item_render::ItemRenderState,
-                          pose: glam::Mat4,
-                          out: &mut Vec<Vertex>| {
-            let on_gpu = skin
-                .as_deref_mut()
-                .is_some_and(|skin| self.skin_item(state, pose, light, lights, skin));
-            if !on_gpu {
-                self.submit_item_world(state, pose, light, out);
-            }
-        };
-        use sunrise_assets::item_model::DisplayContext;
-        use sunrise_client::mobs::render::part_matrix;
-        let owner = super::item_draw::owner_at(
-            [a.position.x, a.position.y, a.position.z],
-            a.yaw,
-            "minecraft:armor_stand",
-        );
-        // `useBabyOffset`: small stands use the baby hand offsets.
-        let (ox, oy, oz) = if a.small {
-            (0.0, 1.0, -4.5)
-        } else {
-            (1.0, 2.0, -10.0)
-        };
-        for (slot, left, context) in [
-            (0usize, false, DisplayContext::ThirdPersonRightHand),
-            (1, true, DisplayContext::ThirdPersonLeftHand),
-        ] {
-            let Some(stack) = &a.equipment[slot] else {
-                continue;
-            };
-            let arm = if left { "left_arm" } else { "right_arm" };
-            let Some(hand) = part_matrix(model, base, poses, arm, 0.0) else {
-                continue;
-            };
-            let pose = hand
-                * glam::Mat4::from_rotation_x((-90.0f32).to_radians())
-                * glam::Mat4::from_rotation_y(std::f32::consts::PI)
-                * glam::Mat4::from_translation(glam::Vec3::new(
-                    if left { -ox } else { ox } / 16.0,
-                    oy / 16.0,
-                    oz / 16.0,
-                ));
-            let seed = a.id as i32 + if left { 1 } else { 2 };
-            // OptiFine CIT `hand=off` rules: slot 1 is the off hand.
-            let mut state = if left {
-                self.resolve_item_in_hand(stack, context, Some(&owner), seed, Hand::Off)
-            } else {
-                self.resolve_item(stack, context, Some(&owner), seed)
-            };
-            if let Some(partial_tick) = world_partial {
-                let hand = if left {
-                    mod_api::Hand::Off
-                } else {
-                    mod_api::Hand::Main
-                };
-                self.tint_held_item(&mut state, stack, a.id, hand, partial_tick);
-            }
-            submit(&state, pose, out);
-        }
-        // `CustomHeadLayer`: a worn skull draws the skull model.
-        if let Some(stack) = &a.equipment[5]
-            && let Some(kind) = skull_kind(&stack.item)
-            && let Some(head) = part_matrix(model, base, poses, "head", 0.0)
-        {
-            let pose = head * glam::Mat4::from_scale(glam::Vec3::splat(1.1875));
-            let special = sunrise_assets::item_model::SpecialModel {
-                kind: if kind == "player" {
-                    sunrise_assets::item_model::SpecialKind::PlayerHead
-                } else {
-                    sunrise_assets::item_model::SpecialKind::Head {
-                        kind: kind.to_owned(),
-                        texture: None,
-                        animation: 0.0,
-                    }
-                },
-            };
-            let mut sink = sunrise_client::item_render::WorldSink {
-                out,
-                light,
-                lights: Some(sunrise_client::block_entity_render::diffuse_lights(
-                    self.nether_lighting(),
-                )),
-                glint: self.glint(),
-                tier: 0,
-            };
-            let profile = stack
-                .extra
-                .as_deref()
-                .and_then(|d| {
-                    d.preserved_components()
-                        .iter()
-                        .find(|(k, _)| k == "minecraft:profile")
-                })
-                .map(|(_, t)| self.skin_profiles.0.borrow_mut().head_profile_nbt(t))
-                .unwrap_or_else(|| std::sync::Arc::new(serde_json::Value::Null));
-            self.pack.item_renderer.submit_special(
-                &special,
-                &profile,
-                false,
-                pose,
-                &self.gui.atlas.sprites,
-                &self.item_host(),
-                &mut sink,
-            );
-            return;
-        }
-        // A head item that is not worn armour.
-        if let Some(stack) = &a.equipment[5]
-            && !sunrise_client::item_sync::equippable(stack, self.res.items())
-                .is_some_and(|e| e.asset_id.is_some() && e.slot == "head")
-            && let Some(head) = part_matrix(model, base, poses, "head", 0.0)
-        {
-            let pose = head
-                * glam::Mat4::from_translation(glam::Vec3::new(0.0, -0.25, 0.0))
-                * glam::Mat4::from_rotation_y(std::f32::consts::PI)
-                * glam::Mat4::from_scale(glam::Vec3::new(0.625, -0.625, -0.625));
-            // `updateForLiving`: seeded by the entity id plus HEAD's ordinal.
-            let state =
-                self.resolve_item(stack, DisplayContext::Head, Some(&owner), a.id as i32 + 5);
-            submit(&state, pose, out);
-        }
-    }
-}
 /// `ArmorStand.getBbWidth` and `getBbHeight`: a marker has no box, a small stand is half size.
-fn stand_box(a: &ArmorStand) -> (f32, f32) {
+pub(in crate::game) fn stand_box(a: &ArmorStand) -> (f32, f32) {
     match (a.marker, a.small) {
         (true, _) => (0.0, 0.0),
         (false, true) => (0.25, 0.9875),
@@ -2523,7 +1887,7 @@ fn stand_box(a: &ArmorStand) -> (f32, f32) {
     }
 }
 /// `AbstractSkullBlock.getType` of a skull item.
-pub(super) fn skull_kind(item: &str) -> Option<&'static str> {
+pub(in crate::game) fn skull_kind(item: &str) -> Option<&'static str> {
     Some(match item {
         "minecraft:skeleton_skull" => "skeleton",
         "minecraft:wither_skeleton_skull" => "wither_skeleton",
@@ -2538,13 +1902,13 @@ pub(super) fn skull_kind(item: &str) -> Option<&'static str> {
 
 /// `ArmorStand.ignoreExplosion` (an invisible stand), and `hurtServer`
 /// refusing an invisible or marker stand: such a stand outlasts any blast.
-pub(super) fn spared_by_blast(a: &ArmorStand) -> bool {
+pub(in crate::game) fn spared_by_blast(a: &ArmorStand) -> bool {
     a.invisible || a.marker
 }
 
 /// `ArmorStand.brokenByAnything`: the equipment, less what curse of vanishing
 /// keeps (`PREVENT_EQUIPMENT_DROP`), popped at `blockPosition().above()`.
-fn broken_armor_stand_equipment(a: ArmorStand) -> ([i32; 3], Vec<ItemStack>) {
+pub(in crate::game) fn broken_armor_stand_equipment(a: ArmorStand) -> ([i32; 3], Vec<ItemStack>) {
     let pos = [
         a.position.x.floor() as i32,
         a.position.y.floor() as i32 + 1,
@@ -2559,7 +1923,7 @@ fn broken_armor_stand_equipment(a: ArmorStand) -> ([i32; 3], Vec<ItemStack>) {
     (pos, drops)
 }
 #[cfg(test)]
-mod swap_tests {
+pub(in crate::game) mod swap_tests {
     use super::*;
     fn stack(item: &str, count: u32) -> ItemStack {
         ItemStack::new(item, count)
@@ -2625,7 +1989,7 @@ mod swap_tests {
     }
 }
 #[cfg(test)]
-mod burn_drop_tests {
+pub(in crate::game) mod burn_drop_tests {
     use super::*;
     #[test]
     fn only_visible_non_marker_stands_are_broken_by_blasts() {
@@ -2682,7 +2046,7 @@ mod burn_drop_tests {
     }
 }
 #[cfg(test)]
-mod push_tests {
+pub(in crate::game) mod push_tests {
     use super::super::minecarts::{CartKind, Minecart};
     use super::*;
 
@@ -2760,7 +2124,7 @@ mod push_tests {
     }
 }
 #[cfg(test)]
-mod layer_color_tests {
+pub(in crate::game) mod layer_color_tests {
     use super::*;
     #[test]
     fn the_smithing_preview_wears_armour_and_holds_the_rest_in_its_off_hand() {
@@ -2798,7 +2162,7 @@ mod layer_color_tests {
 }
 
 #[cfg(test)]
-mod pumpkin_equippable_use_tests {
+pub(in crate::game) mod pumpkin_equippable_use_tests {
     use super::*;
     use std::sync::{atomic::AtomicI32, mpsc};
     use sunrise_client::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubConfig};
@@ -2939,7 +2303,7 @@ mod pumpkin_equippable_use_tests {
 }
 
 #[cfg(test)]
-mod stand_lodestone_inventory_tick_tests {
+pub(in crate::game) mod stand_lodestone_inventory_tick_tests {
     use sunrise_client::motion::PlayerMotion;
     use sunrise_core::{geometry::Vec3, position::BlockPos};
 
@@ -3105,7 +2469,7 @@ mod stand_lodestone_inventory_tick_tests {
 }
 
 #[cfg(test)]
-mod postbaseline_lodestone_controls {
+pub(in crate::game) mod postbaseline_lodestone_controls {
     //! Added after baseline: source-backed slots and preservation, not new runtime breadth.
     use super::Game;
     use std::sync::Arc;
@@ -3284,12 +2648,14 @@ mod postbaseline_lodestone_controls {
 }
 
 #[cfg(test)]
-mod setup_anim_tests {
+pub(in crate::game) mod setup_anim_tests {
+    #[allow(unused_imports)]
     use super::*;
+    #[allow(unused_imports)]
     use std::sync::atomic::{AtomicUsize, Ordering};
 
-    static HEARD: AtomicUsize = AtomicUsize::new(0);
-    struct Listener;
+    pub(in crate::game) static HEARD: AtomicUsize = AtomicUsize::new(0);
+    pub(in crate::game) struct Listener;
     #[mod_api::__subscriptions]
     impl mod_api::Hooks for Listener {
         fn humanoid_setup_anim(
@@ -3325,58 +2691,5 @@ mod setup_anim_tests {
             }
             HEARD.fetch_add(1, Ordering::Relaxed);
         }
-    }
-
-    /// The real stand adapter exposes humanoid riding/head preparation, then
-    /// preserves position edits while saved rotations replace listener rotations.
-    #[test]
-    #[ignore = "daily"]
-    fn armor_stand_prepares_humanoid_then_overrides_only_rotations() {
-        let mods = vec![mod_api::ModEntry::new("pose", Box::new(Listener))].into();
-        mod_platform::testing::with_mods(mods, || {
-            assert!(mod_api::__private::listened(
-                mod_api::HookId::HumanoidSetupAnim
-            ));
-            super::super::native_entity_refs::tests::with_client_game(|game| {
-                let mut stand = ArmorStand::new(73, Vec3::ZERO, 0.0);
-                stand.show_arms = true;
-                stand.pitch = 30.0;
-                stand.vehicle = Some(9);
-                stand.pose = [[10.0, 20.0, 30.0]; 6];
-                let model = game.armor_stand_assets.0.main.as_ref().unwrap();
-                let mut poses = Poses::new(model);
-                game.setup_armor_stand_pose(&stand, 0.5, &mut poses);
-                for name in [
-                    "head",
-                    "body",
-                    "left_arm",
-                    "right_arm",
-                    "left_leg",
-                    "right_leg",
-                ] {
-                    let pose = poses.pose_of(name).unwrap();
-                    assert_eq!(&pose[..3], &[7.0, 8.0, 9.0]);
-                    assert_eq!(
-                        &pose[3..6],
-                        &[
-                            10.0_f32.to_radians(),
-                            20.0_f32.to_radians(),
-                            30.0_f32.to_radians()
-                        ]
-                    );
-                }
-                let mut verts = Vec::new();
-                game.armor_stand_vertices(
-                    &stand,
-                    Some(0.5),
-                    glam::Mat4::IDENTITY,
-                    0xf0f0,
-                    None,
-                    &mut verts,
-                );
-                assert!(!verts.is_empty());
-            });
-        });
-        assert_eq!(HEARD.load(Ordering::Relaxed), 2);
     }
 }

@@ -99,7 +99,7 @@ impl Loader<'_, '_> {
         Ok(self.install_and_encode(values, applied, install, encode))
     }
 }
-pub(super) fn load<'a>(
+pub(in crate::game) fn load<'a>(
     overlay: &sunrise_world::loot::PackOverlay<'_>,
     tags: impl Fn(&str) -> Option<&'a Tags>,
     known: impl Fn(&str, &str) -> bool,

@@ -1,3 +1,4 @@
+#[allow(unused_imports)]
 use super::*;
 
 /// The hook points. Each does nothing in Sunrise.
@@ -20,17 +21,6 @@ impl Game<'_> {
 /// Helpers for native mods, kept as stable as the hook points.
 // Native mods use these; nothing in Sunrise does.
 impl Game<'_> {
-    /// Requests vanilla's menu background blur for this frame, with a per-frame guard
-    /// so blur is applied at most once per frame. Returns true if blur was newly
-    /// requested this frame, or false if it was already applied/requested this frame.
-    /// API @API:screen_transparent_background@.
-    pub(in crate::game) fn apply_screen_blur(&self) -> bool {
-        if self.client.screen_blur_requested.get() {
-            return false;
-        }
-        self.client.screen_blur_requested.set(true);
-        true
-    }
     /// The user's configured menu background blur radius (`menuBackgroundBlurriness` in options.txt,
     /// usually 0.0 to 10.0; default 5.0). 0.0 means blur is turned off. API @API:screen_transparent_background@.
     pub(in crate::game) fn menu_blur_radius(&self) -> f32 {

@@ -1,32 +1,36 @@
 //! `/effect` (EffectCommands) and `/enchant` (EnchantCommand).
+#[allow(unused_imports)]
 use super::{Arg, Context, Game, R, Target, err, texts};
+#[allow(unused_imports)]
 use mod_api::EquipmentSlot;
+#[allow(unused_imports)]
 use sunrise_client::{
     brewing::{self, namespaced},
     effects::EffectInstance,
     text::{self, Style, Text},
 };
+#[allow(unused_imports)]
 use sunrise_items::equipment::MAINHAND;
 
 /// `CommandResponseTracker` over targets: elements with a non-zero result.
 #[derive(Default)]
-struct Tracker {
-    total: i32,
-    changed: Vec<Target>,
+pub(in crate::game) struct Tracker {
+    pub(in crate::game) total: i32,
+    pub(in crate::game) changed: Vec<Target>,
 }
 impl Tracker {
-    fn track(&mut self, t: Target, changed: bool) {
+    pub(in crate::game) fn track(&mut self, t: Target, changed: bool) {
         if changed {
             self.total += 1;
             self.changed.push(t);
         }
     }
 }
-fn effect_name(id: &str) -> Text {
+pub(in crate::game) fn effect_name(id: &str) -> Text {
     Text::translate(&brewing::description_id(id), &[])
 }
 impl Game<'_> {
-    fn effect_arg(ctx: &Context) -> R<&'static brewing::EffectDef> {
+    pub(in crate::game) fn effect_arg(ctx: &Context) -> R<&'static brewing::EffectDef> {
         let Some(Arg::Resource(id)) = ctx.get("effect") else {
             return Err(err("argument.resource.invalid_type", &[]));
         };
@@ -38,105 +42,15 @@ impl Game<'_> {
         })
     }
     /// The executing entity for argument-less forms (the player).
-    fn living_targets(&mut self, ctx: &Context) -> R<Vec<Target>> {
+    pub(in crate::game) fn living_targets(&mut self, ctx: &Context) -> R<Vec<Target>> {
         if ctx.get("targets").is_some() {
             self.entities(ctx, "targets", false)
         } else {
             Ok(vec![self.implied_player()])
         }
     }
-    /// `EffectCommands.giveEffect`.
-    pub(super) fn cmd_effect_give(&mut self, ctx: &Context) -> R<i32> {
-        let effect = Self::effect_arg(ctx)?;
-        let seconds = if ctx.has("infinite") {
-            Some(-1)
-        } else {
-            Self::int(ctx, "seconds")
-        };
-        let amplifier = Self::int(ctx, "amplifier").unwrap_or(0);
-        let particles = !matches!(ctx.get("hideParticles"), Some(Arg::Bool(true)));
-        // computeDurationInTicks
-        let duration = match seconds {
-            Some(s) if effect.instant => s,
-            Some(-1) => -1,
-            Some(s) => s * 20,
-            None if effect.instant => 1,
-            None => 600,
-        };
-        let mut tracker = Tracker::default();
-        for t in self.living_targets(ctx)? {
-            let changed = match t {
-                Target::Player | Target::Guest(_) => {
-                    // `new MobEffectInstance(effect, duration, amplifier, false, particles)`.
-                    let instance = EffectInstance::new(effect.id, duration, amplifier)
-                        .with_flags(false, particles);
-                    self.for_player(t, |g| g.add_player_effect(instance))
-                        .unwrap_or(false)
-                }
-                Target::Mob(id) => {
-                    let Some(kind) = self
-                        .mobs
-                        .iter()
-                        .find(|m| m.id == id && !m.removed)
-                        .map(|m| m.kind.id.clone())
-                    else {
-                        tracker.track(t, false);
-                        continue;
-                    };
-                    let name = namespaced(effect.id);
-                    // `LivingEntity.addEffect` refuses what the mob cannot
-                    // be affected by.
-                    if !self.can_be_affected(Some(id as i32), &kind, name) {
-                        false
-                    } else {
-                        match self.mobs.iter_mut().find(|m| m.id == id) {
-                            Some(m) => {
-                                let new = !m.has_effect(name);
-                                // `new MobEffectInstance(effect, duration, amplifier, false, particles)`.
-                                let changed =
-                                    m.add_effect_with(name, duration, amplifier, false, particles);
-                                if new
-                                    && changed
-                                    && let Some(sound) = super::super::potions::sound_on_added(name)
-                                {
-                                    let at = [m.position.x, m.position.y, m.position.z];
-                                    self.audio.0.play(sound, Some(at), 1.0, 1.0);
-                                }
-                                self.mod_effect_added(name, Some(id as i32), amplifier, new);
-                                changed
-                            }
-                            None => false,
-                        }
-                    }
-                }
-                _ => continue,
-            };
-            tracker.track(t, changed);
-        }
-        let message = match tracker.changed.as_slice() {
-            [] => return Err(err("commands.effect.give.failed", &[])),
-            [one] => Text::translate(
-                "commands.effect.give.success.single",
-                &[
-                    effect_name(effect.id),
-                    self.target_name(*one),
-                    Text::literal((duration / 20).to_string()),
-                ],
-            ),
-            many => Text::translate(
-                "commands.effect.give.success.multiple",
-                &texts(&[
-                    effect_name(effect.id),
-                    Text::literal(many.len().to_string()),
-                    Text::literal((duration / 20).to_string()),
-                ]),
-            ),
-        };
-        self.feedback(message);
-        Ok(tracker.total)
-    }
     /// `EffectCommands.clearEffects` / `clearEffect`.
-    pub(super) fn cmd_effect_clear(&mut self, ctx: &Context) -> R<i32> {
+    pub(in crate::game) fn cmd_effect_clear(&mut self, ctx: &Context) -> R<i32> {
         let effect = if ctx.get("effect").is_some() {
             Some(Self::effect_arg(ctx)?)
         } else {
@@ -183,7 +97,7 @@ impl Game<'_> {
         Ok(tracker.total)
     }
     /// `EnchantCommand.enchant`: enchant each living target's main-hand stack.
-    pub(super) fn cmd_enchant(&mut self, ctx: &Context) -> R<i32> {
+    pub(in crate::game) fn cmd_enchant(&mut self, ctx: &Context) -> R<i32> {
         let Some(Arg::Resource(id)) = ctx.get("enchantment") else {
             return Ok(0);
         };
@@ -248,7 +162,13 @@ impl Game<'_> {
 
     /// Change components in the hand itself, without an equip event. The next
     /// inventory and equipment syncs publish the updated stack as usual.
-    fn enchant_main_hand(&mut self, t: Target, id: &str, level: u32, single: bool) -> R<bool> {
+    pub(in crate::game) fn enchant_main_hand(
+        &mut self,
+        t: Target,
+        id: &str,
+        level: u32,
+        single: bool,
+    ) -> R<bool> {
         let stack = match t {
             // Include enchantments kept in the mob's gear as well as in the stack.
             Target::Mob(id) => self

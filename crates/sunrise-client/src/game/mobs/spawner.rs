@@ -2,12 +2,15 @@
 //! `clientTick` for every spawner (`mobs::spawner`), the mobs they add, a
 //! spawn egg used on one (`SpawnEggItem.useOn`), their events and the mob
 //! spinning inside (`SpawnerRenderer`).
+#[allow(unused_imports)]
 use super::{
     Game,
     creatures::{Finalized, SpawnReason},
     persist::SpawnTree,
 };
+#[allow(unused_imports)]
 use std::collections::HashMap;
+#[allow(unused_imports)]
 use sunrise_client::{
     Result,
     containers::BlockEntity,
@@ -18,17 +21,20 @@ use sunrise_client::{
     },
     particles::{ParticleOptions, ParticleType},
 };
+#[allow(unused_imports)]
 use sunrise_client_render::block_entity_reach::Reach;
+#[allow(unused_imports)]
 use sunrise_core::nbt::Tag;
+#[allow(unused_imports)]
 use sunrise_core::{
     geometry::Vec3,
     random::{LegacyRandom, LevelRandom, RandomSource},
 };
 
-type Pos = (i32, i32, i32);
+pub(in crate::game) type Pos = (i32, i32, i32);
 
 /// What a spawner tick decided to add, created once the level is free.
-pub(super) enum Planned {
+pub(in crate::game) enum Planned {
     /// `finalizeSpawn` ran on a fresh mob (its provisional id in `Mob::id`);
     /// the spawn data's `equipment`.
     Finalized(Mob, Option<Tag>),
@@ -39,22 +45,22 @@ pub(super) enum Planned {
 
 /// What the spawner code keeps between ticks.
 #[derive(Default)]
-pub(super) struct SpawnerState {
+pub(in crate::game) struct SpawnerState {
     /// The mob shown in each spawner and the id it was made for
     /// (`getOrCreateDisplayEntity`).
-    displays: HashMap<Pos, (String, Mob)>,
+    pub(in crate::game) displays: HashMap<Pos, (String, Mob)>,
 }
 
 impl Game<'_> {
     /// `EntityType.byString`: the type is in the registry.
-    pub(super) fn entity_type_exists(&self, id: &str) -> bool {
+    pub(in crate::game) fn entity_type_exists(&self, id: &str) -> bool {
         self.res
             .rest
             .get()
             .is_some_and(|rest| rest.spawner_types.contains_key(id))
     }
     /// Whether `entity_type_exists` has a registry to answer from.
-    pub(super) fn entity_types_loaded(&self) -> bool {
+    pub(in crate::game) fn entity_types_loaded(&self) -> bool {
         self.res.rest.get().is_some()
     }
     /// The server tick of the spawner at `key`. Its client tick comes after
@@ -63,7 +69,7 @@ impl Game<'_> {
     /// The caller only reaches this for a `BlockEntity::Spawner`, and changing
     /// the block removes or replaces that entity, so the block is not read
     /// again here.
-    pub(super) fn tick_spawner(&mut self, key: Pos) -> Result<()> {
+    pub(in crate::game) fn tick_spawner(&mut self, key: Pos) -> Result<()> {
         let Some((lease, BlockEntity::Spawner(mut spawner))) = self.world.block_entities.take(&key)
         else {
             return Ok(());
@@ -76,14 +82,14 @@ impl Game<'_> {
     }
     /// The client ticks of these spawners, then the shown mobs of spawners
     /// that are gone go.
-    pub(super) fn client_tick_spawners(&mut self, keys: &[Pos]) {
+    pub(in crate::game) fn client_tick_spawners(&mut self, keys: &[Pos]) {
         for &key in keys {
             self.client_tick_spawner(key);
         }
         self.forget_spawner_displays();
     }
     /// Drops the display mobs of spawners and trial spawners that are gone.
-    pub(super) fn forget_spawner_displays(&mut self) {
+    pub(in crate::game) fn forget_spawner_displays(&mut self) {
         let entities = &self.world.block_entities;
         self.spawners.0.displays.retain(|k, _| {
             matches!(
@@ -92,12 +98,16 @@ impl Game<'_> {
             )
         });
     }
-    fn server_tick_spawner(&mut self, key: Pos, spawner: &mut Spawner) -> Result<()> {
+    pub(in crate::game) fn server_tick_spawner(
+        &mut self,
+        key: Pos,
+        spawner: &mut Spawner,
+    ) -> Result<()> {
         self.server_tick_spawner_of(key, spawner, None)
     }
     /// `BaseSpawner.serverTick` at `key`: a spawner block's, or the spawner minecart
     /// `cart` is at (its `broadcastEvent` is an entity event on the cart).
-    pub(super) fn server_tick_spawner_of(
+    pub(in crate::game) fn server_tick_spawner_of(
         &mut self,
         key: Pos,
         spawner: &mut Spawner,
@@ -158,7 +168,7 @@ impl Game<'_> {
     /// Creates the mobs a spawner tick planned; their provisional ids
     /// (counting down from u32::MAX) map to the mobs' ids.
     /// (counting down from `u32::MAX`) map to the mobs' ids.
-    pub(super) fn add_planned(
+    pub(in crate::game) fn add_planned(
         &mut self,
         planned: Vec<Planned>,
         mut created: Vec<Mob>,
@@ -208,7 +218,7 @@ impl Game<'_> {
     }
     /// The spawner's `loadEntityRecursive` and `tryAddFreshEntityWithPassengers`:
     /// make the accepted mobs visible to the next attempt before the tick inserts them.
-    pub(super) fn plan_spawner_mob(
+    pub(in crate::game) fn plan_spawner_mob(
         &self,
         l: &super::natural_spawning::GameLevel,
         r: &SpawnerSpawn,
@@ -297,7 +307,7 @@ impl Game<'_> {
         Some(SpawnerAdded { id: key, mob: true })
     }
     /// What a spawner's tick or a spawn egg did, shown and sent.
-    fn apply_spawner_events(
+    pub(in crate::game) fn apply_spawner_events(
         &mut self,
         key: Pos,
         events: Vec<SpawnerEvent>,
@@ -338,7 +348,7 @@ impl Game<'_> {
     }
     /// `sendBlockUpdated`: the clients load the new update tag (the client
     /// copy's delay follows it, its display mob is made again).
-    fn spawner_block_updated(&mut self, key: Pos) {
+    pub(in crate::game) fn spawner_block_updated(&mut self, key: Pos) {
         self.world
             .path_type_block_updated(sunrise_core::position::BlockPos::new(key.0, key.1, key.2));
         if let Some(BlockEntity::Spawner(s)) = self.world.block_entities.get_mut(&key) {
@@ -351,7 +361,7 @@ impl Game<'_> {
         self.world.modified.insert((key.0 >> 4, key.2 >> 4));
     }
     /// `LivingEntity.makePoofParticles` (entity event 20) for a mob.
-    pub(super) fn mob_poof(&mut self, id: u32) {
+    pub(in crate::game) fn mob_poof(&mut self, id: u32) {
         let Some(m) = self.mobs.iter().find(|m| m.id == id) else {
             return;
         };
@@ -361,7 +371,7 @@ impl Game<'_> {
     }
     /// `Mob.handleEntityEvent` 20 (`spawnAnim` on a client): the poof about
     /// mob `id`.
-    pub(super) fn poof_particles(&mut self, id: u32) {
+    pub(in crate::game) fn poof_particles(&mut self, id: u32) {
         let Some(m) = self.mobs.iter().find(|m| m.id == id) else {
             return;
         };
@@ -379,7 +389,7 @@ impl Game<'_> {
         }
     }
     /// `LevelEventHandler` 2004: twenty smoke and flame pairs around the spawner.
-    pub(super) fn spawner_burst(&mut self, pos: [i32; 3]) {
+    pub(in crate::game) fn spawner_burst(&mut self, pos: [i32; 3]) {
         let (smoke, flame) = (
             ParticleOptions::simple(ParticleType::Smoke),
             ParticleOptions::simple(ParticleType::Flame),
@@ -394,7 +404,7 @@ impl Game<'_> {
         }
     }
     /// The client copy's tick: particles and the spin while a player is near.
-    pub(super) fn client_tick_spawner(&mut self, key: Pos) {
+    pub(in crate::game) fn client_tick_spawner(&mut self, key: Pos) {
         let near = {
             let Some(BlockEntity::Spawner(s)) = self.world.block_entities.get(&key) else {
                 return;
@@ -429,7 +439,7 @@ impl Game<'_> {
     }
     /// `getOrCreateDisplayEntity`: the mob shown in the spawner, made again
     /// when its type changes. False when there is none.
-    pub(super) fn update_spawner_display(&mut self, key: Pos) -> bool {
+    pub(in crate::game) fn update_spawner_display(&mut self, key: Pos) -> bool {
         let Some(kind) = self.spawner_display_kind(key) else {
             self.spawners.0.displays.remove(&key);
             return false;
@@ -452,7 +462,7 @@ impl Game<'_> {
     /// The type of the mob a spawner shows: its next data's id, when the game
     /// knows the mob.
     /// A trial spawner shows one only in the states with a spinning mob.
-    fn spawner_display_kind(&self, key: Pos) -> Option<String> {
+    pub(in crate::game) fn spawner_display_kind(&self, key: Pos) -> Option<String> {
         let id = match self.world.block_entities.get(&key)? {
             BlockEntity::Spawner(s) => s.next_data()?.id()?,
             BlockEntity::TrialSpawner(s) => {
@@ -466,7 +476,7 @@ impl Game<'_> {
     /// `SpawnEggItem.useOn` on a spawner: the egg sets its mob, and an op's
     /// egg its effective entity `data` too.
     /// None when the clicked block has no spawner.
-    pub(super) fn use_spawn_egg_on_spawner(
+    pub(in crate::game) fn use_spawn_egg_on_spawner(
         &mut self,
         pos: [i32; 3],
         kind: &str,
@@ -521,14 +531,6 @@ impl Game<'_> {
         self.post_block_game_event("minecraft:block_change", pos, Some(Who::Player), None);
         Some(true)
     }
-    /// `PlayerList.isOp` for the player acting now: a server's guest by their
-    /// own level, else the window's player.
-    pub(super) fn acting_player_is_op(&self) -> bool {
-        self.server
-            .lan_acting_permission
-            .unwrap_or(self.ui.registries.permission)
-            > 0
-    }
     /// `EntityType.createDefaultStackConfig` on an entity an item made (a
     /// vehicle, a hanging entity, an armor stand): the item's custom name and
     /// custom data (`applyComponentsFromItemStack`:
@@ -537,7 +539,7 @@ impl Game<'_> {
     /// compound and loaded (`updateCustomEntityTag`) when it names this type.
     /// An op-only type (command block and spawner minecarts) takes it from an
     /// op player only, never from a dispenser (`by_player` false).
-    pub(super) fn apply_item_stack_config(
+    pub(in crate::game) fn apply_item_stack_config(
         &mut self,
         target: super::commands::Target,
         kind: &str,
@@ -562,7 +564,7 @@ impl Game<'_> {
     }
     /// `SpawnerRenderer` and `TrialSpawnerRenderer`: the next mob of every
     /// spawner near the camera, small and turning.
-    pub(super) fn spawner_geometry(
+    pub(in crate::game) fn spawner_geometry(
         &self,
         camera: glam::DVec3,
         alpha: f64,
@@ -637,7 +639,7 @@ impl Game<'_> {
 }
 
 #[cfg(test)]
-mod tests {
+pub(in crate::game) mod tests {
     use super::*;
 
     /// `BaseSpawner.serverTick` with a player in range: a running delay only

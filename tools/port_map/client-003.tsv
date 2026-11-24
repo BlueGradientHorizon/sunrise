@@ -33,7 +33,7 @@ ChatListener.showMessageToPlayer	port	crates/sunrise-client/src/game/network/rem
 ChatListener.evaluateTrustLevel	port	crates/sunrise-client/src/game/network/remote/chat.rs::Game::chat_trust
 ChatListener.logPlayerMessage	skip:service		feeds the chat log that chat reports read
 ChatListener.logSystemMessage	skip:service		feeds the chat log that chat reports read
-ChatListener.handleSystemMessage	port	crates/sunrise-client/src/game/network/remote/packets_player.rs::Game::apply_system_chat_packet	gap: minor: hide-matched-names and friend filtering are not applied to system lines
+ChatListener.handleSystemMessage	port	crates/sunrise-client/src/game/network/remote/packets_player_client.rs::Game::apply_system_chat_packet	gap: minor: hide-matched-names and friend filtering are not applied to system lines
 ChatListener.guessChatUUID	skip:service		social lookup of a name in a system line, used only for blocking and hiding
 ChatListener.isSenderLocalPlayer	inline	crates/sunrise-client/src/game/network/remote/chat.rs::Game::chat_trust	the local player's own message on their own server is secure
 ChatLog.codec	skip:java		serializer of the chat log
@@ -87,18 +87,18 @@ ServerAddress.isValidAddress	port	crates/sunrise-protocol/src/servers.rs::parse_
 ServerAddress.equals	skip:java		value equality; Sunrise compares the strings
 ServerNameResolver.resolveAddress	port	crates/sunrise-protocol/src/resolver.rs::resolve	gap: minor: no block-list check on the resolved address
 ServerRedirectHandler.createDnsSrvRedirectHandler	port	crates/sunrise-protocol/src/resolver.rs::srv_redirect	SRV lookup of _minecraft._tcp on port 25565
-AbstractBoatRenderer.submit	port	crates/sunrise-client/src/game/entities/boats/mod.rs::Game::boat_geometry	the transform, hurt tilt, bubble-column wobble (bubble_angle) and paddles are drawn
-AbstractBoatRenderer.extractRenderState	inline	crates/sunrise-client/src/game/entities/boats/mod.rs::Game::boat_geometry	bubbleAngle is read (Boat::bubble_angle) for the bubble-column wobble
+AbstractBoatRenderer.submit	port	crates/sunrise-client/src/game/entities/boats/mod_client.rs::Game::boat_geometry	the transform, hurt tilt, bubble-column wobble (bubble_angle) and paddles are drawn
+AbstractBoatRenderer.extractRenderState	inline	crates/sunrise-client/src/game/entities/boats/mod_client.rs::Game::boat_geometry	bubbleAngle is read (Boat::bubble_angle) for the bubble-column wobble
 AbstractCubeMobRenderer.downscaleSlightly	port	crates/sunrise-client/src/mobs/cube.rs::scale	slime only: the 0.999 scale and small lift
 AbstractCubeMobRenderer.applySizeAndSquish	port	crates/sunrise-client/src/mobs/cube.rs::scale	size and squish scale
 AbstractCubeMobRenderer.extractRenderState	port	crates/sunrise-client/src/mobs/cube.rs::scale	squish and size are read from the mob at draw time
 AbstractHoglinRenderer.extractRenderState	port	crates/sunrise-client/src/mobs/piglin.rs::hoglin_anim	the headbutt count (anim_ticks) drives the head pose
 AbstractHorseRenderer.extractRenderState	port	crates/sunrise-client/src/mobs/equine.rs::anim	eat, stand and mouth poses; saddle and armour come from render.rs layers
-AbstractMinecartRenderer.submit	port	crates/sunrise-client/src/game/entities/minecarts.rs::Game::cart_geometry	gap: player: no hurt tilt when a cart is hit (hurt_time is not read here); minor: no per-cart offset jitter
-AbstractMinecartRenderer.newRender	port	crates/sunrise-client/src/game/entities/minecarts.rs::Game::cart_geometry	the new path's seat translation after the yaw/pitch rotation, drawn when `minecart_improvements()` is on or a lerp is queued
-AbstractMinecartRenderer.oldRender	port	crates/sunrise-client/src/game/entities/minecarts.rs::Game::cart_geometry	rail-based draw is the path Sunrise has
+AbstractMinecartRenderer.submit	port	crates/sunrise-client/src/game/entities/minecarts_client.rs::Game::cart_geometry	gap: player: no hurt tilt when a cart is hit (hurt_time is not read here); minor: no per-cart offset jitter
+AbstractMinecartRenderer.newRender	port	crates/sunrise-client/src/game/entities/minecarts_client.rs::Game::cart_geometry	the new path's seat translation after the yaw/pitch rotation, drawn when `minecart_improvements()` is on or a lerp is queued
+AbstractMinecartRenderer.oldRender	port	crates/sunrise-client/src/game/entities/minecarts_client.rs::Game::cart_geometry	rail-based draw is the path Sunrise has
 AbstractMinecartRenderer.newExtractState	port	crates/sunrise-client/src/game/network/remote/mod.rs::Game::remote_minecart_lerp	the cart's position and rotation sampled at the frame's partial tick from the steps a NewMinecartBehavior cart has queued; None when the cart has no lerp, and the renderer then keeps the entity's own interpolated position and rotation
-AbstractMinecartRenderer.oldExtractState	port	crates/sunrise-client/src/game/entities/minecarts.rs::Game::cart_geometry	rail front and back points are taken from the cart's rail position
+AbstractMinecartRenderer.oldExtractState	port	crates/sunrise-client/src/game/entities/minecarts_client.rs::Game::cart_geometry	rail front and back points are taken from the cart's rail position
 AbstractMinecartRenderer.getRenderOffset	missing		minor: only the new render path offsets the cart
 AbstractSkeletonRenderer.extractRenderState	port	crates/sunrise-client/src/mobs/anim.rs::setup	the aggressive and bow flags are read in setup; the freeze-conversion shake is render::shaking
 AbstractSkeletonRenderer.getArmPose	port	crates/sunrise-client/src/mobs/anim.rs::setup	bow-and-arrow arm pose when aggressive with a bow
@@ -111,10 +111,10 @@ ArmorModelSet.get	skip:java		container lookup of baked models
 ArmorModelSet.map	skip:java		container of baked models
 ArmorModelSet.putFrom	skip:java		container of baked models
 ArmorModelSet.bake	skip:data		models are loaded from Sunrise's assets, not baked from layer locations
-ArmorStandRenderer.extractRenderState	port	crates/sunrise-client/src/game/entities/armor_stands.rs::Game::armor_stand_geometry	wiggle, small, marker and poses are read there
-ArmorStandRenderer.submit	port	crates/sunrise-client/src/game/entities/armor_stands.rs::Game::armor_stand_geometry	small or big model
-ArmorStandRenderer.setupRotations	port	crates/sunrise-client/src/game/entities/armor_stands.rs::Game::armor_stand_geometry	the wiggle turn after a hit
-ArmorStandRenderer.getRenderType	port	crates/sunrise-client/src/game/entities/armor_stands.rs::Game::armor_stand_geometry	gap: minor: the translucent marker variant is not split out
+ArmorStandRenderer.extractRenderState	port	crates/sunrise-client/src/game/entities/armor_stands_client.rs::Game::armor_stand_geometry	wiggle, small, marker and poses are read there
+ArmorStandRenderer.submit	port	crates/sunrise-client/src/game/entities/armor_stands_client.rs::Game::armor_stand_geometry	small or big model
+ArmorStandRenderer.setupRotations	port	crates/sunrise-client/src/game/entities/armor_stands_client.rs::Game::armor_stand_geometry	the wiggle turn after a hit
+ArmorStandRenderer.getRenderType	port	crates/sunrise-client/src/game/entities/armor_stands_client.rs::Game::armor_stand_geometry	gap: minor: the translucent marker variant is not split out
 ArrowRenderer.submit	inline	crates/sunrise-client/src/game/mobs/creatures/mod.rs::Game::mob_geometry	the arrow model is drawn here, turned by its yaw and pitch
 ArrowRenderer.extractRenderState	inline	crates/sunrise-client/src/game/mobs/creatures/mod.rs::Game::mob_geometry	arrow yaw and pitch are read here
 AxolotlRenderer.extractRenderState	port	crates/sunrise-client/src/mobs/axolotl.rs::Animation::tick	in-water, on-ground, moving and playing-dead factors are updated here; poses in body_anim::axolotl
@@ -136,8 +136,8 @@ CowRenderer.extractRenderState	port	crates/sunrise-client/src/mobs/render.rs::bo
 CowRenderer.submit	port	crates/sunrise-client/src/mobs/render.rs::body	model per variant and age
 CreakingRenderer.extractRenderState	port	crates/sunrise-client/src/mobs/creaking.rs::animate	attack, invulnerability and death clocks
 CreeperRenderer.extractRenderState	port	crates/sunrise-client-render/src/overlay.rs::creeper_progress	white flash from swelling; the charged layer is in render.rs (energy swirl)
-CushionRenderer.extractRenderState	port	crates/sunrise-client/src/game/entities/cushions.rs::Game::cushion_geometry	yaw and colour texture are read there
-CushionRenderer.submit	port	crates/sunrise-client/src/game/entities/cushions.rs::Game::cushion_geometry	turned to its facing and drawn
+CushionRenderer.extractRenderState	port	crates/sunrise-client/src/game/entities/cushions_client.rs::Game::cushion_geometry	yaw and colour texture are read there
+CushionRenderer.submit	port	crates/sunrise-client/src/game/entities/cushions_client.rs::Game::cushion_geometry	turned to its facing and drawn
 DisplayRenderer.getSkyLightLevel	port	crates/sunrise-client/src/game/entities/text_displays.rs::Game::text_display_geometry	brightness override
 DisplayRenderer.getBlockLightLevel	port	crates/sunrise-client/src/game/entities/text_displays.rs::Game::display_light	the brightness override's sky and block light packed as light coords, else the world light at the display's block position
 DisplayRenderer.getShadowRadius	port	crates/sunrise-client/src/shadows.rs::display_caster	the interpolated radius, which shadows::shadow clamps to 32

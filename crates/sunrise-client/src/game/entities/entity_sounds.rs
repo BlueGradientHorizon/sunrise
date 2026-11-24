@@ -10,12 +10,12 @@ fn saved_silent(extra: Option<&Tag>) -> bool {
 impl Game<'_> {
     /// `Entity.isSilent` for the player this window plays: its saved `Silent`,
     /// which its sounds already read.
-    pub(super) fn player_silent(&self) -> bool {
+    pub(in crate::game) fn player_silent(&self) -> bool {
         saved_silent(self.level.player_extra.as_ref())
     }
     /// `Level.playSound(except, mob, ...)`: the category and actor exclusion
     /// belong to the call site, not to the event's name.
-    pub(super) fn play_mob_bound_sound(
+    pub(in crate::game) fn play_mob_bound_sound(
         &mut self,
         index: usize,
         event: &str,
@@ -44,7 +44,7 @@ impl Game<'_> {
 
     /// The player in place can be a guest while `as_guest` runs. Its entity
     /// id and saved metadata travel with that action, even while the hub is out.
-    pub(super) fn play_player_bound_sound(
+    pub(in crate::game) fn play_player_bound_sound(
         &mut self,
         event: &str,
         source: usize,
@@ -76,7 +76,7 @@ impl Game<'_> {
         );
     }
 
-    pub(super) fn sound_entity_state(&mut self, id: u32) -> Option<SoundEntityState> {
+    pub(in crate::game) fn sound_entity_state(&mut self, id: u32) -> Option<SoundEntityState> {
         if self.remote.is_some() {
             return self.remote_sound_entity_state(id as i32);
         }

@@ -6,7 +6,7 @@ use sunrise_client::recipe_book::{
 };
 use sunrise_mod_package::content::MenuType;
 
-pub(super) fn validate_registered(menus: &[&MenuType]) -> Result<(), String> {
+pub(in crate::game) fn validate_registered(menus: &[&MenuType]) -> Result<(), String> {
     for menu in RecipeBookLayout::registered_menus() {
         let Some((_, _, layout)) = RecipeBookLayout::registered(&menu) else {
             continue;

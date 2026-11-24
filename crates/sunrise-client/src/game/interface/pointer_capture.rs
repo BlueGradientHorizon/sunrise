@@ -8,7 +8,7 @@ fn studio_suppresses_focus_pause(replay_active: bool, freecam_active: bool) -> b
 
 impl Game<'_> {
     /// The options `MouseHandler.turnPlayer` reads.
-    pub(super) fn look_options(&self) -> LookOptions {
+    pub(in crate::game) fn look_options(&self) -> LookOptions {
         LookOptions {
             sensitivity: self.settings.sensitivity,
             smooth_camera: self.client.smooth_camera,
@@ -20,7 +20,7 @@ impl Game<'_> {
     /// `MouseHandler.handleAccumulatedMovement` and `Entity.turn`, once per frame.
     /// An agent moving the mouse (`mouse-move`) counts as a grabbed pointer in
     /// an active window, as it cannot grab the real one.
-    pub(super) fn apply_mouse_look(&mut self) {
+    pub(in crate::game) fn apply_mouse_look(&mut self) {
         let mut look = self.look_options();
         let time = self.client.started.elapsed().as_secs_f64();
         let pointer = self.client.captured || self.client.agent_pointer;
@@ -51,13 +51,13 @@ impl Game<'_> {
     /// A look from any device, in `Entity.turn` units: the tutorial's "look
     /// around" step hears it and Sunrise's zoom slows it, for the mouse and a
     /// controller alike.
-    pub(super) fn look_turn(&mut self, x: f64, y: f64) {
+    pub(in crate::game) fn look_turn(&mut self, x: f64, y: f64) {
         self.client.tutorial.mouse(x, y);
         let zoom = self.zoom_turn_scale();
         self.turn_player(x * zoom, y * zoom);
     }
     /// `Minecraft.pause`: a single-player game with a pausing screen open.
-    pub(super) fn pauses_game(&self) -> bool {
+    pub(in crate::game) fn pauses_game(&self) -> bool {
         self.has_singleplayer_server()
             && !self.is_published()
             && self.title.0.is_none()
@@ -73,12 +73,12 @@ impl Game<'_> {
     /// A screen open over gameplay while `screen` stays `Playing`: a book or
     /// lectern, a sign, a server dialog, the code of conduct, a link or
     /// server pack prompt (vanilla's `Minecraft.screen` is set for each).
-    pub(super) fn screen_over_playing(&self) -> bool {
+    pub(in crate::game) fn screen_over_playing(&self) -> bool {
         self.client.book.is_some() || self.client.sign_edit.is_some() || self.prompt_open()
     }
     /// A prompt is up: over the world or over another open screen, it takes the input and is
     /// answered first, in the order of `handle_window_event`'s arms and of what draws on top.
-    pub(super) fn prompt_open(&self) -> bool {
+    pub(in crate::game) fn prompt_open(&self) -> bool {
         self.dialog_open()
             || self.client.code_of_conduct.is_some()
             || self.client.link_prompt.is_some()
@@ -88,7 +88,7 @@ impl Game<'_> {
     /// `Minecraft.pauseIfInactive`: a window without focus for more than 500 ms
     /// pauses the game. An open screen (books, signs, the pack prompt, a server
     /// dialog) stays instead of pausing (`Gui.setPauseScreen`).
-    pub(super) fn pause_if_inactive(&mut self) {
+    pub(in crate::game) fn pause_if_inactive(&mut self) {
         if self
             .client
             .focus_lost
@@ -113,7 +113,7 @@ impl Game<'_> {
     /// mapping it is bound to, so a key pressed or kept down behind a screen
     /// counts once the game has the keyboard back. A sneak or sprint that
     /// toggles keeps its toggle state (`shouldSetOnIngameFocus`).
-    pub(super) fn restore_held_keys(&mut self) {
+    pub(in crate::game) fn restore_held_keys(&mut self) {
         let held: Vec<KeyCode> = self.client.physical_keys.iter().copied().collect();
         let options = self.toggle_options();
         for key in held {
@@ -149,7 +149,7 @@ impl Game<'_> {
     /// already released does nothing, so moving from screen to screen keeps
     /// the cursor where it is. Like GLFW's `glfwSetCursorPos`, nothing warps
     /// while the window is unfocused (losing focus releases the pointer).
-    pub(super) fn capture(&mut self, capture: bool) {
+    pub(in crate::game) fn capture(&mut self, capture: bool) {
         // A guest's action (`as_guest`) opens and closes screens on the
         // guest's own client: the window's pointer stays the host's (#687).
         if self.lan_guest_acting() {
@@ -269,7 +269,7 @@ impl Game<'_> {
     /// The game's pointer grab leaves the system pointer where the person at the computer has
     /// it: a genuinely hidden `--offscreen` run, an agent's window no one has clicked yet, or a
     /// scripted run, which plays the game while the person may be using the computer.
-    pub(super) fn internal_grab(&self) -> bool {
+    pub(in crate::game) fn internal_grab(&self) -> bool {
         self.options.offscreen || self.client.unclaimed_window || self.scripted_run()
     }
     /// A person pressed a mouse button inside the agent's window (`at_unclaimed`): from now on
@@ -278,7 +278,7 @@ impl Game<'_> {
     /// unclaimed, or an agent's `pad focus`, may have left the game's idea of the focus apart
     /// from the window's: it catches up first, as a `Focused` would have told it. So do the
     /// modifiers the person holds (`held_modifiers`).
-    pub(super) fn claim_window(&mut self, event_loop: &dyn EventLoopCtl) {
+    pub(in crate::game) fn claim_window(&mut self, event_loop: &dyn EventLoopCtl) {
         self.client.unclaimed_window = false;
         self.client.captured = false;
         // A regrab owed since an agent's `pad focus false` would take the pointer as the focus
@@ -306,7 +306,7 @@ impl Game<'_> {
     /// Once a scripted run is over, the person's last click into the window or away from it
     /// applies (`held_focus`), and the system pointer follows the grab the run left inside the
     /// game, as if the window had taken or released it now.
-    pub(super) fn settle_after_run(&mut self, event_loop: &dyn EventLoopCtl) {
+    pub(in crate::game) fn settle_after_run(&mut self, event_loop: &dyn EventLoopCtl) {
         if self.scripted_run() {
             return;
         }
@@ -334,7 +334,7 @@ impl Game<'_> {
     /// A Linux window manager can release the native pointer grab while the
     /// window remains focused. Reapply the recorded mode on the next gameplay
     /// click or wheel event, without warping the pointer or consuming input.
-    pub(super) fn reassert_pointer_capture(&mut self) {
+    pub(in crate::game) fn reassert_pointer_capture(&mut self) {
         #[cfg(target_os = "linux")]
         if self.client.screen == Screen::Playing
             && self.client.focused
@@ -362,7 +362,7 @@ impl Game<'_> {
     /// `GuiGraphicsExtractor.applyCursor` -> `Window.selectCursor` at the end
     /// of a frame: the cursor the frame's widgets asked for, set on the window
     /// only when it changes.
-    pub(super) fn apply_cursor_icon(&mut self) {
+    pub(in crate::game) fn apply_cursor_icon(&mut self) {
         use sunrise_client::widgets::Cursor;
         let wanted = sunrise_client::widgets::take_cursor();
         // The widgets under the keyboard's hidden pointer aren't under the
@@ -388,7 +388,7 @@ impl Game<'_> {
         self.client.cursor_icon = effective;
     }
     /// LevelLoadingScreen.onClose -> Gui.setScreen(null) -> grabMouse.
-    pub(super) fn capture_loaded_world(&mut self) {
+    pub(in crate::game) fn capture_loaded_world(&mut self) {
         // Loading may finish after focus was lost or another screen opened.
         if self.title.0.is_none() && self.client.screen == Screen::Playing {
             self.capture(true);
@@ -400,7 +400,7 @@ impl Game<'_> {
     /// mode), so the game takes the pointer again without waiting for a
     /// click. A screen that is open keeps it free, as releasing the pointer
     /// for that screen did: it is the screen, not the focus, that shows it.
-    pub(super) fn regrab_on_refocus(&mut self) {
+    pub(in crate::game) fn regrab_on_refocus(&mut self) {
         if self.studio_up() {
             self.client.regrab_on_refocus = false;
             self.client.studio.rmb_down = false;

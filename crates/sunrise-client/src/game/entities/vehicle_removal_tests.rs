@@ -1,24 +1,29 @@
 //! Exercise the removal boundary through the live server, including the next actor's tick.
+#[allow(unused_imports)]
 use super::{Game, commands::Target, native_entity_refs::tests::with_game};
+#[allow(unused_imports)]
 use mod_api::{Flow, Hooks, HostSide, ServerHost};
+#[allow(unused_imports)]
 use std::sync::{
     Arc, Mutex,
     atomic::{AtomicBool, AtomicUsize, Ordering},
 };
+#[allow(unused_imports)]
 use sunrise_client::{
     entities::{ArmorStand, Cushion},
     mobs::Mob,
 };
+#[allow(unused_imports)]
 use sunrise_core::{geometry::Vec3, position::ChunkPos};
 
-const AT: Vec3 = Vec3::new(4.5, 64.0, 4.5);
+pub(in crate::game) const AT: Vec3 = Vec3::new(4.5, 64.0, 4.5);
 
-fn push_pig(game: &mut Game<'_>, id: u32) {
+pub(in crate::game) fn push_pig(game: &mut Game<'_>, id: u32) {
     let kind = game.res.mob_types().get("minecraft:pig").unwrap().clone();
     game.mobs.push(Mob::new(id, kind, AT, 0.0));
 }
 
-fn tick_area(game: &mut Game<'_>) {
+pub(in crate::game) fn tick_area(game: &mut Game<'_>) {
     super::native_entity_refs::tests::prepare_entity_ticking_neighborhood(
         game,
         ChunkPos::new(0, 0),
@@ -157,13 +162,13 @@ fn stand_equipment_and_below_world_spills_are_visible_at_dismount() {
 }
 
 #[derive(Default)]
-struct Observation {
-    veto_dismount: AtomicBool,
-    veto_rider_tick: AtomicBool,
-    trace: Mutex<Vec<String>>,
+pub(in crate::game) struct Observation {
+    pub(in crate::game) veto_dismount: AtomicBool,
+    pub(in crate::game) veto_rider_tick: AtomicBool,
+    pub(in crate::game) trace: Mutex<Vec<String>>,
 }
 
-struct Observe(Arc<Observation>);
+pub(in crate::game) struct Observe(pub(in crate::game) Arc<Observation>);
 
 #[mod_api::__subscriptions]
 impl Hooks for Observe {
@@ -222,7 +227,10 @@ impl Hooks for Observe {
     }
 }
 
-fn with_removal_test_hooks(hooks: impl Hooks, test: impl FnOnce(&mut Game<'_>)) {
+pub(in crate::game) fn with_removal_test_hooks(
+    hooks: impl Hooks,
+    test: impl FnOnce(&mut Game<'_>),
+) {
     let entry = mod_api::ModEntry::new("removal-test", Box::new(hooks));
     mod_platform::testing::with_mods(Arc::from([entry]), || {
         with_game(|game| {
@@ -234,7 +242,7 @@ fn with_removal_test_hooks(hooks: impl Hooks, test: impl FnOnce(&mut Game<'_>)) 
     });
 }
 
-fn finish_death_on_next_tick(game: &mut Game<'_>, id: u32) {
+pub(in crate::game) fn finish_death_on_next_tick(game: &mut Game<'_>, id: u32) {
     let mob = game.mob_object_mut(id).unwrap();
     mob.health = 0.0;
     mob.death_time = 19;
@@ -284,72 +292,6 @@ fn mob_removal_keeps_a_veto_until_the_next_eligible_pre_with_or_without_off_leve
             );
         });
     }
-}
-
-#[test]
-#[ignore = "daily"]
-fn wind_charged_mob_removal_cannot_reenter_through_its_own_burst() {
-    #[derive(Default)]
-    struct Events {
-        bursts: AtomicUsize,
-        leaves: AtomicUsize,
-    }
-
-    struct Reenter(Arc<Events>);
-    #[mod_api::__subscriptions]
-    impl Hooks for Reenter {
-        fn explosion_start(
-            &self,
-            host: &mut dyn ServerHost,
-            event: &mut mod_api::ExplosionStartEvent<'_>,
-        ) -> Flow {
-            if event.explosion.source == Some(71)
-                && self.0.bursts.fetch_add(1, Ordering::Relaxed) == 0
-            {
-                // Only try once so an unguarded removal is a bounded failure.
-                let source = host.entity(71).expect("the burst's source still resolves");
-                assert!(
-                    !source.remove(host, mod_api::RemovalReason::Killed),
-                    "the burst cannot remove its own source again"
-                );
-            }
-            Flow::Continue
-        }
-
-        fn entity_leave_level(
-            &self,
-            host: &mut dyn ServerHost,
-            event: &mut mod_api::EntityLeaveLevelEvent<'_>,
-        ) {
-            if event.entity == 71 {
-                assert!(host.entity(71).is_none());
-                self.0.leaves.fetch_add(1, Ordering::Relaxed);
-            }
-        }
-    }
-
-    let events = Arc::new(Events::default());
-    with_removal_test_hooks(Reenter(events.clone()), |game| {
-        push_pig(game, 71);
-        push_pig(game, 72);
-        game.mob_object_mut(71).unwrap().extra.effects.push(
-            sunrise_client::mobs::StoredEffect::new("minecraft:wind_charged", 600, 0),
-        );
-        game.native_joins_flush(false, 0);
-        assert!(game.try_mount_mob(72, 71));
-
-        finish_death_on_next_tick(game, 71);
-        game.native_leaves_flush();
-
-        assert!(game.entity(71).is_none());
-        assert_eq!(game.native_vehicle_id(Target::Mob(72)), None);
-        assert_eq!(events.bursts.load(Ordering::Relaxed), 1);
-        assert_eq!(events.leaves.load(Ordering::Relaxed), 1);
-        assert_eq!(
-            game.audio.0.heard.get("minecraft:entity.breeze.wind_burst"),
-            Some(&1)
-        );
-    });
 }
 
 /// The same trace as VanillaVehicleRemovalOracle: the departing pig's own

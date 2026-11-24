@@ -10,7 +10,7 @@ use super::super::{minecarts::cart_at, native_ticks::TickRound};
 use super::Game;
 
 /// `Entity.checkBelowWorld`: `getY() < level.getMinY() - 64`.
-pub(super) fn below_world(y: f64, min_y: i32) -> bool {
+pub(in crate::game) fn below_world(y: f64, min_y: i32) -> bool {
     y < f64::from(min_y - 64)
 }
 

@@ -3,7 +3,7 @@
 
 /// The replies vanilla sends with `broadcast` false: queries and lists, which
 /// only the player who asked sees. Every other success message is broadcast.
-pub(super) const QUIET: &[&str] = &[
+pub(in crate::game) const QUIET: &[&str] = &[
     "commands.attribute.base_value.get.success",
     "commands.attribute.base_value.reset.success",
     "commands.attribute.base_value.set.success",

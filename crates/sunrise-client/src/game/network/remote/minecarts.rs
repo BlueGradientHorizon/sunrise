@@ -2,27 +2,27 @@ use super::*;
 
 /// `NewMinecartBehavior.MinecartStep`, including the server's rail pitch.
 #[derive(Clone, Copy)]
-pub(super) struct CartStep {
-    pub(super) position: Vec3,
-    pub(super) movement: Vec3,
-    pub(super) yaw: f32,
-    pub(super) pitch: f32,
-    pub(super) weight: f32,
+pub(in crate::game) struct CartStep {
+    pub(in crate::game) position: Vec3,
+    pub(in crate::game) movement: Vec3,
+    pub(in crate::game) yaw: f32,
+    pub(in crate::game) pitch: f32,
+    pub(in crate::game) weight: f32,
 }
 
 /// The client's state of a minecart on `NewMinecartBehavior`: the steps the
 /// server sent (`lerpSteps`), the ones being played over 3 ticks
 /// (`currentLerpSteps`) and where the cart was when they began (`oldLerp`).
 pub(in crate::game) struct CartLerp {
-    pub(super) pending: Vec<CartStep>,
-    pub(super) current: Vec<CartStep>,
-    pub(super) total_weight: f64,
-    pub(super) delay: i32,
-    pub(super) old: CartStep,
+    pub(in crate::game) pending: Vec<CartStep>,
+    pub(in crate::game) current: Vec<CartStep>,
+    pub(in crate::game) total_weight: f64,
+    pub(in crate::game) delay: i32,
+    pub(in crate::game) old: CartStep,
 }
 
 impl CartLerp {
-    pub(super) fn new() -> Self {
+    pub(in crate::game) fn new() -> Self {
         Self {
             pending: Vec::new(),
             current: Vec::new(),
@@ -41,7 +41,7 @@ impl CartLerp {
     /// `NewMinecartBehavior.getCartLerpPosition`, `getCartLerpMovements` and
     /// `getCartLerpYRot` / `getCartLerpXRot` at `partial`: the step the weights
     /// put this moment in, and how far along it from the one before.
-    pub(super) fn at(&self, partial: f32) -> (Vec3, Vec3, f32, f32) {
+    pub(in crate::game) fn at(&self, partial: f32) -> (Vec3, Vec3, f32, f32) {
         let alpha = ((3 - self.delay) as f32 + partial) / 3.0;
         let mut count_up = 0.0f32;
         let mut in_step = 1.0f32;
@@ -86,7 +86,7 @@ impl CartLerp {
     /// being played are used up, the queued ones become the current ones;
     /// the cart then sits where the steps put it at the end of this tick.
     /// False when it has no steps to play.
-    pub(super) fn tick(&mut self, c: &mut super::super::minecarts::Minecart) -> bool {
+    pub(in crate::game) fn tick(&mut self, c: &mut super::super::minecarts::Minecart) -> bool {
         self.delay -= 1;
         if self.delay <= 0 {
             self.old = CartStep {
@@ -118,7 +118,7 @@ impl CartLerp {
 impl Game<'_> {
     /// `ClientPacketListener.handleMinecartAlongTrack`: the steps join the ones
     /// the minecart has queued, if it runs `NewMinecartBehavior`.
-    pub(super) fn remote_move_minecart(&mut self, p: play::MoveMinecartAlongTrack) {
+    pub(in crate::game) fn remote_move_minecart(&mut self, p: play::MoveMinecartAlongTrack) {
         if !self.minecart_improvements() || !self.carts.iter().any(|c| c.id == p.id as u32) {
             return;
         }

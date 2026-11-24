@@ -1,12 +1,12 @@
 # PACKAGE	TARGET	TEST	SOURCE	REASON  (tools/ci/move_to_daily.py select; the rule is in its docstring)
 cargo-sunrise-mod	bin:cargo-sunrise-mod	layouts::tests::the_probe_builds_dependencies_with_their_resolved_features	crates/cargo-sunrise-mod/src/layouts.rs:310	slow
 cargo-sunrise-mod	test:bounded_reads	bounded_catalog_commands	crates/cargo-sunrise-mod/tests/bounded_reads.rs:96	slow
-sunrise-client	lib	game::api_values::loot_values::query_tests::queried_ability_parts_grant_and_deny	crates/sunrise-client/src/game/modding/api_values/loot_query_tests.rs:86	game-boot
-sunrise-client	lib	game::api_values::read_stack_tests::read_consumers_forward_nonresident_stacks_and_mutants	crates/sunrise-client/src/game/modding/api_values/read_stack_tests.rs:38	slow
+sunrise-client	lib	game::server_side::api_values::loot_values::query_tests::queried_ability_parts_grant_and_deny	crates/sunrise-client/src/game/modding/api_values/loot_query_tests.rs:86	game-boot
+sunrise-client	lib	game::server_side::api_values::read_stack_tests::read_consumers_forward_nonresident_stacks_and_mutants	crates/sunrise-client/src/game/modding/api_values/read_stack_tests.rs:38	slow
 sunrise-client	lib	game::commands::selector_bounds_tests::actual_selector_uses_body_overlap_but_distance_stays_at_the_origin	crates/sunrise-client/src/game/administration/commands/mod.rs:4865	game-boot
-sunrise-client	lib	game::commands::world_cmds::allay_owner_damage_tests::allay_owner_adapters_compare_the_actual_player_uuid	crates/sunrise-client/src/game/administration/commands/world_cmds.rs:2225	game-boot
-sunrise-client	lib	game::maps::tests::map_on_banner_in_adventure_mode_honours_can_place_on	crates/sunrise-client/src/game/blocks/maps/mod.rs:2173	game-boot
-sunrise-client	lib	game::mounts::tests::feeding_a_mount_draws_from_its_own_random_and_posts_eat	crates/sunrise-client/src/game/mobs/mounts.rs:1750	game-boot
+sunrise-client	lib	game::server_side::commands_server::world_cmds::allay_owner_damage_tests::allay_owner_adapters_compare_the_actual_player_uuid	crates/sunrise-client/src/game/administration/commands/world_cmds.rs:2225	game-boot
+sunrise-client	lib	game::server_side::maps::tests::map_on_banner_in_adventure_mode_honours_can_place_on	crates/sunrise-client/src/game/blocks/maps/mod.rs:2173	game-boot
+sunrise-client	lib	game::server_side::mounts::tests::feeding_a_mount_draws_from_its_own_random_and_posts_eat	crates/sunrise-client/src/game/mobs/mounts.rs:1750	game-boot
 sunrise-client	lib	game::native_server::network_settings_tests::server_settings_follow_the_network_config	crates/sunrise-client/src/game/modding/native_server.rs:5695	slow
 sunrise-client	lib	game::server_side::natural_spawning::tests::spawn_candidates_match_the_uncached_union_while_players_move	crates/sunrise-client/src/game/mobs/natural_spawning.rs:1692	slow
 sunrise-client	lib	game::server_side::stats::phantom_spawn_tests::no_phantoms_under_a_roof_the_sky_light_does_not_reach	crates/sunrise-client/src/game/interface/tests/phantom_spawn_tests.rs:146	game-boot

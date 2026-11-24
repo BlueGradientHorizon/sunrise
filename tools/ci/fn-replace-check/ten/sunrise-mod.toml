@@ -20,7 +20,7 @@ helper = "src/mixins/head.rs"
 
 [[native.mixin]]
 id = "head1"
-target = "sunrise_client::game::raids::Game<'_>::load_raid_omen_position"
+target = "sunrise_client::game::server_side::raids::Game<'_>::load_raid_omen_position"
 kind = "HEAD"
 helper = "src/mixins/head.rs"
 
@@ -32,19 +32,19 @@ helper = "src/mixins/head.rs"
 
 [[native.mixin]]
 id = "head3"
-target = "sunrise_client::game::commands::pregen::Game<'_>::pregen_runs_here"
+target = "sunrise_client::game::server_side::commands_server::pregen::Game<'_>::pregen_runs_here"
 kind = "HEAD"
 helper = "src/mixins/head.rs"
 
 [[native.mixin]]
 id = "head4"
-target = "sunrise_client::game::test_instances::Game<'_>::clear_test_space"
+target = "sunrise_client::game::server_side::test_instances::Game<'_>::clear_test_space"
 kind = "HEAD"
 helper = "src/mixins/head.rs"
 
 [[native.mixin]]
 id = "head5"
-target = "sunrise_client::game::boats::Game<'_>::boat_player_dismount_target"
+target = "sunrise_client::game::server_side::boats::Game<'_>::boat_player_dismount_target"
 kind = "HEAD"
 helper = "src/mixins/head.rs"
 
@@ -62,7 +62,7 @@ helper = "src/mixins/head.rs"
 
 [[native.mixin]]
 id = "head8"
-target = "sunrise_client::game::leads::Game<'_>::break_leash"
+target = "sunrise_client::game::server_side::leads::Game<'_>::break_leash"
 kind = "HEAD"
 helper = "src/mixins/head.rs"
 

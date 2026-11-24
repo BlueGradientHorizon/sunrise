@@ -4,14 +4,18 @@
 //! shading, the dithered edge), the player marker, `data/minecraft/maps/<id>.dat` and
 //! `maps/last_id.dat`, the 128x128 texture in an atlas slot, the two-handed
 //! first-person view and maps in item frames.
+#[allow(unused_imports)]
 use super::Game;
+#[allow(unused_imports)]
 use std::collections::HashMap;
+#[allow(unused_imports)]
 use sunrise_client::{
     blocks::{Fluid, MAP_COLORS},
     hud::{HudBatch, MAP_SLOTS, Rect, map_slot_sprite},
     items::ItemStack,
     mesher::Vertex,
 };
+#[allow(unused_imports)]
 use sunrise_core::nbt::{JavaString, Tag};
 
 /// What a decoration is filed under in `MapItemSavedData.decorations` (a
@@ -19,7 +23,7 @@ use sunrise_core::nbt::{JavaString, Tag};
 /// connection, the banner at a position (`MapBanner.getId`), a framed map's
 /// frame by its entity (`getFrameKey`).
 #[derive(Clone, Debug, PartialEq)]
-pub(super) enum Key {
+pub(in crate::game) enum Key {
     Player(u32),
     /// A named entry of an item's `minecraft:map_decorations`.
     Item(JavaString),
@@ -31,7 +35,7 @@ pub(super) enum Key {
 /// A decoration (`MapDecoration`): sprite, map position (-128..127, half
 /// pixels), rotation (0..15) and name, filed under its key.
 #[derive(Clone, Debug, PartialEq)]
-pub(super) struct Decoration {
+pub(in crate::game) struct Decoration {
     pub sprite: &'static str,
     pub x: i8,
     pub y: i8,
@@ -42,7 +46,7 @@ pub(super) struct Decoration {
 
 /// `MapBanner`: a banner a map marks, as `banners` saves it.
 #[derive(Clone, Debug, PartialEq)]
-pub(super) struct MapBanner {
+pub(in crate::game) struct MapBanner {
     pub pos: [i32; 3],
     /// `DyeColor.getName` of the banner's base colour.
     pub color: String,
@@ -50,11 +54,11 @@ pub(super) struct MapBanner {
 }
 impl MapBanner {
     /// `MapBanner.getDecoration`: the marker of the banner's colour.
-    fn sprite(&self) -> &'static str {
+    pub(in crate::game) fn sprite(&self) -> &'static str {
         decoration_sprite(&format!("banner_{}", self.color)).unwrap_or(BANNER_WHITE)
     }
     /// `MapBanner.CODEC`.
-    fn to_nbt(&self) -> Tag {
+    pub(in crate::game) fn to_nbt(&self) -> Tag {
         let mut entries = vec![
             ("pos", Tag::IntArray(self.pos.to_vec())),
             ("color", Tag::String(self.color.as_str().into())),
@@ -64,7 +68,7 @@ impl MapBanner {
         }
         Tag::compound(entries)
     }
-    fn from_nbt(tag: &Tag) -> Option<Self> {
+    pub(in crate::game) fn from_nbt(tag: &Tag) -> Option<Self> {
         // DyeColor.CODEC is read leniently: white when missing or unknown.
         let color = sunrise_client::save::text(tag.get("color"))
             .filter(|c| decoration_sprite(&format!("banner_{c}")).is_some())
@@ -78,7 +82,7 @@ impl MapBanner {
 }
 /// `MapFrame`: an item frame a map hangs in, as `frames` saves it.
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub(super) struct MapFrame {
+pub(in crate::game) struct MapFrame {
     pub pos: [i32; 3],
     /// The frame's `Direction.get2DDataValue` times 90.
     pub rotation: i32,
@@ -86,14 +90,14 @@ pub(super) struct MapFrame {
 }
 impl MapFrame {
     /// `MapFrame.CODEC`.
-    fn to_nbt(self) -> Tag {
+    pub(in crate::game) fn to_nbt(self) -> Tag {
         Tag::compound([
             ("pos", Tag::IntArray(self.pos.to_vec())),
             ("rotation", Tag::Int(self.rotation)),
             ("entity_id", Tag::Int(self.entity_id)),
         ])
     }
-    fn from_nbt(tag: &Tag) -> Option<Self> {
+    pub(in crate::game) fn from_nbt(tag: &Tag) -> Option<Self> {
         let int = |k: &str| sunrise_client::save::number(tag.get(k)).map(|v| v as i32);
         Some(Self {
             pos: block_pos(tag.get("pos"))?,
@@ -103,7 +107,7 @@ impl MapFrame {
     }
 }
 /// `BlockPos.CODEC`: three ints, as an int array or a list.
-fn block_pos(tag: Option<&Tag>) -> Option<[i32; 3]> {
+pub(in crate::game) fn block_pos(tag: Option<&Tag>) -> Option<[i32; 3]> {
     match tag? {
         Tag::IntArray(v) if v.len() == 3 => Some([v[0], v[1], v[2]]),
         Tag::List(l) if l.len() == 3 => {
@@ -120,14 +124,14 @@ fn block_pos(tag: Option<&Tag>) -> Option<[i32; 3]> {
 /// (`placedInFrame`): the block it is in, its `Direction.get3DDataValue`
 /// (down 0, up 1, north 2, south 3, west 4, east 5) and its entity id.
 #[derive(Clone, Copy)]
-struct Framed {
-    pos: [i32; 3],
-    facing: u8,
-    id: i32,
+pub(in crate::game) struct Framed {
+    pub(in crate::game) pos: [i32; 3],
+    pub(in crate::game) facing: u8,
+    pub(in crate::game) id: i32,
 }
 /// `Direction.get2DDataValue` of a 3D data value: south 0, west 1, north 2,
 /// east 3, and -1 for up and down.
-fn direction_2d(facing: u8) -> i32 {
+pub(in crate::game) fn direction_2d(facing: u8) -> i32 {
     match facing {
         3 => 0,
         4 => 1,
@@ -137,34 +141,34 @@ fn direction_2d(facing: u8) -> i32 {
     }
 }
 /// The host among a map's holders (the guests are their connections).
-const HOST: u32 = u32::MAX;
+pub(in crate::game) const HOST: u32 = u32::MAX;
 /// `MapDecorationTypes` the markers use: the player's arrow, the arrows that
 /// replace it past the map's edge, the item frame's, the white banner's (the
 /// fallback colour).
-const PLAYER: &str = "map/decorations/player";
-const FRAME: &str = "map/decorations/frame";
-const BANNER_WHITE: &str = "map/decorations/white_banner";
-const PLAYER_OFF_MAP: &str = "map/decorations/player_off_map";
-const PLAYER_OFF_LIMITS: &str = "map/decorations/player_off_limits";
+pub(in crate::game) const PLAYER: &str = "map/decorations/player";
+pub(in crate::game) const FRAME: &str = "map/decorations/frame";
+pub(in crate::game) const BANNER_WHITE: &str = "map/decorations/white_banner";
+pub(in crate::game) const PLAYER_OFF_MAP: &str = "map/decorations/player_off_map";
+pub(in crate::game) const PLAYER_OFF_LIMITS: &str = "map/decorations/player_off_limits";
 /// A player carrying a map, or seeing it framed
 /// (`MapItemSavedData.HoldingPlayer`): the column sweep's step, and what
 /// changed since the last `ClientboundMapItemDataPacket` it was sent.
-struct Holder {
-    who: u32,
+pub(in crate::game) struct Holder {
+    pub(in crate::game) who: u32,
     /// The last tick it carried the map, and saw it framed.
-    carried: i64,
-    framed: i64,
-    step: i32,
+    pub(in crate::game) carried: i64,
+    pub(in crate::game) framed: i64,
+    pub(in crate::game) step: i32,
     /// The changed pixels' box (min x, min y, max x, max y).
-    dirty: Option<[i32; 4]>,
-    decorations: bool,
-    tick: u32,
+    pub(in crate::game) dirty: Option<[i32; 4]>,
+    pub(in crate::game) decorations: bool,
+    pub(in crate::game) tick: u32,
     /// Wore map invisibility gear on its last tick
     /// (`MapItemSavedData.hasMapInvisibilityItemEquipped`).
-    invisible: bool,
+    pub(in crate::game) invisible: bool,
 }
 impl Holder {
-    fn new(who: u32) -> Self {
+    pub(in crate::game) fn new(who: u32) -> Self {
         Self {
             who,
             carried: 0,
@@ -177,11 +181,11 @@ impl Holder {
         }
     }
     /// Still carrying the map, or seeing it framed (frames tick every 10).
-    fn holds(&self, now: i64) -> bool {
+    pub(in crate::game) fn holds(&self, now: i64) -> bool {
         self.carried + 1 >= now || self.framed + 10 >= now
     }
 }
-pub(super) struct MapData {
+pub(in crate::game) struct MapData {
     pub center: [i32; 2],
     pub scale: u8,
     pub dimension: String,
@@ -192,15 +196,15 @@ pub(super) struct MapData {
     pub decorations: Vec<Decoration>,
     /// `bannerMarkers` and `frameMarkers` (`banners`, `frames` when saved).
     pub banners: Vec<MapBanner>,
-    frames: Vec<MapFrame>,
-    holders: Vec<Holder>,
+    pub(in crate::game) frames: Vec<MapFrame>,
+    pub(in crate::game) holders: Vec<Holder>,
     /// Changed since the last save / texture upload.
-    dirty: bool,
-    texture_dirty: bool,
+    pub(in crate::game) dirty: bool,
+    pub(in crate::game) texture_dirty: bool,
 }
 impl MapData {
     /// `MapItemSavedData.createFresh`: centred on the scale's grid cell.
-    pub(super) fn fresh(x: f64, z: f64, scale: u8, dimension: &str) -> Self {
+    pub(in crate::game) fn fresh(x: f64, z: f64, scale: u8, dimension: &str) -> Self {
         let size = 128 * (1 << scale);
         let cell = |v: f64| (v.floor() as i32 + 64).div_euclid(size) * size + size / 2 - 64;
         Self {
@@ -222,7 +226,7 @@ impl MapData {
     /// `MapItemSavedData.setColor` for every pixel of `colors` (128 by 128, row by row): each
     /// changed one marks the map to save, redraw and send. Whether one changed; None for
     /// another length.
-    pub(super) fn paint(&mut self, colors: &[u8]) -> Option<bool> {
+    pub(in crate::game) fn paint(&mut self, colors: &[u8]) -> Option<bool> {
         if colors.len() != self.colors.len() {
             return None;
         }
@@ -232,7 +236,7 @@ impl MapData {
         }
         Some(changed)
     }
-    fn update_color(&mut self, x: i32, y: i32, color: u8) -> bool {
+    pub(in crate::game) fn update_color(&mut self, x: i32, y: i32, color: u8) -> bool {
         let i = (x + y * 128) as usize;
         if self.colors[i] == color {
             return false;
@@ -250,7 +254,7 @@ impl MapData {
         true
     }
     /// `tickCarriedBy`'s holder for `who`, added when new.
-    fn holder(&mut self, who: u32) -> &mut Holder {
+    pub(in crate::game) fn holder(&mut self, who: u32) -> &mut Holder {
         let i = match self.holders.iter().position(|h| h.who == who) {
             Some(i) => i,
             None => {
@@ -262,7 +266,7 @@ impl MapData {
     }
     /// The holders that no longer carry the map nor see it framed go, and
     /// their markers with them (`tickCarriedBy`'s removeDecoration).
-    fn drop_holders(&mut self, now: i64) {
+    pub(in crate::game) fn drop_holders(&mut self, now: i64) {
         self.holders.retain(|h| h.holds(now));
         let holders = &self.holders;
         let before = self.decorations.len();
@@ -275,14 +279,14 @@ impl MapData {
         }
     }
     /// setDecorationsDirty.
-    fn decorations_changed(&mut self) {
+    pub(in crate::game) fn decorations_changed(&mut self) {
         for h in &mut self.holders {
             h.decorations = true;
         }
     }
     /// `MapItemSavedData.removeDecoration`: whatever `key` names goes, and
     /// every holder is told the decorations changed, found or not.
-    fn remove_decoration(&mut self, key: Key) {
+    pub(in crate::game) fn remove_decoration(&mut self, key: Key) {
         self.decorations.retain(|d| d.key != key);
         self.decorations_changed();
     }
@@ -294,7 +298,7 @@ impl MapData {
     /// unlimited tracking) and removes what the key had. `game_time` is the
     /// level's: without a level the Nether's spinning rotation is not used.
     #[allow(clippy::too_many_arguments)]
-    fn add_decoration(
+    pub(in crate::game) fn add_decoration(
         &mut self,
         sprite: &'static str,
         game_time: Option<i64>,
@@ -348,7 +352,11 @@ impl MapData {
     }
     /// `tickCarriedBy` adds only missing component keys. Another carried
     /// copy without those entries must not erase an explorer map's target.
-    fn add_item_decorations(&mut self, targets: Vec<StaticDecoration>, game_time: i64) {
+    pub(in crate::game) fn add_item_decorations(
+        &mut self,
+        targets: Vec<StaticDecoration>,
+        game_time: i64,
+    ) {
         for (name, sprite, x, z, rotation) in targets {
             let key = Key::Item(name);
             if !self.decorations.iter().any(|d| d.key == key) {
@@ -366,7 +374,7 @@ impl MapData {
     }
     /// `MapItemSavedData.tickCarriedBy`'s check on every holder but `who`, the
     /// player ticking: one wearing map invisibility gear has no marker.
-    fn hide_invisible(&mut self, who: u32) {
+    pub(in crate::game) fn hide_invisible(&mut self, who: u32) {
         let hidden: Vec<u32> = self
             .holders
             .iter()
@@ -383,7 +391,14 @@ impl MapData {
     /// `invisible` whether they wear map invisibility gear. Without a carried
     /// copy the player has no marker; the frame gets its own, which replaces
     /// the marker of another frame entity remembered at the same block.
-    fn tick_framed(&mut self, who: u32, now: i64, carries: bool, invisible: bool, frame: Framed) {
+    pub(in crate::game) fn tick_framed(
+        &mut self,
+        who: u32,
+        now: i64,
+        carries: bool,
+        invisible: bool,
+        frame: Framed,
+    ) {
         let h = self.holder(who);
         h.framed = now;
         h.invisible = invisible;
@@ -423,14 +438,14 @@ impl MapData {
     }
     /// `MapItemSavedData.removedFromFrame`: the frame entity's marker goes,
     /// and the frame remembered at its block.
-    fn removed_from_frame(&mut self, pos: [i32; 3], entity_id: i32) {
+    pub(in crate::game) fn removed_from_frame(&mut self, pos: [i32; 3], entity_id: i32) {
         self.remove_decoration(Key::Frame(entity_id));
         self.frames.retain(|f| f.pos != pos);
         self.dirty = true;
     }
     /// `MapItemSavedData.isTrackedCountOverLimit`: more than `limit`
     /// decorations count (`MapDecorationType.trackCount`).
-    pub(super) fn tracked_over_limit(&self, limit: usize) -> bool {
+    pub(in crate::game) fn tracked_over_limit(&self, limit: usize) -> bool {
         self.decorations
             .iter()
             .filter(|d| tracks_count(d.sprite))
@@ -442,7 +457,12 @@ impl MapData {
     /// there as it stands loses it, and a changed banner's marker is renewed.
     /// `current` is the banner at `pos` (`MapBanner.fromWorld`); true when
     /// the markers changed.
-    fn toggle_banner(&mut self, pos: [i32; 3], current: Option<MapBanner>, game_time: i64) -> bool {
+    pub(in crate::game) fn toggle_banner(
+        &mut self,
+        pos: [i32; 3],
+        current: Option<MapBanner>,
+        game_time: i64,
+    ) -> bool {
         let (x_pos, z_pos) = (f64::from(pos[0]) + 0.5, f64::from(pos[2]) + 0.5);
         let scale = f64::from(1 << self.scale);
         let xd = (x_pos - f64::from(self.center[0])) / scale;
@@ -480,7 +500,12 @@ impl MapData {
     /// `MapItemSavedData.checkBanners`: a banner marker in the column `x`,
     /// `z` whose banner is gone or changed (`current` reads
     /// `MapBanner.fromWorld` at a position) is dropped with its decoration.
-    fn check_banners(&mut self, x: i32, z: i32, current: impl Fn([i32; 3]) -> Option<MapBanner>) {
+    pub(in crate::game) fn check_banners(
+        &mut self,
+        x: i32,
+        z: i32,
+        current: impl Fn([i32; 3]) -> Option<MapBanner>,
+    ) {
         let stale: Vec<MapBanner> = self
             .banners
             .iter()
@@ -495,7 +520,7 @@ impl MapData {
     }
     /// `HoldingPlayer.nextUpdatePacket` for `who`: the changed pixels, and
     /// the decorations (at most every 5th call while they changed).
-    fn update_packet(
+    pub(in crate::game) fn update_packet(
         &mut self,
         id: i32,
         who: u32,
@@ -551,7 +576,7 @@ impl MapData {
         })
     }
     /// `MapItemSavedData.<clinit>`: the CODEC save arm omits optional defaults.
-    pub(super) fn to_nbt(&self) -> Tag {
+    pub(in crate::game) fn to_nbt(&self) -> Tag {
         let mut data = vec![
             ("dimension", Tag::String(self.dimension.as_str().into())),
             ("xCenter", Tag::Int(self.center[0])),
@@ -587,7 +612,7 @@ impl MapData {
             ("DataVersion", Tag::Int(sunrise_world::DATA_VERSION)),
         ])
     }
-    fn from_nbt(tag: &Tag) -> Option<Self> {
+    pub(in crate::game) fn from_nbt(tag: &Tag) -> Option<Self> {
         let d = tag.get("data")?;
         let int = |k: &str| match d.get(k) {
             Some(Tag::Int(v)) => Some(*v),
@@ -642,7 +667,7 @@ impl MapData {
     }
 }
 /// What a read of a map gives: from the cache when the map is loaded, else from its saved file.
-fn map_read<T>(
+pub(in crate::game) fn map_read<T>(
     cached: Option<&MapData>,
     saved: impl FnOnce() -> Option<MapData>,
     read: impl FnOnce(&MapData) -> T,
@@ -652,13 +677,13 @@ fn map_read<T>(
         None => saved().map(|map| read(&map)),
     }
 }
-pub(super) struct Maps {
+pub(in crate::game) struct Maps {
     pub data: HashMap<i32, MapData>,
     /// The highest map id handed out (`maps/last_id.dat`), loaded on first use.
-    pub(super) last_id: Option<i32>,
+    pub(in crate::game) last_id: Option<i32>,
     /// The atlas slots holding map textures.
     pub slots: super::atlas_slots::AtlasSlots<i32>,
-    missing: std::collections::HashSet<i32>,
+    pub(in crate::game) missing: std::collections::HashSet<i32>,
 }
 impl Default for Maps {
     fn default() -> Self {
@@ -683,11 +708,11 @@ pub(in crate::game) fn packed_rgba(packed: u8) -> [u8; 4] {
 
 /// `get(DataComponents.MAP_ID)`: the map id any stack carries. Filled maps
 /// (explorer maps included) carry one; a command can give it to any item.
-pub(super) fn map_id(stack: &ItemStack) -> Option<i32> {
+pub(in crate::game) fn map_id(stack: &ItemStack) -> Option<i32> {
     stack.data().and_then(|d| d.map_id)
 }
 /// `MapDecorationTypes` Sunrise draws: (type, sprite).
-const DECORATION_TYPES: [(&str, &str); 40] = [
+pub(in crate::game) const DECORATION_TYPES: [(&str, &str); 40] = [
     ("player", "map/decorations/player"),
     ("frame", "map/decorations/frame"),
     ("red_marker", "map/decorations/red_marker"),
@@ -732,11 +757,11 @@ const DECORATION_TYPES: [(&str, &str); 40] = [
 /// `MapDecorationType.showOnItemFrame` is false for the player arrows and the two markers.
 /// `MapRenderer.render`'s pose for decoration `d` in map pixels (0..128,
 /// y down) at depth `z`: its quad is (-1, -1) to (1, 1) under it.
-pub(super) fn decoration_pose(d: &Decoration, z: f32) -> glam::Mat4 {
+pub(in crate::game) fn decoration_pose(d: &Decoration, z: f32) -> glam::Mat4 {
     decoration_pose_at(d.x, d.y, d.rot, z)
 }
 /// [`decoration_pose`] for a decoration at `x`, `y` (half map pixels) turned `rot`.
-pub(super) fn decoration_pose_at(x: i8, y: i8, rot: u8, z: f32) -> glam::Mat4 {
+pub(in crate::game) fn decoration_pose_at(x: i8, y: i8, rot: u8, z: f32) -> glam::Mat4 {
     glam::Mat4::from_translation(glam::Vec3::new(
         f32::from(x) / 2.0 + 64.0,
         f32::from(y) / 2.0 + 64.0,
@@ -745,7 +770,7 @@ pub(super) fn decoration_pose_at(x: i8, y: i8, rot: u8, z: f32) -> glam::Mat4 {
         * glam::Mat4::from_scale(glam::Vec3::splat(4.0))
         * glam::Mat4::from_translation(glam::Vec3::new(-0.125, 0.125, 0.0))
 }
-pub(super) fn shown_on_frame(sprite: &str) -> bool {
+pub(in crate::game) fn shown_on_frame(sprite: &str) -> bool {
     // A mod's type says for itself (`showOnItemFrame`).
     if let Some(shown) = sunrise_client::map_decoration_types::registered().shown_on_frame(sprite) {
         return shown;
@@ -757,7 +782,7 @@ pub(super) fn shown_on_frame(sprite: &str) -> bool {
 }
 /// `MapDecorationType.trackCount`: the players' arrows, the markers, the
 /// frames and the banners count toward a map's limit, the structures do not.
-fn tracks_count(sprite: &str) -> bool {
+pub(in crate::game) fn tracks_count(sprite: &str) -> bool {
     decoration_type(sprite).is_some_and(|t| {
         t.starts_with("banner_")
             || matches!(
@@ -774,7 +799,7 @@ fn tracks_count(sprite: &str) -> bool {
 /// The sprite of a decoration type that a `minecraft:map_decorations`
 /// entry or a server's packet names: vanilla's, or one a mod registered
 /// (`map_decoration_types`).
-fn decoration_sprite(id: &str) -> Option<&'static str> {
+pub(in crate::game) fn decoration_sprite(id: &str) -> Option<&'static str> {
     let name = id.strip_prefix("minecraft:").unwrap_or(id);
     DECORATION_TYPES
         .iter()
@@ -784,7 +809,7 @@ fn decoration_sprite(id: &str) -> Option<&'static str> {
 }
 /// The type a decoration's sprite stands for, as its registry names it (a mod's with its
 /// namespace).
-fn decoration_type(sprite: &str) -> Option<&'static str> {
+pub(in crate::game) fn decoration_type(sprite: &str) -> Option<&'static str> {
     DECORATION_TYPES
         .iter()
         .find(|(_, s)| *s == sprite)
@@ -798,10 +823,10 @@ impl Game<'_> {
     }
 }
 /// A named `minecraft:map_decorations` entry: key, sprite, x, z, rotation.
-type StaticDecoration = (JavaString, &'static str, f64, f64, f32);
+pub(in crate::game) type StaticDecoration = (JavaString, &'static str, f64, f64, f32);
 
 /// `minecraft:map_decorations` of a map item, in the component's order.
-fn static_decorations(stack: &ItemStack) -> Vec<StaticDecoration> {
+pub(in crate::game) fn static_decorations(stack: &ItemStack) -> Vec<StaticDecoration> {
     let Some(Tag::Compound(entries)) = stack.data().and_then(|d| {
         d.preserved_components()
             .iter()
@@ -835,7 +860,7 @@ fn static_decorations(stack: &ItemStack) -> Vec<StaticDecoration> {
 }
 /// `MapItemSavedData.addTargetDecoration`: the `"+"` entry of
 /// `minecraft:map_decorations`, rotation 180.
-fn target_decoration(decoration: &str, at: [i32; 3]) -> Tag {
+pub(in crate::game) fn target_decoration(decoration: &str, at: [i32; 3]) -> Tag {
     Tag::compound([(
         "+",
         Tag::compound([
@@ -847,7 +872,7 @@ fn target_decoration(decoration: &str, at: [i32; 3]) -> Tag {
     )])
 }
 /// `MapItemSavedData.clampMapCoordinate`.
-fn clamp_map_coordinate(d: f32) -> i8 {
+pub(in crate::game) fn clamp_map_coordinate(d: f32) -> i8 {
     if d <= -63.0 {
         -128
     } else if d >= 63.0 {
@@ -857,7 +882,7 @@ fn clamp_map_coordinate(d: f32) -> i8 {
     }
 }
 /// `MapItemSavedData.calculateRotation`: spinning in the Nether.
-fn decoration_rotation(nether: bool, game_time: i64, y_rot: f64) -> u8 {
+pub(in crate::game) fn decoration_rotation(nether: bool, game_time: i64, y_rot: f64) -> u8 {
     if nether {
         let s = (game_time / 10) as i32;
         (s.wrapping_mul(s)
@@ -875,10 +900,10 @@ fn decoration_rotation(nether: bool, game_time: i64, y_rot: f64) -> u8 {
     }
 }
 impl Game<'_> {
-    fn dimension_id(&self) -> &'static str {
+    pub(in crate::game) fn dimension_id(&self) -> &'static str {
         self.dim.id()
     }
-    fn map_path(&self, name: &str) -> std::path::PathBuf {
+    pub(in crate::game) fn map_path(&self, name: &str) -> std::path::PathBuf {
         self.server
             .world_root
             .join("data/minecraft/maps")
@@ -886,7 +911,7 @@ impl Game<'_> {
     }
     /// `f` of map `id`'s data: the loaded map, else its `.dat` read without keeping it, so a
     /// read needs no `&mut`. None for a map id nothing made.
-    pub(super) fn with_map<R>(&self, id: i32, f: impl FnOnce(&MapData) -> R) -> Option<R> {
+    pub(in crate::game) fn with_map<R>(&self, id: i32, f: impl FnOnce(&MapData) -> R) -> Option<R> {
         map_read(
             self.transactions
                 .iter()
@@ -905,7 +930,7 @@ impl Game<'_> {
     }
     /// The map's data, including new maps in the open transaction. Committed maps are
     /// loaded from `data/minecraft/maps/<id>.dat` on first use.
-    pub(super) fn map(&mut self, id: i32) -> Option<&mut MapData> {
+    pub(in crate::game) fn map(&mut self, id: i32) -> Option<&mut MapData> {
         if let Some(data) = self
             .transactions
             .iter_mut()
@@ -933,7 +958,7 @@ impl Game<'_> {
     }
     /// `ClientboundMapItemDataPacket.handle`: the server's colours and
     /// decorations for a map (one carried or framed on a server).
-    pub(super) fn remote_map_item_data(
+    pub(in crate::game) fn remote_map_item_data(
         &mut self,
         p: &sunrise_protocol::packets::play::MapItemData,
     ) {
@@ -988,7 +1013,7 @@ impl Game<'_> {
     }
     /// The next ID in this save, after any map reserved by an open transaction.
     /// Peeking must not dirty the persisted counter, even on a save with no maps.
-    pub(super) fn peek_map_id(&self) -> i32 {
+    pub(in crate::game) fn peek_map_id(&self) -> i32 {
         if let Some(id) = self
             .transactions
             .iter()
@@ -1008,12 +1033,12 @@ impl Game<'_> {
     }
 
     /// Register a reserved ID; only committed data and the committed counter are saveable.
-    pub(super) fn publish_map(&mut self, id: i32, data: MapData) {
+    pub(in crate::game) fn publish_map(&mut self, id: i32, data: MapData) {
         self.maps.last_id = Some(self.maps.last_id.map_or(id, |last| last.max(id)));
         self.maps.data.insert(id, data);
     }
 
-    fn store_new_map(&mut self, id: i32, data: MapData) {
+    pub(in crate::game) fn store_new_map(&mut self, id: i32, data: MapData) {
         if let Some(level) = self.transactions.last_mut() {
             level.new_maps.insert(id, data);
         } else {
@@ -1021,7 +1046,10 @@ impl Game<'_> {
         }
     }
     /// Maps made by exploration map trades: (id, target, zoom, decoration).
-    pub(super) fn register_exploration_maps(&mut self, made: Vec<(i32, [i32; 3], u8, String)>) {
+    pub(in crate::game) fn register_exploration_maps(
+        &mut self,
+        made: Vec<(i32, [i32; 3], u8, String)>,
+    ) {
         let dimension = self.dimension_id().to_owned();
         for (id, at, zoom, _) in made {
             // MapItem.applyNewSavedData: tracking, unlimited tracking.
@@ -1036,14 +1064,18 @@ impl Game<'_> {
     /// structure of the tag around `origin`, a new map centred on it with its
     /// biome preview and target decoration. False when nothing is found: the
     /// loot table's `filtered` map_id check would have discarded the item.
-    pub(super) fn resolve_pending_map(&mut self, item: &mut ItemStack, origin: [f64; 3]) -> bool {
+    pub(in crate::game) fn resolve_pending_map(
+        &mut self,
+        item: &mut ItemStack,
+        origin: [f64; 3],
+    ) -> bool {
         let Some(map) = sunrise_client::structure_blocks::take_pending_map(item) else {
             return true;
         };
         self.materialize_exploration_map(item, &map, origin)
     }
     /// The existing exploration-map materialization, shared with command modifiers.
-    pub(super) fn materialize_exploration_map(
+    pub(in crate::game) fn materialize_exploration_map(
         &mut self,
         item: &mut ItemStack,
         map: &sunrise_world::loot::ExplorationMap,
@@ -1080,7 +1112,11 @@ impl Game<'_> {
     }
     /// The unsearched exploration maps of a container being opened
     /// (`RandomizableContainer.unpackLootTable` runs the function then).
-    pub(super) fn resolve_container_maps(&mut self, key: (i32, i32, i32), origin: [f64; 3]) {
+    pub(in crate::game) fn resolve_container_maps(
+        &mut self,
+        key: (i32, i32, i32),
+        origin: [f64; 3],
+    ) {
         use sunrise_client::containers::BlockEntity;
         let Some(BlockEntity::Chest(slots)) = self.world.block_entities.get(&key) else {
             return;
@@ -1109,7 +1145,7 @@ impl Game<'_> {
     }
     /// `MapItem.renderBiomePreviewMap`: the map's biomes at sea level, water
     /// outlines (`#water_on_map_outlines`) drawn in orange and brown.
-    pub(super) fn render_biome_preview(&mut self, id: i32) {
+    pub(in crate::game) fn render_biome_preview(&mut self, id: i32) {
         let Some(terrain) = self.end.locator() else {
             return;
         };
@@ -1197,13 +1233,13 @@ impl Game<'_> {
         }
     }
     /// Registers `data` under a free map id.
-    pub(super) fn new_map_id(&mut self, data: MapData) -> i32 {
+    pub(in crate::game) fn new_map_id(&mut self, data: MapData) -> i32 {
         let id = self.peek_map_id();
         self.store_new_map(id, data);
         id
     }
     /// `EmptyMapItem.use`: a new map centred around the player.
-    pub(super) fn use_empty_map(&mut self, stack: &ItemStack) -> bool {
+    pub(in crate::game) fn use_empty_map(&mut self, stack: &ItemStack) -> bool {
         if &*stack.item != "minecraft:map" {
             return false;
         }
@@ -1240,7 +1276,10 @@ impl Game<'_> {
         true
     }
     /// `ItemFrame.removeFramedMap`: the map `frame` holds forgets the frame.
-    pub(super) fn remove_framed_map(&mut self, frame: &sunrise_client::entities::ItemFrame) {
+    pub(in crate::game) fn remove_framed_map(
+        &mut self,
+        frame: &sunrise_client::entities::ItemFrame,
+    ) {
         let Some(id) = frame.item.as_ref().and_then(map_id) else {
             return;
         };
@@ -1251,7 +1290,7 @@ impl Game<'_> {
     /// `MapItem.useOn`: a map used on a banner toggles that banner's marker
     /// on the map; when the map's data says no (`toggleBanner` fails) the use
     /// ends without a swing, and nothing else is done with the map either way.
-    pub(super) fn use_map_on_banner(
+    pub(in crate::game) fn use_map_on_banner(
         &mut self,
         hit: &super::Hit,
         stack: &ItemStack,
@@ -1281,74 +1320,17 @@ impl Game<'_> {
         self.swing_arm();
         true
     }
-    /// `CompassItem.useOn`: a compass used on a lodestone locks onto it (a
-    /// single one in survival changes in place, else one is split off).
-    pub(super) fn use_lodestone_compass(
-        &mut self,
-        hit: &super::Hit,
-        stack: &ItemStack,
-        before: &ItemStack,
-    ) -> bool {
-        if &*stack.item != "minecraft:compass" {
-            return false;
-        }
-        let [x, y, z] = hit.pos;
-        if self
-            .res
-            .facts()
-            .get(self.world.block(x, y, z))
-            .name
-            .as_ref()
-            != "minecraft:lodestone"
-        {
-            return false;
-        }
-        let at = [x, y, z].map(|v| f64::from(v) + 0.5);
-        self.trigger_block("minecraft:item_used_on_block", hit.pos, before);
-        self.audio
-            .0
-            .play("minecraft:item.lodestone_compass.lock", Some(at), 1.0, 1.0);
-        let target = Tag::compound([
-            (
-                "target",
-                Tag::compound([
-                    ("dimension", Tag::String(self.dimension_id().into())),
-                    ("pos", Tag::IntArray(vec![x, y, z])),
-                ]),
-            ),
-            ("tracked", Tag::Byte(1)),
-        ]);
-        if !self.creative && stack.count == 1 {
-            self.edit_block_use_stack(|cell| {
-                if let Some(held) = cell {
-                    held.data_mut()
-                        .set_other("minecraft:lodestone_tracker", Some(target.clone()));
-                }
-            });
-        } else {
-            let mut locked = stack.clone();
-            locked.count = 1;
-            locked
-                .data_mut()
-                .set_other("minecraft:lodestone_tracker", Some(target));
-            self.consume_held();
-            self.give_or_drop_stack(locked);
-        }
-        self.award_stat("used", &stack.item, 1);
-        self.swing_arm();
-        true
-    }
     /// `Inventory.tick` (and `EntityEquipment.tick` for the armour) ->
     /// `CompassItem.inventoryTick`: each compass the player carries whose
     /// lodestone is gone loses its target (`inventory_tick`).
-    pub(super) fn tick_lodestone_compasses(&mut self) {
+    pub(in crate::game) fn tick_lodestone_compasses(&mut self) {
         let (world, facts, dim) = (&self.world, self.res.facts(), self.dim.id());
         let stacks = self.inventory.iter_mut().chain([&mut self.offhand]);
         for stack in stacks.chain(self.armor.iter_mut()).flatten() {
             super::inventory_tick::compass_inventory_tick(world, facts, dim, stack);
         }
     }
-    fn give_or_drop_stack(&mut self, stack: ItemStack) {
+    pub(in crate::game) fn give_or_drop_stack(&mut self, stack: ItemStack) {
         if let Some(rest) = self.add_stack_to_inventory(stack)
             && let Some(eye) = self.eye_position()
         {
@@ -1358,7 +1340,7 @@ impl Game<'_> {
     /// `MapItemSavedData.hasMapInvisibilityItemEquipped`: a piece of
     /// `#map_invisibility_equipment` (a carved pumpkin) in an armor slot; the
     /// hands do not count.
-    fn map_invisibility_worn(&self, worn: &[Option<ItemStack>]) -> bool {
+    pub(in crate::game) fn map_invisibility_worn(&self, worn: &[Option<ItemStack>]) -> bool {
         let tag = self
             .res
             .items()
@@ -1369,7 +1351,7 @@ impl Game<'_> {
             .any(|s| tag.is_some_and(|t| t.contains(&*s.item)))
     }
     /// Held maps update; every carried map tracks the player marker.
-    pub(super) fn tick_maps(&mut self) {
+    pub(in crate::game) fn tick_maps(&mut self) {
         let Some(p) = self.player.as_ref().map(|p| p.position) else {
             return;
         };
@@ -1431,7 +1413,7 @@ impl Game<'_> {
     }
     /// The maps the player carries, for `status`: how many of their pixels
     /// are drawn, and their decorations.
-    pub(super) fn maps_status(&self) -> Vec<serde_json::Value> {
+    pub(in crate::game) fn maps_status(&self) -> Vec<serde_json::Value> {
         self.inventory
             .iter()
             .chain(std::iter::once(&self.offhand))
@@ -1451,7 +1433,7 @@ impl Game<'_> {
     /// carries, and every 10 ticks (`ServerEntity.sendChanges`) for each map
     /// framed in the level: a `ClientboundMapItemDataPacket` when something
     /// changed since the guest's last one.
-    pub(super) fn lan_map_updates(&mut self, conn: u32) {
+    pub(in crate::game) fn lan_map_updates(&mut self, conn: u32) {
         let Some(host) = self.lan.as_ref() else {
             return;
         };
@@ -1529,7 +1511,7 @@ impl Game<'_> {
     }
     /// `MapItemSavedData.checkBanners` on map `id` for the column `x`, `z`
     /// that `MapItem.update` is reading.
-    fn check_banners(&mut self, id: i32, x: i32, z: i32) {
+    pub(in crate::game) fn check_banners(&mut self, id: i32, x: i32, z: i32) {
         let (world, res) = (&self.world, &self.res);
         let Some(m) = self.maps.data.get_mut(&id) else {
             return;
@@ -1547,7 +1529,7 @@ impl Game<'_> {
         });
     }
     /// `MapItem.update` for the player holding map `id`.
-    fn update_map(&mut self, id: i32) {
+    pub(in crate::game) fn update_map(&mut self, id: i32) {
         let dim = self.dimension_id();
         let Some(p) = self.player.as_ref().map(|p| p.position) else {
             return;
@@ -1695,7 +1677,7 @@ impl Game<'_> {
         }
     }
     /// Writes changed maps and the id counter (`MapItemSavedData`, `MapIndex`).
-    pub(super) fn save_maps(&mut self) {
+    pub(in crate::game) fn save_maps(&mut self) {
         for (id, m) in &mut self.maps.data {
             if m.dirty {
                 let path = self
@@ -1724,179 +1706,14 @@ impl Game<'_> {
             }
         }
     }
-    /// The atlas slot showing map `id`, its texture uploaded when it changed.
-    pub(super) fn map_texture(&mut self, id: i32) -> Option<Rect> {
-        self.map(id)?;
-        let slot = match self.maps.slots.show(&id) {
-            Some(slot) => slot,
-            None => {
-                let (slot, _) = self.maps.slots.claim(id)?;
-                if let Some(m) = self.maps.data.get_mut(&id) {
-                    m.texture_dirty = true;
-                }
-                slot
-            }
-        };
-        let rect = self
-            .gui
-            .atlas
-            .sprites
-            .get(map_slot_sprite(slot)?)
-            .copied()?;
-        let m = self.maps.data.get_mut(&id)?;
-        if m.texture_dirty {
-            m.texture_dirty = false;
-            let rgba: Vec<u8> = m.colors.iter().flat_map(|&c| packed_rgba(c)).collect();
-            let (w, h) = (self.gui.atlas.width as f32, self.gui.atlas.height as f32);
-            self.client.map_patches.push(sunrise_client::font::Patch {
-                x: (rect.u0 * w).round() as u32,
-                y: (rect.v0 * h).round() as u32,
-                width: 128,
-                height: 128,
-                rgba,
-            });
-        }
-        Some(rect)
-    }
-    /// `MapRenderer.render`: the map texture and its decorations under `m`
-    /// (map pixels 0..128, y down), drawn at depth offsets toward the viewer.
-    /// `show_only_frame` (a map in an item frame) leaves out the decorations that
-    /// do not show on frames.
-    pub(super) fn map_vertices(
-        &mut self,
-        id: i32,
-        show_only_frame: bool,
-        m: glam::Mat4,
-        light: u32,
-        out: &mut Vec<Vertex>,
-    ) {
-        let Some(rect) = self.map_texture(id) else {
-            return;
-        };
-        let quad = |corners: [[f32; 3]; 4], uv: [[f32; 2]; 4], out: &mut Vec<Vertex>| {
-            for (c, uv) in corners.into_iter().zip(uv) {
-                out.push(Vertex {
-                    normal: [0; 4],
-                    pos: m.transform_point3(glam::Vec3::from_array(c)).to_array(),
-                    uv,
-                    layer: 0,
-                    color: 0xFFFF_FFFF,
-                    light,
-
-                    glint_uv: [0.0, 0.0],
-                });
-            }
-        };
-        let z = -0.01;
-        quad(
-            [
-                [0.0, 128.0, z],
-                [128.0, 128.0, z],
-                [128.0, 0.0, z],
-                [0.0, 0.0, z],
-            ],
-            [
-                [rect.u0, rect.v1],
-                [rect.u1, rect.v1],
-                [rect.u1, rect.v0],
-                [rect.u0, rect.v0],
-            ],
-            out,
-        );
-        let decorations = self.maps.data.get(&id).map_or(&[][..], |m| &m.decorations);
-        let mut count = 0;
-        for d in decorations {
-            if show_only_frame && !shown_on_frame(d.sprite) {
-                continue;
-            }
-            let Some(s) = self.gui.atlas.gui_rect(d.sprite).copied() else {
-                continue;
-            };
-            let dm = decoration_pose(d, -0.02 - count as f32 * 0.001);
-            let p = |x: f32, y: f32| dm.transform_point3(glam::Vec3::new(x, y, 0.0)).to_array();
-            let mut q = |corners: [[f32; 3]; 4], uv: [[f32; 2]; 4]| {
-                for (c, uv) in corners.into_iter().zip(uv) {
-                    out.push(Vertex {
-                        normal: [0; 4],
-                        pos: m.transform_point3(glam::Vec3::from_array(c)).to_array(),
-                        uv,
-                        layer: 0,
-                        color: 0xFFFF_FFFF,
-                        light,
-
-                        glint_uv: [0.0, 0.0],
-                    });
-                }
-            };
-            q(
-                [p(-1.0, 1.0), p(1.0, 1.0), p(1.0, -1.0), p(-1.0, -1.0)],
-                [[s.u0, s.v0], [s.u1, s.v0], [s.u1, s.v1], [s.u0, s.v1]],
-            );
-            if let Some(name) = &d.name {
-                let text = sunrise_client::text::Text::literal(name);
-                let f = self.gui.atlas.font.width_text(&text);
-                if f > 0.0 {
-                    let f1 = (25.0 / f).clamp(0.0, 6.0 / 9.0);
-                    let mut text_batch = HudBatch::scratch([1, 1]);
-                    let behind =
-                        text_batch.name_tag(&self.gui.atlas, &text, 0.0, 0xFFFF_FFFF, 0x8000_0000);
-                    self.client.map_patches.append(&mut text_batch.patches);
-                    let tm = glam::Mat4::from_translation(glam::Vec3::new(
-                        f32::from(d.x) / 2.0 + 64.0,
-                        f32::from(d.y) / 2.0 + 64.0 + 4.0,
-                        // MapRenderer translates by -0.025, then flips Z and
-                        // translates by 0.1 in text space: -0.025 - 0.1.
-                        -0.125,
-                    )) * glam::Mat4::from_scale(glam::Vec3::new(f1, f1, 1.0));
-                    for (i, quad) in text_batch.vertices.as_chunks::<6>().0.iter().enumerate() {
-                        let z_shift = if i * 6 < behind { 0.0005 } else { -0.0005 };
-                        for v in [quad[5], quad[2], quad[1], quad[0]] {
-                            out.push(Vertex {
-                                normal: [0; 4],
-                                pos: m
-                                    .transform_point3(tm.transform_point3(glam::Vec3::new(
-                                        v.pos[0], v.pos[1], z_shift,
-                                    )))
-                                    .to_array(),
-                                uv: v.uv,
-                                layer: 0,
-                                color: v.color,
-                                light,
-                                glint_uv: [0.0, 0.0],
-                            });
-                        }
-                    }
-                }
-            }
-            count += 1;
-        }
-        // A native mod's own icons, over the vanilla ones.
-        for d in self.mod_map_decorations(id, show_only_frame) {
-            let Some(s) = self.gui.atlas.gui_rect(d.sprite.as_str()).copied() else {
-                continue;
-            };
-            let dm = decoration_pose_at(d.x, d.y, d.rot, -0.02 - count as f32 * 0.001);
-            let p = |x: f32, y: f32| dm.transform_point3(glam::Vec3::new(x, y, 0.0)).to_array();
-            let corners = [p(-1.0, 1.0), p(1.0, 1.0), p(1.0, -1.0), p(-1.0, -1.0)];
-            let uvs = [[s.u0, s.v0], [s.u1, s.v0], [s.u1, s.v1], [s.u0, s.v1]];
-            for (c, uv) in corners.into_iter().zip(uvs) {
-                out.push(Vertex {
-                    normal: [0; 4],
-                    pos: m.transform_point3(glam::Vec3::from_array(c)).to_array(),
-                    uv,
-                    layer: 0,
-                    color: 0xFFFF_FFFF,
-                    light,
-                    glint_uv: [0.0, 0.0],
-                });
-            }
-            count += 1;
-        }
-    }
     /// The icons `native_map_decorations` adds to map `id`, as it is drawn
     /// (`frame`: in an item frame or on a screen, which show only what
     /// `shown_on_frame` allows).
-    pub(super) fn mod_map_decorations(&self, id: i32, frame: bool) -> Vec<mod_api::MapDecoration> {
+    pub(in crate::game) fn mod_map_decorations(
+        &self,
+        id: i32,
+        frame: bool,
+    ) -> Vec<mod_api::MapDecoration> {
         let Some(map) = self.maps.data.get(&id) else {
             return Vec::new();
         };
@@ -1921,7 +1738,7 @@ impl Game<'_> {
     }
     /// `renderTwoHandedMap`: map `id` held in both hands, in view space (the
     /// arms under it: `first_person::map_arm_poses`).
-    pub(super) fn two_handed_map_geometry(
+    pub(in crate::game) fn two_handed_map_geometry(
         &mut self,
         to_world: glam::Mat4,
         attack: f32,
@@ -1942,7 +1759,13 @@ impl Game<'_> {
     }
     /// `renderMap`: map `id` at pose `m`, its background (with a 7-pixel
     /// border) then the map.
-    pub(super) fn held_map(&mut self, m: glam::Mat4, id: i32, light: u32, out: &mut Vec<Vertex>) {
+    pub(in crate::game) fn held_map(
+        &mut self,
+        m: glam::Mat4,
+        id: i32,
+        light: u32,
+        out: &mut Vec<Vertex>,
+    ) {
         let deg = |d: f32| d.to_radians();
         let m = m
             * glam::Mat4::from_rotation_y(deg(180.0))
@@ -1982,14 +1805,14 @@ impl Game<'_> {
 }
 
 #[cfg(test)]
-mod live_frame_tests;
+pub(in crate::game) mod live_frame_tests;
 #[cfg(test)]
-mod native_read_tests;
+pub(in crate::game) mod native_read_tests;
 #[cfg(test)]
 pub(in crate::game) mod save_tests;
 
 #[cfg(test)]
-mod tests {
+pub(in crate::game) mod tests {
     use super::*;
 
     #[test]
@@ -2240,4 +2063,4 @@ mod tests {
 }
 
 #[cfg(test)]
-mod command_exploration_map_test_file;
+pub(in crate::game) mod command_exploration_map_test_file;

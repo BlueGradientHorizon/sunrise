@@ -15,7 +15,7 @@ use sunrise_client_gameplay::mob_ambient as ambient;
 use sunrise_core::{geometry::Vec3, random::RandomSource};
 
 impl Game<'_> {
-    pub(super) fn tick_client_ambient(&mut self) {
+    pub(in crate::game) fn tick_client_ambient(&mut self) {
         if self.serving.is_some() || self.options.dedicated.is_some() {
             return;
         }
@@ -152,7 +152,7 @@ impl Game<'_> {
     /// Spawn sprint particles when called explicitly by a client mod. A
     /// valid entity returns true even if the block beneath it is invisible.
     /// Returns false for stale, untracked, server-side, or unsupported entities.
-    pub(super) fn entity_sprint_particles(&mut self, entity: EntityRef) -> bool {
+    pub(in crate::game) fn entity_sprint_particles(&mut self, entity: EntityRef) -> bool {
         use super::commands::Target;
         if self.is_logical_server() {
             return false;
@@ -207,7 +207,7 @@ impl Game<'_> {
     /// feet at `position` (`getOnPosLegacy`), thrown back against `movement`,
     /// unless that block is invisible. `offsets` draws the two random
     /// `nextDouble`s for x and z (the entity's random in vanilla).
-    pub(super) fn sprint_particle(
+    pub(in crate::game) fn sprint_particle(
         &mut self,
         position: Vec3,
         movement: Vec3,

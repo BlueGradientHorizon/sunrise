@@ -139,7 +139,7 @@ impl super::Containers<'_> {
 impl Game<'_> {
     /// Vanilla containers and `WorldlyContainerHolder`s keep their direct automation path.
     /// This owner check borrows storage; it never builds a container view on the tick path.
-    pub(super) fn vanilla_automation_container(&self, pos: Pos) -> bool {
+    pub(in crate::game) fn vanilla_automation_container(&self, pos: Pos) -> bool {
         use sunrise_client::containers::BlockEntity;
         match self.world.block_entities.get(&pos) {
             Some(
@@ -161,7 +161,7 @@ impl Game<'_> {
         }
     }
     /// `HopperBlockEntity.inventoryFull`: every slot holds exactly a full item stack.
-    pub(super) fn hopper_is_stacked(&self, view: &View) -> bool {
+    pub(in crate::game) fn hopper_is_stacked(&self, view: &View) -> bool {
         let c = self.containers();
         (0..view.len()).all(|slot| {
             c.get(view, slot)
@@ -170,7 +170,7 @@ impl Game<'_> {
     }
     /// `DropperBlock.dispenseFrom`: always commit a storage attempt, including refusal.
     /// Accepted source removal precedes root-commit callbacks that can re-enter the source.
-    pub(super) fn dropper_into_part(
+    pub(in crate::game) fn dropper_into_part(
         &mut self,
         part: &mod_api::Capability<dyn mod_api::ResourceHandler<mod_api::ItemResource>>,
         stack: &ItemStack,
@@ -309,7 +309,7 @@ impl Game<'_> {
     }
     /// Keeps what a capability write to slot `slot` of `view` changes: that slot alone where a
     /// write there changes nothing else, else each block entity of the view whole.
-    pub(super) fn journal_view_slot(&mut self, view: &View, slot: usize) {
+    pub(in crate::game) fn journal_view_slot(&mut self, view: &View, slot: usize) {
         match view.kind {
             Kind::Composter(_) => return,
             Kind::Pot => return self.journal_saved_pot(view.parts[0].0),

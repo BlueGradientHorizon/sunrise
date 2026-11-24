@@ -2,7 +2,7 @@
 use super::*;
 #[derive(Default)]
 pub(in crate::game) struct DragonResidency {
-    pub(super) lifetime: sunrise_mod_runtime::attachments::AttachmentLifetime,
+    pub(in crate::game) lifetime: sunrise_mod_runtime::attachments::AttachmentLifetime,
 }
 
 /// A real sub-entity: geometry, identity and attachment authority move and
@@ -86,7 +86,7 @@ impl Game<'_> {
         Some((self.dragon.as_ref()?, usize::from(offset)))
     }
 
-    pub(super) fn assign_resident_crystal_ids(&mut self) {
+    pub(in crate::game) fn assign_resident_crystal_ids(&mut self) {
         crate::game::entity_residency::assign_resident_ids!(
             self.crystals,
             c,

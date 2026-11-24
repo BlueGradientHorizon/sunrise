@@ -1,16 +1,22 @@
 //! Evoker fangs (`EvokerFangs`): rising out of the floor after a delay,
 //! biting what stands on them for 6 damage, sinking back after 22 ticks.
+#[allow(unused_imports)]
 use super::Game;
+#[allow(unused_imports)]
 use std::sync::Arc;
+#[allow(unused_imports)]
 use sunrise_client::mobs::{Part, Species, anim::Poses};
+#[allow(unused_imports)]
 use sunrise_client::particles::{ParticleOptions, ParticleType};
+#[allow(unused_imports)]
 use sunrise_core::geometry::Vec3;
+#[allow(unused_imports)]
 use sunrise_core::random::{LegacyRandom, RandomSource};
 
 #[derive(Clone, Debug)]
-pub(super) struct Fangs {
+pub(in crate::game) struct Fangs {
     /// Entity-owned registration metadata; content clones are detached.
-    pub(super) attachment_lifetime: sunrise_mod_runtime::attachments::AttachmentLifetime,
+    pub(in crate::game) attachment_lifetime: sunrise_mod_runtime::attachments::AttachmentLifetime,
     pub(in crate::game) join: sunrise_client::join_seq::JoinSeq,
     pub id: u32,
     pub pos: [f64; 3],
@@ -29,19 +35,22 @@ pub(super) struct Fangs {
     /// `Entity.hasVisualFire` (`HasVisualFire` in NBT).
     pub has_visual_fire: bool,
     /// `Entity.random`. The attack sound's pitch is its first draw.
-    random: LegacyRandom,
+    pub(in crate::game) random: LegacyRandom,
 }
 
 sunrise_client::impl_joined!(Fangs);
 sunrise_mod_runtime::impl_attachment_lifetime!(Fangs);
 
 /// `EvokerFangs.handleEntityEvent`: `nextFloat() * 0.2 + 0.85`.
-pub(super) fn fang_attack_pitch(random: &mut impl RandomSource) -> f32 {
+pub(in crate::game) fn fang_attack_pitch(random: &mut impl RandomSource) -> f32 {
     random.next_float() * 0.2 + 0.85
 }
 /// One of the twelve `crit` particles `EvokerFangs.tick` spawns on a client
 /// when `lifeTicks` hits 14. The box is 0.5 wide (`getBbWidth() * 0.5`).
-pub(super) fn fang_crit(random: &mut impl RandomSource, pos: [f64; 3]) -> ([f64; 3], [f64; 3]) {
+pub(in crate::game) fn fang_crit(
+    random: &mut impl RandomSource,
+    pos: [f64; 3],
+) -> ([f64; 3], [f64; 3]) {
     let half = 0.5 * 0.5;
     let x = pos[0] + (random.next_double() * 2.0 - 1.0) * half;
     let y = pos[1] + 0.05 + random.next_double();
@@ -52,9 +61,9 @@ pub(super) fn fang_crit(random: &mut impl RandomSource, pos: [f64; 3]) -> ([f64;
     ([x, y + 1.0, z], [xd, yd, zd])
 }
 #[derive(Default)]
-pub(super) struct FangState {
+pub(in crate::game) struct FangState {
     pub list: sunrise_client::join_seq::ResidentList<Fangs>,
-    model: Option<Arc<Part>>,
+    pub(in crate::game) model: Option<Arc<Part>>,
 }
 impl FangState {
     pub(in crate::game) fn perf_count(&self) -> usize {
@@ -62,33 +71,16 @@ impl FangState {
     }
 }
 impl Game<'_> {
-    pub(super) fn add_fangs(&mut self, at: [f64; 3], yaw: f32, delay: i32, owner: u32) {
+    pub(in crate::game) fn add_fangs(&mut self, at: [f64; 3], yaw: f32, delay: i32, owner: u32) {
         self.server.next_entity += 1;
         self.insert_fangs(self.server.next_entity, at, yaw, delay, owner);
     }
 
-    pub(super) fn insert_fangs(&mut self, id: u32, at: [f64; 3], yaw: f32, delay: i32, owner: u32) {
-        if self.fangs.model.is_none() {
-            self.fangs.model = self.client.entity_models.evoker_fangs.clone();
-        }
-        self.fangs.list.push(Fangs {
-            attachment_lifetime: Default::default(),
-            join: Default::default(),
-            id,
-            pos: at,
-            motion: Vec3::ZERO,
-            yaw,
-            warmup: delay,
-            life: 22,
-            owner,
-            started: false,
-            fire_ticks: 0,
-            synced_fire: false,
-            has_visual_fire: false,
-            random: sunrise_client::mobs::entity_random(id, Vec3::new(at[0], at[1], at[2])),
-        });
-    }
-    pub(super) fn fangs_to_nbt(&self, f: &Fangs, uuid: [i32; 4]) -> sunrise_core::nbt::Tag {
+    pub(in crate::game) fn fangs_to_nbt(
+        &self,
+        f: &Fangs,
+        uuid: [i32; 4],
+    ) -> sunrise_core::nbt::Tag {
         sunrise_client::entity_nbt::evoker_fangs_to_nbt(
             Vec3::new(f.pos[0], f.pos[1], f.pos[2]),
             f.motion,
@@ -100,7 +92,7 @@ impl Game<'_> {
             self.persist.raw.get(&f.id),
         )
     }
-    pub(super) fn loaded_fangs_owner(&self, tag: &sunrise_core::nbt::Tag) -> u32 {
+    pub(in crate::game) fn loaded_fangs_owner(&self, tag: &sunrise_core::nbt::Tag) -> u32 {
         match tag.get("Owner") {
             Some(sunrise_core::nbt::Tag::IntArray(v)) => v.as_slice().try_into().ok(),
             _ => None,
@@ -108,61 +100,9 @@ impl Game<'_> {
         .and_then(|u| self.mob_by_uuid(u))
         .unwrap_or(0)
     }
-    /// `EvokerFangs.handleEntityEvent`: only event 4 starts a client attack.
-    /// `playLocalSound` at `nextFloat() * 0.2 + 0.85`. The fangs this client
-    /// tracks carry no Silent flag, so the sound always plays.
-    pub(super) fn remote_fangs_event(&mut self, id: u32, event: i8) {
-        let sound = self
-            .fangs
-            .list
-            .iter()
-            .position(|f| f.id == id)
-            .and_then(|i| {
-                self.fangs.list.update(i, |f| {
-                    if event != 4 {
-                        return None;
-                    }
-                    f.started = true;
-                    let pitch = fang_attack_pitch(&mut f.random);
-                    Some((f.pos, pitch))
-                })
-            });
-        if let Some((pos, pitch)) = sound {
-            self.audio.0.play_unshared(
-                "minecraft:entity.evoker_fangs.attack",
-                Some(pos),
-                1.0,
-                pitch,
-            );
-        }
-    }
-
-    /// `EvokerFangs.tick`: clients only advance animation, never damage or discard.
-    /// At life 14, twelve `crit` particles (`ATTACK_TRIGGER_TICKS`).
-    pub(super) fn tick_remote_fangs(&mut self) {
-        let mut bursts = Vec::new();
-        self.fangs.list.for_each_mut(|f| {
-            if f.started {
-                f.life -= 1;
-                if f.life == 14 {
-                    let mut crits = Vec::with_capacity(12);
-                    for _ in 0..12 {
-                        crits.push(fang_crit(&mut f.random, f.pos));
-                    }
-                    bursts.push(crits);
-                }
-            }
-        });
-        let crit = ParticleOptions::simple(ParticleType::Crit);
-        for crits in bursts {
-            for (at, velocity) in crits {
-                self.particles.0.add(&crit, at, velocity);
-            }
-        }
-    }
 
     /// `EvokerFangs.tick`.
-    pub(super) fn tick_fangs(&mut self) {
+    pub(in crate::game) fn tick_fangs(&mut self) {
         sunrise_threads::work::clear_work();
         // ServerLevel.tick: only entities in entity-ticking chunks that joined before the pass tick.
         let ticking = self.entity_ticking_area();
@@ -207,7 +147,7 @@ impl Game<'_> {
     }
     /// `Entity.baseTick`'s `updateFluidInteraction` for fangs (0.5F x 0.8F): the
     /// currents of the water and lava the box touches add to the motion.
-    fn fangs_fluid_step(&self, f: &mut Fangs) {
+    pub(in crate::game) fn fangs_fluid_step(&self, f: &mut Fangs) {
         let at = Vec3::new(f.pos[0], f.pos[1], f.pos[2]);
         let bounds = sunrise_core::geometry::Aabb::new(
             Vec3::new(at.x - 0.25, at.y, at.z - 0.25),
@@ -227,7 +167,7 @@ impl Game<'_> {
     }
     /// `dealDamageTo` everything alive in the fangs' box (0.5 x 0.8,
     /// inflated 0.2 sideways) but the evoker's allies.
-    fn fangs_bite(&mut self, f: &Fangs) {
+    pub(in crate::game) fn fangs_bite(&mut self, f: &Fangs) {
         let half = 0.25 + 0.2;
         let lo = Vec3::new(f.pos[0] - half, f.pos[1], f.pos[2] - half);
         let hi = Vec3::new(f.pos[0] + half, f.pos[1] + 0.8, f.pos[2] + half);
@@ -353,7 +293,7 @@ impl Game<'_> {
         }
     }
     /// `EvokerFangsRenderer`: the jaws snapping up and closing.
-    pub(super) fn fangs_geometry(
+    pub(in crate::game) fn fangs_geometry(
         &self,
         camera: glam::DVec3,
         alpha: f64,
@@ -424,7 +364,7 @@ impl Game<'_> {
     }
 }
 /// `EntityTypeTags.ILLAGER` members, the types of `ILLAGER_FRIENDS`.
-fn is_illager(s: Species) -> bool {
+pub(in crate::game) fn is_illager(s: Species) -> bool {
     matches!(
         s,
         Species::Evoker | Species::Illusioner | Species::Pillager | Species::Vindicator
@@ -432,13 +372,13 @@ fn is_illager(s: Species) -> bool {
 }
 /// One side of an ally check: whether it is an illager and its team.
 #[derive(Clone, Copy)]
-struct Party<'a> {
-    illager: bool,
-    team: Option<&'a sunrise_client::scoreboard::Team>,
+pub(in crate::game) struct Party<'a> {
+    pub(in crate::game) illager: bool,
+    pub(in crate::game) team: Option<&'a sunrise_client::scoreboard::Team>,
 }
 /// `AbstractIllager.considersEntityAsAlly(other)`: the base rule (the teams
 /// are allied), or an illager friend while both have no team.
-fn illager_considers(me: Party, other: Party) -> bool {
+pub(in crate::game) fn illager_considers(me: Party, other: Party) -> bool {
     sunrise_client::scoreboard::teams_allied(me.team, other.team)
         || other.illager && me.team.is_none() && other.team.is_none()
 }
@@ -446,13 +386,17 @@ fn illager_considers(me: Party, other: Party) -> bool {
 /// either way round. `vex_root` is the root owner of a vex target (whether it
 /// is the owner itself, and its party); the owner treats such a vex as an ally
 /// when its root owner is.
-fn fangs_allied(owner: Party, other: Party, vex_root: Option<(bool, Party)>) -> bool {
+pub(in crate::game) fn fangs_allied(
+    owner: Party,
+    other: Party,
+    vex_root: Option<(bool, Party)>,
+) -> bool {
     illager_considers(owner, other)
         || other.illager && illager_considers(other, owner)
         || !other.illager && sunrise_client::scoreboard::teams_allied(other.team, owner.team)
         || vex_root.is_some_and(|(is_owner, root)| is_owner || illager_considers(owner, root))
 }
-fn p_zrot(p: &mut Poses, part: &str, v: f32) {
+pub(in crate::game) fn p_zrot(p: &mut Poses, part: &str, v: f32) {
     p.zrot(part, v);
 }
 #[cfg(test)]
@@ -460,7 +404,7 @@ fn p_zrot(p: &mut Poses, part: &str, v: f32) {
 pub(in crate::game) mod current_tests;
 
 #[cfg(test)]
-mod tests {
+pub(in crate::game) mod tests {
     use super::{Party, fang_attack_pitch, fang_crit, fangs_allied};
     use sunrise_core::random::LegacyRandom;
 

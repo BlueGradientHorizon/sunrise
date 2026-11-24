@@ -398,7 +398,7 @@ mod tests {
     fn connection_group_transactions_abort_silently_and_commit_with_block_writes() {
         // The fixture's resource load replaces the process's block namespace table.
         if crate::game::native_entity_refs::tests::run_fresh_cases(
-            "game::native_connection_groups::tests::connection_group_transactions_abort_silently_and_commit_with_block_writes",
+            "game::server_side::native_connection_groups::tests::connection_group_transactions_abort_silently_and_commit_with_block_writes",
             "SUNRISE_GROUP_TRANSACTIONS_CHILD",
             &["run"],
         ) {
@@ -989,7 +989,7 @@ mod tests {
     #[ignore = "daily"]
     fn a_replayed_callback_sees_a_later_bulk_cell_before_its_edit() {
         if crate::game::native_entity_refs::tests::run_fresh_cases(
-            "game::native_connection_groups::tests::a_replayed_callback_sees_a_later_bulk_cell_before_its_edit",
+            "game::server_side::native_connection_groups::tests::a_replayed_callback_sees_a_later_bulk_cell_before_its_edit",
             "SUNRISE_GROUP_REPLAY_CHILD",
             &["run"],
         ) {

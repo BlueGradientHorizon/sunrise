@@ -37,9 +37,10 @@ static NEXT_LEND: AtomicU64 = AtomicU64::new(1);
 #[derive(Default)]
 pub(in crate::game) struct LentMobs {
     lends: Vec<Lent>,
-    pub(super) pending: Rc<RefCell<PendingChildren<super::native_pending_children::PendingMob>>>,
+    pub(in crate::game) pending:
+        Rc<RefCell<PendingChildren<super::native_pending_children::PendingMob>>>,
     /// The hook whose listeners the innermost pending action is dispatching to, if any.
-    pub(super) hook: Rc<std::cell::Cell<Option<mod_api::HookId>>>,
+    pub(in crate::game) hook: Rc<std::cell::Cell<Option<mod_api::HookId>>>,
 }
 
 #[cfg(test)]
@@ -90,13 +91,13 @@ impl Drop for Withdraw<'_, '_, '_> {
 
 /// The editor a lend hands out: it reaches only the lent copies, through the
 /// game it was made from.
-pub(super) struct Edits<'a, 'g> {
-    pub(super) game: &'a Game<'g>,
+pub(in crate::game) struct Edits<'a, 'g> {
+    pub(in crate::game) game: &'a Game<'g>,
 }
 
 impl Game<'_> {
     /// A nested pending action must expire standalone lends too, including their metadata.
-    pub(super) fn expire_standalone_lends(&self) {
+    pub(in crate::game) fn expire_standalone_lends(&self) {
         for previous in &mut self.lent_mobs.0.borrow_mut().lends {
             previous.valid = false;
         }
@@ -172,7 +173,7 @@ impl Game<'_> {
     }
 
     /// Runs `read` on the mob the lend `handle` names.
-    pub(super) fn with_lent_mob<T>(
+    pub(in crate::game) fn with_lent_mob<T>(
         &self,
         handle: UnspawnedMobRef,
         read: impl FnOnce(&Mob) -> Result<T, UnspawnedMobError>,
@@ -194,7 +195,7 @@ impl Game<'_> {
     }
 
     /// Runs `edit` on the mob the lend `handle` names.
-    pub(super) fn edit_lent_mob<T>(
+    pub(in crate::game) fn edit_lent_mob<T>(
         &self,
         handle: UnspawnedMobRef,
         edit: impl FnOnce(&Game<'_>, &mut Mob) -> Result<T, UnspawnedMobError>,
@@ -220,7 +221,7 @@ impl Game<'_> {
     }
 
     /// The mob's entity type (`minecraft:zombie`).
-    pub(super) fn unspawned_mob_kind(
+    pub(in crate::game) fn unspawned_mob_kind(
         &self,
         mob: UnspawnedMobRef,
     ) -> Result<Identifier, UnspawnedMobError> {
@@ -235,7 +236,7 @@ impl Game<'_> {
     }
 
     /// Where the mob will join the level.
-    pub(super) fn unspawned_mob_position(
+    pub(in crate::game) fn unspawned_mob_position(
         &self,
         mob: UnspawnedMobRef,
     ) -> Result<[f64; 3], UnspawnedMobError> {
@@ -247,7 +248,7 @@ impl Game<'_> {
 
     /// The stack in `slot` (`LivingEntity.getItemBySlot`) and its count; `None`
     /// for an empty slot.
-    pub(super) fn unspawned_mob_equipment(
+    pub(in crate::game) fn unspawned_mob_equipment(
         &self,
         mob: UnspawnedMobRef,
         slot: EquipmentSlot,
@@ -257,7 +258,7 @@ impl Game<'_> {
 
     /// An attribute's base value, before modifiers (`AttributeMap.getBaseValue`).
     /// `Unsupported` for an attribute the mob's type does not have.
-    pub(super) fn unspawned_mob_attribute_base(
+    pub(in crate::game) fn unspawned_mob_attribute_base(
         &self,
         mob: UnspawnedMobRef,
         attribute: &Identifier,
@@ -268,7 +269,7 @@ impl Game<'_> {
     /// An attribute's value with its modifiers, its equipment's included
     /// (`AttributeMap.getValue`). `Unsupported` for an attribute the mob's type
     /// does not have.
-    pub(super) fn unspawned_mob_attribute_value(
+    pub(in crate::game) fn unspawned_mob_attribute_value(
         &self,
         mob: UnspawnedMobRef,
         attribute: &Identifier,
@@ -297,7 +298,7 @@ impl Game<'_> {
     }
 
     /// The tags a mod gave the mob so far (`Entity.entityTags()`).
-    pub(super) fn unspawned_mob_tags(
+    pub(in crate::game) fn unspawned_mob_tags(
         &self,
         mob: UnspawnedMobRef,
     ) -> Result<Vec<String>, UnspawnedMobError> {
@@ -305,7 +306,7 @@ impl Game<'_> {
     }
 
     /// The mob's custom name, if it has one.
-    pub(super) fn unspawned_mob_custom_name(
+    pub(in crate::game) fn unspawned_mob_custom_name(
         &self,
         mob: UnspawnedMobRef,
     ) -> Result<Option<Text>, UnspawnedMobError> {
@@ -314,7 +315,7 @@ impl Game<'_> {
 
     /// The tags a mod gave the mobs from index `from` on before they joined
     /// move to where the level keeps a joined entity's tags.
-    pub(super) fn join_spawn_tags(&mut self, from: usize) {
+    pub(in crate::game) fn join_spawn_tags(&mut self, from: usize) {
         for i in from..self.mobs.len() {
             if self.mobs[i].extra.spawn_tags.is_empty() {
                 continue;

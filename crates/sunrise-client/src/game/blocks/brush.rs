@@ -1,11 +1,13 @@
 //! Brushing suspicious sand and gravel: `BrushItem.onUseTick` and
 //! `BrushableBlockEntity`. The block's loot table stays in its saved block
 //! entity (like a decorated pot's) until the first counted stroke rolls it.
+#[allow(unused_imports)]
 use super::{
     Game, Hit, decorated_pot,
     item_draw::{BlockItemDraw, block_entity_pose},
     view_vector,
 };
+#[allow(unused_imports)]
 use sunrise_client::{
     block_entity_render::vertex_light,
     camera::rotate_degrees,
@@ -14,9 +16,12 @@ use sunrise_client::{
     particles::{ParticleOptions, ParticleType},
     save,
 };
+#[allow(unused_imports)]
 use sunrise_client_render::block_entity_reach::Reach;
+#[allow(unused_imports)]
 use sunrise_core::random::RandomSource;
 
+#[allow(unused_imports)]
 pub(in crate::game) use sunrise_gameplay::brushing::{Brushing, USE_DURATION, completion_state};
 
 impl Game<'_> {
@@ -68,7 +73,7 @@ impl Game<'_> {
     /// One stroke on the block aimed at: dust (this window only), the brush
     /// sound, and the block entity's count. The brush wears when the block
     /// changed state.
-    fn brush_stroke(&mut self, hit: &Hit, slot: usize) {
+    pub(in crate::game) fn brush_stroke(&mut self, hit: &Hit, slot: usize) {
         let state = self.world.block(hit.pos[0], hit.pos[1], hit.pos[2]);
         let name = self.res.facts().get(state).name.clone();
         let (sound, brushable) = match &*name {
@@ -86,49 +91,13 @@ impl Game<'_> {
         }
     }
 
-    /// `BrushItem.spawnDustParticles`.
-    pub(in crate::game) fn brush_dust(&mut self, hit: &Hit, off_hand: bool) {
-        let state = self.world.block(hit.pos[0], hit.pos[1], hit.pos[2]);
-        let Some((sprite, tint)) = self.particle_sprite(state, hit.pos) else {
-            return;
-        };
-        let options = ParticleOptions::block(ParticleType::Block, sprite, tint);
-        // The arm that brushes: the main arm, or the other one for the off hand.
-        let flip = if off_hand == self.settings.main_hand_left {
-            1.0
-        } else {
-            -1.0
-        };
-        let view = view_vector(self.yaw, self.pitch);
-        // DustParticlesDelta.fromDirection.
-        let (dx, dz) = match hit.face {
-            [0, _, 0] => (view[2], -view[0]),
-            [0, 0, -1] => (1.0, -0.1),
-            [0, 0, 1] => (-1.0, 0.1),
-            [-1, 0, 0] => (-0.1, -1.0),
-            _ => (0.1, 1.0),
-        };
-        let count = 7 + self
-            .particles
-            .0
-            .level_random()
-            .next_int_bound(5)
-            .unwrap_or(0);
-        let x = hit.point[0] - if hit.face == [-1, 0, 0] { 1.0e-6 } else { 0.0 };
-        let z = hit.point[2] - if hit.face == [0, 0, -1] { 1.0e-6 } else { 0.0 };
-        for _ in 0..count {
-            let random = self.particles.0.level_random();
-            let v = [
-                dx * flip * 3.0 * random.next_double(),
-                0.0,
-                dz * flip * 3.0 * random.next_double(),
-            ];
-            self.particles.0.add(&options, [x, hit.point[1], z], v);
-        }
-    }
-
     /// `BrushableBlockEntity.brush`: whether the block changed (the brush wears).
-    fn brush_block(&mut self, pos: [i32; 3], face: [i32; 3], slot: usize) -> bool {
+    pub(in crate::game) fn brush_block(
+        &mut self,
+        pos: [i32; 3],
+        face: [i32; 3],
+        slot: usize,
+    ) -> bool {
         let time = self.world.game_time;
         let mut brush = self.server.brushing.remove(&pos).unwrap_or_default();
         brush.hit_face.get_or_insert(face);
@@ -172,7 +141,7 @@ impl Game<'_> {
     /// block entity's item. `LootContextParamSets.ARCHAEOLOGY`: the brusher is
     /// THIS_ENTITY, the brush in `slot` the TOOL and the block's centre the
     /// ORIGIN, with the brusher's luck.
-    fn unpack_brush_loot(&mut self, pos: [i32; 3], slot: usize) {
+    pub(in crate::game) fn unpack_brush_loot(&mut self, pos: [i32; 3], slot: usize) {
         let key = (pos[0], pos[1], pos[2]);
         let Some(BlockEntity::Brushable(b)) = self.world.block_entities.get(&key) else {
             return;
@@ -218,7 +187,12 @@ impl Game<'_> {
 
     /// `BrushableBlockEntity.brushingCompleted`: the item drops out of the
     /// brushed face and the block turns into its sand or gravel.
-    fn brushing_completed(&mut self, pos: [i32; 3], face: Option<[i32; 3]>, slot: usize) {
+    pub(in crate::game) fn brushing_completed(
+        &mut self,
+        pos: [i32; 3],
+        face: Option<[i32; 3]>,
+        slot: usize,
+    ) {
         let state = self.world.block(pos[0], pos[1], pos[2]);
         let turns_into = match &*self.res.facts().get(state).name {
             "minecraft:suspicious_sand" => "minecraft:sand",
@@ -263,7 +237,7 @@ impl Game<'_> {
         }
     }
 
-    fn set_dusted(&mut self, pos: [i32; 3], dusted: i32) {
+    pub(in crate::game) fn set_dusted(&mut self, pos: [i32; 3], dusted: i32) {
         let registry = self.pack.assets.registry;
         let Some(mut state) = registry
             .state(self.world.block(pos[0], pos[1], pos[2]))
@@ -277,7 +251,7 @@ impl Game<'_> {
         }
     }
 
-    fn schedule_brushable_tick(&mut self, pos: [i32; 3]) {
+    pub(in crate::game) fn schedule_brushable_tick(&mut self, pos: [i32; 3]) {
         let at = sunrise_core::position::BlockPos::new(pos[0], pos[1], pos[2]);
         self.with_level(|b, level, ticks| b.schedule_tick(level, ticks, at, 2));
     }
@@ -387,22 +361,5 @@ impl Game<'_> {
                 light: vertex_light(light),
             });
         }
-    }
-
-    /// Level event 3008 (`LevelEventHandler`): the finished block's sound
-    /// and break particles.
-    pub(in crate::game) fn brush_complete_event(&mut self, pos: [i32; 3], data: i32) {
-        let state = sunrise_world::registry::BlockStateId(data as u32);
-        let sound = match &*self.res.facts().get(state).name {
-            "minecraft:suspicious_sand" => "minecraft:item.brush.brushing.sand.complete",
-            "minecraft:suspicious_gravel" => "minecraft:item.brush.brushing.gravel.complete",
-            _ => "",
-        };
-        if !sound.is_empty() {
-            let at = pos.map(|v| f64::from(v) + 0.5);
-            // Each client plays it from the event itself.
-            self.audio.0.play_unshared(sound, Some(at), 1.0, 1.0);
-        }
-        self.destroy_particles(pos, state);
     }
 }

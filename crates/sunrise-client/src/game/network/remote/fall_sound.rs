@@ -1,7 +1,8 @@
+#[allow(unused_imports)]
 use super::*;
 
 impl Game<'_> {
-    pub(super) fn block_fall(&mut self, event: sunrise_client::landing::FallEvent) {
+    pub(in crate::game) fn block_fall(&mut self, event: sunrise_client::landing::FallEvent) {
         let (position, state) = match event {
             sunrise_client::landing::FallEvent::Sound {
                 sound,
@@ -38,4 +39,4 @@ impl Game<'_> {
 
 #[cfg(test)]
 #[path = "fall_sound_tests.rs"]
-mod tests;
+pub(in crate::game) mod tests;

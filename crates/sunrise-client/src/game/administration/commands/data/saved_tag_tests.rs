@@ -1,69 +1,23 @@
+#[allow(unused_imports)]
 use super::*;
+#[allow(unused_imports)]
 use crate::game::{Audio, Options, Progress, Settings, load_resources};
+#[allow(unused_imports)]
 use std::collections::HashSet;
+#[allow(unused_imports)]
 use sunrise_client::motion::PlayerMotion;
+#[allow(unused_imports)]
 use sunrise_core::geometry::Vec3;
 
-/// A server-side game that runs commands, its world in a scratch folder.
-fn with_command_game(name: &str, test: impl FnOnce(&mut Game<'_>)) {
-    let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
-    let settings = Settings::default();
-    let loaded = load_resources(
-        sunrise_assets::resource_source::ResourceRoot::directory(root.clone()),
-        Vec::new(),
-        None,
-        &root,
-        &settings,
-        std::time::Instant::now(),
-        false,
-        crate::game::execution_role::ExecutionRole::IntegratedServer,
-        &Progress::new(),
-        &mut |_, _| unreachable!(),
-    )
-    .unwrap();
-    let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
-    options.resources = root.clone();
-    options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
-    let mut game = Game::new(
-        &loaded.resources,
-        loaded.pack,
-        loaded.gui.unwrap(),
-        options,
-        settings,
-        Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
-            root.clone(),
-        )),
-        None,
-    )
-    .unwrap();
-    let scratch = std::env::temp_dir().join(format!(
-        "sunrise-saved-{name}-{}-{}",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_nanos()
-    ));
-    std::fs::create_dir_all(&scratch).unwrap();
-    game.server.world_root = scratch.clone();
-    game.player = Some(PlayerMotion::new(game.motion, Vec3::new(10.5, 200.0, 0.5)).unwrap());
-    game.reset_entity_residency();
-    game.native_lifecycle
-        .begin_open(mod_api::Authority::IntegratedServer);
-    crate::game::native_entity_refs::tests::bind_local_player(&mut game, 1, 1);
-    game.build_registries();
-    game.set_allow_commands(true);
-    test(&mut game);
-    drop(game);
-    std::fs::remove_dir_all(scratch).unwrap();
-}
+#[allow(unused_imports)]
+pub(in crate::game) use crate::game::server_side::commands_server::data::saved_tag_tests::with_command_game;
 
 #[test]
 #[ignore = "daily"]
 fn tag_commands_and_explicit_empty_loads_save_without_empty_tags() {
     with_command_game("tags", tag_commands_and_explicit_empty);
 }
-fn tag_commands_and_explicit_empty(game: &mut Game<'_>) {
+pub(in crate::game) fn tag_commands_and_explicit_empty(game: &mut Game<'_>) {
     let start = game.world.game_time;
     let uuid = "00000148-0000-0000-0000-000000000001";
     assert!(game.run_command("summon pig 4.5 200 4.5 {UUID:[I;328,0,0,1],Health:10f,NoAI:1b,NoGravity:1b,PortalCooldown:17}"));
@@ -138,22 +92,18 @@ fn a_live_area_effect_cloud_reads_with_the_common_entity_fields() {
     });
 }
 
-/// What `command` told the player.
-fn say(game: &mut Game<'_>, command: &str) -> Vec<Text> {
-    game.server.chat_capture = Some(Vec::new());
-    assert!(game.run_command(command), "{command}");
-    game.server.chat_capture.take().unwrap_or_default()
-}
+#[allow(unused_imports)]
+pub(in crate::game) use crate::game::server_side::commands_server::data::saved_tag_tests::say;
 
 /// The `Tags` key of the compound the entity saves (`Entity.saveWithoutId`).
-fn saved_tags(game: &mut Game<'_>, target: Target) -> Option<Tag> {
+pub(in crate::game) fn saved_tags(game: &mut Game<'_>, target: Target) -> Option<Tag> {
     game.data_of(&DataRef::Entity(target))
         .unwrap()
         .get("Tags")
         .cloned()
 }
 
-fn tag_list(tags: &[&str]) -> Tag {
+pub(in crate::game) fn tag_list(tags: &[&str]) -> Tag {
     Tag::List(tags.iter().map(|t| Tag::String((*t).into())).collect())
 }
 
@@ -186,29 +136,6 @@ fn tag_list_counts_only_the_entities_that_have_tags() {
             Some("commands.tag.list.multiple.success")
         );
         assert_eq!(said[0].plain(), "The 2 entities have 1 total tag(s): audit");
-    });
-}
-
-/// `TagCommand.listTags` sends through `sendFeedback(source, false, …)`,
-/// while `addTag`/`removeTag` pass `true` (`CommandSourceStack.sendSuccess`):
-/// only a change is repeated to the operators.
-#[test]
-#[ignore = "daily"]
-fn tag_list_is_not_repeated_to_the_operators() {
-    with_command_game("tag-list-broadcast", |game| {
-        assert!(game.run_command(
-            "summon pig 4.5 200 4.5 {UUID:[I;329,0,0,4],NoAI:1b,Silent:1b,NoGravity:1b}"
-        ));
-        // The summon's own line (a player informs the operators), sent on a tick.
-        game.server.admin_feedback.clear();
-        // A source that informs the operators (`shouldInformAdmins`).
-        game.server.console_broadcast = Some(true);
-        assert!(game.run_command("tag 00000149-0000-0000-0000-000000000004 add audit"));
-        assert_eq!(game.server.admin_feedback.len(), 1);
-        game.server.admin_feedback.clear();
-        let said = say(game, "tag @e[type=minecraft:pig] list");
-        assert_eq!(said.len(), 1);
-        assert_eq!(game.server.admin_feedback.len(), 0);
     });
 }
 

@@ -83,7 +83,7 @@ pub(in crate::game) enum PreparedTooltipItem {
 
 impl PreparedTooltipItem {
     #[cfg(test)]
-    pub(super) fn as_text(&self) -> Option<(&sunrise_client::text::Text, u32)> {
+    pub(in crate::game) fn as_text(&self) -> Option<(&sunrise_client::text::Text, u32)> {
         match self {
             Self::Text { text, color } => Some((text, *color)),
             _ => None,
@@ -91,7 +91,7 @@ impl PreparedTooltipItem {
     }
 
     #[cfg(test)]
-    pub(super) fn as_bundle(&self) -> Option<&ItemStack> {
+    pub(in crate::game) fn as_bundle(&self) -> Option<&ItemStack> {
         match self {
             Self::Bundle { stack, .. } => Some(stack),
             _ => None,
@@ -99,7 +99,7 @@ impl PreparedTooltipItem {
     }
 
     #[cfg(test)]
-    pub(super) fn as_custom(&self) -> Option<&mod_api::PreparedTooltipComponent> {
+    pub(in crate::game) fn as_custom(&self) -> Option<&mod_api::PreparedTooltipComponent> {
         match self {
             Self::Custom(component) => Some(component),
             _ => None,
@@ -107,7 +107,9 @@ impl PreparedTooltipItem {
     }
 
     #[cfg(test)]
-    pub(super) fn downcast_ref<C: mod_api::ClientTooltipComponent + 'static>(&self) -> Option<&C> {
+    pub(in crate::game) fn downcast_ref<C: mod_api::ClientTooltipComponent + 'static>(
+        &self,
+    ) -> Option<&C> {
         self.as_custom().and_then(|c| c.downcast_ref::<C>())
     }
 }
@@ -126,7 +128,7 @@ pub(in crate::game) enum GatheredTooltip {
 
 #[cfg(test)]
 impl GatheredTooltip {
-    pub(super) fn unwrap_ready(self) -> Vec<PreparedTooltipItem> {
+    pub(in crate::game) fn unwrap_ready(self) -> Vec<PreparedTooltipItem> {
         match self {
             Self::Ready(components) => components,
             Self::Cancelled => panic!("expected GatheredTooltip::Ready, got Cancelled"),
@@ -145,7 +147,7 @@ enum RawTooltipImage {
 
 /// NeoForge `ClientHooks.gatherTooltipComponentsFromElements` wrapping width calculation using
 /// Java `int` wrapping arithmetic.
-pub(super) fn wrap_tooltip_width(
+pub(in crate::game) fn wrap_tooltip_width(
     mut tooltip_text_width: i32,
     mouse_x: i32,
     screen_width: i32,
@@ -244,7 +246,7 @@ impl Game<'_> {
     /// Prepare a [`mod_api::TooltipComponent`] into a [`PreparedTooltipItem`]
     /// (`ClientTooltipComponent.create`): built-in bundles are prepared directly with `Items`,
     /// custom components go through the registered client factory table.
-    pub(super) fn prepare_tooltip_component(
+    pub(in crate::game) fn prepare_tooltip_component(
         &self,
         component: &mod_api::TooltipComponent,
     ) -> Result<PreparedTooltipItem, TooltipComponentPrepareError> {
@@ -262,7 +264,7 @@ impl Game<'_> {
     /// `AbstractContainerScreen.showTooltipWithItemInHand`: whether this stack's tooltip image
     /// shows while carrying another item, avoiding unnecessary `Contents::of` work for ordinary
     /// bundles and returning `false` on preparation errors.
-    pub(super) fn tooltip_image_shows_with_carried(&self, stack: &ItemStack) -> bool {
+    pub(in crate::game) fn tooltip_image_shows_with_carried(&self, stack: &ItemStack) -> bool {
         match self.resolve_raw_tooltip_image(stack) {
             Some(RawTooltipImage::VanillaBundle) => true,
             Some(RawTooltipImage::Mod(component)) => {
@@ -320,7 +322,7 @@ impl Game<'_> {
     /// `RenderTooltipEvent.GatherComponents` followed by wrapping in the item's tooltip font
     /// (`ClientHooks.getTooltipFont` -> `ClientItemExtensions::tooltip_font`) and component
     /// preparation (`ClientHooks.gatherTooltipComponentsFromElements`).
-    pub(super) fn gather_tooltip_components(
+    pub(in crate::game) fn gather_tooltip_components(
         &self,
         stack: &ItemStack,
         lines: Vec<(sunrise_client::text::Text, u32)>,

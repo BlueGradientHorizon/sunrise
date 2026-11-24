@@ -6,7 +6,7 @@ use crate::game::mod_api_host::{FireOddsLevel, PredictedLevel};
 use std::{cell::RefCell, collections::HashSet};
 
 /// The live level behind a prediction, providing mod dispatch when it has a game host.
-pub(super) trait PredictionBase: LevelAccess {
+pub(in crate::game) trait PredictionBase: LevelAccess {
     fn fire_odds_level<'a>(
         &'a self,
         _prediction: &'a dyn PredictedLevel,
@@ -29,27 +29,27 @@ impl PredictionBase for crate::game::GameLevel<'_> {
 
 /// Scratch state for client prediction or a server placement preview: reads
 /// go to the world, writes stay here and are dropped.
-pub(super) struct DryLevel<'w> {
+pub(in crate::game) struct DryLevel<'w> {
     base: &'w dyn PredictionBase,
-    pub(super) changed: sunrise_world::level::PreviewBlocks,
+    pub(in crate::game) changed: sunrise_world::level::PreviewBlocks,
     removed_entities: HashSet<BlockPos>,
     /// For a predicted break, the order in which the simulation reaches the after-shape notices.
-    pub(super) notice_order: Option<RefCell<Vec<BlockPos>>>,
+    pub(in crate::game) notice_order: Option<RefCell<Vec<BlockPos>>>,
     random: sunrise_core::random::LegacyRandom,
     /// The sounds the use plays (a door's creak).
-    pub(super) sounds: Vec<DrySound>,
+    pub(in crate::game) sounds: Vec<DrySound>,
     /// The server owns liquid-container writes, including a part's replacement.
-    pub(super) filled_container: bool,
+    pub(in crate::game) filled_container: bool,
     /// The live level's ticks a mod's placement and survival hooks read, where the guess
     /// schedules into scratch ones; `None` where it runs on the live ticks.
-    pub(super) reads: Option<&'w sunrise_world::level::Ticks>,
+    pub(in crate::game) reads: Option<&'w sunrise_world::level::Ticks>,
     /// Whether the guess asks mods' placement and survival hooks: a click does, a look at what
     /// a click would do (the controller guide) leaves them to the templates' rules.
-    pub(super) asks_mods: bool,
+    pub(in crate::game) asks_mods: bool,
 }
 
 impl<'w> DryLevel<'w> {
-    pub(super) fn new(base: &'w dyn PredictionBase) -> Self {
+    pub(in crate::game) fn new(base: &'w dyn PredictionBase) -> Self {
         Self {
             base,
             changed: HashMap::new(),

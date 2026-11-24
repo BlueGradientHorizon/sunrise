@@ -52,7 +52,7 @@ impl Game<'_> {
     /// Powder snow's inside shape for a fall over 2.5 is only 0.9 tall
     /// (`FALLING_COLLISION_SHAPE`). A bubble column's reset and `stepOn` for a
     /// grounded crystal are not ported.
-    pub(super) fn crystal_block_effects(&mut self, i: usize) {
+    pub(in crate::game) fn crystal_block_effects(&mut self, i: usize) {
         let (p, fall) = (self.crystals[i].position, self.crystals[i].fall.1);
         let e = f64::from(1.0e-5_f32);
         let lo = [p.x - 1.0 + e, p.y + e, p.z - 1.0 + e].map(|v| v.floor() as i32);

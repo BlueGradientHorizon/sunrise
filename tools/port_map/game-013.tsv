@@ -5,7 +5,7 @@ AbstractNautilus.canUseSlot	port	crates/sunrise-gameplay/src/dispense_rules.rs::
 AbstractNautilus.canDispenserEquipIntoSlot	port	crates/sunrise-gameplay/src/dispense_rules.rs::mob_can_dispenser_equip	body and saddle always, other slots only with pick_up_loot
 AbstractNautilus.getControllingPassenger	port	crates/sunrise-client/src/mobs/nautilus.rs::controlled	a rider on a saddled nautilus
 AbstractNautilus.getRiddenSpeed	inline	crates/sunrise-client/src/mobs/nautilus.rs::ridden	0.0325 in water, 0.02 on land, times the movement speed
-AbstractNautilus.doPlayerRide	inline	crates/sunrise-client/src/game/mobs/nautili.rs::Game::interact_nautilus	the player mounts it and a lead breaks; there is no home to clear
+AbstractNautilus.doPlayerRide	inline	crates/sunrise-client/src/game/mobs/nautili_server.rs::Game::interact_nautilus	the player mounts it and a lead breaks; there is no home to clear
 AbstractNautilus.getNautilusRestrictionRadius	port	crates/sunrise-client/src/mobs/nautilus.rs::restriction_radius	ticked in #3512; `AbstractNautilus.getNautilusRestrictionRadius` is cited at crates/sunrise-client/src/mobs/nautilus.rs:231
 AbstractNautilus.checkRestriction	port	crates/sunrise-client/src/mobs/nautilus.rs::check_restriction	ticked in #3512; `AbstractNautilus.checkRestriction` is cited at crates/sunrise-client/src/mobs/nautilus.rs:240
 AbstractNautilus.applyEffects	inline	crates/sunrise-client/src/mobs/nautilus.rs::ai_step	the rider gets breath of the nautilus for 60 ticks, refreshed every 40 ticks
@@ -13,7 +13,7 @@ AbstractNautilus.onPlayerJump	port	crates/sunrise-client/src/mobs/nautilus.rs::o
 AbstractNautilus.executeRidersJump	port	crates/sunrise-client/src/mobs/nautilus.rs::dash	gap: minor: the push leaves out getBlockSpeedFactor (soul sand, honey); 1.2 in water, 0.5 on land, 40 tick cooldown, dashing flag
 AbstractNautilus.handleStartJump	inline	crates/sunrise-client/src/mobs/nautilus.rs::on_player_jump	START_RIDING_JUMP's scale goes to the pending jump there, and the dash it starts is `executeRidersJump` in the same file, which raises DASH (`flag2`) and queues the dash sound for the next tick (scratch[1]); no game event
 AbstractNautilus.onSyncedDataUpdated	skip:other		client mirror of the dash flag; the nautilus keeps its own dash clock (anim_ticks) and the jump bar uses mount.jump_ticks
-AbstractNautilus.tryToTame	inline	crates/sunrise-client/src/game/mobs/nautili.rs::Game::interact_nautilus	one chance in three, taming particles (event 7 or 6), eating sound, tame_animal trigger
+AbstractNautilus.tryToTame	inline	crates/sunrise-client/src/game/mobs/nautili_server.rs::Game::interact_nautilus	one chance in three, taming particles (event 7 or 6), eating sound, tame_animal trigger
 AbstractNautilus.hurtServer	port	crates/sunrise-client/src/mobs/nautilus.rs::after_hurt	angry at the attacker for 400 ticks
 AbstractNautilus.finalizeSpawn	port	crates/sunrise-client/src/mobs/nautilus.rs::finalize	attack target cooldown of 2400 to 3600 ticks
 AbstractNautilus.getEquipSound	port	crates/sunrise-client/src/mobs/nautilus.rs::saddle_sound	underwater saddle sound while the eyes are in water
@@ -77,14 +77,14 @@ Pig.onSyncedDataUpdated	missing		minor: a server's pig does not start its client
 Pig.defineSynchedData	skip:other		synched boost time, variant and sound variant; Sunrise keeps them in extra.counter, extra.counter2, extra.variant and extra.sound_variant
 Pig.addAdditionalSaveData	port	crates/sunrise-client/src/entity_nbt.rs::mob_to_nbt	variant, sound_variant and the saddle in equipment
 Pig.readAdditionalSaveData	port	crates/sunrise-client/src/entity_nbt/mob_load.rs::mob_from_nbt	variant, sound_variant and the saddle
-Pig.mobInteract	port	crates/sunrise-client/src/game/mobs/mounts.rs::Game::interact_steerable	gap: player: a saddled pig is mounted even when the click holds its food, so it cannot be fed or bred while saddled (vanilla feeds first)
+Pig.mobInteract	port	crates/sunrise-client/src/game/mobs/mounts_client.rs::Game::interact_steerable	gap: player: a saddled pig is mounted even when the click holds its food, so it cannot be fed or bred while saddled (vanilla feeds first)
 Pig.canUseSlot	port	crates/sunrise-gameplay/src/dispense_rules.rs::mob_can_use_slot	the saddle needs an alive, grown pig
 Pig.canDispenserEquipIntoSlot	port	crates/sunrise-gameplay/src/dispense_rules.rs::mob_can_dispenser_equip	the saddle always
 Pig.getEquipSound	port	crates/sunrise-gameplay/src/dispense_rules.rs::equip_sound	entity.pig.saddle
 Pig.thunderHit	port	crates/sunrise-client/src/game/entities/lightning.rs::Game::thunder_hit	a pig outside peaceful becomes a zombified piglin
 Pig.tickRidden	inline	crates/sunrise-client/src/mobs/equine.rs::ridden_step	turns to the rider's yaw, pitch halved, and ticks the boost
 Pig.getRiddenSpeed	inline	crates/sunrise-client/src/mobs/equine.rs::ridden_step	movement speed times 0.225 times the boost factor
-Pig.getBreedOffspring	port	crates/sunrise-client/src/game/mobs/creatures/mod.rs::Game::breed	gap: minor: the baby always takes the first parent's variant, not either parent's by a coin
+Pig.getBreedOffspring	port	crates/sunrise-client/src/game/mobs/creatures/mod_server.rs::Game::breed	gap: minor: the baby always takes the first parent's variant, not either parent's by a coin
 Pig.getLeashOffset	port	crates/sunrise-client/src/mobs/leash.rs::leash_offset	0.6 of the eye height, the default width/2 forwards
 Pig.getSoundSet	inline	crates/sunrise-client/src/mobs/ai.rs::voice_sounds	gap: player: only the baby or adult classic sounds are used, so mini and big sound variants (chosen and saved) never sound different
 Pig.finalizeSpawn	port	crates/sunrise-client/src/mobs/finalize.rs::Ctx::finalize	variant by biome tag and a random sound variant
@@ -106,7 +106,7 @@ Rabbit.createAttributes	skip:data		attributes come from the entity type table
 Rabbit.addAdditionalSaveData	port	crates/sunrise-client/src/entity_nbt.rs::mob_to_nbt	RabbitType; MoreCarrotTicks is kept at 0
 Rabbit.readAdditionalSaveData	port	crates/sunrise-client/src/entity_nbt/mob_load.rs::mob_from_nbt	gap: minor: RabbitType (0 to 5 and 99) is read but MoreCarrotTicks is ignored
 Rabbit.playAttackSound	port	crates/sunrise-client/src/mobs/rabbit.rs::attack_sound	only the killer bunny: `entity.rabbit.attack` at volume 1 and a pitch drawn from its own random (not the baby voice pitch)
-Rabbit.getBreedOffspring	port	crates/sunrise-client/src/game/mobs/creatures/mod.rs::Game::breed	gap: minor: the baby always takes the first parent's coat; vanilla takes either parent's and one time in 20 rolls a biome coat
+Rabbit.getBreedOffspring	port	crates/sunrise-client/src/game/mobs/creatures/mod_server.rs::Game::breed	gap: minor: the baby always takes the first parent's coat; vanilla takes either parent's and one time in 20 rolls a biome coat
 Rabbit.setVariant	inline	crates/sunrise-client/src/mobs/finalize.rs::Ctx::finalize	gap: player: variant 99 (killer bunny, from /summon or a save) only changes the texture: no armour 8, no plus 5 attack, no melee or target goals, no Killer Bunny name
 Rabbit.get	skip:other		reads the variant as a data component for predicates; Sunrise has no entity component view
 Rabbit.applyImplicitComponent	missing		minor: a spawn egg's rabbit variant component is not applied (only bucketed mobs read item components)
@@ -131,7 +131,7 @@ Sheep.get	skip:other		reads the colour as a data component for predicates; Sunri
 Sheep.applyImplicitComponent	inline	crates/sunrise-client/src/entity_nbt.rs::apply_item_components	the minecraft:sheep/color component, a dye id
 Sheep.isSheared	skip:other		reads extra.sheared
 Sheep.setSheared	skip:other		writes extra.sheared (shear, regrow and nbt set it directly)
-Sheep.getBreedOffspring	port	crates/sunrise-client/src/game/mobs/creatures/mod.rs::Game::breed	gap: player: a lamb always takes the first parent's wool colour; vanilla mixes the two (red and blue give purple)
+Sheep.getBreedOffspring	port	crates/sunrise-client/src/game/mobs/creatures/mod_server.rs::Game::breed	gap: player: a lamb always takes the first parent's wool colour; vanilla mixes the two (red and blue give purple)
 Sheep.ate	port	crates/sunrise-client/src/mobs/ai.rs::ate	wool grows back and a lamb ages up by 60 seconds
 Sheep.finalizeSpawn	port	crates/sunrise-client/src/mobs/finalize.rs::Ctx::finalize	wool colour from the biome's climate (farm::sheep_color)
 SheepColorSpawnRules.commonColors	inline	crates/sunrise-client/src/mobs/farm.rs::sheep_color	the 82 weight tail: the common colour, pink one time in 500

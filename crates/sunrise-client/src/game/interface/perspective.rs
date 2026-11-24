@@ -2,18 +2,23 @@
 //! in front, cycled by F5), the detached camera (`Camera.setup` with
 //! `getMaxZoom`), and the local player drawn as a model: in third person
 //! and in the inventory (`InventoryScreen.extractEntityInInventoryFollowsMouse`).
+#[allow(unused_imports)]
 use super::{Game, Screen, native_mob_draw::PlayerRender, shoulders::shoulder_variants};
+#[allow(unused_imports)]
 use mod_api::Hand;
+#[allow(unused_imports)]
 use std::{
     io,
     path::{Path, PathBuf},
     sync::{Arc, Mutex},
 };
+#[allow(unused_imports)]
 use sunrise_client::{
     blocks::BlockFacts,
     camera::{CameraEntity, CameraType, LivingCamera},
     collisions::SceneCollisions,
 };
+#[allow(unused_imports)]
 use sunrise_client::{
     entities::nameplate::NameplateDistances,
     hud::HudBatch,
@@ -21,10 +26,12 @@ use sunrise_client::{
     mouse::Rotation,
     pose::Pose,
 };
+#[allow(unused_imports)]
 use sunrise_core::{
     geometry::{Aabb, ShapeOp, Vec3, VoxelShape},
     position::BlockPos,
 };
+#[allow(unused_imports)]
 use sunrise_world::{
     collision_context::{CollisionContext, CollisionEntity, CollisionItem},
     entity_obstruction::EntityIdentity,
@@ -77,9 +84,9 @@ pub(in crate::game) fn ray_interaction_shape(
 /// `Level.clip` with `ClipContext.Block.VISUAL` and no fluids:
 /// `BlockBehaviour.getVisualShape` is the collision shape except for the
 /// blocks that override it.
-struct VisualRays<'a, 'r> {
-    inner: super::explosion::ColliderRays<'a, 'r>,
-    facts: &'a BlockFacts,
+pub(in crate::game) struct VisualRays<'a, 'r> {
+    pub(in crate::game) inner: super::explosion::ColliderRays<'a, 'r>,
+    pub(in crate::game) facts: &'a BlockFacts,
 }
 impl RayWorld for VisualRays<'_, '_> {
     type Error = io::Error;
@@ -146,18 +153,25 @@ impl RayWorld for VisualRays<'_, '_> {
 /// sets it (`shared_flag`), with the Invisibility effect or by a plugin's
 /// `setInvisible` alone, as pose plugins hide the real body under the pose
 /// (#3788); a world in the frame has only the effect.
-fn own_invisible(effects: &sunrise_client::effects::PlayerEffects, shared_flag: bool) -> bool {
+pub(in crate::game) fn own_invisible(
+    effects: &sunrise_client::effects::PlayerEffects,
+    shared_flag: bool,
+) -> bool {
     shared_flag || effects.get("invisibility").is_some()
 }
 /// `LivingEntityRenderer.isBodyVisible` and `isInvisibleTo` for the player's
 /// own body, seen by itself: an invisible player (`own_invisible`) hides it
 /// unless its team sees friendly invisibles, where vanilla draws it
 /// translucent.
-fn body_visible(invisible: bool, team: Option<&sunrise_client::scoreboard::Team>) -> bool {
+pub(in crate::game) fn body_visible(
+    invisible: bool,
+    team: Option<&sunrise_client::scoreboard::Team>,
+) -> bool {
     !sunrise_client::scoreboard::invisible_to(team, team, false, invisible)
 }
 /// The player's model type for each resources root it was asked for.
-static PLAYER_TYPES: Mutex<Vec<(PathBuf, Option<Arc<MobType>>)>> = Mutex::new(Vec::new());
+pub(in crate::game) static PLAYER_TYPES: Mutex<Vec<(PathBuf, Option<Arc<MobType>>)>> =
+    Mutex::new(Vec::new());
 
 /// The player's model type (`PlayerModel` with the default skin), read once
 /// per resources root: `entity-models.json` doesn't change while the game
@@ -189,7 +203,9 @@ pub(in crate::game) fn player_type_with_document(
     kind
 }
 /// `player_type` from the document: the model and its layers from one parse.
-fn load_player_type(models: &sunrise_client::mobs::EntityModelDocument) -> Option<Arc<MobType>> {
+pub(in crate::game) fn load_player_type(
+    models: &sunrise_client::mobs::EntityModelDocument,
+) -> Option<Arc<MobType>> {
     models.model("minecraft:player#main").map(|model| {
         Arc::new(MobType {
             type_key: Default::default(),
@@ -253,7 +269,7 @@ fn load_player_type(models: &sunrise_client::mobs::EntityModelDocument) -> Optio
 }
 /// What sets the body's yaw of a player riding something (`Game::ridden_body`).
 #[derive(Clone, Copy)]
-enum RiddenBody {
+pub(in crate::game) enum RiddenBody {
     /// The boat's yaw.
     Boat(f32),
     /// The living vehicle's body yaw.
@@ -266,7 +282,7 @@ enum RiddenBody {
 /// in spectator mode, the texels at the first-person camera hold the terrain below it, where
 /// Sunrise drew the spectator's model (vanilla's `PlayerModel` hides a spectator's body:
 /// `showBody = !state.isSpectator`). A native pack's shadow keeps it.
-fn shadow_pass_takes_own_model(
+pub(in crate::game) fn shadow_pass_takes_own_model(
     shadow_draws_player: bool,
     shader_pack: bool,
     spectator: bool,
@@ -274,7 +290,7 @@ fn shadow_pass_takes_own_model(
     shadow_draws_player && !(shader_pack && spectator)
 }
 
-fn wrap(d: f32) -> f32 {
+pub(in crate::game) fn wrap(d: f32) -> f32 {
     let d = d % 360.0;
     if d >= 180.0 {
         d - 360.0
@@ -684,11 +700,6 @@ impl Game<'_> {
             .extra
             .held_arm_pose = poses;
     }
-    /// Arrows and bee stingers stuck in the local player's body.
-    #[inline(always)]
-    pub(in crate::game) fn local_stuck_counts(&self) -> (i32, i32) {
-        (self.combat.0.stuck.arrows, self.combat.0.stuck.stingers)
-    }
     /// `Entity.turn` for the player, by the mouse, a pad, the arrow keys or an
     /// agent's `turn`.
     /// The model's old pitch is the player's `xRotO`, which the turn moves
@@ -733,7 +744,7 @@ impl Game<'_> {
     /// What the player rides that sets their body's yaw: a boat's yaw, or a
     /// living vehicle's body yaw. Minecarts and cushions leave it to the
     /// player's own turn.
-    fn ridden_body(&self) -> Option<RiddenBody> {
+    pub(in crate::game) fn ridden_body(&self) -> Option<RiddenBody> {
         let id = self.riding?;
         if let Some(b) = self.boats.iter().find(|b| b.id == id) {
             return Some(RiddenBody::Boat(b.yaw));
@@ -774,7 +785,7 @@ impl Game<'_> {
                 .is_some_and(|p| !p.health.dead_or_dying())
     }
     /// The player's own team: a server's client is in it by its profile name.
-    fn own_team(&self) -> Option<&sunrise_client::scoreboard::Team> {
+    pub(in crate::game) fn own_team(&self) -> Option<&sunrise_client::scoreboard::Team> {
         match &self.remote {
             Some(r) => self.score.board.players_team(&r.profile_name),
             None => self.player_team(),
@@ -1334,7 +1345,7 @@ impl Game<'_> {
         )
     }
 
-    fn held_arm_poses_with_stacks(
+    pub(in crate::game) fn held_arm_poses_with_stacks(
         &self,
         entity_id: u32,
         m: &Mob,
@@ -1673,7 +1684,13 @@ pub(in crate::game) fn emit_preview(
 /// easing in over a tick (#3844), while a change the tick made itself (the
 /// pitch a sleeper lies at) still eases in. `pitch_o` is the model's old
 /// pitch; without a model the old pitch is the pitch.
-fn turn_rotation(yaw: f32, pitch: f32, pitch_o: Option<f32>, xo: f64, yo: f64) -> Rotation {
+pub(in crate::game) fn turn_rotation(
+    yaw: f32,
+    pitch: f32,
+    pitch_o: Option<f32>,
+    xo: f64,
+    yo: f64,
+) -> Rotation {
     let mut rotation = Rotation {
         x_rot: pitch,
         y_rot: yaw,
@@ -1689,7 +1706,13 @@ fn turn_rotation(yaw: f32, pitch: f32, pitch_o: Option<f32>, xo: f64, yo: f64) -
 /// `Mth.lerp(partialTick * 0.5F, getYRot(), yRotO)`) follows the mouse at once;
 /// only what the tick itself turned (a boat's `deltaRotation`) eases in. `old`
 /// is `(yRotO, xRotO)`; the result is the pair after the turn (#10276).
-fn rope_old_after_turn(old: (f32, f32), yaw: f32, pitch: f32, xo: f64, yo: f64) -> (f32, f32) {
+pub(in crate::game) fn rope_old_after_turn(
+    old: (f32, f32),
+    yaw: f32,
+    pitch: f32,
+    xo: f64,
+    yo: f64,
+) -> (f32, f32) {
     let mut rotation = Rotation {
         x_rot: pitch,
         y_rot: yaw,
@@ -1723,7 +1746,7 @@ pub(in crate::game) fn entity_light_block(
 /// `Camera.setup` does, however far it moved: at Levitation 255 (12.75 blocks
 /// a tick) the body keeps up with the camera. A teleport or respawn resets
 /// the old position, and the model jumps with it.
-fn player_model_positions(
+pub(in crate::game) fn player_model_positions(
     previous_position: Vec3,
     position: Vec3,
     was_crouching: bool,
@@ -1742,13 +1765,13 @@ fn player_model_positions(
 /// for every player (`Entity`'s, not overridden), so only the horizontal
 /// distance counts, flying and gliding included: rising or sinking straight
 /// up or down leaves the legs and arms still.
-fn player_walk_distance(from: Vec3, to: Vec3) -> f32 {
+pub(in crate::game) fn player_walk_distance(from: Vec3, to: Vec3) -> f32 {
     let (dx, dz) = (to.x - from.x, to.z - from.z);
     (dx * dx + dz * dz).sqrt() as f32
 }
 
 #[cfg(test)]
-mod preview_tests {
+pub(in crate::game) mod preview_tests {
     use super::*;
     #[test]
     fn a_spectators_own_model_stays_out_of_a_shader_packs_shadow_pass() {

@@ -6,18 +6,25 @@
 //! rail-following render with the display block.
 #[cfg(test)]
 #[path = "minecarts/lifetime_tests.rs"]
-mod lifetime_tests;
+pub(in crate::game) mod lifetime_tests;
 #[path = "minecarts/save_lending.rs"]
-mod save_lending;
+pub(in crate::game) mod save_lending;
 #[path = "minecarts/section_steps.rs"]
-mod section_steps;
+pub(in crate::game) mod section_steps;
 
+#[allow(unused_imports)]
 use super::{Game, Hit, InteractTarget, Keys, entity::Entity};
+#[allow(unused_imports)]
 use std::{collections::HashMap, sync::Arc};
+#[allow(unused_imports)]
 use sunrise_client::actions::Action;
+#[allow(unused_imports)]
 use sunrise_client::entity_rules::EntityRules;
+#[allow(unused_imports)]
 use sunrise_client::join_seq::{JoinList, ListStamp};
+#[allow(unused_imports)]
 use sunrise_client::mobs::{Mob, seen_grid::SeenGrid};
+#[allow(unused_imports)]
 use sunrise_client::{
     blocks::Fluid,
     containers::BlockEntity,
@@ -29,19 +36,24 @@ use sunrise_client::{
     scoreboard::pushable_by,
     sound_engine::{BLOCKS, CartSound, PlayResult, SoundInstance, Sounds},
 };
+#[allow(unused_imports)]
 use sunrise_core::{
     geometry::{Aabb, Vec3, trig},
     position::BlockPos,
     random::{LegacyRandom, RandomSource},
 };
+#[allow(unused_imports)]
 use sunrise_world::registry::BlockStateId;
 #[path = "minecarts/hit.rs"]
-mod hit;
-pub(super) use hit::CartHit;
+pub(in crate::game) mod hit;
+#[allow(unused_imports)]
+pub(in crate::game) use hit::CartHit;
+#[allow(unused_imports)]
 pub(in crate::game) use sunrise_gameplay::minecart_cells::CartCells;
+#[allow(unused_imports)]
 use sunrise_gameplay::minecart_seat::*;
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub(super) enum CartKind {
+pub(in crate::game) enum CartKind {
     Rideable,
     Chest,
     Hopper,
@@ -86,7 +98,7 @@ impl CartKind {
             kind => kind.id(),
         }
     }
-    pub(super) fn slots(self) -> usize {
+    pub(in crate::game) fn slots(self) -> usize {
         match self {
             Self::Chest => 27,
             Self::Hopper => 5,
@@ -108,10 +120,10 @@ impl CartKind {
     }
 }
 #[derive(Clone, Debug)]
-pub(super) struct Minecart {
-    pub(super) attachment_lifetime: sunrise_mod_runtime::attachments::AttachmentLifetime,
+pub(in crate::game) struct Minecart {
+    pub(in crate::game) attachment_lifetime: sunrise_mod_runtime::attachments::AttachmentLifetime,
     /// When it joined its list (`sunrise_client::join_seq`); set by the list.
-    pub(super) join: sunrise_client::join_seq::JoinSeq,
+    pub(in crate::game) join: sunrise_client::join_seq::JoinSeq,
     pub id: u32,
     pub kind: CartKind,
     pub position: Vec3,
@@ -129,14 +141,14 @@ pub(super) struct Minecart {
     pub lerp_steps: Vec<sunrise_protocol::packets::play::MinecartStep>,
     pub flipped: bool,
     /// `AbstractMinecart.onRails`: transitions into rails need a position snap.
-    pub(super) on_rails: bool,
-    pub(super) ground: sunrise_world::ground_support::GroundState,
-    pub(super) fall_distance: f64,
+    pub(in crate::game) on_rails: bool,
+    pub(in crate::game) ground: sunrise_world::ground_support::GroundState,
+    pub(in crate::game) fall_distance: f64,
     /// The squared speed `MinecartTNT.causeFallDamage` blows up with, set by
     /// a landing of three blocks or more and taken by the cart's next tick
     /// `Entity.stuckSpeedMultiplier`: set by a cobweb the cart's box is in,
     /// scaled into its next move.
-    pub(super) stuck: Vec3,
+    pub(in crate::game) stuck: Vec3,
     pub hurt_time: i32,
     pub hurt_dir: i32,
     pub damage: f32,
@@ -195,17 +207,17 @@ pub(super) struct Minecart {
     pub random: LegacyRandom,
     /// What `entity_size` answered at its last size refresh (`EntityEvent.Size`): its box takes
     /// the answer while it holds for its vanilla size.
-    pub(super) size_answer: Option<sunrise_client::pose::SizeAnswer>,
+    pub(in crate::game) size_answer: Option<sunrise_client::pose::SizeAnswer>,
 }
 /// `EntityType.MINECART`'s `sized(0.98F, 0.7F)`: float dimensions, widened.
-pub(super) const WIDTH: f64 = 0.98_f32 as f64;
-pub(super) const HEIGHT: f64 = 0.7_f32 as f64;
+pub(in crate::game) const WIDTH: f64 = 0.98_f32 as f64;
+pub(in crate::game) const HEIGHT: f64 = 0.7_f32 as f64;
 /// `EntityEvent.TNT_PRIME`. `MinecartTNT.primeFuse` broadcasts it;
 /// `MinecartTNT.handleEntityEvent` answers by calling `primeFuse`.
-pub(super) const TNT_PRIME_EVENT: i8 = 70;
+pub(in crate::game) const TNT_PRIME_EVENT: i8 = 70;
 /// `AbstractMinecart.getDefaultDisplayOffset` (6), in sixteenths of a block, as
 /// `MinecartChest` (8) and `MinecartHopper` (1) override it.
-pub(super) fn default_display_offset(kind: CartKind) -> f64 {
+pub(in crate::game) fn default_display_offset(kind: CartKind) -> f64 {
     match kind {
         CartKind::Chest => 8.0,
         CartKind::Hopper => 1.0,
@@ -217,14 +229,14 @@ pub(super) fn default_display_offset(kind: CartKind) -> f64 {
     }
 }
 /// `AbstractMinecart.getDisplayOffset`: the saved `DisplayOffset`, else the default.
-pub(super) fn display_offset(c: &Minecart) -> f64 {
+pub(in crate::game) fn display_offset(c: &Minecart) -> f64 {
     c.custom_offset
         .map_or_else(|| default_display_offset(c.kind), f64::from)
 }
 
 /// World-space envelope of the cart model and its optional displayed block,
 /// based on the same root position and display offset used by the renderer.
-fn cart_render_bounds(position: Vec3, offset: f64, has_display: bool) -> Aabb {
+pub(in crate::game) fn cart_render_bounds(position: Vec3, offset: f64, has_display: bool) -> Aabb {
     let (bottom, top) = if has_display {
         let display_shift = 0.75 * (offset - 8.0) / 16.0;
         (
@@ -240,7 +252,7 @@ fn cart_render_bounds(position: Vec3, offset: f64, has_display: bool) -> Aabb {
     )
 }
 /// A display state that is air shows nothing.
-fn shown_unless_air(
+pub(in crate::game) fn shown_unless_air(
     state: Option<BlockStateId>,
     is_air: impl Fn(BlockStateId) -> bool,
 ) -> Option<BlockStateId> {
@@ -248,7 +260,7 @@ fn shown_unless_air(
 }
 /// `readAdditionalSaveData`'s `input.read("DisplayState", CODEC)` is empty
 /// when the state does not decode: the cart forgets it (and no longer saves it).
-pub(super) fn forget_unreadable_display(
+pub(in crate::game) fn forget_unreadable_display(
     c: &mut Minecart,
     resolves: impl Fn(&sunrise_core::nbt::Tag) -> bool,
 ) {
@@ -268,29 +280,35 @@ pub(super) fn forget_unreadable_display(
 /// list's next write ([`ListStamp`]). A native mod's hook can move either kind
 /// unseen, so with mods loaded both scans stay.
 #[derive(Default)]
-pub(super) struct CartIndex {
-    carts: Option<(SeenGrid, Vec<u32>)>,
-    mobs: Option<(ListStamp, SeenGrid)>,
-    near: Vec<u32>,
+pub(in crate::game) struct CartIndex {
+    pub(in crate::game) carts: Option<(SeenGrid, Vec<u32>)>,
+    pub(in crate::game) mobs: Option<(ListStamp, SeenGrid)>,
+    pub(in crate::game) near: Vec<u32>,
 }
 impl CartIndex {
-    fn usable() -> bool {
+    pub(in crate::game) fn usable() -> bool {
         mod_api::__private::mods().is_empty()
     }
     /// The cart in slot `i` has these bounds now.
-    fn moved(&mut self, i: usize, bounds: Aabb) {
+    pub(in crate::game) fn moved(&mut self, i: usize, bounds: Aabb) {
         if let Some((grid, ids)) = &mut self.carts
             && i < ids.len()
         {
             grid.update(i, bounds);
         }
     }
-    fn forget_carts(&mut self) {
+    pub(in crate::game) fn forget_carts(&mut self) {
         self.carts = None;
     }
     /// The slots of the carts whose box may meet `area`, for the cart in slot
     /// `i` (just moved); false: scan them all.
-    fn carts_near(&mut self, carts: &[Minecart], i: usize, area: Aabb, out: &mut Vec<u32>) -> bool {
+    pub(in crate::game) fn carts_near(
+        &mut self,
+        carts: &[Minecart],
+        i: usize,
+        area: Aabb,
+        out: &mut Vec<u32>,
+    ) -> bool {
         if !Self::usable() {
             return false;
         }
@@ -317,7 +335,12 @@ impl CartIndex {
     }
     /// The slots of the mobs whose box may meet `area` into `out`;
     /// false means the caller must walk them all.
-    fn mobs_near(&mut self, mobs: &JoinList<Mob>, area: Aabb, out: &mut Vec<u32>) -> bool {
+    pub(in crate::game) fn mobs_near(
+        &mut self,
+        mobs: &JoinList<Mob>,
+        area: Aabb,
+        out: &mut Vec<u32>,
+    ) -> bool {
         if !Self::usable() {
             return false;
         }
@@ -345,7 +368,7 @@ pub(in crate::game) fn cart_at(carts: &[Minecart], id: u32, hint: usize) -> Opti
 }
 /// `AbstractMinecart.push(entity)` for a non-cart `entity` at `feet`:
 /// the push the cart loses (the entity gets a quarter of it back).
-pub(super) fn cart_push_from(feet: Vec3, cart: Vec3) -> Option<(f64, f64)> {
+pub(in crate::game) fn cart_push_from(feet: Vec3, cart: Vec3) -> Option<(f64, f64)> {
     let (xa, za) = (feet.x - cart.x, feet.z - cart.z);
     let dd = xa * xa + za * za;
     if dd < f64::from(1.0e-4f32) {
@@ -357,7 +380,7 @@ pub(super) fn cart_push_from(feet: Vec3, cart: Vec3) -> Option<(f64, f64)> {
     Some((xa / d * pow * k, za / d * pow * k))
 }
 /// `MinecartFurnace.calculateNewPushAlong`: project the push onto movement.
-fn push_along(push: Vec3, movement: Vec3) -> Vec3 {
+pub(in crate::game) fn push_along(push: Vec3, movement: Vec3) -> Vec3 {
     if push.horizontal_distance_squared() > 1.0e-4 && movement.horizontal_distance_squared() > 0.001
     {
         push.projected_on(movement).normalize().scale(push.length())
@@ -366,49 +389,53 @@ fn push_along(push: Vec3, movement: Vec3) -> Vec3 {
     }
 }
 /// The minecart's passenger attachment minus Player.DEFAULT_VEHICLE_ATTACHMENT.
-pub(super) const SEAT: f64 = PASSENGER_Y - 0.6;
+pub(in crate::game) const SEAT: f64 = PASSENGER_Y - 0.6;
 /// The placeholder container key under which an open cart's items live.
-pub(super) const CART_KEY_Y: i32 = sunrise_client::lan::menu::VEHICLE_KEY_Y;
+pub(in crate::game) const CART_KEY_Y: i32 = sunrise_client::lan::menu::VEHICLE_KEY_Y;
 
 /// `OldMinecartBehavior.pushAndPickupEntities`: living entities the cart
 /// offers `startRiding` instead of `Entity.push`. Players click to board;
 /// iron golems always push; a cart that already has a rider is `isVehicle`.
-fn pickup_instead_of_push(species: Species, is_passenger: bool, cart_is_vehicle: bool) -> bool {
+pub(in crate::game) fn pickup_instead_of_push(
+    species: Species,
+    is_passenger: bool,
+    cart_is_vehicle: bool,
+) -> bool {
     !cart_is_vehicle && !is_passenger && species != Species::IronGolem
 }
 
 /// `EntitySelector.pushableBy` asks `isPushable`: `Shulker` takes no push
 /// (`Mob::pushable` leaves it out) but still counts, so a cart offers it
 /// `startRiding` like any other living entity.
-fn offered_pickup(pushable: bool, species: Species, alive: bool) -> bool {
+pub(in crate::game) fn offered_pickup(pushable: bool, species: Species, alive: bool) -> bool {
     pushable || species == Species::Shulker && alive
 }
 
 /// `Shulker.push(Entity)` is empty, so a shulker that is not picked up (it
 /// already rides something) neither moves nor slows the cart.
-fn takes_push_from_cart(species: Species) -> bool {
+pub(in crate::game) fn takes_push_from_cart(species: Species) -> bool {
     species != Species::Shulker
 }
 
 /// `Entity.canRide` for a cart: the boarding cooldown, and a warden or the
 /// wither never rides (`canRide` false).
-fn can_ride_cart(species: Species, boarding_cooldown: i32) -> bool {
+pub(in crate::game) fn can_ride_cart(species: Species, boarding_cooldown: i32) -> bool {
     boarding_cooldown <= 0 && !matches!(species, Species::Warden | Species::Wither)
 }
 
 /// `Entity.positionRider` on an `AbstractMinecart`: the seat offset
 /// (`cart_seat_offset`) above the cart.
-fn cart_seat(cart: Vec3, seat_offset: f64) -> Vec3 {
+pub(in crate::game) fn cart_seat(cart: Vec3, seat_offset: f64) -> Vec3 {
     Vec3::new(cart.x, cart.y + seat_offset, cart.z)
 }
 
 /// A general rider's seat on a cart: the cart's passenger attachment with no vehicle attachment of its own.
-pub(super) fn cart_general_seat(cart: Vec3) -> Vec3 {
+pub(in crate::game) fn cart_general_seat(cart: Vec3) -> Vec3 {
     cart_seat(cart, PASSENGER_Y)
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub(super) enum Shape {
+pub(in crate::game) enum Shape {
     NorthSouth,
     EastWest,
     AscendingEast,
@@ -421,7 +448,7 @@ pub(super) enum Shape {
     NorthEast,
 }
 impl Shape {
-    pub(super) fn parse(s: &str) -> Self {
+    pub(in crate::game) fn parse(s: &str) -> Self {
         match s {
             "east_west" => Self::EastWest,
             "ascending_east" => Self::AscendingEast,
@@ -435,14 +462,14 @@ impl Shape {
             _ => Self::NorthSouth,
         }
     }
-    pub(super) fn is_slope(self) -> bool {
+    pub(in crate::game) fn is_slope(self) -> bool {
         matches!(
             self,
             Self::AscendingEast | Self::AscendingWest | Self::AscendingNorth | Self::AscendingSouth
         )
     }
     /// `AbstractMinecart.EXITS`.
-    fn exits(self) -> ([i32; 3], [i32; 3]) {
+    pub(in crate::game) fn exits(self) -> ([i32; 3], [i32; 3]) {
         let (w, e, n, s) = ([-1, 0, 0], [1, 0, 0], [0, 0, -1], [0, 0, 1]);
         let below = |v: [i32; 3]| [v[0], -1, v[2]];
         match self {
@@ -459,14 +486,14 @@ impl Shape {
         }
     }
 }
-pub(super) struct Rail {
-    pub(super) name: Arc<str>,
-    pub(super) shape: Shape,
-    pub(super) powered: bool,
+pub(in crate::game) struct Rail {
+    pub(in crate::game) name: Arc<str>,
+    pub(in crate::game) shape: Shape,
+    pub(in crate::game) powered: bool,
 }
 impl Minecart {
     /// `Minecart.tick`: stationary rotation does not turn the passenger.
-    pub(super) fn accumulate_rotation(&mut self) {
+    pub(in crate::game) fn accumulate_rotation(&mut self) {
         self.passenger_yaw_delta = 0.0;
         if self.kind == CartKind::Rideable && self.position.subtract(self.previous).length() > 0.01
         {
@@ -477,7 +504,7 @@ impl Minecart {
     }
     /// `Minecart.positionRider`: double rotLerp, then round back to float.
     /// Only yaw follows; the player's pitch and manual look remain their own.
-    pub(super) fn rotate_passenger(&mut self, yaw: &mut f32) {
+    pub(in crate::game) fn rotate_passenger(&mut self, yaw: &mut f32) {
         let mut delta =
             (f64::from(self.rotation_offset) - f64::from(self.player_rotation_offset)) % 360.0;
         if delta >= 180.0 {
@@ -493,7 +520,7 @@ impl Minecart {
         self.player_rotation_offset = next;
     }
     /// `Entity.onGround`.
-    pub(super) fn on_ground(&self) -> bool {
+    pub(in crate::game) fn on_ground(&self) -> bool {
         self.ground.on_ground
     }
     pub fn new(id: u32, kind: CartKind, position: Vec3) -> Self {
@@ -548,12 +575,12 @@ impl Minecart {
         }
     }
     /// `EntityType.MINECART & co`'s `getDimensions()`: width, height and eye height.
-    pub(super) const DIMENSIONS: [f32; 3] = [0.98, 0.7, 0.595];
+    pub(in crate::game) const DIMENSIONS: [f32; 3] = [0.98, 0.7, 0.595];
     pub fn bounds(&self) -> Aabb {
         self.bounds_at(self.position)
     }
     /// The box of this cart were its position `p`.
-    fn bounds_at(&self, p: Vec3) -> Aabb {
+    pub(in crate::game) fn bounds_at(&self, p: Vec3) -> Aabb {
         let w = WIDTH / 2.0;
         let vanilla = Aabb::new(
             Vec3::new(p.x - w, p.y, p.z - w),
@@ -561,11 +588,11 @@ impl Minecart {
         );
         sunrise_client::pose::SizeAnswer::sized_box(self.size_answer, Self::DIMENSIONS, p, vanilla)
     }
-    fn horizontal(&self) -> f64 {
+    pub(in crate::game) fn horizontal(&self) -> f64 {
         sunrise_core::geometry::length(self.velocity.x, self.velocity.z)
     }
     /// `AbstractContainerMenu.getRedstoneSignalFromContainer` of `slots`.
-    pub(super) fn container_signal(slots: &[Option<ItemStack>], items: &Items) -> i32 {
+    pub(in crate::game) fn container_signal(slots: &[Option<ItemStack>], items: &Items) -> i32 {
         let mut total = 0.0f32;
         for s in slots.iter().flatten() {
             let max = items.get(&s.item).map_or(64, |i| i.max_stack).min(64);
@@ -580,7 +607,7 @@ impl Minecart {
 /// float arithmetic vanilla uses: 0.98 plus a thousandth per empty step of the
 /// comparator signal (none while a loot table is still unrolled), times 0.95
 /// in water.
-fn container_keep(signal: i32, loot_pending: bool, in_water: bool) -> f64 {
+pub(in crate::game) fn container_keep(signal: i32, loot_pending: bool, in_water: bool) -> f64 {
     let mut keep = 0.98_f32;
     if !loot_pending {
         keep += (15 - signal) as f32 * 0.001_f32;
@@ -590,7 +617,7 @@ fn container_keep(signal: i32, loot_pending: bool, in_water: bool) -> f64 {
     }
     f64::from(keep)
 }
-pub(super) struct CartModels {
+pub(in crate::game) struct CartModels {
     pub models: HashMap<CartKind, Part>,
 }
 impl CartModels {
@@ -613,7 +640,7 @@ impl CartModels {
 }
 impl Game<'_> {
     /// `getCurrentBlockPosOrRailBelow`.
-    pub(super) fn rail_block(&self, p: Vec3, improved: bool) -> [i32; 3] {
+    pub(in crate::game) fn rail_block(&self, p: Vec3, improved: bool) -> [i32; 3] {
         let (x, y, z) = (p.x.floor() as i32, p.y.floor() as i32, p.z.floor() as i32);
         let below = if improved {
             (p.y - 0.1 - f64::from(1.0e-5_f32)).floor() as i32
@@ -628,14 +655,20 @@ impl Game<'_> {
     }
     /// `AbstractMinecart.isRedstoneConductor`: the block state's own flag
     /// (soul sand conducts without a full collision shape).
-    fn conductor(&self, x: i32, y: i32, z: i32) -> bool {
+    pub(in crate::game) fn conductor(&self, x: i32, y: i32, z: i32) -> bool {
         self.res.behaviours().facts(self.world.block(x, y, z)).flags
             & sunrise_world::level::data::state_flags::CONDUCTOR
             != 0
     }
     /// `OldMinecartBehavior.getPos`: the point on the rail under (x, y, z), on the track the
     /// rail lays for `cart`.
-    fn rail_pos(&self, cart: Option<u32>, x: f64, y: f64, z: f64) -> Option<[f64; 3]> {
+    pub(in crate::game) fn rail_pos(
+        &self,
+        cart: Option<u32>,
+        x: f64,
+        y: f64,
+        z: f64,
+    ) -> Option<[f64; 3]> {
         let [xt, yt, zt] = self.rail_block(Vec3::new(x, y, z), self.minecart_improvements());
         let rail = self.rail(cart, xt, yt, zt)?;
         let (e0, e1) = rail.shape.exits();
@@ -663,7 +696,7 @@ impl Game<'_> {
         Some(out)
     }
     /// `OldMinecartBehavior.getPosOffs`.
-    fn rail_pos_offs(
+    pub(in crate::game) fn rail_pos_offs(
         &self,
         cart: Option<u32>,
         mut x: f64,
@@ -689,13 +722,13 @@ impl Game<'_> {
         }
         self.rail_pos(cart, x, y, z)
     }
-    fn max_speed(&self, c: &Minecart) -> f64 {
+    pub(in crate::game) fn max_speed(&self, c: &Minecart) -> f64 {
         let base = if c.in_water { 0.2 } else { 0.4 };
         furnace_speed(c, base)
     }
     /// `AbstractMinecart.getMaxSpeed`: the behavior's, which a furnace
     /// minecart cuts (`MinecartFurnace.getMaxSpeed`).
-    pub(super) fn cart_max_speed(&self, c: &Minecart) -> f64 {
+    pub(in crate::game) fn cart_max_speed(&self, c: &Minecart) -> f64 {
         if self.minecart_improvements() {
             furnace_speed(c, self.max_speed_new(c))
         } else {
@@ -704,7 +737,12 @@ impl Game<'_> {
     }
     /// `applyNaturalSlowdown` (with `MinecartFurnace`'s push); `factor` is
     /// `getSlowdownFactor`: 0.997 riding, the empty cart's own by behavior.
-    fn natural_slowdown(&self, c: &mut Minecart, ridden: bool, factor: f64) -> Vec3 {
+    pub(in crate::game) fn natural_slowdown(
+        &self,
+        c: &mut Minecart,
+        ridden: bool,
+        factor: f64,
+    ) -> Vec3 {
         let mut v = c.velocity;
         let water = c.in_water;
         if c.kind == CartKind::Furnace {
@@ -736,7 +774,7 @@ impl Game<'_> {
         out
     }
     /// `OldMinecartBehavior.moveAlongTrack`.
-    fn move_along_track(
+    pub(in crate::game) fn move_along_track(
         &mut self,
         c: &mut Minecart,
         pos: [i32; 3],
@@ -877,7 +915,13 @@ impl Game<'_> {
     /// to `to`: the entity-sensing blocks (plates, buttons, tripwires, detector
     /// rails) on the path run `entityInside` now, with the cart where the tick
     /// left it. `slot` is where the cart is stored.
-    fn cart_inside_blocks(&mut self, c: &mut Minecart, slot: usize, from: Vec3, to: Vec3) {
+    pub(in crate::game) fn cart_inside_blocks(
+        &mut self,
+        c: &mut Minecart,
+        slot: usize,
+        from: Vec3,
+        to: Vec3,
+    ) {
         let shrink = f64::from(1.0e-5f32);
         let bounds = c.bounds_at(to).deflate(Vec3::new(shrink, shrink, shrink));
         let mut hits = Vec::new();
@@ -914,14 +958,14 @@ impl Game<'_> {
     }
     /// `AbstractMinecart`: `minecart_improvements` picks the smoother
     /// physics.
-    pub(super) fn minecart_improvements(&self) -> bool {
+    pub(in crate::game) fn minecart_improvements(&self) -> bool {
         self.enabled_feature_ids()
             .iter()
             .any(|f| f == "minecraft:minecart_improvements")
     }
     /// `NewMinecartBehavior.getMaxSpeed`: the game rule over water's half,
     /// every cart alike (`cart_max_speed` cuts a furnace minecart's).
-    fn max_speed_new(&self, c: &Minecart) -> f64 {
+    pub(in crate::game) fn max_speed_new(&self, c: &Minecart) -> f64 {
         f64::from(
             self.ui
                 .rules
@@ -931,7 +975,7 @@ impl Game<'_> {
     }
     /// `AbstractMinecart.getRedstoneDirection` (over the old port's
     /// conductor proxy): which way a powered rail pushes a resting cart.
-    fn redstone_direction(&self, pos: [i32; 3], shape: Shape) -> Vec3 {
+    pub(in crate::game) fn redstone_direction(&self, pos: [i32; 3], shape: Shape) -> Vec3 {
         let (dx, dz) = match shape {
             Shape::NorthSouth => (0, 1),
             Shape::EastWest => (1, 0),
@@ -948,7 +992,7 @@ impl Game<'_> {
     }
     /// `NewMinecartBehavior.isDecending`: the movement goes down the
     /// shape's rise.
-    fn is_descending(movement: Vec3, shape: Shape) -> bool {
+    pub(in crate::game) fn is_descending(movement: Vec3, shape: Shape) -> bool {
         match shape {
             Shape::AscendingEast => movement.x < 0.0,
             Shape::AscendingWest => movement.x > 0.0,
@@ -959,7 +1003,7 @@ impl Game<'_> {
     }
     /// `NewMinecartBehavior.setRotation`: preserve the cart's facing when
     /// motion reverses, including the pitch sign on a slope.
-    fn set_cart_rotation(c: &mut Minecart, mut yaw: f32, mut pitch: f32) {
+    pub(in crate::game) fn set_cart_rotation(c: &mut Minecart, mut yaw: f32, mut pitch: f32) {
         if (175.0..=185.0).contains(&f64::from((yaw - c.yaw).abs())) {
             c.flipped = !c.flipped;
             yaw -= 180.0;
@@ -969,7 +1013,7 @@ impl Game<'_> {
         c.pitch = pitch.clamp(-45.0, 45.0) % 360.0;
     }
     /// `NewMinecartBehavior.MinecartStep`: wire rotations use ROTATION_BYTE.
-    fn record_cart_step(c: &mut Minecart, weight: f32) {
+    pub(in crate::game) fn record_cart_step(c: &mut Minecart, weight: f32) {
         use sunrise_protocol::buf::pack_degrees;
         c.lerp_steps
             .push(sunrise_protocol::packets::play::MinecartStep {
@@ -982,7 +1026,7 @@ impl Game<'_> {
     }
     /// `NewMinecartBehavior.moveAlongTrack`: each step has its own rotation
     /// and interpolation weight, including the final off-rail move.
-    fn finish_cart_step(&self, c: &mut Minecart, old: Vec3, initial: Vec3) {
+    pub(in crate::game) fn finish_cart_step(&self, c: &mut Minecart, old: Vec3, initial: Vec3) {
         let delta = old.vector_to(c.position);
         let length = delta.length();
         if length > f64::from(1.0e-5_f32) {
@@ -1010,7 +1054,7 @@ impl Game<'_> {
     }
     /// `NewMinecartBehavior.adjustToRails`: snap only on the first tick or
     /// when entering rails; curves project onto the segment between exits.
-    fn adjust_cart_to_rails(c: &mut Minecart, pos: [i32; 3], shape: Shape) {
+    pub(in crate::game) fn adjust_cart_to_rails(c: &mut Minecart, pos: [i32; 3], shape: Shape) {
         let (e0, e1) = shape.exits();
         let exit =
             |e: [i32; 3]| Vec3::new(f64::from(e[0]), f64::from(e[1]), f64::from(e[2])).scale(0.5);
@@ -1060,7 +1104,11 @@ impl Game<'_> {
     /// `NewMinecartBehavior.moveAlongTrack`: the iteration keeps moving
     /// while distance is left, over as many rails as it takes, the speed
     /// recomputed per rail (slope, halt, boost).
-    fn move_along_track_new(&mut self, c: &mut Minecart, intent: [f64; 2]) -> bool {
+    pub(in crate::game) fn move_along_track_new(
+        &mut self,
+        c: &mut Minecart,
+        intent: [f64; 2],
+    ) -> bool {
         // `TrackIteration`: the slope, halt and boost speeds each apply once
         // per tick, and the iteration keeps moving while distance is left.
         let mut first = true;
@@ -1190,7 +1238,7 @@ impl Game<'_> {
     }
     /// `NewMinecartBehavior.stepAlongTrack`: toward the rail's exit, the
     /// hill's Y projected, a V of opposing slopes resting a slow cart.
-    fn new_step_along_track(
+    pub(in crate::game) fn new_step_along_track(
         &mut self,
         c: &mut Minecart,
         pos: [i32; 3],
@@ -1287,7 +1335,7 @@ impl Game<'_> {
         Some(movement_left)
     }
     /// `comeOffTrack`.
-    fn come_off_track(&mut self, c: &mut Minecart) -> bool {
+    pub(in crate::game) fn come_off_track(&mut self, c: &mut Minecart) -> bool {
         let max = self.cart_max_speed(c);
         c.velocity.x = c.velocity.x.clamp(-max, max);
         c.velocity.z = c.velocity.z.clamp(-max, max);
@@ -1311,7 +1359,7 @@ impl Game<'_> {
     }
     /// `applyEffectsFromBlocks` for a cart: a bubble column lifts or drags it
     /// and resets the fall distance.
-    pub(super) fn cart_block_effects(&mut self, c: &mut Minecart) {
+    pub(in crate::game) fn cart_block_effects(&mut self, c: &mut Minecart) {
         let writes = self.body_step_on(
             (c.id, c.kind.id()),
             (c.position, c.bounds()),
@@ -1366,7 +1414,12 @@ impl Game<'_> {
     /// with `c`: the stored cart is without it for the whole tick
     /// (`tick_carts_now`), and a mineshaft's chest cart carries its whole roll
     /// as NBT.
-    fn push_from_ticked_cart(&mut self, c: &mut Minecart, slot: usize, index: &mut CartIndex) {
+    pub(in crate::game) fn push_from_ticked_cart(
+        &mut self,
+        c: &mut Minecart,
+        slot: usize,
+        index: &mut CartIndex,
+    ) {
         let Some(i) = cart_at(&self.carts, c.id, slot) else {
             return;
         };
@@ -1380,170 +1433,8 @@ impl Game<'_> {
         }
         c.loot = loot;
     }
-    /// `AbstractMinecart.tick` for one cart; returns false once it is gone.
-    /// `slot` is where the cart is stored (where to look first).
-    fn tick_cart(
-        &mut self,
-        c: &mut Minecart,
-        intent: [f64; 2],
-        slot: usize,
-        index: &mut CartIndex,
-    ) -> bool {
-        c.tick_count += 1;
-        c.previous = c.position;
-        c.previous_yaw = c.yaw;
-        c.previous_pitch = c.pitch;
-        // AbstractMinecart.tick: each counts down only while positive.
-        if c.hurt_time > 0 {
-            c.hurt_time -= 1;
-        }
-        if c.damage > 0.0 {
-            c.damage -= 1.0;
-        }
-        // NewMinecartBehavior.tick snaps a newly created cart before gravity.
-        let improved = self.minecart_improvements();
-        if improved && c.first_tick {
-            let pos = self.rail_block(c.position, true);
-            if let Some(rail) = self.rail(Some(c.id), pos[0], pos[1], pos[2]) {
-                c.on_rails = true;
-                Self::adjust_cart_to_rails(c, pos, rail.shape);
-            } else {
-                c.on_rails = false;
-            }
-        }
-        // applyGravity
-        c.velocity.y -= c.get_gravity();
-        if improved {
-            if !self.move_along_track_new(c, intent) {
-                return false;
-            }
-        } else {
-            // OldMinecartBehavior.tick writes `onRails` every tick, before the move.
-            let pos = self.rail_block(c.position, false);
-            let rail = self.rail(Some(c.id), pos[0], pos[1], pos[2]);
-            c.on_rails = rail.is_some();
-            if let Some(rail) = rail {
-                if !self.move_along_track(c, pos, &rail, intent, slot) {
-                    return false;
-                }
-                self.note_cart_pass(c, pos);
-                if &*rail.name == "minecraft:activator_rail" {
-                    self.activate_cart(c, rail.powered);
-                }
-            } else if !self.come_off_track(c) {
-                return false;
-            }
-        }
-        c.first_tick = false;
-        // The old behavior derives yaw once per tick; the experiment has
-        // already recorded each step's yaw and pitch.
-        if !self.minecart_improvements() {
-            // OldMinecartBehavior.tick: setXRot(0.0F) before the yaw update.
-            c.pitch = 0.0;
-            let (xd, zd) = (c.previous.x - c.position.x, c.previous.z - c.position.z);
-            if xd * xd + zd * zd > 0.001 {
-                c.yaw = sunrise_core::geometry::trig::atan2_degrees_double(zd, xd);
-                if c.flipped {
-                    c.yaw += 180.0;
-                }
-            }
-            let diff = (c.yaw - c.previous_yaw + 180.0).rem_euclid(360.0) - 180.0;
-            if !(-170.0..170.0).contains(&diff) {
-                c.yaw += 180.0;
-                c.flipped = !c.flipped;
-            }
-            c.yaw %= 360.0;
-            c.pitch %= 360.0;
-        }
-        if !self.minecart_improvements() {
-            self.cart_block_effects(c);
-            // OldMinecartBehavior.tick: applyEffectsFromBlocks() once settled.
-            let here = c.position;
-            self.cart_inside_blocks(c, slot, here, here);
-        }
-        // OldMinecartBehavior.tick ends with pushAndPickupEntities, before
-        // AbstractMinecart.tick's updateFluidInteraction. The experiment still
-        // uses this fallback until its per-move pickup/push retry is ported.
-        self.push_from_ticked_cart(c, slot, index);
-        // AbstractMinecart.tick: updateFluidInteraction, a stream pushes the cart.
-        c.in_water = c
-            .push_by_fluid(&self.world, &self.res.motion().fluids, &self.loop_context)
-            .0
-            > 0.0;
-        // updateFluidInteraction: being in water resets the fall distance.
-        if c.in_water {
-            c.fall_distance = 0.0;
-        }
-        // Entity.checkInsideBlocks runs once after the cart tick, sweeping every
-        // movement through powder snow. PowderSnowBlock uses getKnownMovement,
-        // which is getDeltaMovement for a minecart.
-        self.entity_powder_snow_particles(c.previous, c.position, c.bounds(), c.velocity, false);
-        // Variants.
-        match c.kind {
-            CartKind::Furnace => {
-                if c.fuel > 0 {
-                    c.fuel -= 1;
-                }
-                if c.fuel <= 0 {
-                    c.push = Vec3::ZERO;
-                }
-                if c.fuel > 0 && c.random.next_int_bound(4).unwrap_or(1) == 0 {
-                    let at = [c.position.x, c.position.y + 0.8, c.position.z];
-                    self.particles.0.add(
-                        &ParticleOptions::simple(ParticleType::LargeSmoke),
-                        at,
-                        [0.0; 3],
-                    );
-                }
-            }
-            CartKind::Tnt => {
-                // MinecartTNT.tick: the fuse and the collision check are separate.
-                if c.fuse > 0 {
-                    c.fuse -= 1;
-                    let at = [c.position.x, c.position.y + 0.5, c.position.z];
-                    self.particles.0.add(
-                        &ParticleOptions::simple(ParticleType::Smoke),
-                        at,
-                        [0.0; 3],
-                    );
-                } else if c.fuse == 0 {
-                    // explode(horizontalDistanceSqr()): a rising cart's
-                    // vertical speed adds nothing.
-                    let speed = c.velocity.x * c.velocity.x + c.velocity.z * c.velocity.z;
-                    if self.explode_cart(c, speed) {
-                        return false;
-                    }
-                }
-                // MinecartTNT.tick reads the delta left after AbstractMinecart.tick
-                // (pushes and fluids included). The move zeroed the blocked axes
-                // (Entity.restituteMovementAfterCollisions) and no track step puts
-                // them back: a head-on stop leaves nothing, a diagonal one keeps
-                // the free axis (#11380).
-                let speed = c.velocity.horizontal_distance_squared();
-                if tnt_ignites_by_collision(c.ground.horizontal_collision, speed)
-                    && self.explode_cart(c, speed)
-                {
-                    return false;
-                }
-            }
-            // MinecartSpawner.tick: `BaseSpawner.serverTick` at the cart's block.
-            CartKind::Spawner => {
-                if let Some(mut spawner) = c.spawner.take() {
-                    let key = (
-                        c.position.x.floor() as i32,
-                        c.position.y.floor() as i32,
-                        c.position.z.floor() as i32,
-                    );
-                    let _ = self.server_tick_spawner_of(key, &mut spawner, Some(c.id));
-                    c.spawner = Some(spawner);
-                }
-            }
-            _ => {}
-        }
-        true
-    }
     /// The cart passes over the rail at `pos`: `minecart_pass`, delivered after its batch.
-    fn note_cart_pass(&self, c: &Minecart, pos: [i32; 3]) {
+    pub(in crate::game) fn note_cart_pass(&self, c: &Minecart, pos: [i32; 3]) {
         sunrise_client::block_contact::minecart_pass(
             c.id as i32,
             self.world.block(pos[0], pos[1], pos[2]),
@@ -1551,7 +1442,7 @@ impl Game<'_> {
         );
     }
     /// `activateMinecart` on an activator rail.
-    fn activate_cart(&mut self, c: &mut Minecart, powered: bool) {
+    pub(in crate::game) fn activate_cart(&mut self, c: &mut Minecart, powered: bool) {
         match c.kind {
             CartKind::Rideable if powered => {
                 // Minecart.activateMinecart: ejectPassengers.
@@ -1587,32 +1478,10 @@ impl Game<'_> {
             _ => {}
         }
     }
-    /// `MinecartTNT.primeFuse`: fuse 80, then `Level.broadcastEntityEvent`
-    /// (`EntityEvent.TNT_PRIME`, 70) and, unless the cart is silent,
-    /// `SoundEvents.TNT_PRIMED` on `SoundSource.BLOCKS`. A client that
-    /// receives 70 only sets the fuse (`handleEntityEvent`).
-    pub(super) fn prime_cart(&mut self, c: &mut Minecart) {
-        if !self
-            .ui
-            .rules
-            .bool_at(sunrise_client::gamerules::vanilla::TNT_EXPLODES)
-        {
-            return;
-        }
-        c.fuse = 80;
-        let at = [c.position.x, c.position.y, c.position.z];
-        let id = c.id as i32;
-        self.lan_entity_event(id, TNT_PRIME_EVENT, at);
-        if !self.entity_silent(c.id) {
-            self.audio
-                .0
-                .play_on(BLOCKS, "minecraft:entity.tnt.primed", Some(at), 1.0, 1.0);
-        }
-    }
     /// `MinecartTNT.handleEntityEvent`: event 70 calls `primeFuse`, which on a
     /// client only sets the fuse to 80. The window then counts it down
     /// (`MinecartTNT.tick`) for the smoke, the flash and the swell.
-    pub(super) fn remote_tnt_cart_event(&mut self, id: i32, event: i8) {
+    pub(in crate::game) fn remote_tnt_cart_event(&mut self, id: i32, event: i8) {
         if event != TNT_PRIME_EVENT {
             return;
         }
@@ -1631,7 +1500,7 @@ impl Game<'_> {
     /// gets back only moves the server's copy of it (`Entity.push` marks
     /// `needsSync`, which `ServerEntity` sends to the other players only),
     /// so no player feels it.
-    fn push_carts(&mut self) {
+    pub(in crate::game) fn push_carts(&mut self) {
         if self.carts.is_empty() {
             return;
         }
@@ -1683,7 +1552,7 @@ impl Game<'_> {
     /// -> `doPush`): the cart gets the push and the mob a quarter of it back (`Entity.push`, which
     /// needs the mob to be pushable and to carry no one). Bats push nothing (`Bat.pushEntities`),
     /// nor does a mob whose box reaches no cart: its box is worked out only if it may.
-    fn push_carts_from_mobs(&mut self, cells: &SeenGrid) {
+    pub(in crate::game) fn push_carts_from_mobs(&mut self, cells: &SeenGrid) {
         let (teams, mut near) = (self.mob_teams(), Vec::new());
         // Every mob, each asked which carts it is near: a mob far from all of them is turned
         // away by a bitmap of the carts' coarse cells, without a lookup or a grid of the mobs.
@@ -1738,7 +1607,7 @@ impl Game<'_> {
     /// cart `i`'s own tick: each other cart in its box (0.2 wider on each
     /// side) gets `push(cart i)`. Running it per cart, after that cart moved
     /// and before the next one does, is what splits stacked carts apart.
-    fn push_from_cart(&mut self, i: usize, index: &mut CartIndex) {
+    pub(in crate::game) fn push_from_cart(&mut self, i: usize, index: &mut CartIndex) {
         let reach = f64::from(0.2f32);
         let hitbox = self.carts[i].bounds().inflate(Vec3::new(reach, 0.0, reach));
         let mut near = std::mem::take(&mut index.near);
@@ -1811,7 +1680,7 @@ impl Game<'_> {
     /// `OldMinecartBehavior.pushAndPickupEntities` for living entities in cart
     /// `i`'s box (0.2 wider on each side): an eligible mob boards a moving
     /// rideable cart (`startRiding`); others get `Entity.push`.
-    fn pickup_from_cart(&mut self, i: usize, index: &mut CartIndex) {
+    pub(in crate::game) fn pickup_from_cart(&mut self, i: usize, index: &mut CartIndex) {
         let v = self.carts[i].velocity;
         if self.carts[i].kind != CartKind::Rideable || v.x * v.x + v.z * v.z < 0.01 {
             return;
@@ -1894,7 +1763,7 @@ impl Game<'_> {
     }
     /// `positionRider` for the mobs in minecarts: each sits on the cart's
     /// passenger attachment, less its own vehicle attachment.
-    pub(super) fn seat_cart_mobs(&mut self, riding: &super::passengers::Riders) {
+    pub(in crate::game) fn seat_cart_mobs(&mut self, riding: &super::passengers::Riders) {
         for i in 0..self.carts.len() {
             let id = self.carts[i].id;
             let Some(js) = riding.get(&id) else {
@@ -1925,7 +1794,7 @@ impl Game<'_> {
         }
     }
     /// Refuse a removed target before carrying its owning slot into a tick clone.
-    pub(super) fn store_cart_back(&mut self, index: usize, cart: Minecart) -> bool {
+    pub(in crate::game) fn store_cart_back(&mut self, index: usize, cart: Minecart) -> bool {
         !self
             .persist
             .removals
@@ -1934,12 +1803,12 @@ impl Game<'_> {
     }
 
     /// Every cart but the ridden one (which ticks with its rider).
-    pub(super) fn tick_carts(&mut self) {
+    pub(in crate::game) fn tick_carts(&mut self) {
         self.vehicles_ticking(true);
         self.tick_carts_now();
         self.vehicles_ticking(false);
     }
-    fn tick_carts_now(&mut self) {
+    pub(in crate::game) fn tick_carts_now(&mut self) {
         self.push_carts();
         // ServerLevel.tick: only entities in entity-ticking chunks tick.
         let ticking = self.entity_ticking_area();
@@ -2005,7 +1874,7 @@ impl Game<'_> {
     /// own `isInLava`. The second breaks the cart, or primes a TNT minecart
     /// (`MinecartTNT.destroy` for a fire source). A cart has no `baseTick`,
     /// so the fire `lavaIgnite` lights never burns it.
-    fn cart_lava_tick(&mut self, id: u32, slot: usize) {
+    pub(in crate::game) fn cart_lava_tick(&mut self, id: u32, slot: usize) {
         for _ in 0..2 {
             let Some(i) = cart_at(&self.carts, id, slot) else {
                 return;
@@ -2022,59 +1891,8 @@ impl Game<'_> {
             self.lava_hurt_sound([p.x, p.y, p.z]);
         }
     }
-    /// `ClientPacketListener.postAddEntitySoundInstance` for the carts that
-    /// joined the level since the last tick, and `LocalPlayer.startRiding`'s
-    /// two inside sounds when the player got in one; then what the sound
-    /// instances read this tick (the ridden cart and every cart).
-    pub(super) fn start_cart_sounds(&mut self) -> (Option<u32>, Vec<CartSound>) {
-        let improved = self.minecart_improvements();
-        let carts: Vec<CartSound> = self
-            .carts
-            .iter()
-            .map(|c| CartSound {
-                id: c.id,
-                position: [c.position.x, c.position.y, c.position.z],
-                // Vec3.horizontalDistance.
-                speed: (c.velocity.x * c.velocity.x + c.velocity.z * c.velocity.z).sqrt(),
-                new_behavior: improved,
-                on_rails: c.on_rails,
-            })
-            .collect();
-        self.client
-            .cart_sounds
-            .retain(|id| carts.iter().any(|c| c.id == *id));
-        for cart in &carts {
-            if !self.client.cart_sounds.contains(&cart.id) {
-                let instance = SoundInstance::minecart(cart, random_source::create());
-                let (_, res) = self.audio.0.play_instance(instance, false);
-                if res != PlayResult::NotStarted {
-                    self.client.cart_sounds.insert(cart.id);
-                }
-            }
-        }
-        let vehicle = self.riding.filter(|id| carts.iter().any(|c| c.id == *id));
-        if vehicle != self.client.riding_cart_sounds
-            && let Some(cart) = carts.iter().find(|c| Some(c.id) == vehicle)
-        {
-            let mut started = true;
-            for underwater in [true, false] {
-                let instance =
-                    SoundInstance::riding_minecart(cart, underwater, random_source::create());
-                let (_, res) = self.audio.0.play_instance(instance, false);
-                if res == PlayResult::NotStarted {
-                    started = false;
-                }
-            }
-            if started {
-                self.client.riding_cart_sounds = vehicle;
-            }
-        } else if vehicle.is_none() {
-            self.client.riding_cart_sounds = None;
-        }
-        (vehicle, carts)
-    }
     /// The rider's tick: the cart moves with the rider's input as its push.
-    pub(super) fn tick_cart_riding(&mut self, keys: Keys) -> bool {
+    pub(in crate::game) fn tick_cart_riding(&mut self, keys: Keys) -> bool {
         let Some(i) = self.carts.iter().position(|c| Some(c.id) == self.riding) else {
             return false;
         };
@@ -2109,7 +1927,7 @@ impl Game<'_> {
     }
     /// `getDismountLocationForPassenger`: beside the cart's motion direction,
     /// else on top.
-    pub(super) fn dismount_cart(&mut self, i: usize) {
+    pub(in crate::game) fn dismount_cart(&mut self, i: usize) {
         let id = self.carts[i].id;
         if self.riding == Some(id) && !self.native_may_leave(id) {
             return;
@@ -2127,7 +1945,7 @@ impl Game<'_> {
         section_steps::tell_player(self, from.map(|from| (from, target)));
     }
     /// Where the cart at `i` lets a player off.
-    pub(super) fn cart_player_dismount_target(&self, i: usize) -> Vec3 {
+    pub(in crate::game) fn cart_player_dismount_target(&self, i: usize) -> Vec3 {
         let c = &self.carts[i];
         let (bx, by, bz) = (
             c.position.x.floor() as i32,
@@ -2159,52 +1977,7 @@ impl Game<'_> {
         let top = c.bounds().max_position().y;
         target.unwrap_or(Vec3::new(c.position.x, top, c.position.z))
     }
-    /// `MinecartItem.useOn`: a cart on the clicked rail.
-    pub(super) fn place_minecart(&mut self, hit: &Hit, stack: &ItemStack) -> bool {
-        let Some(kind) = CartKind::from_id(&stack.item) else {
-            return false;
-        };
-        let Some(rail) = self.rail(None, hit.pos[0], hit.pos[1], hit.pos[2]) else {
-            return false;
-        };
-        let offset = if rail.shape.is_slope() { 0.5 } else { 0.0 };
-        let at = Vec3::new(
-            f64::from(hit.pos[0]) + 0.5,
-            f64::from(hit.pos[1]) + 0.0625 + offset,
-            f64::from(hit.pos[2]) + 0.5,
-        );
-        self.server.next_entity += 1;
-        let cart = Minecart::new(self.server.next_entity, kind, at);
-        self.world
-            .modified
-            .insert((hit.pos[0] >> 4, hit.pos[2] >> 4));
-        self.carts.push(cart);
-        let id = self.server.next_entity;
-        self.apply_item_stack_config(super::commands::Target::Cart(id), kind.id(), stack, true);
-        if self.serving.is_some() || self.options.dedicated.is_some() {
-            let cart = self.carts.last().unwrap();
-            self.native_vehicle_create(
-                cart.kind.id(),
-                [cart.position.x, cart.position.y, cart.position.z],
-            );
-        }
-        // MinecartItem.useOn: ENTITY_PLACE at the rail, by the player, with the block under it.
-        let below = self.world.block(hit.pos[0], hit.pos[1] - 1, hit.pos[2]);
-        self.post_block_game_event(
-            "minecraft:entity_place",
-            hit.pos,
-            self.sculk_actor(),
-            Some(below),
-        );
-        if !self.creative {
-            self.consume_held();
-        }
-        // ItemStack.useOn counts the use.
-        self.award_stat("used", &stack.item, 1);
-        self.swing_arm();
-        true
-    }
-    pub(super) fn cart_hit(&self) -> Option<(usize, f64)> {
+    pub(in crate::game) fn cart_hit(&self) -> Option<(usize, f64)> {
         if let Some(hit) = self.cached_entity_pick() {
             let (entity, distance, _) = hit?;
             let index = self.carts.iter().position(|f| f.id == entity.id())?;
@@ -2232,7 +2005,7 @@ impl Game<'_> {
     /// `setChestVehicleItem` first unpack its loot table with no player, so
     /// no `player_generates_container_loot` fires later. While its menu is
     /// open the live slots are the placeholder copy (`open_cart_container`).
-    pub(super) fn edit_cart_slots<R>(
+    pub(in crate::game) fn edit_cart_slots<R>(
         &mut self,
         id: u32,
         edit: impl FnOnce(&mut Vec<Option<ItemStack>>) -> R,
@@ -2248,7 +2021,7 @@ impl Game<'_> {
             _ => Some(self.carts.update(i, |c| edit(&mut c.items))),
         }
     }
-    fn unpack_cart_loot(&mut self, i: usize) {
+    pub(in crate::game) fn unpack_cart_loot(&mut self, i: usize) {
         self.unpack_loot(
             super::container_loot::LootTarget::Cart(self.carts[i].id),
             self.native_acting_player(),
@@ -2257,7 +2030,7 @@ impl Game<'_> {
     /// `interact`: ride, open or fuel the cart under the crosshair, or the one
     /// a guest's interact packet named. A TNT cart has no interact of its own
     /// (`Entity.interact` passes), so nothing here lights it.
-    pub(super) fn interact_cart(&mut self, target: Option<InteractTarget>) -> bool {
+    pub(in crate::game) fn interact_cart(&mut self, target: Option<InteractTarget>) -> bool {
         let Some((i, d)) = (match target {
             Some(t) => Self::named_entity(&self.carts, t.id, |c| c.id).map(|i| (i, 0.0)),
             None => self.cart_hit(),
@@ -2322,7 +2095,7 @@ impl Game<'_> {
     /// `AbstractMinecartContainer.interact`: the menu opens over the cart's
     /// own slots, kept under a placeholder key until it closes
     /// (`store_cart_items`/`close_cart_container`).
-    pub(super) fn open_cart_container(&mut self, i: usize) {
+    pub(in crate::game) fn open_cart_container(&mut self, i: usize) {
         self.unpack_cart_loot(i);
         let c = self.carts[i].clone();
         let key = (i32::MAX - 15, CART_KEY_Y, c.id as i32);
@@ -2350,7 +2123,7 @@ impl Game<'_> {
         }
     }
     /// Closing the cart's container open under `key` copies the items back.
-    pub(super) fn close_cart_container(&mut self, key: (i32, i32, i32)) {
+    pub(in crate::game) fn close_cart_container(&mut self, key: (i32, i32, i32)) {
         if key.1 != CART_KEY_Y {
             return;
         }
@@ -2368,7 +2141,7 @@ impl Game<'_> {
     /// menu edited goes back to the vehicle, so it is what drops or travels
     /// with it, and the menu's stand-in leaves the level. A menu that is
     /// still open over it then has nothing left to take.
-    pub(super) fn release_vehicle_container(&mut self, id: u32) {
+    pub(in crate::game) fn release_vehicle_container(&mut self, id: u32) {
         let key = (i32::MAX - 15, CART_KEY_Y, id as i32);
         self.store_cart_items(key);
         self.world.block_entities.remove(&key);
@@ -2379,7 +2152,7 @@ impl Game<'_> {
     /// The menu of a chest or hopper minecart or a chest boat works on the
     /// vehicle's own items (`ContainerEntity`): the placeholder under `key`
     /// that the menu edits is copied back to the vehicle.
-    pub(super) fn store_cart_items(&mut self, key: (i32, i32, i32)) {
+    pub(in crate::game) fn store_cart_items(&mut self, key: (i32, i32, i32)) {
         if key.1 != CART_KEY_Y {
             return;
         }
@@ -2396,7 +2169,7 @@ impl Game<'_> {
         }
     }
     /// The open cart's kind when a cart container is shown.
-    pub(super) fn open_cart_kind(&self) -> Option<CartKind> {
+    pub(in crate::game) fn open_cart_kind(&self) -> Option<CartKind> {
         let key = self.container.filter(|k| k.1 == CART_KEY_Y)?;
         // A chest boat's chest shows like a chest minecart's.
         self.carts
@@ -2413,7 +2186,7 @@ impl Game<'_> {
     /// An arrow hit cart `i` (`MinecartTNT.hurtServer`, then
     /// `VehicleEntity.hurtServer`): a burning arrow sets off a TNT minecart.
     /// `owner` is `AbstractArrow.getOwner`, the hit's `DamageSource.getEntity`;
-    pub(super) fn arrow_hits_cart(
+    pub(in crate::game) fn arrow_hits_cart(
         &mut self,
         i: usize,
         damage: f32,
@@ -2466,11 +2239,15 @@ impl Game<'_> {
     }
     /// The seed vanilla picks a block state model's weighted alternatives with outside the
     /// world (`BlockModelResolver.MODEL_SEED`).
-    pub(super) const BLOCK_MODEL_SEED: i64 = 42;
+    pub(in crate::game) const BLOCK_MODEL_SEED: i64 = 42;
     /// `BlockModelResolver.update` + `BlockModelRenderState.submit`: combines external light
     /// with the block state's own light component-wise (`emissiveRendering` gives full sky+block
     /// light `(15, 15)`, otherwise `(0, state.getLightEmission())`).
-    pub(super) fn block_display_light(&self, state: BlockStateId, external_light: u32) -> u32 {
+    pub(in crate::game) fn block_display_light(
+        &self,
+        state: BlockStateId,
+        external_light: u32,
+    ) -> u32 {
         let emissive = self.pack.assets.registry.state(state).is_some_and(|st| {
             let name = st.name.strip_prefix("minecraft:").unwrap_or(&st.name);
             name == "magma_block"
@@ -2491,7 +2268,7 @@ impl Game<'_> {
     /// culling (`SHADED_CULL_W`), one resolved sheet (`translucentBlockItemSheet` if any face is
     /// translucent, else `cutoutBlockItemSheet`), component-wise light max, JOML vertex transform,
     /// and reusable slot scratch. Returns whether the model routed to the translucent sheet.
-    pub(super) fn block_display_model_vertices(
+    pub(in crate::game) fn block_display_model_vertices(
         &self,
         state: BlockStateId,
         seed: i64,
@@ -2577,7 +2354,7 @@ impl Game<'_> {
         has_translucency
     }
     /// Baked block-state faces with default block tints and terrain shade or diffuse lighting.
-    pub(super) fn block_model_vertices(
+    pub(in crate::game) fn block_model_vertices(
         &self,
         state: BlockStateId,
         seed: i64,
@@ -2590,7 +2367,7 @@ impl Game<'_> {
         self.tinted_block_model_vertices(state, seed, m, |_| light, diffuse, tint, out);
     }
     /// `BlockTintSource.color(state)` with no level: each tinted face's default colour.
-    pub(super) fn default_block_tint(
+    pub(in crate::game) fn default_block_tint(
         &self,
         state: BlockStateId,
     ) -> impl Fn(i32) -> Option<u32> + '_ {
@@ -2602,7 +2379,7 @@ impl Game<'_> {
     /// tint index (RGB, `None` for untinted faces) and lit by `light` of
     /// each quad.
     #[allow(clippy::too_many_arguments)]
-    pub(super) fn tinted_block_model_vertices(
+    pub(in crate::game) fn tinted_block_model_vertices(
         &self,
         state: BlockStateId,
         seed: i64,
@@ -2620,7 +2397,7 @@ impl Game<'_> {
     }
     /// `tinted_block_model_vertices` for baked models given as they are (a
     /// state's, or a standalone model).
-    pub(super) fn baked_model_vertices<'m>(
+    pub(in crate::game) fn baked_model_vertices<'m>(
         &self,
         models: impl IntoIterator<Item = &'m sunrise_client::models::catalog::BakedModel>,
         m: glam::Mat4,
@@ -2647,12 +2424,12 @@ impl Game<'_> {
 
     /// The block the cart shows: `None` for air (`AbstractMinecartRenderer`
     /// draws and stretches its culling box only for a non-air state).
-    fn display_state(&self, c: &Minecart) -> Option<BlockStateId> {
+    pub(in crate::game) fn display_state(&self, c: &Minecart) -> Option<BlockStateId> {
         shown_unless_air(self.display_state_unfiltered(c), |s| {
             self.res.facts().is_air(s)
         })
     }
-    fn display_state_unfiltered(&self, c: &Minecart) -> Option<BlockStateId> {
+    pub(in crate::game) fn display_state_unfiltered(&self, c: &Minecart) -> Option<BlockStateId> {
         let registry = &self.pack.assets.registry;
         let with = |name: &str, props: &[(&str, &str)]| {
             let mut s = registry.state(registry.default_state(name)?)?.clone();
@@ -2686,187 +2463,9 @@ impl Game<'_> {
             CartKind::Spawner => registry.default_state("minecraft:spawner"),
         }
     }
-    /// `AbstractMinecartRenderer` (old render): on the rail between the
-    /// front and back points, pitched on slopes, with the display block.
-    pub(in crate::game) fn cart_geometry(
-        &self,
-        camera: glam::DVec3,
-        alpha: f64,
-        out: &mut Vec<Vertex>,
-        run: std::ops::Range<usize>,
-    ) {
-        let a = alpha as f32;
-        let Some(uv) = self
-            .gui
-            .atlas
-            .sprites
-            .get("entity/minecart/minecart")
-            .map(|r| [r.u0, r.v0, r.u1, r.v1])
-        else {
-            return;
-        };
-        // Entity.shouldRenderAtSqrDistance: 64 times the bounding box's mean
-        // edge, scaled by the view scale.
-        let range = (WIDTH + HEIGHT + WIDTH) / 3.0 * 64.0 * self.view_scale();
-        for c in &self.carts[run] {
-            if self.hides_as_camera(c.id) {
-                continue;
-            }
-            let Some(model) = self.client.cart_models.models.get(&c.kind) else {
-                continue;
-            };
-            let lerp = self.remote_minecart_lerp(c.id, a);
-            let new_render = self.minecart_improvements() || lerp.is_some();
-            let (x, y, z) = if let Some((p, _, _)) = lerp {
-                (p[0], p[1], p[2])
-            } else {
-                (
-                    c.previous.x + (c.position.x - c.previous.x) * alpha,
-                    c.previous.y + (c.position.y - c.previous.y) * alpha,
-                    c.previous.z + (c.position.z - c.previous.z) * alpha,
-                )
-            };
-            // LevelExtractor.isEntityVisible: the cart the player rides always draws.
-            let mut shown = None;
-            if self.riding != Some(c.id) {
-                let d = glam::DVec3::new(c.position.x, c.position.y, c.position.z) - camera;
-                if d.length_squared() >= range * range {
-                    continue;
-                }
-                // Looked up once, past the distance cut: the cull and the draw both use it.
-                shown = Some(self.display_state(c));
-                // EntityRenderer.shouldRender: the interpolated box grown by 0.5;
-                // AbstractMinecartRenderer.getBoundingBoxForCulling stretches it
-                // up by the display block's offset.
-                if let Some(view) = &self.client.view_frustum {
-                    let top = HEIGHT
-                        + if shown.flatten().is_none() {
-                            0.0
-                        } else {
-                            display_offset(c) * 0.75 / 16.0
-                        };
-                    let p = glam::DVec3::new(x, y, z) - camera;
-                    let lo = p - glam::DVec3::new(WIDTH / 2.0 + 0.5, 0.5, WIDTH / 2.0 + 0.5);
-                    let hi = p + glam::DVec3::new(WIDTH / 2.0 + 0.5, top + 0.5, WIDTH / 2.0 + 0.5);
-                    if !view.intersects(lo.as_vec3(), hi.as_vec3()) {
-                        continue;
-                    }
-                }
-            }
-            let mut yaw =
-                c.previous_yaw + ((c.yaw - c.previous_yaw + 180.0).rem_euclid(360.0) - 180.0) * a;
-            let mut pitch = 0.0f32;
-            let mut offset = glam::DVec3::ZERO;
-            if new_render {
-                (yaw, pitch) = lerp.map_or((c.yaw, c.pitch), |(_, yaw, pitch)| (yaw, pitch));
-            } else if let Some(on) = self.rail_pos(Some(c.id), x, y, z) {
-                // getPosOffs(..., 0.3F): the float widened.
-                let half = f64::from(0.3_f32);
-                let front = self.rail_pos_offs(Some(c.id), x, y, z, half).unwrap_or(on);
-                let back = self.rail_pos_offs(Some(c.id), x, y, z, -half).unwrap_or(on);
-                offset = glam::DVec3::new(on[0] - x, (front[1] + back[1]) / 2.0 - y, on[2] - z);
-                let d =
-                    glam::DVec3::new(back[0] - front[0], back[1] - front[1], back[2] - front[2]);
-                if d.length() != 0.0 {
-                    let d = d.normalize();
-                    yaw = d.z.atan2(d.x).to_degrees() as f32;
-                    pitch = (d.y.atan() * 73.0) as f32;
-                }
-            }
-            let render_position = Vec3::new(x + offset.x, y + offset.y, z + offset.z);
-            let has_display = shown.as_ref().is_some_and(Option::is_some)
-                || (shown.is_none() && self.display_state(c).is_some());
-            let culling = self.entity_cull_decision_in_bounds(
-                c,
-                cart_render_bounds(render_position, display_offset(c), has_display),
-            );
-            if culling.hides_entity() {
-                continue;
-            }
-            let entity_start = out.len();
-            self.mark_motion(entity_start, Self::MOTION_OBJECT | u64::from(c.id));
-            // The per-entity jitter (offsetSeed) that keeps stacked carts from z-fighting.
-            let seed = i64::from(c.id).wrapping_mul(493_286_711);
-            let seed = seed
-                .wrapping_mul(seed)
-                .wrapping_mul(4_392_167_121)
-                .wrapping_add(seed.wrapping_mul(98_761));
-            let jitter = |shift: i64| (((seed >> shift & 7) as f32 + 0.5) / 8.0 - 0.5) * 0.004;
-            let p = glam::DVec3::new(x, y, z) + offset - camera;
-            let jittered = p.as_vec3() + glam::Vec3::new(jitter(16), jitter(20), jitter(24));
-            let mut base = if new_render {
-                // AbstractMinecartRenderer.newRender translates the model
-                // after rotating, so the seat follows the pitched cart.
-                glam::Mat4::from_translation(jittered)
-                    * glam::Mat4::from_rotation_y(yaw.to_radians())
-                    * glam::Mat4::from_rotation_z((-pitch).to_radians())
-                    * glam::Mat4::from_translation(glam::Vec3::new(0.0, 0.375, 0.0))
-            } else {
-                glam::Mat4::from_translation(jittered + glam::Vec3::new(0.0, 0.375, 0.0))
-                    * glam::Mat4::from_rotation_y((180.0 - yaw).to_radians())
-                    * glam::Mat4::from_rotation_z((-pitch).to_radians())
-            };
-            let hurt = c.hurt_time as f32 - a;
-            if hurt > 0.0 {
-                let damage = (c.damage - a).max(0.0);
-                base *= glam::Mat4::from_rotation_x(
-                    (hurt.sin() * hurt * damage / 10.0 * c.hurt_dir as f32).to_radians(),
-                );
-            }
-            let l = self.world.light(
-                c.position.x.floor() as i32,
-                (c.position.y + 0.35).floor() as i32,
-                c.position.z.floor() as i32,
-            );
-            let packed = (u32::from(l >> 4) * 16) | ((u32::from(l & 15) * 16) << 8);
-            if let Some(state) = shown.unwrap_or_else(|| self.display_state(c)) {
-                let display = base
-                    * glam::Mat4::from_scale(glam::Vec3::splat(0.75))
-                    * glam::Mat4::from_translation(glam::Vec3::new(
-                        -0.5,
-                        (display_offset(c) as f32 - 8.0) / 16.0,
-                        0.5,
-                    ))
-                    * glam::Mat4::from_rotation_y(90f32.to_radians());
-                if c.kind == CartKind::Chest {
-                    self.special_block_model(state, display, l, out);
-                } else {
-                    // TNT minecarts flash white as the fuse runs out (TntMinecartRenderer).
-                    let swell = if c.kind == CartKind::Tnt && c.fuse > -1 {
-                        let fuse = c.fuse as f32 - a + 1.0;
-                        if fuse < 10.0 {
-                            let g = (1.0 - fuse / 10.0).clamp(0.0, 1.0);
-                            1.0 + g * g * g * g * 0.3
-                        } else {
-                            1.0
-                        }
-                    } else {
-                        1.0
-                    };
-                    let m = display
-                        * glam::Mat4::from_translation(glam::Vec3::splat(0.5))
-                        * glam::Mat4::from_scale(glam::Vec3::splat(swell))
-                        * glam::Mat4::from_translation(glam::Vec3::splat(-0.5));
-                    let flash = c.kind == CartKind::Tnt && c.fuse > -1 && (c.fuse / 5) % 2 == 0;
-                    let start = out.len();
-                    self.block_model_vertices(state, 0, m, packed, false, out);
-                    if flash {
-                        // submitWhiteSolidBlock: OverlayTexture.u(1.0) on the cart's own light.
-                        for v in &mut out[start..] {
-                            v.layer = 5;
-                        }
-                    }
-                }
-            }
-            let m = base * glam::Mat4::from_scale(glam::Vec3::new(-1.0, -1.0, 1.0));
-            let poses = Poses::new(model);
-            sunrise_client::mobs::render::draw(model, m, &poses, uv, 0xFFFF_FFFF, packed, 0, out);
-            self.finish_entity_occlusion(culling, c, out, entity_start);
-        }
-    }
     /// The model of a block drawn by its block-entity renderer, as a chest
     /// minecart shows its chest and a block display its special block.
-    pub(super) fn special_block_model(
+    pub(in crate::game) fn special_block_model(
         &self,
         state: BlockStateId,
         m: glam::Mat4,
@@ -3124,42 +2723,45 @@ impl Minecart {
 }
 
 /// `MinecartTNT` default explosion powers.
-const DEFAULT_EXPLOSION_POWER: f32 = 4.0;
-const DEFAULT_EXPLOSION_SPEED_FACTOR: f32 = 1.0;
+pub(in crate::game) const DEFAULT_EXPLOSION_POWER: f32 = 4.0;
+pub(in crate::game) const DEFAULT_EXPLOSION_SPEED_FACTOR: f32 = 1.0;
 
 /// `VehicleEntity.hurtServer`'s destroy test: a creative player, damage past
 /// 40, or (`MinecartTNT.shouldSourceDestroy`) fire or an explosion hitting a
 /// TNT cart.
-fn cart_is_destroyed(creative: bool, damage: f32, ignites_tnt: bool) -> bool {
+pub(in crate::game) fn cart_is_destroyed(creative: bool, damage: f32, ignites_tnt: bool) -> bool {
     creative || damage > 40.0 || ignites_tnt
 }
 
 /// `MinecartTNT.tick`'s collision detonation: a cart still moving at a tenth
 /// of a block a tick or more when a block stops it blows up.
-fn tnt_ignites_by_collision(horizontal_collision: bool, speed_sqr: f64) -> bool {
+pub(in crate::game) fn tnt_ignites_by_collision(
+    horizontal_collision: bool,
+    speed_sqr: f64,
+) -> bool {
     horizontal_collision && speed_sqr >= 0.009_999_999_776_482_582
 }
 
 /// NewMinecartBehavior's `(float) (Math.atan2(y, x) * 180.0 / Math.PI)` before
 /// the cast: HotSpot's atan2, multiplied then divided in Java's order.
-fn java_degrees(y: f64, x: f64) -> f64 {
+pub(in crate::game) fn java_degrees(y: f64, x: f64) -> f64 {
     sunrise_core::jmath::atan2(y, x) * 180.0 / std::f64::consts::PI
 }
 
 #[cfg(test)]
 #[path = "minecarts/minecart_tnt_tests.rs"]
-mod minecart_tnt_tests;
+pub(in crate::game) mod minecart_tnt_tests;
 
 /// `MinecartFurnace.addFuel`: Java int arithmetic, so a fuel a mod set near
 /// `i32::MAX` wraps negative and takes more.
-pub(super) fn furnace_fuel_after(fuel: i32) -> Option<i32> {
+pub(in crate::game) fn furnace_fuel_after(fuel: i32) -> Option<i32> {
     let next = fuel.wrapping_add(3600);
     (next <= 32000).then_some(next)
 }
 
 /// `MinecartFurnace.getMaxSpeed`: half the behavior's speed, three quarters
 /// in water.
-fn furnace_speed(c: &Minecart, base: f64) -> f64 {
+pub(in crate::game) fn furnace_speed(c: &Minecart, base: f64) -> f64 {
     if c.kind == CartKind::Furnace {
         base * if c.in_water { 0.75 } else { 0.5 }
     } else {
@@ -3169,18 +2771,18 @@ fn furnace_speed(c: &Minecart, base: f64) -> f64 {
 
 /// Local geometry with atlas coordinates resolved for both CPU and GPU consumers.
 #[derive(Clone, Copy)]
-pub(super) struct PreparedModelFace {
-    positions: [[f32; 3]; 4],
-    uv: [[f32; 2]; 4],
-    pub(super) facing: sunrise_assets::model::Direction,
-    pub(super) tint_index: i32,
+pub(in crate::game) struct PreparedModelFace {
+    pub(in crate::game) positions: [[f32; 3]; 4],
+    pub(in crate::game) uv: [[f32; 2]; 4],
+    pub(in crate::game) facing: sunrise_assets::model::Direction,
+    pub(in crate::game) tint_index: i32,
     /// The side that hides this face when a neighbour covers it (`ModelQuad::cull`).
-    pub(super) cull: Option<sunrise_assets::model::Direction>,
-    light_emission: u8,
+    pub(in crate::game) cull: Option<sunrise_assets::model::Direction>,
+    pub(in crate::game) light_emission: u8,
 }
 
 impl PreparedModelFace {
-    pub(super) fn new(
+    pub(in crate::game) fn new(
         quad: &sunrise_assets::bake::ModelQuad,
         sprite: sunrise_client::hud::Rect,
     ) -> Self {
@@ -3200,11 +2802,11 @@ impl PreparedModelFace {
     }
 
     /// Whether `hidden` (`ModelInstance::hidden_faces`) leaves this face out.
-    pub(super) fn hidden_by(&self, hidden: u8) -> bool {
+    pub(in crate::game) fn hidden_by(&self, hidden: u8) -> bool {
         self.cull.is_some_and(|side| hidden >> side as u8 & 1 != 0)
     }
 
-    pub(super) fn positions(&self) -> [[f32; 3]; 4] {
+    pub(in crate::game) fn positions(&self) -> [[f32; 3]; 4] {
         self.positions
     }
 
@@ -3233,7 +2835,7 @@ impl PreparedModelFace {
 }
 
 /// Shared transform, shading and light path for block-state and prepared standalone faces.
-pub(super) fn emit_model_faces(
+pub(in crate::game) fn emit_model_faces(
     faces: impl IntoIterator<Item = (PreparedModelFace, u32)>,
     m: glam::Mat4,
     diffuse: bool,
@@ -3314,12 +2916,12 @@ pub(in crate::game) fn scale_tint_alpha<'f>(
 
 #[cfg(test)]
 #[path = "minecarts/tests.rs"]
-mod tests;
+pub(in crate::game) mod tests;
 sunrise_client::impl_joined!(Minecart);
 sunrise_mod_runtime::impl_attachment_lifetime!(Minecart);
 
 #[cfg(test)]
-mod tnt_impact_tests {
+pub(in crate::game) mod tnt_impact_tests {
     use super::{CartKind, Minecart};
     use crate::game::native_entity_refs::tests::with_game;
     use sunrise_core::geometry::Vec3;
@@ -3547,7 +3149,7 @@ mod tnt_impact_tests {
 }
 
 #[cfg(test)]
-mod cart_push_tests {
+pub(in crate::game) mod cart_push_tests {
     use super::{CartKind, Minecart};
     use sunrise_client::{items::ItemStack, save::PendingContainerLoot};
     use sunrise_core::geometry::Vec3;
@@ -3730,7 +3332,7 @@ mod cart_push_tests {
 }
 
 #[cfg(test)]
-mod container_drop_tests {
+pub(in crate::game) mod container_drop_tests {
     use super::super::boats::Boat;
     use super::{CartHit, CartKind, Minecart};
     use std::sync::Arc;
@@ -3812,7 +3414,7 @@ mod container_drop_tests {
 }
 
 #[cfg(test)]
-mod rejected_passenger_tests {
+pub(in crate::game) mod rejected_passenger_tests {
     use super::*;
     use crate::game::{commands::Target, native_entity_refs::tests::with_game};
     use sunrise_core::nbt::Tag;
@@ -3929,7 +3531,7 @@ mod rejected_passenger_tests {
 }
 
 #[cfg(test)]
-mod hook_mutation_regressions {
+pub(in crate::game) mod hook_mutation_regressions {
     use super::*;
     use std::sync::{Arc, Mutex};
     use sunrise_client::mobs::Mob;
@@ -4104,7 +3706,7 @@ mod hook_mutation_regressions {
 }
 
 #[cfg(test)]
-mod tnt_cart_power_tests {
+pub(in crate::game) mod tnt_cart_power_tests {
     use super::*;
 
     #[test]
@@ -4140,7 +3742,7 @@ mod tnt_cart_power_tests {
 }
 
 #[cfg(test)]
-mod cart_cost_bench {
+pub(in crate::game) mod cart_cost_bench {
     use super::{CartKind, Minecart};
     use crate::game::game_tests::tests::server_game;
     use sunrise_core::geometry::Vec3;
@@ -4273,4 +3875,4 @@ mod cart_cost_bench {
 
 #[cfg(test)]
 #[path = "minecarts/minecart_riders_tests.rs"]
-mod minecart_riders_tests;
+pub(in crate::game) mod minecart_riders_tests;

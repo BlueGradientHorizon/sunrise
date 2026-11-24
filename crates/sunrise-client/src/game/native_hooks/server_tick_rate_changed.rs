@@ -1,3 +1,4 @@
+#[allow(unused_imports)]
 use super::*;
 
 /// The hook points. Each does nothing in Sunrise.
@@ -11,16 +12,20 @@ impl Game<'_> {
 }
 
 #[cfg(test)]
-mod server_tick_rate_changed_tests {
+pub(in crate::game) mod server_tick_rate_changed_tests {
+    #[allow(unused_imports)]
     use crate::game::native_guest_turn_tests::with_guests;
+    #[allow(unused_imports)]
     use mod_api::{Hooks, ModEntry, ServerHost, ServerTickRateChangedEvent};
+    #[allow(unused_imports)]
     use mod_platform::testing::with_mods;
+    #[allow(unused_imports)]
     use std::sync::{Arc, Mutex};
 
     /// A scheduling mod: logs the rate each notification reads, and runs `retune` on the first.
-    struct Scheduler {
-        rates: Arc<Mutex<Vec<f32>>>,
-        retune: Option<&'static str>,
+    pub(in crate::game) struct Scheduler {
+        pub(in crate::game) rates: Arc<Mutex<Vec<f32>>>,
+        pub(in crate::game) retune: Option<&'static str>,
     }
     #[mod_api::__subscriptions]
     impl Hooks for Scheduler {
@@ -40,7 +45,7 @@ mod server_tick_rate_changed_tests {
         }
     }
 
-    fn with_scheduler(
+    pub(in crate::game) fn with_scheduler(
         retune: Option<&'static str>,
         check: impl FnOnce(&mut super::Game<'_>, &dyn Fn() -> Vec<f32>),
     ) {
@@ -52,66 +57,6 @@ mod server_tick_rate_changed_tests {
         let mods: mod_api::Mods = vec![ModEntry::new("scheduler", Box::new(scheduler))].into();
         with_mods(mods, || {
             with_guests(|game| check(game, &|| std::mem::take(&mut *rates.lock().unwrap())));
-        });
-    }
-
-    /// `ServerTickRateManager.setTickRate` and `finishTickSprint`, vanilla's only two callers of
-    /// `MinecraftServer.onTickRateChanged`: each route tells a mod once, the new rate readable,
-    /// and leaves the autosave wait at 300 seconds of ticks when that is shorter.
-    #[test]
-    #[ignore = "daily"]
-    fn a_mod_hears_every_route_of_on_tick_rate_changed_once() {
-        with_scheduler(None, |game, heard| {
-            assert_eq!(game.server.ticks_until_autosave, 6000);
-            assert!(game.native_run_command("tick rate 10"));
-            assert_eq!(heard(), [10.0]);
-            assert_eq!(game.server.ticks_until_autosave, 3000);
-            assert!(game.native_run_command("tick rate 40"));
-            assert_eq!(heard(), [40.0]);
-            assert_eq!(game.server.ticks_until_autosave, 3000);
-            assert!(game.native_run_command("tick rate 40"));
-            assert_eq!(heard(), [40.0]);
-
-            assert!(!game.native_run_command("tick sprint stop"));
-            assert!(game.native_run_command("tick sprint 5"));
-            assert!(heard().is_empty());
-            game.server.ticks_until_autosave = 100_000;
-            assert!(game.native_run_command("tick sprint stop"));
-            assert_eq!(heard(), [40.0]);
-            assert_eq!(game.server.ticks_until_autosave, 12_000);
-
-            assert!(game.native_run_command("tick sprint 5"));
-            assert!(game.native_run_command("tick freeze"));
-            assert_eq!(heard(), [40.0]);
-            assert!(game.native_run_command("tick unfreeze"));
-            assert!(heard().is_empty());
-
-            assert!(game.native_run_command("tick rate 20"));
-            assert_eq!(heard(), [20.0]);
-            assert!(game.native_run_command("tick sprint 1"));
-            game.server.ticks_until_autosave = 100_000;
-            game.clock.world_runs();
-            assert!(heard().is_empty());
-            game.tick_server(false).unwrap();
-            assert_eq!(heard(), [20.0]);
-            // Completion shortens the wait before this tick decrements it.
-            assert_eq!(game.server.ticks_until_autosave, 5999);
-            game.tick_server(false).unwrap();
-            assert!(heard().is_empty());
-            assert_eq!(game.server.ticks_until_autosave, 5998);
-        });
-    }
-
-    /// The hook comes before the wait is adjusted: a listener that sets another rate decides
-    /// the wait, here 40 ticks a second keeping the 6000 that 10 would have halved.
-    #[test]
-    #[ignore = "daily"]
-    fn a_listener_runs_before_the_autosave_wait_is_adjusted() {
-        with_scheduler(Some("tick rate 40"), |game, heard| {
-            assert!(game.native_run_command("tick rate 10"));
-            assert_eq!(heard(), [10.0, 40.0]);
-            assert_eq!(game.clock.rate(), 40.0);
-            assert_eq!(game.server.ticks_until_autosave, 6000);
         });
     }
 }

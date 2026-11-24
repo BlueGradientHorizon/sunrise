@@ -1,6 +1,9 @@
 //! Native item data component helpers.
+#[allow(unused_imports)]
 use super::Game;
+#[allow(unused_imports)]
 use sunrise_client::items::ItemStack;
+#[allow(unused_imports)]
 use sunrise_core::nbt::Tag;
 
 /// Failure to access a native item component.
@@ -20,7 +23,7 @@ impl std::fmt::Display for NativeComponentError {
 impl std::error::Error for NativeComponentError {}
 
 /// Use the attack calculations with a private RNG snapshot, never the world's live source.
-fn stack_attack_bonus_preview(
+pub(in crate::game) fn stack_attack_bonus_preview(
     enchantments: &sunrise_items::enchant::Enchantments,
     stack: &ItemStack,
     ctx: &sunrise_items::enchant::EffectContext<'_>,
@@ -256,7 +259,10 @@ impl Game<'_> {
             .unwrap()
     }
     /// Actor state shared by detached stack queries, without swapping equipment or players.
-    fn item_combat_actor(&self, actor: mod_api::LivingRef) -> Option<(bool, bool, f64, bool)> {
+    pub(in crate::game) fn item_combat_actor(
+        &self,
+        actor: mod_api::LivingRef,
+    ) -> Option<(bool, bool, f64, bool)> {
         use super::commands::Target;
         let target = self.native_living_read_target(actor)?;
         Some(match target {
@@ -353,92 +359,6 @@ impl Game<'_> {
             extra.map_or_else(Vec::new, |data| data.enchantments.clone());
         effective
     }
-    pub(in crate::game) fn item_resource_attack_damage_bonus(
-        &self,
-        stack: &ItemStack,
-        attacker: mod_api::LivingRef,
-        target: mod_api::EntityRef,
-        base_damage: f32,
-    ) -> Option<f32> {
-        let (_, _, fall, flying) = self.item_combat_actor(attacker)?;
-        if self.entity_level(attacker.entity())?.dimension() != self.dim.key()
-            || self.entity_level(target)?.dimension() != self.dim.key()
-        {
-            return None;
-        }
-        self.native_entity_read_target(target)?;
-        let target = self.entity_kind(target)?.id(self)?;
-        let actor = self.entity_kind(attacker.entity())?.id(self)?;
-        let source = self.item_resource_damage_source(stack, attacker)?;
-        let source = source.damage_type.to_string();
-        let effective = self.item_combat_stack(stack);
-        let ctx = sunrise_items::enchant::EffectContext {
-            this: Some(target.as_str()),
-            attacker: Some(actor.as_str()),
-            direct_attacker: Some(actor.as_str()),
-            is_direct: true,
-            damage_type: Some(&source),
-            items: Some(world_items!(self)),
-            direct_motion: Some((fall, flying)),
-            ..Default::default()
-        };
-        Some(stack_attack_bonus_preview(
-            &world_stations!(self).enchantments,
-            &effective,
-            &ctx,
-            &self.world.random,
-            base_damage,
-        ))
-    }
-
-    /// Whether enchantments `a` and `b` may share an item (`Enchantment.areCompatible`), by the
-    /// world's enchantment definitions. API @API:item_components@.
-    pub(in crate::game) fn enchantments_compatible(&self, a: &str, b: &str) -> bool {
-        world_stations!(self).enchantments.compatible(a, b)
-    }
-    /// Roll through the game's enchantment registry and the active level's random source.
-    pub(in crate::game) fn item_resource_enchant_randomly(
-        &mut self,
-        stack: &ItemStack,
-        level: mod_api::LevelRef,
-        power: i32,
-        pool: &mod_api::Identifier,
-    ) -> Result<Option<ItemStack>, mod_api::StackWriteError> {
-        if level.dimension() != self.dim.key() || self.native_level_world(level).is_none() {
-            return Ok(None);
-        }
-        let items = world_items!(self);
-        let enchantments = &world_stations!(self).enchantments;
-        let pool = enchantments.tag(&pool.to_string());
-        if pool.is_empty() {
-            return Ok(None);
-        }
-        let value = enchantments.enchantable_of(stack);
-        let picked = enchantments.select_with_value(
-            items,
-            &mut self.world.random,
-            &stack.item,
-            power,
-            pool,
-            value,
-        );
-        Ok(sunrise_client::stations::apply_enchantment_list(
-            stack, picked,
-        ))
-    }
-    /// Whether an enchantment on `stack` has effect component `effect`, by the world's
-    /// enchantment definitions (`EnchantmentHelper.has`), behind
-    /// `ItemResource::has_enchantment_effect`, through the opaque backend. API
-    /// @API:item_components@.
-    pub(in crate::game) fn item_has_enchantment_effect(
-        &self,
-        stack: &ItemStack,
-        effect: &str,
-    ) -> bool {
-        world_stations!(self)
-            .enchantments
-            .has_component(stack, effect)
-    }
 }
 
 // Native mods use these helpers.
@@ -516,7 +436,7 @@ impl Game<'_> {
 }
 
 #[cfg(test)]
-mod equippable_slot_tests {
+pub(in crate::game) mod equippable_slot_tests {
     use sunrise_client::items::ItemStack;
 
     /// `Equippable.slot`: armour goes where it is worn, a plain item goes nowhere.
@@ -533,7 +453,7 @@ mod equippable_slot_tests {
 }
 
 #[cfg(test)]
-mod enchantment_conflict_tests {
+pub(in crate::game) mod enchantment_conflict_tests {
     use super::ItemStack;
     use crate::game::api_values::{stack_value, test_snapshot};
     use crate::game::native_entity_refs::tests::with_game;
@@ -616,11 +536,15 @@ mod enchantment_conflict_tests {
 
 #[cfg(test)]
 pub(in crate::game) mod item_resource_property_tests {
-    fn engine(resource: &mod_api::ItemResource, count: u32) -> sunrise_items::items::ItemStack {
+    pub(in crate::game) fn engine(
+        resource: &mod_api::ItemResource,
+        count: u32,
+    ) -> sunrise_items::items::ItemStack {
         super::super::api_values::stack_value(&resource.to_stack(count).unwrap()).unwrap()
     }
+    #[allow(unused_imports)]
     use serde_json::Value;
-    mod support {
+    pub(in crate::game) mod support {
         include!(concat!(
             env!("CARGO_MANIFEST_DIR"),
             "/../../tests/fixture_support/item_resource_properties.rs"
@@ -633,81 +557,8 @@ pub(in crate::game) mod item_resource_property_tests {
         run_effective_resource_properties_match_vanilla();
     }
 
-    pub(in crate::game) fn run_effective_resource_properties_match_vanilla() {
-        let inputs = std::env::var("SUNRISE_ITEM_PROPERTIES_CASES")
-            .map(|path| std::fs::read_to_string(path).unwrap())
-            .unwrap_or_else(|_| {
-                include_str!(concat!(
-                    env!("CARGO_MANIFEST_DIR"),
-                    "/../../tests/fixtures/item_resource_properties.jsonl"
-                ))
-                .into()
-            });
-        let expected = std::env::var("SUNRISE_ITEM_PROPERTIES_EXPECTED")
-            .map(|path| std::fs::read_to_string(path).unwrap())
-            .unwrap_or_else(|_| {
-                include_str!(concat!(
-                    env!("CARGO_MANIFEST_DIR"),
-                    "/../../tests/fixtures/item_resource_properties_expected.jsonl"
-                ))
-                .into()
-            });
-        let rows = |text: &str| {
-            text.lines()
-                .filter(|line| !line.trim().is_empty())
-                .map(|line| serde_json::from_str::<Value>(line).unwrap())
-                .collect::<Vec<_>>()
-        };
-        let (inputs, expected) = (rows(&inputs), rows(&expected));
-        assert!(inputs.len() >= 41);
-        assert_eq!(inputs.len(), expected.len());
-        crate::game::native_entity_refs::tests::with_game(|game| {
-            // Authoritative tag reads are available only while a world is owned.
-            game.session_lock.0 =
-                Some(sunrise_client::save::SessionLock::acquire(&game.save.0.root).unwrap());
-            for (input, expected) in inputs.iter().zip(&expected) {
-                assert_eq!(input["name"], expected["name"]);
-                let support::Outcome {
-                    item,
-                    material,
-                    values,
-                } = support::evaluate(game, input);
-                assert_eq!(&values, expected, "{}", input["name"]);
-                let stack = engine(&item, 1);
-                let definitions = &game.items().enchantments;
-                let props = definitions.props(&stack.item);
-                assert_eq!(
-                    game.use_duration(&stack),
-                    expected["use_duration"].as_i64().unwrap() as i32
-                );
-                assert_eq!(
-                    sunrise_client::stations::is_damageable(game.items(), &stack),
-                    item.damageable(game)
-                );
-                assert_eq!(
-                    stack.has_foil(props.and_then(|value| value.glint)),
-                    item.foil(game)
-                );
-                assert_eq!(
-                    sunrise_client::item_tooltip::rarity(
-                        &stack,
-                        props.map_or("common", |value| value.rarity.as_str())
-                    ),
-                    item.rarity(game).as_str()
-                );
-                assert_eq!(
-                    sunrise_client::stations::is_valid_repair_item(
-                        definitions,
-                        game.items(),
-                        &stack,
-                        &engine(&material, 1)
-                    ),
-                    item.repairable(game, &material)
-                );
-            }
-            game.session_lock.0 = None;
-        });
-    }
+    #[allow(unused_imports)]
+pub(in crate::game) use crate::game::server_side::native_components_server::item_resource_property_tests::run_effective_resource_properties_match_vanilla;
     /// Changed defaults and a patched mod consumable exercise the real game consumers.
     #[test]
     #[ignore = "daily"]
@@ -896,7 +747,7 @@ pub(in crate::game) mod item_resource_property_tests {
 }
 
 #[cfg(test)]
-mod hot_key_tests {
+pub(in crate::game) mod hot_key_tests {
     #[test]
     #[ignore = "daily"]
     fn resolved_keys_select_fuel_and_compost_metadata() {
@@ -913,7 +764,7 @@ mod hot_key_tests {
 }
 
 #[cfg(test)]
-mod combat_query_tests {
+pub(in crate::game) mod combat_query_tests {
     use super::super::api_values::test_snapshot;
     use super::super::native_entity_refs::tests::with_game;
     use super::*;

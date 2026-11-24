@@ -10,7 +10,7 @@ impl Game<'_> {
     /// piglin or hoglin leaves behind) runs inside [`Game::convert_to`], before
     /// the new mob joins, by what the mob converted from and into; `after`
     /// only says whether the caller already asked `LivingConversionEvent.Pre`.
-    pub(super) fn convert_event(
+    pub(in crate::game) fn convert_event(
         &mut self,
         from: &Mob,
         kind: &str,

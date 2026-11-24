@@ -6,7 +6,7 @@ use std::time::{Duration, Instant};
 impl Game<'_> {
     /// `ChatListener.handleMessage`: hold the packet's receipt context or
     /// accept it immediately when there is no delay.
-    pub(super) fn enqueue_chat(&mut self, chat: QueuedChat) {
+    pub(in crate::game) fn enqueue_chat(&mut self, chat: QueuedChat) {
         if self.chat_delay_ms() > 0 {
             if let Some(r) = self.remote.as_mut() {
                 r.chat_queue.push_back(chat);
@@ -37,7 +37,7 @@ impl Game<'_> {
 
     /// `ChatListener.messageDelay`: Chat Delay in milliseconds, as Java
     /// truncates it.
-    pub(super) fn chat_delay_ms(&self) -> i64 {
+    pub(in crate::game) fn chat_delay_ms(&self) -> i64 {
         (self.settings.chat_delay * 1000.0) as i64
     }
 
@@ -88,7 +88,7 @@ impl Game<'_> {
 
     /// `ChatListener.flushQueue`: every held-back message shows now, and the
     /// delay starts over.
-    pub(super) fn flush_chat_queue(&mut self) {
+    pub(in crate::game) fn flush_chat_queue(&mut self) {
         let Some(queue) = self
             .remote
             .as_mut()
@@ -116,7 +116,7 @@ impl Game<'_> {
 impl Remote {
     /// `removeFromDelayedMessageQueue`: suppress presentation and the pending
     /// acknowledgement. Invalid signatures are not queue deletion keys.
-    pub(super) fn remove_queued_chat(&mut self, signature: &Signature) -> bool {
+    pub(in crate::game) fn remove_queued_chat(&mut self, signature: &Signature) -> bool {
         let queued = self.chat_queue.len();
         self.chat_queue.retain(|chat| {
             !matches!(

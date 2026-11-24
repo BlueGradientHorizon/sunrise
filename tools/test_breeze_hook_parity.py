@@ -51,7 +51,7 @@ def main():
         env = integration_env.game_environment(os.environ, scratch)
         env.update(SUNRISE_BREEZE_HOOK_INPUT=str(inputs), SUNRISE_BREEZE_HOOK_OUTPUT=str(build / 'rust.txt'))
         harness.run_logged([lab.parity_fixtures(),
-                            'game::fishing::tests::breeze_hook_parity_fixture', '--exact', '--ignored'],
+                            'game::server_side::fishing::tests::breeze_hook_parity_fixture', '--exact', '--ignored'],
                            build, 'rust', env=env)
     matched = harness.compare(build / 'client.txt', build / 'rust.txt', len(rows))
     base.ensure_sources_unchanged(sources, hashes)

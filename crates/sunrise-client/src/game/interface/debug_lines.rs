@@ -4,24 +4,29 @@
 //! entries that read the server's level ask the integrated server for their
 //! lines (`ServerDebug`); on another server they show what vanilla shows
 //! there, nothing or `??`.
+#[allow(unused_imports)]
 use super::Game;
+#[allow(unused_imports)]
 use std::collections::HashSet;
+#[allow(unused_imports)]
 use sunrise_client::{
     debug_entries::{self, ENTRIES},
     debug_overlay as overlay,
     debug_overlay::Displayer,
 };
+#[allow(unused_imports)]
 use sunrise_core::java_number;
+#[allow(unused_imports)]
 use sunrise_world::{
     heightmap::{HeightmapState, HeightmapType},
     worldgen::terrain::TerrainBlockStates,
 };
 
 /// `DebugEntryLookingAt.RANGE`.
-const LOOKING_AT_RANGE: f64 = 20.0;
+pub(in crate::game) const LOOKING_AT_RANGE: f64 = 20.0;
 
 /// The entries whose lines come from the server thread.
-const SERVER_ENTRIES: [&str; 4] = [
+pub(in crate::game) const SERVER_ENTRIES: [&str; 4] = [
     "chunk_source_stats",
     "entity_spawn_counts",
     "heightmap",
@@ -31,7 +36,7 @@ const SERVER_ENTRIES: [&str; 4] = [
 /// What the server thread reports for the window's player
 /// (`DebugScreenOverlay.getServerChunk` and its `ServerLevel`).
 #[derive(Clone, Debug, Default)]
-pub(super) struct ServerDebug {
+pub(in crate::game) struct ServerDebug {
     /// The server chunk's heightmaps at the feet (`keepAfterWorldgen`).
     pub heights: Option<[i32; 4]>,
     pub difficulty: Option<String>,
@@ -41,7 +46,7 @@ pub(super) struct ServerDebug {
 
 impl Game<'_> {
     /// Every enabled entry's lines, by identifier.
-    pub(super) fn debug_entry_lines(&self, d: &mut Displayer, framebuffer: [i32; 2]) {
+    pub(in crate::game) fn debug_entry_lines(&self, d: &mut Displayer, framebuffer: [i32; 2]) {
         let reduced = self.reduced_debug_info();
         let mut paths: Vec<&str> = ENTRIES
             .iter()
@@ -240,14 +245,14 @@ impl Game<'_> {
     }
 
     /// The camera's feet (`Entity.blockPosition`).
-    fn debug_feet(&self) -> Option<[i32; 3]> {
+    pub(in crate::game) fn debug_feet(&self) -> Option<[i32; 3]> {
         let pos = self.camera_entity_position()?;
         Some(pos.map(|v| v.floor() as i32))
     }
 
     /// The integrated server's lines when an entry wants them; the request
     /// (the dimension and the feet) goes with it, for the next server tick.
-    fn server_debug(&self, wanted: bool) -> Option<ServerDebug> {
+    pub(in crate::game) fn server_debug(&self, wanted: bool) -> Option<ServerDebug> {
         let server = self.integrated.as_ref()?;
         let at = self
             .debug_feet()
@@ -259,7 +264,7 @@ impl Game<'_> {
 
     /// `DebugEntryBiome`: the client level's biome at the feet, inside the
     /// build height.
-    fn debug_biome_line(&self, d: &mut Displayer) {
+    pub(in crate::game) fn debug_biome_line(&self, d: &mut Displayer) {
         let Some([x, y, z]) = self.debug_feet() else {
             return;
         };
@@ -277,7 +282,7 @@ impl Game<'_> {
     /// area's (smart culling is always on), the render distance, and
     /// `SectionRenderDispatcher.getStats` (the meshes queued; Sunrise has
     /// no buffer pool, so no buffer is ever free).
-    fn debug_chunk_render_line(&self, d: &mut Displayer) {
+    pub(in crate::game) fn debug_chunk_render_line(&self, d: &mut Displayer) {
         let Some(r) = self.renderer.0.as_ref() else {
             return;
         };
@@ -294,7 +299,7 @@ impl Game<'_> {
 
     /// `LevelExtractor.entityStatistics`: the mobs drawn last frame of the
     /// level's entities, and the server's simulation distance.
-    fn debug_entity_render_line(&self, d: &mut Displayer) {
+    pub(in crate::game) fn debug_entity_render_line(&self, d: &mut Displayer) {
         if self.player.is_none() {
             return;
         }
@@ -310,7 +315,7 @@ impl Game<'_> {
     }
 
     /// `Level.getEntityCount` over the entities Sunrise keeps.
-    fn debug_entity_count(&self) -> usize {
+    pub(in crate::game) fn debug_entity_count(&self) -> usize {
         self.mobs.iter().filter(|m| !m.removed).count()
             + self.dropped.len()
             + self.orbs.len()
@@ -325,7 +330,7 @@ impl Game<'_> {
 
     /// The sections holding a mob, an item or an orb
     /// (`EntitySectionStorage.count`).
-    fn debug_entity_sections(&self) -> usize {
+    pub(in crate::game) fn debug_entity_sections(&self) -> usize {
         let sections: HashSet<[i32; 3]> = self
             .mobs
             .iter()
@@ -350,7 +355,11 @@ impl Game<'_> {
     /// (the chunk storage's size and its loaded chunks, then the entities,
     /// the sections holding them and the chunks that tick them), and the
     /// server level's when this game runs it.
-    fn debug_chunk_source_lines(&self, d: &mut Displayer, server: Option<&ServerDebug>) {
+    pub(in crate::game) fn debug_chunk_source_lines(
+        &self,
+        d: &mut Displayer,
+        server: Option<&ServerDebug>,
+    ) {
         if self.player.is_none() {
             return;
         }
@@ -373,7 +382,11 @@ impl Game<'_> {
 
     /// `DebugEntryHeightmap`: the client chunk's heightmaps at the feet,
     /// and the server chunk's.
-    fn debug_heightmap_lines(&self, d: &mut Displayer, server: Option<&ServerDebug>) {
+    pub(in crate::game) fn debug_heightmap_lines(
+        &self,
+        d: &mut Displayer,
+        server: Option<&ServerDebug>,
+    ) {
         let Some([x, _, z]) = self.debug_feet() else {
             return;
         };
@@ -405,7 +418,7 @@ impl Game<'_> {
     /// `Heightmap.getFirstAvailable`: one above the highest block the
     /// heightmap counts. The chunk keeps WORLD_SURFACE; every other type is
     /// at or under it, scanned down from there.
-    pub(super) fn column_height(&self, kind: HeightmapType, x: i32, z: i32) -> i32 {
+    pub(in crate::game) fn column_height(&self, kind: HeightmapType, x: i32, z: i32) -> i32 {
         let properties = &self.pack.assets.properties;
         let surface = self
             .world
@@ -420,13 +433,13 @@ impl Game<'_> {
     }
 
     /// `Entity.pick(20, 0, false)` from the camera: the block outline hit.
-    fn debug_block_hit(&self) -> Option<[i32; 3]> {
+    pub(in crate::game) fn debug_block_hit(&self) -> Option<[i32; 3]> {
         let (origin, dir) = self.aim()?;
         Some(self.clip_ray(origin, dir, LOOKING_AT_RANGE)?.pos)
     }
 
     /// `DebugEntryLookingAt.BlockStateInfo` or `BlockTagInfo`.
-    fn debug_looking_at_block(&self, state: bool) -> Vec<String> {
+    pub(in crate::game) fn debug_looking_at_block(&self, state: bool) -> Vec<String> {
         let Some(pos) = self.debug_block_hit() else {
             return Vec::new();
         };
@@ -448,7 +461,7 @@ impl Game<'_> {
 
     /// `Entity.pick(20, 0, true)` (`ClipContext.Fluid.ANY`): the first fluid
     /// along the view, under its surface, before the block outline hit.
-    fn debug_fluid_hit(&self) -> Option<[i32; 3]> {
+    pub(in crate::game) fn debug_fluid_hit(&self) -> Option<[i32; 3]> {
         let (origin, dir) = self.aim()?;
         let block = self.clip_ray(origin, dir, LOOKING_AT_RANGE);
         let reach = block.map_or(LOOKING_AT_RANGE, |h| {
@@ -473,7 +486,10 @@ impl Game<'_> {
 
     /// `FluidState`'s registered name and properties at `pos`: a source is
     /// `water`/`lava` with `falling`, a flowing one `flowing_*` with `level`.
-    fn fluid_state(&self, pos: [i32; 3]) -> (String, Vec<(&'static str, String)>) {
+    pub(in crate::game) fn fluid_state(
+        &self,
+        pos: [i32; 3],
+    ) -> (String, Vec<(&'static str, String)>) {
         use sunrise_client::blocks::Fluid;
         let f = self
             .res
@@ -504,7 +520,7 @@ impl Game<'_> {
     }
 
     /// `DebugEntryLookingAt.FluidStateInfo` or `FluidTagInfo`.
-    fn debug_looking_at_fluid(&self, state: bool) -> Vec<String> {
+    pub(in crate::game) fn debug_looking_at_fluid(&self, state: bool) -> Vec<String> {
         let Some(pos) = self.debug_fluid_hit() else {
             return Vec::new();
         };
@@ -523,7 +539,7 @@ impl Game<'_> {
 
     /// `Minecraft.crosshairPickEntity`'s type: the nearest entity under the
     /// crosshair before any block.
-    fn crosshair_entity_type(&self) -> Option<String> {
+    pub(in crate::game) fn crosshair_entity_type(&self) -> Option<String> {
         let mut best: Option<(f64, String)> = None;
         let mut offer = |hit: Option<(f64, String)>| {
             if let Some((distance, kind)) = hit
@@ -562,48 +578,5 @@ impl Game<'_> {
                 .map(|(_, d)| (d, "minecraft:ender_dragon".to_owned())),
         );
         best.map(|b| b.1)
-    }
-
-    /// The server thread's half of the debug entries, in the level of
-    /// `dim` while it is in place: the server chunk's heightmaps, the local
-    /// difficulty, the last spawn state and the chunk source's counts.
-    pub(super) fn server_debug_lines(&self, feet: [i32; 3]) -> ServerDebug {
-        let [x, y, z] = feet;
-        let key = (x >> 4, z >> 4);
-        let loaded = self.world.chunks.contains_key(&key);
-        let inside = y >= self.world.bottom_y() && y < self.world.top_y();
-        let heights = loaded.then(|| {
-            [
-                HeightmapType::WorldSurface,
-                HeightmapType::OceanFloor,
-                HeightmapType::MotionBlocking,
-                HeightmapType::MotionBlockingNoLeaves,
-            ]
-            .map(|kind| self.column_height(kind, x, z))
-        });
-        let difficulty = (loaded && inside).then(|| {
-            let at = [f64::from(x), f64::from(y), f64::from(z)];
-            overlay::local_difficulty_line(self.local_difficulty(at).effective)
-        });
-        let spawn_counts = self
-            .server
-            .spawn_counts
-            .get(&self.dim)
-            .map(|(chunks, counts)| overlay::spawn_counts_line(*chunks, counts));
-        // ServerLevel.gatherChunkSourceStats: the chunk map's size, then
-        // PersistentEntitySectionManager's known and visible entities, its
-        // sections, the chunks it loaded and sees, and its two queues
-        // (Sunrise loads a chunk's entities with it: both stay empty).
-        let (entities, loaded) = (self.debug_entity_count(), self.world.chunks.len());
-        let chunks = Some(format!(
-            "Chunks[S] W: {loaded} E: {entities},{entities},{},{loaded},{loaded},0,0",
-            self.debug_entity_sections()
-        ));
-        ServerDebug {
-            heights,
-            difficulty,
-            spawn_counts,
-            chunks,
-        }
     }
 }

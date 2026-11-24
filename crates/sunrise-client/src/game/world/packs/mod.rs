@@ -1,16 +1,22 @@
 //! Resource pack selection bound to the game: the pack screen lists, and a
 //! full resource reload after a change, while playing.
+#[allow(unused_imports)]
 use super::{
     Game, PackResources, Resources, UiResources, build_renderer, prepare_renderer_textures,
 };
+#[allow(unused_imports)]
 use mod_api::__private::game::*;
+#[allow(unused_imports)]
 use mod_api::{__private::reload::ReloadFiles, FileToIdConverter, Identifier};
+#[allow(unused_imports)]
 use std::{
     path::{Path, PathBuf},
     sync::Arc,
     time::{Duration, Instant},
 };
+#[allow(unused_imports)]
 use sunrise_assets::resource_source::ResourceRoot;
+#[allow(unused_imports)]
 use sunrise_client::{
     assets::Assets,
     datapack::DataPack,
@@ -57,7 +63,12 @@ pub(in crate::game) struct PackRoots {
 }
 
 impl PackRoots {
-    fn for_selection(base: ResourceRoot, all: &[Pack], ids: &[String], server: &[Pack]) -> Self {
+    pub(in crate::game) fn for_selection(
+        base: ResourceRoot,
+        all: &[Pack],
+        ids: &[String],
+        server: &[Pack],
+    ) -> Self {
         let mut enabled = packs::enabled(all, ids);
         let cleared = packs::has_optional_pack(&enabled).then(|| packs::enabled(all, &[]));
         enabled.extend_from_slice(server);
@@ -121,7 +132,7 @@ pub(in crate::game) fn layer_client_packs(
             .with_mod_layers(base.mod_layers().clone()),
     )
 }
-fn info(p: &Pack) -> PackInfo {
+pub(in crate::game) fn info(p: &Pack) -> PackInfo {
     if let Some(info) = &p.selection {
         return info.clone();
     }
@@ -147,7 +158,7 @@ fn info(p: &Pack) -> PackInfo {
 /// A pack from `DownloadedPackSource.loadRequestedPacks`: fixed at the top of
 /// the selected list (`DOWNLOADED_PACK_SELECTION`), labelled as a server pack
 /// (or a world's own pack when its id is the local-world uuid).
-fn downloaded_info(p: &Pack) -> PackInfo {
+pub(in crate::game) fn downloaded_info(p: &Pack) -> PackInfo {
     // `WorldOpenFlows.WORLD_PACK_ID` as hex in `server/{uuid}/…`.
     const WORLD: &str = "server/640a6a92b6cb48a0b391831586500359/";
     let world = p.id.starts_with(WORLD);
@@ -171,7 +182,7 @@ fn downloaded_info(p: &Pack) -> PackInfo {
 }
 /// The vanilla pack: required, at the bottom (`BuiltInPackSource`), with the
 /// client JAR's `pack.png` that the prepared resources hold.
-fn vanilla_info(vanilla: &Path) -> PackInfo {
+pub(in crate::game) fn vanilla_info(vanilla: &Path) -> PackInfo {
     PackInfo {
         id: "vanilla".into(),
         title: Text::translate("resourcePack.vanilla.name", &[]),
@@ -741,10 +752,6 @@ impl Game<'_> {
         self.native_client_resources_reloaded();
         Ok(())
     }
-    #[inline(always)]
-    pub(in crate::game) fn apply_staged_pack_server(&mut self) {
-        self.random_tick_sections.0.clear();
-    }
 }
 
 /// The CPU half of a pack reload (`PackReload` runs it on a worker;
@@ -886,7 +893,7 @@ pub(in crate::game) struct StagedPack {
 
 /// A pack reload's stages, indexed by `progress`: the overlay draws how far
 /// through them it is (`ReloadInstance.getActualProgress`), not their names.
-const RELOAD_LINES: [&str; 4] = [
+pub(in crate::game) const RELOAD_LINES: [&str; 4] = [
     "Preparing resources",
     "Loading assets",
     "Loading pack tables",
@@ -895,7 +902,7 @@ const RELOAD_LINES: [&str; 4] = [
 /// Whether a reload asked for now waits: for the world's resources, or for
 /// the reload already under its overlay (`Minecraft.reloadResourcePacks`
 /// hands back `pendingReload` while a `LoadingOverlay` is up).
-fn reload_waits(world_loading: bool, in_flight: bool) -> bool {
+pub(in crate::game) fn reload_waits(world_loading: bool, in_flight: bool) -> bool {
     world_loading || in_flight
 }
 /// Who asked for a pack reload: its outcome goes back there.
@@ -906,29 +913,29 @@ pub(in crate::game) enum ReloadKind {
     /// A server's packs (`DownloadedPackSource.startReload`).
     Server,
 }
-type StageResult = std::result::Result<StagedPack, String>;
+pub(in crate::game) type StageResult = std::result::Result<StagedPack, String>;
 /// A pack reload whose CPU half runs on a worker while `progress` feeds the
 /// loading overlay; `Game::drive_pack_reload` applies it on the render thread.
 pub(in crate::game) struct PackReload {
     pub(in crate::game) progress: super::Progress,
-    kind: ReloadKind,
-    handle: Option<std::thread::JoinHandle<StageResult>>,
+    pub(in crate::game) kind: ReloadKind,
+    pub(in crate::game) handle: Option<std::thread::JoinHandle<StageResult>>,
     /// When the overlay went up. `LoadingOverlay.fadeInStart`, set on the
     /// first frame it draws.
-    started: Instant,
+    pub(in crate::game) started: Instant,
     /// How long the overlay stays up before the reload may be applied.
-    hold: Duration,
+    pub(in crate::game) hold: Duration,
 }
 /// `LoadingOverlay` over a pack reload, from its first frame until it has
 /// faded out (`Minecraft.setOverlay(null)`), two seconds after the reload.
 #[derive(Default)]
 pub(in crate::game) struct ReloadOverlay {
     /// `fadeInStart`: the overlay's first frame.
-    fade_in: Option<Instant>,
+    pub(in crate::game) fade_in: Option<Instant>,
     /// `fadeOutStart`: when the reload was applied.
-    fade_out: Option<Instant>,
+    pub(in crate::game) fade_out: Option<Instant>,
     /// `currentProgress`: the bar as drawn.
-    bar: f32,
+    pub(in crate::game) bar: f32,
 }
 /// `LoadingOverlay.isReadyToFadeOut`: a reload started from inside the game
 /// (`fadeIn`) is not ready while `Util.getMillis() - fadeInStart < 1000L`, so
@@ -937,14 +944,14 @@ pub(in crate::game) struct ReloadOverlay {
 pub(in crate::game) const OVERLAY_HOLD: Duration = Duration::from_millis(1000);
 impl PackReload {
     /// Starts `stage` on its own thread and returns at once.
-    fn spawn(
+    pub(in crate::game) fn spawn(
         kind: ReloadKind,
         stage: impl FnOnce(&super::Progress) -> StageResult + Send + 'static,
     ) -> std::io::Result<Self> {
         Self::spawn_holding(kind, OVERLAY_HOLD, stage)
     }
     /// `spawn` with the overlay's hold spelled out, so a test need not wait it.
-    fn spawn_holding(
+    pub(in crate::game) fn spawn_holding(
         kind: ReloadKind,
         hold: Duration,
         stage: impl FnOnce(&super::Progress) -> StageResult + Send + 'static,
@@ -968,7 +975,7 @@ impl PackReload {
     }
     /// The staged pack once the worker is done and the overlay has had its
     /// second (taken once); none while either is outstanding.
-    fn finished(&mut self) -> Option<(ReloadKind, StageResult)> {
+    pub(in crate::game) fn finished(&mut self) -> Option<(ReloadKind, StageResult)> {
         if self.started.elapsed() < self.hold || !self.handle.as_ref()?.is_finished() {
             return None;
         }
@@ -1021,7 +1028,7 @@ pub(in crate::game) fn reload_files(
 }
 
 #[cfg(test)]
-mod tests {
+pub(in crate::game) mod tests {
     use super::*;
     use std::{sync::mpsc, time::Duration};
 
@@ -1285,4 +1292,4 @@ mod tests {
 
 #[cfg(test)]
 #[path = "clouds_reload_tests.rs"]
-mod clouds_reload_tests;
+pub(in crate::game) mod clouds_reload_tests;

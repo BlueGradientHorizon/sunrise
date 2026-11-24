@@ -5,20 +5,20 @@ type SettingsSnapshot = Arc<[(String, Arc<[(String, String)]>)]>;
 
 /// Whether this owning load belongs to registration's startup publication.
 #[derive(Clone, Copy)]
-pub(in super::super) enum OwningLoad {
+pub(in crate::game) enum OwningLoad {
     Startup,
     Later,
 }
 
 /// Execution side and settings ownership selected at the caller's load boundary.
 #[derive(Clone, Copy)]
-pub(in super::super) struct LoadRole {
-    pub(in super::super) execution: ExecutionRole,
-    pub(in super::super) owning: OwningLoad,
+pub(in crate::game) struct LoadRole {
+    pub(in crate::game) execution: ExecutionRole,
+    pub(in crate::game) owning: OwningLoad,
 }
 
 impl LoadRole {
-    pub(in super::super) fn startup(execution: ExecutionRole) -> Self {
+    pub(in crate::game) fn startup(execution: ExecutionRole) -> Self {
         Self {
             execution,
             owning: OwningLoad::Startup,
@@ -58,7 +58,7 @@ impl OwningLoad {
 }
 
 /// Capture load inputs at the resource-generation boundary, before workers share them.
-pub(in super::super) fn load_item_data(
+pub(in crate::game) fn load_item_data(
     root: &Path,
     role: ExecutionRole,
     owning_load: OwningLoad,

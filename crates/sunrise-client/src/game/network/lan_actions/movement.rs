@@ -7,7 +7,7 @@ impl Game<'_> {
     /// and slides on the rider's keys, a camel dashes — and the sound vanilla's
     /// server plays is broadcast to the players near the mount, the rider
     /// included (their own client plays none).
-    pub(super) fn lan_start_riding_jump(&mut self, conn: u32, data: i32) {
+    pub(in crate::game) fn lan_start_riding_jump(&mut self, conn: u32, data: i32) {
         let index = self.as_guest(conn, |g| g.mount_index());
         let Some(Some(index)) = index else {
             return;
@@ -36,7 +36,7 @@ impl Game<'_> {
     /// ServerGamePacketListenerImpl.handlePlayerCommand START_FALL_FLYING:
     /// `Player.tryToStartFallFlying`, or else `stopFallFlying` (a second
     /// start while gliding ends the glide, as in vanilla).
-    pub(super) fn lan_start_gliding(&mut self, conn: u32) {
+    pub(in crate::game) fn lan_start_gliding(&mut self, conn: u32) {
         let Some(g) = self.lan.as_ref().and_then(|host| host.hub.guest(conn)) else {
             return;
         };
@@ -67,7 +67,7 @@ impl Game<'_> {
 
     /// `Player.canGlide`: not flying, airborne, not riding, no levitation, and
     /// a glider that its next point of wear won't break.
-    pub(super) fn guest_can_glide(&mut self, conn: u32) -> Option<bool> {
+    pub(in crate::game) fn guest_can_glide(&mut self, conn: u32) -> Option<bool> {
         let g = self.lan.as_ref()?.hub.guest(conn)?;
         if g.abilities.flying || g.on_ground || g.vehicle.is_some() {
             return Some(false);
@@ -137,7 +137,7 @@ impl Game<'_> {
     /// (`BlockBehaviour.isSuffocating`'s default; glass and the like opt
     /// out), as the mobs' check has it. A block sharing volume with one of
     /// guest `conn`'s collision exclusions is no wall (#3717).
-    pub(super) fn in_wall(&self, conn: u32, at: [f64; 3], body: Dimensions) -> bool {
+    pub(in crate::game) fn in_wall(&self, conn: u32, at: [f64; 3], body: Dimensions) -> bool {
         let y = (at[1] + f64::from(body.eye_height)).floor() as i32;
         let [xs, zs] = eye_columns(at, body);
         let guest = self.lan.as_ref().and_then(|host| host.hub.guest(conn));

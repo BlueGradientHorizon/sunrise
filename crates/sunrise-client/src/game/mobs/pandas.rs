@@ -2,20 +2,23 @@
 //! (`Mob.aiStep`, `Panda.pickUpItem`), the bamboo a player gives them
 //! (`Panda.mobInteract`), the start a sneeze gives the grown pandas about,
 //! and the crumbs and the sneeze a window draws.
+#[allow(unused_imports)]
 use super::{
     Game,
     pickups::{Collector, Taken},
 };
+#[allow(unused_imports)]
 use sunrise_client::{
     items::ItemStack,
     mobs::{Species, panda},
     particles::{ParticleOptions, ParticleType},
 };
+#[allow(unused_imports)]
 use sunrise_core::geometry::Vec3;
 
 impl Game<'_> {
     /// `Panda.canPickUpAndEat`'s tag.
-    fn panda_eats_from_ground(&self, item: &str) -> bool {
+    pub(in crate::game) fn panda_eats_from_ground(&self, item: &str) -> bool {
         self.res
             .items()
             .item_tags
@@ -174,40 +177,10 @@ impl Game<'_> {
         self.mobs
             .restore(mobs, sunrise_client::join_seq::RestoreOrder::SurvivorsFirst);
     }
-    /// What a window draws of its pandas: the crumbs of a bite
-    /// (`addEatingParticles`) and the sneeze's particle.
-    pub(in crate::game) fn panda_effects(&mut self) {
-        let mut bites = Vec::new();
-        let mut sneezes = Vec::new();
-        for m in self
-            .mobs
-            .iter_mut()
-            .filter(|m| m.species() == Species::Panda)
-        {
-            let (crumbs, sneeze) = panda::effects(m);
-            if let (Some(crumbs), Some(item)) = (
-                crumbs,
-                sunrise_client::mobs::finalize::item(m, sunrise_client::mobs::finalize::MAINHAND),
-            ) {
-                bites.push((item, crumbs));
-            }
-            sneezes.extend(sneeze);
-        }
-        for (item, crumbs) in bites {
-            let options = self.item_particle(&ItemStack::new(&item, 1));
-            for (at, velocity) in crumbs {
-                self.particles.0.add(&options, at, velocity);
-            }
-        }
-        let options = ParticleOptions::simple(ParticleType::Sneeze);
-        for (at, velocity) in sneezes {
-            self.particles.0.add(&options, at, velocity);
-        }
-    }
 }
 
 #[cfg(test)]
-mod nested_spawn_tests {
+pub(in crate::game) mod nested_spawn_tests {
     #[test]
     #[ignore = "daily"]
     fn lifted_mob_callback_keeps_nested_spawns_until_the_next_pass() {
@@ -231,7 +204,7 @@ mod nested_spawn_tests {
 }
 
 #[cfg(test)]
-mod pickup_tests {
+pub(in crate::game) mod pickup_tests {
     use super::*;
     use crate::game::game_tests::tests::server_game;
     use sunrise_client::advancements as adv;

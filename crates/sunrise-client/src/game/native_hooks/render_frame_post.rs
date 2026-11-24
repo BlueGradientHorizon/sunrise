@@ -1,17 +1,8 @@
+#[allow(unused_imports)]
 use super::*;
 
 /// The hook points. Each does nothing in Sunrise.
 impl Game<'_> {
-    pub(in crate::game) fn finish_render_frame(&mut self, elapsed: Duration) {
-        let (world_partial_tick, partial_tick) = self
-            .client
-            .extras
-            .frame_partial_ticks
-            .take()
-            .unwrap_or_else(|| self.frame_partial_ticks());
-        self.native_render_frame_post(elapsed, world_partial_tick, partial_tick);
-    }
-
     /// Once a frame, in a world or not, right after the frame was rendered
     /// (`RenderFrameEvent.Post`).
     pub(in crate::game) fn native_render_frame_post(

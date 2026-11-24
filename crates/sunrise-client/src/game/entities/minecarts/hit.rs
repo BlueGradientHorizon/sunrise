@@ -71,7 +71,7 @@ impl Game<'_> {
     }
     /// `VehicleEntity.destroy(level, dropItem)`: the cart's item, carrying the
     /// vehicle's `CustomName` as `DataComponents.CUSTOM_NAME`.
-    pub(super) fn cart_drop(&self, kind: CartKind, id: u32) -> ItemStack {
+    pub(in crate::game) fn cart_drop(&self, kind: CartKind, id: u32) -> ItemStack {
         let mut stack = ItemStack::new(kind.item(), 1);
         if let Some(name) = self.persist_raw(id).and_then(|raw| raw.get("CustomName")) {
             let text = sunrise_client::entity_nbt::name_text(name);
@@ -83,7 +83,7 @@ impl Game<'_> {
     /// `chestVehicleDestroyed`'s `angerNearbyPiglins`, for a container cart
     /// (`AbstractMinecartContainer`) that the hit's direct entity, a player,
     /// broke.
-    pub(super) fn cart_destroy_angers(&mut self, hit: CartHit, kind: CartKind) {
+    pub(in crate::game) fn cart_destroy_angers(&mut self, hit: CartHit, kind: CartKind) {
         if hit.by_player && kind.slots() > 0 {
             self.anger_piglins(true);
         }

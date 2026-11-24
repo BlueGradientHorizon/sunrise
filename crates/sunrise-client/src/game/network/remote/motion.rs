@@ -7,7 +7,7 @@ impl Game<'_> {
     /// rotation alone), turned to `rotation` if it has one. `packet` says
     /// whether a living entity more than 64 blocks away is put there at once
     /// (its `snaps`).
-    pub(super) fn move_entity(
+    pub(in crate::game) fn move_entity(
         &mut self,
         id: i32,
         path: Option<Path>,
@@ -19,7 +19,7 @@ impl Game<'_> {
     }
 
     /// `move_entity` with an explicit old pose (`setValuesFromPositionPacket`'s snapped old pose).
-    pub(super) fn move_entity_with_old(
+    pub(in crate::game) fn move_entity_with_old(
         &mut self,
         id: i32,
         path: Option<Path>,
@@ -376,7 +376,7 @@ impl Game<'_> {
     /// `Entity.lerpMotion` (and `recreateFromPacket`'s motion) for the
     /// entities whose own tick moves them on a client: dropped items, experience
     /// orbs, falling blocks and primed TNT.
-    pub(super) fn remote_motion(&mut self, id: i32, velocity: [f64; 3]) {
+    pub(in crate::game) fn remote_motion(&mut self, id: i32, velocity: [f64; 3]) {
         self.remote_dragon_motion(id, velocity);
         let v = Vec3::new(velocity[0], velocity[1], velocity[2]);
         // `falling` and `tnts` are searched from the back: AddEntity calls this right after

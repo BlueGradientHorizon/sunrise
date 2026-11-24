@@ -1,4 +1,6 @@
+#[allow(unused_imports)]
 use super::*;
+#[allow(unused_imports)]
 use mod_api::ModBlockEntity;
 impl GameLevel<'_> {
     /// Initial saved data for a declared block entity (`EntityBlock.newBlockEntity`),
@@ -4164,27 +4166,6 @@ impl Game<'_> {
             .filter(|f| f.emission > 0)
             .and_then(|f| mod_api::__private::block_key(&f.name))
     }
-    /// A small local vanilla particle; caller should rate-limit emission.
-    pub(in crate::game) fn flame_particle(&mut self, at: [f64; 3], soul: bool) {
-        use sunrise_client::particles::{ParticleOptions, ParticleType};
-        if !self.native_window() || at.iter().any(|v| !v.is_finite()) {
-            return;
-        }
-        let Some(p) = self.native_player() else {
-            return;
-        };
-        if (at[0] - p.x).powi(2) + (at[1] - p.y).powi(2) + (at[2] - p.z).powi(2) > 1024.0 {
-            return;
-        }
-        let kind = if soul {
-            ParticleType::SoulFireFlame
-        } else {
-            ParticleType::Flame
-        };
-        self.particles
-            .0
-            .add(&ParticleOptions::simple(kind), at, [0.0, 0.01, 0.0]);
-    }
     /// Whether the player left mod `mod_id` on in Options > Mods. A mod
     /// turned off does nothing (check this first in each hook) until the
     /// launcher's next build leaves it out.
@@ -4265,48 +4246,6 @@ impl Game<'_> {
         if let Some(log) = self.world.block_log.as_mut() {
             log.push((pos[0], pos[1], pos[2]));
         }
-    }
-    /// Plays `sound` for this player only (`SoundPlay`'s event: `minecraft:ui.button.click`,
-    /// or a mod's own from its `assets/<id>/sounds.json`): nothing is sent to the server, and
-    /// other players don't hear it. It takes `&self`, so a screen, key or mouse hook can play
-    /// one: the sound is queued and starts at the next audio update (once a client tick),
-    /// `after` ticks counted from then (0 to 1200, a minute; `SoundEngine.playDelayed`). `SoundPlay::ui` plays it at the listener as an interface sound
-    /// (`SimpleSoundInstance.forUI`); `SoundPlay::at` at a position in the client's level,
-    /// fading with distance (`volume` past 1 carries farther, 16 blocks times the volume), as
-    /// thunder heard after the flash or a blast heard when its shock wave arrives. Its
-    /// `SoundRef` follows and controls this play: `state`, `stop` and `fade`. None, with nothing
-    /// played, on a server or for a value out of range (`SoundPlay::effects` included, by
-    /// `SoundEffects::valid`); an event the resources don't have plays nothing, as vanilla's,
-    /// and its handle reads `Stopped` once the update has tried it. Its effects stay as given
-    /// unless the sound ticks: a `play_sound` listener can change them on each live refresh.
-    pub(in crate::game) fn play_local_sound(
-        &self,
-        sound: &SoundPlay,
-        after: u32,
-    ) -> Option<SoundRef> {
-        if !self.native_window() || !local_sound_ok(sound, after) {
-            return None;
-        }
-        Some(self.client.mod_sounds.queue(sound, after))
-    }
-    /// The particles alive in the client's level (`ParticleEngine.countParticles`): 0 once
-    /// a clear is asked, and on a server.
-    pub(in crate::game) fn particle_count(&self) -> u32 {
-        if !self.native_window() || self.client.mod_clear_particles.get() {
-            return 0;
-        }
-        u32::try_from(self.client_particle_count()).unwrap_or(u32::MAX)
-    }
-    /// `ParticleEngine.clearParticles`: every particle and emitter goes before the next
-    /// frame is drawn or the next particle tick runs, whichever comes first. It takes
-    /// `&self`, so a screen or render hook can ask, as with `play_local_sound`.
-    /// False on a server.
-    pub(in crate::game) fn clear_particles(&self) -> bool {
-        if !self.native_window() {
-            return false;
-        }
-        self.client.mod_clear_particles.set(true);
-        true
     }
     /// The GUI's size in GUI pixels, width then height.
     pub(in crate::game) fn native_size(&self, draw: &HudBatch) -> [f32; 2] {
@@ -4422,92 +4361,16 @@ impl Game<'_> {
         let [a, r, g, b] = argb.to_be_bytes();
         batch.fill_quad(&self.gui.atlas, points, rgba(r, g, b, a));
     }
-    /// Opens a screen of mod `mod_id`'s own through the normal screen-transition
-    /// path (`Gui.setScreen`): `screen_opening` and `screen_closing` fire for the
-    /// transition and `screen_init_post` runs once opened, so the mod mounts
-    /// widgets in `screen_init_post`, draws in `native_screen_render_post`, and
-    /// takes its clicks, scroll, keys, and typing there; the mouse is freed, and
-    /// Escape closes it. Every mod's own screen has the `ScreenView.id` `mod`, so
-    /// a mod's screen hooks check `mod_screen()` is its own before mounting or
-    /// drawing. It doesn't pause a single-player game (as the inventory doesn't).
-    /// Can replace any open vanilla screen, title screen, overlay (book, sign
-    /// editor, dialog, or prompt), or another mod's screen, running the replaced
-    /// screen's close cleanup once hooks allow the transition. Returns `true`
-    /// when `mod_id`'s screen is open, and `false` when cancelled or redirected
-    /// by `screen_opening`, while a world or connection is loading, or without a
-    /// client window (a headless/dedicated server, the server thread, or
-    /// guest-acting contexts). A gamepad can close it (B, Start) but not click on
-    /// it: its clicks don't reach the mouse hooks.
-    pub(in crate::game) fn mod_screen_open(&mut self, mod_id: &str) -> bool {
-        let unavailable = self.renderer.0.is_none()
-            || self.lan_guest_acting()
-            || (self.player.is_none() && self.title.0.is_none())
-            || self.remote_loading();
-        let owner = if self.screen_over_playing() {
-            None
-        } else {
-            self.mod_screen()
-        };
-        if let Some(open) = mod_screen_opens(self.client.screen, unavailable, owner, mod_id) {
-            return open;
-        }
-        if self.screen_hooks_heard() {
-            let decision = {
-                let current = if self.screen_over_playing() {
-                    self.observed_screen_view()
-                        .unwrap_or_else(|| self.screen_change_view(self.client.screen))
-                } else if self.client.screen == Screen::Playing
-                    && let Some(title) = self.title.0.as_ref()
-                {
-                    let none = self.screen_change_view(Screen::Playing);
-                    screen_view_with_id(&none, title.mode.id())
-                } else {
-                    self.screen_change_view(self.client.screen)
-                };
-                let new = screen_view_for_mod(&self.screen_change_view(Screen::Mod), mod_id);
-                self.decide_screen_for_mod_open(&current, &new, current.id != "playing")
-            };
-            match decision {
-                ScreenDecision::Keep => return false,
-                ScreenDecision::Vanilla(target) => {
-                    self.close_replaced_screen_for_mod();
-                    self.open_screen_target(target);
-                    return false;
-                }
-                ScreenDecision::ModScreen(other_mod) => {
-                    self.close_replaced_screen_for_mod();
-                    self.apply_screen(Screen::Mod, Some(other_mod));
-                    return self.mod_screen() == Some(mod_id);
-                }
-                ScreenDecision::Open => {}
-            }
-        }
-        self.close_replaced_screen_for_mod();
-        self.apply_screen(Screen::Mod, Some(mod_id));
-        self.mod_screen() == Some(mod_id)
-    }
     /// Closes mod `mod_id`'s own screen, if it is open.
     pub(in crate::game) fn mod_screen_close(&mut self, mod_id: &str) {
         if self.mod_screen().is_some_and(|id| id == mod_id) {
             self.close_mod_screen();
         }
     }
-    /// The mod whose own screen is open, if one is (Escape, or another screen
-    /// replacing it, closes it).
-    pub(in crate::game) fn mod_screen(&self) -> Option<&str> {
-        self.client
-            .native_mod_screen
-            .as_deref()
-            .filter(|_| self.client.screen == Screen::Mod)
-    }
     /// The open menu's title (the block's name, or the one it was given),
     /// as plain text.
     pub(in crate::game) fn screen_title(&self) -> Option<String> {
         self.remote_menu_title().map(|t| t.plain())
-    }
-    /// Where the mouse is, in GUI pixels.
-    pub(in crate::game) fn cursor(&self) -> [f32; 2] {
-        [self.client.cursor.0, self.client.cursor.1]
     }
     /// A line of text at `(x, y)` in GUI pixels, in `argb` as vanilla's `GuiGraphics` takes it
     /// (`0xFFFFFFFF` is opaque white). Fully transparent text draws nothing, as vanilla's.
@@ -4575,7 +4438,7 @@ impl Game<'_> {
         }
         mod_settings::read_raw(&Self::mod_data_root().join(mod_id), mod_id, key)
     }
-    pub(super) fn stored_setting(&self, mod_id: &str, key: &str) -> Option<String> {
+    pub(in crate::game) fn stored_setting(&self, mod_id: &str, key: &str) -> Option<String> {
         mod_settings::read_raw(&self.native_data_dir(mod_id), mod_id, key)
     }
     /// Keeps a mod's setting `key`. A mod's hook or part keeps only its own mod's.
@@ -4585,20 +4448,12 @@ impl Game<'_> {
         }
         self.store_setting(mod_id, key, value);
     }
-    pub(super) fn store_setting(&self, mod_id: &str, key: &str, value: &str) -> bool {
+    pub(in crate::game) fn store_setting(&self, mod_id: &str, key: &str, value: &str) -> bool {
         mod_settings::store(&self.native_data_dir(mod_id), mod_id, key, value)
     }
     /// A mod's hook or part is running, and `mod_id` is another mod's.
-    fn another_mods(mod_id: &str) -> bool {
+    pub(in crate::game) fn another_mods(mod_id: &str) -> bool {
         mod_api::content::crash::current_native_mod().is_some_and(|running| running != mod_id)
-    }
-    /// Shows the panel beside container screens with these items (at most
-    /// 8192), as the game's own slots in pages, with a search box; the
-    /// player's clicks, searches and keys over items come back as
-    /// `native_panel_event`. The panel is the last mod's to show one; empty
-    /// items and no recipe page take yours away.
-    pub(in crate::game) fn panel_items(&mut self, mod_id: &str, items: Vec<mod_api::Stack>) {
-        self.client.panel.show_items(mod_id, items);
     }
     /// The recipes of type `kind` (`minecraft:smelting`, `mymod:crusher`), vanilla's
     /// types and mods' own alike, from `data/<namespace>/recipe/*.json` of vanilla,
@@ -4810,14 +4665,14 @@ impl LevelView<'_> {
 
 #[cfg(test)]
 #[path = "base_tests/screen_open_tests.rs"]
-mod screen_open_tests;
+pub(in crate::game) mod screen_open_tests;
 
 #[cfg(test)]
 #[path = "base_tests/screen_widgets_tests.rs"]
-mod screen_widgets_tests;
+pub(in crate::game) mod screen_widgets_tests;
 
 #[cfg(test)]
-mod text_tests {
+pub(in crate::game) mod text_tests {
     use super::*;
 
     /// `DrawContext::text` takes ARGB as vanilla's `GuiGraphics` does: the alpha reaches the
@@ -4850,78 +4705,4 @@ mod text_tests {
 }
 
 #[cfg(test)]
-mod held_break_slot_tests {
-    #[test]
-    #[ignore = "daily"]
-    fn held_durability_retains_the_stack_hand_and_explicit_break_slot() {
-        use crate::game::{Audio, Game, Hand, Options, Progress, Settings, load_resources};
-        use sunrise_client::{items::ItemStack, motion::PlayerMotion};
-        use sunrise_core::equipment_slot::EquipmentSlot;
-        use sunrise_core::geometry::Vec3;
-        let root = std::path::PathBuf::from(
-            std::env::var_os("SUNRISE_TEST_RESOURCES").expect("prepared resources required"),
-        );
-        let settings = Settings::default();
-        let loaded = load_resources(
-            sunrise_assets::resource_source::ResourceRoot::directory(root.clone()),
-            Vec::new(),
-            None,
-            &root,
-            &settings,
-            std::time::Instant::now(),
-            false,
-            crate::game::execution_role::ExecutionRole::IntegratedServer,
-            &Progress::new(),
-            &mut |_, _| unreachable!(),
-        )
-        .unwrap();
-        let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
-        options.resources = root.clone();
-        options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
-        let mut game = Game::new(
-            &loaded.resources,
-            loaded.pack,
-            loaded.gui.unwrap(),
-            options,
-            settings,
-            Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
-                root.clone(),
-            )),
-            None,
-        )
-        .unwrap();
-        game.player = Some(PlayerMotion::new(game.motion, Vec3::new(0.0, 70.0, 0.0)).unwrap());
-        game.set_mode_id(0);
-        // Stage an acting guest: break events are queued instead of rendering local crumbs.
-        game.server.lan_acting = Some(1);
-        game.hand = Hand::Off;
-        let main = ItemStack::new("minecraft:stick", 3);
-        game.inventory[game.selected] = Some(main.clone());
-        let max = game
-            .items()
-            .get("minecraft:flint_and_steel")
-            .unwrap()
-            .max_damage;
-        game.offhand = Some(ItemStack::new("minecraft:flint_and_steel", 1));
-        game.damage_held_in_slot(1, EquipmentSlot::OffHand);
-        assert_eq!(game.offhand.as_ref().unwrap().damage, 1);
-        assert!(game.server.guest_equipment_breaks.is_empty());
-        for (explicit, event) in [(true, 48), (false, 47)] {
-            let mut tool = ItemStack::new("minecraft:flint_and_steel", 1);
-            tool.damage = max - 1;
-            game.offhand = Some(tool);
-            if explicit {
-                game.damage_held_in_slot(1, EquipmentSlot::OffHand);
-            } else {
-                game.damage_held(1);
-            }
-            assert!(game.offhand.is_none());
-            assert_eq!(game.inventory[game.selected], Some(main.clone()));
-            assert_eq!(*game.server.guest_equipment_breaks.last().unwrap(), event);
-        }
-        game.set_mode_id(1);
-        game.offhand = Some(ItemStack::new("minecraft:flint_and_steel", 1));
-        game.damage_held_in_slot(1, EquipmentSlot::OffHand);
-        assert_eq!(game.offhand.as_ref().unwrap().damage, 0);
-    }
-}
+pub(in crate::game) mod held_break_slot_tests {}

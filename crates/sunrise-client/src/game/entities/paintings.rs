@@ -2,20 +2,25 @@
 //! variant choice (or the stack's `painting/variant`), `HangingEntity.survives`
 //! checks every 100 ticks, breaking by attack (`dropItem`), saving, and
 //! `PaintingRenderer` quads.
+#[allow(unused_imports)]
 use super::{Game, Hit, entity_culling::default_range};
+#[allow(unused_imports)]
 use std::sync::Arc;
+#[allow(unused_imports)]
 use sunrise_client::{entities::Painting, items::ItemStack, mesher::Vertex, random_source};
+#[allow(unused_imports)]
 use sunrise_core::{
     geometry::{Aabb, Vec3},
     random::RandomSource,
 };
 
+#[allow(unused_imports)]
 pub(in crate::game) use sunrise_gameplay::painting_variants::{
     PaintingVariants, Variant, frame_coexists, painting_coexists, painting_facing,
 };
 /// Whether the camera, at the origin of `corners`' space, is on the side of the quad
 /// that `normal` points to.
-fn faces_camera(corners: &[glam::DVec3; 4], normal: glam::DVec3) -> bool {
+pub(in crate::game) fn faces_camera(corners: &[glam::DVec3; 4], normal: glam::DVec3) -> bool {
     let centre = (corners[0] + corners[1] + corners[2] + corners[3]) / 4.0;
     normal.dot(-centre) > 0.0
 }
@@ -285,7 +290,11 @@ impl Game<'_> {
     }
     /// The removal `kill` and `discard` share: the mod hook, the entity, its
     /// chunk's save mark and the centre of its box.
-    fn remove_painting(&mut self, index: usize, by_player: bool) -> Option<(Painting, [f64; 3])> {
+    pub(in crate::game) fn remove_painting(
+        &mut self,
+        index: usize,
+        by_player: bool,
+    ) -> Option<(Painting, [f64; 3])> {
         let (id, pos) = (self.paintings[index].id, self.paintings[index].pos);
         if self.hanging_break_cancelled("minecraft:painting", pos, by_player) {
             return None;
@@ -301,34 +310,6 @@ impl Game<'_> {
         ];
         self.world.modified.insert((p.pos[0] >> 4, p.pos[2] >> 4));
         Some((p, at))
-    }
-    /// `Painting.dropItem`: break sound, then item unless drops off or creative.
-    fn drop_painting(&mut self, p: Painting, at: [f64; 3], creative: bool) {
-        if !self
-            .ui
-            .rules
-            .bool_at(sunrise_client::gamerules::vanilla::ENTITY_DROPS)
-        {
-            return;
-        }
-        self.audio
-            .0
-            .play("minecraft:entity.painting.break", Some(at), 1.0, 1.0);
-        if creative {
-            return;
-        }
-        let stack = ItemStack {
-            item: Arc::from("minecraft:painting"),
-            count: 1,
-            damage: 0,
-            extra: None,
-        };
-        self.spawn_item(
-            stack,
-            super::frames::hanging_drop_position(at, p.step()),
-            [0.0; 3],
-            10,
-        );
     }
     /// BlockAttachedEntity.tick: check survival every 100 ticks.
     pub(in crate::game) fn tick_paintings(&mut self) {
@@ -572,7 +553,7 @@ impl Game<'_> {
 }
 
 #[cfg(test)]
-mod tests {
+pub(in crate::game) mod tests {
     use super::*;
     use sunrise_client::entities::ItemFrame;
 
@@ -639,7 +620,7 @@ mod tests {
 }
 
 #[cfg(test)]
-mod face_tests {
+pub(in crate::game) mod face_tests {
     use super::faces_camera;
     use glam::DVec3;
 

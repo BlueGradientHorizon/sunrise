@@ -3,28 +3,31 @@
 //! `continueAttack`, `MultiPlayerGameMode` block breaking), the arm swing
 //! (`LivingEntity.SwingState`) and the first-person equip heights
 //! (`FirstPersonHandsAndItems`) with the item swap ticker they read.
+#[allow(unused_imports)]
 use super::{Game, Mining, minecarts::CartKind};
+#[allow(unused_imports)]
 use sunrise_client::{
     Result,
     attack_strength::HeldStack,
     first_person::{Hand, HandWorld, Hit, SwingAnimation, UseResult, swing_duration},
     items::ItemStack,
 };
+#[allow(unused_imports)]
 use sunrise_core::geometry::{Aabb, Vec3};
 
 /// The point a `ServerboundInteractPacket` carries: `EntityHitResult.getLocation()
 /// - entity.position()`, measured from the entity's feet, as
 /// `MultiPlayerGameMode.interact` computes it.
-pub(super) fn interact_location(point: Vec3, feet: Vec3) -> [f64; 3] {
+pub(in crate::game) fn interact_location(point: Vec3, feet: Vec3) -> [f64; 3] {
     [point.x - feet.x, point.y - feet.y, point.z - feet.z]
 }
 
 /// The off hand's place in `visible_hands` (the main hand uses its hotbar slot).
-const OFFHAND: usize = usize::MAX;
+pub(in crate::game) const OFFHAND: usize = usize::MAX;
 
 /// `AttackRange.effectiveMinRange`, `effectiveMaxRange` (for a player) and
 /// `hitboxMargin` of an `attack_range` component.
-fn attack_reach(range: &serde_json::Value, creative: bool) -> (f32, f32, f32) {
+pub(in crate::game) fn attack_reach(range: &serde_json::Value, creative: bool) -> (f32, f32, f32) {
     let value = |key: &str, default: f32| range[key].as_f64().map_or(default, |v| v as f32);
     let (min, max) = if creative {
         (
@@ -37,7 +40,7 @@ fn attack_reach(range: &serde_json::Value, creative: bool) -> (f32, f32, f32) {
     (min, max, value("hitbox_margin", 0.3))
 }
 
-fn v3(v: [f64; 3]) -> Vec3 {
+pub(in crate::game) fn v3(v: [f64; 3]) -> Vec3 {
     Vec3::new(v[0], v[1], v[2])
 }
 
@@ -45,7 +48,7 @@ fn v3(v: [f64; 3]) -> Vec3 {
 /// (`AttackRange.getClosesetHit`): the distance from the eye to the nearest
 /// box hit along the item's own `reach`, which goes past the plain pick's
 /// 3 blocks (a spear's 4.5). A miss falls back to the plain pick (`None`).
-fn reach_pick(
+pub(in crate::game) fn reach_pick(
     boxes: &[(usize, Aabb)],
     eye: Vec3,
     look: Vec3,
@@ -60,7 +63,11 @@ fn reach_pick(
 }
 
 /// `AttackRange.isInRange`: float bounds, then inclusive double comparison.
-fn attack_range_contains(range: &serde_json::Value, distance: f64, creative: bool) -> bool {
+pub(in crate::game) fn attack_range_contains(
+    range: &serde_json::Value,
+    distance: f64,
+    creative: bool,
+) -> bool {
     let (min, max, margin) = attack_reach(range, creative);
     in_attack_range(distance, (min, max, margin), 0.0)
 }
@@ -77,7 +84,7 @@ fn attack_range_contains(range: &serde_json::Value, distance: f64, creative: boo
 /// place), unless the slot was `replaced` by one the hand doesn't show yet:
 /// swapping the hands (`setItemInHand`, and the server's slot updates that
 /// answer it) puts another object in both (#2866).
-fn shows_held_stack(
+pub(in crate::game) fn shows_held_stack(
     visible: &(usize, Option<ItemStack>),
     held: &(usize, Option<ItemStack>),
     replaced: bool,
@@ -92,7 +99,7 @@ fn shows_held_stack(
 /// `ItemStack.matchesIgnoringComponents(a, b,
 /// DataComponentType::ignoreSwapAnimation)`: the same count, item and
 /// components but damage.
-pub(super) fn matches_for_swap(a: Option<&ItemStack>, b: Option<&ItemStack>) -> bool {
+pub(in crate::game) fn matches_for_swap(a: Option<&ItemStack>, b: Option<&ItemStack>) -> bool {
     match (a, b) {
         (None, None) => true,
         (Some(a), Some(b)) => a.count == b.count && a.item == b.item && a.extra == b.extra,
@@ -103,7 +110,11 @@ pub(super) fn matches_for_swap(a: Option<&ItemStack>, b: Option<&ItemStack>) -> 
 /// `AttackRange.isInRange(attacker, box, buffer)` with the reach of
 /// `attack_reach` (or `AttackRange.defaultFor`'s, from the entity interaction
 /// range): the eye's distance to the box, inclusive.
-fn in_attack_range(distance: f64, (min, max, margin): (f32, f32, f32), buffer: f64) -> bool {
+pub(in crate::game) fn in_attack_range(
+    distance: f64,
+    (min, max, margin): (f32, f32, f32),
+    buffer: f64,
+) -> bool {
     mod_api::ItemAttackRange {
         min,
         max,
@@ -116,7 +127,7 @@ impl Game<'_> {
     /// `getAttributeValue` of an interaction range of the player in place (a
     /// guest swapped in on a server): creative's modifiers are on it
     /// (`update_player_attributes`), as are `/attribute`'s and the items'.
-    pub(super) fn interaction_range(
+    pub(in crate::game) fn interaction_range(
         &mut self,
         attribute: &str,
         survival: f64,
@@ -131,14 +142,17 @@ impl Game<'_> {
 
     /// `Player.entityInteractionRange`/`blockInteractionRange` for the tick's
     /// picks: the attribute carries creative's and a server's modifiers.
-    pub(super) fn update_interaction_ranges(&mut self) {
+    pub(in crate::game) fn update_interaction_ranges(&mut self) {
         self.entity_reach = self.interaction_range("minecraft:entity_interaction_range", 3.0, 5.0);
         self.block_reach = self.interaction_range("minecraft:block_interaction_range", 4.5, 5.0);
     }
 
     /// A stack's `minecraft:attack_range` component, falling back to the spear's
     /// default reach (`spear::REACH`) for spear items unless explicitly removed.
-    fn attack_range_component(&self, stack: &ItemStack) -> Option<serde_json::Value> {
+    pub(in crate::game) fn attack_range_component(
+        &self,
+        stack: &ItemStack,
+    ) -> Option<serde_json::Value> {
         let view_stack = sunrise_client::item_render::stack_view(stack);
         let view = self.pack.item_renderer.models.components_view(&view_stack);
         if let Some(val) = view.get("minecraft:attack_range") {
@@ -166,7 +180,7 @@ impl Game<'_> {
     /// place: the held item's `attack_range`, else `AttackRange.defaultFor`
     /// (0 to the entity interaction range, no margin). Out of range, vanilla
     /// drops the attack without a word.
-    pub(super) fn within_attack_range(&mut self, target: &Aabb) -> bool {
+    pub(in crate::game) fn within_attack_range(&mut self, target: &Aabb) -> bool {
         let Some(eye) = self.eye_position() else {
             return false;
         };
@@ -178,7 +192,7 @@ impl Game<'_> {
     }
 
     /// The same effective component view for a detached stack and normal held-stack attacks.
-    pub(super) fn stack_attack_range(
+    pub(in crate::game) fn stack_attack_range(
         &self,
         stack: Option<&ItemStack>,
         player: bool,
@@ -210,7 +224,11 @@ impl Game<'_> {
 
     /// `Player.isWithinEntityInteractionRange(box, buffer)` for the player in
     /// place (ServerGamePacketListenerImpl.handleInteract, with 3).
-    pub(super) fn within_entity_interaction_range(&mut self, target: &Aabb, buffer: f64) -> bool {
+    pub(in crate::game) fn within_entity_interaction_range(
+        &mut self,
+        target: &Aabb,
+        buffer: f64,
+    ) -> bool {
         let Some(eye) = self.eye_position() else {
             return false;
         };
@@ -221,7 +239,7 @@ impl Game<'_> {
     /// A slot of the inventory (`OFFHAND_SLOT` for the off hand) was set to
     /// a new stack: the hand holding it compares it as another `ItemStack`
     /// (`shows_held_stack`) until the hand shows the held stack again.
-    pub(super) fn hand_stack_replaced(&mut self, slot: usize) {
+    pub(in crate::game) fn hand_stack_replaced(&mut self, slot: usize) {
         if slot == self.selected {
             self.client.hands_replaced[0] = true;
         }
@@ -230,7 +248,7 @@ impl Game<'_> {
         }
     }
     /// Opening a screen stops breaking before the next game tick (which may pause).
-    pub(super) fn stop_mining(&mut self) {
+    pub(in crate::game) fn stop_mining(&mut self) {
         if self.clicks.destroying.active {
             let pos = self.clicks.destroying.pos;
             let state = self.world.block(pos[0], pos[1], pos[2]);
@@ -247,11 +265,15 @@ impl Game<'_> {
     }
     /// `LivingEntity.swing` with `getModifiedSwingDuration`: the item's
     /// `on_entity_swing` Part first, which may keep the swing from starting.
-    pub(super) fn swing_hand(&mut self, hand: Hand, animation: SwingAnimation) {
+    pub(in crate::game) fn swing_hand(&mut self, hand: Hand, animation: SwingAnimation) {
         self.try_swing_hand(hand, animation);
     }
     /// Returns false when the interaction policy or item vetoes the swing and its packet.
-    pub(super) fn try_swing_hand(&mut self, hand: Hand, animation: SwingAnimation) -> bool {
+    pub(in crate::game) fn try_swing_hand(
+        &mut self,
+        hand: Hand,
+        animation: SwingAnimation,
+    ) -> bool {
         if self
             .remote
             .as_ref()
@@ -287,66 +309,18 @@ impl Game<'_> {
         true
     }
     /// `swing(hand)` for the hand that acts, with the default animation.
-    pub(super) fn swing_arm(&mut self) {
+    pub(in crate::game) fn swing_arm(&mut self) {
         self.swing_hand(self.hand, SwingAnimation::DEFAULT);
-    }
-    /// `swing_arm` for a use whose result is `SwingSource.PREDICTED`: the
-    /// player's client swings by itself, so a server keeps it to the others.
-    pub(super) fn swing_arm_predicted(&mut self) {
-        let before = self.swings_started;
-        self.swing_arm();
-        if self.swings_started != before {
-            self.server.predicted_swings += 1;
-        }
-    }
-    /// `Player.resetAttackStrengthTicker`.
-    pub(super) fn reset_attack_strength(&mut self) {
-        self.server.attack_ticks = 0;
-        self.reset_attack_strength_client();
     }
     #[inline(always)]
     pub(in crate::game) fn reset_attack_strength_client(&mut self) {
         self.client.hand_strength.reset();
     }
-    /// The window tick already picked before key handling. Simulation keeps its own ray.
-    pub(super) fn pick_tick_targets(&mut self) {
-        if self.native_window() {
-            return;
-        }
-        self.server.tick_hit.set(None);
-        self.server.tick_mob = None;
-        match self.compute_crosshair_decision() {
-            super::pick_entity::CrosshairDecision::Block(hit) => {
-                self.server.tick_hit.set(Some(Some(hit)));
-                self.server.tick_mob = Some(None);
-            }
-            super::pick_entity::CrosshairDecision::Entity(hit) => {
-                self.server.tick_hit.set(Some(None));
-                let mob = self.mob_index.find(&self.mobs, hit.id).map(|i| {
-                    let feet = self.mobs[i].position;
-                    (
-                        i,
-                        hit.distance_sq.sqrt(),
-                        [
-                            hit.point[0] - feet.x,
-                            hit.point[1] - feet.y,
-                            hit.point[2] - feet.z,
-                        ],
-                    )
-                });
-                self.server.tick_mob = Some(mob);
-            }
-            super::pick_entity::CrosshairDecision::Miss => {
-                self.server.tick_hit.set(Some(None));
-                self.server.tick_mob = Some(None);
-            }
-        }
-    }
     /// `handleKeybinds`' number keys: keys 1 to 9 in that order, one click of each
     /// (`keyHotbarSlots[i].consumeClick`), so the highest key clicked this tick wins and a
     /// key's further clicks wait for the next ticks. A creative player holding the load or
     /// save toolbar key loads or saves that toolbar instead (load first when both are held).
-    pub(super) fn select_queued_hotbar(&mut self) {
+    pub(in crate::game) fn select_queued_hotbar(&mut self) {
         const HOTBAR: [&str; 9] = [
             "key.hotbar.1",
             "key.hotbar.2",
@@ -374,14 +348,9 @@ impl Game<'_> {
             }
         }
     }
-    /// Release only the non-window simulation's tick-local caches.
-    pub(super) fn release_tick_targets(&mut self) {
-        self.server.tick_hit.set(None);
-        self.server.tick_mob = None;
-    }
     /// `Minecraft.startAttack` on an entity: a main-hand item with an
     /// `attack_range` attacks only a hit inside it.
-    pub(super) fn held_range_allows(&self, distance: f64) -> bool {
+    pub(in crate::game) fn held_range_allows(&self, distance: f64) -> bool {
         let range = self
             .held()
             .and_then(|stack| self.attack_range_component(stack));
@@ -397,7 +366,7 @@ impl Game<'_> {
         self.attack_range_component(active)
     }
 
-    pub(super) fn client_pick_entity_reach(&self, direction: [f64; 3]) -> f64 {
+    pub(in crate::game) fn client_pick_entity_reach(&self, direction: [f64; 3]) -> f64 {
         self.active_attack_range()
             .map_or(self.entity_reach, |range| {
                 (f64::from(attack_reach(&range, self.own_player_is_creative()).1)
@@ -508,7 +477,7 @@ impl Game<'_> {
     }
     /// The attack and use part of `Minecraft.tick` for the local player:
     /// attack clicks since the last tick and the held attack button.
-    pub(super) fn tick_local_hand(&mut self) -> Result<()> {
+    pub(in crate::game) fn tick_local_hand(&mut self) -> Result<()> {
         if !self.mod_mappings_screen_open() && self.sleeping.is_none() {
             // Every click and both hands share this tick's stored pick.
             self.pick_tick_targets();
@@ -639,14 +608,14 @@ impl Game<'_> {
     /// `BlockBehaviour.getDestroyProgress` with `Player.getDestroySpeed`, whose
     /// end asks the mods' `native_player_break_speed`. Every dig's progress comes from
     /// here: single player's, a host's for each guest, a remote client's own.
-    pub(super) fn destroy_progress(&mut self, pos: [i32; 3]) -> f32 {
+    pub(in crate::game) fn destroy_progress(&mut self, pos: [i32; 3]) -> f32 {
         let state = self.world.block(pos[0], pos[1], pos[2]);
         self.destroy_progress_for(pos, state)
     }
     /// `BlockBehaviour.getDestroyProgress` for a supplied state at `pos`: the game's own
     /// dig math, including the `player_break_speed` hook. The caller checks that `state`
     /// is a known state when it comes from a mod.
-    pub(super) fn destroy_progress_for(
+    pub(in crate::game) fn destroy_progress_for(
         &mut self,
         pos: [i32; 3],
         state: sunrise_world::registry::BlockStateId,
@@ -693,7 +662,7 @@ impl Game<'_> {
         sunrise_items::mining::destroy_progress(hardness, harvest, speed)
     }
     /// `EntityFluidInteraction`: compare the eyes with the camera fluid surface.
-    fn mining_eyes_in_water(&self) -> bool {
+    pub(in crate::game) fn mining_eyes_in_water(&self) -> bool {
         use sunrise_client::blocks::Fluid;
         let Some(eye) = self.eye_position() else {
             return false;
@@ -718,7 +687,7 @@ impl Game<'_> {
         inside(y) || (eye[1] == f64::from(y) && inside(y - 1))
     }
     /// The main-hand stack a break begins with (`destroyingItem`).
-    pub(super) fn main_hand_key(&self) -> Option<ItemStack> {
+    pub(in crate::game) fn main_hand_key(&self) -> Option<ItemStack> {
         self.held().cloned()
     }
     /// `MultiPlayerGameMode.sameDestroyTarget`'s item half for the stack
@@ -729,7 +698,7 @@ impl Game<'_> {
     /// stack in place); the damage is compared, as a client's tool only wears
     /// by the server sending a new stack for the slot, which the reference
     /// kept from before doesn't share.
-    pub(super) fn same_destroying_item(&self, began: &Option<ItemStack>) -> bool {
+    pub(in crate::game) fn same_destroying_item(&self, began: &Option<ItemStack>) -> bool {
         let held = self.held();
         let same = match (began, held) {
             (None, None) => true,
@@ -750,7 +719,7 @@ impl Game<'_> {
         !reset
     }
     /// Whether an attack would hit an entity rather than the block behind it.
-    pub(super) fn entity_targeted(&self) -> bool {
+    pub(in crate::game) fn entity_targeted(&self) -> bool {
         if self.uses_stored_pick() {
             return matches!(
                 self.crosshair_target(),
@@ -761,7 +730,7 @@ impl Game<'_> {
     }
     /// `LocalPlayer.isHandsBusy`: paddling a boat this player controls
     /// (`getControlledVehicle`: its first passenger, on a server's client).
-    pub(super) fn hands_busy(&self) -> bool {
+    pub(in crate::game) fn hands_busy(&self) -> bool {
         self.riding
             .is_some_and(|id| self.controls_boat(id) && self.boats.iter().any(|b| b.id == id))
             && [
@@ -778,7 +747,7 @@ impl Game<'_> {
     /// busy, and `LocalPlayer.itemUsed` drops the hand after a use that
     /// swung and spent (or, with infinite materials, kept) the item, or that
     /// started using it.
-    pub(super) fn use_with_hand(&mut self) -> Result<()> {
+    pub(in crate::game) fn use_with_hand(&mut self) -> Result<()> {
         if self.clicks.destroying.active || self.hands_busy() {
             return Ok(());
         }
@@ -805,7 +774,7 @@ impl Game<'_> {
     /// `LocalPlayer.tick`: the swing (`LivingEntity.baseTick`), the attack
     /// strength and item swap tickers (`Player.tick`), then
     /// `FirstPersonHandsAndItems.tick`.
-    pub(super) fn tick_hand(&mut self) {
+    pub(in crate::game) fn tick_hand(&mut self) {
         // LocalPlayer.applyInput (the camera is the player's own).
         if self.player.is_some() {
             self.client.sway.tick_wrapped(self.pitch, self.yaw);
@@ -850,27 +819,16 @@ impl Game<'_> {
         }
     }
 
-    #[inline(always)]
-    pub(in crate::game) fn tick_hand_server(
-        &mut self,
-        reset: bool,
-        changed: bool,
-        main: Option<&ItemStack>,
-    ) {
-        if reset {
-            self.server.attack_ticks = 0;
-        }
-        if changed {
-            self.apply_equipment();
-        }
-        self.server.attack_item = main.map(|s| s.item.clone());
-    }
-
     /// `IItemExtension.shouldCauseReequipAnimation` for hand `h` (0 main, 1
     /// off), asked while the stack it shows differs from `held` by slot or
     /// by value and `held` isn't empty: `same` (shown at once) is vanilla's
     /// answer, and the parts of the held item may turn it either way.
-    fn reequip_part(&self, h: usize, held: &(usize, Option<ItemStack>), same: &mut bool) {
+    pub(in crate::game) fn reequip_part(
+        &self,
+        h: usize,
+        held: &(usize, Option<ItemStack>),
+        same: &mut bool,
+    ) {
         let Some(stack) = &held.1 else {
             return;
         };
@@ -900,7 +858,7 @@ impl Game<'_> {
     /// A replay owns its held-item and equip animation state. Reset it when a
     /// standalone replay closes so a later world cannot inherit lowered hands
     /// or the replay player's visible stacks.
-    pub(super) fn reset_studio_hand_state(&mut self) {
+    pub(in crate::game) fn reset_studio_hand_state(&mut self) {
         let main = self.inventory.get(self.selected).cloned().flatten();
         self.client.visible_hands = [(self.selected, main), (OFFHAND, self.offhand.clone())];
         self.client.hands_replaced = [false; 2];
@@ -916,7 +874,7 @@ impl Game<'_> {
 
     /// `Minecraft.crosshairPickEntity` when it is a `LivingEntity`: whether
     /// it is alive (the nearest entity under the crosshair, before any block).
-    pub(super) fn crosshair_living(&self) -> Option<bool> {
+    pub(in crate::game) fn crosshair_living(&self) -> Option<bool> {
         if let Some(hit) = self.cached_entity_pick() {
             let (entity, distance, _) = hit?;
             if !self.mobs.iter().any(|mob| mob.id == entity.id())
@@ -978,7 +936,7 @@ impl Game<'_> {
         Some(true)
     }
     /// `Hud.canRenderCrosshairForSpectator`: MenuProvider entity or spectator-interactable block.
-    pub(super) fn spectator_crosshair(&self) -> bool {
+    pub(in crate::game) fn spectator_crosshair(&self) -> bool {
         if let Some(hit) = self.crosshair_entity_hit() {
             return self.carts.iter().any(|c| {
                 c.id as i32 == hit.id && matches!(c.kind, CartKind::Chest | CartKind::Hopper)
@@ -996,7 +954,7 @@ impl Game<'_> {
         ) || self.block_opens_menu(hit)
     }
     /// A lectern with no book (`LecternBlock.useWithoutItem` consumes the click and does nothing).
-    pub(super) fn block_is_empty_lectern(&self, hit: &super::Hit) -> bool {
+    pub(in crate::game) fn block_is_empty_lectern(&self, hit: &super::Hit) -> bool {
         let state = self.world.block(hit.pos[0], hit.pos[1], hit.pos[2]);
         &*self.res.facts().get(state).name == "minecraft:lectern"
             && self
@@ -1008,7 +966,7 @@ impl Game<'_> {
                 .is_none_or(|v| v != "true")
     }
     /// `BlockState.getMenuProvider`: the block's use opens a screen.
-    pub(super) fn block_opens_menu(&self, hit: &super::Hit) -> bool {
+    pub(in crate::game) fn block_opens_menu(&self, hit: &super::Hit) -> bool {
         if self.block_is_empty_lectern(hit) {
             return false;
         }
@@ -1040,45 +998,6 @@ impl Game<'_> {
             _ => name.ends_with("shulker_box"),
         }
     }
-    /// `Attributes.ATTACK_SPEED` with the main-hand item's modifier and the
-    /// Haste and Mining Fatigue modifiers (`ADD_MULTIPLIED_TOTAL`), clamped to
-    /// the attribute's range.
-    pub(super) fn main_hand_attack_speed(&self) -> f64 {
-        if let Some(player) = &self.player
-            && let Ok(speed) = player
-                .attributes
-                .computed_value_of("minecraft:attack_speed")
-            && (self.remote.is_some()
-                || !self.server.applied_modifiers.is_empty()
-                || self.potions.effects.get("haste").is_some()
-                || self.potions.effects.get("mining_fatigue").is_some())
-        {
-            // The computed value is already inside the attribute's bounds.
-            return speed;
-        }
-        let base = self
-            .player
-            .as_ref()
-            .and_then(|player| {
-                player
-                    .attributes
-                    .computed_value_of("minecraft:attack_speed")
-                    .ok()
-            })
-            .unwrap_or(sunrise_client::attack_strength::BASE_ATTACK_SPEED);
-        let value = base
-            + self
-                .attack_item_info()
-                .map_or(0.0, |i| f64::from(i.attack_speed));
-        let value = self
-            .potions
-            .effects
-            .modifiers()
-            .into_iter()
-            .filter(|m| m.0 == "minecraft:attack_speed")
-            .fold(value, |v, m| v * (1.0 + m.2));
-        self.sanitize_attack_speed(value)
-    }
     /// `Attributes.ATTACK_SPEED`'s sanitizer, from the attribute catalog: the
     /// attack speed a value computed outside the attribute map takes.
     pub(in crate::game) fn sanitize_attack_speed(&self, value: f64) -> f64 {
@@ -1087,14 +1006,10 @@ impl Game<'_> {
             .definition("minecraft:attack_speed")
             .map_or(value, |definition| definition.sanitize(value))
     }
-    /// The item whose attack damage and speed modifiers the player has (`attack_item`).
-    pub(super) fn attack_item_info(&self) -> Option<&sunrise_client::items::ItemInfo> {
-        self.items().get(self.server.attack_item.as_deref()?)
-    }
 
     /// `Player.attack`: the attack damage attribute, with the held weapon's
     /// and the effects' modifiers on it.
-    pub(super) fn attack_damage(&mut self) -> f32 {
+    pub(in crate::game) fn attack_damage(&mut self) -> f32 {
         self.player
             .as_mut()
             .and_then(|p| p.attribute("minecraft:attack_damage").ok())
@@ -1102,7 +1017,7 @@ impl Game<'_> {
     }
 
     /// `evaluateWhichHandsToRender`: which of the main and off hand show.
-    pub(super) fn hands_to_render(&self) -> [bool; 2] {
+    pub(in crate::game) fn hands_to_render(&self) -> [bool; 2] {
         let held = |slot| {
             self.stack_in(slot)
                 .map(|s: &ItemStack| (&*s.item, s.data().is_some_and(|d| !d.charged.is_empty())))
@@ -1118,7 +1033,7 @@ impl Game<'_> {
         )
     }
     /// The visible main- and off-hand items.
-    pub(super) fn visible_hand_items(&self) -> [Option<ItemStack>; 2] {
+    pub(in crate::game) fn visible_hand_items(&self) -> [Option<ItemStack>; 2] {
         [
             self.client.visible_hands[0].1.clone(),
             self.client.visible_hands[1].1.clone(),
@@ -1127,18 +1042,18 @@ impl Game<'_> {
 }
 
 /// The game as `first_person`'s world: the crosshair, breaking and attacking.
-struct GameHands<'g, 'a> {
-    game: &'g mut Game<'a>,
-    error: Option<Box<dyn std::error::Error>>,
+pub(in crate::game) struct GameHands<'g, 'a> {
+    pub(in crate::game) game: &'g mut Game<'a>,
+    pub(in crate::game) error: Option<Box<dyn std::error::Error>>,
 }
 impl GameHands<'_, '_> {
     /// The main-hand item's `kinetic_weapon` and `piercing_weapon`, a spear's.
-    fn attack_kinetic(&self) -> Option<sunrise_client::spear::Kinetic> {
+    pub(in crate::game) fn attack_kinetic(&self) -> Option<sunrise_client::spear::Kinetic> {
         self.game
             .held()
             .and_then(|s| sunrise_client::spear::Kinetic::of(&s.item))
     }
-    fn keep(&mut self, r: Result<()>) {
+    pub(in crate::game) fn keep(&mut self, r: Result<()>) {
         if let Err(e) = r
             && self.error.is_none()
         {
@@ -1297,7 +1212,7 @@ impl HandWorld for GameHands<'_, '_> {
 }
 
 #[cfg(test)]
-mod tests {
+pub(in crate::game) mod tests {
     use super::*;
 
     /// A zombie-sized box whose near face is `distance` blocks ahead of an
@@ -1453,11 +1368,11 @@ std::thread_local! {
 /// hook again without bound, so the query answers None while this is held
 /// ([`BreakSpeedDispatch::running`]).
 pub(in crate::game) struct BreakSpeedDispatch {
-    outer: bool,
+    pub(in crate::game) outer: bool,
 }
 
 impl BreakSpeedDispatch {
-    fn enter() -> Self {
+    pub(in crate::game) fn enter() -> Self {
         Self {
             outer: BREAK_SPEED_DISPATCH.replace(true),
         }
@@ -1482,11 +1397,11 @@ std::thread_local! {
 /// unwinding included). A listener that asks the mods' harvest query meanwhile would recurse
 /// without bound, so the query answers None while this is held ([`HarvestDispatch::running`]).
 pub(in crate::game) struct HarvestDispatch {
-    outer: bool,
+    pub(in crate::game) outer: bool,
 }
 
 impl HarvestDispatch {
-    fn enter() -> Self {
+    pub(in crate::game) fn enter() -> Self {
         Self {
             outer: HARVEST_DISPATCH.replace(true),
         }

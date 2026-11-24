@@ -101,7 +101,7 @@ pub(in crate::game) fn run_client_ticks_match_the_vanilla_cases() {
 /// Resource loading publishes registries process-wide. Keep them in the test's own process.
 fn run_in_child(test: &str) -> bool {
     crate::game::native_entity_refs::tests::run_fresh_cases(
-        &format!("game::spawner_client_tick_tests::{test}"),
+        &format!("game::client_side::spawner_client_tick_tests::{test}"),
         "SUNRISE_CLIENT_TICK_CHILD",
         &["remote"],
     )

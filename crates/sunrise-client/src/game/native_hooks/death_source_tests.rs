@@ -1,12 +1,18 @@
 //! Prepared-resource regressions through real projectile collision, mob AI and server death.
+#[allow(unused_imports)]
 use crate::game::Game;
+#[allow(unused_imports)]
 use crate::game::api_values::TryIntoApi;
+#[allow(unused_imports)]
 use crate::game::native_entity_refs::tests::{bind_local_player, with_game};
+#[allow(unused_imports)]
 use mod_api::{
     ArmorHurtEvent, Flow, HitHost, Hooks, HurtSource, LivingDeathEvent, LivingDropsEvent,
     LivingIncomingDamageEvent, ModEntry, ServerHost,
 };
+#[allow(unused_imports)]
 use std::sync::{Arc, Mutex};
+#[allow(unused_imports)]
 use sunrise_client::{
     chunk::Chunk,
     items::ItemStack,
@@ -14,20 +20,21 @@ use sunrise_client::{
     motion::PlayerMotion,
     projectiles::{Projectile, ProjectileKind},
 };
+#[allow(unused_imports)]
 use sunrise_core::{geometry::Vec3, nbt::Tag, position::ChunkPos};
 
 #[derive(Clone, Debug, PartialEq)]
-struct Hit {
-    entity: u32,
-    kind: String,
-    damage_type: String,
-    causing: i32,
-    direct: i32,
-    position: Option<[f64; 3]>,
-    weapon: Option<mod_api::ItemStack>,
+pub(in crate::game) struct Hit {
+    pub(in crate::game) entity: u32,
+    pub(in crate::game) kind: String,
+    pub(in crate::game) damage_type: String,
+    pub(in crate::game) causing: i32,
+    pub(in crate::game) direct: i32,
+    pub(in crate::game) position: Option<[f64; 3]>,
+    pub(in crate::game) weapon: Option<mod_api::ItemStack>,
 }
 impl Hit {
-    fn new(
+    pub(in crate::game) fn new(
         entity: u32,
         kind: &str,
         source: &HurtSource<'_>,
@@ -46,17 +53,17 @@ impl Hit {
 }
 
 #[derive(Default)]
-struct Seen {
-    incoming: Vec<Hit>,
-    deaths: Vec<Hit>,
-    armor: Vec<Hit>,
-    kinds: Vec<(String, String)>,
-    drops: Vec<(Hit, Vec<String>)>,
+pub(in crate::game) struct Seen {
+    pub(in crate::game) incoming: Vec<Hit>,
+    pub(in crate::game) deaths: Vec<Hit>,
+    pub(in crate::game) armor: Vec<Hit>,
+    pub(in crate::game) kinds: Vec<(String, String)>,
+    pub(in crate::game) drops: Vec<(Hit, Vec<String>)>,
 }
-struct Probe {
-    seen: Arc<Mutex<Seen>>,
-    cancel: bool,
-    heal: bool,
+pub(in crate::game) struct Probe {
+    pub(in crate::game) seen: Arc<Mutex<Seen>>,
+    pub(in crate::game) cancel: bool,
+    pub(in crate::game) heal: bool,
 }
 #[mod_api::__subscriptions]
 impl Hooks for Probe {
@@ -136,7 +143,11 @@ impl Hooks for Probe {
     }
 }
 
-fn observed(cancel: bool, heal: bool, check: impl FnOnce(&mut Game<'_>, &Arc<Mutex<Seen>>)) {
+pub(in crate::game) fn observed(
+    cancel: bool,
+    heal: bool,
+    check: impl FnOnce(&mut Game<'_>, &Arc<Mutex<Seen>>),
+) {
     crate::entry::install_client_hooks();
     let seen = Arc::new(Mutex::new(Seen::default()));
     mod_platform::testing::with_mods(
@@ -167,14 +178,10 @@ fn observed(cancel: bool, heal: bool, check: impl FnOnce(&mut Game<'_>, &Arc<Mut
     );
 }
 
-fn player(game: &mut Game<'_>) {
-    game.player = Some(PlayerMotion::new(game.motion, Vec3::new(4.5, 80.0, 4.5)).unwrap());
-    bind_local_player(game, 11, 123);
-    game.set_mode_id(0);
-    game.server.next_entity = 100;
-}
+#[allow(unused_imports)]
+pub(in crate::game) use crate::game::server_side::native_hooks_server::death_source_tests::player;
 
-fn mob(game: &mut Game<'_>, id: u32, name: &str, position: Vec3) {
+pub(in crate::game) fn mob(game: &mut Game<'_>, id: u32, name: &str, position: Vec3) {
     let kind = game.res.mob_types().get(name).unwrap().clone();
     let mut mob = Mob::new(id, kind, position, 0.0);
     mob.persistent = true;
@@ -183,7 +190,7 @@ fn mob(game: &mut Game<'_>, id: u32, name: &str, position: Vec3) {
     game.mobs.push(mob);
 }
 
-fn bow() -> ItemStack {
+pub(in crate::game) fn bow() -> ItemStack {
     let mut bow = ItemStack::new("minecraft:bow", 1);
     bow.damage = 7;
     bow.data_mut().set_other(
@@ -200,7 +207,7 @@ fn bow() -> ItemStack {
 }
 
 /// Reuse BowItem.releaseUsing, then make its collision deterministic (not its random spread).
-fn player_arrow(game: &mut Game<'_>, weapon: &ItemStack) -> u32 {
+pub(in crate::game) fn player_arrow(game: &mut Game<'_>, weapon: &ItemStack) -> u32 {
     game.inventory[game.selected] = Some(weapon.clone());
     game.inventory[9] = Some(ItemStack::new("minecraft:arrow", 8));
     game.release_bow(weapon, 20);
@@ -217,7 +224,7 @@ fn player_arrow(game: &mut Game<'_>, weapon: &ItemStack) -> u32 {
     })
 }
 
-fn finish_projectile_death(game: &mut Game<'_>, id: u32) {
+pub(in crate::game) fn finish_projectile_death(game: &mut Game<'_>, id: u32) {
     game.tick_projectiles().unwrap();
     assert!(game.mobs.iter().find(|mob| mob.id == id).unwrap().health <= 0.0);
     game.tick_creature_entities().unwrap();
@@ -306,7 +313,7 @@ fn skeleton_arrow_death_credits_the_skeleton_not_the_player() {
     );
 }
 
-fn cancelled_mob(heal: bool) {
+pub(in crate::game) fn cancelled_mob(heal: bool) {
     observed(true, heal, |game, seen| {
         player(game);
         // Sheep's guaranteed mutton makes the absence of loot non-probabilistic.
@@ -367,59 +374,7 @@ fn cancelled_unhealed_mob_is_removed_at_twenty_ticks_without_loot_or_redispatch(
     );
 }
 
-#[test]
-#[ignore = "daily"]
-fn zombie_ai_melee_armor_hurt_retains_the_real_source() {
-    crate::game::in_own_process(
-        "game::native_hooks::death_source_tests::zombie_ai_melee_armor_hurt_retains_the_real_source",
-        || {
-            observed(false, false, |game, seen| {
-                player(game);
-                Arc::make_mut(game.world.chunks.get_mut(&(0, 0)).unwrap()).lit = true;
-                game.world.day_time = 18_000; // An open-air zombie must not burn during the melee scene.
-                assert!(game.run_command("difficulty normal"));
-                assert!(game.run_command("forceload add 0 0"));
-                game.update_chunk_tickets();
-                assert!(game.tickets.0.levels().entity_ticking_at(5, 4));
-                assert!(game.player.as_ref().unwrap().client_loaded);
-                game.armor[1] = Some(ItemStack::new("minecraft:iron_chestplate", 1));
-                game.apply_equipment();
-                game.refresh_armor_protection();
-                mob(game, 45, "minecraft:zombie", Vec3::new(5.0, 80.0, 4.5));
-                game.mobs[0].no_ai = false;
-                game.mobs[0].ai.speed = 0.2;
-                game.mobs[0].ai.target = Some(Who::Player);
-                for _ in 0..40 {
-                    // MeleeAttackGoal.canUse admits a new attempt once game time reaches 20.
-                    game.world.game_time += 1;
-                    game.tick_creature_entities().unwrap();
-                    if !seen.lock().unwrap().armor.is_empty() {
-                        break;
-                    }
-                }
-                let seen = seen.lock().unwrap();
-                assert!(
-                    !seen.armor.is_empty(),
-                    "real zombie AI must land its melee hit"
-                );
-                let hit = &seen.armor[0];
-                assert_eq!((hit.entity, hit.kind.as_str()), (11, "minecraft:player"));
-                assert_eq!(
-                    (hit.damage_type.as_str(), hit.causing, hit.direct),
-                    ("minecraft:mob_attack", 45, 45)
-                );
-                let incoming = seen.incoming.iter().find(|hit| hit.entity == 11).unwrap();
-                assert_eq!(
-                    (hit.causing, hit.direct, hit.position),
-                    (incoming.causing, incoming.direct, incoming.position)
-                );
-                assert!(game.armor[1].as_ref().unwrap().damage > 0);
-            })
-        },
-    );
-}
-
-fn cancelled_player(heal: bool) {
+pub(in crate::game) fn cancelled_player(heal: bool) {
     observed(true, heal, |game, seen| {
         crate::game::native_player_death::tests::add_guest(game);
         game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
@@ -492,49 +447,6 @@ fn cancelled_unhealed_player_ticks_away_without_drops_or_redispatch() {
     crate::game::in_own_process(
         "game::native_hooks::death_source_tests::cancelled_unhealed_player_ticks_away_without_drops_or_redispatch",
         || cancelled_player(false),
-    );
-}
-
-#[test]
-#[ignore = "daily"]
-fn guest_player_bow_death_keeps_the_connected_shooter_without_a_local_player() {
-    crate::game::in_own_process(
-        "game::native_hooks::death_source_tests::guest_player_bow_death_keeps_the_connected_shooter_without_a_local_player",
-        || {
-            observed(false, false, |game, seen| {
-                game.player = None;
-                crate::game::native_player_death::tests::add_guest(game);
-                game.server.next_entity = 100;
-                game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
-                    guest.position = [4.5, 80.0, 4.5];
-                    guest.loaded = true;
-                    guest.load_timeout = 0;
-                });
-                mob(game, 41, "minecraft:zombie", Vec3::new(6.0, 80.0, 4.5));
-                game.mobs[0].health = 1.0;
-                let weapon = bow();
-                let expected = weapon.try_into_api().unwrap();
-                let arrow = game
-                    .as_guest(1, |game| player_arrow(game, &weapon))
-                    .unwrap();
-                assert!(
-                    game.player.is_none(),
-                    "the impact runs in the dedicated-server context"
-                );
-                game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
-                    guest.inventory[guest.selected] = Some(ItemStack::new("minecraft:stick", 1));
-                });
-                finish_projectile_death(game, 41);
-                let seen = seen.lock().unwrap();
-                assert_eq!(seen.deaths.len(), 1);
-                assert_eq!(seen.incoming.len(), 1);
-                assert_eq!(seen.deaths[0], seen.incoming[0]);
-                let hit = &seen.deaths[0];
-                assert_eq!((hit.causing, hit.direct), (20, arrow as i32));
-                assert_eq!(hit.weapon.as_ref(), Some(&expected));
-                assert!(hit.position.is_some());
-            })
-        },
     );
 }
 
@@ -815,7 +727,7 @@ fn a_killed_guest_with_no_combat_entry_reports_its_drops() {
 }
 
 /// A loaded guest at `position` with `health` and a diamond to drop.
-fn standing_guest(game: &mut Game<'_>, position: [f64; 3], health: f32) -> u32 {
+pub(in crate::game) fn standing_guest(game: &mut Game<'_>, position: [f64; 3], health: f32) -> u32 {
     crate::game::native_player_death::tests::add_guest(game);
     game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
         guest.loaded = true;
@@ -829,7 +741,7 @@ fn standing_guest(game: &mut Game<'_>, position: [f64; 3], health: f32) -> u32 {
 
 /// A skeleton (42) at x 2.5 and its arrow from x 4.5 flying east along z 4.5, through a
 /// guest standing at x 6.
-fn skeleton_shot_at_guest(game: &mut Game<'_>) -> u32 {
+pub(in crate::game) fn skeleton_shot_at_guest(game: &mut Game<'_>) -> u32 {
     mob(game, 42, "minecraft:skeleton", Vec3::new(2.5, 80.0, 4.5));
     let mut shot = Projectile::new(
         ProjectileKind::Arrow {

@@ -3,13 +3,13 @@ use super::*;
 use sunrise_client::{containers::BlockEntity, save::PendingContainerLoot};
 use sunrise_core::nbt::Tag;
 
-pub(super) struct CloneBlockPayload {
+pub(in crate::game) struct CloneBlockPayload {
     entity: Option<BlockEntity>,
     name: Option<Tag>,
     pending: Option<PendingContainerLoot>,
 }
 impl Game<'_> {
-    pub(super) fn clone_block_payload(&self, key: (i32, i32, i32)) -> CloneBlockPayload {
+    pub(in crate::game) fn clone_block_payload(&self, key: (i32, i32, i32)) -> CloneBlockPayload {
         CloneBlockPayload {
             entity: self.world.block_entities.get(&key).cloned(),
             name: self.world.block_names.get(&key).cloned(),
@@ -17,10 +17,14 @@ impl Game<'_> {
         }
     }
     /// Replacements discard the previous marker before removal can access it.
-    pub(super) fn discard_clone_loot(&mut self, pos: [i32; 3]) {
+    pub(in crate::game) fn discard_clone_loot(&mut self, pos: [i32; 3]) {
         crate::game::container_loot::take_block_pending(&mut self.world, (pos[0], pos[1], pos[2]));
     }
-    pub(super) fn apply_clone_payload(&mut self, pos: [i32; 3], payload: CloneBlockPayload) {
+    pub(in crate::game) fn apply_clone_payload(
+        &mut self,
+        pos: [i32; 3],
+        payload: CloneBlockPayload,
+    ) {
         let key = (pos[0], pos[1], pos[2]);
         if let Some(entity) = payload.entity {
             self.world.replace_block_entity(key, entity);

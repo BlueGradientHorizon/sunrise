@@ -1,6 +1,9 @@
 //! `/tellraw` (TellRawCommand) and `/title` (TitleCommand).
+#[allow(unused_imports)]
 use super::{Arg, Context, Game, R, Target, err};
+#[allow(unused_imports)]
 use sunrise_client::{hud_overlays::Titles, lan::data::component_nbt, text::Text};
+#[allow(unused_imports)]
 use sunrise_protocol::packets::play::{self, Clientbound as C};
 
 /// `EntitySelector.COMPILABLE_CODEC` (`CompilableString.CommandParserHelper.apply`):
@@ -9,7 +12,7 @@ use sunrise_protocol::packets::play::{self, Clientbound as C};
 /// the selector is `command.trailing_data`. Either failure makes the whole
 /// component invalid, with vanilla's message. (A score `name` is an `Either`
 /// that falls back to a plain name, so it never fails.)
-fn invalid_selector(
+pub(in crate::game) fn invalid_selector(
     v: &serde_json::Value,
     reg: &sunrise_client::command::Registries,
 ) -> Option<String> {
@@ -34,7 +37,10 @@ fn invalid_selector(
 
 /// `EntitySelectorParser.parse` on all of `source`; the error's
 /// `getMessage` on failure.
-fn compile_selector(source: &str, reg: &sunrise_client::command::Registries) -> Option<String> {
+pub(in crate::game) fn compile_selector(
+    source: &str,
+    reg: &sunrise_client::command::Registries,
+) -> Option<String> {
     let mut reader = sunrise_client::command::Reader::new(source);
     match sunrise_client::command::selector::parse(&mut reader, reg, true) {
         Err(e) => Some(match e.context() {
@@ -140,7 +146,7 @@ impl Game<'_> {
     }
     /// The text of a `score` component (ScoreContents.resolve): the named
     /// holder's score, `*` being the player the command runs for.
-    fn resolve_score_component(
+    pub(in crate::game) fn resolve_score_component(
         &mut self,
         o: &serde_json::Map<String, serde_json::Value>,
     ) -> R<Text> {
@@ -187,7 +193,10 @@ impl Game<'_> {
         Ok(format.format(score.value))
     }
     /// The text of an `nbt` component.
-    fn resolve_nbt_component(&mut self, o: &serde_json::Map<String, serde_json::Value>) -> Text {
+    pub(in crate::game) fn resolve_nbt_component(
+        &mut self,
+        o: &serde_json::Map<String, serde_json::Value>,
+    ) -> Text {
         use sunrise_core::nbt::Tag;
         let path = o.get("nbt").and_then(|v| v.as_str()).unwrap_or("");
         let mut sources: Vec<Tag> = Vec::new();
@@ -250,14 +259,14 @@ impl Game<'_> {
         out
     }
     /// The players the command reaches: the window's own and the LAN guests.
-    fn player_targets(&mut self, ctx: &Context) -> R<Vec<Target>> {
+    pub(in crate::game) fn player_targets(&mut self, ctx: &Context) -> R<Vec<Target>> {
         let targets = self.entities(ctx, "targets", true)?;
         Ok(targets
             .into_iter()
             .filter(|t| matches!(t, Target::Player | Target::Guest(_)))
             .collect())
     }
-    pub(super) fn cmd_tellraw(&mut self, ctx: &Context) -> R<i32> {
+    pub(in crate::game) fn cmd_tellraw(&mut self, ctx: &Context) -> R<i32> {
         let players = self.player_targets(ctx)?;
         let message = self.component_arg(ctx, "message")?;
         // Each player's chat (a guest's through the connection).
@@ -266,7 +275,7 @@ impl Game<'_> {
         }
         Ok(players.len() as i32)
     }
-    pub(super) fn cmd_title(&mut self, ctx: &Context) -> R<i32> {
+    pub(in crate::game) fn cmd_title(&mut self, ctx: &Context) -> R<i32> {
         let players = self.player_targets(ctx)?;
         let n = players.len();
         let name = players
@@ -337,37 +346,10 @@ impl Game<'_> {
         self.feedback(message);
         Ok(n as i32)
     }
-    /// TitleCommand's `connection.send` for each player: a guest is sent the
-    /// packet, the window's own player shows it.
-    fn titles_or_packet(&mut self, players: &[Target], local: impl FnOnce(&mut Titles), packet: C) {
-        let mut local = Some(local);
-        for &t in players {
-            match t {
-                Target::Player if self.server.lan_acting.is_some() => {
-                    self.server.guest_packets.push(packet.clone());
-                }
-                Target::Player => {
-                    if let Some(local) = local.take() {
-                        self.titles_or_packet_client(local);
-                    }
-                }
-                Target::Guest(conn) => {
-                    if let Some(host) = self.lan.as_ref() {
-                        host.hub.send_to(conn, &packet);
-                    }
-                }
-                _ => {}
-            }
-        }
-    }
-    #[inline(always)]
-    pub(in crate::game) fn titles_or_packet_client(&mut self, local: impl FnOnce(&mut Titles)) {
-        local(&mut self.client.titles);
-    }
 }
 
 #[cfg(test)]
-mod tests {
+pub(in crate::game) mod tests {
     use super::invalid_selector;
     use sunrise_client::command::Registries;
 

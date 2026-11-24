@@ -1,16 +1,19 @@
 //! Vehicles and passengers through an `EntityRef`: what an entity rides, who rides it,
 //! getting off, and who holds its lead. Basic topology reads also answer from the client's
 //! packet state; riding writes and the remaining reads are server-only.
+#[allow(unused_imports)]
 use super::{
     Game, commands::Target, mounts::steering_item, remote::Remote, remote_vehicles::passenger_root,
 };
+#[allow(unused_imports)]
 use mod_api::{EntityRef, LeashHolder, LivingRef, StartRidingRefusal};
+#[allow(unused_imports)]
 use sunrise_client::{
     lan::playerdata::ints_uuid,
     mobs::{Mob, Species, equine, happy_ghast, leash::Holder, nautilus},
 };
 
-enum RidingRead<'a> {
+pub(in crate::game) enum RidingRead<'a> {
     Server(Target),
     Client(&'a Remote),
 }
@@ -75,7 +78,7 @@ impl Game<'_> {
     }
     /// The side's own copy of the entity for a read. On a client only tracked
     /// entities and the local player have handles.
-    fn riding_read(&self, entity: EntityRef) -> Option<RidingRead<'_>> {
+    pub(in crate::game) fn riding_read(&self, entity: EntityRef) -> Option<RidingRead<'_>> {
         if self.is_logical_server() {
             return self.native_entity_target(entity).map(RidingRead::Server);
         }
@@ -215,7 +218,7 @@ impl Game<'_> {
         Some(all)
     }
     /// Whether the player `t` holds the stick that steers `species` in either hand.
-    fn native_player_steers(&self, species: Species, t: Target) -> bool {
+    pub(in crate::game) fn native_player_steers(&self, species: Species, t: Target) -> bool {
         let (main, offhand) = match t {
             Target::Player => (self.held(), self.offhand.as_ref()),
             Target::Guest(conn) => {
@@ -331,7 +334,7 @@ impl Game<'_> {
         Some([x, top, z])
     }
     /// A lead's live holder as a handle: `None` when it is out of reach.
-    fn native_leash_holder(
+    pub(in crate::game) fn native_leash_holder(
         &self,
         holder: Option<Holder>,
         player: Option<[i32; 4]>,
@@ -429,7 +432,7 @@ impl Game<'_> {
         self.native_set_leash(entity, target, Holder::Knot(pos), None)
     }
     /// `Leashable.setLeashedTo` from a handle: the lead first, then off the vehicle.
-    fn native_set_leash(
+    pub(in crate::game) fn native_set_leash(
         &mut self,
         entity: EntityRef,
         target: Target,
@@ -579,7 +582,11 @@ impl Game<'_> {
 
     /// The mount's last check: the rider sits on the vehicle, or a hook it
     /// dispatched took it off again.
-    fn native_seated(&self, rider: Target, vehicle_id: u32) -> Result<(), StartRidingRefusal> {
+    pub(in crate::game) fn native_seated(
+        &self,
+        rider: Target,
+        vehicle_id: u32,
+    ) -> Result<(), StartRidingRefusal> {
         if self.native_vehicle_id(rider) == Some(vehicle_id) {
             Ok(())
         } else {
@@ -589,7 +596,7 @@ impl Game<'_> {
 
     /// Validate the captured relationship at each callback boundary, naming
     /// the first check that fails, in the order the checks have always run.
-    fn native_riding_preconditions(
+    pub(in crate::game) fn native_riding_preconditions(
         &self,
         rider: Target,
         vehicle: Target,
@@ -859,18 +866,24 @@ impl Game<'_> {
 }
 
 #[cfg(test)]
-mod tests {
+pub(in crate::game) mod tests {
+    #[allow(unused_imports)]
     use super::super::{Game, commands::Target};
+    #[allow(unused_imports)]
     use mod_api::{
         self, EntityMountEvent, EntityRef, EntityUnleashEvent, Flow, Hooks, LivingRef, ServerHost,
         StartRidingRefusal,
     };
+    #[allow(unused_imports)]
     use std::sync::{Arc, Mutex};
+    #[allow(unused_imports)]
     use sunrise_client::chunk::Chunk;
+    #[allow(unused_imports)]
     use sunrise_client::mobs::Mob;
+    #[allow(unused_imports)]
     use sunrise_core::geometry::Vec3;
 
-    struct MountObserver(Arc<Mutex<Vec<bool>>>);
+    pub(in crate::game) struct MountObserver(pub(in crate::game) Arc<Mutex<Vec<bool>>>);
     #[mod_api::__subscriptions]
     impl Hooks for MountObserver {
         fn entity_mount(&self, _: &mut dyn ServerHost, event: &mut EntityMountEvent<'_>) -> Flow {
@@ -884,17 +897,17 @@ mod tests {
     }
 
     #[derive(Debug, PartialEq)]
-    struct SeatMountPayload {
-        entity: u32,
-        kind: String,
-        vehicle: u32,
-        vehicle_kind: String,
-        mounting: bool,
+    pub(in crate::game) struct SeatMountPayload {
+        pub(in crate::game) entity: u32,
+        pub(in crate::game) kind: String,
+        pub(in crate::game) vehicle: u32,
+        pub(in crate::game) vehicle_kind: String,
+        pub(in crate::game) mounting: bool,
     }
 
-    struct SeatMountObserver {
-        events: Arc<Mutex<Vec<SeatMountPayload>>>,
-        cancel: Arc<std::sync::atomic::AtomicBool>,
+    pub(in crate::game) struct SeatMountObserver {
+        pub(in crate::game) events: Arc<Mutex<Vec<SeatMountPayload>>>,
+        pub(in crate::game) cancel: Arc<std::sync::atomic::AtomicBool>,
     }
     #[mod_api::__subscriptions]
     impl Hooks for SeatMountObserver {
@@ -1034,7 +1047,7 @@ mod tests {
         });
     }
 
-    struct UnleashObserver(Arc<Mutex<u32>>);
+    pub(in crate::game) struct UnleashObserver(pub(in crate::game) Arc<Mutex<u32>>);
     #[mod_api::__subscriptions]
     impl Hooks for UnleashObserver {
         fn entity_unleash(&self, _: &mut dyn ServerHost, _: &mut EntityUnleashEvent<'_>) {
@@ -1264,19 +1277,24 @@ mod tests {
         });
     }
 
-    fn add_mob(game: &mut Game<'_>, id: u32, name: &str, at: Vec3) -> EntityRef {
+    pub(in crate::game) fn add_mob(
+        game: &mut Game<'_>,
+        id: u32,
+        name: &str,
+        at: Vec3,
+    ) -> EntityRef {
         let kind = game.res.mob_types().get(name).unwrap().clone();
         game.mobs.push(Mob::new(id, kind, at, 0.0));
         game.entity(id).unwrap()
     }
-    fn stale(entity: EntityRef) -> EntityRef {
+    pub(in crate::game) fn stale(entity: EntityRef) -> EntityRef {
         EntityRef::new(
             mod_api::WorldEpoch::new(entity.epoch().get().wrapping_add(1)),
             entity.id(),
         )
     }
     /// A floor of stone at y 63 around the origin, with air above it.
-    fn lay_floor(game: &mut Game<'_>) {
+    pub(in crate::game) fn lay_floor(game: &mut Game<'_>) {
         for (x, z) in [(-1, -1), (-1, 0), (0, -1), (0, 0)] {
             game.world
                 .chunks
@@ -1627,99 +1645,6 @@ mod tests {
 
     #[test]
     #[ignore = "daily"]
-    fn mounting_a_leashed_mob_drops_one_lead_without_a_break_sound() {
-        let unleashed = Arc::new(Mutex::new(0));
-        let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
-            "mount_unleash_observer",
-            Box::new(UnleashObserver(unleashed.clone())),
-        )]
-        .into();
-        mod_platform::testing::with_mods(mods, || {
-            super::super::native_entity_refs::tests::with_game(|game| {
-                let at = Vec3::new(0.5, 64.0, 0.5);
-                let cow = add_mob(game, 160, "minecraft:cow", at);
-                let vehicle = add_mob(game, 161, "minecraft:camel", at);
-                let holder = add_mob(game, 162, "minecraft:sheep", at);
-                assert!(cow.leash_to(game, holder));
-                game.audio.0.capture = Some(Vec::new());
-
-                // A refused mount must not consume the leash.
-                assert!(cow.start_riding(game, cow, true).is_err());
-                assert_eq!(
-                    cow.leash_holder(game),
-                    Some(mod_api::LeashHolder::Entity(holder))
-                );
-                assert!(game.dropped.is_empty());
-                assert_eq!(*unleashed.lock().unwrap(), 0);
-
-                assert_eq!(cow.start_riding(game, vehicle, true), Ok(()));
-                assert_eq!(cow.vehicle(game), Some(vehicle));
-                assert_eq!(
-                    cow.leash_holder(game),
-                    Some(mod_api::LeashHolder::Unleashed)
-                );
-                let seated = game.mob_object(160).unwrap().position;
-                take_one_lead(game, seated);
-                assert_eq!(*unleashed.lock().unwrap(), 1);
-                assert!(game.audio.0.capture.as_ref().unwrap().is_empty());
-            });
-        });
-    }
-
-    #[test]
-    #[ignore = "daily"]
-    fn natural_boarding_drops_a_lead_only_after_a_successful_mount() {
-        use sunrise_client::mobs::MobEvent;
-
-        let unleashed = Arc::new(Mutex::new(0));
-        let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
-            "natural_mount_unleash_observer",
-            Box::new(UnleashObserver(unleashed.clone())),
-        )]
-        .into();
-        mod_platform::testing::with_mods(mods, || {
-            super::super::native_entity_refs::tests::with_game(|game| {
-                let at = Vec3::new(0.5, 64.0, 0.5);
-                let cow = add_mob(game, 160, "minecraft:cow", at);
-                let vehicle = add_mob(game, 161, "minecraft:camel", at);
-                let holder = add_mob(game, 162, "minecraft:sheep", at);
-                assert!(cow.leash_to(game, holder));
-                game.audio.0.capture = Some(Vec::new());
-
-                game.mob_object_mut(160).unwrap().extra.boarding_cooldown = 1;
-                game.handle_mob_events(vec![MobEvent::StartRiding {
-                    rider: 160,
-                    vehicle: 161,
-                }])
-                .unwrap();
-                assert_eq!(cow.vehicle(game), None);
-                assert_eq!(
-                    cow.leash_holder(game),
-                    Some(mod_api::LeashHolder::Entity(holder))
-                );
-                assert!(game.dropped.is_empty());
-                assert_eq!(*unleashed.lock().unwrap(), 0);
-
-                game.mob_object_mut(160).unwrap().extra.boarding_cooldown = 0;
-                game.handle_mob_events(vec![MobEvent::StartRiding {
-                    rider: 160,
-                    vehicle: 161,
-                }])
-                .unwrap();
-                assert_eq!(cow.vehicle(game), Some(vehicle));
-                assert_eq!(
-                    cow.leash_holder(game),
-                    Some(mod_api::LeashHolder::Unleashed)
-                );
-                take_one_lead(game, at);
-                assert_eq!(*unleashed.lock().unwrap(), 1);
-                assert!(game.audio.0.capture.as_ref().unwrap().is_empty());
-            });
-        });
-    }
-
-    #[test]
-    #[ignore = "daily"]
     fn entity_drops_gates_a_dying_mobs_lead_in_the_tick_not_in_detach() {
         use sunrise_client::{
             gamerules::Value,
@@ -1776,7 +1701,11 @@ mod tests {
 
     /// Asks where `rider` gets off `vehicle`, on foot and riding, then has it really get off:
     /// all three must agree. Returns the spot.
-    fn get_off(game: &mut Game<'_>, rider: EntityRef, vehicle: EntityRef) -> [f64; 3] {
+    pub(in crate::game) fn get_off(
+        game: &mut Game<'_>,
+        rider: EntityRef,
+        vehicle: EntityRef,
+    ) -> [f64; 3] {
         let living = LivingRef::new(rider);
         let asked = vehicle.dismount_location(game, living).unwrap();
         assert!(game.entity_start_riding(rider, vehicle, true).is_ok());
@@ -1786,7 +1715,7 @@ mod tests {
         asked
     }
     /// The level holds exactly one dropped item, a single lead at `at`; takes it away.
-    fn take_one_lead(game: &mut Game<'_>, at: Vec3) {
+    pub(in crate::game) fn take_one_lead(game: &mut Game<'_>, at: Vec3) {
         assert_eq!(game.dropped.len(), 1);
         let item = game.dropped.iter().next().unwrap();
         assert_eq!(&*item.stack.item, "minecraft:lead");
@@ -1794,7 +1723,7 @@ mod tests {
         assert_eq!(item.position, at);
         game.dropped.clear();
     }
-    fn assert_near(at: [f64; 3], expected: [f64; 3]) {
+    pub(in crate::game) fn assert_near(at: [f64; 3], expected: [f64; 3]) {
         let near = at.iter().zip(expected).all(|(a, b)| (a - b).abs() < 1e-4);
         assert!(near, "{at:?} is not {expected:?}");
     }

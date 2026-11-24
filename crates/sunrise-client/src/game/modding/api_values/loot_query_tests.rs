@@ -108,7 +108,7 @@ impl Hooks for Abilities {
 #[ignore = "daily"]
 fn queried_ability_parts_grant_and_deny() {
     crate::game::in_own_process(
-        "game::api_values::loot_values::query_tests::queried_ability_parts_grant_and_deny",
+        "game::server_side::api_values::loot_values::query_tests::queried_ability_parts_grant_and_deny",
         queried_ability_parts_grant_and_deny_isolated,
     );
 }

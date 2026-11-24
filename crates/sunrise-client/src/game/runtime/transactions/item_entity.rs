@@ -1,21 +1,21 @@
 /// First writes to each field, independently: moving an item need not clone its stack.
 #[derive(Default)]
 pub(in crate::game) struct KeptItemEntity {
-    stack: Option<ItemStack>,
-    pickup_delay: Option<i64>,
-    target: Option<Option<[i32; 4]>>,
+    pub(in crate::game) stack: Option<ItemStack>,
+    pub(in crate::game) pickup_delay: Option<i64>,
+    pub(in crate::game) target: Option<Option<[i32; 4]>>,
     pub(in crate::game) velocity: Option<Vec3>,
 }
 
 impl KeptItemEntity {
-    fn merge(&mut self, child: Self) {
+    pub(in crate::game) fn merge(&mut self, child: Self) {
         self.stack = self.stack.take().or(child.stack);
         self.pickup_delay = self.pickup_delay.or(child.pickup_delay);
         self.target = self.target.or(child.target);
         self.velocity = self.velocity.or(child.velocity);
     }
 
-    fn restore(self, item: &mut sunrise_client::entities::ItemEntity) {
+    pub(in crate::game) fn restore(self, item: &mut sunrise_client::entities::ItemEntity) {
         if let Some(stack) = self.stack {
             item.stack = stack;
         }

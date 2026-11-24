@@ -1,60 +1,67 @@
 //! Real LAN merchant result takes, with native listeners and the production coordinator.
+#[allow(unused_imports)]
 use super::{Game, native_guest_turn_tests::with_guests};
+#[allow(unused_imports)]
 use mod_api::{
     Flow, Hooks, HostSide, HostTransaction, ItemPlace, ItemResource, ItemStackedOnOtherEvent,
     ModEntry, Mods, PlayerTradeEvent, ServerHost, TradeWithVillagerEvent,
 };
+#[allow(unused_imports)]
 use std::cell::{Cell, RefCell};
+#[allow(unused_imports)]
 use std::sync::{Arc, mpsc};
+#[allow(unused_imports)]
 use sunrise_client::lan::{Out, PlayerSender};
+#[allow(unused_imports)]
 use sunrise_client::{
     items::ItemStack,
     merchant::{Session, Trader},
     mobs::finalize::{self, Attr, Op},
 };
+#[allow(unused_imports)]
 use sunrise_protocol::packets::play::{Clientbound, ContainerClick};
 
 #[derive(Clone, Copy)]
-enum PlayerWrite {
+pub(in crate::game) enum PlayerWrite {
     Unrelated,
     ShiftDestination { restore: bool },
 }
 
 #[derive(Clone, Copy)]
-enum EffectWrite {
+pub(in crate::game) enum EffectWrite {
     ReplaceSlowness,
     ReapplySpeed,
     Clear,
     ReplaceTransient,
 }
 
-const SPEED: &str = "minecraft:movement_speed";
+pub(in crate::game) const SPEED: &str = "minecraft:movement_speed";
 
 #[derive(Clone, Default)]
-struct Script {
-    panic_on: Option<usize>,
-    panic_on_completion: bool,
-    answer: bool,
-    invalid: bool,
+pub(in crate::game) struct Script {
+    pub(in crate::game) panic_on: Option<usize>,
+    pub(in crate::game) panic_on_completion: bool,
+    pub(in crate::game) answer: bool,
+    pub(in crate::game) invalid: bool,
     /// An answer whose result stack is not a valid one for the game.
-    invalid_stack: bool,
-    edit_other_merchant_and_board: bool,
-    effect_write: Option<EffectWrite>,
-    player_write: Option<PlayerWrite>,
-    raise_second_price: bool,
-    refuse_stacked: bool,
-    replace_stacked_result: bool,
+    pub(in crate::game) invalid_stack: bool,
+    pub(in crate::game) edit_other_merchant_and_board: bool,
+    pub(in crate::game) effect_write: Option<EffectWrite>,
+    pub(in crate::game) player_write: Option<PlayerWrite>,
+    pub(in crate::game) raise_second_price: bool,
+    pub(in crate::game) refuse_stacked: bool,
+    pub(in crate::game) replace_stacked_result: bool,
 }
 thread_local! {
-    static SCRIPT: RefCell<Script> = RefCell::new(Script::default());
-    static CALLS: Cell<usize> = const { Cell::new(0) };
-    static STACKED: Cell<usize> = const { Cell::new(0) };
-    static COMPLETED: Cell<usize> = const { Cell::new(0) };
-    static STAGED_WRITES: Cell<bool> = const { Cell::new(false) };
-    static USES: RefCell<Vec<i32>> = const { RefCell::new(Vec::new()) };
-    static IN_ACTION: RefCell<Vec<bool>> = const { RefCell::new(Vec::new()) };
+    pub(in crate::game) static SCRIPT: RefCell<Script> = RefCell::new(Script::default());
+    pub(in crate::game) static CALLS: Cell<usize> = const { Cell::new(0) };
+    pub(in crate::game) static STACKED: Cell<usize> = const { Cell::new(0) };
+    pub(in crate::game) static COMPLETED: Cell<usize> = const { Cell::new(0) };
+    pub(in crate::game) static STAGED_WRITES: Cell<bool> = const { Cell::new(false) };
+    pub(in crate::game) static USES: RefCell<Vec<i32>> = const { RefCell::new(Vec::new()) };
+    pub(in crate::game) static IN_ACTION: RefCell<Vec<bool>> = const { RefCell::new(Vec::new()) };
 }
-fn script(value: Script) {
+pub(in crate::game) fn script(value: Script) {
     SCRIPT.with(|s| *s.borrow_mut() = value);
     CALLS.set(0);
     STACKED.set(0);
@@ -64,7 +71,7 @@ fn script(value: Script) {
     IN_ACTION.with(|a| a.borrow_mut().clear());
     super::decided_action::DECIDED.set(0);
 }
-struct Mod;
+pub(in crate::game) struct Mod;
 #[mod_api::__subscriptions]
 impl Hooks for Mod {
     fn trade_with_villager(
@@ -84,7 +91,7 @@ impl Hooks for Mod {
     }
 }
 /// The same trade listener, also hearing `item_stacked_on_other`: the result pickup is both.
-struct Both;
+pub(in crate::game) struct Both;
 #[mod_api::__subscriptions]
 impl Hooks for Both {
     fn trade_with_villager(
@@ -104,7 +111,7 @@ impl Hooks for Both {
     }
 }
 
-struct Stacked;
+pub(in crate::game) struct Stacked;
 #[mod_api::__subscriptions]
 impl Hooks for Stacked {
     fn item_stacked_on_other(&self, _: HostSide, event: &mut ItemStackedOnOtherEvent<'_>) -> Flow {
@@ -123,7 +130,7 @@ impl Hooks for Stacked {
         Flow::Continue
     }
 }
-fn trade(host: &mut dyn ServerHost, event: &mut TradeWithVillagerEvent<'_>) {
+pub(in crate::game) fn trade(host: &mut dyn ServerHost, event: &mut TradeWithVillagerEvent<'_>) {
     {
         let call = CALLS.get() + 1;
         CALLS.set(call);
@@ -235,16 +242,16 @@ fn trade(host: &mut dyn ServerHost, event: &mut TradeWithVillagerEvent<'_>) {
         }
     }
 }
-fn with_mod(test: impl FnOnce()) {
+pub(in crate::game) fn with_mod(test: impl FnOnce()) {
     let mods: Mods = vec![ModEntry::new("trade-observer", Box::new(Mod))].into();
     mod_platform::testing::with_mods(mods, test);
 }
-fn with_both(test: impl FnOnce()) {
+pub(in crate::game) fn with_both(test: impl FnOnce()) {
     let mods: Mods = vec![ModEntry::new("trade-and-stack", Box::new(Both))].into();
     mod_platform::testing::with_mods(mods, test);
 }
 
-fn open(game: &mut Game<'_>, payment: u32) -> ContainerClick {
+pub(in crate::game) fn open(game: &mut Game<'_>, payment: u32) -> ContainerClick {
     use super::{
         native_merchant_refs::tests::{offer, spawn},
         trading::MerchantState,
@@ -297,10 +304,10 @@ fn open(game: &mut Game<'_>, payment: u32) -> ContainerClick {
         carried: None,
     }
 }
-const WORK_TICK: i64 = 3_000;
+pub(in crate::game) const WORK_TICK: i64 = 3_000;
 
 /// A loaded composter with an adult farmer close enough to start work on its next AI tick.
-fn prepare_work(game: &mut Game<'_>, save: &std::path::Path) {
+pub(in crate::game) fn prepare_work(game: &mut Game<'_>, save: &std::path::Path) {
     use sunrise_client::mobs::villager_brain;
     use sunrise_core::{geometry::Vec3, random::LegacyRandom};
 
@@ -331,7 +338,7 @@ fn prepare_work(game: &mut Game<'_>, save: &std::path::Path) {
     villager_brain::init(mob, WORK_TICK, WORK_TICK, 40);
 }
 
-fn tick_work(game: &mut Game<'_>) {
+pub(in crate::game) fn tick_work(game: &mut Game<'_>) {
     let worked_at = |game: &Game<'_>| {
         sunrise_client::mobs::villager::ext(game.mob_object(40).unwrap())
             .unwrap()
@@ -347,14 +354,18 @@ fn tick_work(game: &mut Game<'_>) {
     assert_eq!(worked_at(game), Some(WORK_TICK));
 }
 
-fn work_screen<'a>(game: &'a Game<'_>) -> &'a super::lan_trading::GuestMerchant {
+pub(in crate::game) fn work_screen<'a>(
+    game: &'a Game<'_>,
+) -> &'a super::lan_trading::GuestMerchant {
     game.lan.as_ref().unwrap().menus[&12]
         .merchant
         .as_ref()
         .unwrap()
 }
 
-fn work_screen_mut<'a>(game: &'a mut Game<'_>) -> &'a mut super::lan_trading::GuestMerchant {
+pub(in crate::game) fn work_screen_mut<'a>(
+    game: &'a mut Game<'_>,
+) -> &'a mut super::lan_trading::GuestMerchant {
     game.lan
         .as_mut()
         .unwrap()
@@ -366,7 +377,7 @@ fn work_screen_mut<'a>(game: &'a mut Game<'_>) -> &'a mut super::lan_trading::Gu
         .unwrap()
 }
 
-fn reloaded_trader(game: &Game<'_>) -> Box<Trader> {
+pub(in crate::game) fn reloaded_trader(game: &Game<'_>) -> Box<Trader> {
     let saved = sunrise_client::entity_nbt::mob_to_nbt(
         game.mob_object(40).unwrap(),
         [1, 2, 3, 4],
@@ -447,12 +458,12 @@ fn a_restock_while_a_guest_trades_reaches_the_screen_the_save_and_the_mob() {
 }
 
 /// A guest trading with the villager loses Hero of the Village in its named Pre or Post.
-struct RemoveHero {
-    before_work: bool,
+pub(in crate::game) struct RemoveHero {
+    pub(in crate::game) before_work: bool,
 }
 
 impl RemoveHero {
-    fn remove(host: HostSide<'_>, entities: &[u32]) {
+    pub(in crate::game) fn remove(host: HostSide<'_>, entities: &[u32]) {
         assert_eq!(entities, [40]);
         let HostSide::Server(host) = host else {
             panic!("server fixture");
@@ -506,76 +517,11 @@ fn a_restock_uses_price_changes_made_in_pre() {
     );
 }
 
-fn restock_after_hero_change(test: &str, before_work: bool) {
-    use sunrise_client::effects::EffectInstance;
-    super::in_own_process(test, || {
-        let mods: Mods = vec![ModEntry::new(
-            "remove-hero",
-            Box::new(RemoveHero { before_work }),
-        )]
-        .into();
-        mod_platform::testing::with_mods(mods, || {
-            with_guests(|game| {
-                let save = tempfile::tempdir().unwrap();
-                open(game, 1);
-                prepare_work(game, save.path());
-                game.as_guest(12, |g| {
-                    g.potions
-                        .effects
-                        .add(EffectInstance::new("hero_of_the_village", 1000, 0));
-                });
-                let screen = work_screen_mut(game);
-                screen.slots = [Some(ItemStack::new("minecraft:wheat", 4)), None, None];
-                let offer = &mut screen.merchant.session.offers[0];
-                (offer.base_cost_a.stack.count, offer.uses) = (5, 10);
-                let trader = game.mobs[0].extra.trade.as_mut().unwrap();
-                (
-                    trader.offers[0].base_cost_a.stack.count,
-                    trader.offers[0].uses,
-                ) = (5, 10);
-                // The voice from opening the screen has finished its cooldown by work time.
-                game.mobs[0].ambient_timer = 0;
-                game.audio.0.capture = Some(Vec::new());
-
-                tick_work(game);
-
-                game.as_guest(12, |g| assert_eq!(g.hero_amplifier(), None));
-                let screen = work_screen(game);
-                assert_eq!(
-                    screen.slots[2],
-                    (!before_work).then(|| ItemStack::new("minecraft:emerald", 1))
-                );
-                assert_eq!(screen.merchant.session.hero, (!before_work).then_some(0));
-                let feedback: Vec<_> = game
-                    .audio
-                    .0
-                    .capture
-                    .as_ref()
-                    .unwrap()
-                    .iter()
-                    .map(|sound| sound.event.as_str())
-                    .filter(|&event| {
-                        matches!(
-                            event,
-                            "minecraft:entity.villager.yes" | "minecraft:entity.villager.no"
-                        )
-                    })
-                    .collect();
-                assert_eq!(
-                    feedback,
-                    [if before_work {
-                        "minecraft:entity.villager.no"
-                    } else {
-                        "minecraft:entity.villager.yes"
-                    }]
-                );
-            })
-        });
-    });
-}
+#[allow(unused_imports)]
+pub(in crate::game) use crate::game::client_side::lan_trade_decisions_tests_client::restock_after_hero_change;
 
 /// Edits the restocked first offer in the villager's own named `EntityTick.Post`.
-struct EditInPost;
+pub(in crate::game) struct EditInPost;
 #[mod_api::__subscriptions]
 impl Hooks for EditInPost {
     fn register(&self, registrar: &mut dyn mod_api::Registrar, _: &mod_api::RegistrationContext) {
@@ -699,7 +645,7 @@ fn an_unused_offer_stays_unchanged_when_the_villager_starts_work() {
     );
 }
 
-struct FishBreath(Arc<std::sync::atomic::AtomicBool>);
+pub(in crate::game) struct FishBreath(pub(in crate::game) Arc<std::sync::atomic::AtomicBool>);
 #[mod_api::__subscriptions]
 impl Hooks for FishBreath {
     fn living_breathe(&self, host: &mut dyn ServerHost, event: &mut mod_api::LivingBreatheEvent) {
@@ -855,7 +801,7 @@ fn an_invalid_offer_restores_another_merchants_effects_and_modifiers() {
 }
 
 /// Observe the order from gameplay's store and independently through the mod API's live map.
-fn speed_modifier_ids(game: &Game<'_>) -> [Vec<String>; 2] {
+pub(in crate::game) fn speed_modifier_ids(game: &Game<'_>) -> [Vec<String>; 2] {
     let attrs = game.mobs[1].extra.attributes.as_deref().unwrap();
     let legacy = attrs
         .modifiers
@@ -1050,7 +996,7 @@ fn exploration_trade_maps_share_nested_reservations() {
     });
 }
 
-fn record_packets(game: &mut Game<'_>) -> mpsc::Receiver<Out> {
+pub(in crate::game) fn record_packets(game: &mut Game<'_>) -> mpsc::Receiver<Out> {
     let (tx, rx) = mpsc::channel();
     game.lan
         .as_mut()
@@ -1063,7 +1009,7 @@ fn record_packets(game: &mut Game<'_>) -> mpsc::Receiver<Out> {
     rx
 }
 
-fn packets(rx: &mpsc::Receiver<Out>) -> Vec<Clientbound> {
+pub(in crate::game) fn packets(rx: &mpsc::Receiver<Out>) -> Vec<Clientbound> {
     rx.try_iter()
         .flat_map(|out| match out {
             Out::Packet(body) => vec![body],
@@ -1077,7 +1023,7 @@ fn packets(rx: &mpsc::Receiver<Out>) -> Vec<Clientbound> {
         .collect()
 }
 
-fn corrected(rx: &mpsc::Receiver<Out>, window: i32, payment: u32) {
+pub(in crate::game) fn corrected(rx: &mpsc::Receiver<Out>, window: i32, payment: u32) {
     let received = packets(rx);
     let [
         Clientbound::MerchantOffers(offers),
@@ -1093,10 +1039,10 @@ fn corrected(rx: &mpsc::Receiver<Out>, window: i32, payment: u32) {
     assert!(content.carried.is_none());
 }
 
-fn count(stack: Option<&ItemStack>) -> u32 {
+pub(in crate::game) fn count(stack: Option<&ItemStack>) -> u32 {
     stack.map_or(0, |s| s.count)
 }
-fn result(game: &Game<'_>) -> u32 {
+pub(in crate::game) fn result(game: &Game<'_>) -> u32 {
     let guest = &game.lan.as_ref().unwrap().hub.guests[0];
     guest
         .inventory
@@ -1112,10 +1058,10 @@ fn result(game: &Game<'_>) -> u32 {
                 .filter(|s| s.item.as_ref() == "minecraft:emerald"),
         )
 }
-fn dirt(game: &Game<'_>) -> u32 {
+pub(in crate::game) fn dirt(game: &Game<'_>) -> u32 {
     count(game.lan.as_ref().unwrap().hub.guests[0].inventory[20].as_ref())
 }
-fn stat(game: &Game<'_>) -> i32 {
+pub(in crate::game) fn stat(game: &Game<'_>) -> i32 {
     game.lan.as_ref().unwrap().play[&12]
         .stats
         .values
@@ -1124,7 +1070,7 @@ fn stat(game: &Game<'_>) -> i32 {
         .copied()
         .unwrap_or(0)
 }
-fn unchanged(game: &mut Game<'_>, payment: u32) {
+pub(in crate::game) fn unchanged(game: &mut Game<'_>, payment: u32) {
     assert_eq!(result(game), 0);
     assert_eq!(dirt(game), 0);
     assert_eq!(stat(game), 0);

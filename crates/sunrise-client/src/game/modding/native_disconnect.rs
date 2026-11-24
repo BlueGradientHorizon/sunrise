@@ -5,7 +5,7 @@ use mod_api::{DisconnectError, WorldEpoch};
 use sunrise_client::{Result, text::Text};
 
 /// A client mod's request to leave, carried out at the end of the frame.
-pub(super) struct LeaveRequest {
+pub(in crate::game) struct LeaveRequest {
     /// The world it was made in: a request made while that world closes is dropped.
     epoch: WorldEpoch,
     reason: Option<Text>,
@@ -14,7 +14,7 @@ pub(super) struct LeaveRequest {
 impl Game<'_> {
     /// Asks to leave the joined server or world at the end of this frame.
     /// Unavailable with no world joined, or while the world is already closing.
-    pub(super) fn disconnect(
+    pub(in crate::game) fn disconnect(
         &mut self,
         reason: Option<Text>,
     ) -> std::result::Result<(), DisconnectError> {

@@ -4,23 +4,29 @@
 //! as `native_entity_refs.rs` finds it, and return `None` (or `false`) for a
 //! stale handle. On a client (API @API:client_entity_refs@) they read the
 //! entities the server shows the window, and nothing moves one.
+#[allow(unused_imports)]
 use super::entity::{Entity as _, EntityHandle, with_entity, with_entity_mut};
+#[allow(unused_imports)]
 use super::{Game, commands::Target};
+#[allow(unused_imports)]
 use mod_api::{ClipBlock, ClipFluid, ClipHit, EntityRef, LevelWriteError};
+#[allow(unused_imports)]
 use sunrise_client::{collisions::SceneCollisions, motion::player_context};
+#[allow(unused_imports)]
 use sunrise_core::geometry::{Aabb, Axis, Vec3};
+#[allow(unused_imports)]
 use sunrise_core::position::BlockPos;
 
 /// `Entity.calculateViewVector` for a look turned `pitch_offset` degrees down: the unit
 /// vector along `yaw` and `pitch + pitch_offset`.
-fn turned_view_vector(yaw: f32, pitch: f32, pitch_offset: f32) -> [f64; 3] {
+pub(in crate::game) fn turned_view_vector(yaw: f32, pitch: f32, pitch_offset: f32) -> [f64; 3] {
     let v = sunrise_world::view_direction::view_vector(pitch + pitch_offset, yaw);
     [v.x, v.y, v.z]
 }
 
 /// `Entity.getOnPos()`: the supporting block when there is one, else the block `1.0E-5F`
 /// under the feet at `position`.
-pub(super) fn on_block_position(support: Option<BlockPos>, position: Vec3) -> [i32; 3] {
+pub(in crate::game) fn on_block_position(support: Option<BlockPos>, position: Vec3) -> [i32; 3] {
     match support {
         Some(p) => [p.x, p.y, p.z],
         None => [
@@ -33,29 +39,32 @@ pub(super) fn on_block_position(support: Option<BlockPos>, position: Vec3) -> [i
 
 /// The end of a ray `distance` blocks from `from` along the unit vector `look`
 /// (`from.add(look.scale(distance))`).
-fn ray_end(from: [f64; 3], look: [f64; 3], distance: f64) -> [f64; 3] {
+pub(in crate::game) fn ray_end(from: [f64; 3], look: [f64; 3], distance: f64) -> [f64; 3] {
     std::array::from_fn(|i| from[i] + look[i] * distance)
 }
 
-fn corners(b: Aabb) -> [[f64; 3]; 2] {
+pub(in crate::game) fn corners(b: Aabb) -> [[f64; 3]; 2] {
     let axes = [Axis::X, Axis::Y, Axis::Z];
     [axes.map(|a| b.min(a)), axes.map(|a| b.max(a))]
 }
 
 impl Game<'_> {
     /// The simulated entity (one of the shared entity walk's lists) with `id`.
-    pub(super) fn native_walk_entity(&self, id: u32) -> Option<EntityHandle> {
+    pub(in crate::game) fn native_walk_entity(&self, id: u32) -> Option<EntityHandle> {
         self.entity_handles()
             .find(|h| with_entity!(self, *h, e => e.id() == id))
     }
     /// This window's own player, when a client's target names it.
-    fn native_client_player(&self, t: Target) -> Option<&sunrise_client::motion::PlayerMotion> {
+    pub(in crate::game) fn native_client_player(
+        &self,
+        t: Target,
+    ) -> Option<&sunrise_client::motion::PlayerMotion> {
         self.remote.as_ref()?;
         (t == Target::Player).then_some(())?;
         self.player.as_ref()
     }
     /// The server's copy of the player a target names.
-    pub(super) fn native_target_guest(
+    pub(in crate::game) fn native_target_guest(
         &self,
         t: Target,
     ) -> Option<&sunrise_client::lan::guest::Guest> {
@@ -70,7 +79,7 @@ impl Game<'_> {
     /// entity Sunrise doesn't simulate (a display, a painting) has none, so
     /// zero. On a client, another entity's is the motion the server last
     /// sent it (`Entity.lerpMotion`). API 379.
-    pub(super) fn entity_velocity(&self, entity: EntityRef) -> Option<[f64; 3]> {
+    pub(in crate::game) fn entity_velocity(&self, entity: EntityRef) -> Option<[f64; 3]> {
         let t = self.native_entity_read_target(entity)?;
         if !self.is_logical_server() {
             // The client's copy: its own player's motion, and the motion the
@@ -101,7 +110,7 @@ impl Game<'_> {
     /// previous tick's). Every list the walk keeps has a previous position.
     /// A frame, painting, crystal, spawner, cloud, fangs or marker never
     /// moves, so zero; the dragon uses its own previous position.
-    pub(super) fn native_entity_known_speed(&self, entity: EntityRef) -> Option<Vec3> {
+    pub(in crate::game) fn native_entity_known_speed(&self, entity: EntityRef) -> Option<Vec3> {
         let t = self.native_entity_target(entity)?;
         if let Some(g) = self.native_target_guest(t) {
             let [x, y, z] = g.known_movement;
@@ -126,7 +135,7 @@ impl Game<'_> {
     /// first passenger, or a mount's rider as `equine::controlled` decides
     /// (saddled; a pig or strider's rider holding the stick; a harnessed
     /// happy ghast), the rule the mount code steers by.
-    fn native_steered(&self, t: Target) -> bool {
+    pub(in crate::game) fn native_steered(&self, t: Target) -> bool {
         match t {
             Target::Boat(_) => true,
             Target::Mob(id) => self
@@ -137,7 +146,11 @@ impl Game<'_> {
         }
     }
     /// `Entity.getControllingPassenger` when it is a player.
-    fn native_controlling_player(&self, t: Target, entity: EntityRef) -> Option<EntityRef> {
+    pub(in crate::game) fn native_controlling_player(
+        &self,
+        t: Target,
+        entity: EntityRef,
+    ) -> Option<EntityRef> {
         let steered = self.native_steered(t);
         let first = *self.entity_passengers(entity).ok_or(()).ok()?.first()?;
         let player = matches!(
@@ -147,7 +160,11 @@ impl Game<'_> {
         (steered && player).then_some(first)
     }
     /// Replaces `Entity.deltaMovement`; a player also gets a motion packet.
-    pub(super) fn entity_set_velocity(&mut self, entity: EntityRef, velocity: [f64; 3]) -> bool {
+    pub(in crate::game) fn entity_set_velocity(
+        &mut self,
+        entity: EntityRef,
+        velocity: [f64; 3],
+    ) -> bool {
         if !velocity.iter().all(|v| v.is_finite()) {
             return false;
         }
@@ -169,7 +186,7 @@ impl Game<'_> {
         true
     }
     /// `Entity.fallDistance` on the server body, including the player's accepted moves.
-    pub(super) fn entity_fall_distance(&self, entity: EntityRef) -> Option<f64> {
+    pub(in crate::game) fn entity_fall_distance(&self, entity: EntityRef) -> Option<f64> {
         match self.native_entity_target(entity)? {
             Target::Player => Some(self.player.as_ref()?.fall_distance),
             Target::Guest(conn) => Some(self.command_guest(conn)?.motion.as_ref()?.fall_distance),
@@ -183,7 +200,7 @@ impl Game<'_> {
     /// landing hurts it as a step does (a fan's or a launcher's push, a mod's soft block).
     /// Players too, the acting one and guests. False for a stale handle or an entity not in
     /// the level in place; true for a kind that keeps no fall distance, which has none to forget.
-    pub(super) fn entity_reset_fall_distance(&mut self, entity: EntityRef) -> bool {
+    pub(in crate::game) fn entity_reset_fall_distance(&mut self, entity: EntityRef) -> bool {
         let Some(target) = self.native_entity_target(entity) else {
             return false;
         };
@@ -209,7 +226,7 @@ impl Game<'_> {
         true
     }
     /// Whether the entity stands on a block (`Entity.onGround`). API 379.
-    pub(super) fn entity_on_ground(&self, entity: EntityRef) -> Option<bool> {
+    pub(in crate::game) fn entity_on_ground(&self, entity: EntityRef) -> Option<bool> {
         let t = self.native_entity_read_target(entity)?;
         if t == Target::Player
             && let Some(p) = self.player.as_ref()
@@ -230,7 +247,7 @@ impl Game<'_> {
         )
     }
     /// `Entity.setOnGround` on its live server body, with no movement or fall processing.
-    pub(super) fn entity_set_on_ground(
+    pub(in crate::game) fn entity_set_on_ground(
         &mut self,
         entity: EntityRef,
         on_ground: bool,
@@ -260,7 +277,7 @@ impl Game<'_> {
 
     /// The acting player's record and motion must agree when the guest turn ends. A parked
     /// player's position and equipment belong to its hub row, not to the last simulated motion.
-    fn set_server_player_ground(
+    pub(in crate::game) fn set_server_player_ground(
         &mut self,
         target: Target,
         entity_id: u32,
@@ -346,7 +363,7 @@ impl Game<'_> {
     /// corners coincide at its committed tick position, not its rendering box or packet target.
     /// Interactions use their saved dimensions. End crystals have their 2 x 2 box.
     /// None for the dragon; a dragon part's is its own. API 379.
-    pub(super) fn entity_bounding_box(&self, entity: EntityRef) -> Option<[[f64; 3]; 2]> {
+    pub(in crate::game) fn entity_bounding_box(&self, entity: EntityRef) -> Option<[[f64; 3]; 2]> {
         if let Some(display) = self.native_client_display(entity) {
             return Some([display.position().to_array(); 2]);
         }
@@ -395,41 +412,32 @@ impl Game<'_> {
         }
         Some([lo, hi])
     }
-    /// The height of the entity's eyes above its feet (`Entity.getEyeHeight`).
-    /// API 379.
-    pub(in crate::game) fn entity_eye_height(&self, entity: EntityRef) -> Option<f64> {
-        if let Some(target) = self.native_entity_read_target(entity) {
-            return Some(self.target_eye_height(target));
-        }
-        let (remote, id) = self.native_client_entity_context(entity)?;
-        remote.tracked(id)?;
-        self.client
-            .interactions
-            .get(&id)
-            .map(|i| f64::from(i.eye_height()))
-    }
     /// Where the entity's eyes are (`Entity.getEyePosition`). API
     /// 379.
-    pub(super) fn entity_eye_position(&self, entity: EntityRef) -> Option<[f64; 3]> {
+    pub(in crate::game) fn entity_eye_position(&self, entity: EntityRef) -> Option<[f64; 3]> {
         let [x, y, z] = self.entity_position(entity)?;
         Some([x, y + self.entity_eye_height(entity)?, z])
     }
     /// The unit vector the entity looks along (`Entity.getViewVector`, from
     /// its pitch and yaw). API 379.
-    pub(super) fn entity_view_vector(&self, entity: EntityRef) -> Option<[f64; 3]> {
+    pub(in crate::game) fn entity_view_vector(&self, entity: EntityRef) -> Option<[f64; 3]> {
         let [yaw, pitch] = self.entity_rotation(entity)?;
         Some(turned_view_vector(yaw, pitch, 0.0))
     }
     /// The unit vector that points up out of the entity's head
     /// (`Entity.getUpVector`): its view vector turned a quarter of a turn
     /// toward the zenith.
-    pub(super) fn entity_up_vector(&self, entity: EntityRef) -> Option<[f64; 3]> {
+    pub(in crate::game) fn entity_up_vector(&self, entity: EntityRef) -> Option<[f64; 3]> {
         let [yaw, pitch] = self.entity_rotation(entity)?;
         Some(turned_view_vector(yaw, pitch, -90.0))
     }
     /// `Entity.mainSupportingBlockPos`, retained by bodies with a shared ground state.
     /// Families that have not moved onto that state still use their existing support read.
-    fn native_supporting_block(&self, entity: EntityRef, t: Target) -> Option<BlockPos> {
+    pub(in crate::game) fn native_supporting_block(
+        &self,
+        entity: EntityRef,
+        t: Target,
+    ) -> Option<BlockPos> {
         match t {
             Target::Player => return self.player.as_ref()?.ground.supporting_block,
             Target::Guest(_) => {
@@ -454,7 +462,7 @@ impl Game<'_> {
         self.supporting_block(position, bounds)
     }
     /// The block the entity stands on (`Entity.getOnPos`). API 379.
-    pub(super) fn entity_on_block(&self, entity: EntityRef) -> Option<[i32; 3]> {
+    pub(in crate::game) fn entity_on_block(&self, entity: EntityRef) -> Option<[i32; 3]> {
         let t = self.native_entity_target(entity)?;
         let [x, y, z] = self.entity_position(entity)?;
         Some(on_block_position(
@@ -464,7 +472,7 @@ impl Game<'_> {
     }
     /// What the entity looks at within `distance` blocks of its eyes: `Entity.pick`'s block
     /// ray along the view vector, outlines and no fluids.
-    pub(super) fn entity_pick(&self, entity: EntityRef, distance: f64) -> Option<ClipHit> {
+    pub(in crate::game) fn entity_pick(&self, entity: EntityRef, distance: f64) -> Option<ClipHit> {
         if !(distance.is_finite() && distance >= 0.0) {
             return None;
         }
@@ -480,7 +488,11 @@ impl Game<'_> {
     }
     /// The square of the distance from the entity's feet to `pos`
     /// (`Entity.distanceToSqr`). API 379.
-    pub(super) fn entity_distance_to_sqr(&self, entity: EntityRef, pos: [f64; 3]) -> Option<f64> {
+    pub(in crate::game) fn entity_distance_to_sqr(
+        &self,
+        entity: EntityRef,
+        pos: [f64; 3],
+    ) -> Option<f64> {
         let p = self.entity_position(entity)?;
         let [dx, dy, dz] = std::array::from_fn(|i| p[i] - pos[i]);
         Some(dx * dx + dy * dy + dz * dz)
@@ -488,7 +500,7 @@ impl Game<'_> {
 }
 
 #[cfg(test)]
-mod tests {
+pub(in crate::game) mod tests {
     use crate::game::entity::Entity as _;
     use mod_api::EntityRef;
     use sunrise_core::geometry::{Aabb, Vec3};
@@ -702,7 +714,7 @@ mod tests {
         use sunrise_core::position::BlockPos;
 
         if run_fresh_cases(
-            "game::native_entity_motion::tests::set_on_ground_refreshes_the_live_footprint_without_moving_the_body",
+            "game::server_side::native_entity_motion::tests::set_on_ground_refreshes_the_live_footprint_without_moving_the_body",
             "SUNRISE_GROUND_SETTER_CASE",
             &["support"],
         ) {
@@ -815,7 +827,7 @@ mod tests {
         use sunrise_client::chunk::Chunk;
 
         if run_fresh_cases(
-            "game::native_entity_motion::tests::set_on_ground_follows_the_server_players_parked_and_acting_bodies",
+            "game::server_side::native_entity_motion::tests::set_on_ground_follows_the_server_players_parked_and_acting_bodies",
             "SUNRISE_GROUND_SETTER_PLAYER_CASE",
             &["players"],
         ) {

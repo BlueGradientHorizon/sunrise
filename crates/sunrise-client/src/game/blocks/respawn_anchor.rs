@@ -3,8 +3,11 @@
 //! blows it up anywhere else (`useWithoutItem`), and respawning goes to it
 //! (`ServerPlayer.findRespawnAndUseSpawnBlock`, `PlayerList.respawn`),
 //! using a charge.
+#[allow(unused_imports)]
 use super::{Dim, Game};
+#[allow(unused_imports)]
 use mod_api::client::first_person::Hand;
+#[allow(unused_imports)]
 use sunrise_client::{
     Result,
     blocks::Fluid,
@@ -14,10 +17,12 @@ use sunrise_client::{
     stand_up::{StandUpLevel, StandUpType, bed_forward, stand_up_fallback},
     text::Text,
 };
+#[allow(unused_imports)]
 use sunrise_core::{
     geometry::{Aabb, Axis, Vec3, VoxelShape},
     position::BlockPos,
 };
+#[allow(unused_imports)]
 use sunrise_world::{
     collision_context::CollisionContext, level::data::state_flags, registry::BlockStateId,
 };
@@ -99,7 +104,7 @@ impl RespawnConfig {
 
 /// `RespawnAnchorBlock.RESPAWN_HORIZONTAL_OFFSETS`, then the same a block
 /// below, a block above, and straight above.
-const HORIZONTAL: [[i32; 3]; 8] = [
+pub(in crate::game) const HORIZONTAL: [[i32; 3]; 8] = [
     [0, 0, -1],
     [-1, 0, 0],
     [0, 0, 1],
@@ -109,7 +114,7 @@ const HORIZONTAL: [[i32; 3]; 8] = [
     [-1, 0, 1],
     [1, 0, 1],
 ];
-fn respawn_offsets() -> impl Iterator<Item = [i32; 3]> {
+pub(in crate::game) fn respawn_offsets() -> impl Iterator<Item = [i32; 3]> {
     HORIZONTAL
         .into_iter()
         .chain(HORIZONTAL.into_iter().map(|[x, y, z]| [x, y - 1, z]))
@@ -131,7 +136,7 @@ impl Game<'_> {
     pub(in crate::game) fn is_anchor(&self, state: BlockStateId) -> bool {
         &*self.res.facts().get(state).name == "minecraft:respawn_anchor"
     }
-    fn anchor_charges(&self, state: BlockStateId) -> i32 {
+    pub(in crate::game) fn anchor_charges(&self, state: BlockStateId) -> i32 {
         self.pack
             .assets
             .registry
@@ -140,7 +145,11 @@ impl Game<'_> {
             .and_then(|c| c.parse().ok())
             .unwrap_or(0)
     }
-    fn anchor_with_charges(&self, state: BlockStateId, charges: i32) -> Option<BlockStateId> {
+    pub(in crate::game) fn anchor_with_charges(
+        &self,
+        state: BlockStateId,
+        charges: i32,
+    ) -> Option<BlockStateId> {
         let mut s = self.pack.assets.registry.state(state)?.clone();
         s.properties.insert("charges".into(), charges.to_string());
         self.pack.assets.registry.resolve(&s).ok()
@@ -149,28 +158,6 @@ impl Game<'_> {
     /// (only the Nether's dimension type sets it).
     pub(in crate::game) fn anchor_works(&self) -> bool {
         self.dimension_type().respawn_anchor_works
-    }
-    /// `RespawnAnchorBlock.charge`: one more charge, the block change and the sound.
-    fn charge_anchor(
-        &mut self,
-        pos: [i32; 3],
-        state: BlockStateId,
-        who: Option<Who>,
-    ) -> Result<()> {
-        let Some(next) = self.anchor_with_charges(state, self.anchor_charges(state) + 1) else {
-            return Ok(());
-        };
-        self.level_set(pos, next)?;
-        self.post_block_game_event("minecraft:block_change", pos, who, Some(next));
-        let at = [
-            f64::from(pos[0]) + 0.5,
-            f64::from(pos[1]) + 0.5,
-            f64::from(pos[2]) + 0.5,
-        ];
-        self.audio
-            .0
-            .play("minecraft:block.respawn_anchor.charge", Some(at), 1.0, 1.0);
-        Ok(())
     }
     /// `RespawnAnchorBlock.useItemOn`'s test: `held` is glowstone
     /// (`isRespawnFuel`) and the block at `pos` is an anchor that takes another
@@ -301,7 +288,7 @@ impl Game<'_> {
         Ok(())
     }
     /// `RespawnAnchorBlock.isWaterThatWouldFlow`.
-    fn water_would_flow(&self, p: [i32; 3]) -> bool {
+    pub(in crate::game) fn water_would_flow(&self, p: [i32; 3]) -> bool {
         let f = self.res.facts().get(self.world.block(p[0], p[1], p[2]));
         if f.fluid != Fluid::Water {
             return false;
@@ -321,7 +308,11 @@ impl Game<'_> {
     /// `RespawnAnchorBlock.explode`: the anchor goes, then a power 5 fiery
     /// explosion (`badRespawnPointExplosion`, `ExplosionInteraction.BLOCK`)
     /// whose centre resists like water when water would flow into it.
-    fn explode_anchor(&mut self, pos: [i32; 3], _state: BlockStateId) -> Result<()> {
+    pub(in crate::game) fn explode_anchor(
+        &mut self,
+        pos: [i32; 3],
+        _state: BlockStateId,
+    ) -> Result<()> {
         self.level_set(pos, self.world.air)?;
         let horizontal = [[0, 0, -1], [0, 0, 1], [-1, 0, 0], [1, 0, 0]]
             .into_iter()
@@ -339,21 +330,6 @@ impl Game<'_> {
             f64::from(pos[2]) + 0.5,
         ];
         self.block_explosion(center, in_water.then_some(pos))
-    }
-    /// `StrawBedBlock.destroyBed`: the break sound, then the bed is air.
-    pub(in crate::game) fn destroy_straw_bed(&mut self, head: [i32; 3]) -> Result<()> {
-        let center = [
-            f64::from(head[0]) + 0.5,
-            f64::from(head[1]) + 0.5,
-            f64::from(head[2]) + 0.5,
-        ];
-        self.audio.0.play(
-            "minecraft:block.straw_bed.break_leave",
-            Some(center),
-            1.0,
-            1.0,
-        );
-        self.level_set(head, self.world.air)
     }
     /// `BedRule.destroyOnUse` of the dimension's `bed_rule` and
     /// `straw_bed_rule`: true in the Nether and the End.
@@ -424,7 +400,7 @@ impl Game<'_> {
     // ---- respawning -------------------------------------------------------
 
     /// This level as the stand-up search reads it (`crate::stand_up`).
-    fn stand_up_level(&self) -> StandUpLevel<'_, '_> {
+    pub(in crate::game) fn stand_up_level(&self) -> StandUpLevel<'_, '_> {
         StandUpLevel {
             world: &self.world,
             registry: self.pack.assets.registry,
@@ -484,13 +460,17 @@ impl Game<'_> {
             .is_some_and(|s| s.contains(block))
     }
     /// `DismountHelper.findSafeDismountLocation` for a standing player.
-    fn safe_dismount_location(&self, p: [i32; 3], check_dangerous: bool) -> Option<Vec3> {
+    pub(in crate::game) fn safe_dismount_location(
+        &self,
+        p: [i32; 3],
+        check_dangerous: bool,
+    ) -> Option<Vec3> {
         self.stand_up_level()
             .safe_dismount_location(StandUpType::PLAYER, p, check_dangerous)
     }
     /// `Block.isPossibleToRespawnInThis`: neither solid nor liquid; banners,
     /// signs and pressure plates override it to always.
-    fn possible_to_respawn_in(&self, state: BlockStateId) -> bool {
+    pub(in crate::game) fn possible_to_respawn_in(&self, state: BlockStateId) -> bool {
         let mut answer = None;
         self.native_is_possible_to_respawn_in(state, &mut answer);
         if let Some(answer) = answer {
@@ -624,7 +604,7 @@ impl Game<'_> {
     /// `IBlockStateExtension.getRespawnPosition` of the respawn point `state` of `c`: `found`
     /// (position, yaw, pitch), unless a part of the state answers; an answer with a non-finite
     /// value keeps `found`.
-    fn part_respawn_position(
+    pub(in crate::game) fn part_respawn_position(
         &self,
         state: BlockStateId,
         c: RespawnConfig,
@@ -655,7 +635,7 @@ impl Game<'_> {
 
 /// `RespawnPosAngle.calculateLookAtYaw`: the yaw from the position to the
 /// bottom centre of the block.
-fn look_at_yaw(position: Vec3, block: [i32; 3]) -> f32 {
+pub(in crate::game) fn look_at_yaw(position: Vec3, block: [i32; 3]) -> f32 {
     let d = Vec3::new(
         f64::from(block[0]) + 0.5 - position.x,
         f64::from(block[1]) - position.y,
@@ -670,7 +650,7 @@ fn look_at_yaw(position: Vec3, block: [i32; 3]) -> f32 {
     wrap_degrees(degrees) as f32
 }
 /// `Mth.wrapDegrees(double)`.
-fn wrap_degrees(degrees: f64) -> f64 {
+pub(in crate::game) fn wrap_degrees(degrees: f64) -> f64 {
     let mut d = degrees % 360.0;
     if d >= 180.0 {
         d -= 360.0;
@@ -682,7 +662,7 @@ fn wrap_degrees(degrees: f64) -> f64 {
 }
 
 #[cfg(test)]
-mod tests {
+pub(in crate::game) mod tests {
     use super::*;
 
     #[test]
@@ -727,7 +707,7 @@ mod tests {
 }
 
 #[cfg(test)]
-mod connected_spawnpoint_rotation_tests {
+pub(in crate::game) mod connected_spawnpoint_rotation_tests {
     use crate::game::{Game, lan::LanSettings};
     use std::sync::{Arc, atomic::AtomicI32, mpsc};
     use sunrise_client::{
@@ -960,7 +940,7 @@ mod connected_spawnpoint_rotation_tests {
 }
 
 #[cfg(test)]
-mod forced_respawn_space_tests {
+pub(in crate::game) mod forced_respawn_space_tests {
     use super::*;
 
     #[test]
@@ -1037,7 +1017,7 @@ mod forced_respawn_space_tests {
 }
 
 #[cfg(test)]
-mod pitch_preservation_controls {
+pub(in crate::game) mod pitch_preservation_controls {
     use super::*;
 
     #[test]

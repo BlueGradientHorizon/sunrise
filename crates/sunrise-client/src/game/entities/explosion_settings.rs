@@ -14,19 +14,19 @@ const IMMUNE_RESISTANCE: f32 = 3_600_000.0;
 
 /// A mod blast's own choices; each `None` is vanilla's.
 #[derive(Default)]
-pub(super) struct BlastSettings {
+pub(in crate::game) struct BlastSettings {
     /// The damage type, in place of the one the blast derives.
-    pub(super) damage: Option<NamedDamage>,
-    pub(super) calculator: Option<BlastCalculator>,
+    pub(in crate::game) damage: Option<NamedDamage>,
+    pub(in crate::game) calculator: Option<BlastCalculator>,
     /// The calculator the blast's source brings, used only when the mod
     /// passes none (`ServerExplosion.makeDamageCalculator`).
-    pub(super) source_calculator: SourceCalculator,
-    pub(super) effects: Option<Box<BlastEffects>>,
+    pub(in crate::game) source_calculator: SourceCalculator,
+    pub(in crate::game) effects: Option<Box<BlastEffects>>,
 }
 
 /// The resistance rule a mod blast's source brings with it.
 #[derive(Default)]
-pub(super) enum SourceCalculator {
+pub(in crate::game) enum SourceCalculator {
     /// The default calculator.
     #[default]
     Default,
@@ -43,22 +43,22 @@ pub(super) enum SourceCalculator {
 
 /// `SimpleExplosionDamageCalculator(explodesBlocks, damagesEntities,
 /// knockbackMultiplier, immuneBlocks)`.
-pub(super) struct BlastCalculator {
-    pub(super) explodes_blocks: bool,
-    pub(super) damages_entities: bool,
-    pub(super) knockback: f32,
+pub(in crate::game) struct BlastCalculator {
+    pub(in crate::game) explodes_blocks: bool,
+    pub(in crate::game) damages_entities: bool,
+    pub(in crate::game) knockback: f32,
     /// The immune tag's blocks: when given, the only resistance there is.
-    pub(super) immune: Option<HashSet<String>>,
+    pub(in crate::game) immune: Option<HashSet<String>>,
 }
 
 /// The particles and sound of `ServerLevel.explode`'s full overload.
 #[derive(Clone)]
-pub(super) struct BlastEffects {
+pub(in crate::game) struct BlastEffects {
     /// The centre particle of a small blast (`ServerExplosion.isSmall`).
-    pub(super) small: ParticleOptions,
-    pub(super) large: ParticleOptions,
-    pub(super) block_particles: Vec<ExplosionParticle>,
-    pub(super) sound: String,
+    pub(in crate::game) small: ParticleOptions,
+    pub(in crate::game) large: ParticleOptions,
+    pub(in crate::game) block_particles: Vec<ExplosionParticle>,
+    pub(in crate::game) sound: String,
 }
 impl Default for BlastEffects {
     /// What `Level.explode`'s shorter forms pass.
@@ -74,7 +74,7 @@ impl Default for BlastEffects {
 impl BlastEffects {
     /// The centre particle: the small one for a radius under 2 or a blast
     /// that keeps its blocks.
-    pub(super) fn emitter(&self, small: bool) -> &ParticleOptions {
+    pub(in crate::game) fn emitter(&self, small: bool) -> &ParticleOptions {
         if small { &self.small } else { &self.large }
     }
 }
@@ -82,7 +82,7 @@ impl BlastEffects {
 impl Game<'_> {
     /// The damage type the blast deals: the mod's, else `DamageSources.explosion`'s
     /// (`minecraft:player_explosion` for a caused blast).
-    pub(super) fn blast_damage_type(&self) -> &'static str {
+    pub(in crate::game) fn blast_damage_type(&self) -> &'static str {
         match self.combat.0.blast_settings.damage {
             Some(damage) => damage.name,
             None => super::creatures::damage_type(
@@ -93,7 +93,7 @@ impl Game<'_> {
     }
     /// The mobs' side of `blast_damage_type`: the mod's type, else the
     /// explosion kind, which tells a caused blast by its attacker.
-    pub(super) fn blast_damage_kind(&self) -> DamageKind {
+    pub(in crate::game) fn blast_damage_kind(&self) -> DamageKind {
         let damage = self.combat.0.blast_settings.damage;
         damage.map_or(DamageKind::Explosion, DamageKind::Named)
     }
@@ -105,7 +105,7 @@ impl Game<'_> {
     /// other cell, fluids included, and no part is asked; a portal-proof
     /// blast passes through a nether portal and spares it. None for the
     /// usual rule. The rays and every resistance read take it from here.
-    pub(super) fn blast_calculator_step(&self, name: &str) -> Option<(Option<f32>, bool)> {
+    pub(in crate::game) fn blast_calculator_step(&self, name: &str) -> Option<(Option<f32>, bool)> {
         let settings = &self.combat.0.blast_settings;
         if let (None, SourceCalculator::PortalProof) =
             (&settings.calculator, &settings.source_calculator)
@@ -131,18 +131,18 @@ impl Game<'_> {
         }
     }
     /// `shouldBlockExplode`: false when the calculator explodes no blocks.
-    pub(super) fn blast_explodes_blocks(&self) -> bool {
+    pub(in crate::game) fn blast_explodes_blocks(&self) -> bool {
         let calculator = self.blast_simple_calculator();
         calculator.is_none_or(|c| c.explodes_blocks)
     }
     /// `shouldDamageEntity`: false for a wind charge's calculator.
-    pub(super) fn blast_damages_entities(&self) -> bool {
+    pub(in crate::game) fn blast_damages_entities(&self) -> bool {
         let calculator = self.blast_simple_calculator();
         calculator.is_none_or(|c| c.damages_entities)
     }
     /// `getKnockbackMultiplier`: 1 by default; a simple calculator's (a wind
     /// charge's 1.22 or 1), or 0 for a flying player (`Abilities.flying`).
-    pub(super) fn blast_knockback(&self, flying_player: bool) -> f32 {
+    pub(in crate::game) fn blast_knockback(&self, flying_player: bool) -> f32 {
         match self.blast_simple_calculator() {
             Some(_) if flying_player => 0.0,
             Some(c) => c.knockback,
@@ -150,7 +150,7 @@ impl Game<'_> {
         }
     }
     /// What players see and hear of the blast.
-    pub(super) fn blast_effects(&self) -> BlastEffects {
+    pub(in crate::game) fn blast_effects(&self) -> BlastEffects {
         match &self.combat.0.blast_settings.effects {
             Some(effects) => (**effects).clone(),
             None => BlastEffects::default(),

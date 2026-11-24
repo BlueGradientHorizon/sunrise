@@ -259,7 +259,7 @@ fn standalone_bakers_resolve_as_one_model_and_republish_after_resource_reload() 
 fn pack_reload_runs_listeners_on_both_sides_of_model_manager() {
     // Other model loads in this process would also see the installed baker.
     if run_fresh_cases(
-        "game::model_baking_completed_tests::pack_reload_runs_listeners_on_both_sides_of_model_manager",
+        "game::client_side::model_baking_completed_tests::pack_reload_runs_listeners_on_both_sides_of_model_manager",
         "SUNRISE_MODEL_MANAGER_RELOAD_CASE",
         &["reload"],
     ) {

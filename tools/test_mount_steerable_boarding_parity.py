@@ -16,7 +16,7 @@ except ImportError:
 
 NAME = 'steerable-boarding'
 ORACLE = 'VanillaSteerableBoardingOracle'
-TEST = 'game::mounts::steerable_boarding_tests::interact_with_a_pig_or_strider'
+TEST = 'game::server_side::mounts::steerable_boarding_tests::interact_with_a_pig_or_strider'
 CASES = {f'{kind}/{case}' for kind in ('pig', 'strider')
          for case in ('empty', 'occupied', 'secondary', 'occupied_feed', 'occupied_saddle',
                       'player_occupied', 'player_occupied_saddle')}

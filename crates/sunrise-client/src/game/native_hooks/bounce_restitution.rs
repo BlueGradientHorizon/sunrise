@@ -17,11 +17,11 @@ impl FrictionView<'_> {
     }
 }
 
-pub(super) struct StepOnView<'a>(pub(super) mod_api::LevelRandomSide<'a>);
+pub(in crate::game) struct StepOnView<'a>(pub(in crate::game) mod_api::LevelRandomSide<'a>);
 
 impl StepOnView<'_> {
     /// `Block.stepOn` before the simulation checks the blocks it traversed.
-    pub(super) fn native_step_on(
+    pub(in crate::game) fn native_step_on(
         &mut self,
         step: sunrise_client::block_contact::StepContact<'_>,
         movement: &mut [f64; 3],

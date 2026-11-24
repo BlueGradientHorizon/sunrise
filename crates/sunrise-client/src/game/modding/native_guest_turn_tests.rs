@@ -1,21 +1,28 @@
 //! Real-game regressions for native handles used during a guest's turn.
 
+#[allow(unused_imports)]
 use super::lan::LanSettings;
+#[allow(unused_imports)]
 use mod_api::{
     __private::{HookPanicReport, take_hook_panics},
     EntityMoveEvent, Flow, Hooks, LoopContext, MoveCause,
     prelude::*,
 };
+#[allow(unused_imports)]
 use std::panic::{AssertUnwindSafe, catch_unwind};
+#[allow(unused_imports)]
 use std::sync::{
     Arc, Mutex,
     atomic::{AtomicI32, AtomicUsize, Ordering},
 };
+#[allow(unused_imports)]
 use sunrise_client::{
     lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubConfig},
     mobs::Mob,
 };
+#[allow(unused_imports)]
 use sunrise_core::geometry::Vec3;
+#[allow(unused_imports)]
 use sunrise_protocol::packets::configuration::ClientInformation;
 
 pub(in crate::game) fn with_guests(test: impl FnOnce(&mut super::Game<'_>)) {
@@ -281,62 +288,6 @@ fn refused_wire_reload_preserves_hub_and_engine_generation() {
             &game.lan.as_ref().unwrap().hub.lan.shared.sync()
         ));
         std::fs::remove_dir_all(root).unwrap();
-    });
-}
-
-#[test]
-#[ignore = "daily"]
-fn level_event_excludes_its_source_even_during_another_guests_turn() {
-    use sunrise_client::lan::PlayerSender;
-    use sunrise_world::level::{LevelEvent, LevelEventPlayer};
-
-    with_guests(|game| {
-        let mut receivers = Vec::new();
-        let host = game.lan.as_mut().unwrap();
-        host.owner = Some(super::lan::Owner {
-            uuid: 12,
-            saved: None,
-        });
-        host.hub.guests.update_all(|guest| {
-            let (tx, rx) = std::sync::mpsc::channel();
-            guest.sender = PlayerSender::new(tx, Arc::default());
-            receivers.push(rx);
-        });
-        game.audio.0.capture = Some(Vec::new());
-        game.as_guest(13, |game| {
-            game.lan_record_events(&[LevelEvent::LevelEvent {
-                id: 2001,
-                pos: sunrise_core::position::BlockPos::new(3, 64, 5),
-                data: 1,
-                source: Some(LevelEventPlayer(12)),
-            }]);
-        })
-        .unwrap();
-        game.lan_flush_effects();
-        assert!(
-            receivers[0].try_recv().is_err(),
-            "integrated host is the source"
-        );
-        assert!(
-            receivers[1].try_recv().is_ok(),
-            "the acting guest receives another player's event"
-        );
-
-        game.lan_record_events(&[LevelEvent::LevelEvent {
-            id: 1500,
-            pos: sunrise_core::position::BlockPos::new(3, 64, 5),
-            data: 1,
-            source: None,
-        }]);
-        game.lan_flush_effects();
-        assert!(
-            receivers[0].try_recv().is_ok(),
-            "host receives null-source event"
-        );
-        assert!(
-            receivers[1].try_recv().is_ok(),
-            "guest receives null-source event"
-        );
     });
 }
 
@@ -1355,7 +1306,7 @@ fn canonical_permissions_preserve_owner_and_fake_player_reads() {
 }
 
 /// The UUIDs of the players in the level, checked against the full reader.
-fn level_uuids(game: &super::Game<'_>) -> Vec<u128> {
+pub(in crate::game) fn level_uuids(game: &super::Game<'_>) -> Vec<u128> {
     let uuids: Vec<u128> = game.level_player_uuids(game.dim.id()).collect();
     let players: Vec<u128> = game.level_players().iter().map(|p| p.uuid).collect();
     assert_eq!(uuids, players, "both enumerations select the same players");
@@ -1594,7 +1545,7 @@ fn a_vetoed_drop_gives_the_stack_back() {
     });
 }
 
-struct PanicOnDamage(Arc<AtomicUsize>);
+pub(in crate::game) struct PanicOnDamage(pub(in crate::game) Arc<AtomicUsize>);
 
 #[mod_api::__subscriptions]
 impl mod_api::Hooks for PanicOnDamage {
@@ -1609,7 +1560,7 @@ impl mod_api::Hooks for PanicOnDamage {
 }
 
 /// Put the follow-up blow outside the victim's damage cooldown.
-fn expire_guest_damage_cooldown(game: &mut super::Game<'_>, conn: u32) {
+pub(in crate::game) fn expire_guest_damage_cooldown(game: &mut super::Game<'_>, conn: u32) {
     game.as_guest(conn, |game| {
         let health = &mut game.player.as_mut().unwrap().health;
         while health.hurt.cooldown > 0 {
@@ -1784,7 +1735,7 @@ fn guest_message_capture_is_restored_after_a_real_native_panic() {
     });
 }
 
-struct PanicOnFood(Arc<AtomicUsize>);
+pub(in crate::game) struct PanicOnFood(pub(in crate::game) Arc<AtomicUsize>);
 
 #[mod_api::__subscriptions]
 impl mod_api::Hooks for PanicOnFood {
@@ -1874,7 +1825,7 @@ fn a_panic_in_a_turn_end_callback_still_restores_the_guest() {
 
 /// An armor stand summoned at (1.5, 70, 1.5) in the level in place, which `with_guests` puts
 /// its two players beside, at (3, 64, 5).
-fn summon_stand(game: &mut super::Game<'_>) -> mod_api::EntityRef {
+pub(in crate::game) fn summon_stand(game: &mut super::Game<'_>) -> mod_api::EntityRef {
     game.options.dedicated = Some(Vec::new());
     game.world
         .chunks
@@ -1896,14 +1847,14 @@ fn summon_stand(game: &mut super::Game<'_>) -> mod_api::EntityRef {
 }
 
 /// Whether anything the server sent the acting player since `before` is a chat line.
-fn told_since(game: &super::Game<'_>, before: usize) -> bool {
+pub(in crate::game) fn told_since(game: &super::Game<'_>, before: usize) -> bool {
     use sunrise_protocol::packets::play::Clientbound as C;
     game.server.guest_packets[before..]
         .iter()
         .any(|p| matches!(p, C::SystemChat(_)))
 }
 
-fn with_command_guests(name: &str, body: impl FnOnce(&mut super::Game<'_>)) {
+pub(in crate::game) fn with_command_guests(name: &str, body: impl FnOnce(&mut super::Game<'_>)) {
     crate::game::in_own_process(
         &format!("game::server_side::native_guest_turn_tests::{name}"),
         || {

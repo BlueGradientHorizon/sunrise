@@ -2,7 +2,7 @@
 use super::*;
 
 impl Game<'_> {
-    pub(super) fn visit_dragon_query_parts(
+    pub(in crate::game) fn visit_dragon_query_parts(
         &self,
         bounds: Aabb,
         visit_id: &mut impl FnMut(u32) -> ControlFlow<()>,

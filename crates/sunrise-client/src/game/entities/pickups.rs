@@ -12,7 +12,7 @@ use sunrise_client::{
 const LIFE_TIME: u32 = 3;
 
 /// The taken entity, as it was when taken.
-pub(super) enum Taken {
+pub(in crate::game) enum Taken {
     Item(Box<ItemEntity>),
     Orb(Box<ExperienceOrb>),
     Arrow(Box<Projectile>),
@@ -49,13 +49,13 @@ impl Taken {
 
 /// Whoever took it: the particle's `target`.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub(super) enum Collector {
+pub(in crate::game) enum Collector {
     Player,
     /// A mob, or another player on a server (both kept as mobs here).
     Mob(u32),
 }
 
-pub(super) struct Pickup {
+pub(in crate::game) struct Pickup {
     pub taken: Taken,
     collector: Collector,
     life: u32,
@@ -65,7 +65,7 @@ pub(super) struct Pickup {
 
 /// `ParticleEngine`'s ITEM_PICKUP group and the particles waiting to join it.
 #[derive(Default)]
-pub(super) struct Pickups {
+pub(in crate::game) struct Pickups {
     pub live: Vec<Pickup>,
     added: Vec<Pickup>,
     /// The particles made so far, by kind of taken entity (for sunrise-ctl).
@@ -84,7 +84,7 @@ impl Pickups {
 /// `ItemPickupParticleGroup.ParticleInstance.fromParticle`: the position at
 /// `partial`, from the taken entity's to the collector's (lerped between ticks)
 /// along the square of the particle's age.
-pub(super) fn position(p: &Pickup, partial: f64) -> [f64; 3] {
+pub(in crate::game) fn position(p: &Pickup, partial: f64) -> [f64; 3] {
     let time = (p.life as f32 + partial as f32) / LIFE_TIME as f32;
     let time = f64::from(time * time);
     let from = p.taken.position();
@@ -127,7 +127,7 @@ impl Game<'_> {
         }
     }
     /// [`Self::add_pickup`] with the collector's first target given.
-    pub(super) fn add_pickup_toward(
+    pub(in crate::game) fn add_pickup_toward(
         &mut self,
         taken: Taken,
         collector: Collector,
@@ -150,7 +150,7 @@ impl Game<'_> {
     }
     /// `ParticleEngine.tick` for the ITEM_PICKUP group: age (removed at
     /// `LIFE_TIME`), follow the collector, then let the new particles in.
-    pub(super) fn tick_pickups(&mut self) {
+    pub(in crate::game) fn tick_pickups(&mut self) {
         let mut live = std::mem::take(&mut self.pickups.0.live);
         live.retain_mut(|p| {
             p.life += 1;

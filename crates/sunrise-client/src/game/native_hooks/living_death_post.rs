@@ -1,3 +1,4 @@
+#[allow(unused_imports)]
 use super::*;
 
 /// The hook points. Each does nothing in Sunrise.
@@ -15,35 +16,41 @@ impl Game<'_> {
 }
 
 #[cfg(test)]
-mod tests {
+pub(in crate::game) mod tests {
+    #[allow(unused_imports)]
     use super::super::super::native_entity_refs::tests::with_game;
+    #[allow(unused_imports)]
     use super::*;
+    #[allow(unused_imports)]
     use mod_api::{
         Flow, Hooks, LivingDeathEvent, LivingDeathPostEvent, LivingDropsEvent,
         LivingExperienceDropEvent, MobKilledEvent, ModEntry, ServerHost,
     };
+    #[allow(unused_imports)]
     use std::sync::{
         Arc, Mutex,
         atomic::{AtomicBool, AtomicUsize, Ordering},
     };
+    #[allow(unused_imports)]
     use sunrise_client::mobs::{DamageKind, Mob};
+    #[allow(unused_imports)]
     use sunrise_core::geometry::Vec3;
 
     #[derive(Default)]
-    struct Post {
-        entity: Option<u32>,
-        damage_type: Option<String>,
-        attacker: Option<u32>,
-        drops_before: bool,
-        experience_before: bool,
+    pub(in crate::game) struct Post {
+        pub(in crate::game) entity: Option<u32>,
+        pub(in crate::game) damage_type: Option<String>,
+        pub(in crate::game) attacker: Option<u32>,
+        pub(in crate::game) drops_before: bool,
+        pub(in crate::game) experience_before: bool,
     }
 
-    struct Observer {
-        heard: Arc<Mutex<Vec<&'static str>>>,
-        cancel: Arc<AtomicBool>,
-        drops: Arc<AtomicUsize>,
-        experience: Arc<AtomicBool>,
-        post: Arc<Mutex<Post>>,
+    pub(in crate::game) struct Observer {
+        pub(in crate::game) heard: Arc<Mutex<Vec<&'static str>>>,
+        pub(in crate::game) cancel: Arc<AtomicBool>,
+        pub(in crate::game) drops: Arc<AtomicUsize>,
+        pub(in crate::game) experience: Arc<AtomicBool>,
+        pub(in crate::game) post: Arc<Mutex<Post>>,
     }
 
     #[mod_api::__subscriptions]
@@ -84,22 +91,8 @@ mod tests {
         }
     }
 
-    /// A dead sheep: its table always drops at least one mutton, so the
-    /// ordering against the drop list does not wait for a lucky roll.
-    fn sheep(game: &mut super::Game<'_>, damage: Damage) -> Mob {
-        game.server.next_entity += 1;
-        let kind = game.res.mob_types().get("minecraft:sheep").unwrap().clone();
-        let mut mob = Mob::new(
-            game.server.next_entity,
-            kind,
-            Vec3::new(0.5, 64.0, 0.5),
-            0.0,
-        );
-        mob.health = 0.0;
-        mob.last_damage = Some((damage, 0));
-        game.mobs.push(mob.clone());
-        mob
-    }
+    #[allow(unused_imports)]
+pub(in crate::game) use crate::game::server_side::native_hooks_server::living_death_post::tests::sheep;
 
     /// One notice per death, at the end: after `living_death` (unless it
     /// cancelled), the drop list and the experience, and before the tick is

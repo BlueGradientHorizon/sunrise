@@ -2,7 +2,9 @@
 //! inserting a `jukebox_playable` disc, ejecting it, the song with its
 //! "Now Playing" overlay, note particles every second, the redstone
 //! signal while playing, the comparator output, and saving.
+#[allow(unused_imports)]
 use super::Game;
+#[allow(unused_imports)]
 use sunrise_client::{
     block_entity_item,
     containers::{BlockEntity, Jukebox},
@@ -11,18 +13,20 @@ use sunrise_client::{
     particles::{ParticleOptions, ParticleType},
     text::Text,
 };
+#[allow(unused_imports)]
 use sunrise_core::{
     geometry::{Aabb, Vec3},
     position::BlockPos,
     random::RandomSource,
 };
+#[allow(unused_imports)]
 use sunrise_world::level::flags as level_flags;
 
 /// The stack's `jukebox_playable` component (`JukeboxPlayable`), else the
 /// item's default one: `None` when it has none (a removed component,
 /// `!minecraft:jukebox_playable`, included), `Some(None)` for an inline song
 /// definition, which has no id in the song registry.
-fn jukebox_playable(
+pub(in crate::game) fn jukebox_playable(
     record: &ItemStack,
     items: &sunrise_client::items::Items,
 ) -> Option<Option<String>> {
@@ -41,24 +45,32 @@ fn jukebox_playable(
 }
 
 /// `JukeboxSong.fromStack`: the song the disc names, by its id.
-fn song_of_record(record: &ItemStack, items: &sunrise_client::items::Items) -> Option<String> {
+pub(in crate::game) fn song_of_record(
+    record: &ItemStack,
+    items: &sunrise_client::items::Items,
+) -> Option<String> {
     jukebox_playable(record, items).flatten()
 }
 
 impl Game<'_> {
-    fn jukebox(&self, pos: [i32; 3]) -> Option<&Jukebox> {
+    pub(in crate::game) fn jukebox(&self, pos: [i32; 3]) -> Option<&Jukebox> {
         match self.world.block_entities.get(&(pos[0], pos[1], pos[2])) {
             Some(BlockEntity::Jukebox(j)) => Some(j),
             _ => None,
         }
     }
-    fn set_has_record(&mut self, pos: [i32; 3], has: bool) -> bool {
+    pub(in crate::game) fn set_has_record(&mut self, pos: [i32; 3], has: bool) -> bool {
         self.set_has_record_notify(pos, has, true)
     }
     /// The state change alone (`level.setBlock` with flag 2); `notify` adds
     /// `notifyItemChangedInJukebox`'s `block_change`, which
     /// `JukeboxBlock.setPlacedBy` does not post.
-    fn set_has_record_notify(&mut self, pos: [i32; 3], has: bool, notify: bool) -> bool {
+    pub(in crate::game) fn set_has_record_notify(
+        &mut self,
+        pos: [i32; 3],
+        has: bool,
+        notify: bool,
+    ) -> bool {
         let state = self.world.block(pos[0], pos[1], pos[2]);
         let registry = self.pack.assets.registry;
         let Some(mut s) = registry.state(state).cloned() else {
@@ -82,7 +94,7 @@ impl Game<'_> {
         true
     }
     /// `JukeboxBlock.HAS_RECORD`, the state both clicks are decided by.
-    fn jukebox_has_record(&self, pos: [i32; 3]) -> bool {
+    pub(in crate::game) fn jukebox_has_record(&self, pos: [i32; 3]) -> bool {
         let state = self.world.block(pos[0], pos[1], pos[2]);
         self.pack
             .assets
@@ -93,7 +105,7 @@ impl Game<'_> {
     }
     /// `JukeboxBlockEntity.notifyItemChangedInJukebox`: the block's
     /// `has_record`, then `BLOCK_CHANGE` with the state it now has.
-    fn jukebox_record_changed(&mut self, pos: [i32; 3], has: bool) {
+    pub(in crate::game) fn jukebox_record_changed(&mut self, pos: [i32; 3], has: bool) {
         self.set_has_record(pos, has);
     }
     /// `JukeboxBlock.setPlacedBy`: a jukebox placed from an item whose
@@ -101,14 +113,14 @@ impl Game<'_> {
     /// `has_record` turns on: the model draws the disc and `useWithoutItem`
     /// pops it out. Vanilla reads the item's data, after
     /// `updateCustomBlockEntityTag` has filled the block entity.
-    pub(super) fn jukebox_placed(&mut self, pos: [i32; 3], stack: &ItemStack) {
+    pub(in crate::game) fn jukebox_placed(&mut self, pos: [i32; 3], stack: &ItemStack) {
         if block_entity_item::carries_record(stack) {
             // #15320: no `block_change` here, only the `block_place` after it.
             self.set_has_record_notify(pos, true, false);
         }
     }
     /// `onSongChanged`: neighbours (the signal) and comparators.
-    fn jukebox_changed(&mut self, pos: [i32; 3]) {
+    pub(in crate::game) fn jukebox_changed(&mut self, pos: [i32; 3]) {
         let p = BlockPos::new(pos[0], pos[1], pos[2]);
         let state = self.world.block(pos[0], pos[1], pos[2]);
         self.with_level(|b, level, ticks| {
@@ -122,7 +134,7 @@ impl Game<'_> {
     /// feeding the slot): a disc that lands in a jukebox that is not playing
     /// starts its song, as the player's own use does, with the block state,
     /// the song's level event and the neighbour and comparator updates.
-    pub(super) fn jukebox_inserted(&mut self, pos: [i32; 3]) {
+    pub(in crate::game) fn jukebox_inserted(&mut self, pos: [i32; 3]) {
         let Some(song) = self
             .jukebox(pos)
             .filter(|j| !j.playing)
@@ -146,7 +158,7 @@ impl Game<'_> {
     /// `JukeboxBlockEntity.setTheItem(EMPTY)` from a container (a hopper
     /// below taking the disc): the song stops, the block loses its record,
     /// and the neighbours and comparators hear it.
-    pub(super) fn jukebox_taken(&mut self, pos: [i32; 3]) {
+    pub(in crate::game) fn jukebox_taken(&mut self, pos: [i32; 3]) {
         if self.jukebox(pos).is_some_and(|j| j.record().is_some()) {
             return;
         }
@@ -154,7 +166,7 @@ impl Game<'_> {
     }
     /// The song of the jukebox at `pos` stops and the block loses its record, whatever its slot
     /// holds now: `jukebox_taken`, and a disc swapped for another in one transaction.
-    pub(super) fn jukebox_stopped(&mut self, pos: [i32; 3]) {
+    pub(in crate::game) fn jukebox_stopped(&mut self, pos: [i32; 3]) {
         let mut was_playing = false;
         if let Some(BlockEntity::Jukebox(j)) =
             self.world.block_entities.get_mut(&(pos[0], pos[1], pos[2]))
@@ -175,7 +187,7 @@ impl Game<'_> {
         }
         self.jukebox_changed(pos);
     }
-    pub(super) fn jukebox_set_item(&mut self, pos: [i32; 3], stack: Option<ItemStack>) {
+    pub(in crate::game) fn jukebox_set_item(&mut self, pos: [i32; 3], stack: Option<ItemStack>) {
         let song = stack.as_ref().and_then(|s| song_of_record(s, self.items()));
         let has_record = stack.is_some();
         let Some(BlockEntity::Jukebox(j)) =
@@ -198,7 +210,7 @@ impl Game<'_> {
         self.jukebox_changed(pos);
     }
     /// The jukebox's item or empty-hand method, on the captured block state.
-    pub(super) fn use_jukebox(
+    pub(in crate::game) fn use_jukebox(
         &mut self,
         pos: [i32; 3],
         state: sunrise_world::registry::BlockStateId,
@@ -275,7 +287,7 @@ impl Game<'_> {
     /// whether the jukebox at `pos` takes the click (`has_record` pops the
     /// disc out, or a `jukebox_playable` item goes in). The server does the
     /// rest, see `use_jukebox`.
-    pub(super) fn jukebox_takes(&self, pos: [i32; 3], held: Option<&ItemStack>) -> bool {
+    pub(in crate::game) fn jukebox_takes(&self, pos: [i32; 3], held: Option<&ItemStack>) -> bool {
         let state = self.world.block(pos[0], pos[1], pos[2]);
         if &*self.res.facts().get(state).name != "minecraft:jukebox" {
             return false;
@@ -284,7 +296,7 @@ impl Game<'_> {
             || held.is_some_and(|stack| jukebox_playable(stack, self.res.items()).is_some())
     }
     /// Level event 1010: the song from the jukebox, and the "Now Playing" overlay.
-    fn start_song(&mut self, pos: [i32; 3], song: &str) {
+    pub(in crate::game) fn start_song(&mut self, pos: [i32; 3], song: &str) {
         self.stop_sound(pos);
         let Some(s) = self.items().songs.get(song).cloned() else {
             return;
@@ -302,37 +314,23 @@ impl Game<'_> {
         self.notify_record_playing(pos, true);
         self.start_song_server(pos, song);
     }
-    #[inline(always)]
-    pub(in crate::game) fn start_song_server(&mut self, pos: [i32; 3], song: &str) {
-        if self.audio_capture_active() {
-            self.server.lan_songs.push((pos, Some(song.to_owned())));
-        }
-    }
     /// `LevelEventHandler` 1010 on a client of a server: `playJukeboxSong`
     /// for the song the event's data names in the server's `jukebox_song`
     /// registry (`Registry.get(int).ifPresent`: an unknown id does nothing).
     /// The server's jukebox plays it; this client only hears it.
-    pub(super) fn jukebox_song_event(&mut self, pos: [i32; 3], data: i32) {
+    pub(in crate::game) fn jukebox_song_event(&mut self, pos: [i32; 3], data: i32) {
         if let Some(song) = jukebox_song_name(self.remote.as_ref().map(|r| &*r.registries), data) {
             self.start_song(pos, &song);
         }
     }
     /// `LevelEventHandler` 1011: `stopJukeboxSongAndNotifyNearby`.
-    pub(super) fn jukebox_stop_event(&mut self, pos: [i32; 3]) {
+    pub(in crate::game) fn jukebox_stop_event(&mut self, pos: [i32; 3]) {
         self.stop_sound(pos);
         self.notify_record_playing(pos, false);
     }
-    fn stop_sound(&mut self, pos: [i32; 3]) {
+    pub(in crate::game) fn stop_sound(&mut self, pos: [i32; 3]) {
         if let Some(id) = self.jukebox_sounds.remove(&(pos[0], pos[1], pos[2])) {
             self.audio.0.stop_and_release(id);
-        }
-    }
-    /// Level event 1011: the song ends, here and for the guests.
-    fn stop_song(&mut self, pos: [i32; 3]) {
-        self.stop_sound(pos);
-        self.notify_record_playing(pos, false);
-        if self.audio_capture_active() {
-            self.server.lan_songs.push((pos, None));
         }
     }
     /// `JukeboxSongPlayer.stop` of a jukebox whose record left it, taken out by
@@ -340,7 +338,7 @@ impl Game<'_> {
     /// `JUKEBOX_STOP_PLAY` vibration goes to the listeners around it. A broken
     /// jukebox is not this path: its removal posts the same event from the
     /// world's spill, so it must not post it here as well.
-    fn stop_song_heard(&mut self, pos: [i32; 3]) {
+    pub(in crate::game) fn stop_song_heard(&mut self, pos: [i32; 3]) {
         self.stop_song(pos);
         let state = self.world.block(pos[0], pos[1], pos[2]);
         self.post_block_game_event("minecraft:jukebox_stop_play", pos, None, Some(state));
@@ -348,7 +346,7 @@ impl Game<'_> {
 
     /// `LevelEventHandler.notifyNearbyEntities` (level events 1010 and 1011):
     /// parrots within three blocks of the jukebox start or stop dancing.
-    pub(super) fn notify_record_playing(&mut self, pos: [i32; 3], playing: bool) {
+    pub(in crate::game) fn notify_record_playing(&mut self, pos: [i32; 3], playing: bool) {
         let min = Vec3::new(f64::from(pos[0]), f64::from(pos[1]), f64::from(pos[2]));
         let area = Aabb::new(min, min.add_vector(Vec3::new(1.0, 1.0, 1.0)))
             .inflate(Vec3::new(3.0, 3.0, 3.0));
@@ -363,7 +361,7 @@ impl Game<'_> {
     /// `popOutTheItem`: the disc above the jukebox, and the song stops. An
     /// empty slot pops nothing out (`if (!itemBeforePoppingOut.isEmpty())`),
     /// whatever the state says.
-    fn eject_record(&mut self, pos: [i32; 3]) {
+    pub(in crate::game) fn eject_record(&mut self, pos: [i32; 3]) {
         let key = (pos[0], pos[1], pos[2]);
         let (record, was_playing) = match self.world.block_entities.get_mut(&key) {
             Some(BlockEntity::Jukebox(j)) => {
@@ -401,11 +399,11 @@ impl Game<'_> {
         self.jukebox_changed(pos);
     }
     /// A broken jukebox stops its song (its disc drops with the contents).
-    pub(super) fn jukebox_removed(&mut self, pos: [i32; 3]) {
+    pub(in crate::game) fn jukebox_removed(&mut self, pos: [i32; 3]) {
         self.stop_song(pos);
     }
     /// `JukeboxSongPlayer.tick` of the jukebox at `key`, while it plays.
-    pub(super) fn tick_jukebox(&mut self, key: (i32, i32, i32)) {
+    pub(in crate::game) fn tick_jukebox(&mut self, key: (i32, i32, i32)) {
         let playing = match self.world.block_entities.get(&key) {
             Some(BlockEntity::Jukebox(j)) if j.playing => j.record().and_then(|r| {
                 let song = song_of_record(r, self.items())?;
@@ -469,7 +467,7 @@ impl Game<'_> {
         }
     }
     /// Let go of songs that ended or whose jukebox stopped.
-    pub(super) fn update_song_volumes(&mut self) {
+    pub(in crate::game) fn update_song_volumes(&mut self) {
         let sounds: Vec<_> = self
             .jukebox_sounds
             .iter()
@@ -493,7 +491,7 @@ impl Game<'_> {
 /// The song a level event 1010's data names: its id in the `jukebox_song`
 /// registry the server sent (`Registry.get(int)`). Only a server's client
 /// has one; a level that plays its own jukeboxes starts their songs itself.
-fn jukebox_song_name(
+pub(in crate::game) fn jukebox_song_name(
     registries: Option<&sunrise_protocol::registry::Dynamic>,
     id: i32,
 ) -> Option<String> {
@@ -504,11 +502,15 @@ fn jukebox_song_name(
 /// Whether a jukebox song keeps playing: until it ends, and, in a level that
 /// plays its own jukeboxes, while that jukebox plays. A server's client
 /// stops it at level event 1011 (`LevelRenderer.playingJukeboxSongs`).
-fn keeps_song(active: bool, server_client: bool, jukebox_playing: bool) -> bool {
+pub(in crate::game) fn keeps_song(
+    active: bool,
+    server_client: bool,
+    jukebox_playing: bool,
+) -> bool {
     active && (server_client || jukebox_playing)
 }
 /// The jukebox's redstone signal (15 while a song plays) and comparator output.
-pub(super) fn jukebox_signals(
+pub(in crate::game) fn jukebox_signals(
     world: &sunrise_client::world::World,
     items: &sunrise_client::items::Items,
     pos: BlockPos,
@@ -534,7 +536,7 @@ pub(super) fn jukebox_signals(
 }
 
 #[cfg(test)]
-mod tests {
+pub(in crate::game) mod tests {
     use super::{jukebox_song_name, keeps_song};
     use sunrise_protocol::registry::Dynamic;
 
@@ -567,7 +569,7 @@ mod tests {
 }
 
 #[cfg(test)]
-mod jukebox_play_tests {
+pub(in crate::game) mod jukebox_play_tests {
     use super::*;
 
     /// A windowless game from the prepared resources with a jukebox at
@@ -689,7 +691,7 @@ mod jukebox_play_tests {
 }
 
 #[cfg(test)]
-mod saved_song_clock_tests {
+pub(in crate::game) mod saved_song_clock_tests {
     use crate::game::native_entity_refs::tests::with_game;
 
     #[test]
@@ -778,7 +780,7 @@ mod saved_song_clock_tests {
 }
 
 #[cfg(test)]
-mod jukebox_component_tests {
+pub(in crate::game) mod jukebox_component_tests {
     use super::*;
     use crate::game::game_tests::tests::server_game;
     use sunrise_core::nbt::Tag;
@@ -881,10 +883,10 @@ mod jukebox_component_tests {
 
 #[cfg(test)]
 #[path = "jukebox/tests.rs"]
-mod jukebox_tests;
+pub(in crate::game) mod jukebox_tests;
 
 #[cfg(test)]
-mod block_change_tests {
+pub(in crate::game) mod block_change_tests {
     use super::*;
     use crate::game::{Audio, Options, Progress, Settings, load_resources};
     use std::sync::Arc;

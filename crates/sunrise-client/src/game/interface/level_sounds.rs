@@ -1,11 +1,15 @@
 //! Level sound requests on each logical side: the mods' `PlayLevelSoundEvent`,
 //! then server broadcast or client playback.
 
+#[allow(unused_imports)]
 use std::borrow::Cow;
 
+#[allow(unused_imports)]
 use mod_api::{HookId, Identifier, SoundSource};
 
+#[allow(unused_imports)]
 use super::Game;
+#[allow(unused_imports)]
 use super::native_hooks::level_sound_playable;
 
 /// A sound the server's level is about to play, as vanilla asked for it.
@@ -64,76 +68,12 @@ pub(in crate::game) struct HeardSound<'a> {
 }
 
 /// Whether a mod listens to either level sound hook.
-fn listened() -> bool {
+pub(in crate::game) fn listened() -> bool {
     mod_api::__private::listened(HookId::PlayLevelSoundAtPosition)
         || mod_api::__private::listened(HookId::PlayLevelSoundAtEntity)
 }
 
 impl Game<'_> {
-    /// `ClientLevel.playSeededSound`: ask this client's mods before playback.
-    /// A packet reaches this independently of the server's level event.
-    pub(in crate::game) fn play_client_level_sound(
-        &mut self,
-        mut sound: LevelSound<'_>,
-        seed: i64,
-    ) {
-        let entity = match sound.emitter {
-            Some(id) => {
-                let Some(state) = self.remote_sound_entity_state(id as i32) else {
-                    return;
-                };
-                sound.at = state.position;
-                let entity = sunrise_client::sound_engine::SoundEntity::new(
-                    id,
-                    state.position,
-                    state.silent,
-                );
-                entity.update(state);
-                Some(entity)
-            }
-            None => None,
-        };
-        let at = sound.at;
-        let Some(heard) = self.ask_level_sound(self.dim.id(), sound) else {
-            return;
-        };
-        match entity {
-            Some(entity) => self.audio.0.play_entity_seeded(
-                &heard.name,
-                heard.source.index(),
-                heard.volume,
-                heard.pitch,
-                seed,
-                entity,
-            ),
-            None => self.audio.0.play_on_seeded(
-                heard.source.index(),
-                &heard.name,
-                Some(at),
-                heard.volume,
-                heard.pitch,
-                seed,
-            ),
-        }
-    }
-
-    /// A client-local level request without a packet seed. LocalPlayer.playSound
-    /// asks AtEntity but still creates a positional, not entity-bound, instance.
-    pub(in crate::game) fn play_client_local_sound(&mut self, sound: LevelSound<'_>) {
-        let seed = self.audio.0.next_sound_seed();
-        let at = sound.at;
-        if let Some(heard) = self.ask_level_sound(self.dim.id(), sound) {
-            self.audio.0.play_on_seeded(
-                heard.source.index(),
-                &heard.name,
-                Some(at),
-                heard.volume,
-                heard.pitch,
-                seed,
-            );
-        }
-    }
-
     /// `LocalPlayer.playSound`, including inherited step, fall and consume sounds.
     pub(in crate::game) fn play_client_player_sound(
         &mut self,
@@ -194,14 +134,6 @@ impl Game<'_> {
             };
             self.send_level_sound(sound, s.except);
         }
-    }
-
-    /// A synchronous level sound, not captured again at the end of the tick.
-    pub(in crate::game) fn play_immediate_level_sound(&mut self, sound: LevelSound<'_>) {
-        self.audio
-            .0
-            .play_unshared(sound.name, Some(sound.at), sound.volume, sound.pitch);
-        self.send_level_sound(sound, None);
     }
 
     /// `Level.playSound`'s packet for the players near the sound's position in
@@ -328,7 +260,7 @@ impl Game<'_> {
 }
 
 #[cfg(test)]
-mod tests {
+pub(in crate::game) mod tests {
     use super::super::lan::LanSettings;
     use super::super::native_entity_refs::tests::with_game;
     use super::super::native_sound_refs::tests::{guest, packets};

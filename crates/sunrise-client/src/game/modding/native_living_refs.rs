@@ -6,26 +6,37 @@
 //! `with_hand_item`, `health`, `max_health`, `attribute_value`, `attribute_base`,
 //! `attributes` and `attribute_modifiers`), which on a client answer for the
 //! local player from the client's own copy; and `effect`/`effects`.
+#[allow(unused_imports)]
 use super::Game;
+#[allow(unused_imports)]
 use super::api_values::{StackReadMetadata, project_stack, stack_read_metadata};
+#[allow(unused_imports)]
 use super::commands::{Target, items::Owner};
+#[allow(unused_imports)]
 use super::living_attributes::AttributeWrite;
+#[allow(unused_imports)]
 use crate::mobs::Who;
+#[allow(unused_imports)]
 use mod_api::client::first_person::Hand;
+#[allow(unused_imports)]
 use mod_api::{
     AttributeModifier, AttributeOperation, Direction, EntityRef, EquipmentSlot, Identifier,
     ItemStackView, LivingRef, ModifierLifetime,
 };
+#[allow(unused_imports)]
 use sunrise_client::health::{Attack, DamageLevel, HitEffects, Hurting, Knock, NO_ATTACK};
+#[allow(unused_imports)]
 use sunrise_client::items::{EntityTypeTags, ItemStack};
+#[allow(unused_imports)]
 use sunrise_client::mobs::{
     Mob,
     finalize::{self, EquipmentRead},
 };
+#[allow(unused_imports)]
 use sunrise_world::attributes::{Modifier, Operation};
 
 /// A player's armour slots (`armor`, head first) by equipment slot.
-fn armor_index(slot: EquipmentSlot) -> Option<usize> {
+pub(in crate::game) fn armor_index(slot: EquipmentSlot) -> Option<usize> {
     match slot {
         EquipmentSlot::Head => Some(0),
         EquipmentSlot::Chest => Some(1),
@@ -36,7 +47,7 @@ fn armor_index(slot: EquipmentSlot) -> Option<usize> {
 }
 
 /// A player's stack in `slot`, from its inventory, armour and off hand.
-fn player_slot<'a>(
+pub(in crate::game) fn player_slot<'a>(
     inventory: &'a [Option<ItemStack>],
     selected: usize,
     armor: &'a [Option<ItemStack>; 4],
@@ -81,7 +92,7 @@ pub(in crate::game) fn hand_slot(hand: Hand) -> EquipmentSlot {
 }
 
 /// The `/item` slot name of an equipment slot.
-fn slot_name(slot: EquipmentSlot) -> &'static str {
+pub(in crate::game) fn slot_name(slot: EquipmentSlot) -> &'static str {
     match slot {
         EquipmentSlot::MainHand => "weapon.mainhand",
         EquipmentSlot::OffHand => "weapon.offhand",
@@ -94,7 +105,9 @@ fn slot_name(slot: EquipmentSlot) -> &'static str {
     }
 }
 
-fn world_equipment_slot(slot: EquipmentSlot) -> sunrise_core::equipment_slot::EquipmentSlot {
+pub(in crate::game) fn world_equipment_slot(
+    slot: EquipmentSlot,
+) -> sunrise_core::equipment_slot::EquipmentSlot {
     use sunrise_core::equipment_slot::EquipmentSlot as WorldSlot;
     match slot {
         EquipmentSlot::MainHand => WorldSlot::MainHand,
@@ -110,22 +123,22 @@ fn world_equipment_slot(slot: EquipmentSlot) -> sunrise_core::equipment_slot::Eq
 
 /// `LivingEntity.isAlive`'s health test: above 0, so a NaN health loaded from
 /// a save is not alive either.
-fn alive_at(health: f32) -> bool {
+pub(in crate::game) fn alive_at(health: f32) -> bool {
     health > 0.0
 }
 
-fn equipment_stack(stack: Option<ItemStack>) -> Option<ItemStack> {
+pub(in crate::game) fn equipment_stack(stack: Option<ItemStack>) -> Option<ItemStack> {
     stack.filter(|s| s.count > 0 && &*s.item != "minecraft:air")
 }
 
 /// The map's modifiers as the API's, in their order. Their ids are canonical
 /// (`Modifier` normalizes them), so none is dropped.
-fn attribute_modifiers(list: Vec<Modifier>) -> Vec<AttributeModifier> {
+pub(in crate::game) fn attribute_modifiers(list: Vec<Modifier>) -> Vec<AttributeModifier> {
     list.iter().filter_map(api_modifier).collect()
 }
 
 /// One map modifier as the API's.
-fn api_modifier(m: &Modifier) -> Option<AttributeModifier> {
+pub(in crate::game) fn api_modifier(m: &Modifier) -> Option<AttributeModifier> {
     Some(AttributeModifier::new(
         Identifier::parse(m.id()).ok()?,
         m.amount(),
@@ -209,7 +222,7 @@ impl Game<'_> {
     }
 
     /// Lend the victim's own body and level to the player path without switching turns or levels.
-    fn player_knockback_from_mod(
+    pub(in crate::game) fn player_knockback_from_mod(
         &mut self,
         living: LivingRef,
         target: Target,
@@ -275,7 +288,7 @@ impl Game<'_> {
 
     /// [`Self::attack_of`] for a remembered attacker, which may be a mob in another loaded
     /// level: its main-hand stack is read there.
-    fn last_attacker_attack(&self, attacker: u32) -> Attack {
+    pub(in crate::game) fn last_attacker_attack(&self, attacker: u32) -> Attack {
         let mut attack = self.attack_of(attacker as i32);
         if let Some((_, mob)) = self.mob_in_other_level(attacker)
             && !mod_api::__private::mods().is_empty()
@@ -475,7 +488,7 @@ impl Game<'_> {
             .map_or(base, |d| d.sanitize(base))
     }
 
-    fn native_living_add_modifier(
+    pub(in crate::game) fn native_living_add_modifier(
         &mut self,
         living: LivingRef,
         attribute: &str,
@@ -507,7 +520,7 @@ impl Game<'_> {
         .is_some_and(|write| self.native_living_write(living, attribute, write))
     }
 
-    fn native_living_write(
+    pub(in crate::game) fn native_living_write(
         &mut self,
         living: LivingRef,
         name: &str,
@@ -518,7 +531,7 @@ impl Game<'_> {
             .unwrap_or(false)
     }
 
-    fn native_living_attribute(
+    pub(in crate::game) fn native_living_attribute(
         &self,
         living: LivingRef,
         name: &str,
@@ -530,7 +543,10 @@ impl Game<'_> {
     /// The entity's type key, for the catalog's attribute defaults: the same
     /// set the value and base reads answer for. On a client only the local
     /// player resolves (`native_living_read_target`).
-    fn native_living_attribute_entity(&self, living: LivingRef) -> Option<&str> {
+    pub(in crate::game) fn native_living_attribute_entity(
+        &self,
+        living: LivingRef,
+    ) -> Option<&str> {
         match self.native_living_read_target(living)? {
             Target::Player | Target::Guest(_) => Some("minecraft:player"),
             Target::Mob(id) => self
@@ -546,7 +562,7 @@ impl Game<'_> {
 
     /// The modifiers of `name` on `target`'s attribute map, as
     /// `native_target_attribute` reads its value.
-    fn native_target_attribute_modifiers(
+    pub(in crate::game) fn native_target_attribute_modifiers(
         &self,
         target: Target,
         name: &str,
@@ -1312,30 +1328,6 @@ impl Game<'_> {
         Some((equip_slot, sound))
     }
 
-    /// The effects of `LivingEntity.onEquipItem` once the guards passed (server
-    /// side, not a spectator, not the first tick, another item): the equip
-    /// sound when there is one, and the `equip` (the stack is equippable) or
-    /// `unequip` game event.
-    pub(in crate::game) fn equip_item_effects(
-        &mut self,
-        at: [f64; 3],
-        sound: Option<String>,
-        equips: bool,
-        ctx: sunrise_client::sculk::Context,
-    ) {
-        if let Some(sound) = sound {
-            self.audio.0.play(&sound, Some(at), 1.0, 1.0);
-        }
-        self.post_game_event(
-            if equips {
-                "minecraft:equip"
-            } else {
-                "minecraft:unequip"
-            },
-            at,
-            ctx,
-        );
-    }
     /// Throws `stack`, which the mod holds, from the eyes (`LivingEntity.drop`,
     /// `ServerPlayer.drop`), never through a slot: along the view with a
     /// main-hand swing, or with `throw_randomly` scattered with none, as a
@@ -1384,7 +1376,7 @@ impl Game<'_> {
         Some(sunrise_client::lan::playerdata::ints_uuid(owner))
     }
     /// The mob a handle names, when it is a `TamableAnimal` or an `AbstractHorse`.
-    fn native_tamable(&self, living: LivingRef) -> Option<&Mob> {
+    pub(in crate::game) fn native_tamable(&self, living: LivingRef) -> Option<&Mob> {
         let Target::Mob(id) = self.native_living_target(living)? else {
             return None;
         };
@@ -1393,7 +1385,11 @@ impl Game<'_> {
     /// Runs `f` as the player `target` names: the one acting now, or a guest
     /// in the level in place through `as_guest` (`native_as_player`). False
     /// when it didn't run.
-    fn native_as_living_player(&mut self, target: Target, f: impl FnOnce(&mut Self)) -> bool {
+    pub(in crate::game) fn native_as_living_player(
+        &mut self,
+        target: Target,
+        f: impl FnOnce(&mut Self),
+    ) -> bool {
         let uuid = match target {
             Target::Guest(conn) => match self.command_guest(conn) {
                 Some(g) if g.dimension == self.dim.id() => g.uuid,
@@ -1404,7 +1400,7 @@ impl Game<'_> {
         self.native_as_player(uuid, f)
     }
     /// The acting player's half of `living_drop`: the id of the item entity.
-    fn native_player_drop(
+    pub(in crate::game) fn native_player_drop(
         &mut self,
         stack: ItemStack,
         randomly: bool,
@@ -1420,7 +1416,7 @@ impl Game<'_> {
         }
     }
     /// A mob's half of `living_drop`: the id of the item entity.
-    fn native_mob_drop(
+    pub(in crate::game) fn native_mob_drop(
         &mut self,
         id: u32,
         stack: ItemStack,
@@ -1440,8 +1436,11 @@ impl Game<'_> {
 
 #[cfg(test)]
 pub(in crate::game) mod tests {
+    #[allow(unused_imports)]
     use super::super::api_values::TryIntoApi;
+    #[allow(unused_imports)]
     use super::*;
+    #[allow(unused_imports)]
     use sunrise_core::geometry::Vec3;
 
     /// The mod API keeps a written base in range; vanilla's own `setBaseValue` (`/attribute base set`) does not.
@@ -1981,7 +1980,7 @@ pub(in crate::game) mod tests {
 
     /// The UUID the transfer tests give their attacker, as `summon` takes it.
     pub(in crate::game) const ZOMBIE_UUID: [i32; 4] = [7, 8, 9, 10];
-    const ZOMBIE_NBT: &str = "{NoAI:1b,UUID:[I;7,8,9,10]}";
+    pub(in crate::game) const ZOMBIE_NBT: &str = "{NoAI:1b,UUID:[I;7,8,9,10]}";
 
     pub(in crate::game) fn summon_mob(game: &mut super::Game<'_>, kind: &str, nbt: &str) -> u32 {
         match game
@@ -2546,117 +2545,6 @@ pub(in crate::game) mod tests {
 
     #[test]
     #[ignore = "daily"]
-    fn mob_equipment_writes_emit_vanilla_equip_events() {
-        use sunrise_client::mobs::Mob;
-        use sunrise_core::geometry::Vec3;
-        super::super::native_entity_refs::tests::with_game(|game| {
-            let kind = game
-                .res
-                .mob_types()
-                .get("minecraft:zombie")
-                .unwrap()
-                .clone();
-            game.mobs.push(Mob::new(12, kind, Vec3::ZERO, 0.0));
-            let living = game.living(game.entity(12).unwrap()).unwrap();
-            game.audio.0.capture = Some(Vec::new());
-            super::super::dispense_fixture::start_recording();
-            let helmet = ItemStack::new("minecraft:iron_helmet", 1);
-            assert!(game.living_set_equipment(living, EquipmentSlot::Head, Some(helmet.clone())));
-            assert!(game.living_set_equipment(living, EquipmentSlot::Head, None));
-            assert!(game.audio.0.capture.as_ref().unwrap().is_empty());
-            game.mobs[0].first_tick = false;
-            assert!(game.living_set_equipment(living, EquipmentSlot::Head, Some(helmet.clone())));
-            assert_eq!(game.audio.0.capture.as_ref().unwrap().len(), 1);
-            assert!(game.living_set_equipment(living, EquipmentSlot::Head, Some(helmet)));
-            assert_eq!(game.audio.0.capture.as_ref().unwrap().len(), 1);
-            game.mobs[0].silent = true;
-            assert!(game.living_set_equipment(
-                living,
-                EquipmentSlot::Head,
-                Some(ItemStack::new("minecraft:diamond_helmet", 1))
-            ));
-            assert!(game.living_set_equipment(living, EquipmentSlot::Head, None));
-            game.mobs[0].silent = false;
-            // Equippable, but its head slot does not match chest: event, no sound.
-            assert!(game.living_set_equipment(
-                living,
-                EquipmentSlot::Chest,
-                Some(ItemStack::new("minecraft:iron_helmet", 1))
-            ));
-            assert_eq!(game.audio.0.capture.as_ref().unwrap().len(), 1);
-            let events = super::super::dispense_fixture::stop_recording();
-            assert_eq!(
-                events
-                    .iter()
-                    .filter(|e| e.ends_with("minecraft:equip"))
-                    .count(),
-                3
-            );
-            assert_eq!(
-                events
-                    .iter()
-                    .filter(|e| e.ends_with("minecraft:unequip"))
-                    .count(),
-                1
-            );
-        });
-    }
-
-    #[test]
-    #[ignore = "daily"]
-    fn stand_and_dragon_equipment_writes_run_on_equip_item() {
-        use sunrise_core::geometry::Vec3;
-        super::super::native_entity_refs::tests::with_game(|game| {
-            game.world.chunks.insert(
-                (0, 0),
-                std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
-            );
-            let mut stand = sunrise_client::entities::ArmorStand::new(16, Vec3::ZERO, 0.0);
-            stand.id = 16;
-            game.armor_stands.push(stand);
-            let mut dragon = super::super::dragon::Dragon::new(Vec3::ZERO, 0.0, 0);
-            dragon.id = 17;
-            game.dragon.replace(dragon);
-            let stand = game.living(game.entity(16).unwrap()).unwrap();
-            let dragon = game.living(game.entity(17).unwrap()).unwrap();
-            game.audio.0.capture = Some(Vec::new());
-            super::super::dispense_fixture::start_recording();
-            let helmet = ItemStack::new("minecraft:iron_helmet", 1);
-            // Before its first tick an entity makes no sound and no event.
-            assert!(game.living_set_equipment(stand, EquipmentSlot::Head, Some(helmet.clone())));
-            assert!(game.living_set_equipment(stand, EquipmentSlot::Head, None));
-            assert!(game.audio.0.capture.as_ref().unwrap().is_empty());
-            game.tick_armor_stands().unwrap();
-            game.dragon.as_mut().unwrap().ticks = 1;
-            // An equippable item in its own slot: sound and `equip`; the same
-            // item again changes nothing.
-            for _ in 0..2 {
-                assert!(game.living_set_equipment(
-                    stand,
-                    EquipmentSlot::Head,
-                    Some(helmet.clone())
-                ));
-            }
-            // A stored body armor: sound and `equip`, body is storage only.
-            let body = ItemStack::new("minecraft:diamond_horse_armor", 1);
-            assert!(game.living_set_equipment(stand, EquipmentSlot::Body, Some(body)));
-            // Not equippable: `unequip` and no sound.
-            let stone = ItemStack::new("minecraft:stone", 1);
-            assert!(game.living_set_equipment(stand, EquipmentSlot::Saddle, Some(stone.clone())));
-            // The dragon the same.
-            let chest = ItemStack::new("minecraft:iron_chestplate", 1);
-            assert!(game.living_set_equipment(dragon, EquipmentSlot::Chest, Some(chest)));
-            assert!(game.living_set_equipment(dragon, EquipmentSlot::Saddle, Some(stone)));
-            assert_eq!(game.audio.0.capture.as_ref().unwrap().len(), 3);
-            let events = super::super::dispense_fixture::stop_recording();
-            let count = |name: &str| events.iter().filter(|e| e.ends_with(name)).count();
-            assert_eq!(count("minecraft:equip"), 3);
-            assert_eq!(count("minecraft:unequip"), 2);
-        });
-    }
-
-    #[test]
-    #[ignore = "daily"]
     fn mob_equipment_writes_keep_full_stacks() {
         use sunrise_client::mobs::gear;
         use sunrise_core::geometry::Vec3;
@@ -2818,120 +2706,11 @@ pub(in crate::game) mod tests {
     }
 
     #[test]
-    #[ignore = "daily"]
-    fn the_host_players_body_and_saddle_are_slots_and_saved_in_equipment() {
-        super::super::native_entity_refs::tests::with_game(|game| {
-            let owner = Owner::Entity(Target::Player);
-            let mut body = ItemStack::new("minecraft:diamond_horse_armor", 1);
-            body.damage = 4;
-            body.data_mut().custom_name = Some(sunrise_core::nbt::Tag::String("armor".into()));
-            let saddle = ItemStack::new("minecraft:saddle", 1);
-            game.player = Some(
-                sunrise_client::motion::PlayerMotion::new(
-                    game.motion,
-                    sunrise_core::geometry::Vec3::ZERO,
-                )
-                .unwrap(),
-            );
-            game.audio.0.capture = Some(Vec::new());
-            for (name, stack) in [("armor.body", &body), ("saddle", &saddle)] {
-                let slots = game.slots_named(&owner, name);
-                assert_eq!(slots.len(), 1, "{name} is one slot");
-                assert!(game.slot_set(&slots[0], Some(stack.clone())));
-            }
-            assert_eq!(
-                (game.equipment.get(6), game.equipment.get(7)),
-                (Some(&body), Some(&saddle))
-            );
-            // onEquipItem: each item in its own slot plays its equip sound.
-            assert_eq!(game.audio.0.capture.as_ref().unwrap().len(), 2);
-            game.sync_level();
-            let tag = game.level.player_tag(&Default::default());
-            let equipment = tag.get("equipment").unwrap();
-            assert!(equipment.get("body").is_some() && equipment.get("saddle").is_some());
-            let mut read = sunrise_client::save::Level::default();
-            read.read_player(&tag);
-            // Loading the file back into a Game restores both, components too.
-            game.equipment = Default::default();
-            let level = read;
-            game.load_saved_inventory(&level);
-            assert_eq!(
-                (game.equipment.get(6), game.equipment.get(7)),
-                (Some(&body), Some(&saddle))
-            );
-        });
-    }
-
-    #[test]
     fn alive_is_health_above_zero_as_in_vanilla() {
         assert!(alive_at(0.5));
         assert!(!alive_at(0.0));
         assert!(!alive_at(-1.0));
         assert!(!alive_at(f32::NAN));
-    }
-
-    #[test]
-    #[ignore = "daily"]
-    fn armor_stand_first_tick_equipment_change_fires_after_base_tick() {
-        use mod_api::{self, Hooks, LivingEquipmentChangeEvent, ModEntry, ServerHost};
-        struct Reequip;
-        #[mod_api::__subscriptions]
-        impl Hooks for Reequip {
-            fn living_equipment_change(
-                &self,
-                host: &mut dyn ServerHost,
-                event: &mut LivingEquipmentChangeEvent<'_>,
-            ) {
-                if event.entity == 18 && event.slot == "mainhand" {
-                    let entity = host.entity(event.entity).unwrap();
-                    let living = host.living(entity).unwrap();
-                    assert!(
-                        living
-                            .set_equipment(
-                                host,
-                                EquipmentSlot::Head,
-                                Some(
-                                    ItemStack::new("minecraft:iron_helmet", 1)
-                                        .try_into_api()
-                                        .unwrap()
-                                ),
-                            )
-                            .unwrap()
-                    );
-                }
-            }
-        }
-        mod_platform::testing::with_mods(
-            vec![ModEntry::new("first_tick_equipment", Box::new(Reequip))].into(),
-            || {
-                super::super::native_entity_refs::tests::with_game(|game| {
-                    let mut stand = sunrise_client::entities::ArmorStand::new(
-                        18,
-                        Vec3::new(0.5, 70.0, 0.5),
-                        0.0,
-                    );
-                    stand.no_gravity = true;
-                    stand.equipment[0] = Some(ItemStack::new("minecraft:stone", 1));
-                    game.armor_stands.push(stand);
-                    game.audio.0.capture = Some(Vec::new());
-                    super::super::dispense_fixture::start_recording();
-                    game.tick_armor_stands().unwrap();
-                    let events = super::super::dispense_fixture::stop_recording();
-                    assert_eq!(
-                        game.armor_stands[0].equipment[5],
-                        Some(ItemStack::new("minecraft:iron_helmet", 1)),
-                        "real listener/handle write control",
-                    );
-                    assert!(!game.armor_stands[0].first_tick);
-                    let sounds = game.audio.0.capture.as_ref().unwrap().len();
-                    let equips = events
-                        .iter()
-                        .filter(|e| e.ends_with("minecraft:equip"))
-                        .count();
-                    assert_eq!((sounds, equips), (1, 1));
-                });
-            },
-        );
     }
 
     #[test]

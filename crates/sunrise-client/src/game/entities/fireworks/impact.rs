@@ -1,10 +1,11 @@
 //! Rocket impacts dispatch only after the vanilla deflection decision.
+#[allow(unused_imports)]
 use super::*;
 
 impl Game<'_> {
     /// Let listeners inspect and remove the live rocket, preserving its identity
     /// across the detached tick. Refuse a stale hit after writes.
-    pub(super) fn rocket_impact(
+    pub(in crate::game) fn rocket_impact(
         &mut self,
         index: usize,
         r: Rocket,
@@ -40,4 +41,4 @@ impl Game<'_> {
 
 #[cfg(test)]
 #[path = "impact_tests.rs"]
-mod tests;
+pub(in crate::game) mod tests;

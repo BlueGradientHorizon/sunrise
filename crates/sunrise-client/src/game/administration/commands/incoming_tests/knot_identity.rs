@@ -3,22 +3,30 @@
 //! hosted server's tracker both name. Two leads on one fence share it, a
 //! knot made again after its last lead went is a new entity, and the same
 //! fence position in another level is another knot.
+#[allow(unused_imports)]
 use crate::game::*;
+#[allow(unused_imports)]
 use std::sync::{Arc, atomic::AtomicI32, mpsc};
+#[allow(unused_imports)]
 use sunrise_client::{
     chunk::Chunk,
     lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubConfig},
     mobs::leash::Holder,
     motion::PlayerMotion,
 };
+#[allow(unused_imports)]
 use sunrise_core::position::ChunkPos;
+#[allow(unused_imports)]
 use sunrise_protocol::packets::configuration::ClientInformation;
 
-const PIG: &str = "0000609a-0000-0000-0000-000000000001";
-const OTHER_PIG: &str = "0000609a-0000-0000-0000-000000000003";
-const AT_FENCE: &str = "@e[type=minecraft:leash_knot,x=8.5,y=201.375,z=0.5,distance=..0.001]";
+pub(in crate::game) const PIG: &str = "0000609a-0000-0000-0000-000000000001";
+pub(in crate::game) const OTHER_PIG: &str = "0000609a-0000-0000-0000-000000000003";
+pub(in crate::game) const AT_FENCE: &str =
+    "@e[type=minecraft:leash_knot,x=8.5,y=201.375,z=0.5,distance=..0.001]";
 
-fn game<'a>(resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>) -> Game<'a> {
+pub(in crate::game) fn game<'a>(
+    resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>,
+) -> Game<'a> {
     let root = std::path::PathBuf::from(
         std::env::var_os("SUNRISE_TEST_RESOURCES")
             .expect("set SUNRISE_TEST_RESOURCES to prepared resources"),
@@ -75,19 +83,19 @@ fn game<'a>(resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>) -
     game
 }
 
-fn summon_pig(game: &mut Game<'_>, n: i32, x: f64) {
+pub(in crate::game) fn summon_pig(game: &mut Game<'_>, n: i32, x: f64) {
     let command = format!(
         "summon pig {x} 201 0.5 {{NoAI:1b,PersistenceRequired:1b,NoGravity:1b,leash:[I;8,201,0],UUID:[I;24730,0,0,{n}]}}"
     );
     assert!(game.run_command(&command), "{command}");
 }
 
-fn step(game: &mut Game<'_>) {
+pub(in crate::game) fn step(game: &mut Game<'_>) {
     assert!(game.run_command("tick step 1"));
     game.tick_server(false).unwrap();
 }
 
-fn mob(game: &mut Game<'_>, uuid: &str) -> usize {
+pub(in crate::game) fn mob(game: &mut Game<'_>, uuid: &str) -> usize {
     match game.target_with_uuid(sunrise_client::save::uuid_from_text(uuid).unwrap()) {
         Some(super::Target::Mob(id)) => game.mobs.iter().position(|m| m.id == id).unwrap(),
         other => panic!("{other:?}"),
@@ -95,7 +103,7 @@ fn mob(game: &mut Game<'_>, uuid: &str) -> usize {
 }
 
 /// The knots the level in place's selectors list, by entity id.
-fn knots(game: &Game<'_>) -> Vec<u32> {
+pub(in crate::game) fn knots(game: &Game<'_>) -> Vec<u32> {
     game.level_candidates(false)
         .into_iter()
         .filter_map(|t| match t {
@@ -106,7 +114,7 @@ fn knots(game: &Game<'_>) -> Vec<u32> {
 }
 
 /// The UUID `/data` reads from the one knot of the level in place.
-fn knot_uuid(game: &mut Game<'_>) -> [i32; 4] {
+pub(in crate::game) fn knot_uuid(game: &mut Game<'_>) -> [i32; 4] {
     let [id] = knots(game)[..] else {
         panic!("one knot: {:?}", knots(game));
     };
@@ -120,96 +128,8 @@ fn knot_uuid(game: &mut Game<'_>) -> [i32; 4] {
     }
 }
 
-fn host(game: &mut Game<'_>) {
-    let net = NetConfig {
-        announce: false,
-        ..NetConfig::lan(0, "knot-identity-test".into(), 2)
-    };
-    game.lan_host(
-        crate::game::lan::LanSettings {
-            port: 0,
-            guest_commands: true,
-            force_game_mode: false,
-        },
-        net,
-        HubConfig {
-            default_game_mode: 1,
-            guest_commands: true,
-            force_game_mode: false,
-            hardcore: false,
-            view_distance: 2,
-            simulation_distance: 2,
-            dimension: Dim::Overworld.id().into(),
-            allow_flight: false,
-            seed: 0,
-            max_players: 2,
-            integrated: false,
-            levels: Default::default(),
-            level_seeds: Default::default(),
-        },
-    )
-    .unwrap();
-    // Existing mobs and knots already own runtime IDs when hosting starts.
-    game.server.next_entity += 1;
-    let guest_id = game.server.next_entity;
-    let (tx, _rx) = mpsc::channel();
-    let mut guest = Guest::new(
-        Joined {
-            conn: 2,
-            uuid: 2,
-            name: "KnotGuest".into(),
-            properties: Vec::new(),
-            info: ClientInformation::new(2),
-            brand: "test".into(),
-            sender: PlayerSender::new(tx, Arc::default()),
-            latency: Arc::new(AtomicI32::new(0)),
-            address: "127.0.0.1:25565".parse().unwrap(),
-            expected: false,
-        },
-        guest_id as i32,
-        [12.5, 201.0, 4.5],
-        1,
-    );
-    guest.placed = true;
-    guest.loaded = true;
-    game.lan.as_mut().unwrap().hub.guests.push(guest);
-}
-
-#[test]
-#[ignore = "daily"]
-fn a_server_that_starts_tracking_later_shows_the_same_knot() {
-    let mut resources = None;
-    let mut game = game(&mut resources);
-    summon_pig(&mut game, 1, 16.5);
-    step(&mut game);
-    assert!(game.lan.is_none());
-    let [id] = knots(&game)[..] else {
-        panic!("{:?}", knots(&game));
-    };
-    let uuid = knot_uuid(&mut game);
-    assert_eq!(game.persist.uuids.get(&id), Some(&uuid));
-    // A later save prunes the memory of dead entities, not of this knot.
-    game.prune_entity_memory();
-    assert_eq!(knot_uuid(&mut game), uuid);
-    // The world opens to the network; the tracker shows the same entity.
-    host(&mut game);
-    step(&mut game);
-    step(&mut game);
-    assert!(game.lan.is_some());
-    game.lan_assign_ids();
-    assert_eq!(
-        game.server.knot_ids.get(&[8, 201, 0]),
-        Some(&id),
-        "the tracker's id"
-    );
-    assert_eq!(game.uuid_for(id), uuid, "the tracker's UUID");
-    assert_eq!(knots(&game), [id]);
-    assert_eq!(knot_uuid(&mut game), uuid);
-    assert_eq!(
-        game.network_entity_id(super::Target::Knot(id)),
-        Some(id as i32)
-    );
-}
+#[allow(unused_imports)]
+pub(in crate::game) use crate::game::server_side::commands_server::knot_identity_tests::host;
 
 #[test]
 #[ignore = "daily"]

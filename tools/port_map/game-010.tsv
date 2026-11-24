@@ -129,5 +129,5 @@ AbstractChestedHorse.dropEquipment	port	crates/sunrise-client/src/mobs/drops.rs:
 AbstractChestedHorse.addAdditionalSaveData	port	crates/sunrise-client/src/entity_nbt.rs::mob_to_nbt	ChestedHorse and Items for llamas, donkeys and mules
 AbstractChestedHorse.readAdditionalSaveData	port	crates/sunrise-client/src/entity_nbt/mob_load.rs::mob_from_nbt	ChestedHorse and Items, 15 slots
 AbstractChestedHorse.getSlot	missing		slot 499 (horse.chest) is not mapped for mobs, so /item replace entity ... horse.chest does nothing; the mob slot names Sunrise resolves are the eight of loot::EQUIPMENT_SLOTS
-AbstractChestedHorse.equipChest	port	crates/sunrise-client/src/game/mobs/mounts.rs::Game::interact_mount	tamed donkey or mule takes a held chest with the sound; llamas do it in game/mobs/llamas.rs interact_llama
-AbstractChestedHorse.playChestEquipsSound	inline	crates/sunrise-client/src/game/mobs/mounts.rs::Game::interact_mount	entity.donkey.chest with the random pitch; llamas play entity.llama.chest in llama_sound
+AbstractChestedHorse.equipChest	port	crates/sunrise-client/src/game/mobs/mounts_client.rs::Game::interact_mount	tamed donkey or mule takes a held chest with the sound; llamas do it in game/mobs/llamas.rs interact_llama
+AbstractChestedHorse.playChestEquipsSound	inline	crates/sunrise-client/src/game/mobs/mounts_client.rs::Game::interact_mount	entity.donkey.chest with the random pitch; llamas play entity.llama.chest in llama_sound

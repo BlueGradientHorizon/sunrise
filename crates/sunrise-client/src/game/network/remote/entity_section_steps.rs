@@ -1,8 +1,10 @@
+#[allow(unused_imports)]
 use super::Game;
+#[allow(unused_imports)]
 use sunrise_core::geometry::Vec3;
 
 impl Game<'_> {
-    pub(super) fn remote_move_entity_and_file(
+    pub(in crate::game) fn remote_move_entity_and_file(
         &mut self,
         id: i32,
         path: Option<super::Path>,
@@ -13,35 +15,7 @@ impl Game<'_> {
         self.entity_section_moved_id(id as u32);
     }
 
-    /// `ClientLevel.isTickingEntity`: players always tick; other entities tick while their chunk is loaded.
-    fn remote_entity_is_ticking(&self, id: i32) -> bool {
-        let Some(r) = self.remote.as_ref() else {
-            return true;
-        };
-        if r.entity_id == id || r.level_players.contains_key(&id) {
-            return true;
-        }
-        let pos = if let Some(m) = self.mob_index.get_ref(&self.mobs, id as u32) {
-            [m.position.x, m.position.z]
-        } else if let Some(i) = self.client.interactions.get(&id) {
-            [i.position.x, i.position.z]
-        } else if let Some(a) = self.armor_stands.iter().find(|a| a.id == id as u32) {
-            [a.position.x, a.position.z]
-        } else if let Some(b) = self.boats.iter().find(|b| b.id == id as u32) {
-            [b.position.x, b.position.z]
-        } else if let Some(c) = self.carts.iter().find(|c| c.id == id as u32) {
-            [c.position.x, c.position.z]
-        } else if let Some(t) = r.entities.get(&id) {
-            [t.position[0], t.position[2]]
-        } else {
-            return false;
-        };
-        self.world
-            .chunks
-            .contains_key(&((pos[0].floor() as i32) >> 4, (pos[1].floor() as i32) >> 4))
-    }
-
-    pub(super) fn remote_position_sync_and_file(
+    pub(in crate::game) fn remote_position_sync_and_file(
         &mut self,
         id: i32,
         path: super::Path,
@@ -73,18 +47,23 @@ impl Game<'_> {
         }
     }
 
-    pub(super) fn remote_entity_section_step(&mut self, id: u32, from: Vec3, to: Vec3) {
+    pub(in crate::game) fn remote_entity_section_step(&mut self, id: u32, from: Vec3, to: Vec3) {
         self.entity_section_step(id, [from.x, from.y, from.z], [to.x, to.y, to.z]);
     }
 }
 
-pub(super) fn player_teleport(game: &mut Game<'_>, had_player: bool, from: Vec3, to: Vec3) {
+pub(in crate::game) fn player_teleport(
+    game: &mut Game<'_>,
+    had_player: bool,
+    from: Vec3,
+    to: Vec3,
+) {
     if had_player && let Ok(id) = u32::try_from(game.own_entity_id()) {
         game.remote_entity_section_step(id, from, to);
     }
 }
 
-pub(super) fn tick_items(
+pub(in crate::game) fn tick_items(
     game: &mut Game<'_>,
     entered: &mut Vec<sunrise_client::entities::ItemSplash>,
 ) {

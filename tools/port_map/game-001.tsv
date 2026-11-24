@@ -16,9 +16,9 @@ ChunkHolder.blockChanged	port	crates/sunrise-client-render/src/world.rs::World::
 ChunkHolder.sectionLightChanged	port	crates/sunrise-client-render/src/streaming.rs::Streaming::mark_light_changes	light_log bit per section; the unsaved mark is world.modified in the Lit result
 ChunkHolder.hasChangesToBroadcast	inline	crates/sunrise-client/src/lan/hub.rs::Hub::broadcast_block_changes	both broadcast fns return early when their log is empty
 ChunkHolder.broadcastBlockEntity	port	crates/sunrise-client/src/lan/hub.rs::Hub::broadcast_block_changes	BlockEntityData for changed positions with data the client shows
-ChunkHolder.scheduleFullChunkPromotion	inline	crates/sunrise-client/src/game.rs::Game::start_ticking_chunks	ticking promotion unpacks saved ticks; ticket levels are read directly
+ChunkHolder.scheduleFullChunkPromotion	inline	crates/sunrise-client/src/game/game_server.rs::Game::start_ticking_chunks	ticking promotion unpacks saved ticks; ticket levels are read directly
 ChunkHolder.demoteFullChunk	skip:other		only tells the status listener (loading map), which Sunrise reads from Streaming::latest_status
-ChunkHolder.updateFutures	inline	crates/sunrise-client/src/game.rs::Game::start_ticking_chunks	promotion to ticking on level change; demotion needs no work as Levels is read each tick
+ChunkHolder.updateFutures	inline	crates/sunrise-client/src/game/game_server.rs::Game::start_ticking_chunks	promotion to ticking on level change; demotion needs no work as Levels is read each tick
 ChunkLevel.getStatusAroundFullChunk	inline	crates/sunrise-client-render/src/streaming.rs::Ranges::margins	fixed margins around the view instead of a status per distance
 ChunkLevel.byStatus	skip:other		per status ticket levels; Sunrise streams by distance (Ranges), not by level
 ChunkLevel.fullStatus	port	crates/sunrise-client/src/ticket_levels.rs::Levels::loaded_ticking	31 entity ticking, 32 block ticking, 33 full as predicates on Levels
@@ -30,7 +30,7 @@ ChunkMap.getChunkQueueLevel	inline	crates/sunrise-client-render/src/streaming.rs
 ChunkMap.getChunkDebugData	skip:debug		chunk debug renderer text
 ChunkMap.getChunkRangeFuture	inline	crates/sunrise-client-render/src/streaming.rs::Streaming::update	neighbourhood waits: 3x3 protos to decorate, 3x3 decorated to finish, 3x3 lit to mesh
 ChunkMap.debugFuturesAndCreateReportedException	skip:debug		crash report detail
-ChunkMap.prepareEntityTickingChunk	inline	crates/sunrise-client/src/game/mobs/creatures/mod.rs::Game::entity_ticking_area	entity ticking comes from the ticket levels alone
+ChunkMap.prepareEntityTickingChunk	inline	crates/sunrise-client/src/game/mobs/creatures/mod_server.rs::Game::entity_ticking_area	entity ticking comes from the ticket levels alone
 ChunkMap.updateChunkScheduling	inline	crates/sunrise-client-render/src/streaming.rs::Streaming::update	columns past every kept range are unloaded in the update scan
 ChunkMap.onLevelChange	port	crates/sunrise-client-render/src/streaming.rs::Streaming::requeue	queued jobs are ranked again when the centre moves
 ChunkMap.close	port	crates/sunrise-client-render/src/streaming.rs::Streaming::drop	waits for saves in flight

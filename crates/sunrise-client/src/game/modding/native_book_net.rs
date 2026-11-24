@@ -20,7 +20,7 @@ fn registered() -> BTreeSet<String> {
         .collect()
 }
 impl Game<'_> {
-    pub(super) fn tick_book_snapshot_retry(&mut self) {
+    pub(in crate::game) fn tick_book_snapshot_retry(&mut self) {
         self.check_mod_book_placement_timeout();
         if self
             .native_net
@@ -42,7 +42,7 @@ impl Game<'_> {
         }
     }
 
-    pub(super) fn sync_replaced_book_settings(&mut self, uuid: u128) {
+    pub(in crate::game) fn sync_replaced_book_settings(&mut self, uuid: u128) {
         let Some(host) = self.lan.as_ref() else {
             return;
         };
@@ -69,7 +69,7 @@ impl Game<'_> {
         }
     }
 
-    pub(super) fn reset_book_view(&mut self) {
+    pub(in crate::game) fn reset_book_view(&mut self) {
         self.native_net.placement.client = Default::default();
         self.native_net.placement.deadline = None;
         self.clear_mod_book_placement_screen();
@@ -79,12 +79,12 @@ impl Game<'_> {
         self.native_net.book_retry_at = None;
         self.build_screen();
     }
-    pub(super) fn clear_guest_book_connection(&mut self, conn: u32) {
+    pub(in crate::game) fn clear_guest_book_connection(&mut self, conn: u32) {
         self.guest_combat.0.remove(&conn);
         self.native_net.book_connections.remove(&conn);
         self.native_net.placement.servers.remove(&conn);
     }
-    pub(super) fn notify_vanilla_book_settings(
+    pub(in crate::game) fn notify_vanilla_book_settings(
         &mut self,
         uuid: u128,
         name: &str,
@@ -153,7 +153,7 @@ impl Game<'_> {
         true
     }
 
-    pub(super) fn sync_server_book_write(
+    pub(in crate::game) fn sync_server_book_write(
         &mut self,
         player: mod_api::PlayerRef,
         book: &mod_api::RecipeBookTypeKey,
@@ -188,7 +188,7 @@ impl Game<'_> {
         }
     }
 
-    pub(super) fn begin_book_negotiation(&mut self) {
+    pub(in crate::game) fn begin_book_negotiation(&mut self) {
         self.reset_book_view();
         if self
             .remote
@@ -202,7 +202,7 @@ impl Game<'_> {
             }));
         }
     }
-    pub(super) fn guest_book_settings(&mut self, conn: u32, data: &[u8]) {
+    pub(in crate::game) fn guest_book_settings(&mut self, conn: u32, data: &[u8]) {
         let Some(host) = self.lan.as_mut() else {
             return;
         };
@@ -257,7 +257,7 @@ impl Game<'_> {
             );
         }
     }
-    pub(super) fn remote_book_settings(&mut self, data: &[u8]) {
+    pub(in crate::game) fn remote_book_settings(&mut self, data: &[u8]) {
         if !self
             .remote
             .as_ref()

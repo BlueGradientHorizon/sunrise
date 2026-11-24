@@ -1,16 +1,19 @@
 //! What villagers do with each other and with the player: gossip and
 //! reputation, sharing food and wares, picking up dropped items, making
 //! babies, calling iron golems and the prices they ask.
+#[allow(unused_imports)]
 use super::Game;
+#[allow(unused_imports)]
 use sunrise_client::{
     gossip::{self, GossipType},
     items::ItemStack,
     merchant::TradeFeedback,
     mobs::{Mob, Species, entity_sounds::full_id, spawning, villager, villager_brain},
 };
+#[allow(unused_imports)]
 use sunrise_core::{geometry::Vec3, position::BlockPos};
 
-fn block_of(p: Vec3) -> [i32; 3] {
+pub(in crate::game) fn block_of(p: Vec3) -> [i32; 3] {
     [p.x.floor() as i32, p.y.floor() as i32, p.z.floor() as i32]
 }
 impl villager_brain::TradingPlayers for Game<'_> {
@@ -39,12 +42,12 @@ impl villager_brain::TradingPlayers for Game<'_> {
 }
 
 impl Game<'_> {
-    fn villager_index(&self, id: u32) -> Option<usize> {
+    pub(in crate::game) fn villager_index(&self, id: u32) -> Option<usize> {
         self.mobs
             .iter()
             .position(|m| m.id == id && m.species() == Species::Villager)
     }
-    fn item_max_stack(&self, item: &str) -> u32 {
+    pub(in crate::game) fn item_max_stack(&self, item: &str) -> u32 {
         self.items().get(item).map_or(64, |i| i.max_stack)
     }
     /// `UseBonemeal.tick`'s `BoneMealItem.growCrop`: villager `id`'s first
@@ -109,7 +112,7 @@ impl Game<'_> {
     }
     /// `WorkAtComposter.makeBread`: up to three loaves from nine wheat while
     /// the villager holds at most 36 bread; what does not fit drops.
-    fn villager_make_bread(&mut self, i: usize) {
+    pub(in crate::game) fn villager_make_bread(&mut self, i: usize) {
         let max_stack = self.item_max_stack("minecraft:bread");
         let e = villager::ext_mut(&mut self.mobs[i]);
         if e.count_item("minecraft:bread") > 36 {
@@ -129,7 +132,13 @@ impl Game<'_> {
     }
     /// `BehaviorUtils.throwItem`: toss a stack from a villager's hand toward
     /// a point.
-    fn villager_throw(&mut self, from: Vec3, eye: f64, to: Vec3, stack: ItemStack) {
+    pub(in crate::game) fn villager_throw(
+        &mut self,
+        from: Vec3,
+        eye: f64,
+        to: Vec3,
+        stack: ItemStack,
+    ) {
         // The hand drop and the velocity are the float 0.3F, widened.
         let k = f64::from(0.3_f32);
         let at = [from.x, eye - k, from.z];
@@ -173,7 +182,7 @@ impl Game<'_> {
     }
     /// `SpawnUtil.trySpawnMob(IRON_GOLEM, ...)`: a golem near `start`, with
     /// the ambient sound `trySpawnMob` plays.
-    fn try_spawn_iron_golem(&mut self, start: [i32; 3]) -> bool {
+    pub(in crate::game) fn try_spawn_iron_golem(&mut self, start: [i32; 3]) -> bool {
         let Some(kind) = self.res.mob_types().get("minecraft:iron_golem").cloned() else {
             return false;
         };
@@ -290,32 +299,6 @@ impl Game<'_> {
         let feet = [m.position.x, m.position.y, m.position.z];
         let size = [f64::from(m.width()), f64::from(m.height())];
         self.particles_around(kind, feet, size, burst);
-    }
-    /// `particles::around_self` on the client: the particle engine's random
-    /// stands in for the client entity's, so no server draw moves.
-    pub(in crate::game) fn particles_around(
-        &mut self,
-        kind: &'static str,
-        feet: [f64; 3],
-        size: [f64; 2],
-        burst: sunrise_client::particles::Burst,
-    ) {
-        let Some(ty) = sunrise_client::particles::ParticleType::from_name(kind) else {
-            return;
-        };
-        let options = sunrise_client::particles::ParticleOptions::simple(ty);
-        let mut spawned = Vec::new();
-        sunrise_client::particles::around_self(
-            self.particles.0.random(),
-            feet,
-            size[0],
-            size[1],
-            burst,
-            |p, v| spawned.push((p, v)),
-        );
-        for (p, v) in spawned {
-            self.particles.0.add(&options, p, v);
-        }
     }
 
     /// `NearestItemSensor.doTick` for the villagers whose sensor is due: the
@@ -615,7 +598,7 @@ impl Game<'_> {
     }
     /// `Villager.updateSpecialPrices` for the players trading with villager `id`
     /// (only the player `only`, when given).
-    fn villager_prices_changed(
+    pub(in crate::game) fn villager_prices_changed(
         &mut self,
         id: u32,
         only: Option<[i32; 4]>,
@@ -768,7 +751,7 @@ impl Game<'_> {
 }
 
 #[cfg(test)]
-mod entity_event_particle_tests {
+pub(in crate::game) mod entity_event_particle_tests {
     /// The raid sweat (42) and the dolphin's treasure hearts (38) are in the
     /// table that now decides which entity events draw particles.
     #[test]
@@ -783,7 +766,7 @@ mod entity_event_particle_tests {
 }
 
 #[cfg(test)]
-mod off_level_tests {
+pub(in crate::game) mod off_level_tests {
     use super::*;
 
     #[test]
@@ -829,10 +812,10 @@ mod off_level_tests {
 
 #[cfg(test)]
 #[path = "tests/villager_witness_tests.rs"]
-mod witness_tests;
+pub(in crate::game) mod witness_tests;
 
 #[cfg(test)]
-mod birth_tests {
+pub(in crate::game) mod birth_tests {
     use super::*;
     use mod_api::{
         BabyEntitySpawnEvent, EntityJoinLevelEvent, FinalizeSpawnEvent, Flow, Hooks, Host,

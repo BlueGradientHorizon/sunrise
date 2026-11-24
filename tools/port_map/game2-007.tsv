@@ -30,7 +30,7 @@ AbstractChestBoat.remove	port	crates/sunrise-client/src/game/entities/minecarts.
 AbstractChestBoat.openCustomInventoryScreen	inline	crates/sunrise-client/src/game/entities/boats/mod.rs::Game::interact_boat	sneaking opens the chest; gap: minor: no piglin anger
 AbstractChestBoat.createMenu	inline	crates/sunrise-client/src/game/entities/boats/mod.rs::Game::interact_boat	the chest container is set up there; gap: minor: no spectator or loot table check
 AbstractMinecart.setInitialPos	port	crates/sunrise-client/src/game/entities/minecarts.rs::Minecart::new	spawn sets the position and its previous copy
-AbstractMinecart.createMinecart	port	crates/sunrise-client/src/game/entities/minecarts.rs::Game::place_minecart	placing on a rail: the rail offset for slopes and the item's kind; gap: minor: no rail snap, which only the experimental behaviour does
+AbstractMinecart.createMinecart	port	crates/sunrise-client/src/game/entities/minecarts_server.rs::Game::place_minecart	placing on a rail: the rail offset for slopes and the item's kind; gap: minor: no rail snap, which only the experimental behaviour does
 AbstractMinecart.defineSynchedData	skip:java		synched display block and offset; Sunrise keeps the kind and its display offset on the Minecart struct
 AbstractMinecart.getPassengerAttachmentPoint	missing		minor: a villager or wandering trader in a cart sits at a lowered seat in vanilla; Sunrise seats only the player in a cart
 AbstractMinecart.getDismountLocationForPassenger	port	crates/sunrise-client/src/game/entities/minecarts.rs::Game::dismount_cart	beside the cart, else on top; gap: minor: the side comes from the yaw, and there is no pose or ceiling check
@@ -47,7 +47,7 @@ AbstractMinecart.addAdditionalSaveData	port	crates/sunrise-client/src/game/entit
 AbstractMinecart.pushOtherMinecart	port	crates/sunrise-client/src/game/entities/minecarts.rs::Game::push_from_cart	cart against cart push with the furnace case; the old-movement facing check is used
 Minecart.interact	port	crates/sunrise-client/src/game/entities/minecarts.rs::Game::interact_cart	a plain rideable cart is boarded unless sneaking or already ridden
 Minecart.activateMinecart	port	crates/sunrise-client/src/game/entities/minecarts.rs::Game::activate_cart	a powered activator rail ejects the rider and hurts a rideable cart
-Minecart.tick	port	crates/sunrise-client/src/game/entities/minecarts.rs::Game::tick_cart	the per-tick cart update; gap: minor: client rotation smoothing for experimental movement is not modelled
+Minecart.tick	port	crates/sunrise-client/src/game/entities/minecarts_client.rs::Game::tick_cart	the per-tick cart update; gap: minor: client rotation smoothing for experimental movement is not modelled
 Minecart.positionRider	port	crates/sunrise-client/src/game/entities/minecarts.rs::Game::tick_cart_riding	the rider sits at the cart seat; the rider's turn with the cart is experimental-only
 MinecartBehavior.setDeltaMovement	skip:other		behaviour forwarder; Sunrise's Minecart struct holds the velocity directly
 MinecartBehavior.setPos	skip:other		behaviour forwarder; Sunrise's Minecart struct holds the position directly
@@ -56,13 +56,13 @@ MinecartHopper.tryConsumeItems	inline	crates/sunrise-client/src/game/entities/mi
 MinecartHopper.suckInItems	port	crates/sunrise-client/src/game/blocks/machines/mod.rs::Game::hopper_cart_suck	container above first, then item entities at the hopper and the cart's box
 MinecartTNT.explode	port	crates/sunrise-client/src/game/entities/minecarts.rs::Game::explode_cart	power 4 plus speed, with the cart gone before the blast; gap: minor: the saved explosion power and speed factor are not applied
 MinecartTNT.handleEntityEvent	port	crates/sunrise-client/src/game/entities/minecarts.rs::Game::remote_tnt_cart_event	event 70 sets the client's fuse to 80
-MinecartTNT.primeFuse	port	crates/sunrise-client/src/game/entities/minecarts.rs::Game::prime_cart	fuse 80, entity event 70 and the primed sound; gap: minor: no ignition source is recorded for who caused the blast
+MinecartTNT.primeFuse	port	crates/sunrise-client/src/game/entities/minecarts_client.rs::Game::prime_cart	fuse 80, entity event 70 and the primed sound; gap: minor: no ignition source is recorded for who caused the blast
 MinecartTNT.getBlockExplosionResistance	port	crates/sunrise-client/src/game/entities/explosion.rs::Game::exploded_positions	while the cart is primed (`combat.rail_proof_blast`, set from `fuse >= 0` in `minecarts.rs`) a rail, and a block with a rail above it, has no resistance to its blast
 MinecartTNT.shouldBlockExplode	inline	crates/sunrise-client/src/game/entities/explosion.rs::Game::exploded_positions	the same ray march leaves a spared rail out of the destroyed set, so the blast goes through it
 MinecartTNT.readAdditionalSaveData	port	crates/sunrise-client/src/game/entities/minecarts.rs::Minecart::from_nbt	fuse read back; gap: minor: explosion_power and explosion_speed_factor are not read
 MinecartTNT.addAdditionalSaveData	port	crates/sunrise-client/src/game/entities/minecarts.rs::Minecart::to_nbt	fuse written; gap: minor: explosion_power and explosion_speed_factor are not written
 MinecartTNT.damageSourceIgnitesTnt	port	crates/sunrise-client/src/game/entities/minecarts.rs::Game::hurt_cart	the fire flag from the caller primes the cart instead of breaking it
-OldMinecartBehavior.tick	port	crates/sunrise-client/src/game/entities/minecarts.rs::Game::tick_cart	gravity, track or off-track move, activator rail, yaw from motion and the flip
+OldMinecartBehavior.tick	port	crates/sunrise-client/src/game/entities/minecarts_client.rs::Game::tick_cart	gravity, track or off-track move, activator rail, yaw from motion and the flip
 OldMinecartBehavior.getMotionDirection	inline	crates/sunrise-client/src/game/entities/minecarts.rs::Game::dismount_cart	the dismount side is the cart's facing, taken from its yaw
 OldMinecartBehavior.getKnownMovement	skip:other		client-side clamp of the known movement for networking; Sunrise simulates carts itself
 FoodData.add	port	crates/sunrise-world/src/food.rs::FoodData::eat_properties	food points and saturation are added and clamped to 0..20 and to the food level
@@ -118,7 +118,7 @@ CartographyTableMenu.canTakeItemForPickAll	port	crates/sunrise-client/src/menu.r
 CartographyTableMenu.quickMoveStack	port	crates/sunrise-client/src/menu.rs::Menu::quick_move	shift-click for the cartography slots
 CartographyTableMenu.removed	inline	crates/sunrise-client/src/game/blocks/stations.rs::Game::close_station	the inputs go back when the table closes
 CrafterMenu.addSlots	inline	crates/sunrise-client/src/menu.rs::Menu::new	the 3x3 grid, the result and the data are set up when the crafter menu is made
-CrafterMenu.isSlotDisabled	inline	crates/sunrise-client/src/game/blocks/machines/crafter.rs::Game::crafter_slot_clicked	a disabled slot refuses a click; the disabled flags are read there
+CrafterMenu.isSlotDisabled	inline	crates/sunrise-client/src/game/blocks/machines/crafter_client.rs::Game::crafter_slot_clicked	a disabled slot refuses a click; the disabled flags are read there
 CrafterMenu.quickMoveStack	port	crates/sunrise-client/src/menu.rs::Menu::quick_move	shift-click for the crafter's grid slots
 CraftingMenu.slotsChanged	port	crates/sunrise-client/src/menu.rs::Menu::inventory_slots_changed	the crafting result is recomputed when the grid changes
 CraftingMenu.finishPlacingRecipe	inline	crates/sunrise-client/src/menu/place.rs::Menu::place_recipe	the result is recomputed once the placed recipe is in the grid

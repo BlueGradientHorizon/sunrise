@@ -5,7 +5,7 @@ use sunrise_core::position::BlockPos;
 
 /// `BlockStatePredictionHandler.ServerVerifiedState`: the most recent sequence,
 /// the server's latest state, and the player's position at the first prediction.
-pub(super) struct Prediction {
+pub(in crate::game) struct Prediction {
     sequence: i32,
     state: BlockStateId,
     player_pos: [f64; 3],
@@ -23,7 +23,12 @@ struct RemovedEntity {
 
 impl Game<'_> {
     /// MultiPlayerGameMode.destroyBlock: the predicted break.
-    pub(super) fn predict_break(&mut self, pos: [i32; 3], state: BlockStateId, sequence: i32) {
+    pub(in crate::game) fn predict_break(
+        &mut self,
+        pos: [i32; 3],
+        state: BlockStateId,
+        sequence: i32,
+    ) {
         self.tutorial_destroy(state, 1.0);
         // Block.playerWillDestroy's destroy event (particles and the break
         // sound), which BaseFireBlock skips: the server's extinguish sound
@@ -108,7 +113,7 @@ impl Game<'_> {
 
     /// Retire the synced copy from the live holder; retain it only with a removed
     /// prediction entity from the block the server still believes is here.
-    pub(super) fn retire_client_block_entity(
+    pub(in crate::game) fn retire_client_block_entity(
         &mut self,
         pos: [i32; 3],
         previous: BlockStateId,
@@ -215,7 +220,7 @@ impl Game<'_> {
 
     /// BlockStatePredictionHandler.endPredictionsUpTo: settle the server's known
     /// state and restore data before the correction notice. Confirmations are silent.
-    pub(super) fn end_predictions(&mut self, sequence: i32) -> Result<()> {
+    pub(in crate::game) fn end_predictions(&mut self, sequence: i32) -> Result<()> {
         let Some(r) = self.remote.as_mut() else {
             return Ok(());
         };
@@ -319,7 +324,7 @@ impl Game<'_> {
     /// again, if one is running (`if (!isDestroying) return;`), and says whether it did. Only the
     /// progress goes: `destroyBlockPos` and `destroyingItem` keep the target, so a dig resumed on
     /// the same block sends no START and the server's clock runs on (#4124).
-    pub(super) fn stop_remote_mining(&mut self) -> bool {
+    pub(in crate::game) fn stop_remote_mining(&mut self) -> bool {
         let kept = self.remote.as_mut().and_then(|r| {
             if !std::mem::take(&mut r.is_destroying) {
                 return None;
@@ -343,7 +348,7 @@ impl Game<'_> {
         true
     }
 
-    pub(super) fn veto_mining_prediction(
+    pub(in crate::game) fn veto_mining_prediction(
         &self,
         pos: [i32; 3],
         face: [i32; 3],
@@ -372,7 +377,7 @@ impl Game<'_> {
     /// A predicate this client could not decode (exact components) only
     /// tells that the server gave one, and the server sends the block back
     /// if it does not match.
-    pub(super) fn remote_break_restricted(&self, pos: [i32; 3]) -> bool {
+    pub(in crate::game) fn remote_break_restricted(&self, pos: [i32; 3]) -> bool {
         use sunrise_protocol::item::{WirePatch, component::CAN_BREAK};
         if self
             .held()

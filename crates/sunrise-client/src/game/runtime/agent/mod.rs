@@ -5,21 +5,31 @@
 //! time out, so `sunrise-ctl break 10 64 3` returns what the block dropped.
 #[cfg(test)]
 #[path = "face_pick_tests.rs"]
-mod face_pick_tests;
+pub(in crate::game) mod face_pick_tests;
+#[allow(unused_imports)]
 use sunrise_client_gameplay::agent_navigation as navigation;
 
+#[allow(unused_imports)]
 use super::event_loop::EventLoopCtl;
+#[allow(unused_imports)]
 use super::owner_link::{ControlRequest, OwnerRequest};
+#[allow(unused_imports)]
 use super::{Game, Screen};
+#[allow(unused_imports)]
 use navigation::{Cell, Node, Plan, Progress};
+#[allow(unused_imports)]
 use serde_json::{Value, json};
+#[allow(unused_imports)]
 use std::{
     collections::{BTreeMap, HashMap, HashSet},
     sync::mpsc::Sender,
     time::{Duration, Instant},
 };
+#[allow(unused_imports)]
 use sunrise_client::actions::Action;
+#[allow(unused_imports)]
 use sunrise_client::held::Source;
+#[allow(unused_imports)]
 use sunrise_client::{
     Result,
     block_entity_anim::Ticker,
@@ -27,14 +37,17 @@ use sunrise_client::{
     mobs::{Species, render::VILLAGER_TYPES},
     widgets,
 };
+#[allow(unused_imports)]
 use sunrise_core::geometry::Vec3;
+#[allow(unused_imports)]
 use sunrise_world::registry::BlockStateId;
+#[allow(unused_imports)]
 use winit::{
     event::{DeviceId, ElementState, MouseButton, MouseScrollDelta, TouchPhase, WindowEvent},
     keyboard::KeyCode,
 };
 
-pub(super) const HELP: &[&str] = &[
+pub(in crate::game) const HELP: &[&str] = &[
     "state                          player, world, screen and crosshair target in one reply",
     "looking-at                     the block or entity under the crosshair (distance, face)",
     "entities [RADIUS] [TYPE]       mobs, dropped items and orbs near the player, nearest first",
@@ -70,7 +83,7 @@ pub(super) const HELP: &[&str] = &[
 ];
 
 /// Keys the agent holds for a task (the game's movement reads these).
-const MOVE_KEYS: [KeyCode; 7] = [
+pub(in crate::game) const MOVE_KEYS: [KeyCode; 7] = [
     KeyCode::KeyW,
     KeyCode::KeyS,
     KeyCode::KeyA,
@@ -82,14 +95,15 @@ const MOVE_KEYS: [KeyCode; 7] = [
 
 /// Words of a command line: positional values and `--flag [value]` options.
 #[derive(Debug, Default, PartialEq)]
-pub(super) struct Args<'a> {
+pub(in crate::game) struct Args<'a> {
     pub pos: Vec<&'a str>,
     pub flags: HashMap<&'a str, Option<&'a str>>,
 }
 /// Options that take a value (`--timeout 10` or `--timeout=10`).
-const VALUE_FLAGS: &[&str] = &["timeout", "near", "item", "radius", "hold", "face", "over"];
+pub(in crate::game) const VALUE_FLAGS: &[&str] =
+    &["timeout", "near", "item", "radius", "hold", "face", "over"];
 
-pub(super) fn parse_args<'a>(words: &[&'a str]) -> Args<'a> {
+pub(in crate::game) fn parse_args<'a>(words: &[&'a str]) -> Args<'a> {
     let mut args = Args::default();
     let mut i = 0;
     while i < words.len() {
@@ -111,30 +125,30 @@ pub(super) fn parse_args<'a>(words: &[&'a str]) -> Args<'a> {
     args
 }
 impl Args<'_> {
-    fn has(&self, flag: &str) -> bool {
+    pub(in crate::game) fn has(&self, flag: &str) -> bool {
         self.flags.contains_key(flag)
     }
-    fn num(&self, flag: &str, default: f64) -> Result<f64> {
+    pub(in crate::game) fn num(&self, flag: &str, default: f64) -> Result<f64> {
         match self.flags.get(flag) {
             Some(Some(v)) => Ok(v.parse()?),
             Some(None) => Err(format!("--{flag} needs a value").into()),
             None => Ok(default),
         }
     }
-    fn get(&self, i: usize, what: &str) -> Result<&str> {
+    pub(in crate::game) fn get(&self, i: usize, what: &str) -> Result<&str> {
         self.pos
             .get(i)
             .copied()
             .ok_or_else(|| format!("missing {what}").into())
     }
-    fn f64(&self, i: usize, what: &str) -> Result<f64> {
+    pub(in crate::game) fn f64(&self, i: usize, what: &str) -> Result<f64> {
         let v = self.get(i, what)?;
         v.parse()
             .map_err(|_| format!("{what} must be a number, not {v}").into())
     }
     /// X or Z of a goto target: a whole number names a block, so aim at its
     /// center the way the player stands in it; a decimal is an exact position.
-    fn column(&self, i: usize, what: &str) -> Result<f64> {
+    pub(in crate::game) fn column(&self, i: usize, what: &str) -> Result<f64> {
         let v = self.f64(i, what)?;
         Ok(if whole(self.get(i, what)?) {
             v + 0.5
@@ -142,12 +156,12 @@ impl Args<'_> {
             v
         })
     }
-    fn i32(&self, i: usize, what: &str) -> Result<i32> {
+    pub(in crate::game) fn i32(&self, i: usize, what: &str) -> Result<i32> {
         let v = self.get(i, what)?;
         v.parse()
             .map_err(|_| format!("{what} must be an integer, not {v}").into())
     }
-    fn block_pos(&self, from: usize) -> Result<[i32; 3]> {
+    pub(in crate::game) fn block_pos(&self, from: usize) -> Result<[i32; 3]> {
         Ok([
             self.i32(from, "X")?,
             self.i32(from + 1, "Y")?,
@@ -156,7 +170,7 @@ impl Args<'_> {
     }
 }
 
-fn namespaced(name: &str) -> String {
+pub(in crate::game) fn namespaced(name: &str) -> String {
     if name.contains(':') {
         name.to_owned()
     } else {
@@ -164,7 +178,7 @@ fn namespaced(name: &str) -> String {
     }
 }
 
-const FACES: [(&str, [i32; 3]); 6] = [
+pub(in crate::game) const FACES: [(&str, [i32; 3]); 6] = [
     ("down", [0, -1, 0]),
     ("up", [0, 1, 0]),
     ("north", [0, 0, -1]),
@@ -172,31 +186,31 @@ const FACES: [(&str, [i32; 3]); 6] = [
     ("west", [-1, 0, 0]),
     ("east", [1, 0, 0]),
 ];
-fn face_name(face: [i32; 3]) -> &'static str {
+pub(in crate::game) fn face_name(face: [i32; 3]) -> &'static str {
     FACES
         .iter()
         .find(|(_, d)| *d == face)
         .map_or("?", |(n, _)| n)
 }
-fn face_dir(name: &str) -> Result<[i32; 3]> {
+pub(in crate::game) fn face_dir(name: &str) -> Result<[i32; 3]> {
     FACES
         .iter()
         .find(|(n, _)| *n == name)
         .map(|(_, d)| *d)
         .ok_or_else(|| format!("unknown face {name} (down up north south west east)").into())
 }
-fn add(a: [i32; 3], b: [i32; 3]) -> [i32; 3] {
+pub(in crate::game) fn add(a: [i32; 3], b: [i32; 3]) -> [i32; 3] {
     [a[0] + b[0], a[1] + b[1], a[2] + b[2]]
 }
-fn whole(v: &str) -> bool {
+pub(in crate::game) fn whole(v: &str) -> bool {
     !v.contains(['.', 'e', 'E'])
 }
-fn dist(a: [f64; 3], b: [f64; 3]) -> f64 {
+pub(in crate::game) fn dist(a: [f64; 3], b: [f64; 3]) -> f64 {
     ((a[0] - b[0]).powi(2) + (a[1] - b[1]).powi(2) + (a[2] - b[2]).powi(2)).sqrt()
 }
 /// Minecraft's yaw and pitch facing from `eye` towards `at` (yaw 0 faces +Z,
 /// 90 faces -X; positive pitch looks down).
-pub(super) fn yaw_pitch(eye: [f64; 3], at: [f64; 3]) -> (f32, f32) {
+pub(in crate::game) fn yaw_pitch(eye: [f64; 3], at: [f64; 3]) -> (f32, f32) {
     let d = [at[0] - eye[0], at[1] - eye[1], at[2] - eye[2]];
     let horizontal = (d[0] * d[0] + d[2] * d[2]).sqrt();
     (
@@ -211,11 +225,11 @@ pub(super) fn yaw_pitch(eye: [f64; 3], at: [f64; 3]) -> (f32, f32) {
 /// (the last fork's). None when no callback ran (a syntax error, an unknown
 /// command, nothing served, a line refused before it ran): `success` is false
 /// and `result` null.
-fn command_reply(chat: Vec<String>, outcome: Option<(bool, i32)>) -> Value {
+pub(in crate::game) fn command_reply(chat: Vec<String>, outcome: Option<(bool, i32)>) -> Value {
     let (success, result) = outcome.map_or((false, None), |(s, r)| (s, Some(r)));
     json!({ "ok": true, "chat": chat, "success": success, "result": result })
 }
-fn counts(items: impl Iterator<Item = ItemStack>) -> BTreeMap<String, i64> {
+pub(in crate::game) fn counts(items: impl Iterator<Item = ItemStack>) -> BTreeMap<String, i64> {
     let mut map = BTreeMap::new();
     for s in items {
         *map.entry(s.item.to_string()).or_insert(0) += i64::from(s.count);
@@ -223,7 +237,10 @@ fn counts(items: impl Iterator<Item = ItemStack>) -> BTreeMap<String, i64> {
     map
 }
 /// Item counts that changed between two inventories (positive: gained).
-fn delta(before: &BTreeMap<String, i64>, after: &BTreeMap<String, i64>) -> BTreeMap<String, i64> {
+pub(in crate::game) fn delta(
+    before: &BTreeMap<String, i64>,
+    after: &BTreeMap<String, i64>,
+) -> BTreeMap<String, i64> {
     let mut out = BTreeMap::new();
     for key in before.keys().chain(after.keys()) {
         let d = after.get(key).copied().unwrap_or(0) - before.get(key).copied().unwrap_or(0);
@@ -234,7 +251,7 @@ fn delta(before: &BTreeMap<String, i64>, after: &BTreeMap<String, i64>) -> BTree
     out
 }
 
-enum TaskKind {
+pub(in crate::game) enum TaskKind {
     /// Hold keys until a deadline.
     Move {
         keys: Vec<KeyCode>,
@@ -273,7 +290,7 @@ enum TaskKind {
 /// input (client_pick.rs), so the click queued after one tick's pick is taken with the next
 /// tick's pick, which can hold another entity.
 #[derive(Clone, Copy, Debug, PartialEq)]
-enum AttackAim {
+pub(in crate::game) enum AttackAim {
     /// Turned to the entity at this tick: the reach check waits for the next tick's pick.
     Turned(u64),
     /// Clicked: the command's click waits in the attack click queue behind `ahead` others,
@@ -288,81 +305,81 @@ enum AttackAim {
 impl TaskKind {
     /// Whether the keys and buttons are released when the task ends. A wait
     /// holds nothing, so what `key w down` pressed stays down through it.
-    fn releases_input(&self) -> bool {
+    pub(in crate::game) fn releases_input(&self) -> bool {
         !matches!(self, TaskKind::Wait { .. })
     }
 }
-struct Goto {
-    target: [f64; 3],
-    near: f64,
-    sprint: bool,
-    path: Plan,
-    blocked: Vec<(Node, Node)>,
-    progress: Progress,
-    next: usize,
+pub(in crate::game) struct Goto {
+    pub(in crate::game) target: [f64; 3],
+    pub(in crate::game) near: f64,
+    pub(in crate::game) sprint: bool,
+    pub(in crate::game) path: Plan,
+    pub(in crate::game) blocked: Vec<(Node, Node)>,
+    pub(in crate::game) progress: Progress,
+    pub(in crate::game) next: usize,
     /// Tick of the last waypoint progress, and stuck recoveries so far.
-    progress_tick: u64,
-    replans: u32,
-    jump_until: u64,
-    warning: Option<String>,
+    pub(in crate::game) progress_tick: u64,
+    pub(in crate::game) replans: u32,
+    pub(in crate::game) jump_until: u64,
+    pub(in crate::game) warning: Option<String>,
 }
-struct Break {
-    pos: [i32; 3],
-    before: BlockStateId,
-    items_before: HashSet<u32>,
-    inventory: BTreeMap<String, i64>,
-    started_tick: u64,
+pub(in crate::game) struct Break {
+    pub(in crate::game) pos: [i32; 3],
+    pub(in crate::game) before: BlockStateId,
+    pub(in crate::game) items_before: HashSet<u32>,
+    pub(in crate::game) inventory: BTreeMap<String, i64>,
+    pub(in crate::game) started_tick: u64,
     /// Set once the block changed: collect drops until this tick.
-    collect_until: Option<u64>,
-    broke_tick: u64,
-    drops: BTreeMap<u32, ItemStack>,
+    pub(in crate::game) collect_until: Option<u64>,
+    pub(in crate::game) broke_tick: u64,
+    pub(in crate::game) drops: BTreeMap<u32, ItemStack>,
 }
 /// A right click made while sneaking (placing against a crafting table or a
 /// chest instead of opening it): the sneak key is held for a couple of ticks
 /// first, so the server has the player's shift state before the click.
-struct SneakClick {
+pub(in crate::game) struct SneakClick {
     /// Not clicked yet: click on this tick.
-    click_tick: Option<u64>,
+    pub(in crate::game) click_tick: Option<u64>,
     /// The block (and face) to aim at again, as sneaking lowers the eye.
-    aim: Option<([i32; 3], Option<[i32; 3]>)>,
-    hold: f64,
+    pub(in crate::game) aim: Option<([i32; 3], Option<[i32; 3]>)>,
+    pub(in crate::game) hold: f64,
 }
-struct Task {
-    kind: TaskKind,
-    reply: Sender<String>,
-    deadline: Instant,
-    name: &'static str,
+pub(in crate::game) struct Task {
+    pub(in crate::game) kind: TaskKind,
+    pub(in crate::game) reply: Sender<String>,
+    pub(in crate::game) deadline: Instant,
+    pub(in crate::game) name: &'static str,
 }
 
 /// Mouse motion an agent feeds over frames (`mouse-move`, `turn --over`,
 /// `look-at --over`): eased, through `MouseHandler`'s accumulated movement.
-struct Glide {
+pub(in crate::game) struct Glide {
     /// The whole motion, in mouse units, and how much has been fed.
-    total: (f64, f64),
-    fed: (f64, f64),
-    started: Instant,
-    over: Duration,
+    pub(in crate::game) total: (f64, f64),
+    pub(in crate::game) fed: (f64, f64),
+    pub(in crate::game) started: Instant,
+    pub(in crate::game) over: Duration,
     /// The pick count (client_pick.rs) at the start: a glide with no motion replies after the
     /// next pick, a tick's or a frame's.
-    picks: u64,
+    pub(in crate::game) picks: u64,
     /// The frame count when motion was last fed: the reply waits for the
     /// frame that turns the view with it.
-    fed_frame: u64,
-    deadline: Instant,
-    reply: Sender<String>,
+    pub(in crate::game) fed_frame: u64,
+    pub(in crate::game) deadline: Instant,
+    pub(in crate::game) reply: Sender<String>,
     /// What `look-at` aimed at, reported once the turn is done.
-    aim: Option<&'static str>,
+    pub(in crate::game) aim: Option<&'static str>,
 }
 
 #[derive(Default)]
-pub(super) struct Agent {
-    task: Option<Task>,
-    glide: Option<Glide>,
+pub(in crate::game) struct Agent {
+    pub(in crate::game) task: Option<Task>,
+    pub(in crate::game) glide: Option<Glide>,
     /// Control-fixture barrier: hold simulation and packet handling, not transport threads.
     pub hold_server: bool,
 }
 
-pub(super) enum Handled {
+pub(in crate::game) enum Handled {
     Reply(Value),
     /// The reply comes later, from the task.
     Deferred,
@@ -373,7 +390,7 @@ pub(super) enum Handled {
 impl Game<'_> {
     /// The non-air blocks of a box in this world, with counts per block (`blocks`, and `simulation blocks`
     /// for the server's own world).
-    pub(super) fn blocks_json(&self, lo: [i32; 3], hi: [i32; 3]) -> Value {
+    pub(in crate::game) fn blocks_json(&self, lo: [i32; 3], hi: [i32; 3]) -> Value {
         let mut list = Vec::new();
         let mut census: BTreeMap<String, u32> = BTreeMap::new();
         for y in lo[1]..=hi[1] {
@@ -391,10 +408,10 @@ impl Game<'_> {
         }
         json!({ "from": lo, "to": hi, "counts": census, "blocks": list })
     }
-    pub(super) fn state_string(&self, state: BlockStateId) -> String {
+    pub(in crate::game) fn state_string(&self, state: BlockStateId) -> String {
         self.block_state_string(state).unwrap_or_else(|| "?".into())
     }
-    fn block_json(&self, pos: [i32; 3]) -> Value {
+    pub(in crate::game) fn block_json(&self, pos: [i32; 3]) -> Value {
         let state = self.world.block(pos[0], pos[1], pos[2]);
         let mut v = json!({
             "pos": pos,
@@ -421,7 +438,7 @@ impl Game<'_> {
         }
         v
     }
-    pub(super) fn stack_value(&self, s: &ItemStack) -> Value {
+    pub(in crate::game) fn stack_value(&self, s: &ItemStack) -> Value {
         let mut v = json!({ "item": &*s.item, "count": s.count });
         if s.damage > 0 {
             v["damage"] = json!(s.damage);
@@ -438,7 +455,7 @@ impl Game<'_> {
         }
         v
     }
-    fn slot_value(&self, slot: usize, s: &Option<ItemStack>) -> Value {
+    pub(in crate::game) fn slot_value(&self, slot: usize, s: &Option<ItemStack>) -> Value {
         match s {
             Some(s) => {
                 let mut v = self.stack_value(s);
@@ -448,13 +465,13 @@ impl Game<'_> {
             None => json!({ "slot": slot, "item": null }),
         }
     }
-    fn need_world(&self) -> Result<()> {
+    pub(in crate::game) fn need_world(&self) -> Result<()> {
         if self.title.0.is_some() {
             return Err("no world open (title screen); use: open WORLD [SEED] [creative]".into());
         }
         Ok(())
     }
-    fn require_playing_screen(&self) -> Result<()> {
+    pub(in crate::game) fn require_playing_screen(&self) -> Result<()> {
         if self.title.0.is_some() {
             return Err("no world open (title screen); use: open WORLD [SEED] [creative]".into());
         }
@@ -473,7 +490,7 @@ impl Game<'_> {
         }
         Ok(())
     }
-    pub(super) fn screen_label(&self) -> &'static str {
+    pub(in crate::game) fn screen_label(&self) -> &'static str {
         if self.dialog_open() {
             return "dialog";
         }
@@ -514,7 +531,7 @@ impl Game<'_> {
             Screen::HudEditor => "hud-editor",
         }
     }
-    pub(super) fn inventory_counts(&self) -> BTreeMap<String, i64> {
+    pub(in crate::game) fn inventory_counts(&self) -> BTreeMap<String, i64> {
         counts(
             self.inventory
                 .iter()
@@ -527,7 +544,7 @@ impl Game<'_> {
     }
 
     /// The block or entity under the crosshair.
-    fn looking_at(&self) -> Value {
+    pub(in crate::game) fn looking_at(&self) -> Value {
         let Some(eye) = self.eye_position() else {
             return Value::Null;
         };
@@ -552,12 +569,7 @@ impl Game<'_> {
         json!({ "kind": kind, "block": block, "entity": entity })
     }
 
-    #[inline(always)]
-    pub(in crate::game) fn shield_cooldown(&self) -> u32 {
-        self.server.shield_cooldown
-    }
-
-    pub(super) fn state_value(&self) -> Value {
+    pub(in crate::game) fn state_value(&self) -> Value {
         let player = self.player.as_ref().map(|p| {
             json!({
                 "position": [p.position.x, p.position.y, p.position.z],
@@ -631,7 +643,7 @@ impl Game<'_> {
         state
     }
 
-    fn title_value(&self) -> Value {
+    pub(in crate::game) fn title_value(&self) -> Value {
         use sunrise_client::title::Mode;
         let Some(title) = &self.title.0 else {
             return Value::Null;
@@ -764,7 +776,7 @@ impl Game<'_> {
         }
     }
 
-    pub(super) fn entities_value(&self, radius: f64, kind: Option<&str>) -> Value {
+    pub(in crate::game) fn entities_value(&self, radius: f64, kind: Option<&str>) -> Value {
         let Some(p) = &self.player else {
             return json!({ "entities": [] });
         };
@@ -831,7 +843,7 @@ impl Game<'_> {
         })
     }
 
-    pub(super) fn inventory_value(&self) -> Value {
+    pub(in crate::game) fn inventory_value(&self) -> Value {
         let armor = ["head", "chest", "legs", "feet"];
         json!({
             "selected": self.selected + 1,
@@ -849,7 +861,7 @@ impl Game<'_> {
         })
     }
 
-    fn screen_value(&mut self) -> Value {
+    pub(in crate::game) fn screen_value(&mut self) -> Value {
         let buttons: Vec<Value> = widgets::last()
             .iter()
             .map(|w| json!({ "label": w.label, "enabled": w.enabled, "x": w.x, "y": w.y, "w": w.w, "h": w.h }))
@@ -911,7 +923,7 @@ impl Game<'_> {
         v
     }
 
-    fn messages_value(&self, n: usize) -> Value {
+    pub(in crate::game) fn messages_value(&self, n: usize) -> Value {
         let titles = &self.client.titles;
         json!({
             "chat": self.remote_chat(n).unwrap_or_else(|| self.ui.chat.recent_lines(n)),
@@ -924,7 +936,7 @@ impl Game<'_> {
         })
     }
 
-    fn find_path(
+    pub(in crate::game) fn find_path(
         &self,
         from: Node,
         goal: [f64; 3],
@@ -945,7 +957,7 @@ impl Game<'_> {
     }
 
     /// Point the view at `at` from the eye.
-    fn face_point(&mut self, at: [f64; 3]) -> Result<()> {
+    pub(in crate::game) fn face_point(&mut self, at: [f64; 3]) -> Result<()> {
         let eye = self.eye_position().ok_or("no player")?;
         let (yaw, pitch) = yaw_pitch(eye, at);
         self.yaw = yaw;
@@ -953,7 +965,11 @@ impl Game<'_> {
         Ok(())
     }
     /// Aim at a face of `pos` the crosshair can reach; the face hit.
-    fn aim_block(&mut self, pos: [i32; 3], face: Option<[i32; 3]>) -> Result<[i32; 3]> {
+    pub(in crate::game) fn aim_block(
+        &mut self,
+        pos: [i32; 3],
+        face: Option<[i32; 3]>,
+    ) -> Result<[i32; 3]> {
         let eye = self.eye_position().ok_or("no player")?;
         let centre = pos.map(|v| f64::from(v) + 0.5);
         let mut faces: Vec<[i32; 3]> = match face {
@@ -1012,7 +1028,7 @@ impl Game<'_> {
 
     /// `--sneak` on place or interact: hold the sneak key now and click a
     /// couple of ticks later, from the lowered eye (see [`SneakClick`]).
-    fn sneak_click(
+    pub(in crate::game) fn sneak_click(
         &mut self,
         a: &Args<'_>,
         aim: Option<([i32; 3], Option<[i32; 3]>)>,
@@ -1030,13 +1046,17 @@ impl Game<'_> {
     }
 
     /// A left or right click, as the mouse would.
-    fn agent_mouse(&mut self, button: MouseButton, pressed: bool) -> Result<()> {
+    pub(in crate::game) fn agent_mouse(
+        &mut self,
+        button: MouseButton,
+        pressed: bool,
+    ) -> Result<()> {
         self.mouse_mapping(button, pressed, Source::Agent)
     }
     /// Ends the running agent command (and a turn) with `why`, so the agent
     /// hears why rather than the socket just closing (the window closing
     /// while it waits, say).
-    pub(super) fn agent_cancel(&mut self, why: &str) {
+    pub(in crate::game) fn agent_cancel(&mut self, why: &str) {
         let reply = json!({ "error": why, "cancelled": true }).to_string();
         if let Some(t) = self.agent.task.take() {
             let _ = t.reply.send(reply.clone());
@@ -1046,7 +1066,7 @@ impl Game<'_> {
         }
         self.release_agent_keys();
     }
-    fn release_agent_keys(&mut self) {
+    pub(in crate::game) fn release_agent_keys(&mut self) {
         for k in MOVE_KEYS {
             self.release_device_key(&k, Source::Agent);
         }
@@ -1059,7 +1079,7 @@ impl Game<'_> {
     }
 
     /// Synthesize the pointer moving to GUI pixel (x, y) and a click there.
-    pub(super) fn synth_click(
+    pub(in crate::game) fn synth_click(
         &mut self,
         event_loop: &dyn EventLoopCtl,
         x: f32,
@@ -1070,7 +1090,7 @@ impl Game<'_> {
     }
     /// The window events of a press at the first GUI point, moves through
     /// the others and a release at the last (one point is a click).
-    fn synth_drag(
+    pub(in crate::game) fn synth_drag(
         &mut self,
         event_loop: &dyn EventLoopCtl,
         points: &[(f32, f32)],
@@ -1118,7 +1138,7 @@ impl Game<'_> {
         Ok(())
     }
 
-    fn start_task(
+    pub(in crate::game) fn start_task(
         &mut self,
         name: &'static str,
         kind: TaskKind,
@@ -1135,12 +1155,12 @@ impl Game<'_> {
     }
 
     /// A deferred agent action (goto, break, wait...) is still running.
-    pub(super) fn agent_busy(&self) -> bool {
+    pub(in crate::game) fn agent_busy(&self) -> bool {
         self.agent.task.is_some()
     }
 
     /// Agent commands; `Handled::No` when `words[0]` is not one of them.
-    pub(super) fn agent_command(
+    pub(in crate::game) fn agent_command(
         &mut self,
         words: &[&str],
         line: &str,
@@ -1895,7 +1915,7 @@ impl Game<'_> {
     }
 
     /// Select the hotbar slot holding `item`.
-    fn select_item(&mut self, item: &str) -> Result<()> {
+    pub(in crate::game) fn select_item(&mut self, item: &str) -> Result<()> {
         if let Some(i) =
             (0..9).find(|&i| self.inventory[i].as_ref().is_some_and(|s| &*s.item == item))
         {
@@ -1913,7 +1933,7 @@ impl Game<'_> {
 
     /// Mouse motion turns the view only in the world with no screen open
     /// (`MouseHandler` turns the player while the mouse is grabbed).
-    fn turning(&self) -> Result<()> {
+    pub(in crate::game) fn turning(&self) -> Result<()> {
         self.require_playing_screen()?;
         if self.agent.glide.is_some() {
             return Err("already turning; wait for it or send stop".into());
@@ -1921,7 +1941,7 @@ impl Game<'_> {
         Ok(())
     }
 
-    fn start_glide(
+    pub(in crate::game) fn start_glide(
         &mut self,
         total: (f64, f64),
         over: f64,
@@ -1954,7 +1974,7 @@ impl Game<'_> {
     /// Feed the motion due by now (eased over the glide's time); reply once
     /// all of it has been turned by a frame, or with no motion once a pick
     /// (a tick's or a frame's) has been taken since the start.
-    fn advance_glide(&mut self) {
+    pub(in crate::game) fn advance_glide(&mut self) {
         let Some(mut g) = self.agent.glide.take() else {
             return;
         };
@@ -2069,7 +2089,7 @@ impl Game<'_> {
     }
 
     /// Advance the running agent task; reply when it ends.
-    pub(super) fn advance_agent(&mut self) {
+    pub(in crate::game) fn advance_agent(&mut self) {
         self.advance_glide();
         let timed_out = self
             .agent
@@ -2094,14 +2114,18 @@ impl Game<'_> {
         }
     }
 
-    fn position(&self) -> [f64; 3] {
+    pub(in crate::game) fn position(&self) -> [f64; 3] {
         self.player
             .as_ref()
             .map_or([0.0; 3], |p| [p.position.x, p.position.y, p.position.z])
     }
 
     /// One frame of a task: Some(reply) when it is over.
-    fn step_task(&mut self, kind: &mut TaskKind, timed_out: bool) -> Option<Value> {
+    pub(in crate::game) fn step_task(
+        &mut self,
+        kind: &mut TaskKind,
+        timed_out: bool,
+    ) -> Option<Value> {
         // Leaving the world (death, a screen, the title) ends movement tasks.
         let interrupted = if self.title.0.is_some() || self.player.is_none() {
             Some("the world closed")
@@ -2336,7 +2360,7 @@ impl Game<'_> {
         }
     }
 
-    fn step_goto(&mut self, g: &mut Goto, timed_out: bool) -> Option<Value> {
+    pub(in crate::game) fn step_goto(&mut self, g: &mut Goto, timed_out: bool) -> Option<Value> {
         let p = self.position();
         let on_ground = self.player.as_ref().is_some_and(|p| p.ground.on_ground);
         let horizontal =
@@ -2437,13 +2461,13 @@ impl Game<'_> {
 
     /// Whether a mined block is gone: air, or the bare fluid a waterlogged
     /// block or ice leaves behind.
-    fn block_gone(&self, state: BlockStateId) -> bool {
+    pub(in crate::game) fn block_gone(&self, state: BlockStateId) -> bool {
         let facts = self.res.facts();
         let f = facts.get(state);
         facts.is_air(state) || f.fluid != sunrise_client::blocks::Fluid::None && !f.waterlogged
     }
 
-    fn step_break(
+    pub(in crate::game) fn step_break(
         &mut self,
         b: &mut Break,
         timed_out: bool,
@@ -2528,7 +2552,7 @@ impl Game<'_> {
 }
 
 #[cfg(test)]
-mod tests {
+pub(in crate::game) mod tests {
     use super::*;
 
     #[test]

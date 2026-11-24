@@ -1,22 +1,30 @@
 //! The native travel decision affects real player reports and sends vanilla corrections.
+#[allow(unused_imports)]
 use super::*;
+#[allow(unused_imports)]
 use crate::game::execution_role::ExecutionRole;
+#[allow(unused_imports)]
 use crate::game::native_entity_refs::tests::{fixture_root, with_game_role};
+#[allow(unused_imports)]
 use crate::game::native_item_places::tests::guest as online_guest;
+#[allow(unused_imports)]
 use mod_api::{EntityMoveEvent, Flow, Hooks, LivingTravelEvent, LoopContext, MoveCause};
+#[allow(unused_imports)]
 use std::sync::atomic::{AtomicUsize, Ordering};
+#[allow(unused_imports)]
 use sunrise_client::{
     chunk::Chunk,
     lan::{NetConfig, Out, hub::HubConfig},
 };
+#[allow(unused_imports)]
 use sunrise_protocol::packets::{Empty, play::Serverbound as S};
 
-const START: [f64; 3] = [3.0, 64.0, 5.0];
-const ACCEPTED: [f64; 3] = [3.25, 64.0, 5.0];
-const NEXT: [f64; 3] = [3.5, 64.0, 5.0];
+pub(in crate::game) const START: [f64; 3] = [3.0, 64.0, 5.0];
+pub(in crate::game) const ACCEPTED: [f64; 3] = [3.25, 64.0, 5.0];
+pub(in crate::game) const NEXT: [f64; 3] = [3.5, 64.0, 5.0];
 
 #[derive(Clone, Copy)]
-enum Reply {
+pub(in crate::game) enum Reply {
     Continue,
     Veto,
     Velocity,
@@ -39,7 +47,10 @@ impl Hooks for Reply {
     }
 }
 
-fn with_player(integrated: bool, run: impl FnOnce(&mut Game<'_>, mpsc::Receiver<Out>)) {
+pub(in crate::game) fn with_player(
+    integrated: bool,
+    run: impl FnOnce(&mut Game<'_>, mpsc::Receiver<Out>),
+) {
     let role = if integrated {
         ExecutionRole::IntegratedServer
     } else {
@@ -95,7 +106,7 @@ fn with_player(integrated: bool, run: impl FnOnce(&mut Game<'_>, mpsc::Receiver<
     });
 }
 
-fn with_reply(reply: Option<Reply>, run: impl FnOnce()) {
+pub(in crate::game) fn with_reply(reply: Option<Reply>, run: impl FnOnce()) {
     let mods = reply
         .map(|reply| mod_api::ModEntry::new("travel-test", Box::new(reply)))
         .into_iter()
@@ -103,20 +114,10 @@ fn with_reply(reply: Option<Reply>, run: impl FnOnce()) {
     mod_platform::testing::with_mods(mods.into(), run);
 }
 
-fn send(game: &mut Game<'_>, packet: S) {
-    game.lan.as_mut().unwrap().hub.update_guest(1, |g| {
-        use sunrise_client::lan::guest::InboxItem;
-        g.inbox.push_back(InboxItem::Packet(packet, None));
-        g.inbox
-            .push_back(InboxItem::Packet(S::ClientTickEnd(Empty), None));
-    });
-    game.server.level_pass.packets_drained = false;
-    game.tick_lan_packets();
-    // The packet phase holds output until the tick's usual network handoff.
-    guest(game).sender.flush();
-}
+#[allow(unused_imports)]
+pub(in crate::game) use crate::game::server_side::lan_actions_server::guest_body::tests::travel::send;
 
-fn report(game: &mut Game<'_>, [x, y, z]: [f64; 3]) {
+pub(in crate::game) fn report(game: &mut Game<'_>, [x, y, z]: [f64; 3]) {
     send(
         game,
         S::MovePlayerPos(play::MovePlayerPos { x, y, z, flags: 0 }),
@@ -148,11 +149,11 @@ fn a_connected_players_report_never_exposes_stale_collision_flags() {
     }
 }
 
-fn guest<'a>(game: &'a Game<'_>) -> &'a Guest {
+pub(in crate::game) fn guest<'a>(game: &'a Game<'_>) -> &'a Guest {
     game.lan.as_ref().unwrap().hub.guest(1).unwrap()
 }
 
-fn packets(rx: &mpsc::Receiver<Out>) -> Vec<(i32, Vec<u8>)> {
+pub(in crate::game) fn packets(rx: &mpsc::Receiver<Out>) -> Vec<(i32, Vec<u8>)> {
     rx.try_iter()
         .flat_map(|out| match out {
             Out::Packet(body) => vec![body],
@@ -166,7 +167,7 @@ fn packets(rx: &mpsc::Receiver<Out>) -> Vec<(i32, Vec<u8>)> {
         .collect()
 }
 
-fn correction(rx: &mpsc::Receiver<Out>) -> play::PlayerPosition {
+pub(in crate::game) fn correction(rx: &mpsc::Receiver<Out>) -> play::PlayerPosition {
     let positions = packets(rx)
         .into_iter()
         .filter_map(|(id, body)| match C::decode(id, &body).unwrap() {
@@ -180,7 +181,7 @@ fn correction(rx: &mpsc::Receiver<Out>) -> play::PlayerPosition {
     packet
 }
 
-fn acknowledge(game: &mut Game<'_>, packet: &play::PlayerPosition) {
+pub(in crate::game) fn acknowledge(game: &mut Game<'_>, packet: &play::PlayerPosition) {
     let [x, y, z] = packet.position;
     send(
         game,
@@ -388,9 +389,9 @@ fn an_unchanged_player_travel_outcome_keeps_vanilla_reports_and_packets() {
     }
 }
 
-struct MoveVeto {
-    travel: Reply,
-    moves: Arc<AtomicUsize>,
+pub(in crate::game) struct MoveVeto {
+    pub(in crate::game) travel: Reply,
+    pub(in crate::game) moves: Arc<AtomicUsize>,
 }
 
 #[mod_api::__subscriptions]

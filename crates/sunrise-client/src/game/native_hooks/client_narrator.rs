@@ -24,7 +24,7 @@ impl Game<'_> {
 /// `saySystemNow` or `saySystemQueued` for a mod, refusing by name what
 /// vanilla would drop silently: an empty line, an option that does not
 /// narrate system messages, no speech. A refused line is not logged.
-pub(super) fn say_for_mod(
+pub(in crate::game) fn say_for_mod(
     narrator: &mut GameNarrator,
     line: &str,
     when: Narration,

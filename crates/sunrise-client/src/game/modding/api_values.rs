@@ -45,7 +45,10 @@ impl mod_api::RandomSource for LiveLevelRandom<'_> {
 }
 
 /// Lend the actual stream directly without unwind restoration or transaction journaling.
-pub(super) fn with_live_level_random(random: &mut LegacyRandom, draw: mod_api::RandomDraw<'_>) {
+pub(in crate::game) fn with_live_level_random(
+    random: &mut LegacyRandom,
+    draw: mod_api::RandomDraw<'_>,
+) {
     draw.run(&mut LiveLevelRandom(random));
 }
 
@@ -398,7 +401,7 @@ pub(in crate::game) fn mod_tint_values(
     Ok(Some(crate::mesher::ModTintValues { states, metadata }))
 }
 
-pub(super) fn block_metadata_table()
+pub(in crate::game) fn block_metadata_table()
 -> Result<&'static sunrise_mod_runtime::block_definitions::Blocks, mod_api::BlockStateError> {
     mod_api::__private::block_definitions().ok_or(mod_api::BlockStateError::Unavailable)
 }
@@ -770,7 +773,7 @@ impl TryIntoApi for sunrise_client::merchant::MerchantOffer {
     }
 }
 #[derive(Debug)]
-pub(super) enum OfferWriteError {
+pub(in crate::game) enum OfferWriteError {
     NonFinitePrice,
     Stack(StackWriteError),
 }
@@ -783,7 +786,7 @@ impl From<StackWriteError> for OfferWriteError {
 
 /// A collect answer and a MerchantRef write admit offers through the same check. All i32
 /// fields fit `MerchantOffer.CODEC`; their arithmetic follows Java wrapping in the engine.
-pub(super) fn checked_merchant_offer(
+pub(in crate::game) fn checked_merchant_offer(
     offer: &mod_api::MerchantOffer,
     items: &Items,
 ) -> Result<sunrise_client::merchant::MerchantOffer, OfferWriteError> {

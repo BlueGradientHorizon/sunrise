@@ -3,7 +3,7 @@ AbstractHorse.addBehaviourGoals	inline	crates/sunrise-client/src/mobs/equine.rs:
 AbstractHorse.getFlag	skip:other		bit accessor of the synched flags; Sunrise keeps tame, eating (flag) and standing (counter) as separate fields
 AbstractHorse.setFlag	skip:other		bit accessor of the synched flags; the bits are packed for sync in lan.rs::mob_meta and read back in equine::set_flags
 AbstractHorse.canUseSlot	port	crates/sunrise-gameplay/src/dispense_rules.rs::mob_can_use_slot	saddle needs an alive tamed adult; horses, zombie horses, skeleton horses and llamas allow every slot
-AbstractHorse.equipBodyArmor	inline	crates/sunrise-client/src/game/mobs/mounts.rs::Game::interact_mount	gap: minor: right click armours only a tamed Horse, a tamed zombie horse needs the inventory screen
+AbstractHorse.equipBodyArmor	inline	crates/sunrise-client/src/game/mobs/mounts_client.rs::Game::interact_mount	gap: minor: right click armours only a tamed Horse, a tamed zombie horse needs the inventory screen
 AbstractHorse.canDispenserEquipIntoSlot	port	crates/sunrise-gameplay/src/dispense_rules.rs::mob_can_dispenser_equip	body and saddle of a tamed mount
 AbstractHorse.modifyTemper	inline	crates/sunrise-client/src/game/mobs/mounts.rs::Game::feed_mount	temper raised by the food, clamped to the maximum; a buck adds 5 in equine.rs RunAroundLikeCrazy::tick
 AbstractHorse.eating	inline	crates/sunrise-client/src/game/mobs/mounts.rs::Game::feed_mount	gap: minor: the mouth stays open 3 ticks instead of 30; a foal uses the adult eat sound
@@ -14,7 +14,7 @@ AbstractHorse.hurtServer	port	crates/sunrise-client/src/mobs/equine.rs::after_hu
 AbstractHorse.playStepSound	port	crates/sunrise-client/src/mobs/equine.rs::play_step
 AbstractHorse.isWoodSoundType	port	crates/sunrise-client/src/mobs/equine.rs::is_wood_sound_type
 AbstractHorse.fedFood	port	crates/sunrise-client/src/game/mobs/mounts.rs::Game::feed_mount	handleEating and consuming one item; llamas use llamas.rs feed_llama
-AbstractHorse.doPlayerRide	inline	crates/sunrise-client/src/game/mobs/mounts.rs::Game::interact_mount	clears eating and standing, turns the player to the mount and mounts; the block at the end of interact_mount
+AbstractHorse.doPlayerRide	inline	crates/sunrise-client/src/game/mobs/mounts_client.rs::Game::interact_mount	clears eating and standing, turns the player to the mount and mounts; the block at the end of interact_mount
 AbstractHorse.isImmobile	port	crates/sunrise-client/src/mobs/equine.rs::immobile
 AbstractHorse.dropEquipment	inline	crates/sunrise-client/src/mobs/drops.rs::die	the equine branch drops the inventory items and a donkey's or mule's chest
 AbstractHorse.followMommy	inline	crates/sunrise-client/src/mobs/equine.rs::ai_step	follow_mommy: a bred foal that is not eating keeps a path to the nearest bred AbstractHorse within 16 blocks and more than 2 away (createPath(entity, 0), which leaves the speed modifier alone); Bred is NBT-only in 26.3, so only a save or a summon gives it
@@ -22,7 +22,7 @@ AbstractHorse.openMouth	inline	crates/sunrise-client/src/game/mobs/mounts.rs::Ga
 AbstractHorse.setStanding	inline	crates/sunrise-client/src/mobs/equine.rs::make_mad	the 20 tick rear; RandomStand::start and the jump in tick_mount_riding set the same counter
 AbstractHorse.standIfPossible	inline	crates/sunrise-client/src/mobs/equine.rs::make_mad	rears only species that can; the hurt caller is missing (see hurtServer)
 AbstractHorse.tickRidden	port	crates/sunrise-client/src/mobs/equine.rs::ridden_step	yaw and half the pitch follow the rider
-AbstractHorse.addPassenger	inline	crates/sunrise-client/src/game/mobs/mounts.rs::Game::interact_mount	gap: minor: the rider's yaw is snapped to the mount's on mounting, the pitch is not
+AbstractHorse.addPassenger	inline	crates/sunrise-client/src/game/mobs/mounts_client.rs::Game::interact_mount	gap: minor: the rider's yaw is snapped to the mount's on mounting, the pitch is not
 AbstractHorse.getRiddenInput	port	crates/sunrise-client/src/mobs/equine.rs::ridden_step	gap: player: no allowStandSliding, so a horse that lands from a small hop while still rearing ignores the keys until the rear ends
 AbstractHorse.executeRidersJump	port	crates/sunrise-client/src/mobs/equine.rs::ridden_step	gap: minor: the impulse is jump strength times the bar only, no honey block factor and no Jump Boost
 AbstractHorse.readAdditionalSaveData	port	crates/sunrise-client/src/entity_nbt/mob_load.rs::mob_from_nbt	gap: minor: Tame, Temper and Owner are read; EatingHaystack and Bred are not
@@ -39,14 +39,14 @@ AbstractHorse.getDismountLocationInDirection	inline	crates/sunrise-client/src/ga
 AbstractHorse.getDismountLocationForPassenger	port	crates/sunrise-client/src/game/mobs/mounts.rs::Game::dismount_mount	gap: minor: tries both sides by the mount's yaw then on top, not by the rider's main arm
 AbstractHorse.getPassengerAttachmentPoint	inline	crates/sunrise-client/src/game/mobs/mounts.rs::Game::position_rider	gap: player: the rider does not slide back and up when the horse rears; the seat is a fixed point per species
 Donkey.canMate	inline	crates/sunrise-client/src/mobs/goals.rs::Breed::can_use	a mule never mates; horse, donkey and llama keep the tame, full health and not-ridden rules
-Donkey.getBreedOffspring	inline	crates/sunrise-client/src/game/mobs/creatures/mod.rs::Game::breed	donkey with horse gives a mule, donkey with donkey a donkey; attributes from both parents
+Donkey.getBreedOffspring	inline	crates/sunrise-client/src/game/mobs/creatures/mod_server.rs::Game::breed	donkey with horse gives a mule, donkey with donkey a donkey; attributes from both parents
 Horse.randomizeAttributes	port	crates/sunrise-client/src/mobs/finalize.rs::Ctx::horse	health, speed and jump strength
 Horse.setVariantAndMarkings	inline	crates/sunrise-client/src/mobs/finalize.rs::Ctx::finalize	coat and markings drawn at spawn; breeding mixes them in creatures.rs Game::breed
 Horse.setVariant	port	crates/sunrise-client/src/entity_nbt.rs::apply_item_components	the `minecraft:horse/variant` name sets the coat colour (`setTypeVariant(id & 0xFF | getTypeVariant() & -256)`), the markings the spawn picked stay
 Horse.get	port	crates/sunrise-client/src/mobs/finalize.rs::species_variant_component	horse/variant component
 Horse.applyImplicitComponent	port	crates/sunrise-client/src/entity_nbt.rs::apply_item_components	the `minecraft:horse/variant` name of an egg or item sets the coat colour and leaves the markings
 Horse.playGallopSound	port	crates/sunrise-client/src/mobs/equine.rs::play_step
-Horse.mobInteract	inline	crates/sunrise-client/src/game/mobs/mounts.rs::Game::interact_mount	gap: player: an untamed horse with a non-food item in hand is mounted instead of rearing angrily, a full health tame horse with food in hand is mounted instead of ignoring the click, and a golden dandelion on a foal does nothing
+Horse.mobInteract	inline	crates/sunrise-client/src/game/mobs/mounts_client.rs::Game::interact_mount	gap: player: an untamed horse with a non-food item in hand is mounted instead of rearing angrily, a full health tame horse with food in hand is mounted instead of ignoring the click, and a golden dandelion on a foal does nothing
 Horse.canMate	inline	crates/sunrise-client/src/mobs/goals.rs::Breed::can_use	horse or donkey partner, both tame, adult, not ridden and at full health
 Horse.hurtArmor	port	crates/sunrise-client/src/mobs.rs::Mob::damage_with	a hit that lands on a body-armour mob reports the wear (MobEvent::ArmorHurt); game/mobs/creatures/mod.rs::Game::hurt_mob_armor takes max(1, damage / 4) off it, Unbreaking and the fire-resistant spare applied
 Horse.finalizeSpawn	port	crates/sunrise-client/src/mobs/finalize.rs::Ctx::finalize	random coat and markings, the herd shares the coat
@@ -58,12 +58,12 @@ Llama.registerGoals	port	crates/sunrise-client/src/mobs/llama.rs::register	goals
 Llama.defineSynchedData	port	crates/sunrise-client/src/game/network/lan/mod.rs::mob_meta	strength and variant entries
 Llama.get	port	crates/sunrise-client/src/mobs/finalize.rs::species_variant_component	llama/variant component, a trader llama too
 Llama.applyImplicitComponent	port	crates/sunrise-client/src/entity_nbt.rs::apply_item_components	the `minecraft:llama/variant` name sets the variant; a trader llama inherits the llama's arm
-Llama.playChestEquipsSound	inline	crates/sunrise-client/src/game/mobs/llamas.rs::Game::interact_llama	entity.llama.chest when a chest is added
+Llama.playChestEquipsSound	inline	crates/sunrise-client/src/game/mobs/llamas_client.rs::Game::interact_llama	entity.llama.chest when a chest is added
 Llama.canMate	inline	crates/sunrise-client/src/mobs/goals.rs::Breed::can_use	any llama or trader llama, both tame, adult, not ridden and at full health
 Llama.causeFallDamage	inline	crates/sunrise-client/src/mobs/living.rs::Mob::cause_fall_damage_at	no thud for a llama (equine::is_equine without llama::is_llama), the fall passed on like a horse's; gap: minor: the llama's own damage uses its safe distance of 6
 Llama.leaveCaravan	inline	crates/sunrise-client/src/mobs/caravan.rs::FollowCaravan::stop	clears the caravan head
 Llama.LlamaHurtByTargetGoal.canContinueToUse	port	crates/sunrise-client/src/mobs/llama.rs::LlamaHurtBy::can_continue	stops after a spit
-Mule.playChestEquipsSound	inline	crates/sunrise-client/src/game/mobs/mounts.rs::Game::interact_mount	gap: minor: a mule uses the donkey's chest sound (entity.donkey.chest) instead of entity.mule.chest
+Mule.playChestEquipsSound	inline	crates/sunrise-client/src/game/mobs/mounts_client.rs::Game::interact_mount	gap: minor: a mule uses the donkey's chest sound (entity.donkey.chest) instead of entity.mule.chest
 SkeletonHorse.checkSkeletonHorseSpawnRules	inline	crates/sunrise-client/src/mobs/spawn_rules.rs::check_spawn_rules	spawner reasons need light or a light ignoring reason, otherwise the animal rules
 SkeletonHorse.randomizeAttributes	port	crates/sunrise-client/src/mobs/finalize.rs::Ctx::horse	jump strength only
 SkeletonHorse.getSwimSound	port	crates/sunrise-client/src/mobs/equine.rs::skeleton_horse_swim_sound	swim in the water; on the ground step_water unridden, and a ridden one counts on gallopSoundCounter: step_water five times, gallop_water every third, swim in between
@@ -84,7 +84,7 @@ ZombieHorse.randomizeAttributes	port	crates/sunrise-client/src/mobs/finalize.rs:
 ZombieHorse.generateZombieHorseJumpStrength	inline	crates/sunrise-client/src/mobs/finalize.rs::Ctx::horse	0.5 plus three draws of 0.0667
 ZombieHorse.generateZombieHorseSpeed	inline	crates/sunrise-client/src/mobs/finalize.rs::Ctx::horse	(9 plus three draws) over 42.16
 ZombieHorse.addBehaviourGoals	inline	crates/sunrise-client/src/mobs/equine.rs::register	float and tempt with the zombie horse food, no mount panic
-ZombieHorse.mobInteract	inline	crates/sunrise-client/src/game/mobs/mounts.rs::Game::interact_mount	gap: player: an untamed zombie horse with a non-food item in hand is mounted instead of rearing angrily, and food that is not eaten still mounts it
+ZombieHorse.mobInteract	inline	crates/sunrise-client/src/game/mobs/mounts_client.rs::Game::interact_mount	gap: player: an untamed zombie horse with a non-food item in hand is mounted instead of rearing angrily, and food that is not eaten still mounts it
 Cat.getSoundSet	port	crates/sunrise-client/src/mobs/finalize.rs::variant_sound
 Cat.defineSynchedData	port	crates/sunrise-client/src/game/network/lan/mod.rs::mob_meta	gap: minor: variant, lying, relax and collar are sent, the sound variant entry is not
 Cat.addAdditionalSaveData	port	crates/sunrise-client/src/entity_nbt.rs::mob_to_nbt	variant, sound_variant and CollarColor

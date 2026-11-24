@@ -3,7 +3,9 @@
 //! the block events that drive them (`ClientboundBlockEventPacket` reaching
 //! `BlockEntity.triggerEvent`). The renderer reads the resulting state through
 //! [`Game::block_anim`] and [`Game::chest_lid`].
+#[allow(unused_imports)]
 use super::Game;
+#[allow(unused_imports)]
 use sunrise_client::{
     block_entity_anim::{
         BellEntity, ConduitServer, ConduitTarget, EndGateway, Shulker, ShulkerStatus, Ticker,
@@ -18,7 +20,9 @@ use sunrise_client::{
     save::number,
     skins,
 };
+#[allow(unused_imports)]
 use sunrise_core::nbt::Tag;
+#[allow(unused_imports)]
 use sunrise_core::{
     geometry::{Aabb, Vec3},
     position::BlockPos,
@@ -26,14 +30,15 @@ use sunrise_core::{
 };
 
 /// The handle of the local player among a bell's gathered entities.
-const PLAYER: u64 = u64::MAX;
+pub(in crate::game) const PLAYER: u64 = u64::MAX;
 
+#[allow(unused_imports)]
 pub(in crate::game) use sunrise_gameplay::container_openers::recheck_opener_count;
 
 /// What a client tick of the animated block entities shares between them.
 pub(in crate::game) struct AnimTick {
     /// The conduits' frame blocks, copied when the first of them ticks.
-    frames: Option<std::collections::HashSet<String>>,
+    pub(in crate::game) frames: Option<std::collections::HashSet<String>>,
 }
 
 impl Game<'_> {
@@ -156,7 +161,11 @@ impl Game<'_> {
     /// chest at `key` (the host and the guests are counted), then
     /// `ChestBlockEntity.signalOpenCount`: block event 1 with the count, here
     /// and for the guests. True when the count crossed zero.
-    fn lid_openers_changed(&mut self, key: (i32, i32, i32), open: bool) -> bool {
+    pub(in crate::game) fn lid_openers_changed(
+        &mut self,
+        key: (i32, i32, i32),
+        open: bool,
+    ) -> bool {
         let (before, count) = self.count_opener(key, open);
         let pos = [key.0, key.1, key.2];
         self.block_entity_event(pos, 1, count);
@@ -177,7 +186,11 @@ impl Game<'_> {
     /// `BarrelBlockEntity.openersCounter`: the first opener opens the barrel
     /// (`open=true`), the last one to leave closes it (`updateBlockState`).
     /// True when the count crossed zero.
-    fn barrel_openers_changed(&mut self, key: (i32, i32, i32), open: bool) -> bool {
+    pub(in crate::game) fn barrel_openers_changed(
+        &mut self,
+        key: (i32, i32, i32),
+        open: bool,
+    ) -> bool {
         let (before, count) = self.count_opener(key, open);
         let edge = (before == 0) != (count == 0);
         if edge {
@@ -192,7 +205,7 @@ impl Game<'_> {
     }
     /// One opener more (`open`) or less at `key`: the count before and after
     /// (`ContainerOpenersCounter.incrementOpeners` / `decrementOpeners`).
-    fn count_opener(&mut self, key: (i32, i32, i32), open: bool) -> (i32, i32) {
+    pub(in crate::game) fn count_opener(&mut self, key: (i32, i32, i32), open: bool) -> (i32, i32) {
         let count = self.server.lid_openers.entry(key).or_default();
         let before = *count;
         *count = (before + if open { 1 } else { -1 }).max(0);
@@ -211,7 +224,7 @@ impl Game<'_> {
     }
     /// `BellBlockEntity.updateEntities`: the living entities whose bounding
     /// box meets the bell's block box inflated by 48.
-    fn bell_gather(&self, pos: [i32; 3]) -> Vec<u64> {
+    pub(in crate::game) fn bell_gather(&self, pos: [i32; 3]) -> Vec<u64> {
         let area = Aabb::new(
             Vec3::new(
                 f64::from(pos[0]) - 48.0,
@@ -241,7 +254,7 @@ impl Game<'_> {
     /// `BellBlockEntity.updateEntities`: every gathered entity alive within 32
     /// blocks of the bell's centre gets `HEARD_BELL_TIME` (only villagers
     /// have a brain that reads it).
-    fn bell_heard(&mut self, pos: [i32; 3], now: i64) {
+    pub(in crate::game) fn bell_heard(&mut self, pos: [i32; 3], now: i64) {
         let nearby = self
             .be_anims
             .bells
@@ -286,7 +299,7 @@ impl Game<'_> {
     }
     /// `BellBlockEntity.serverTick`: ringing server bells belong to the world,
     /// including when no renderer is attached.
-    fn tick_bell_servers(&mut self) {
+    pub(in crate::game) fn tick_bell_servers(&mut self) {
         if self.be_anims.bells.is_empty() {
             return;
         }
@@ -306,66 +319,6 @@ impl Game<'_> {
         }
     }
 
-    /// `BellBlockEntity.tick` and `makeRaidersGlow`, using live entity/tag state.
-    fn tick_bell(&mut self, pos: [i32; 3], tags: &sunrise_client::items::EntityTypeTags) {
-        let player = self.player_view().map(|p| BellEntity {
-            position: [p.position.x, p.position.y, p.position.z],
-            alive: p.alive,
-            raider: false,
-        });
-        let mobs = &self.mobs;
-        let entity = |h: u64| {
-            if h == PLAYER {
-                return player;
-            }
-            let m = mobs.iter().find(|m| u64::from(m.id) == h)?;
-            Some(BellEntity {
-                position: [m.position.x, m.position.y, m.position.z],
-                alive: m.alive() && !m.removed,
-                raider: tags.has_bit(
-                    m.kind.flags.entity_tag_slot,
-                    sunrise_client::items::EntityTypeTags::RAIDERS,
-                ),
-            })
-        };
-        let tick = self
-            .be_anims
-            .bells
-            .entry(pos)
-            .or_default()
-            .tick(pos, entity);
-        let centre = [
-            f64::from(pos[0]) + 0.5,
-            f64::from(pos[1]) + 0.5,
-            f64::from(pos[2]) + 0.5,
-        ];
-        // On a server its own copy does this and sends the sound.
-        if tick.resonate && self.remote.is_none() {
-            // The server's copy plays the resonance for everyone.
-            self.audio
-                .0
-                .play("minecraft:block.bell.resonate", Some(centre), 1.0, 1.0);
-        }
-        if let Some((particles, glow)) = tick.ended {
-            for (p, color) in particles.into_iter().filter(|_| self.renderer.0.is_some()) {
-                // ColorParticleOption.create(ENTITY_EFFECT, color): ARGB.
-                let c = color as u32;
-                let channel = |shift: u32| ((c >> shift) & 255) as f32 / 255.0;
-                let options = ParticleOptions {
-                    color: [channel(16), channel(8), channel(0), channel(24)],
-                    ..ParticleOptions::simple(ParticleType::EntityEffect)
-                };
-                self.particles.0.add(&options, p, [0.0; 3]);
-            }
-            // makeRaidersGlow (the server's effect).
-            for m in self.mobs.iter_mut().filter(|_| self.remote.is_none()) {
-                if glow.contains(&u64::from(m.id)) {
-                    m.add_effect("minecraft:glowing", 60, 0);
-                }
-            }
-        }
-    }
-
     /// The server tickers of the bells and conduits, which a server runs in its block-entity pass.
     pub(in crate::game) fn tick_block_entity_servers(&mut self) {
         self.tick_conduit_servers();
@@ -374,7 +327,7 @@ impl Game<'_> {
 
     /// The animation state belongs to the block entity object at `pos` (its generation): one
     /// made again there starts fresh, even between two ticks.
-    fn claim_anim(&mut self, pos: [i32; 3]) {
+    pub(in crate::game) fn claim_anim(&mut self, pos: [i32; 3]) {
         if let Some(generation) = self
             .world
             .block_entities
@@ -395,111 +348,6 @@ impl Game<'_> {
         );
         AnimTick { frames: None }
     }
-    /// The client ticker of the animated block entity at `pos` (`ClientLevel.tickBlockEntities`),
-    /// in the ticker list's order with every other client ticker.
-    pub(in crate::game) fn tick_block_entity_anim(
-        &mut self,
-        pos: [i32; 3],
-        ticker: Ticker,
-        anim: &mut AnimTick,
-    ) {
-        self.claim_anim(pos);
-        {
-            match ticker {
-                Ticker::Lid => self.tick_chest_lid(pos),
-                Ticker::Book => {
-                    // The player where earlier tickers (a lid's push) left it.
-                    let player = match &self.player {
-                        Some(p) if !self.spectator() => {
-                            Some([p.position.x, p.position.y, p.position.z])
-                        }
-                        _ => None,
-                    };
-                    let anims = &mut self.be_anims;
-                    anims.books.entry(pos).or_default().tick(
-                        pos,
-                        player.as_slice(),
-                        &mut anims.book_random,
-                    );
-                }
-                Ticker::Shulker { facing } => {
-                    // `ShulkerBoxBlockEntity.tick` runs on both sides: the
-                    // client moves its own player, including with a menu open.
-                    // The server ticks its boxes in `tick_block_entities`.
-                    if self.remote.is_some() {
-                        let tick = self
-                            .be_anims
-                            .shulkers
-                            .entry(pos)
-                            .or_default()
-                            .tick(pos, facing);
-                        // The lid pushes at its turn, so later tickers read the pushed player.
-                        if let Some(push) = tick.push {
-                            if let Some(shulker) = self.be_anims.shulkers.get(&pos) {
-                                self.world.shulkers.insert(pos, shulker.clone());
-                            }
-                            self.push_shulker_local(vec![(pos, facing, push)]);
-                        }
-                    }
-                }
-                Ticker::Skull { powered } => {
-                    self.be_anims.skulls.entry(pos).or_default().tick(powered);
-                }
-                Ticker::Bell => {
-                    // Integrated servers already ticked this state above, independently
-                    // of drawn block entities. Remote clients only animate their copy.
-                    if self.remote.is_some() {
-                        let tags = self.items().entity_type_tags.clone();
-                        self.tick_bell(pos, &tags);
-                    }
-                }
-                Ticker::Conduit => {
-                    let frames = anim.frames.get_or_insert_with(|| {
-                        self.res
-                            .items()
-                            .block_tags
-                            .get("minecraft:conduit_effect_block")
-                            .cloned()
-                            .unwrap_or_default()
-                    });
-                    let target = self.conduit_target(pos);
-                    let world = &self.world;
-                    let facts = self.res.facts();
-                    let registry = self.pack.assets.registry;
-                    let is_water = |p: [i32; 3]| {
-                        facts.get(world.block(p[0], p[1], p[2])).fluid
-                            == sunrise_client::blocks::Fluid::Water
-                    };
-                    let is_frame = |p: [i32; 3]| {
-                        registry
-                            .state(world.block(p[0], p[1], p[2]))
-                            .is_some_and(|s| frames.contains(&s.name))
-                    };
-                    let time = world.game_time;
-                    let anims = &mut self.be_anims;
-                    let particles = anims.conduits.entry(pos).or_default().client_tick(
-                        pos,
-                        time,
-                        is_water,
-                        is_frame,
-                        target,
-                        self.particles.0.level_random(),
-                    );
-                    let nautilus = ParticleOptions::simple(ParticleType::Nautilus);
-                    for (p, v) in particles {
-                        self.particles.0.add(&nautilus, p, v);
-                    }
-                }
-                Ticker::Pot => {}
-                Ticker::Gateway => {
-                    // The server's portalTick (`tick_end_gateway`) already ran:
-                    // its block event reaches this copy before it ticks.
-                    let initial = self.gateway_loaded(pos);
-                    self.be_anims.gateways.entry(pos).or_insert(initial).tick();
-                }
-            }
-        }
-    }
     /// The end of the tick: the lids' collision snapshot.
     pub(in crate::game) fn finish_block_entity_anims(&mut self) {
         // The lids' grown boxes collide and push in their turns (`tick_block_entity_anim`): a
@@ -516,7 +364,7 @@ impl Game<'_> {
     /// tick blocks, with or without a renderer. The conduits are looked for
     /// when the shape is checked, every 40 ticks (they have no block entity
     /// of their own here).
-    fn tick_conduit_servers(&mut self) {
+    pub(in crate::game) fn tick_conduit_servers(&mut self) {
         if self.world.game_time % 40 == 0 {
             self.find_conduits();
         }
@@ -535,7 +383,7 @@ impl Game<'_> {
     }
     /// Sets `be_anims.conduit_servers` to the conduits in the
     /// chunks that tick blocks, keeping the state of those already known.
-    fn find_conduits(&mut self) {
+    pub(in crate::game) fn find_conduits(&mut self) {
         let levels = self.tickets.0.levels();
         let kinds = &self.be_anims.kinds;
         let is_conduit = |id: u32| matches!(kinds.get(id as usize), Some(Some(Ticker::Conduit)));
@@ -569,7 +417,7 @@ impl Game<'_> {
     /// that ticks blocks: the shape check every 40 ticks with its sounds, the
     /// power for players in range, the hurt for an enemy, then the ambient
     /// sounds.
-    fn tick_conduit_server(&mut self, pos: [i32; 3]) {
+    pub(in crate::game) fn tick_conduit_server(&mut self, pos: [i32; 3]) {
         let state = self.world.block(pos[0], pos[1], pos[2]).0;
         if self.be_anims.ticker(state) != Some(Ticker::Conduit) {
             // Broken since the chunks were searched.
@@ -643,7 +491,7 @@ impl Game<'_> {
     }
     /// `ConduitBlockEntity.applyEffects`: conduit power for every player
     /// in water or rain within `frames / 7 * 16` blocks.
-    fn conduit_apply_effects(&mut self, pos: [i32; 3], frames: usize) {
+    pub(in crate::game) fn conduit_apply_effects(&mut self, pos: [i32; 3], frames: usize) {
         let range = (frames / 7 * 16) as i64;
         self.for_each_player(|g| {
             let Some(p) = g.player.as_ref().filter(|p| !p.health.dead_or_dying()) else {
@@ -698,7 +546,12 @@ impl Game<'_> {
     /// blocks, else a random enemy in water or rain is chosen; the target
     /// takes 4 magic damage. The target is the block entity's (`Target`), so
     /// a saved or `/data` one is kept or dropped as vanilla's reference is.
-    fn conduit_attack(&mut self, conduit: &mut ConduitServer, pos: [i32; 3], hunting: bool) {
+    pub(in crate::game) fn conduit_attack(
+        &mut self,
+        conduit: &mut ConduitServer,
+        pos: [i32; 3],
+        hunting: bool,
+    ) {
         let key = (pos[0], pos[1], pos[2]);
         let saved = match self.world.block_entities.get(&key) {
             Some(BlockEntity::Conduit(target)) => Some(*target),
@@ -764,7 +617,7 @@ impl Game<'_> {
     }
     /// `ConduitBlockEntity.selectNewTarget`: one of the enemies in water or
     /// rain whose box meets the conduit's block inflated by 8.
-    fn conduit_new_target(&mut self, pos: [i32; 3]) -> Option<u32> {
+    pub(in crate::game) fn conduit_new_target(&mut self, pos: [i32; 3]) -> Option<u32> {
         let [x, y, z] = pos.map(f64::from);
         let area = Aabb::new(
             Vec3::new(x - 8.0, y - 8.0, z - 8.0),
@@ -799,7 +652,7 @@ impl Game<'_> {
     /// The conduit's `destroyTarget` as the client draws it: the block
     /// entity's `Target`, which `sendBlockUpdated` keeps in step for every
     /// window; the server's own copy answers where there is no block entity.
-    fn conduit_target(&self, pos: [i32; 3]) -> Option<ConduitTarget> {
+    pub(in crate::game) fn conduit_target(&self, pos: [i32; 3]) -> Option<ConduitTarget> {
         let id = match self.world.block_entities.get(&(pos[0], pos[1], pos[2])) {
             Some(BlockEntity::Conduit(target)) => self.mob_by_uuid((*target)?)?,
             _ => self.be_anims.conduit_servers.get(&pos)?.target?,
@@ -869,13 +722,13 @@ impl Game<'_> {
     }
     /// `triggerCooldown`'s block event 1, on this level and for the window
     /// (`ClientboundBlockEventPacket` within 64 blocks).
-    fn gateway_cooldown_event(&mut self, pos: [i32; 3]) {
+    pub(in crate::game) fn gateway_cooldown_event(&mut self, pos: [i32; 3]) {
         self.block_entity_event(pos, 1, 0);
         self.lan_block_event(pos, 1, 0);
     }
     /// The End gateway at `pos`: `Age` from its block entity, else from the
     /// saved one as its chunk was loaded (`getUpdateTag`), or a new gateway.
-    fn gateway_loaded(&self, pos: [i32; 3]) -> EndGateway {
+    pub(in crate::game) fn gateway_loaded(&self, pos: [i32; 3]) -> EndGateway {
         let live = match self.world.block_entities.get(&(pos[0], pos[1], pos[2])) {
             Some(BlockEntity::EndGateway(g)) => Some(g.age),
             _ => None,
@@ -887,7 +740,7 @@ impl Game<'_> {
         }
     }
     /// The block entity at `pos` Sunrise keeps as loaded, if any.
-    fn saved_tag(&self, pos: [i32; 3]) -> Option<&Tag> {
+    pub(in crate::game) fn saved_tag(&self, pos: [i32; 3]) -> Option<&Tag> {
         self.world
             .chunks
             .get(&(pos[0] >> 4, pos[2] >> 4))
@@ -939,58 +792,10 @@ impl Game<'_> {
     pub(in crate::game) fn chest_lid(&self, pos: [i32; 3], partial: f32) -> f32 {
         self.be_anims.lid(pos, partial)
     }
-    /// `SkullBlockRenderer.getPlayerSkin`: the skin sprite of the profile of
-    /// the player head at `pos`. The skin download is started here; while it
-    /// is in flight (or when it cannot be got) the profile's default skin
-    /// stands in. A head with no profile answers None: `SKIN_BY_TYPE`.
-    pub(in crate::game) fn skull_skin_at(&self, pos: [i32; 3]) -> Option<String> {
-        let Some(BlockEntity::Skull(skull)) =
-            self.world.block_entities.get(&(pos[0], pos[1], pos[2]))
-        else {
-            return None;
-        };
-        let skin = skull.skin.as_ref()?;
-        // PlayerSkin.Patch: a `texture` override replaces the profile's skin.
-        if let Some(texture) = &skin.texture
-            && let Some(sprite) = skins::patch_skin(
-                texture,
-                &mut self.skin_downloads.0.borrow_mut(),
-                |location| self.gui.atlas.sprites.contains_key(location),
-            )
-        {
-            return Some(sprite);
-        }
-        // The texture a packed or resolved `textures` property fetches: the
-        // download of a static profile, or the one the services answer for a
-        // `Dynamic` (name- or id-only) profile.
-        let download = skin.download.clone().or_else(|| {
-            let key = skin.dynamic.as_ref()?;
-            let skins::Resolve::Done(Some(profile)) = self.skin_profiles.0.borrow_mut().state(key)
-            else {
-                return None;
-            };
-            let url = skins::unpack_insecure(profile.textures()?).skin?;
-            let location = skins::skin_location(&skins::texture_hash(&url)?);
-            Some((url, location))
-        });
-        if let Some((url, location)) = download {
-            let mut downloads = self.skin_downloads.0.borrow_mut();
-            if self.gui.atlas.sprites.contains_key(&location) {
-                let _ = downloads.state(skins::Kind::Skin, &url);
-                downloads.drawn(&location);
-                return Some(location);
-            }
-            // Its slot was evicted: offer the image again.
-            if downloads.state(skins::Kind::Skin, &url) == skins::Download::Ready {
-                downloads.again(&location);
-            }
-        }
-        Some(skin.fallback.to_owned())
-    }
 }
 
 /// `Entity.isInRain`'s two positions: `blockPosition()` and the same column at the box's top.
-fn rain_positions(at: Vec3, top: f64) -> (BlockPos, BlockPos) {
+pub(in crate::game) fn rain_positions(at: Vec3, top: f64) -> (BlockPos, BlockPos) {
     let p = BlockPos::new(
         at.x.floor() as i32,
         at.y.floor() as i32,
@@ -1098,7 +903,7 @@ pub(in crate::game) mod tests {
 }
 
 #[cfg(test)]
-mod bell_ownership_tests {
+pub(in crate::game) mod bell_ownership_tests {
     use sunrise_client::block_entity_anim::{Bell, BlockEntityAnims};
 
     #[test]
@@ -1119,7 +924,7 @@ mod bell_ownership_tests {
 }
 
 #[cfg(test)]
-mod conduit_target_tests {
+pub(in crate::game) mod conduit_target_tests {
     //! `ConduitBlockEntity.selectNewTarget` picks `Enemy`s only, and its
     //! `Target` reaches every window through `sendBlockUpdated`; the window
     //! then spits a nautilus particle at the mob.
@@ -1334,7 +1139,7 @@ mod conduit_target_tests {
 }
 
 #[cfg(test)]
-mod gateway_age_tests {
+pub(in crate::game) mod gateway_age_tests {
     use super::*;
     use crate::game::game_tests::tests::server_game;
 

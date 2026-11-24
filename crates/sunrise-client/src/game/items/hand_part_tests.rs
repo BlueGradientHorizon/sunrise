@@ -2,24 +2,29 @@
 //! A stick's `ItemPart` answers `should_cause_reequip_animation` and
 //! `should_cause_block_break_reset` (`IItemExtension.shouldCauseReequipAnimation`,
 //! `shouldCauseBlockBreakReset`) on the local player's client.
+#[allow(unused_imports)]
 use super::Game;
+#[allow(unused_imports)]
 use mod_api::{
     ClientHost, Hooks, ItemPart, Registrar, RegistrationContext, ShouldCauseBlockBreakResetEvent,
     ShouldCauseReequipAnimationEvent,
 };
+#[allow(unused_imports)]
 use std::sync::Mutex;
+#[allow(unused_imports)]
 use sunrise_client::items::ItemStack;
 
 /// What the part answers: `None` leaves vanilla's answer.
-static REEQUIP: Mutex<Option<bool>> = Mutex::new(None);
-static RESET: Mutex<Option<bool>> = Mutex::new(None);
+pub(in crate::game) static REEQUIP: Mutex<Option<bool>> = Mutex::new(None);
+pub(in crate::game) static RESET: Mutex<Option<bool>> = Mutex::new(None);
 /// What the part was asked: `(old count, stack count, hand, slot changed)`
 /// and, for a break, whether the break's stack had components.
-static REEQUIP_ASKED: Mutex<Vec<(Option<u32>, u32, mod_api::Hand, bool)>> = Mutex::new(Vec::new());
-static RESET_ASKED: Mutex<Vec<bool>> = Mutex::new(Vec::new());
+pub(in crate::game) static REEQUIP_ASKED: Mutex<Vec<(Option<u32>, u32, mod_api::Hand, bool)>> =
+    Mutex::new(Vec::new());
+pub(in crate::game) static RESET_ASKED: Mutex<Vec<bool>> = Mutex::new(Vec::new());
 
 #[derive(Clone)]
-struct Stick;
+pub(in crate::game) struct Stick;
 #[mod_api::sunrise_part]
 impl ItemPart for Stick {
     fn should_cause_reequip_animation(
@@ -51,7 +56,7 @@ impl ItemPart for Stick {
         }
     }
 }
-struct Parts;
+pub(in crate::game) struct Parts;
 #[mod_api::__subscriptions]
 impl Hooks for Parts {
     fn register(&self, r: &mut dyn Registrar, _: &RegistrationContext) {
@@ -61,7 +66,7 @@ impl Hooks for Parts {
 }
 
 /// Runs `body` on a game whose stick has the part.
-fn with_stick_part(body: impl FnOnce(&mut Game<'_>)) {
+pub(in crate::game) fn with_stick_part(body: impl FnOnce(&mut Game<'_>)) {
     let mods: mod_api::Mods = vec![mod_api::ModEntry::new("hands", Box::new(Parts))].into();
     mod_platform::testing::with_mods(mods.clone(), || {
         crate::game::api_values::install_parts(&mods).unwrap();
@@ -71,7 +76,7 @@ fn with_stick_part(body: impl FnOnce(&mut Game<'_>)) {
 
 /// Puts `main` in slot 0, selects it, and ticks until the attack strength is
 /// full and the hand is up.
-fn settle(game: &mut Game<'_>, main: ItemStack) {
+pub(in crate::game) fn settle(game: &mut Game<'_>, main: ItemStack) {
     game.inventory[0] = Some(main);
     game.selected = 0;
     for _ in 0..20 {
@@ -83,7 +88,7 @@ fn settle(game: &mut Game<'_>, main: ItemStack) {
 
 /// The main hand's height over the next six ticks, and the stick count it
 /// shows after each.
-fn dip(game: &mut Game<'_>) -> Vec<(f32, u32)> {
+pub(in crate::game) fn dip(game: &mut Game<'_>) -> Vec<(f32, u32)> {
     (0..6)
         .map(|_| {
             game.tick_hand();
@@ -96,7 +101,7 @@ fn dip(game: &mut Game<'_>) -> Vec<(f32, u32)> {
         .collect()
 }
 
-fn close(got: &[(f32, u32)], want: &[(f32, u32)]) {
+pub(in crate::game) fn close(got: &[(f32, u32)], want: &[(f32, u32)]) {
     assert_eq!(got.len(), want.len(), "{got:?}");
     for (g, w) in got.iter().zip(want) {
         assert!(
@@ -110,7 +115,7 @@ fn close(got: &[(f32, u32)], want: &[(f32, u32)]) {
 #[ignore = "daily"]
 fn a_part_decides_whether_the_hand_lowers_for_a_new_stack() {
     crate::game::in_own_process(
-        "game::hand_part_tests::a_part_decides_whether_the_hand_lowers_for_a_new_stack",
+        "game::client_side::hand_part_tests::a_part_decides_whether_the_hand_lowers_for_a_new_stack",
         || {
             with_stick_part(|game| {
                 let stick = |count| ItemStack::new("minecraft:stick", count);
@@ -168,7 +173,7 @@ fn a_part_decides_whether_the_hand_lowers_for_a_new_stack() {
 #[ignore = "daily"]
 fn a_part_decides_whether_a_changed_stick_restarts_the_break() {
     crate::game::in_own_process(
-        "game::hand_part_tests::a_part_decides_whether_a_changed_stick_restarts_the_break",
+        "game::client_side::hand_part_tests::a_part_decides_whether_a_changed_stick_restarts_the_break",
         || {
             with_stick_part(|game| {
                 game.inventory[0] = Some(ItemStack::new("minecraft:stick", 1));
@@ -217,76 +222,4 @@ fn without_a_part_the_break_compares_item_and_components() {
         assert!(!game.same_destroying_item(&began));
         assert!(game.same_destroying_item(&None));
     });
-}
-
-#[test]
-#[ignore = "daily"]
-fn remote_mining_component_update_restarts_unless_the_part_refuses() {
-    crate::game::in_own_process(
-        "game::hand_part_tests::remote_mining_component_update_restarts_unless_the_part_refuses",
-        || {
-            for keep in [false, true] {
-                with_stick_part(|game| {
-                    use std::sync::Arc;
-                    use sunrise_client::{chunk::Chunk, motion::PlayerMotion};
-                    use sunrise_core::geometry::Vec3;
-                    use sunrise_protocol::packets::play;
-                    *RESET.lock().unwrap() = keep.then_some(false);
-                    // Play packets are suppressed until login/configuration finishes.
-                    let (mut peer, _writer) = crate::game::remote::tests::connect_menu_test(game);
-                    peer.set_read_timeout(Some(std::time::Duration::from_millis(50)))
-                        .unwrap();
-                    game.set_local_mode(sunrise_client::command::args::GameMode::Survival);
-                    let mut player =
-                        PlayerMotion::new(game.motion, Vec3::new(0.5, 64.0, 3.5)).unwrap();
-                    player.ground.on_ground = true;
-                    game.player = Some(player);
-                    game.inventory[0] = Some(ItemStack::new("minecraft:stick", 1));
-                    game.selected = 0;
-                    game.world
-                        .chunks
-                        .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
-                    let stone = game
-                        .pack
-                        .assets
-                        .registry
-                        .default_state("minecraft:stone")
-                        .unwrap();
-                    game.world.set(0, 64, 0, stone).unwrap();
-                    game.server.forced_hit = Some(crate::game::Hit {
-                        pos: [0, 64, 0],
-                        face: [0, 1, 0],
-                        point: [0.5, 65.0, 0.5],
-                        inside: false,
-                    });
-                    game.refresh_client_pick(1.0);
-                    game.server.forced_hit = None;
-                    for _ in 0..4 {
-                        game.remote_continue_attack(true);
-                    }
-                    let before = game.mining.as_ref().unwrap().progress;
-                    while peer.recv().is_ok() {}
-                    game.inventory[0].as_mut().unwrap().data_mut().custom_name =
-                        Some(sunrise_core::nbt::Tag::String("Wand".into()));
-                    game.remote_continue_attack(true);
-                    let mut actions = Vec::new();
-                    while let Ok((id, bytes)) = peer.recv() {
-                        if let Ok(play::Serverbound::PlayerAction(action)) =
-                            play::Serverbound::decode(id, &bytes)
-                        {
-                            actions.push(action.action);
-                        }
-                    }
-                    let after = game.mining.as_ref().unwrap().progress;
-                    if keep {
-                        assert!(actions.is_empty());
-                        assert!((after - before - 1.0 / 150.0).abs() < 1e-6);
-                    } else {
-                        assert_eq!(actions, [2, 0]);
-                        assert_eq!(after, 0.0);
-                    }
-                });
-            }
-        },
-    );
 }

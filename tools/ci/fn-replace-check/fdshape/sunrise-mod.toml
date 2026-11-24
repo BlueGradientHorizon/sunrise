@@ -37,7 +37,7 @@ bindings = [{ name = "value", ty = "f64", value = "$value" }]
 [[native.mixin]]
 id = "sign_sprite"
 kind = "WRAP_OPERATION"
-target = "sunrise_client::game::sign_edit::Game<'_>::draw_sign_editor"
+target = "sunrise_client::game::client_side::sign_edit::Game<'_>::draw_sign_editor"
 selector = "editor_sprite"
 require = 2
 ordinal = 0

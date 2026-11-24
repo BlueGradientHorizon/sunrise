@@ -1,7 +1,7 @@
 use super::*;
 
 impl Game<'_> {
-    pub(super) fn cmd_difficulty(&mut self, ctx: &Context) -> R<i32> {
+    pub(in crate::game) fn cmd_difficulty(&mut self, ctx: &Context) -> R<i32> {
         let name = |d: u8| {
             Text::translate(
                 &format!("options.difficulty.{}", DIFFICULTIES[d as usize]),

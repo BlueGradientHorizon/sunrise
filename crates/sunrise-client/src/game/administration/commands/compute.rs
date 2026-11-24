@@ -1,15 +1,21 @@
 //! `/compute` (ComputeCommand): context number providers
 //! (`context_int_provider`, `context_float_provider`) evaluated in a loot
 //! context of the source, optionally with a block or a target entity.
+#[allow(unused_imports)]
 use super::{Arg, Context, Game, R, Target, err};
+#[allow(unused_imports)]
 use serde_json::Value;
+#[allow(unused_imports)]
 use std::borrow::Cow;
+#[allow(unused_imports)]
 use sunrise_client::providers::{ConditionContext, Evaluation};
+#[allow(unused_imports)]
 use sunrise_client::{
     advancements::{self as adv, EntityView},
     command::CommandError,
     text::Text,
 };
+#[allow(unused_imports)]
 use sunrise_core::java_number::float_to_string;
 
 /// The loot context parameters of `LootContextSources`.
@@ -28,7 +34,7 @@ pub(in crate::game) struct ComputeContext {
 
 /// The entities and origin of a compute context's conditions: `this` and the
 /// origin come from the command source unless the context has no `this`.
-fn context_entities<'a>(
+pub(in crate::game) fn context_entities<'a>(
     c: &ComputeContext,
     source_this: Option<&'a EntityView>,
     source_pos: [f64; 3],
@@ -46,11 +52,11 @@ fn context_entities<'a>(
 }
 
 /// An ArithmeticException's message.
-type Arith = String;
+pub(in crate::game) type Arith = String;
 
-struct ComputeCondition<'g, 'res> {
-    game: &'g mut Game<'res>,
-    context: &'g ComputeContext,
+pub(in crate::game) struct ComputeCondition<'g, 'res> {
+    pub(in crate::game) game: &'g mut Game<'res>,
+    pub(in crate::game) context: &'g ComputeContext,
 }
 
 impl<'v> ConditionContext<'v> for ComputeCondition<'_, '_> {
@@ -107,15 +113,6 @@ impl Game<'_> {
             .ok_or_else(|| err("argument.resource_or_id.no_such_element", &[&id, &registry]))?;
         Ok((Some(id), value))
     }
-    /// A registered provider's definition.
-    fn provider_file(&self, registry: &str, id: &str) -> Option<Value> {
-        let id = sunrise_client::command::args::normalized(id);
-        match registry {
-            "minecraft:predicate" => self.fns.0.store.predicates.get(id.as_ref()),
-            _ => self.context_registry(registry)?.get(id.as_ref()),
-        }
-        .cloned()
-    }
     /// The compute context the command's source literal selects.
     pub(in crate::game) fn compute_context(&mut self, ctx: &Context) -> R<ComputeContext> {
         let mut c = ComputeContext::default();
@@ -132,7 +129,7 @@ impl Game<'_> {
         Ok(c)
     }
     /// `ComputeCommand.computeAsInt` / `computeAsFloat`.
-    pub(super) fn cmd_compute(&mut self, ctx: &Context) -> R<i32> {
+    pub(in crate::game) fn cmd_compute(&mut self, ctx: &Context) -> R<i32> {
         let integer = ctx.literals.iter().any(|l| l == "integer");
         let registry = if integer {
             "minecraft:context_int_provider"
@@ -238,94 +235,19 @@ impl Game<'_> {
         self.world.random = random;
         result
     }
-    /// Leaf predicates that read the command's world or entity context.
-    fn compute_leaf(&mut self, cond: &Value, c: &ComputeContext) -> bool {
-        let Some(o) = cond.as_object() else {
-            return false;
-        };
-        let kind = o
-            .get("type")
-            .or_else(|| o.get("condition"))
-            .and_then(Value::as_str)
-            .unwrap_or("")
-            .trim_start_matches("minecraft:");
-        match kind {
-            "match_block" | "block_state_property" => {
-                let Some(p) = c.block else {
-                    return false;
-                };
-                let state = self.world.block(p[0], p[1], p[2]);
-                let Some(s) = self.pack.assets.registry.state(state) else {
-                    return false;
-                };
-                let name = s.name.to_string();
-                let blocks_ok = match o.get("blocks").or_else(|| o.get("block")) {
-                    Some(Value::String(b)) => match b.strip_prefix('#') {
-                        Some(tag) => self
-                            .res
-                            .items()
-                            .block_tags
-                            .get(tag.trim_start_matches("minecraft:"))
-                            .is_some_and(|set| {
-                                set.contains(&*name)
-                                    || set.contains(name.trim_start_matches("minecraft:"))
-                            }),
-                        None => *b == name,
-                    },
-                    Some(Value::Array(list)) => list.iter().any(|b| b.as_str() == Some(&name)),
-                    _ => true,
-                };
-                let props_ok = o
-                    .get("state")
-                    .or_else(|| o.get("properties"))
-                    .and_then(Value::as_object)
-                    .into_iter()
-                    .flatten()
-                    .all(|(k, v)| s.properties.get(k).map(String::as_str) == v.as_str());
-                blocks_ok && props_ok
-            }
-            _ => {
-                let source = self
-                    .server
-                    .command_source
-                    .unwrap_or_else(|| self.player_source());
-                // Scores are read from the holder's board only where
-                // an `entity_scores` leaf may ask.
-                let scored = adv::asks_scores(cond);
-                let view = |game: &mut Self, t| {
-                    if scored {
-                        game.entity_view_scored(t, cond)
-                    } else {
-                        game.entity_view_asked(t, cond)
-                    }
-                };
-                let this = source
-                    .entity
-                    .filter(|_| c.without_this.is_none())
-                    .map(|t| view(self, t));
-                let target = c.target.map(|t| view(self, t));
-                let interacting = c.interacting.map(|t| view(self, t));
-                let entities = context_entities(
-                    c,
-                    this.as_ref(),
-                    source.pos,
-                    target.as_ref(),
-                    interacting.as_ref(),
-                );
-                self.conditions_hold_in(cond, &entities)
-            }
-        }
-    }
 }
 
 #[cfg(test)]
-mod tests {
+pub(in crate::game) mod tests {
+    #[allow(unused_imports)]
     use super::*;
+    #[allow(unused_imports)]
     use serde_json::json;
+    #[allow(unused_imports)]
     use std::collections::BTreeMap;
 
     /// A world with nothing in it: the entity conditions under test read none of it.
-    struct Void;
+    pub(in crate::game) struct Void;
     impl adv::World for Void {
         fn dimension(&self) -> &str {
             "minecraft:overworld"
@@ -359,7 +281,7 @@ mod tests {
         }
     }
 
-    fn view(kind: &str, position: [f64; 3]) -> EntityView {
+    pub(in crate::game) fn view(kind: &str, position: [f64; 3]) -> EntityView {
         EntityView {
             kind: kind.into(),
             position,
@@ -367,11 +289,11 @@ mod tests {
         }
     }
 
-    fn holds(cond: &Value, entities: &adv::Entities) -> bool {
+    pub(in crate::game) fn holds(cond: &Value, entities: &adv::Entities) -> bool {
         adv::conditions(cond, entities, &Void)
     }
 
-    fn of_type(who: &str, kind: &str) -> Value {
+    pub(in crate::game) fn of_type(who: &str, kind: &str) -> Value {
         json!({"condition": "minecraft:entity_properties", "entity": who,
             "predicate": {"minecraft:entity_type": kind}})
     }
@@ -437,158 +359,5 @@ mod tests {
             Some(&actor),
         );
         assert!(!holds(&near, &from_source));
-    }
-
-    #[test]
-    #[ignore = "daily"]
-    fn published_predicates_and_nested_provider_shorthand_evaluate() {
-        use crate::game::*;
-        use serde_json::json;
-        use std::{path::PathBuf, sync::Arc, time::Instant};
-        use sunrise_assets::resource_source::{ResourceRoot, ResourceSource};
-
-        let root = PathBuf::from(
-            std::env::var_os("SUNRISE_TEST_RESOURCES")
-                .expect("set SUNRISE_TEST_RESOURCES to prepared resources"),
-        );
-        let settings = Settings::default();
-        let mut loaded = load_resources(
-            ResourceRoot::directory(root.clone()),
-            Vec::new(),
-            None,
-            &root,
-            &settings,
-            Instant::now(),
-            false,
-            execution_role::ExecutionRole::IntegratedServer,
-            &Progress::new(),
-            &mut |_, _| unreachable!(),
-        )
-        .unwrap();
-        let fixture = std::env::current_dir()
-            .unwrap()
-            .join("compute-owner-providers");
-        for (registry, value) in [
-            ("context_int_provider", json!(17)),
-            ("context_float_provider", json!(2.5)),
-        ] {
-            let dir = fixture.join("data/minecraft").join(registry).join("nested");
-            std::fs::create_dir_all(&dir).unwrap();
-            std::fs::write(dir.join("value.json"), value.to_string()).unwrap();
-        }
-        Arc::get_mut(&mut loaded.resources)
-            .unwrap()
-            .rest
-            .get_mut()
-            .unwrap()
-            .providers = sunrise_client::providers::Providers::load(&fixture);
-        std::fs::remove_dir_all(&fixture).unwrap();
-        let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
-        options.resources = root.clone();
-        options.execution_role = execution_role::ExecutionRole::IntegratedServer;
-        let mut game = Game::new(
-            &loaded.resources,
-            loaded.pack,
-            loaded.gui.unwrap(),
-            options,
-            settings,
-            Audio::silent(&ResourceSource::directory(root)),
-            None,
-        )
-        .unwrap();
-        game.fns.0.store.predicates.insert(
-            "minecraft:nested/true".into(),
-            json!({"condition": "minecraft:all_of", "terms": []}),
-        );
-        let context = ComputeContext::default();
-        for id in ["nested/value", "minecraft:nested/value"] {
-            assert_eq!(
-                game.provider_int(
-                    &json!({"type": "minecraft:add", "inputs": [id, 3]}),
-                    &context
-                ),
-                Ok(20),
-            );
-            assert_eq!(
-                game.provider_float(
-                    &json!({"type": "minecraft:add", "inputs": [id, 0.5]}),
-                    &context
-                ),
-                Ok(3.0),
-            );
-        }
-        for predicate in ["nested/true", "minecraft:nested/true"] {
-            assert_eq!(
-                game.provider_int(
-                    &json!({
-                        "type": "minecraft:conditional", "condition": predicate,
-                        "on_true": "nested/value", "on_false": -1
-                    }),
-                    &context
-                ),
-                Ok(17),
-            );
-            assert_eq!(
-                game.provider_float(
-                    &json!({
-                        "type": "minecraft:number_dispatcher",
-                        "cases": [{"condition": predicate, "value": "nested/value"}],
-                        "default": -1
-                    }),
-                    &context
-                ),
-                Ok(2.5),
-            );
-        }
-        // `/compute entity`: `target_entity` is the selected entity, and the
-        // source (here with no entity) is only `this`.
-        game.set_allow_commands(true);
-        assert!(game.run_command("scoreboard objectives add points dummy"));
-        game.player = Some(
-            sunrise_client::motion::PlayerMotion::new(
-                game.motion,
-                sunrise_core::geometry::Vec3::new(0.5, 64.0, 0.5),
-            )
-            .unwrap(),
-        );
-        assert!(game.run_command("scoreboard players set @s points 5"));
-        let mut source = game.player_source();
-        source.entity = None;
-        game.server.command_source = Some(source);
-        let on_target = |kind: &str| {
-            json!({
-                "type": "minecraft:conditional",
-                "condition": {"condition": "minecraft:entity_properties", "entity": "target_entity",
-                    "predicate": {"minecraft:entity_type": kind}},
-                "on_true": 1, "on_false": 0
-            })
-        };
-        let entity = ComputeContext {
-            target: Some(Target::Player),
-            ..ComputeContext::default()
-        };
-        assert_eq!(
-            game.provider_int(&on_target("minecraft:player"), &entity),
-            Ok(1)
-        );
-        assert_eq!(
-            game.provider_int(&on_target("minecraft:cow"), &entity),
-            Ok(0)
-        );
-        assert_eq!(
-            game.provider_int(&on_target("minecraft:player"), &ComputeContext::default()),
-            Ok(0)
-        );
-        // `entity_scores` reads the selected holder's live scoreboard value.
-        let scored = |n: i32| {
-            json!({
-                "type": "minecraft:conditional",
-                "condition": {"condition": "minecraft:entity_scores", "entity": "target_entity",
-                    "scores": {"points": n}},
-                "on_true": 1, "on_false": 0
-            })
-        };
-        assert_eq!(game.provider_int(&scored(5), &entity), Ok(1));
-        assert_eq!(game.provider_int(&scored(4), &entity), Ok(0));
     }
 }

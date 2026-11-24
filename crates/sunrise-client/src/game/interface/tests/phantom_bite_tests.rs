@@ -1,17 +1,12 @@
 //! `LevelEventHandler` 1039 (`LevelEvent.SOUND_PHANTOM_BITE`): the sound a
 //! phantom's bite posts.
+#[allow(unused_imports)]
 use crate::game::*;
+#[allow(unused_imports)]
 use sunrise_core::random::{LegacyRandom, RandomSource};
 
-fn with_game(test: impl FnOnce(&mut Game<'_>)) {
-    let mut resources = None;
-    let mut g = crate::game::game_tests::tests::server_game(&mut resources);
-    g.options.dedicated = Some(Vec::new());
-    g.world = World::new(g.res.facts().air, 1);
-    // The guests' copy of a level event is recorded only while capturing.
-    g.audio.0.capture = Some(Vec::new());
-    test(&mut g);
-}
+#[allow(unused_imports)]
+pub(in crate::game) use crate::game::client_side::level_particles_client::phantom_bite_tests::with_game;
 
 /// Level event 1039 is `playLocalSound(pos, SoundEvents.PHANTOM_BITE,
 /// SoundSource.HOSTILE, 0.3F, random.nextFloat() * 0.1F + 0.9F, false)` with

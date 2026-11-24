@@ -3,4 +3,4 @@ sunrise-client game::server_side::vehicle_removal_tests::mob_removal_keeps_a_vet
 sunrise-client game::server_side::vehicle_removal_tests::mob_removal_order_witness lib daily resources
 sunrise-client game::server_side::vehicle_removal_tests::nested_blast_skips_the_stand_or_cushion_already_being_removed lib daily resources
 sunrise-client game::server_side::vehicle_removal_tests::stand_equipment_and_below_world_spills_are_visible_at_dismount lib daily resources
-sunrise-client game::server_side::vehicle_removal_tests::wind_charged_mob_removal_cannot_reenter_through_its_own_burst lib daily resources
+sunrise-client game::client_side::vehicle_removal_tests_client::wind_charged_mob_removal_cannot_reenter_through_its_own_burst lib daily resources

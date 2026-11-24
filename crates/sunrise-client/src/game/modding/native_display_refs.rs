@@ -147,18 +147,21 @@ impl Game<'_> {
 
     /// Narrows an entity to a display, or None for another kind, a stale
     /// handle or a client.
-    pub(super) fn display(&self, entity: EntityRef) -> Option<DisplayRef> {
+    pub(in crate::game) fn display(&self, entity: EntityRef) -> Option<DisplayRef> {
         let display = DisplayRef::new(entity);
         self.display_entity(display).map(|_| display)
     }
 
     /// Which `Display` subclass the entity is.
-    pub(super) fn display_kind(&self, display: DisplayRef) -> Option<DisplayKind> {
+    pub(in crate::game) fn display_kind(&self, display: DisplayRef) -> Option<DisplayKind> {
         Some(self.display_entity(display)?.0)
     }
 
     /// `Display.createTransformation`: the transformation as shown.
-    pub(super) fn display_transformation(&self, display: DisplayRef) -> Option<Transformation> {
+    pub(in crate::game) fn display_transformation(
+        &self,
+        display: DisplayRef,
+    ) -> Option<Transformation> {
         let (kind, tag) = self.display_tag(display, None)?;
         let part = |id| match entry(kind, &tag, id)? {
             Value::Floats(v) => Some(v),
@@ -175,7 +178,7 @@ impl Game<'_> {
     /// Sets the transformation. False for a value that isn't finite or a
     /// zero quaternion. Clients ease to it when the start delay is set
     /// (`set_start_interpolation`).
-    pub(super) fn display_set_transformation(
+    pub(in crate::game) fn display_set_transformation(
         &mut self,
         display: DisplayRef,
         transformation: Transformation,
@@ -212,7 +215,7 @@ impl Game<'_> {
     }
 
     /// `Display.getBillboardConstraints`.
-    pub(super) fn display_billboard(&self, display: DisplayRef) -> Option<Billboard> {
+    pub(in crate::game) fn display_billboard(&self, display: DisplayRef) -> Option<Billboard> {
         match self.display_value(display, None, 15)? {
             Value::Byte(v) => Billboard::ALL.get(usize::try_from(v).ok()?).copied(),
             _ => None,
@@ -220,7 +223,7 @@ impl Game<'_> {
     }
 
     /// `Display.setBillboardConstraints`.
-    pub(super) fn display_set_billboard(
+    pub(in crate::game) fn display_set_billboard(
         &mut self,
         display: DisplayRef,
         billboard: Billboard,
@@ -230,14 +233,14 @@ impl Game<'_> {
     }
 
     /// `Display.getBrightnessOverride`: block and sky light, 0 to 15 each, or None for no override.
-    pub(super) fn display_brightness(&self, display: DisplayRef) -> Option<(u8, u8)> {
+    pub(in crate::game) fn display_brightness(&self, display: DisplayRef) -> Option<(u8, u8)> {
         let packed = self.display_int(display, None, 16)?;
         (packed != -1).then_some((((packed >> 4) & 15) as u8, ((packed >> 20) & 15) as u8))
     }
 
     /// `Display.setBrightnessOverride`; None clears the override. False for a
     /// light level above 15.
-    pub(super) fn display_set_brightness(
+    pub(in crate::game) fn display_set_brightness(
         &mut self,
         display: DisplayRef,
         brightness: Option<(u8, u8)>,
@@ -260,32 +263,40 @@ impl Game<'_> {
     }
 
     /// `Display.getViewRange`.
-    pub(super) fn display_view_range(&self, display: DisplayRef) -> Option<f32> {
+    pub(in crate::game) fn display_view_range(&self, display: DisplayRef) -> Option<f32> {
         self.display_float(display, 17)
     }
 
     /// `Display.setViewRange`. False for a value that isn't finite.
-    pub(super) fn display_set_view_range(&mut self, display: DisplayRef, range: f32) -> bool {
+    pub(in crate::game) fn display_set_view_range(
+        &mut self,
+        display: DisplayRef,
+        range: f32,
+    ) -> bool {
         self.display_put_float(display, "view_range", range)
     }
 
     /// `Display.getShadowRadius`.
-    pub(super) fn display_shadow_radius(&self, display: DisplayRef) -> Option<f32> {
+    pub(in crate::game) fn display_shadow_radius(&self, display: DisplayRef) -> Option<f32> {
         self.display_float(display, 18)
     }
 
     /// `Display.setShadowRadius`. False for a value that isn't finite.
-    pub(super) fn display_set_shadow_radius(&mut self, display: DisplayRef, radius: f32) -> bool {
+    pub(in crate::game) fn display_set_shadow_radius(
+        &mut self,
+        display: DisplayRef,
+        radius: f32,
+    ) -> bool {
         self.display_put_float(display, "shadow_radius", radius)
     }
 
     /// `Display.getShadowStrength`.
-    pub(super) fn display_shadow_strength(&self, display: DisplayRef) -> Option<f32> {
+    pub(in crate::game) fn display_shadow_strength(&self, display: DisplayRef) -> Option<f32> {
         self.display_float(display, 19)
     }
 
     /// `Display.setShadowStrength`. False for a value that isn't finite.
-    pub(super) fn display_set_shadow_strength(
+    pub(in crate::game) fn display_set_shadow_strength(
         &mut self,
         display: DisplayRef,
         strength: f32,
@@ -294,32 +305,32 @@ impl Game<'_> {
     }
 
     /// `Display.getWidth`: the culling box's width, 0 for none.
-    pub(super) fn display_width(&self, display: DisplayRef) -> Option<f32> {
+    pub(in crate::game) fn display_width(&self, display: DisplayRef) -> Option<f32> {
         self.display_float(display, 20)
     }
 
     /// `Display.setWidth`. False for a value that isn't finite.
-    pub(super) fn display_set_width(&mut self, display: DisplayRef, width: f32) -> bool {
+    pub(in crate::game) fn display_set_width(&mut self, display: DisplayRef, width: f32) -> bool {
         self.display_put_float(display, "width", width)
     }
 
     /// `Display.getHeight`: the culling box's height, 0 for none.
-    pub(super) fn display_height(&self, display: DisplayRef) -> Option<f32> {
+    pub(in crate::game) fn display_height(&self, display: DisplayRef) -> Option<f32> {
         self.display_float(display, 21)
     }
 
     /// `Display.setHeight`. False for a value that isn't finite.
-    pub(super) fn display_set_height(&mut self, display: DisplayRef, height: f32) -> bool {
+    pub(in crate::game) fn display_set_height(&mut self, display: DisplayRef, height: f32) -> bool {
         self.display_put_float(display, "height", height)
     }
 
     /// `Display.getGlowColorOverride`: an ARGB color, or -1 for none.
-    pub(super) fn display_glow_color_override(&self, display: DisplayRef) -> Option<i32> {
+    pub(in crate::game) fn display_glow_color_override(&self, display: DisplayRef) -> Option<i32> {
         self.display_int(display, None, 22)
     }
 
     /// `Display.setGlowColorOverride`.
-    pub(super) fn display_set_glow_color_override(
+    pub(in crate::game) fn display_set_glow_color_override(
         &mut self,
         display: DisplayRef,
         color: i32,
@@ -328,12 +339,15 @@ impl Game<'_> {
     }
 
     /// `Display.getTransformationInterpolationDuration`, in ticks.
-    pub(super) fn display_interpolation_duration(&self, display: DisplayRef) -> Option<i32> {
+    pub(in crate::game) fn display_interpolation_duration(
+        &self,
+        display: DisplayRef,
+    ) -> Option<i32> {
         self.display_int(display, None, 9)
     }
 
     /// `Display.setTransformationInterpolationDuration`.
-    pub(super) fn display_set_interpolation_duration(
+    pub(in crate::game) fn display_set_interpolation_duration(
         &mut self,
         display: DisplayRef,
         ticks: i32,
@@ -343,14 +357,14 @@ impl Game<'_> {
 
     /// `Display.getTransformationInterpolationDelay`: ticks before an
     /// interpolation starts.
-    pub(super) fn display_start_interpolation(&self, display: DisplayRef) -> Option<i32> {
+    pub(in crate::game) fn display_start_interpolation(&self, display: DisplayRef) -> Option<i32> {
         self.display_int(display, None, 8)
     }
 
     /// `Display.setTransformationInterpolationDelay`. Like vanilla, every
     /// call is sent to the clients that track the display, even with the
     /// delay it already has, and each client restarts its interpolation.
-    pub(super) fn display_set_start_interpolation(
+    pub(in crate::game) fn display_set_start_interpolation(
         &mut self,
         display: DisplayRef,
         ticks: i32,
@@ -364,13 +378,13 @@ impl Game<'_> {
     }
 
     /// `Display.getPosRotInterpolationDuration`: ticks a move eases over, 0 to 59.
-    pub(super) fn display_teleport_duration(&self, display: DisplayRef) -> Option<i32> {
+    pub(in crate::game) fn display_teleport_duration(&self, display: DisplayRef) -> Option<i32> {
         self.display_int(display, None, 10)
     }
 
     /// `Display.setPosRotInterpolationDuration`, kept from 0 to 59 as
     /// vanilla's load keeps it.
-    pub(super) fn display_set_teleport_duration(
+    pub(in crate::game) fn display_set_teleport_duration(
         &mut self,
         display: DisplayRef,
         ticks: i32,
@@ -380,7 +394,7 @@ impl Game<'_> {
     }
 
     /// `TextDisplay.getText`; None for another kind of display.
-    pub(super) fn display_text(&self, display: DisplayRef) -> Option<Text> {
+    pub(in crate::game) fn display_text(&self, display: DisplayRef) -> Option<Text> {
         match self.display_value(display, Some(DisplayKind::Text), 23)? {
             Value::Text(tag) => Some(comp_text(&tag_to_json(&tag))),
             _ => None,
@@ -388,18 +402,22 @@ impl Game<'_> {
     }
 
     /// `TextDisplay.setText`; false for another kind of display.
-    pub(super) fn display_set_text(&mut self, display: DisplayRef, text: Text) -> bool {
+    pub(in crate::game) fn display_set_text(&mut self, display: DisplayRef, text: Text) -> bool {
         let text = json_to_tag(&text.component());
         self.display_put(display, Some(DisplayKind::Text), "text", text)
     }
 
     /// `TextDisplay.getLineWidth`.
-    pub(super) fn display_line_width(&self, display: DisplayRef) -> Option<i32> {
+    pub(in crate::game) fn display_line_width(&self, display: DisplayRef) -> Option<i32> {
         self.display_int(display, Some(DisplayKind::Text), 24)
     }
 
     /// `TextDisplay.setLineWidth`; false for another kind of display.
-    pub(super) fn display_set_line_width(&mut self, display: DisplayRef, width: i32) -> bool {
+    pub(in crate::game) fn display_set_line_width(
+        &mut self,
+        display: DisplayRef,
+        width: i32,
+    ) -> bool {
         self.display_put(
             display,
             Some(DisplayKind::Text),
@@ -409,12 +427,16 @@ impl Game<'_> {
     }
 
     /// `TextDisplay.getBackgroundColor`: ARGB.
-    pub(super) fn display_background(&self, display: DisplayRef) -> Option<i32> {
+    pub(in crate::game) fn display_background(&self, display: DisplayRef) -> Option<i32> {
         self.display_int(display, Some(DisplayKind::Text), 25)
     }
 
     /// `TextDisplay.setBackgroundColor`; false for another kind of display.
-    pub(super) fn display_set_background(&mut self, display: DisplayRef, argb: i32) -> bool {
+    pub(in crate::game) fn display_set_background(
+        &mut self,
+        display: DisplayRef,
+        argb: i32,
+    ) -> bool {
         self.display_put(
             display,
             Some(DisplayKind::Text),
@@ -424,12 +446,16 @@ impl Game<'_> {
     }
 
     /// `TextDisplay.getTextOpacity`: -1 is opaque, else 0 to 127 then -128 to -2.
-    pub(super) fn display_text_opacity(&self, display: DisplayRef) -> Option<i8> {
+    pub(in crate::game) fn display_text_opacity(&self, display: DisplayRef) -> Option<i8> {
         self.display_byte(display, DisplayKind::Text, 26)
     }
 
     /// `TextDisplay.setTextOpacity`; false for another kind of display.
-    pub(super) fn display_set_text_opacity(&mut self, display: DisplayRef, opacity: i8) -> bool {
+    pub(in crate::game) fn display_set_text_opacity(
+        &mut self,
+        display: DisplayRef,
+        opacity: i8,
+    ) -> bool {
         self.display_put(
             display,
             Some(DisplayKind::Text),
@@ -448,37 +474,49 @@ impl Game<'_> {
     }
 
     /// `TextDisplay.FLAG_SHADOW`.
-    pub(super) fn display_text_shadow(&self, display: DisplayRef) -> Option<bool> {
+    pub(in crate::game) fn display_text_shadow(&self, display: DisplayRef) -> Option<bool> {
         self.display_text_flag(display, 1)
     }
 
     /// Sets the shadow flag; false for another kind of display.
-    pub(super) fn display_set_text_shadow(&mut self, display: DisplayRef, on: bool) -> bool {
+    pub(in crate::game) fn display_set_text_shadow(
+        &mut self,
+        display: DisplayRef,
+        on: bool,
+    ) -> bool {
         self.display_set_text_flag(display, "shadow", on)
     }
 
     /// `TextDisplay.FLAG_SEE_THROUGH`.
-    pub(super) fn display_see_through(&self, display: DisplayRef) -> Option<bool> {
+    pub(in crate::game) fn display_see_through(&self, display: DisplayRef) -> Option<bool> {
         self.display_text_flag(display, 2)
     }
 
     /// Sets the see-through flag; false for another kind of display.
-    pub(super) fn display_set_see_through(&mut self, display: DisplayRef, on: bool) -> bool {
+    pub(in crate::game) fn display_set_see_through(
+        &mut self,
+        display: DisplayRef,
+        on: bool,
+    ) -> bool {
         self.display_set_text_flag(display, "see_through", on)
     }
 
     /// `TextDisplay.FLAG_USE_DEFAULT_BACKGROUND`.
-    pub(super) fn display_default_background(&self, display: DisplayRef) -> Option<bool> {
+    pub(in crate::game) fn display_default_background(&self, display: DisplayRef) -> Option<bool> {
         self.display_text_flag(display, 4)
     }
 
     /// Sets the default-background flag; false for another kind of display.
-    pub(super) fn display_set_default_background(&mut self, display: DisplayRef, on: bool) -> bool {
+    pub(in crate::game) fn display_set_default_background(
+        &mut self,
+        display: DisplayRef,
+        on: bool,
+    ) -> bool {
         self.display_set_text_flag(display, "default_background", on)
     }
 
     /// `TextDisplay.getAlign`, from the left and right flags.
-    pub(super) fn display_alignment(&self, display: DisplayRef) -> Option<TextAlignment> {
+    pub(in crate::game) fn display_alignment(&self, display: DisplayRef) -> Option<TextAlignment> {
         let flags = self.display_byte(display, DisplayKind::Text, 27)?;
         Some(match (flags & 8 != 0, flags & 16 != 0) {
             (true, _) => TextAlignment::Left,
@@ -488,7 +526,7 @@ impl Game<'_> {
     }
 
     /// Sets the alignment; false for another kind of display.
-    pub(super) fn display_set_alignment(
+    pub(in crate::game) fn display_set_alignment(
         &mut self,
         display: DisplayRef,
         alignment: TextAlignment,
@@ -498,7 +536,7 @@ impl Game<'_> {
     }
 
     /// `BlockDisplay.getBlockState`; None for another kind of display.
-    pub(super) fn display_block_state(&self, display: DisplayRef) -> Option<BlockStateId> {
+    pub(in crate::game) fn display_block_state(&self, display: DisplayRef) -> Option<BlockStateId> {
         let (_, tag) = self.display_tag(display, Some(DisplayKind::Block))?;
         tag.get("block_state")
             .and_then(|t| self.state_from_nbt(t))
@@ -506,7 +544,7 @@ impl Game<'_> {
     }
 
     /// `BlockDisplay.setBlockState`; false for another kind of display or an unknown state.
-    pub(super) fn display_set_block_state(
+    pub(in crate::game) fn display_set_block_state(
         &mut self,
         display: DisplayRef,
         state: BlockStateId,
@@ -519,13 +557,13 @@ impl Game<'_> {
     }
 
     /// `ItemDisplay.getItemStack`; None for another kind of display or an empty stack.
-    pub(super) fn display_item(&self, display: DisplayRef) -> Option<ItemStack> {
+    pub(in crate::game) fn display_item(&self, display: DisplayRef) -> Option<ItemStack> {
         let (_, tag) = self.display_tag(display, Some(DisplayKind::Item))?;
         item_from_nbt(tag.get("item")?)
     }
 
     /// `ItemDisplay.setItemStack`; None empties it. False for another kind of display.
-    pub(super) fn display_set_item(
+    pub(in crate::game) fn display_set_item(
         &mut self,
         display: DisplayRef,
         stack: Option<ItemStack>,
@@ -546,7 +584,10 @@ impl Game<'_> {
     }
 
     /// `ItemDisplay.getItemTransform`: how the item is displayed.
-    pub(super) fn display_item_context(&self, display: DisplayRef) -> Option<ItemDisplayContext> {
+    pub(in crate::game) fn display_item_context(
+        &self,
+        display: DisplayRef,
+    ) -> Option<ItemDisplayContext> {
         let (_, tag) = self.display_tag(display, Some(DisplayKind::Item))?;
         let name = match tag.get("item_display") {
             Some(Tag::String(s)) => s.to_string_lossy(),
@@ -556,7 +597,7 @@ impl Game<'_> {
     }
 
     /// `ItemDisplay.setItemTransform`; false for another kind of display.
-    pub(super) fn display_set_item_context(
+    pub(in crate::game) fn display_set_item_context(
         &mut self,
         display: DisplayRef,
         context: ItemDisplayContext,

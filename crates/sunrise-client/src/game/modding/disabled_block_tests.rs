@@ -1,46 +1,52 @@
 //! Switching an owner off holds scheduled work and prevents template writes.
 #[cfg(test)]
-mod tests {
+pub(in crate::game) mod tests {
+    #[allow(unused_imports)]
     use super::super::{
         Dim, Game, Hit,
         api_values::{TryIntoApi, TryIntoEngine},
         native_entity_refs::tests as fixture,
     };
+    #[allow(unused_imports)]
     use mod_api::{
         BlockPart, BlockToolModificationEvent, CanBeHydratedEvent, DispenseMethodEvent, Dispensed,
         Flow, Hooks, Host, LevelWriteHost, Registrar, RegistrationContext, ServerHost,
         TickBlockEvent, ToolAbility, ToolModifiedStateEvent,
     };
+    #[allow(unused_imports)]
     use std::sync::{
         Arc, Mutex,
         atomic::{AtomicUsize, Ordering},
     };
+    #[allow(unused_imports)]
     use sunrise_client::{chunk::Chunk, items::ItemStack};
+    #[allow(unused_imports)]
     use sunrise_core::{position::BlockPos, ticks::TickPriority};
+    #[allow(unused_imports)]
     use sunrise_world::{
         level::{BlockMapValue, BlockMaps, Landing, LevelAccess},
         registry::BlockStateId,
     };
 
-    const POS: BlockPos = BlockPos::new(3, 64, 5);
-    const CARPET: &str = "inert_test_extra:carpet";
+    pub(in crate::game) const POS: BlockPos = BlockPos::new(3, 64, 5);
+    pub(in crate::game) const CARPET: &str = "inert_test_extra:carpet";
 
     #[derive(Default)]
-    struct ToolProbe {
-        candidates: Vec<(ToolAbility, Option<BlockStateId>)>,
-        replacement: Option<mod_api::BlockState>,
+    pub(in crate::game) struct ToolProbe {
+        pub(in crate::game) candidates: Vec<(ToolAbility, Option<BlockStateId>)>,
+        pub(in crate::game) replacement: Option<mod_api::BlockState>,
     }
 
     #[derive(Default)]
-    struct Probe {
-        owner_ticks: AtomicUsize,
-        earlier_ticks: AtomicUsize,
-        earlier_dispenses: AtomicUsize,
-        dispenser_changes: AtomicUsize,
-        tool: Mutex<ToolProbe>,
+    pub(in crate::game) struct Probe {
+        pub(in crate::game) owner_ticks: AtomicUsize,
+        pub(in crate::game) earlier_ticks: AtomicUsize,
+        pub(in crate::game) earlier_dispenses: AtomicUsize,
+        pub(in crate::game) dispenser_changes: AtomicUsize,
+        pub(in crate::game) tool: Mutex<ToolProbe>,
     }
 
-    struct Earlier(Arc<Probe>);
+    pub(in crate::game) struct Earlier(pub(in crate::game) Arc<Probe>);
     #[mod_api::sunrise_part]
     impl BlockPart for Earlier {
         fn tick_block(&self, _: &mut dyn LevelWriteHost, _: &mut TickBlockEvent) -> Flow {
@@ -66,7 +72,7 @@ mod tests {
             Some((Some(remainder), 0))
         }
     }
-    struct HydratesWithWater;
+    pub(in crate::game) struct HydratesWithWater;
     #[mod_api::sunrise_part]
     impl BlockPart for HydratesWithWater {
         fn can_be_hydrated(
@@ -79,7 +85,7 @@ mod tests {
         }
     }
 
-    struct HydratesWithLava;
+    pub(in crate::game) struct HydratesWithLava;
     #[mod_api::sunrise_part]
     impl BlockPart for HydratesWithLava {
         fn can_be_hydrated(
@@ -92,7 +98,7 @@ mod tests {
         }
     }
 
-    struct HydratesWithAnyFluid;
+    pub(in crate::game) struct HydratesWithAnyFluid;
     #[mod_api::sunrise_part]
     impl BlockPart for HydratesWithAnyFluid {
         fn can_be_hydrated(
@@ -104,7 +110,7 @@ mod tests {
         }
     }
 
-    struct EnabledPrefix(Arc<Probe>);
+    pub(in crate::game) struct EnabledPrefix(pub(in crate::game) Arc<Probe>);
     #[mod_api::__subscriptions]
     impl Hooks for EnabledPrefix {
         fn register(&self, r: &mut dyn Registrar, _: &RegistrationContext) {
@@ -115,7 +121,7 @@ mod tests {
         }
     }
 
-    struct Machine(Arc<Probe>);
+    pub(in crate::game) struct Machine(pub(in crate::game) Arc<Probe>);
     #[mod_api::sunrise_part]
     impl BlockPart for Machine {
         fn tick_block(&self, _: &mut dyn LevelWriteHost, _: &mut TickBlockEvent) -> Flow {
@@ -133,7 +139,7 @@ mod tests {
             Flow::Continue
         }
     }
-    struct Survival;
+    pub(in crate::game) struct Survival;
     #[mod_api::sunrise_part]
     impl BlockPart for Survival {
         fn can_survive(
@@ -145,7 +151,7 @@ mod tests {
         }
     }
 
-    struct Plant;
+    pub(in crate::game) struct Plant;
     #[mod_api::sunrise_part]
     impl BlockPart for Plant {
         fn may_place_on(
@@ -157,7 +163,7 @@ mod tests {
         }
     }
 
-    struct Soil;
+    pub(in crate::game) struct Soil;
     #[mod_api::sunrise_part]
     impl BlockPart for Soil {
         fn can_sustain_plant(
@@ -169,7 +175,7 @@ mod tests {
         }
     }
 
-    struct Owner(Arc<Probe>);
+    pub(in crate::game) struct Owner(pub(in crate::game) Arc<Probe>);
     #[mod_api::__subscriptions]
     impl Hooks for Owner {
         fn register(&self, r: &mut dyn Registrar, _: &RegistrationContext) {
@@ -207,7 +213,7 @@ mod tests {
             }
         }
     }
-    struct DispenseNotices(Arc<Probe>);
+    pub(in crate::game) struct DispenseNotices(pub(in crate::game) Arc<Probe>);
     #[mod_api::sunrise_part]
     impl BlockPart for DispenseNotices {
         fn contents_changed(&self, _: &mut dyn ServerHost, _: &mut mod_api::ContentsChangedEvent) {
@@ -215,7 +221,7 @@ mod tests {
         }
     }
 
-    struct Observer(Arc<Probe>);
+    pub(in crate::game) struct Observer(pub(in crate::game) Arc<Probe>);
     #[mod_api::__subscriptions]
     impl Hooks for Observer {
         fn register(&self, r: &mut dyn Registrar, _: &RegistrationContext) {
@@ -245,12 +251,15 @@ mod tests {
         }
     }
 
-    struct ConflictingCode;
+    pub(in crate::game) struct ConflictingCode;
     #[mod_api::__subscriptions]
     impl Hooks for ConflictingCode {}
 
-    fn with_inert_block(name: &str, test: impl FnOnce(&mut Game<'_>, BlockStateId, &Probe)) {
-        let name = format!("game::disabled_block_tests::tests::{name}");
+    pub(in crate::game) fn with_inert_block(
+        name: &str,
+        test: impl FnOnce(&mut Game<'_>, BlockStateId, &Probe),
+    ) {
+        let name = format!("game::server_side::disabled_block_tests::tests::{name}");
         if fixture::run_fresh_cases(&name, "SUNRISE_INERT_BLOCK_CHILD", &["valid"]) {
             return;
         }
@@ -604,10 +613,11 @@ mod tests {
         );
     }
 
-    const DISPENSER: BlockPos = BlockPos::new(POS.x - 1, POS.y, POS.z);
-    const DISPENSER_SLOT: (i32, i32, i32) = (DISPENSER.x, DISPENSER.y, DISPENSER.z);
+    pub(in crate::game) const DISPENSER: BlockPos = BlockPos::new(POS.x - 1, POS.y, POS.z);
+    pub(in crate::game) const DISPENSER_SLOT: (i32, i32, i32) =
+        (DISPENSER.x, DISPENSER.y, DISPENSER.z);
 
-    fn place_dispenser(game: &mut Game<'_>) -> BlockStateId {
+    pub(in crate::game) fn place_dispenser(game: &mut Game<'_>) -> BlockStateId {
         let base = game
             .pack
             .assets
@@ -622,89 +632,6 @@ mod tests {
             Ok(true)
         );
         dispenser
-    }
-
-    #[test]
-    #[ignore = "daily"]
-    fn inert_dispense_keeps_a_legacy_over_max_stack_without_events() {
-        with_inert_block(
-            "inert_dispense_keeps_a_legacy_over_max_stack_without_events",
-            |game, _, probe| {
-                assert!(mod_api::__private::set_mod_enabled("enabled_prefix", false));
-                let dispenser = place_dispenser(game);
-                game.world
-                    .block_entities
-                    .get_mut(&DISPENSER_SLOT)
-                    .unwrap()
-                    .slots_mut()[0] = Some(ItemStack::new("minecraft:stick", 65));
-                game.audio.0.capture = Some(Vec::new());
-                let particles = game.particles.0.len();
-                let notices = probe.dispenser_changes.load(Ordering::Relaxed);
-                for (enabled, count, writes) in [(false, 65, 0), (true, 64, 1)] {
-                    assert!(mod_api::__private::set_mod_enabled("inert_test", enabled));
-                    game.dispense_from(DISPENSER, dispenser).unwrap();
-                    assert_eq!(
-                        game.world
-                            .block_entities
-                            .get(&DISPENSER_SLOT)
-                            .unwrap()
-                            .slots()[0],
-                        Some(ItemStack::new("minecraft:stick", count))
-                    );
-                    assert_eq!(
-                        probe.dispenser_changes.load(Ordering::Relaxed),
-                        notices + writes
-                    );
-                    assert!(game.dropped.is_empty());
-                    assert!(game.audio.0.capture.as_ref().unwrap().is_empty());
-                    assert_eq!(game.particles.0.len(), particles);
-                }
-            },
-        );
-    }
-
-    #[test]
-    #[ignore = "daily"]
-    fn rejected_dispense_reply_preserves_the_disabled_owners_fallback() {
-        with_inert_block(
-            "rejected_dispense_reply_preserves_the_disabled_owners_fallback",
-            |game, _, probe| {
-                let dispenser = place_dispenser(game);
-                game.audio.0.capture = Some(Vec::new());
-                let particles = game.particles.0.len();
-                for enabled in [false, true] {
-                    assert!(mod_api::__private::set_mod_enabled("inert_test", enabled));
-                    for (input, remaining, writes) in [(65, 65, 0), (4, 2, 1)] {
-                        let notices = probe.dispenser_changes.load(Ordering::Relaxed);
-                        game.world
-                            .block_entities
-                            .get_mut(&DISPENSER_SLOT)
-                            .unwrap()
-                            .slots_mut()[0] = Some(ItemStack::new("minecraft:stick", input));
-                        game.dispense_from(DISPENSER, dispenser).unwrap();
-                        assert_eq!(
-                            game.world
-                                .block_entities
-                                .get(&DISPENSER_SLOT)
-                                .unwrap()
-                                .slots()[0],
-                            Some(ItemStack::new("minecraft:stick", remaining))
-                        );
-                        assert_eq!(
-                            probe.dispenser_changes.load(Ordering::Relaxed),
-                            notices + writes
-                        );
-                        assert!(
-                            game.dropped.is_empty(),
-                            "vanilla must not run a second behaviour"
-                        );
-                        assert!(game.audio.0.capture.as_ref().unwrap().is_empty());
-                        assert_eq!(game.particles.0.len(), particles);
-                    }
-                }
-                assert_eq!(probe.earlier_dispenses.load(Ordering::Relaxed), 4);
-            },
-        );
     }
 
     #[test]

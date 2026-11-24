@@ -1,9 +1,12 @@
 //! A key press while a world is open (`KeyboardHandler.keyPress` and the gameplay mappings).
+#[allow(unused_imports)]
 use super::inventory_input::drop_whole_stack;
+#[allow(unused_imports)]
 use super::*;
+#[allow(unused_imports)]
 use sunrise_client::keybinds::VanillaMappingSlot;
 
-const GUI_KEYS: [&str; 5] = [
+pub(in crate::game) const GUI_KEYS: [&str; 5] = [
     "key.toggleGui",
     "key.advancements",
     "key.socialInteractions",
@@ -14,7 +17,7 @@ const GUI_KEYS: [&str; 5] = [
 impl Game<'_> {
     /// `new InventoryScreen(player)`: the player's inventory, or in creative
     /// mode the creative inventory `InventoryScreen.init` swaps in.
-    pub(super) fn open_player_inventory(&mut self) {
+    pub(in crate::game) fn open_player_inventory(&mut self) {
         if self.instabuild() {
             self.set_screen(Screen::Creative);
             self.refresh_creative_tabs();
@@ -29,7 +32,7 @@ impl Game<'_> {
     /// is the vanilla default the pressed mapping translates to, `raw` the
     /// physical key as pressed (the same where the caller had no window key).
     /// The input dispatcher runs a receiving screen's key actions separately.
-    pub(super) fn key_pressed(&mut self, key: KeyCode, raw: KeyCode) -> Result<()> {
+    pub(in crate::game) fn key_pressed(&mut self, key: KeyCode, raw: KeyCode) -> Result<()> {
         // Scripted presses and controller presses are delivered to the same mappings
         // as window input; direct screen keys remain immediate.
         if !self.mod_mappings_screen_open() && !self.replay.playing() {
@@ -48,7 +51,7 @@ impl Game<'_> {
         self.immediate_key_pressed(key, raw)
     }
 
-    pub(super) fn tick_mapping(name: &str) -> bool {
+    pub(in crate::game) fn tick_mapping(name: &str) -> bool {
         matches!(
             name,
             "key.togglePerspective"
@@ -62,7 +65,11 @@ impl Game<'_> {
             || name.starts_with("key.hotbar.")
     }
 
-    pub(super) fn immediate_key_pressed(&mut self, key: KeyCode, raw: KeyCode) -> Result<()> {
+    pub(in crate::game) fn immediate_key_pressed(
+        &mut self,
+        key: KeyCode,
+        raw: KeyCode,
+    ) -> Result<()> {
         self.direct_craft_stop();
         if self.client.screen == Screen::Playing && self.replay.playing() {
             self.studio_key(key);
@@ -182,7 +189,7 @@ impl Game<'_> {
     }
     /// Minecraft.handleKeybinds and Gui.handleKeybinds, in their polling order.
     /// Opening a screen releases the live mappings, including clicks not yet reached.
-    pub(super) fn handle_play_keybinds(&mut self) {
+    pub(in crate::game) fn handle_play_keybinds(&mut self) {
         while self.consume_mapping_click("key.togglePerspective") {
             self.cycle_camera();
         }
@@ -249,7 +256,7 @@ impl Game<'_> {
     }
 
     /// The inventory key either asks the vehicle's server menu or opens the local inventory.
-    pub(super) fn open_inventory_key_action(&mut self) {
+    pub(in crate::game) fn open_inventory_key_action(&mut self) {
         if self.in_portal_transition() {
             return;
         }
@@ -270,7 +277,7 @@ impl Game<'_> {
     /// (`player_swap_hands`), and may stop it or change what each hand gets.
     /// Then setItemInHand for the off hand, then the main hand. The stacks are
     /// copied only for a listener: `heard` holds the old main and off hands.
-    fn own_swap_hands(&mut self) {
+    pub(in crate::game) fn own_swap_hands(&mut self) {
         if self.spectator() {
             return;
         }
@@ -301,17 +308,24 @@ impl Game<'_> {
 }
 
 #[cfg(test)]
-mod swap_hands_tests {
+pub(in crate::game) mod swap_hands_tests {
+    #[allow(unused_imports)]
     use crate::game::native_entity_refs::tests::with_game;
+    #[allow(unused_imports)]
     use mod_api::{Flow, Hooks, PlayerSwapHandsEvent, ServerHost};
+    #[allow(unused_imports)]
     use std::sync::{
         Arc,
         atomic::{AtomicBool, AtomicUsize, Ordering},
     };
+    #[allow(unused_imports)]
     use sunrise_client::items::ItemStack;
 
     /// Puts a torch in the off hand instead of the sword, or cancels; counts the calls.
-    struct Torch(Arc<AtomicBool>, Arc<AtomicUsize>);
+    pub(in crate::game) struct Torch(
+        pub(in crate::game) Arc<AtomicBool>,
+        pub(in crate::game) Arc<AtomicUsize>,
+    );
     #[mod_api::__subscriptions]
     impl Hooks for Torch {
         fn player_swap_hands(
@@ -373,95 +387,10 @@ mod swap_hands_tests {
         });
         assert_eq!(calls.load(Ordering::SeqCst), 2);
     }
-
-    /// The swap through a LAN host's registered connection: the packet goes
-    /// through the hub's inbox and the game's packet pass
-    /// (`tick_lan_packets`), and what the guest's client is sent comes off
-    /// its sender. The hook is heard once a press; a cancel sends the client
-    /// both hands as they were, and a listener's stack reaches its off-hand
-    /// slot.
-    #[test]
-    #[ignore = "daily"]
-    fn a_guest_swap_through_its_connection_is_heard_once_and_sends_the_hands() {
-        use crate::game::play_ping_tests::{fixture, output};
-        use sunrise_protocol::packets::play::{self, Clientbound as C, Serverbound as S};
-        let (cancel, calls) = (
-            Arc::new(AtomicBool::new(true)),
-            Arc::new(AtomicUsize::new(0)),
-        );
-        let torch = Torch(Arc::clone(&cancel), Arc::clone(&calls));
-        let mods: mod_api::Mods = vec![mod_api::ModEntry::new("torch", Box::new(torch))].into();
-        mod_platform::testing::with_mods(mods, || {
-            let mut resources = None;
-            let (mut game, receivers) = fixture(&mut resources);
-            let selected = game.lan.as_ref().unwrap().hub.guests[0].selected;
-            game.lan.as_mut().unwrap().hub.guests.update(0, |g| {
-                g.inventory[selected] = Some(ItemStack::new("minecraft:diamond_sword", 1));
-                g.offhand = None;
-            });
-            // One press through the connection's inbox; the hands (main, off)
-            // in the last inventory the client was sent.
-            let press = |game: &mut crate::game::Game<'_>| {
-                let swap = S::PlayerAction(play::PlayerAction {
-                    action: 7,
-                    pos: [0; 3],
-                    direction: 0,
-                    sequence: 0,
-                });
-                let host = game.lan.as_mut().unwrap();
-                host.hub
-                    .guests
-                    .update_connection(1, |g| {
-                        g.inbox
-                            .push_back(sunrise_client::lan::guest::InboxItem::Packet(swap, None))
-                    })
-                    .unwrap();
-                game.server.level_pass.first = false;
-                game.server.level_pass.packets_drained = false;
-                game.tick_lan_packets();
-                let hub = &game.lan.as_ref().unwrap().hub;
-                sunrise_client::lan::flush_all(hub.guests.iter().map(|g| &g.sender));
-                output(&receivers[0])
-                    .into_iter()
-                    .filter_map(|p| match p {
-                        C::ContainerSetContent(c) if c.container == 0 => {
-                            Some((c.items[36 + selected].clone(), c.items[45].clone()))
-                        }
-                        _ => None,
-                    })
-                    .next_back()
-                    .expect("the client was sent its inventory")
-            };
-            let hub = &mut game.lan.as_mut().unwrap().hub;
-            let sword = hub.stack(&Some(ItemStack::new("minecraft:diamond_sword", 1)));
-            let torch = hub.stack(&Some(ItemStack::new("minecraft:torch", 1)));
-            assert!(sword.is_some() && torch.is_some());
-            // Cancelled: both hands as they were.
-            assert_eq!(press(&mut game), (sword.clone(), None));
-            assert_eq!(calls.load(Ordering::SeqCst), 1);
-            let g = &game.lan.as_ref().unwrap().hub.guests[0];
-            assert_eq!(
-                g.inventory[selected].as_ref().map(|s| &*s.item),
-                Some("minecraft:diamond_sword")
-            );
-            assert!(g.offhand.is_none());
-            // A listener's torch for the off hand: the sword is gone and the
-            // client is sent the torch.
-            cancel.store(false, Ordering::SeqCst);
-            assert_eq!(press(&mut game), (None, torch));
-            assert_eq!(calls.load(Ordering::SeqCst), 2);
-            let g = &game.lan.as_ref().unwrap().hub.guests[0];
-            assert!(g.inventory[selected].is_none());
-            assert_eq!(
-                g.offhand.as_ref().map(|s| &*s.item),
-                Some("minecraft:torch")
-            );
-        });
-    }
 }
 
 #[cfg(test)]
-mod pause_close_tests {
+pub(in crate::game) mod pause_close_tests {
     use crate::game::{Screen, native_entity_refs::tests::with_game};
     use sunrise_protocol::packets::play::Serverbound as S;
     use winit::keyboard::KeyCode;
@@ -494,7 +423,7 @@ mod pause_close_tests {
 }
 
 #[cfg(test)]
-mod creative_close_tests {
+pub(in crate::game) mod creative_close_tests {
     use crate::game::{Screen, native_entity_refs::tests::with_game};
     use mod_api::{ClientHost, Hooks, ModEntry, ScreenOpening, ScreenOpeningEvent};
     use std::sync::{

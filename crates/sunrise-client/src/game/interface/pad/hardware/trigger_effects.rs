@@ -5,7 +5,7 @@ use sunrise_client::gamepad::{Button, PadSettings, TriggerFeel};
 use sunrise_dualsense::{TRIGGER_OFF, TriggerEffect, trigger};
 
 /// The effect, for a trigger that presses its action at `threshold` (0..1) of its travel.
-pub(super) fn effect(feel: TriggerFeel, threshold: f32) -> TriggerEffect {
+pub(in crate::game) fn effect(feel: TriggerFeel, threshold: f32) -> TriggerEffect {
     // The zone (of ten along the travel) where the action presses: a catch gives way there,
     // so the click and the shot coincide.
     let press = ((threshold.clamp(0.0, 1.0) * 10.0) as u8).clamp(3, 8);
@@ -39,7 +39,7 @@ pub(super) fn effect(feel: TriggerFeel, threshold: f32) -> TriggerEffect {
 
 /// The left and right triggers' effects: each feels the action bound to it, `key.use` or
 /// `key.attack`.
-pub(super) fn effects(
+pub(in crate::game) fn effects(
     settings: &PadSettings,
     using: TriggerFeel,
     attacking: TriggerFeel,

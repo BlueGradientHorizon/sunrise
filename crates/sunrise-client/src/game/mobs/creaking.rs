@@ -1,8 +1,11 @@
 //! The creaking heart block entity in the game: `mobs::creaking_heart`
 //! ticks each heart (spawning, letting go of and bleeding for its creaking)
 //! and this applies what it reports to the world, the mobs and the speakers.
+#[allow(unused_imports)]
 use super::{Game, creatures::seen, persist::EntityUuids};
+#[allow(unused_imports)]
 use std::sync::Arc;
+#[allow(unused_imports)]
 use sunrise_client::{
     Result,
     chunk_map::{ChunkMap, ChunkMembershipDelta},
@@ -13,14 +16,16 @@ use sunrise_client::{
     },
     particles::{ParticleOptions, ParticleType},
 };
+#[allow(unused_imports)]
 use sunrise_core::{
     geometry::Vec3,
     position::BlockPos,
     random::{LegacyRandom, RandomSource},
 };
+#[allow(unused_imports)]
 use sunrise_world::registry::BlockStateId;
 
-type Pos = (i32, i32, i32);
+pub(in crate::game) type Pos = (i32, i32, i32);
 
 /// Comparator input of a heart (`getAnalogOutputSignal`).
 pub(in crate::game) fn heart_signal(
@@ -34,21 +39,21 @@ pub(in crate::game) fn heart_signal(
 }
 
 /// The game's mobs as a heart sees them, taken out of the game for the tick.
-struct Host<'a> {
-    mobs: &'a mut sunrise_client::join_seq::JoinList<Mob>,
-    added: Vec<Mob>,
-    uuids: &'a mut EntityUuids,
-    creaking: Option<Arc<MobType>>,
-    next_entity: &'a mut u32,
-    spawning: bool,
+pub(in crate::game) struct Host<'a> {
+    pub(in crate::game) mobs: &'a mut sunrise_client::join_seq::JoinList<Mob>,
+    pub(in crate::game) added: Vec<Mob>,
+    pub(in crate::game) uuids: &'a mut EntityUuids,
+    pub(in crate::game) creaking: Option<Arc<MobType>>,
+    pub(in crate::game) next_entity: &'a mut u32,
+    pub(in crate::game) spawning: bool,
     /// The game's index of `mobs` by id: a heart asks for its creaking a
     /// few times a tick.
-    index: std::cell::RefCell<super::mob_index::MobIndex>,
+    pub(in crate::game) index: std::cell::RefCell<super::mob_index::MobIndex>,
 }
 impl Host<'_> {
     /// The slot of the live mob `id` in `mobs`, as a scan for the first
     /// one with that id that is not removed (ids are unique in the list).
-    fn slot(&self, id: u32) -> Option<usize> {
+    pub(in crate::game) fn slot(&self, id: u32) -> Option<usize> {
         self.index
             .borrow_mut()
             .find(self.mobs, id)
@@ -98,7 +103,7 @@ impl HeartHost for Host<'_> {
 }
 
 impl Game<'_> {
-    fn heart_state_name(&self, state: BlockStateId) -> String {
+    pub(in crate::game) fn heart_state_name(&self, state: BlockStateId) -> String {
         self.pack
             .assets
             .registry
@@ -111,7 +116,7 @@ impl Game<'_> {
     /// mob world, which is then built with the other mobs (`f` gets None
     /// otherwise: the world reads every player, the teams and the weather, and
     /// most heart ticks need none of it).
-    fn with_heart(
+    pub(in crate::game) fn with_heart(
         &mut self,
         key: Pos,
         heart: &mut CreakingHeart,
@@ -239,48 +244,6 @@ impl Game<'_> {
             sunrise_client::mobs::creaking::sway(mob, &mut events);
             let _ = self.handle_mob_events(events);
         }
-    }
-    /// `Creaking.tearDown`: the crumble particles.
-    pub(in crate::game) fn creaking_tear_down(&mut self, center: [f64; 3], spread: [f64; 3]) {
-        let registry = self.pack.assets.registry;
-        let crumble = |this: &mut Self, name: &str, props: &[(&str, &str)], count: i32| {
-            let Some(mut state) = registry
-                .default_state(name)
-                .and_then(|s| registry.state(s).cloned())
-            else {
-                return;
-            };
-            for (k, v) in props {
-                state.properties.insert((*k).to_owned(), (*v).to_owned());
-            }
-            let Ok(id) = registry.resolve(&state) else {
-                return;
-            };
-            let Some((sprite, tint)) = this.particle_sprite(id, center.map(|c| c.floor() as i32))
-            else {
-                return;
-            };
-            for _ in 0..count {
-                let r = &mut this.world.random;
-                let p = [
-                    center[0] + r.next_gaussian() * spread[0],
-                    center[1] + r.next_gaussian() * spread[1],
-                    center[2] + r.next_gaussian() * spread[2],
-                ];
-                this.particles.0.add(
-                    &ParticleOptions::block(ParticleType::BlockCrumble, sprite.clone(), tint),
-                    p,
-                    [0.0; 3],
-                );
-            }
-        };
-        crumble(self, "minecraft:pale_oak_wood", &[], 100);
-        crumble(
-            self,
-            "minecraft:creaking_heart",
-            &[("creaking_heart_state", "awake")],
-            10,
-        );
     }
     /// `CreakingHeartBlock.playerWillDestroy`: the heart's creaking twitches to
     /// death and a natural heart drops experience. `onExplosionHit` does the
@@ -461,13 +424,13 @@ impl Game<'_> {
 #[derive(Default)]
 pub(in crate::game) struct CreakingState {
     /// Chunks already scanned for heart blocks.
-    scanned: sunrise_client::fast_hash::FxHashSet<(i32, i32)>,
+    pub(in crate::game) scanned: sunrise_client::fast_hash::FxHashSet<(i32, i32)>,
     /// Resident chunks not scanned yet (not lit yet, or just arrived).
-    unscanned: sunrise_client::fast_hash::FxHashSet<(i32, i32)>,
+    pub(in crate::game) unscanned: sunrise_client::fast_hash::FxHashSet<(i32, i32)>,
     /// The chunk map's membership revision the two sets follow.
-    revision: Option<u64>,
+    pub(in crate::game) revision: Option<u64>,
     /// Which block states are creaking hearts, by state id.
-    hearts: Vec<bool>,
+    pub(in crate::game) hearts: Vec<bool>,
 }
 
 impl CreakingState {
@@ -482,7 +445,7 @@ impl CreakingState {
     /// chunk that left is forgotten (it is scanned again if it comes back
     /// later), one that arrived waits to be scanned. From the map's
     /// membership changes, or from all its keys when they can't be replayed.
-    fn follow_chunks(&mut self, chunks: &ChunkMap) {
+    pub(in crate::game) fn follow_chunks(&mut self, chunks: &ChunkMap) {
         let revision = chunks.membership_revision();
         if self.revision == Some(revision) {
             return;
@@ -522,10 +485,10 @@ impl CreakingState {
 
 #[cfg(test)]
 #[path = "tests/creaking_heart_events_tests.rs"]
-mod creaking_heart_events_tests;
+pub(in crate::game) mod creaking_heart_events_tests;
 
 #[cfg(test)]
-mod tests {
+pub(in crate::game) mod tests {
     use super::CreakingState;
     use std::sync::Arc;
     use sunrise_client::{chunk::Chunk, chunk_map::ChunkMap};
@@ -578,7 +541,7 @@ mod tests {
 }
 
 #[cfg(test)]
-mod nested_spawn_tests {
+pub(in crate::game) mod nested_spawn_tests {
     use super::*;
     #[test]
     #[ignore = "daily"]

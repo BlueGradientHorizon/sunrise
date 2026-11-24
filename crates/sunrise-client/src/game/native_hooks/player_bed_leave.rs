@@ -1,30 +1,17 @@
+#[allow(unused_imports)]
 use super::*;
+#[allow(unused_imports)]
 use std::cell::RefCell;
 
 thread_local! {
     /// The players whose `player_bed_leave` the mods are hearing on this
     /// thread: a listener that wakes the same player again wakes them
     /// without a second event.
-    static WAKING: RefCell<Vec<u128>> = const { RefCell::new(Vec::new()) };
+    pub(in crate::game) static WAKING: RefCell<Vec<u128>> = const { RefCell::new(Vec::new()) };
 }
 
 /// The hook points. Each does nothing in Sunrise.
 impl Game<'_> {
-    /// [`Self::native_player_bed_leave`] for the player acting now, who sleeps
-    /// in `self.sleeping`; its name is copied only when a mod listens.
-    pub(in crate::game) fn native_acting_bed_leave(
-        &mut self,
-        wake_immediately: bool,
-        update_level: bool,
-    ) {
-        if let (Some(head), Some(player)) = (self.sleeping, self.server.lan_acting_uuid)
-            && mod_api::__private::listened(mod_api::HookId::PlayerBedLeave)
-        {
-            let name = self.server.lan_acting_name.clone().unwrap_or_default();
-            self.native_player_bed_leave(player, &name, head, wake_immediately, update_level);
-        }
-    }
-
     /// `PlayerWakeUpEvent`: a server player is getting out of the bed at
     /// `pos` (`Player.stopSleepInBed`), heard first, while they still read
     /// as sleeping there. `wake_immediately` is vanilla's flag for skipping
@@ -57,7 +44,7 @@ impl Game<'_> {
 }
 
 #[cfg(test)]
-mod player_bed_leave_tests {
+pub(in crate::game) mod player_bed_leave_tests {
     use crate::game::Game;
     use mod_api::{Hooks, ModEntry, PlayerBedLeaveEvent, ServerHost};
     use std::sync::{Arc, Mutex};

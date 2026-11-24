@@ -1,10 +1,12 @@
 //! The player's `CombatTracker`: the damage taken lately, who dealt it and
 //! where the player fell from, turned into the vanilla death message.
+#[allow(unused_imports)]
 use super::{Game, commands::Target};
 
 #[cfg(test)]
 #[path = "tests/infested_roll_tests.rs"]
-mod infested_roll_tests;
+pub(in crate::game) mod infested_roll_tests;
+#[allow(unused_imports)]
 use sunrise_client::{
     health::{Attack, HealthEvent},
     mobs::{Damage, Mob, Species, Who, stuck::Stuck},
@@ -12,31 +14,32 @@ use sunrise_client::{
     particles::{ParticleOptions, ParticleType},
     text::Text,
 };
+#[allow(unused_imports)]
 use sunrise_core::random::RandomSource;
 
 /// `EntityEvent.DROWN_PARTICLES`: broadcast with the drowning damage.
 pub(in crate::game) const DROWN_EVENT: i8 = 67;
 
-struct Entry {
-    damage_type: String,
-    damage: f32,
-    fall_location: Option<&'static str>,
-    fall_distance: f32,
+pub(in crate::game) struct Entry {
+    pub(in crate::game) damage_type: String,
+    pub(in crate::game) damage: f32,
+    pub(in crate::game) fall_location: Option<&'static str>,
+    pub(in crate::game) fall_distance: f32,
     /// The causing entity: its id (for comparisons) and display name.
-    attacker: Option<(u32, Text)>,
+    pub(in crate::game) attacker: Option<(u32, Text)>,
     /// The causing player's main-hand stack when it has a custom name, as
     /// held when the hit landed (a mob's is read when the message is built).
-    item: Option<Text>,
+    pub(in crate::game) item: Option<Text>,
     /// The direct entity's display name when no entity caused the damage
     /// (`DamageSource.directEntity`: a potion with no thrower, a cloud).
-    direct: Option<Text>,
+    pub(in crate::game) direct: Option<Text>,
 }
-struct PendingAttacker {
-    damage_type: String,
-    attacker: (u32, Text),
-    item: Option<Text>,
-    living: bool,
-    credit: bool,
+pub(in crate::game) struct PendingAttacker {
+    pub(in crate::game) damage_type: String,
+    pub(in crate::game) attacker: (u32, Text),
+    pub(in crate::game) item: Option<Text>,
+    pub(in crate::game) living: bool,
+    pub(in crate::game) credit: bool,
 }
 
 /// `LivingEntity.lastHurtByPlayer`: a reference that survives a disconnect.
@@ -74,24 +77,24 @@ impl CombatTracker {
 pub(in crate::game) struct CombatTracker {
     /// The arrows and bee stingers stuck in the body.
     pub(in crate::game) stuck: Stuck,
-    entries: Vec<Entry>,
-    last_damage: i64,
-    in_combat: bool,
+    pub(in crate::game) entries: Vec<Entry>,
+    pub(in crate::game) last_damage: i64,
+    pub(in crate::game) in_combat: bool,
     /// Attackers of damage dealt this tick, claimed by the matching
     /// `RecordedDamage` event.
-    pending: Vec<PendingAttacker>,
+    pub(in crate::game) pending: Vec<PendingAttacker>,
     /// `pending` for a direct entity with no causing entity: only its name.
-    pending_direct: Vec<(String, Text)>,
+    pub(in crate::game) pending_direct: Vec<(String, Text)>,
     /// The lengths of `pending` and `pending_direct` before the first
     /// attacker noted for the hurt being dealt now (`forget_noted`).
-    noted_since: Option<(usize, usize)>,
+    pub(in crate::game) noted_since: Option<(usize, usize)>,
     /// `LivingEntity.lastHurtByMob` and its timestamp (the kill credit).
-    last_hurt_by: Option<((u32, Text), i64)>,
+    pub(in crate::game) last_hurt_by: Option<((u32, Text), i64)>,
     /// `LivingEntity.lastHurtByPlayer` and its timestamp.
-    last_hurt_by_player: Option<(PlayerCredit, i64)>,
+    pub(in crate::game) last_hurt_by_player: Option<(PlayerCredit, i64)>,
     /// The attack the hits on the player land in now: who attacks and what they hold. Set only
     /// by [`Game::with_attack`], which restores the previous one on return.
-    attack: Attack,
+    pub(in crate::game) attack: Attack,
     /// The mob whose projectile is hitting the player now.
     pub(in crate::game) projectile_owner: Option<u32>,
     /// The display name of the projectile hitting the player now: the
@@ -197,7 +200,7 @@ pub(in crate::game) struct CombatTracker {
     pub(in crate::game) exploded_kinds: Vec<(u32, String)>,
     /// The player's fall distance before this tick's movement (as of the
     /// end of the last one).
-    fall_before: f64,
+    pub(in crate::game) fall_before: f64,
 }
 impl CombatTracker {
     /// Whether the blast now hurting entities visits `id`: the storages are
@@ -228,7 +231,7 @@ impl CombatTracker {
         let e = self.entries.last()?;
         Some((&e.damage_type, e.attacker.as_ref().map_or(0, |a| a.0)))
     }
-    fn mark(&mut self) {
+    pub(in crate::game) fn mark(&mut self) {
         let marks = (self.pending.len(), self.pending_direct.len());
         self.noted_since.get_or_insert(marks);
     }
@@ -281,24 +284,6 @@ impl Game<'_> {
         self.combat.0.attack.clone()
     }
 
-    /// `LivingEntity.makeDrownParticles`: `count` bubbles around the entity
-    /// (vanilla's eight), moving with it.
-    pub(in crate::game) fn drown_particles(
-        &mut self,
-        at: [f64; 3],
-        velocity: [f64; 3],
-        count: i32,
-    ) {
-        let bubble = ParticleOptions::simple(ParticleType::Bubble);
-        for _ in 0..count {
-            let mut triangle = || {
-                let r = self.particles.0.random();
-                r.next_double() - r.next_double()
-            };
-            let p = [at[0] + triangle(), at[1] + triangle(), at[2] + triangle()];
-            self.particles.0.add(&bubble, p, velocity);
-        }
-    }
     /// Entity event 67 from a server, for this client's own player or an
     /// entity it draws.
     pub(in crate::game) fn remote_drown(&mut self, id: i32) {
@@ -426,7 +411,7 @@ impl Game<'_> {
     /// hit by entity `id`, which only a native mod reads: a player's hit names
     /// them, a tame wolf's its owner (no one without one), and other mobs leave
     /// it as it was.
-    fn resolve_player_responsible_for_player(
+    pub(in crate::game) fn resolve_player_responsible_for_player(
         &mut self,
         id: u32,
         captured_player: Option<[i32; 4]>,
@@ -597,7 +582,7 @@ impl Game<'_> {
         self.combat.0.fall_before = self.player.as_ref().map_or(0.0, |p| p.fall_distance);
     }
     /// `FallLocation.getCurrentFallLocation` and the fall distance so far.
-    fn fall_location(&self) -> (Option<&'static str>, f32) {
+    pub(in crate::game) fn fall_location(&self) -> (Option<&'static str>, f32) {
         let Some(p) = self.player.as_ref() else {
             return (None, 0.0);
         };
@@ -624,7 +609,7 @@ impl Game<'_> {
         (location, distance)
     }
     /// `CombatTracker.recheckStatus`: forget old fights.
-    fn recheck_combat(&mut self) {
+    pub(in crate::game) fn recheck_combat(&mut self) {
         let reset = if self.combat.0.in_combat { 300 } else { 100 };
         if !self.combat.0.entries.is_empty()
             && self.world.game_time - self.combat.0.last_damage > reset
@@ -642,7 +627,7 @@ impl Game<'_> {
         })
     }
     /// `CombatTracker.getMostSignificantFall`.
-    fn most_significant_fall(&self) -> Option<usize> {
+    pub(in crate::game) fn most_significant_fall(&self) -> Option<usize> {
         let (mut result, mut alternative) = (None, None);
         let (mut best_fall, mut alt_damage) = (0.0f32, 0.0f32);
         for (i, e) in self.combat.0.entries.iter().enumerate() {
@@ -702,7 +687,7 @@ impl Game<'_> {
     }
     /// The killer's item for `getLocalizedDeathMessage` and
     /// `getMessageForAssistedFall`: a player's as recorded, a mob's now.
-    fn entry_item(&self, e: &Entry) -> Option<Text> {
+    pub(in crate::game) fn entry_item(&self, e: &Entry) -> Option<Text> {
         e.item
             .clone()
             .or_else(|| self.mob_main_hand_name(e.attacker.as_ref()?.0))
@@ -942,14 +927,14 @@ impl Game<'_> {
 
 /// `!stack.isEmpty() && stack.has(DataComponents.CUSTOM_NAME)`: the held
 /// item that turns a death message into its `.item` form.
-fn has_custom_name(stack: &sunrise_client::items::ItemStack) -> bool {
+pub(in crate::game) fn has_custom_name(stack: &sunrise_client::items::ItemStack) -> bool {
     &*stack.item != "minecraft:air"
         && stack.count > 0
         && stack.data().is_some_and(|d| d.custom_name.is_some())
 }
 
 /// `Entity.getDisplayName` of a mob: its custom name or its type's name.
-fn mob_name(m: &Mob) -> Text {
+pub(in crate::game) fn mob_name(m: &Mob) -> Text {
     match (&m.custom_name_text, &m.custom_name) {
         (Some(text), _) => text.clone(),
         (None, Some(name)) => Text::literal(name.clone()),
@@ -961,13 +946,13 @@ fn mob_name(m: &Mob) -> Text {
 /// rounds a float (`jmath::round_f32`), only for damage under 3.4028235E37F.
 /// A huge hit (`/damage @s 3.4e38`) awards nothing, not a saturated count
 /// (#11339).
-fn damage_taken_award(amount: f32) -> Option<i32> {
+pub(in crate::game) fn damage_taken_award(amount: f32) -> Option<i32> {
     (amount < 3.402_823_5e37).then(|| sunrise_core::jmath::round_f32(amount * 10.0))
 }
 
 /// `FallLocation.blockToFallLocation`: what a climbable block stands for in a fall's death message.
 /// `trapdoor` is whether the block is in `#minecraft:trapdoors`, which counts as a ladder.
-fn fall_location_of(name: &str, trapdoor: bool) -> &'static str {
+pub(in crate::game) fn fall_location_of(name: &str, trapdoor: bool) -> &'static str {
     match name {
         _ if trapdoor => "ladder",
         "minecraft:ladder" => "ladder",
@@ -982,10 +967,11 @@ fn fall_location_of(name: &str, trapdoor: bool) -> &'static str {
 /// Whether the causing entity deals `kind` itself (`DamageSources.mobAttack`,
 /// `playerAttack`, a mace's or a spear's, a ram's no-aggro blow, a sting, a
 /// sonic boom, thorns): the fork's one answer lives with the damage sources.
+#[allow(unused_imports)]
 pub(in crate::game) use sunrise_client::health::melee;
 
 #[cfg(test)]
-mod fall_location_tests {
+pub(in crate::game) mod fall_location_tests {
     use super::fall_location_of;
 
     /// The branches of `blockToFallLocation`: a ladder or a block of `#minecraft:trapdoors` is
@@ -1186,7 +1172,7 @@ impl Game<'_> {
 }
 
 #[cfg(test)]
-mod damage_taken_tests {
+pub(in crate::game) mod damage_taken_tests {
     use super::damage_taken_award;
 
     #[test]
@@ -1204,7 +1190,7 @@ mod damage_taken_tests {
 }
 
 #[cfg(test)]
-mod held_item_tests {
+pub(in crate::game) mod held_item_tests {
     use super::has_custom_name;
     use sunrise_client::items::ItemStack;
     use sunrise_core::nbt::Tag;
@@ -1227,7 +1213,7 @@ mod held_item_tests {
     }
 }
 #[cfg(test)]
-mod noted_tests {
+pub(in crate::game) mod noted_tests {
     use super::{CombatTracker, PendingAttacker};
     use sunrise_client::text::Text;
 
@@ -1272,7 +1258,7 @@ mod noted_tests {
     }
 }
 #[cfg(test)]
-mod kill_credit_tests {
+pub(in crate::game) mod kill_credit_tests {
     use super::{CombatTracker, PlayerCredit};
     use sunrise_client::text::Text;
 
@@ -1303,7 +1289,7 @@ mod kill_credit_tests {
 }
 
 #[cfg(test)]
-mod pet_credit_tests {
+pub(in crate::game) mod pet_credit_tests {
     use std::sync::Arc;
     use sunrise_client::lan::playerdata::uuid_ints;
     use sunrise_client::mobs::Mob;
@@ -1339,7 +1325,7 @@ mod pet_credit_tests {
 }
 
 #[cfg(test)]
-mod guest_hit_tests {
+pub(in crate::game) mod guest_hit_tests {
     use sunrise_client::mobs::{Damage, DamageKind, Mob, MobEvent, Species, Who};
     use sunrise_client::motion::PlayerMotion;
     use sunrise_core::geometry::Vec3;
@@ -1396,8 +1382,8 @@ mod guest_hit_tests {
 
 #[cfg(test)]
 #[path = "combat/zombie_ignite_tests.rs"]
-mod zombie_ignite_tests;
+pub(in crate::game) mod zombie_ignite_tests;
 
 #[cfg(test)]
 #[path = "combat/bee_sting_tests.rs"]
-mod bee_sting_tests;
+pub(in crate::game) mod bee_sting_tests;

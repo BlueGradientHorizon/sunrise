@@ -1,10 +1,15 @@
+#[allow(unused_imports)]
 use super::*;
+#[allow(unused_imports)]
 use crate::game::native_entity_refs::tests::{run_fresh_cases, with_game};
+#[allow(unused_imports)]
 use mod_api::__private::{HookPanicReport, take_hook_panics};
+#[allow(unused_imports)]
 use std::sync::{
     Mutex,
     atomic::{AtomicUsize, Ordering},
 };
+#[allow(unused_imports)]
 use sunrise_client::{
     chunk::Chunk,
     join_seq::residency::{
@@ -12,11 +17,13 @@ use sunrise_client::{
         table::{EntityLookup, EntityTable, SourceEntity},
     },
 };
+#[allow(unused_imports)]
 use sunrise_core::random::LegacyRandom;
+#[allow(unused_imports)]
 use sunrise_mod_runtime::attachments::{AttachmentType, Holder};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum Family {
+pub(in crate::game) enum Family {
     Damage,
     Shield,
     Totem,
@@ -27,11 +34,11 @@ enum Family {
     Landing,
 }
 impl Family {
-    fn is_goal(self) -> bool {
+    pub(in crate::game) fn is_goal(self) -> bool {
         matches!(self, Self::Goal | Self::MountedGoal)
     }
 
-    fn hook(self) -> &'static str {
+    pub(in crate::game) fn hook(self) -> &'static str {
         match self {
             Self::Damage => "living_incoming_damage",
             Self::Shield => "living_shield_block",
@@ -45,12 +52,12 @@ impl Family {
 }
 
 #[derive(Debug)]
-struct PanicToken(u64);
-const LEVEL_SEED: i64 = 0x5eed;
-const FAILING_MOD: &str = "borrowed-panic";
+pub(in crate::game) struct PanicToken(pub(in crate::game) u64);
+pub(in crate::game) const LEVEL_SEED: i64 = 0x5eed;
+pub(in crate::game) const FAILING_MOD: &str = "borrowed-panic";
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-enum Proposal {
+pub(in crate::game) enum Proposal {
     Cancelled(bool),
     Blocked(bool),
     Speed(f32),
@@ -58,23 +65,23 @@ enum Proposal {
 }
 
 #[derive(Debug, PartialEq, Eq)]
-enum OutputNotice {
+pub(in crate::game) enum OutputNotice {
     Guest(i32),
     Egg,
 }
 
-struct Probe {
-    family: Family,
-    calls: AtomicUsize,
-    posts: Mutex<Vec<u32>>,
-    first_proposal: Mutex<Option<Proposal>>,
-    healthy_proposals: Mutex<Vec<Proposal>>,
-    draw: Mutex<Option<i64>>,
-    outputs: Mutex<Vec<OutputNotice>>,
-    goal_payload: Mutex<Option<Box<PanicToken>>>,
+pub(in crate::game) struct Probe {
+    pub(in crate::game) family: Family,
+    pub(in crate::game) calls: AtomicUsize,
+    pub(in crate::game) posts: Mutex<Vec<u32>>,
+    pub(in crate::game) first_proposal: Mutex<Option<Proposal>>,
+    pub(in crate::game) healthy_proposals: Mutex<Vec<Proposal>>,
+    pub(in crate::game) draw: Mutex<Option<i64>>,
+    pub(in crate::game) outputs: Mutex<Vec<OutputNotice>>,
+    pub(in crate::game) goal_payload: Mutex<Option<Box<PanicToken>>>,
 }
 impl Probe {
-    fn goal_callback(&self, family: Family, target: bool) {
+    pub(in crate::game) fn goal_callback(&self, family: Family, target: bool) {
         if self.family == family && target {
             self.calls.fetch_add(1, Ordering::SeqCst);
             let payload = self.goal_payload.lock().unwrap().take();
@@ -85,23 +92,23 @@ impl Probe {
         }
     }
 
-    fn enter_failing(&self, input: Proposal) {
+    pub(in crate::game) fn enter_failing(&self, input: Proposal) {
         self.calls.fetch_add(1, Ordering::SeqCst);
         *self.first_proposal.lock().unwrap() = Some(input);
     }
 
-    fn progress(&self, host: &mut dyn mod_api::LevelRandomHost) {
+    pub(in crate::game) fn progress(&self, host: &mut dyn mod_api::LevelRandomHost) {
         *self.draw.lock().unwrap() = host.with_random(|random| random.next_long());
         let _ = VALUE.set(host.attachments(), Holder::Level, 314);
     }
 }
 
-fn assert_panic_report(mod_id: &'static str, hook: &'static str) {
+pub(in crate::game) fn assert_panic_report(mod_id: &'static str, hook: &'static str) {
     assert_eq!(take_hook_panics(), [HookPanicReport { mod_id, hook }]);
 }
-struct GoalSpec {
-    probe: Arc<Probe>,
-    target: bool,
+pub(in crate::game) struct GoalSpec {
+    pub(in crate::game) probe: Arc<Probe>,
+    pub(in crate::game) target: bool,
 }
 impl mod_api::Goal for GoalSpec {
     fn name(&self) -> &'static str {
@@ -141,7 +148,7 @@ impl mod_api::Goal for GoalSpec {
         }
     }
 }
-struct GoalPart(Arc<Probe>);
+pub(in crate::game) struct GoalPart(pub(in crate::game) Arc<Probe>);
 #[mod_api::sunrise_part]
 impl mod_api::MobEffectPart for GoalPart {
     fn should_apply_effect_tick_this_tick(
@@ -162,7 +169,7 @@ impl mod_api::MobEffectPart for GoalPart {
         }
     }
 }
-struct FailingLanding(Arc<Probe>);
+pub(in crate::game) struct FailingLanding(pub(in crate::game) Arc<Probe>);
 #[mod_api::sunrise_part]
 impl mod_api::BlockPart for FailingLanding {
     fn fall_on(
@@ -180,7 +187,7 @@ impl mod_api::BlockPart for FailingLanding {
     }
 }
 
-struct HealthyLanding(Arc<Probe>);
+pub(in crate::game) struct HealthyLanding(pub(in crate::game) Arc<Probe>);
 #[mod_api::sunrise_part]
 impl mod_api::BlockPart for HealthyLanding {
     fn fall_on(&self, _: &mut dyn mod_api::LevelRandomHost, event: &mut mod_api::FallOnEvent<'_>) {
@@ -212,12 +219,12 @@ impl mod_api::EntityPart for GoalPart {
         );
     }
 }
-struct Hooks {
-    probe: Arc<Probe>,
-    panics: bool,
+pub(in crate::game) struct Hooks {
+    pub(in crate::game) probe: Arc<Probe>,
+    pub(in crate::game) panics: bool,
 }
 impl Hooks {
-    fn hear(&self, family: Family, target: bool, input: Proposal) -> bool {
+    pub(in crate::game) fn hear(&self, family: Family, target: bool, input: Proposal) -> bool {
         if self.probe.family != family || !target {
             return false;
         }
@@ -367,7 +374,7 @@ impl mod_api::Hooks for Hooks {
         mod_api::Flow::Continue
     }
 }
-const VALUE: AttachmentType<i32> = AttachmentType {
+pub(in crate::game) const VALUE: AttachmentType<i32> = AttachmentType {
     namespace: "borrowed-panic",
     name: "retained",
     default: || 0,
@@ -375,14 +382,14 @@ const VALUE: AttachmentType<i32> = AttachmentType {
     copy_on_death: false,
     sync: false,
 };
-struct Scratch(std::path::PathBuf);
+pub(in crate::game) struct Scratch(pub(in crate::game) std::path::PathBuf);
 impl Drop for Scratch {
     fn drop(&mut self) {
         let _ = std::fs::remove_dir_all(&self.0);
     }
 }
 #[derive(Clone, Copy, PartialEq, Eq)]
-enum Output {
+pub(in crate::game) enum Output {
     Quiet,
     Egg,
     Guest,
@@ -390,10 +397,10 @@ enum Output {
     Mixed,
     Reset,
 }
-const FRESH_CASE: &str = "SUNRISE_BORROWED_PANIC_CASE";
-const BOTH_LEVELS: &[&str] = &["overworld", "nether"];
+pub(in crate::game) const FRESH_CASE: &str = "SUNRISE_BORROWED_PANIC_CASE";
+pub(in crate::game) const BOTH_LEVELS: &[&str] = &["overworld", "nether"];
 
-fn fresh_dimension(test: &str, cases: &[&str]) -> Option<Dim> {
+pub(in crate::game) fn fresh_dimension(test: &str, cases: &[&str]) -> Option<Dim> {
     let name = format!("game::creatures::borrowed_panic_tests::{test}");
     if run_fresh_cases(&name, FRESH_CASE, cases) {
         return None;
@@ -405,7 +412,7 @@ fn fresh_dimension(test: &str, cases: &[&str]) -> Option<Dim> {
     })
 }
 
-fn fixture_game(output: Output, test: impl FnOnce(&mut Game<'_>)) {
+pub(in crate::game) fn fixture_game(output: Output, test: impl FnOnce(&mut Game<'_>)) {
     if matches!(output, Output::Guest | Output::Mixed) {
         crate::game::native_guest_turn_tests::with_guests(test);
     } else {
@@ -413,7 +420,7 @@ fn fixture_game(output: Output, test: impl FnOnce(&mut Game<'_>)) {
     }
 }
 
-fn eggs(game: &Game<'_>) -> u32 {
+pub(in crate::game) fn eggs(game: &Game<'_>) -> u32 {
     game.dropped
         .iter()
         .filter(|d| d.stack.item.as_ref() == "minecraft:egg")
@@ -421,7 +428,7 @@ fn eggs(game: &Game<'_>) -> u32 {
         .sum()
 }
 
-fn tick_in_level(game: &mut Game<'_>) -> Result<()> {
+pub(in crate::game) fn tick_in_level(game: &mut Game<'_>) -> Result<()> {
     sunrise_client::block_contact::in_level(
         sunrise_client::parallel::TickThread::mint(),
         Some(game.dim.id()),
@@ -429,7 +436,7 @@ fn tick_in_level(game: &mut Game<'_>) -> Result<()> {
     )
 }
 
-fn prime_hook(mob: &mut Mob, family: Family) {
+pub(in crate::game) fn prime_hook(mob: &mut Mob, family: Family) {
     mob.invulnerable_time = 0;
     if matches!(family, Family::Knockback | Family::Totem) {
         // These hooks need the hit to pass LivingEntity.hurtServer's damageCooldownTime check.
@@ -476,7 +483,12 @@ fn prime_hook(mob: &mut Mob, family: Family) {
     }
 }
 
-fn fixture_mob(game: &Game<'_>, id: u32, family: Family, output: Output) -> Mob {
+pub(in crate::game) fn fixture_mob(
+    game: &Game<'_>,
+    id: u32,
+    family: Family,
+    output: Output,
+) -> Mob {
     let kind = game
         .res
         .mob_types()
@@ -536,432 +548,19 @@ fn fixture_mob(game: &Game<'_>, id: u32, family: Family, output: Output) -> Mob 
     mob
 }
 
-fn guest_health(game: &Game<'_>) -> [f32; 2] {
+pub(in crate::game) fn guest_health(game: &Game<'_>) -> [f32; 2] {
     let guests = &game.lan.as_ref().unwrap().hub.guests;
     [guests[0].health, guests[1].health]
 }
 
-fn run_output(test: &str, family: Family, output: Output) {
+pub(in crate::game) fn run_output(test: &str, family: Family, output: Output) {
     if let Some(dim) = fresh_dimension(test, BOTH_LEVELS) {
         run_fixture(family, output, dim);
     }
 }
 
-fn run_fixture(family: Family, output: Output, dim: Dim) {
-    crate::entry::install_client_hooks();
-    let _ =
-        sunrise_client::block_contact::HOOKS.set(crate::game::native_hooks::BLOCK_CONTACT_HOOKS);
-    if family == Family::Knockback {
-        assert!(sunrise_client::brewing::register_mod_effects([(
-            "borrowed-panic:hit".into(),
-            0,
-            sunrise_client::brewing::Category::Neutral,
-            None,
-            FAILING_MOD.into(),
-        )]));
-    }
-    let scratch = tempfile::tempdir().unwrap();
-    let goal_payload = family.is_goal().then(|| Box::new(PanicToken(0xdecaf)));
-    let payload_address = goal_payload
-        .as_deref()
-        .map(|token| token as *const PanicToken as usize);
-    let probe = Arc::new(Probe {
-        family,
-        calls: AtomicUsize::new(0),
-        posts: Mutex::default(),
-        first_proposal: Mutex::default(),
-        healthy_proposals: Mutex::default(),
-        draw: Mutex::default(),
-        outputs: Mutex::default(),
-        goal_payload: Mutex::new(goal_payload),
-    });
-    let entries = || {
-        let mut entries = vec![mod_api::ModEntry::new(
-            FAILING_MOD,
-            Box::new(Hooks {
-                probe: probe.clone(),
-                panics: true,
-            }),
-        )];
-        if !family.is_goal() {
-            entries.push(mod_api::ModEntry::new(
-                "healthy",
-                Box::new(Hooks {
-                    probe: probe.clone(),
-                    panics: false,
-                }),
-            ));
-        }
-        entries
-    };
-    mod_platform::testing::with_mods(entries().into(), || {
-        crate::game::api_values::install_parts(&entries()).unwrap();
-        fixture_game(output, |game| {
-            game.server.world_root = scratch.path().to_path_buf();
-            game.enter_level(dim).unwrap();
-            game.options.dedicated = Some(Vec::new());
-            if output != Output::Quiet {
-                game.load_server_loot();
-            }
-            let guests = matches!(output, Output::Guest | Output::Mixed);
-            if guests {
-                game.world.health_rules.difficulty = sunrise_world::food::Difficulty::Normal;
-                let host = game.lan.as_mut().unwrap();
-                for i in 0..host.hub.guests.len() {
-                    host.hub.guests.update(i, |g| {
-                        g.dimension = dim.id().to_owned();
-                        g.position = if g.conn == 12 {
-                            [1.5, 80.0, 0.5]
-                        } else {
-                            [12.0, 80.0, 12.0]
-                        };
-                        g.loaded = true;
-                        g.load_timeout = 0;
-                    });
-                }
-                assert_eq!(game.lan_guest_views().len(), 2);
-            }
-            game.world
-                .chunks
-                .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
-            assert!(game.entity_ticking_area()(1, 0));
-            if output == Output::Reset {
-                let old_chicken = fixture_mob(game, 71, family, output);
-                game.mobs.push(old_chicken);
-                queue_egg(game);
-                game.clear_entities();
-            }
-            let journal = Journal::default();
-            let owner = Owner {
-                dimension: game.dim.key(),
-                kind: Kind::Mob,
-            };
-            game.mobs
-                .bind_residency(&journal, owner, |m| (m.id, m.join));
-            let ids: &[u32] = match output {
-                Output::Push => &[70, 71, 72],
-                Output::Mixed => &[71, 72, 73],
-                _ => &[71, 72],
-            };
-            for &id in ids {
-                let mob = fixture_mob(game, id, family, output);
-                game.mobs.push(mob);
-            }
-            if output == Output::Mixed {
-                // A guest action already queued in an older batch must beat the egg produced by 73.
-                game.creatures
-                    .pending
-                    .entry(game.dim.id())
-                    .or_default()
-                    .batches
-                    .push_back(MobOutputBatch {
-                        normal: NormalMobActions::default(),
-                        guests: vec![(12, 71, MobEvent::AttackPlayer(2.0, [1.0, 80.0, 0.5], None))],
-                    });
-            }
-            game.server
-                .last_hurt_by_player
-                .insert(71, super::super::combat::PlayerCredit(99));
-            let rows: Vec<_> = game.mobs.iter().map(|m| (m.id, m.join)).collect();
-            VALUE
-                .set(&mut game.world.attachments, Holder::Level, 42)
-                .unwrap();
-            game.world.attachment_syncs.insert(Holder::Level);
-            let syncs = game.world.attachment_syncs.clone();
-            game.world.path_writes = Some(Vec::new());
-            let stone = game
-                .pack
-                .assets
-                .registry
-                .default_state("minecraft:stone")
-                .unwrap();
-            game.world.set(4, 80, 4, stone).unwrap();
-            let floor_depth = if output != Output::Quiet {
-                5
-            } else if family == Family::MountedGoal {
-                3
-            } else {
-                0
-            };
-            for x in 0..5 {
-                for z in 0..floor_depth {
-                    game.world.set(x, 79, z, stone).unwrap();
-                }
-            }
-            if matches!(family, Family::Movement | Family::Landing) {
-                game.world.set(2, 79, 0, stone).unwrap();
-            }
-            let writes = game.world.path_writes.clone();
-            assert!(writes.as_ref().is_some_and(|writes| !writes.is_empty()));
-            game.world.random =
-                sunrise_core::random::LevelRandom::for_level(LegacyRandom::new(LEVEL_SEED));
-            let guest_before = guests.then(|| guest_health(game));
-            let push_before = game.mobs[0].velocity.x;
-            let target = ids.iter().position(|&id| id == 72).unwrap();
-            let health_before = game.mobs[target].health;
-
-            let unwind = if family.is_goal() {
-                // Registered goals keep their own unwind contract; this is not hook dispatch.
-                Some(
-                    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| tick_in_level(game)))
-                        .expect_err("native goal panic was swallowed"),
-                )
-            } else {
-                tick_in_level(game).unwrap();
-                None
-            };
-            assert_eq!(
-                probe.calls.load(Ordering::SeqCst),
-                1,
-                "first callback entry"
-            );
-            if let Some(payload) = &unwind {
-                assert!(
-                    probe.posts.lock().unwrap().is_empty(),
-                    "aborted tick fired Post"
-                );
-                let token = payload
-                    .downcast_ref::<PanicToken>()
-                    .expect("original typed payload");
-                assert_eq!(Some(token as *const PanicToken as usize), payload_address);
-                assert_eq!(token.0, 0xdecaf);
-                assert_eq!(game.world.path_writes, writes);
-            } else {
-                assert_panic_report(FAILING_MOD, family.hook());
-                assert_eq!(std::mem::take(&mut *probe.posts.lock().unwrap()), ids);
-                let before = probe
-                    .first_proposal
-                    .lock()
-                    .unwrap()
-                    .expect("failing listener's input");
-                let healthy = std::mem::take(&mut *probe.healthy_proposals.lock().unwrap());
-                assert_eq!(
-                    healthy.first(),
-                    Some(&before),
-                    "later callback did not see the last accepted proposal"
-                );
-                assert_eq!(
-                    game.world.path_writes,
-                    Some(Vec::new()),
-                    "tick did not consume its path writes"
-                );
-                match family {
-                    Family::Damage | Family::Shield | Family::Landing => {
-                        assert!(
-                            game.mobs[target].health < health_before,
-                            "failed proposal stopped vanilla damage"
-                        );
-                    }
-                    Family::Totem => {
-                        assert!(
-                            game.mobs[target].health > 0.0,
-                            "failed proposal vetoed the totem"
-                        );
-                        assert!(
-                            game.mobs[target].extra.main_hand_stack().is_none(),
-                            "totem was not consumed"
-                        );
-                    }
-                    _ => {}
-                }
-            }
-
-            let mut pending = Vec::new();
-            journal.drain_into(&mut pending);
-            let (mut depth, mut lifts) = (0usize, 0usize);
-            for e in pending {
-                assert_eq!(e.owner, owner);
-                match e.change {
-                    Change::Lifted => {
-                        depth += 1;
-                        lifts += 1;
-                    }
-                    Change::Restored => depth = depth.checked_sub(1).unwrap(),
-                    _ => {}
-                }
-                journal.push(e);
-            }
-            assert!(lifts > 0);
-            assert_eq!(depth, 0, "borrowed region was not restored");
-            assert_eq!(
-                game.mobs.iter().map(|m| (m.id, m.join)).collect::<Vec<_>>(),
-                rows
-            );
-            assert!(
-                game.creatures.ticked.contains(&71),
-                "earlier mob progress was lost"
-            );
-            let expected_value = if family.is_goal() || family == Family::Movement {
-                42
-            } else {
-                314
-            };
-            assert_eq!(
-                VALUE
-                    .get_existing(&mut game.world.attachments, Holder::Level)
-                    .unwrap(),
-                Some(expected_value)
-            );
-            assert_eq!(
-                game.server.last_hurt_by_player.get(&71).map(|c| c.0),
-                Some(99)
-            );
-            assert_eq!(game.world.attachment_syncs, syncs);
-            let mut random = LegacyRandom::new(LEVEL_SEED);
-            let draw = (expected_value == 314).then(|| random.next_long());
-            assert_eq!(*probe.draw.lock().unwrap(), draw, "seeded callback draw");
-            // The completed outputs don't advance this stream: egg loot uses its named
-            // sequence, entity motion and sound pitches use their own streams, and the
-            // directed guest hits and pig pushes need no random direction.
-            assert_eq!(
-                game.world.random.clone().next_long(),
-                random.next_long(),
-                "level RNG position after the first tick"
-            );
-            let mut table = EntityTable::new(journal);
-            for &(id, join) in &rows {
-                let found = table.entity_lookup(&owner.dimension, id, |at| {
-                    let m = &game.mobs[game.mobs.locate(at.join)?];
-                    Some(SourceEntity {
-                        id: m.id,
-                        value: m.join,
-                    })
-                });
-                assert!(
-                    matches!(found, EntityLookup::Found { location, value } if location.owner == owner && value == join)
-                );
-            }
-            table.end_tick().unwrap();
-
-            if unwind.is_some() {
-                assert!(
-                    game.mobs[1].ai.targets.is_running("BorrowedTarget"),
-                    "actual native target selector was lost"
-                );
-                assert!(
-                    game.mobs[1].ai.goals.is_running("BorrowedProbe"),
-                    "actual native goal selector was lost"
-                );
-                if family == Family::MountedGoal {
-                    assert_eq!(
-                        game.mobs[1].ai.nav.speed_modifier, 3.75,
-                        "private rider navigation not restored"
-                    );
-                    assert_eq!(
-                        game.mobs[0].ai.nav.speed_modifier, 1.25,
-                        "vehicle navigation lost requested progress (or routing never loaned)"
-                    );
-                    assert!(
-                        game.mobs[0].ai.nav.path.is_some(),
-                        "vehicle lost successful native path"
-                    );
-                    eprintln!(
-                        "BORROWED_MOUNTED_RESTORED:{dim:?}:rider=3.75:vehicle=1.25:path=Some"
-                    );
-                }
-                game.tick_creature_entities().unwrap();
-                assert!(
-                    !probe.posts.lock().unwrap().is_empty(),
-                    "real post listener never ran on retry"
-                );
-                table.end_tick().unwrap();
-                if family == Family::MountedGoal {
-                    assert_eq!(probe.calls.load(Ordering::SeqCst), 2);
-                    eprintln!("BORROWED_MOUNTED_RETRY_OK:{dim:?}");
-                }
-                assert_eq!(
-                    VALUE
-                        .get_existing(&mut game.world.attachments, Holder::Level)
-                        .unwrap(),
-                    Some(expected_value)
-                );
-                return;
-            }
-
-            let expected_outputs: &[OutputNotice] = match output {
-                Output::Egg => &[OutputNotice::Egg],
-                Output::Guest => &[OutputNotice::Guest(12)],
-                Output::Mixed => &[OutputNotice::Guest(12), OutputNotice::Egg],
-                _ => &[],
-            };
-            assert_eq!(probe.outputs.lock().unwrap().as_slice(), expected_outputs);
-            let expected_eggs = u32::from(matches!(output, Output::Egg | Output::Mixed));
-            assert_eq!(
-                eggs(game),
-                expected_eggs,
-                "egg output after the returning tick"
-            );
-            if output == Output::Egg {
-                assert!(
-                    game.mobs[0].extra.egg_time > 1,
-                    "laying did not advance the cooldown"
-                );
-            }
-            let guest_after = guest_before.map(|[before12, before13]| {
-                let [after12, after13] = guest_health(game);
-                assert!(
-                    after12 < before12,
-                    "guest 12 did not take the hit on the returning tick"
-                );
-                assert_eq!(after13, before13, "the hit reached the wrong guest");
-                game.mobs[0].no_ai = true;
-                game.as_guest(12, |g| {
-                    g.player.as_mut().unwrap().health.invulnerable_time = 0
-                })
-                .unwrap();
-                [after12, after13]
-            });
-            if output == Output::Push {
-                assert!(
-                    game.mobs[0].velocity.x > push_before,
-                    "completed push was lost"
-                );
-                game.mobs[1].no_ai = true;
-                game.mobs[1].position.x = 8.0;
-                // Isolate the old impulse from carry-over velocity and other contacts.
-                game.mobs[0].velocity.x = 0.0;
-                game.mobs[target].position.x = 4.0;
-            }
-
-            prime_hook(&mut game.mobs[target], family);
-            tick_in_level(game).unwrap();
-            assert_eq!(
-                probe.calls.load(Ordering::SeqCst),
-                1,
-                "disabled callback ran again"
-            );
-            assert!(
-                !probe.healthy_proposals.lock().unwrap().is_empty(),
-                "same hook never reached the healthy callback again"
-            );
-            assert!(take_hook_panics().is_empty());
-            assert_eq!(probe.posts.lock().unwrap().as_slice(), ids);
-            table.end_tick().unwrap();
-            assert_eq!(
-                VALUE
-                    .get_existing(&mut game.world.attachments, Holder::Level)
-                    .unwrap(),
-                Some(expected_value)
-            );
-            assert_eq!(
-                eggs(game),
-                expected_eggs,
-                "egg replayed or survived clear_entities"
-            );
-            assert_eq!(
-                probe.outputs.lock().unwrap().as_slice(),
-                expected_outputs,
-                "completed output replayed"
-            );
-            if let Some(health) = guest_after {
-                assert_eq!(guest_health(game), health, "guest action replayed");
-            }
-            if output == Output::Push {
-                assert_eq!(game.mobs[0].velocity.x, 0.0, "push replayed");
-            }
-        });
-    });
-}
+#[allow(unused_imports)]
+pub(in crate::game) use crate::game::server_side::creatures_server::borrowed_panic_tests::run_fixture;
 
 #[test]
 #[ignore = "daily"]
@@ -1032,14 +631,14 @@ fn retained_reset() {
 }
 
 #[derive(Default)]
-struct ConsumerProbe {
-    calls: AtomicUsize,
-    eggs: Mutex<Vec<u32>>,
-    posts: Mutex<Vec<u32>>,
+pub(in crate::game) struct ConsumerProbe {
+    pub(in crate::game) calls: AtomicUsize,
+    pub(in crate::game) eggs: Mutex<Vec<u32>>,
+    pub(in crate::game) posts: Mutex<Vec<u32>>,
 }
 
 impl ConsumerProbe {
-    fn assert_tick(&self, game: &Game<'_>, egg_count: u32) {
+    pub(in crate::game) fn assert_tick(&self, game: &Game<'_>, egg_count: u32) {
         assert_eq!(self.calls.load(Ordering::SeqCst), 1);
         assert_eq!(std::mem::take(&mut *self.posts.lock().unwrap()), [71, 72]);
         assert_eq!(eggs(game), egg_count);
@@ -1064,9 +663,9 @@ impl ConsumerProbe {
     }
 }
 
-struct Consumer {
-    probe: Arc<ConsumerProbe>,
-    panics: bool,
+pub(in crate::game) struct Consumer {
+    pub(in crate::game) probe: Arc<ConsumerProbe>,
+    pub(in crate::game) panics: bool,
 }
 #[mod_api::__subscriptions]
 impl mod_api::Hooks for Consumer {
@@ -1106,42 +705,10 @@ impl mod_api::Hooks for Consumer {
     }
 }
 
-fn with_consumer_game(dim: Dim, test: impl FnOnce(&mut Game<'_>, &ConsumerProbe)) {
-    crate::entry::install_client_hooks();
-    let probe = Arc::new(ConsumerProbe::default());
-    let scratch = tempfile::tempdir().unwrap();
-    let mods = vec![
-        mod_api::ModEntry::new(
-            "consumer",
-            Box::new(Consumer {
-                probe: probe.clone(),
-                panics: true,
-            }),
-        ),
-        mod_api::ModEntry::new(
-            "healthy",
-            Box::new(Consumer {
-                probe: probe.clone(),
-                panics: false,
-            }),
-        ),
-    ]
-    .into();
-    mod_platform::testing::with_mods(mods, || {
-        with_game(|game| {
-            game.server.world_root = scratch.path().to_path_buf();
-            game.enter_level(dim).unwrap();
-            game.options.dedicated = Some(Vec::new());
-            game.load_server_loot();
-            game.world
-                .chunks
-                .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
-            test(game, &probe);
-        });
-    });
-}
+#[allow(unused_imports)]
+pub(in crate::game) use crate::game::server_side::creatures_server::borrowed_panic_tests::with_consumer_game;
 
-fn queue_egg(game: &mut Game<'_>) {
+pub(in crate::game) fn queue_egg(game: &mut Game<'_>) {
     game.creatures
         .pending
         .entry(game.dim.id())
@@ -1209,7 +776,7 @@ fn retained_nested_tail() {
     run_conditional("retained_nested_tail", true);
 }
 
-fn run_conditional(test: &str, nested: bool) {
+pub(in crate::game) fn run_conditional(test: &str, nested: bool) {
     let Some(dim) = fresh_dimension(test, &["overworld"]) else {
         return;
     };
@@ -1317,42 +884,12 @@ fn run_conditional(test: &str, nested: bool) {
     });
 }
 
-#[test]
-#[ignore = "daily"]
-fn retained_stale_push_target() {
-    let scratch =
-        Scratch(std::env::temp_dir().join(format!("sunrise-stale-push-{}", std::process::id())));
-    crate::game::native_entity_refs::tests::with_game(|game| {
-        game.server.world_root = scratch.0.clone();
-        game.options.dedicated = Some(Vec::new());
-        game.world
-            .chunks
-            .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
-        game.creatures
-            .pending
-            .entry(game.dim.id())
-            .or_default()
-            .pushes
-            .push(999, Vec3::new(0.25, 0.0, 0.0));
-        game.tick_creature_entities().unwrap();
-        let kind = game.res.mob_types().get("minecraft:pig").unwrap().clone();
-        let mut mob = Mob::new(999, kind, Vec3::new(1.0, 80.0, 0.5), 0.0);
-        mob.no_ai = true;
-        game.mobs.push(mob);
-        game.tick_creature_entities().unwrap();
-        assert_eq!(
-            game.mobs[0].velocity.x, 0.0,
-            "obsolete target push reached a later occupant"
-        );
-    });
-}
-
 /// `living_breathe` with the owning host: a listener reads the mob's air and edits what it holds
 /// through a transaction, and the game applies its answer to the air it had decided on, or
 /// refuses when the listener changed that air and rolls the transactional edit back.
-struct Breather {
-    meddle: bool,
-    seen_air: Arc<std::sync::Mutex<Vec<i32>>>,
+pub(in crate::game) struct Breather {
+    pub(in crate::game) meddle: bool,
+    pub(in crate::game) seen_air: Arc<std::sync::Mutex<Vec<i32>>>,
 }
 #[mod_api::__subscriptions]
 impl mod_api::Hooks for Breather {
@@ -1384,61 +921,8 @@ impl mod_api::Hooks for Breather {
     }
 }
 
-/// One tick of a zombie with 100 air and an iron sword: the air it listened to, then the air
-/// and the sword's damage the tick left.
-fn breathing_tick(meddle: bool) -> (Vec<i32>, i32, i32) {
-    crate::entry::install_client_hooks();
-    let _ =
-        sunrise_client::block_contact::HOOKS.set(crate::game::native_hooks::BLOCK_CONTACT_HOOKS);
-    let scratch = Scratch(std::env::temp_dir().join(format!(
-        "sunrise-breathing-{}-{:?}",
-        std::process::id(),
-        std::thread::current().id()
-    )));
-    let seen_air = Arc::new(std::sync::Mutex::new(Vec::new()));
-    let mut left = (0, 0);
-    mod_platform::testing::with_mods(
-        vec![mod_api::ModEntry::new(
-            "breathing",
-            Box::new(Breather {
-                meddle,
-                seen_air: seen_air.clone(),
-            }),
-        )]
-        .into(),
-        || {
-            crate::game::native_entity_refs::tests::with_game(|game| {
-                game.server.world_root = scratch.0.clone();
-                game.enter_level(Dim::Overworld).unwrap();
-                game.options.dedicated = Some(Vec::new());
-                game.world
-                    .chunks
-                    .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
-                assert!(game.entity_ticking_area()(1, 0));
-                let kind = game
-                    .res
-                    .mob_types()
-                    .get("minecraft:zombie")
-                    .unwrap()
-                    .clone();
-                let mut mob = Mob::new(72, kind, Vec3::new(2.0, 80.0, 0.5), 0.0);
-                mob.no_ai = true;
-                mob.air = 100;
-                mob.extra
-                    .set_main_hand_stack(Some(sunrise_client::items::ItemStack::new(
-                        "minecraft:iron_sword",
-                        1,
-                    )));
-                game.mobs.push(mob);
-                game.tick_creature_entities().unwrap();
-                let mob = game.mobs.iter().find(|m| m.id == 72).unwrap();
-                left = (mob.air, mob.extra.main_hand_stack().unwrap().damage);
-            });
-        },
-    );
-    let seen = seen_air.lock().unwrap().clone();
-    (seen, left.0, i32::try_from(left.1).unwrap())
-}
+#[allow(unused_imports)]
+pub(in crate::game) use crate::game::server_side::creatures_server::borrowed_panic_tests::breathing_tick;
 
 #[test]
 #[ignore = "daily"]
@@ -1459,7 +943,7 @@ fn a_mob_whose_air_the_listener_changed_keeps_it_and_loses_the_transactional_wri
 /// without touching `air`: under the unified failure rule, the panic is contained, the enclosing
 /// transaction aborts (rolling back the sword edit and leaving air unchanged), and the listener is
 /// disabled for `living_breathe` for the rest of the session so subsequent ticks run vanilla.
-struct BreathPanic(Arc<AtomicUsize>);
+pub(in crate::game) struct BreathPanic(pub(in crate::game) Arc<AtomicUsize>);
 #[mod_api::__subscriptions]
 impl mod_api::Hooks for BreathPanic {
     fn living_breathe(
@@ -1480,66 +964,6 @@ impl mod_api::Hooks for BreathPanic {
             .unwrap();
         panic!("real breathing listener");
     }
-}
-#[test]
-#[ignore = "daily"]
-fn retained_breathing_tail() {
-    crate::entry::install_client_hooks();
-    let _ =
-        sunrise_client::block_contact::HOOKS.set(crate::game::native_hooks::BLOCK_CONTACT_HOOKS);
-    let calls = Arc::new(AtomicUsize::new(0));
-    let scratch =
-        Scratch(std::env::temp_dir().join(format!("sunrise-breath-panic-{}", std::process::id())));
-    mod_platform::testing::with_mods(
-        vec![mod_api::ModEntry::new(
-            "breath-panic",
-            Box::new(BreathPanic(calls.clone())),
-        )]
-        .into(),
-        || {
-            crate::game::native_entity_refs::tests::with_game(|game| {
-                game.server.world_root = scratch.0.clone();
-                game.enter_level(Dim::Overworld).unwrap();
-                game.options.dedicated = Some(Vec::new());
-                game.world
-                    .chunks
-                    .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
-                let kind = game
-                    .res
-                    .mob_types()
-                    .get("minecraft:zombie")
-                    .unwrap()
-                    .clone();
-                let mut mob = Mob::new(72, kind, Vec3::new(2.0, 80.0, 0.5), 0.0);
-                mob.no_ai = true;
-                mob.air = 100;
-                mob.extra
-                    .set_main_hand_stack(Some(sunrise_client::items::ItemStack::new(
-                        "minecraft:iron_sword",
-                        1,
-                    )));
-                game.mobs.push(mob);
-                game.tick_creature_entities().unwrap();
-                assert_eq!(calls.load(Ordering::SeqCst), 1);
-                let mob = game.mobs.iter().find(|m| m.id == 72).unwrap();
-                assert_eq!(mob.air, 100);
-                assert_eq!(mob.extra.main_hand_stack().unwrap().damage, 0);
-                assert_eq!(
-                    mod_api::__private::take_hook_panics(),
-                    [mod_api::__private::HookPanicReport {
-                        mod_id: "breath-panic",
-                        hook: "living_breathe",
-                    }]
-                );
-                // Next tick skips the poisoned listener and applies vanilla breathing (+4 air).
-                game.tick_creature_entities().unwrap();
-                assert_eq!(calls.load(Ordering::SeqCst), 1);
-                let mob = game.mobs.iter().find(|m| m.id == 72).unwrap();
-                assert_eq!(mob.air, 104);
-                assert_eq!(mob.extra.main_hand_stack().unwrap().damage, 0);
-            });
-        },
-    );
 }
 
 #[test]

@@ -2,7 +2,10 @@ use super::*;
 
 /// `view` as the screen `id` (an overlay or a title screen, which shows over
 /// the whole window with no menu).
-pub(super) fn screen_view_with_id<'a>(view: &ScreenView<'a>, id: &'static str) -> ScreenView<'a> {
+pub(in crate::game) fn screen_view_with_id<'a>(
+    view: &ScreenView<'a>,
+    id: &'static str,
+) -> ScreenView<'a> {
     ScreenView::from(mod_api::__private::built::ScreenView {
         id,
         mod_screen: if id == "mod" { view.mod_screen } else { None },
@@ -18,7 +21,10 @@ pub(super) fn screen_view_with_id<'a>(view: &ScreenView<'a>, id: &'static str) -
 }
 
 /// `view` as mod `mod_id`'s own screen (`id == "mod"`, `mod_screen == Some(mod_id)`).
-pub(super) fn screen_view_for_mod<'a>(view: &ScreenView<'a>, mod_id: &'a str) -> ScreenView<'a> {
+pub(in crate::game) fn screen_view_for_mod<'a>(
+    view: &ScreenView<'a>,
+    mod_id: &'a str,
+) -> ScreenView<'a> {
     ScreenView::from(mod_api::__private::built::ScreenView {
         id: "mod",
         mod_screen: Some(mod_id),

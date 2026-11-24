@@ -19,7 +19,7 @@ use std::{
 use sunrise_client::Result;
 
 impl Game<'_> {
-    pub(super) fn run_net_harness(&mut self, report: &Path) -> Result<()> {
+    pub(in crate::game) fn run_net_harness(&mut self, report: &Path) -> Result<()> {
         let deadline = Instant::now() + Duration::from_secs(120);
         let mut next = Instant::now();
         let mut spawned_at: Option<Instant> = None;

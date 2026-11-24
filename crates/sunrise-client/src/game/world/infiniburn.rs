@@ -6,7 +6,7 @@ impl Game<'_> {
     /// World data-pack reloads rebuild `Items.block_tags`, not the shared `Behaviours`
     /// tables. Both server and client therefore resolve from the items snapshot they play
     /// with, translating block names through the shared state table only at resolution.
-    pub(super) fn resolve_level_infiniburn(
+    pub(in crate::game) fn resolve_level_infiniburn(
         &self,
         facts: &sunrise_world::dimension_type::DimensionFacts,
     ) -> Arc<BlockSet> {
@@ -25,7 +25,7 @@ impl Game<'_> {
         Arc::new(set)
     }
 
-    pub(super) fn refresh_infiniburn(&mut self) {
+    pub(in crate::game) fn refresh_infiniburn(&mut self) {
         self.world.infiniburn = Some(self.resolve_level_infiniburn(self.dimension_type()));
         let parked: Vec<_> = self
             .levels
@@ -53,7 +53,7 @@ impl Game<'_> {
     }
 
     /// The new remote World and its connection's dimension facts are now both installed.
-    pub(super) fn finish_remote_level(&mut self) {
+    pub(in crate::game) fn finish_remote_level(&mut self) {
         self.refresh_infiniburn();
         self.apply_settings();
     }

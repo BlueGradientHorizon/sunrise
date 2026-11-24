@@ -36,7 +36,7 @@ fn infects(difficulty: Difficulty, coin: impl FnOnce() -> bool) -> bool {
 
 impl Game<'_> {
     /// `ZombieVillager.handleEntityEvent(16)`: only the client plays the cure sound.
-    pub(super) fn zombie_villager_cure_sound(&mut self, id: u32) {
+    pub(in crate::game) fn zombie_villager_cure_sound(&mut self, id: u32) {
         if let Some(m) = self.mobs.iter_mut().find(|m| m.id == id)
             && let Some(sunrise_client::mobs::MobEvent::Sound(name, at, volume, pitch)) =
                 zombie_villager::cure_sound(m)
@@ -49,7 +49,7 @@ impl Game<'_> {
 
     /// `Zombie.killedEntity`: a villager killed by a zombie may rise as a
     /// zombie villager keeping its profession, trades and gossip.
-    pub(super) fn zombie_killed(&mut self, killer: u32, victim: u32) {
+    pub(in crate::game) fn zombie_killed(&mut self, killer: u32, victim: u32) {
         let Some(k) = self.mobs.iter().position(|m| m.id == killer) else {
             return;
         };
@@ -117,7 +117,7 @@ impl Game<'_> {
     /// `ZombieVillager.mobInteract`: a golden apple on a weakened zombie
     /// villager starts the cure and is eaten; without weakness it does
     /// nothing. Returns whether the click was used.
-    pub(super) fn interact_zombie_villager(&mut self, index: usize, item: &str) -> bool {
+    pub(in crate::game) fn interact_zombie_villager(&mut self, index: usize, item: &str) -> bool {
         let m = &self.mobs[index];
         if m.species() != Species::ZombieVillager || item != "minecraft:golden_apple" {
             return false;
@@ -143,7 +143,7 @@ impl Game<'_> {
     /// `ZombieVillager.finishConversion`: the villager returns with its
     /// data, trades, experience and gossip, and the curing player earns the
     /// village's trust.
-    pub(super) fn cure_zombie_villager(&mut self, id: u32) {
+    pub(in crate::game) fn cure_zombie_villager(&mut self, id: u32) {
         let Some(i) = self.mobs.iter().position(|m| m.id == id) else {
             return;
         };
@@ -327,13 +327,17 @@ fn carry_over(from: &Mob, to: &mut Mob) {
 }
 /// A villager rises as a zombie villager (never as an adult-age baby: a baby
 /// stays a baby for good).
-pub(super) fn convert_to_zombie_villager(from: &Mob, to: &mut Mob) {
+pub(in crate::game) fn convert_to_zombie_villager(from: &Mob, to: &mut Mob) {
     carry_over(from, to);
     to.extra.age = if from.is_baby() { i32::MIN / 2 } else { 0 };
 }
 /// A cured zombie villager becomes a villager again, queasy for 10 seconds
 /// when `nausea` (the `canBeAffected` ask on the fresh villager) allows it.
-pub(super) fn convert_to_villager(from: &Mob, to: &mut Mob, nausea: bool) -> Vec<ItemStack> {
+pub(in crate::game) fn convert_to_villager(
+    from: &Mob,
+    to: &mut Mob,
+    nausea: bool,
+) -> Vec<ItemStack> {
     carry_over(from, to);
     let mut drops_out = Vec::new();
     // `EquipmentSlot.VALUES` order: main hand, off hand, feet, legs, chest, head.

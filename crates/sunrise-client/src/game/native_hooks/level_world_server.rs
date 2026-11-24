@@ -1,0 +1,26 @@
+#[allow(unused_imports)]
+pub(in crate::game::server_side) use crate::game::native_hooks::level_world::*;
+#[allow(unused_imports)]
+pub(in crate::game::server_side) use crate::game::{Game, api_values::with_live_level_random};
+#[allow(unused_imports)]
+pub(in crate::game::server_side) use mod_api::{LevelRef, RandomDraw};
+#[allow(unused_imports)]
+pub(in crate::game::server_side) use sunrise_core::random::LegacyRandom;
+
+impl Game<'_> {
+    /// Select a current, resident server level's stream without bringing the level into place.
+    pub(in crate::game) fn level_random_mut(
+        &mut self,
+        level: LevelRef,
+    ) -> Option<&mut LegacyRandom> {
+        if !self.is_logical_server() || !self.level_handle_current(level) {
+            return None;
+        }
+        let world = if level.dimension() == self.dim.key() {
+            &mut self.world
+        } else {
+            self.levels.0.parked_world_mut_of(level.dimension_id())?
+        };
+        Some(&mut world.random)
+    }
+}

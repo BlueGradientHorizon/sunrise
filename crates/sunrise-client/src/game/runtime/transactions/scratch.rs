@@ -36,7 +36,7 @@ impl Game<'_> {
     }
 
     /// Puts back the still-live scratch stacks an aborted transaction wrote, from what it kept.
-    pub(super) fn scratch_roll_back(&mut self, kept: HashMap<u64, Scratch>) {
+    pub(in crate::game) fn scratch_roll_back(&mut self, kept: HashMap<u64, Scratch>) {
         for (id, was) in kept {
             if let Some(slot) = self.transactions.scratch.get_mut(&id) {
                 *slot = was;

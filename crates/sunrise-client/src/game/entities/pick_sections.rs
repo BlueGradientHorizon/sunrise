@@ -204,7 +204,7 @@ pub(in crate::game) struct PickSectionStorage {
 }
 
 impl PickSectionStorage {
-    pub(super) fn clear(&mut self) {
+    pub(in crate::game) fn clear(&mut self) {
         self.sections.clear();
         self.by_id.clear();
         self.initialized = false;
@@ -262,7 +262,7 @@ impl PickSectionStorage {
         }
     }
 
-    pub(super) fn place(&mut self, member: PickMember, at: [f64; 3], seq: u64) {
+    pub(in crate::game) fn place(&mut self, member: PickMember, at: [f64; 3], seq: u64) {
         self.remove(member.id);
         self.insert(SectionKey::at(at), member, seq);
     }
@@ -287,7 +287,7 @@ impl PickSectionStorage {
         self.take_out(PickMember { kind, id }, old_key);
     }
 
-    pub(super) fn kind_of(&self, id: u32) -> Option<PickKind> {
+    pub(in crate::game) fn kind_of(&self, id: u32) -> Option<PickKind> {
         self.by_id.get(&id).map(|&(kind, _, _)| kind)
     }
 
@@ -1211,7 +1211,7 @@ impl Game<'_> {
     }
 
     /// `cameraEntity.getBoundingBox()` at the camera entity's current position.
-    pub(super) fn pick_camera_bounds(&self) -> Option<Aabb> {
+    pub(in crate::game) fn pick_camera_bounds(&self) -> Option<Aabb> {
         if let Some(r) = self.remote.as_ref()
             && let Some(cam_id) = r.camera
         {

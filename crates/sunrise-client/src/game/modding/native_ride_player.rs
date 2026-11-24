@@ -69,7 +69,7 @@ impl Game<'_> {
     /// `Entity.startRiding(player, force)` for the mob `entity`, with each
     /// refusal named. The mount itself is `start_riding_target`'s, the path
     /// every other vehicle takes.
-    pub(super) fn entity_ride_player(
+    pub(in crate::game) fn entity_ride_player(
         &mut self,
         entity: EntityRef,
         player: EntityRef,

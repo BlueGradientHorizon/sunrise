@@ -6,7 +6,7 @@ impl Game<'_> {
     /// digging since the START that named `pos` is at least 70 % done; otherwise it keeps digging
     /// alone and breaks it when done (`guest_delayed_destroy`), so the client's broken block is
     /// never left standing on the server.
-    pub(super) fn guest_stop_digging(&mut self, conn: u32, pos: [i32; 3]) {
+    pub(in crate::game) fn guest_stop_digging(&mut self, conn: u32, pos: [i32; 3]) {
         let Some(host) = self.lan.as_ref() else {
             return;
         };
@@ -50,7 +50,7 @@ impl Game<'_> {
 
     /// ServerPlayerGameMode.tick's delayed destroy: the block breaks once its progress since
     /// the digging started is complete, unless something else removed it first.
-    pub(super) fn guest_delayed_destroy(&mut self, conn: u32) {
+    pub(in crate::game) fn guest_delayed_destroy(&mut self, conn: u32) {
         let Some(host) = self.lan.as_ref() else {
             return;
         };
@@ -80,14 +80,14 @@ impl Game<'_> {
 
     /// ServerPlayerGameMode.destroyBlock for a guest, its crack cleared for the others
     /// (`destroyBlockProgress(id, pos, -1)`).
-    pub(super) fn guest_destroy(&mut self, conn: u32, pos: [i32; 3]) {
+    pub(in crate::game) fn guest_destroy(&mut self, conn: u32, pos: [i32; 3]) {
         if let Some(gi) = self.guest_index(conn) {
             let _ = self.guest_destroy_at(gi, conn, pos);
         }
     }
 
     /// `guest_destroy` for the guest at `gi`.
-    pub(super) fn guest_destroy_at(
+    pub(in crate::game) fn guest_destroy_at(
         &mut self,
         gi: usize,
         conn: u32,
@@ -144,7 +144,7 @@ impl Game<'_> {
     }
 
     /// ServerPlayerGameMode.incrementDestroyProgress, including the first hit.
-    pub(super) fn guest_dig_feedback(&mut self, conn: u32) {
+    pub(in crate::game) fn guest_dig_feedback(&mut self, conn: u32) {
         let Some(host) = self.lan.as_mut() else {
             return;
         };
@@ -187,7 +187,7 @@ impl Game<'_> {
     /// A player who dies digs and uses nothing any more: the block it was
     /// breaking, or had left to break (`hasDelayedDestroy`), stays, and its
     /// crack goes. Respawning gives it a new ServerPlayerGameMode (#1315).
-    pub(super) fn guest_forget_digging(&mut self, conn: u32) {
+    pub(in crate::game) fn guest_forget_digging(&mut self, conn: u32) {
         let Some(play) = self.lan.as_mut().and_then(|host| host.play.get_mut(&conn)) else {
             return;
         };
@@ -203,11 +203,16 @@ impl Game<'_> {
             self.guest_crack_gone(conn, pos);
         }
     }
-    pub(super) fn guest_crack_gone(&mut self, conn: u32, pos: [i32; 3]) {
+    pub(in crate::game) fn guest_crack_gone(&mut self, conn: u32, pos: [i32; 3]) {
         self.guest_crack_progress(conn, pos, -1);
     }
     /// Only other players strictly within 32 blocks receive crack updates.
-    pub(super) fn guest_crack_progress(&mut self, conn: u32, pos: [i32; 3], progress: i32) {
+    pub(in crate::game) fn guest_crack_progress(
+        &mut self,
+        conn: u32,
+        pos: [i32; 3],
+        progress: i32,
+    ) {
         let Some(id) = self
             .lan
             .as_ref()

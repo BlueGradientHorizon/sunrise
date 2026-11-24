@@ -4,7 +4,7 @@ use super::*;
 
 impl Game<'_> {
     /// Transfer the entity-owned state that is stored outside `Mob`.
-    pub(super) fn transfer_conversion_identity(&mut self, from: u32, to: u32) {
+    pub(in crate::game) fn transfer_conversion_identity(&mut self, from: u32, to: u32) {
         use crate::game::commands::Target;
         use sunrise_client::save::uuid_text;
 
@@ -30,7 +30,7 @@ impl Game<'_> {
     /// new mob of type `kind` through its saved form, over what the new mob's construction
     /// gave it. A value without a codec stays behind. The copy is not synced on its own: the new
     /// mob's spawn carries its synced values. A mob with no attachments costs one lookup.
-    pub(super) fn copy_conversion_attachments(&mut self, from: u32, to: u32, kind: &str) {
+    pub(in crate::game) fn copy_conversion_attachments(&mut self, from: u32, to: u32, kind: &str) {
         let Some(saved) = self.entity_attachments.get(&from).map(|map| map.to_nbt()) else {
             return;
         };

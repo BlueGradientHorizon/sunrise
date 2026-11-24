@@ -42,7 +42,7 @@ pub(in crate::game) fn hand_pose_matrix(values: [f32; 7]) -> glam::Mat4 {
 
 /// `shake` scaled by `scale` (Distortion Effects) and bounded on each axis;
 /// a value that isn't finite counts as none.
-pub(super) fn bounded_shake(shake: Shake, scale: f32) -> Shake {
+pub(in crate::game) fn bounded_shake(shake: Shake, scale: f32) -> Shake {
     let scale = if scale.is_finite() {
         scale.clamp(0.0, 1.0)
     } else {

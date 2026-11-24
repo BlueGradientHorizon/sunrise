@@ -1,3 +1,4 @@
+#[allow(unused_imports)]
 use super::*;
 
 impl Game<'_> {
@@ -8,19 +9,6 @@ impl Game<'_> {
         editors: &mut Vec<Answered<PresetEditorFactoryRegistration>>,
     ) {
         Self::fire_register_preset_editors(context, editors);
-    }
-
-    pub(in crate::game) fn preset_editor_title(&self) -> Option<&sunrise_client::title::Title> {
-        if self.client.screen != Screen::Playing
-            || self.screen_over_playing()
-            || self.remote_loading()
-        {
-            return None;
-        }
-        self.title
-            .0
-            .as_ref()
-            .filter(|title| title.preset_editor_session().is_some())
     }
 
     pub(in crate::game) fn preset_editor_dimensions(&self) -> Option<mod_api::Compound> {
@@ -43,7 +31,7 @@ impl Game<'_> {
 }
 
 #[cfg(test)]
-mod tests {
+pub(in crate::game) mod tests {
     use super::*;
     use crate::game::WindowKeyInput;
     use mod_api::{

@@ -1,10 +1,12 @@
 //! The sign editing screen (`SignEditScreen` / `HangingSignEditScreen`):
 //! opened when a sign is placed, four lines limited to the sign's line
 //! width, Up/Down/Enter move between lines, Escape or Done closes.
+#[allow(unused_imports)]
 use super::{
     Game,
     commands::{Target, execute::Source},
 };
+#[allow(unused_imports)]
 use sunrise_client::{
     containers::BlockEntity,
     hud::{HudBatch, rgba},
@@ -12,21 +14,23 @@ use sunrise_client::{
     signs::{ClickAction, DYE_TEXT, click_action, editor_sprite},
     ui::EditBox,
 };
+#[allow(unused_imports)]
 use sunrise_protocol::packets::play::{self, Clientbound as C, Serverbound as S};
+#[allow(unused_imports)]
 use winit::keyboard::KeyCode;
 
-pub(super) struct SignEditor {
+pub(in crate::game) struct SignEditor {
     pub pos: (i32, i32, i32),
     pub front: bool,
     pub line: usize,
     /// The line being edited (`AbstractSignEditScreen`'s text field).
-    edit: EditBox,
+    pub(in crate::game) edit: EditBox,
     /// `AbstractSignEditScreen.messages`: the side's lines as edited, sent
     /// when the editor closes, even if the sign is gone by then.
-    lines: [String; 4],
+    pub(in crate::game) lines: [String; 4],
 }
 
-fn sign_box() -> EditBox {
+pub(in crate::game) fn sign_box() -> EditBox {
     let mut edit = EditBox::new(0.0, 0.0, 90.0, 9.0);
     edit.bordered = false;
     edit.max_length = 384;
@@ -35,12 +39,12 @@ fn sign_box() -> EditBox {
 }
 
 /// The Done button's text, `CommonComponents.GUI_DONE`, in the selected language.
-fn done_label() -> String {
+pub(in crate::game) fn done_label() -> String {
     super::screen_info::tr("gui.done", &[])
 }
 /// AbstractSignEditScreen.init's Done button: `width / 2 - 100`,
 /// `height / 4 + 144`, int GUI pixels.
-fn done_button(w: f32, h: f32) -> (f32, f32) {
+pub(in crate::game) fn done_button(w: f32, h: f32) -> (f32, f32) {
     (
         (w.ceil() / 2.0).floor() - 100.0,
         (h.ceil() / 4.0).floor() + 144.0,
@@ -50,7 +54,7 @@ fn done_button(w: f32, h: f32) -> (f32, f32) {
 impl Game<'_> {
     /// `SignBlockEntity.getSlotPlayerIsFacing`: whether the player stands in
     /// front of the sign's text (within 90 degrees of its facing).
-    fn facing_sign_front(&self, pos: (i32, i32, i32)) -> bool {
+    pub(in crate::game) fn facing_sign_front(&self, pos: (i32, i32, i32)) -> bool {
         let Some(player) = self.player.as_ref() else {
             return true;
         };
@@ -97,7 +101,7 @@ impl Game<'_> {
     }
     /// `SignBlockEntity.canExecuteClickCommands` for the side the acting
     /// player faces: a waxed sign with a `run_command` click event on it.
-    pub(super) fn sign_can_execute_click_commands(&self, pos: (i32, i32, i32)) -> bool {
+    pub(in crate::game) fn sign_can_execute_click_commands(&self, pos: (i32, i32, i32)) -> bool {
         // Only a waxed sign can; skip the facing maths for everything else.
         let Some(BlockEntity::Sign(sign)) = self.world.block_entities.get(&pos) else {
             return false;
@@ -109,7 +113,7 @@ impl Game<'_> {
     /// sign item clicked on a hanging sign's free side chains another sign onto
     /// it, unless the side the player faces carries click commands the click
     /// runs instead (`canExecuteClickCommands`).
-    pub(super) fn chains_hanging_sign(
+    pub(in crate::game) fn chains_hanging_sign(
         &self,
         pos: [i32; 3],
         face: [i32; 3],
@@ -166,7 +170,7 @@ impl Game<'_> {
     /// command from the middle of the sign's block, rotation zero, at the
     /// game master level, with `CommandSource.NULL` (no feedback, no failure
     /// messages).
-    fn sign_command_source(&self, pos: [i32; 3]) -> Source {
+    pub(in crate::game) fn sign_command_source(&self, pos: [i32; 3]) -> Source {
         Source {
             entity: self.player.is_some().then_some(Target::Player),
             pos: pos.map(|v| f64::from(v) + 0.5),
@@ -182,27 +186,16 @@ impl Game<'_> {
             cart: None,
         }
     }
-    /// Run a sign's `run_command` line as the prefixed command vanilla runs
-    /// it as: a leading slash is allowed, errors are not reported (the NULL
-    /// source).
-    fn run_sign_command(&mut self, pos: [i32; 3], command: &str) {
-        let source = self.sign_command_source(pos);
-        let line = command.strip_prefix('/').unwrap_or(command);
-        self.exec.0 = Default::default();
-        let permission = std::mem::replace(&mut self.ui.registries.permission, 2);
-        let _ = self.execute_line(line, source);
-        self.ui.registries.permission = permission;
-        // InventoryChangeTrigger fires as slots change, not on the next tick.
-        if self.player.is_some() {
-            self.check_inventory_trigger();
-        }
-    }
     /// `SignBlockEntity.executeClickCommandsIfPresent`: every line of the
     /// side whose style has a `run_command`, `show_dialog` or `custom` click
     /// event runs it as the acting player when the sign allows op features;
     /// otherwise the player is told click actions are disabled. Whether any
     /// line had one.
-    fn execute_sign_click_commands(&mut self, pos: [i32; 3], front: bool) -> bool {
+    pub(in crate::game) fn execute_sign_click_commands(
+        &mut self,
+        pos: [i32; 3],
+        front: bool,
+    ) -> bool {
         let key = (pos[0], pos[1], pos[2]);
         let Some(BlockEntity::Sign(sign)) = self.world.block_entities.get(&key) else {
             return false;
@@ -241,30 +234,11 @@ impl Game<'_> {
         }
         any_click_command
     }
-    /// `Player.sendOverlayMessage(CLICK_ACTIONS_DISABLED)`: red text on the
-    /// action bar. A guest gets a packet, so its own client translates it.
-    fn sign_click_actions_disabled(&mut self) {
-        const KEY: &str = "sign.click_actions_disabled";
-        if self.server.lan_acting.is_some() {
-            let message = sunrise_client::text::Text::translate(KEY, &[])
-                .with_color(sunrise_client::text::RED);
-            self.server
-                .guest_packets
-                .push(C::SystemChat(play::SystemChat {
-                    content: sunrise_client::lan::data::component_nbt(&message.component()),
-                    overlay: true,
-                }));
-        } else {
-            let message =
-                self.translate_with_fallback(KEY, "Click actions are disabled for this sign");
-            self.set_client_message(message);
-        }
-    }
     /// `SignBlock.useWithoutItem` (the block's `OpenMenu` effect): the side
     /// the player faces runs its click commands first; then a waxed sign
     /// plays the failed-interaction sound, a sign that ran one does nothing
     /// more, and otherwise a player who may build edits the side they face.
-    pub(super) fn use_sign_empty_hand(&mut self, pos: [i32; 3]) {
+    pub(in crate::game) fn use_sign_empty_hand(&mut self, pos: [i32; 3]) {
         let key = (pos[0], pos[1], pos[2]);
         if !matches!(
             self.world.block_entities.get(&key),
@@ -304,7 +278,7 @@ impl Game<'_> {
     /// `ItemStack.useOn` and an adventure-mode `can_place_on` stack places
     /// against it. Vanilla also passes while another player is editing the
     /// sign and when its text has styled lines; neither is modelled here.
-    pub(super) fn sign_consumes_click(&self, pos: [i32; 3]) -> bool {
+    pub(in crate::game) fn sign_consumes_click(&self, pos: [i32; 3]) -> bool {
         let key = (pos[0], pos[1], pos[2]);
         let Some(BlockEntity::Sign(sign)) = self.world.block_entities.get(&key) else {
             return false;
@@ -325,7 +299,11 @@ impl Game<'_> {
     /// `SignBlock.useItemOn` with a `SignApplicator` in hand (dyes, ink sacs,
     /// honeycomb): the item changes the side the player faces and is used up.
     /// Whether it did; a sign it does not apply to goes on to the empty hand.
-    pub(super) fn use_sign_applicator(&mut self, pos: [i32; 3], held: Option<&ItemStack>) -> bool {
+    pub(in crate::game) fn use_sign_applicator(
+        &mut self,
+        pos: [i32; 3],
+        held: Option<&ItemStack>,
+    ) -> bool {
         let Some(stack) = held else {
             return false;
         };
@@ -414,7 +392,7 @@ impl Game<'_> {
     }
     /// `SignBlock.openTextEdit`: the sign is this player's to edit while its
     /// editor is open (`setAllowedPlayerEditor`), and it opens.
-    pub(super) fn open_text_edit(&mut self, pos: (i32, i32, i32), front: bool) {
+    pub(in crate::game) fn open_text_edit(&mut self, pos: (i32, i32, i32), front: bool) {
         // `Minecraft.setScreen` drops the editor already open first, and that
         // sign is nobody's again.
         self.close_sign_editor();
@@ -424,12 +402,12 @@ impl Game<'_> {
     }
     /// `Player.getUUID` of the acting player: the one a sign remembers as its
     /// editor.
-    fn sign_editor_uuid(&mut self) -> u128 {
+    pub(in crate::game) fn sign_editor_uuid(&mut self) -> u128 {
         sunrise_client::lan::playerdata::ints_uuid(self.acting_player_uuid())
     }
     /// `SignBlock.otherPlayerIsEditingSign`: the sign at `key` belongs to
     /// someone else's editor right now.
-    fn other_player_is_editing_sign(&mut self, key: (i32, i32, i32)) -> bool {
+    pub(in crate::game) fn other_player_is_editing_sign(&mut self, key: (i32, i32, i32)) -> bool {
         match self.world.block_entities.sign_editor(&key) {
             Some(holder) => holder != self.sign_editor_uuid(),
             None => false,
@@ -437,7 +415,11 @@ impl Game<'_> {
     }
     /// `SignText.hasEditableText` of the side the player faces: if every line is
     /// plain text, the editor rewrites nothing a player would miss.
-    fn sign_side_has_editable_text(&self, key: (i32, i32, i32), front: bool) -> bool {
+    pub(in crate::game) fn sign_side_has_editable_text(
+        &self,
+        key: (i32, i32, i32),
+        front: bool,
+    ) -> bool {
         match self.world.block_entities.get(&key) {
             Some(BlockEntity::Sign(sign)) => {
                 let side = if front { &sign.front } else { &sign.back };
@@ -449,7 +431,7 @@ impl Game<'_> {
     /// `SignBlockEntity.tick` (`clearInvalidPlayerWhoMayEdit`): a sign keeps its
     /// editor only while that player is here and within the block interaction
     /// range plus four blocks of it.
-    pub(super) fn tick_sign_editors(&mut self) {
+    pub(in crate::game) fn tick_sign_editors(&mut self) {
         let held: Vec<(i32, i32, i32)> =
             self.world.block_entities.sign_editors().copied().collect();
         for pos in held {
@@ -463,7 +445,7 @@ impl Game<'_> {
     }
     /// `SignBlockEntity.playerIsTooFarAwayToEdit`: a player who left is no
     /// player at all (`Level.getPlayerByUUID` finds nobody).
-    fn sign_editor_in_range(&self, who: u128, pos: (i32, i32, i32)) -> bool {
+    pub(in crate::game) fn sign_editor_in_range(&self, who: u128, pos: (i32, i32, i32)) -> bool {
         let at = [pos.0, pos.1, pos.2];
         let me = self
             .level
@@ -482,7 +464,7 @@ impl Game<'_> {
         })
     }
     /// `SignBlock.openTextEdit` for the front side after placement.
-    pub(super) fn open_sign_editor(&mut self, pos: (i32, i32, i32), front: bool) {
+    pub(in crate::game) fn open_sign_editor(&mut self, pos: (i32, i32, i32), front: bool) {
         if self.fake_blocks(mod_api::FakeEffect::Menu) {
             return;
         }
@@ -508,20 +490,11 @@ impl Game<'_> {
         });
         self.open_sign_editor_server(pos, front);
     }
-    #[inline(always)]
-    pub(in crate::game) fn open_sign_editor_server(&mut self, pos: (i32, i32, i32), front: bool) {
-        if let (Some(player), Some(name)) = (
-            self.server.lan_acting_uuid,
-            self.server.lan_acting_name.clone(),
-        ) {
-            self.native_player_open_sign(player, &name, [pos.0, pos.1, pos.2], front);
-        }
-    }
     /// `AbstractSignEditScreen.tick`: the editor closes (and `removed` sends
     /// the text) once its sign is removed or the player's eyes are further
     /// than 4 blocks beyond the block interaction range
     /// (`SignBlockEntity.playerIsTooFarAwayToEdit`).
-    pub(super) fn tick_sign_editor(&mut self) {
+    pub(in crate::game) fn tick_sign_editor(&mut self) {
         let Some(edit) = &self.client.sign_edit else {
             return;
         };
@@ -537,7 +510,7 @@ impl Game<'_> {
             self.close_sign_editor();
         }
     }
-    pub(super) fn close_sign_editor(&mut self) {
+    pub(in crate::game) fn close_sign_editor(&mut self) {
         if self.remove_sign_editor() {
             self.refresh_screen_widgets();
         }
@@ -546,7 +519,7 @@ impl Game<'_> {
 
     /// `AbstractSignEditScreen.removed`: send what the client wrote, or
     /// keep it in the window's own world and send its guests the block update.
-    pub(super) fn remove_sign_editor(&mut self) -> bool {
+    pub(in crate::game) fn remove_sign_editor(&mut self) -> bool {
         let Some(edit) = self.client.sign_edit.take() else {
             return false;
         };
@@ -566,7 +539,7 @@ impl Game<'_> {
     }
     /// `ServerPlayer.openTextEdit` for the guest whose action opened a sign:
     /// the block, then the editor, on its client, and the guest may write on it.
-    pub(super) fn lan_open_sign_editor(&mut self, conn: u32, edit: SignEditor) {
+    pub(in crate::game) fn lan_open_sign_editor(&mut self, conn: u32, edit: SignEditor) {
         let pos = [edit.pos.0, edit.pos.1, edit.pos.2];
         if let Some(host) = self.lan.as_mut() {
             host.hub.send_authoritative_block(conn, &self.world, pos);
@@ -583,7 +556,7 @@ impl Game<'_> {
     /// codes stripped, go on the sign the guest may write on unless it is
     /// waxed (`SignBlockEntity.updateSignText`); a guest gone out of reach
     /// may no longer write (`playerIsTooFarAwayToEdit`).
-    pub(super) fn lan_sign_update(&mut self, conn: u32, mut p: play::SignUpdate) {
+    pub(in crate::game) fn lan_sign_update(&mut self, conn: u32, mut p: play::SignUpdate) {
         let Some(host) = self.lan.as_mut() else {
             return;
         };
@@ -663,7 +636,7 @@ impl Game<'_> {
     }
     /// `ClientPacketListener.handleOpenSignEditor`: the editor on a sign this
     /// client has.
-    pub(super) fn remote_open_sign_editor(&mut self, p: play::OpenSignEditor) {
+    pub(in crate::game) fn remote_open_sign_editor(&mut self, p: play::OpenSignEditor) {
         let key = (p.pos[0], p.pos[1], p.pos[2]);
         if matches!(
             self.world.block_entities.get(&key),
@@ -677,7 +650,7 @@ impl Game<'_> {
             );
         }
     }
-    pub(super) fn sign_edit_key(
+    pub(in crate::game) fn sign_edit_key(
         &mut self,
         key: KeyCode,
         shortcut: Option<sunrise_client::clipboard::EditShortcut>,
@@ -707,7 +680,7 @@ impl Game<'_> {
     }
     /// A key and the text it typed on the sign being edited (the keyboard,
     /// or a controller's on-screen keyboard).
-    pub(super) fn sign_input(&mut self, key: Option<KeyCode>, typed: Option<&str>) {
+    pub(in crate::game) fn sign_input(&mut self, key: Option<KeyCode>, typed: Option<&str>) {
         if self.client.sign_edit.is_none() {
             return;
         }
@@ -739,7 +712,7 @@ impl Game<'_> {
         }
     }
     /// Up or down a line: the box writes the line it leaves and loads the next.
-    fn sign_move_line(&mut self, by: usize) {
+    pub(in crate::game) fn sign_move_line(&mut self, by: usize) {
         self.sign_write();
         if let Some(edit) = self.client.sign_edit.as_mut() {
             edit.line = (edit.line + by) & 3;
@@ -747,7 +720,7 @@ impl Game<'_> {
         self.sign_load();
     }
     /// The edited line's text.
-    fn sign_current(&self) -> Option<String> {
+    pub(in crate::game) fn sign_current(&self) -> Option<String> {
         let edit = self.client.sign_edit.as_ref()?;
         let BlockEntity::Sign(sign) = self.world.block_entities.get(&edit.pos)? else {
             return None;
@@ -756,7 +729,7 @@ impl Game<'_> {
         Some(side.lines[edit.line].clone())
     }
     /// `EditBox.setValue` from the line now being edited.
-    fn sign_load(&mut self) {
+    pub(in crate::game) fn sign_load(&mut self) {
         let Some(text) = self.sign_current() else {
             return;
         };
@@ -766,7 +739,7 @@ impl Game<'_> {
     }
     /// The box's text onto the editor's lines and the sign
     /// (`AbstractSignEditScreen.setMessage`), when it still fits the line.
-    fn sign_write(&mut self) {
+    pub(in crate::game) fn sign_write(&mut self) {
         let Some(edit) = self.client.sign_edit.as_ref() else {
             return;
         };
@@ -788,7 +761,7 @@ impl Game<'_> {
         side.lines[line] = value;
     }
     /// TextFieldHelper: `font.width(s) <= maxTextLineWidth`.
-    fn sign_fits(&self, value: &str) -> bool {
+    pub(in crate::game) fn sign_fits(&self, value: &str) -> bool {
         let Some(edit) = self.client.sign_edit.as_ref() else {
             return false;
         };
@@ -798,7 +771,7 @@ impl Game<'_> {
         HudBatch::text_width(&self.gui.atlas, value) <= sign.max_line_width()
     }
     /// Edit the line, then keep the result only when it still fits.
-    fn sign_change(&mut self, f: impl FnOnce(&mut EditBox)) {
+    pub(in crate::game) fn sign_change(&mut self, f: impl FnOnce(&mut EditBox)) {
         let before = self
             .client
             .sign_edit
@@ -817,7 +790,7 @@ impl Game<'_> {
         self.sign_keep(before);
     }
     /// Write the box when the line still fits; otherwise put the old text back.
-    fn sign_keep(&mut self, before: Option<(String, usize, usize)>) {
+    pub(in crate::game) fn sign_keep(&mut self, before: Option<(String, usize, usize)>) {
         let value = self
             .client
             .sign_edit
@@ -837,7 +810,10 @@ impl Game<'_> {
     /// `TextFieldHelper.keyPressed`'s shortcuts on the edited line. Paste
     /// reads `getClipboardContents` before `insertText`. A paste that would
     /// pass the sign's width is refused whole.
-    fn sign_shortcut(&mut self, shortcut: sunrise_client::clipboard::EditShortcut) {
+    pub(in crate::game) fn sign_shortcut(
+        &mut self,
+        shortcut: sunrise_client::clipboard::EditShortcut,
+    ) {
         if shortcut == sunrise_client::clipboard::EditShortcut::Paste {
             let raw = sunrise_client::clipboard::Clipboard::get(&mut self.clipboard.0);
             let text = sunrise_client::clipboard::helper_clipboard_contents(&raw);
@@ -863,7 +839,7 @@ impl Game<'_> {
     }
     /// Done button (`this.width / 2 - 100, this.height / 4 + 144`, 200x20),
     /// or a click on a line (`EditBox.onClick`).
-    pub(super) fn sign_edit_click(&mut self, size: [u32; 2]) -> bool {
+    pub(in crate::game) fn sign_edit_click(&mut self, size: [u32; 2]) -> bool {
         let b = HudBatch::new(size, self.settings.gui_scale_inputs());
         let (x, y) = done_button(b.width, b.height);
         let (mx, my) = self.client.cursor;
@@ -906,7 +882,10 @@ impl Game<'_> {
         false
     }
     /// Centre x, the first line's y, the line height, the width limit and the four lines.
-    fn sign_lines(&self, width: f32) -> Option<(f32, f32, f32, f32, Vec<String>)> {
+    pub(in crate::game) fn sign_lines(
+        &self,
+        width: f32,
+    ) -> Option<(f32, f32, f32, f32, Vec<String>)> {
         let edit = self.client.sign_edit.as_ref()?;
         let BlockEntity::Sign(sign) = self.world.block_entities.get(&edit.pos)? else {
             return None;
@@ -923,7 +902,7 @@ impl Game<'_> {
             text.lines.to_vec(),
         ))
     }
-    pub(super) fn draw_sign_editor(&self, batch: &mut HudBatch) {
+    pub(in crate::game) fn draw_sign_editor(&self, batch: &mut HudBatch) {
         let Some(edit) = &self.client.sign_edit else {
             return;
         };
@@ -1054,10 +1033,10 @@ impl Game<'_> {
 
 #[cfg(test)]
 #[path = "sign_edit/sign_edit_tests.rs"]
-mod sign_edit_tests;
+pub(in crate::game) mod sign_edit_tests;
 
 #[cfg(test)]
-mod tests {
+pub(in crate::game) mod tests {
     #[test]
     fn done_button_sits_on_whole_gui_pixels() {
         // `width / 2 - 100, height / 4 + 144` in ints: 334 high is 83 + 144.

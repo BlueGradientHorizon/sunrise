@@ -8,15 +8,21 @@
 //! keep no effects, as `/effect` skips them. `effect` and `effects` also read
 //! on a client, for the local player, from the effects the server sent it, and
 //! `effect_blend_factor` reads only there, from the fades the client ticks.
+#[allow(unused_imports)]
 use super::Game;
+#[allow(unused_imports)]
 use super::commands::Target;
+#[allow(unused_imports)]
 use mod_api::{ActiveEffect, EffectKey, LivingRef};
+#[allow(unused_imports)]
 use sunrise_client::effects::{EffectInstance, PlayerEffects};
+#[allow(unused_imports)]
 use sunrise_client::mobs::Mob;
+#[allow(unused_imports)]
 use sunrise_items::items::ItemStack;
 
 /// A player's effect as the API's load-owned key and instance data.
-pub(super) fn active_effect(e: &EffectInstance) -> ActiveEffect {
+pub(in crate::game) fn active_effect(e: &EffectInstance) -> ActiveEffect {
     ActiveEffect::from(mod_api::__private::built::ActiveEffect {
         id: mod_api::__private::effect_key_by_index(
             e.registry_index.expect("active effect registry index"),
@@ -31,7 +37,7 @@ pub(super) fn active_effect(e: &EffectInstance) -> ActiveEffect {
 }
 
 /// A mob's stored effect as the API's: ambient and particle flags remain in their own lists.
-pub(super) fn mob_effect(m: &Mob, e: &sunrise_client::mobs::StoredEffect) -> ActiveEffect {
+pub(in crate::game) fn mob_effect(m: &Mob, e: &sunrise_client::mobs::StoredEffect) -> ActiveEffect {
     ActiveEffect::from(mod_api::__private::built::ActiveEffect {
         id: mod_api::__private::effect_key_by_index(
             e.registry_index.expect("active effect registry index"),
@@ -47,7 +53,7 @@ pub(super) fn mob_effect(m: &Mob, e: &sunrise_client::mobs::StoredEffect) -> Act
 
 impl Game<'_> {
     /// Apply one loaded consumable effect without consuming the item.
-    pub(super) fn living_apply_consume_effect(
+    pub(in crate::game) fn living_apply_consume_effect(
         &mut self,
         living: LivingRef,
         stack: &ItemStack,
@@ -77,7 +83,10 @@ impl Game<'_> {
     /// the acting player, and a game without a hub keeps its single
     /// player's the same way), any other guest's are their hub record's.
     /// None for another kind.
-    pub(super) fn native_living_player_effects(&self, t: Target) -> Option<&PlayerEffects> {
+    pub(in crate::game) fn native_living_player_effects(
+        &self,
+        t: Target,
+    ) -> Option<&PlayerEffects> {
         match t {
             Target::Player => Some(&self.potions.effects),
             Target::Guest(conn) if self.server.lan_acting == Some(conn) => {
@@ -98,7 +107,11 @@ impl Game<'_> {
     /// ticks. False before effect resolution, for a duration below -1, an armor
     /// stand, the dragon, a stale handle or a client, or when the active
     /// instance did not change, as in vanilla's `addEffect`.
-    pub(super) fn living_add_effect(&mut self, living: LivingRef, effect: &ActiveEffect) -> bool {
+    pub(in crate::game) fn living_add_effect(
+        &mut self,
+        living: LivingRef,
+        effect: &ActiveEffect,
+    ) -> bool {
         let Some(def) = mod_api::__private::effect_index(effect.id)
             .and_then(sunrise_client_core::potions::effect_by_index)
         else {
@@ -150,7 +163,7 @@ impl Game<'_> {
     /// amplifier and the flags. The effect is a registration-slot key resolved at load.
     /// None when it has the effect not, before effect resolution, or for an armor
     /// stand, the dragon, a stale handle or a client.
-    pub(super) fn living_effect(
+    pub(in crate::game) fn living_effect(
         &self,
         living: LivingRef,
         effect: EffectKey,
@@ -164,7 +177,7 @@ impl Game<'_> {
     /// The entity's active effects (`LivingEntity.getActiveEffects`), in the
     /// order their store keeps them, in `Some` even when it has none. None
     /// for an armor stand, the dragon, a stale handle or a client.
-    pub(super) fn living_effects(&self, living: LivingRef) -> Option<Vec<ActiveEffect>> {
+    pub(in crate::game) fn living_effects(&self, living: LivingRef) -> Option<Vec<ActiveEffect>> {
         let target = self.native_living_read_target(living)?;
         super::native_living_body::body_effects(self.native_living_body(target)?)
     }
@@ -173,7 +186,11 @@ impl Game<'_> {
     /// False before effect resolution, for an armor stand, the dragon or a stale handle;
     /// on a client, for any entity but the local player, whose copy of what the server
     /// sent it is read.
-    pub(super) fn living_potion_affected(&self, living: LivingRef, effect: EffectKey) -> bool {
+    pub(in crate::game) fn living_potion_affected(
+        &self,
+        living: LivingRef,
+        effect: EffectKey,
+    ) -> bool {
         let Some(def) = mod_api::__private::effect_index(effect)
             .and_then(sunrise_client_core::potions::effect_by_index)
         else {
@@ -196,7 +213,7 @@ impl Game<'_> {
     /// 0 when the entity lacks the effect. None before effect resolution, for a stale
     /// handle, or an entity other than the local player: the client keeps other living
     /// entities' effects, but this query reads only the local player's.
-    pub(super) fn living_effect_blend_factor(
+    pub(in crate::game) fn living_effect_blend_factor(
         &self,
         living: LivingRef,
         effect: EffectKey,
@@ -230,7 +247,11 @@ impl Game<'_> {
     /// leaving the same way its expiry takes them. False (and nothing
     /// changes) when the entity has the effect not, before effect resolution, or for
     /// an armor stand, the dragon, a stale handle or a client.
-    pub(super) fn living_remove_effect(&mut self, living: LivingRef, effect: EffectKey) -> bool {
+    pub(in crate::game) fn living_remove_effect(
+        &mut self,
+        living: LivingRef,
+        effect: EffectKey,
+    ) -> bool {
         let Some(def) = mod_api::__private::effect_index(effect)
             .and_then(sunrise_client_core::potions::effect_by_index)
         else {
@@ -274,7 +295,7 @@ impl Game<'_> {
     /// every effect's attribute modifiers and absorption hearts leave with
     /// them. False when the entity has none, or for an armor stand, the
     /// dragon, a stale handle or a client.
-    pub(super) fn living_remove_all_effects(&mut self, living: LivingRef) -> bool {
+    pub(in crate::game) fn living_remove_all_effects(&mut self, living: LivingRef) -> bool {
         match self.native_living_target(living) {
             Some(t @ (Target::Player | Target::Guest(_))) => self
                 .for_player(t, |g| g.remove_player_effects(None))
@@ -319,13 +340,17 @@ impl Game<'_> {
 }
 
 #[cfg(test)]
-mod tests {
+pub(in crate::game) mod tests {
+    #[allow(unused_imports)]
     use super::super::native_entity_refs::tests::with_game;
+    #[allow(unused_imports)]
     use mod_api::{ActiveEffect, EntityRef, LivingRef, WorldEpoch};
+    #[allow(unused_imports)]
     use sunrise_client::mobs::Mob;
+    #[allow(unused_imports)]
     use sunrise_core::geometry::Vec3;
 
-    fn effect(id: &'static str, duration: i32, amplifier: i32) -> ActiveEffect {
+    pub(in crate::game) fn effect(id: &'static str, duration: i32, amplifier: i32) -> ActiveEffect {
         ActiveEffect::from(mod_api::__private::built::ActiveEffect {
             id: mod_platform::__private::part_tests::effect_key(id),
             duration,
@@ -497,155 +522,6 @@ mod tests {
             ));
             assert_eq!(
                 game.living_apply_consume_effect(stale, &item("minecraft:pufferfish"), 0),
-                None
-            );
-        });
-    }
-
-    /// `LivingEntity.getEffectBlendFactor` on a client: the local player's
-    /// darkness fades in a 22nd a tick and nausea a 150th
-    /// (`MobEffect.setBlendDuration` in `MobEffects`), an ordinary effect
-    /// interpolates during its first tick, a missing one reads 0, and no other
-    /// entity reads.
-    #[test]
-    #[ignore = "daily"]
-    fn a_client_reads_the_local_players_effect_blend_factors() {
-        use super::super::execution_role::ExecutionRole;
-        use sunrise_client::{effects::EffectInstance, motion::PlayerMotion};
-        use sunrise_protocol::connection::Pipe;
-        let close =
-            |read: Option<f32>, expected: f32| read.is_some_and(|f| (f - expected).abs() < 1e-6);
-        with_game(|game| {
-            game.options.execution_role = ExecutionRole::Client;
-            game.options.dedicated = None;
-            let (client, _server) = Pipe::pair();
-            game.connect_local(client, "BlendReadTest").unwrap();
-            let remote = game.remote.as_mut().unwrap();
-            remote.logged_in = true;
-            remote.entity_id = 7;
-            remote.profile = 42;
-            game.player = Some(PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
-            let me = game.living(game.entity(7).unwrap()).unwrap();
-            assert_eq!(
-                me.effect_blend_factor(
-                    game,
-                    mod_platform::__private::part_tests::effect_key("minecraft:darkness"),
-                    0.5
-                ),
-                Some(0.0)
-            );
-
-            // A blended darkness starts from nothing; two client ticks later
-            // it is between 1/22 and 2/22.
-            game.potions
-                .effects
-                .list
-                .push(EffectInstance::new("darkness", 200, 0));
-            game.sculk.darkness = (0.0, 0.0);
-            // The same effect reads whole on the client: `getEffect`, `getActiveEffects`, `hasEffect`.
-            let darkness = mod_platform::__private::part_tests::effect_key("minecraft:darkness");
-            assert!(me.potion_affected(game, darkness));
-            assert_eq!(me.effect(game, darkness).map(|e| e.duration), Some(200));
-            assert_eq!(me.effects(game).map(|list| list.len()), Some(1));
-            assert!(!me.potion_affected(
-                game,
-                mod_platform::__private::part_tests::effect_key("minecraft:nausea")
-            ));
-            assert_eq!(
-                me.effect_blend_factor(
-                    game,
-                    mod_platform::__private::part_tests::effect_key("darkness"),
-                    1.0
-                ),
-                Some(0.0)
-            );
-            game.tick_client_effects();
-            game.tick_client_effects();
-            assert!(close(
-                me.effect_blend_factor(
-                    game,
-                    mod_platform::__private::part_tests::effect_key("minecraft:darkness"),
-                    0.0
-                ),
-                1.0 / 22.0
-            ));
-            assert!(close(
-                me.effect_blend_factor(
-                    game,
-                    mod_platform::__private::part_tests::effect_key("minecraft:darkness"),
-                    0.5
-                ),
-                1.5 / 22.0
-            ));
-
-            // Nausea fades in over 150 ticks, as the screen spin ticks it.
-            game.potions
-                .effects
-                .list
-                .push(EffectInstance::new("nausea", 600, 0));
-            game.client.screen_fx.tick_spinning(Some(true));
-            assert!(close(
-                me.effect_blend_factor(
-                    game,
-                    mod_platform::__private::part_tests::effect_key("minecraft:nausea"),
-                    0.5
-                ),
-                0.5 / 150.0
-            ));
-
-            // Speed starts at 0 and interpolates to 1 over its first tick.
-            game.potions
-                .effects
-                .list
-                .push(EffectInstance::new("speed", 100, 0));
-            assert_eq!(
-                me.effect_blend_factor(
-                    game,
-                    mod_platform::__private::part_tests::effect_key("minecraft:speed"),
-                    0.0
-                ),
-                Some(0.0)
-            );
-            game.tick_client_effects();
-            assert_eq!(
-                me.effect_blend_factor(
-                    game,
-                    mod_platform::__private::part_tests::effect_key("minecraft:speed"),
-                    0.5
-                ),
-                Some(0.5)
-            );
-
-            // Gone, darkness reads 0 though its fade had not reached 0.
-            game.potions.effects.list.retain(|e| e.id != "darkness");
-            assert_eq!(
-                me.effect_blend_factor(
-                    game,
-                    mod_platform::__private::part_tests::effect_key("minecraft:darkness"),
-                    0.5
-                ),
-                Some(0.0)
-            );
-
-            // Another entity and a stale handle read nothing.
-
-            let epoch = me.entity().epoch();
-            let other = LivingRef::new(EntityRef::new(epoch, 8));
-            assert_eq!(
-                other.effect_blend_factor(
-                    game,
-                    mod_platform::__private::part_tests::effect_key("minecraft:speed"),
-                    0.5
-                ),
-                None
-            );
-            let stale = LivingRef::new(EntityRef::new(WorldEpoch::new(epoch.get() + 1), 7));
-            assert_eq!(
-                stale.effect_blend_factor(
-                    game,
-                    mod_platform::__private::part_tests::effect_key("minecraft:speed"),
-                    0.5
-                ),
                 None
             );
         });

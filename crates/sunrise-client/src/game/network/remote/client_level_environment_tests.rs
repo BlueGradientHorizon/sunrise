@@ -1,8 +1,12 @@
+#[allow(unused_imports)]
 use crate::game::{
     Dim, Game, Progress, native_entity_refs::tests::with_client_game, packs::stage_pack,
 };
+#[allow(unused_imports)]
 use std::sync::Arc;
+#[allow(unused_imports)]
 use sunrise_client::environment::Sample;
+#[allow(unused_imports)]
 use sunrise_protocol::{
     connection::Pipe,
     packets::play::{self, Clientbound as C},
@@ -10,7 +14,7 @@ use sunrise_protocol::{
 
 /// The prepared resources' dimension type `name`, as a data pack writes it, with its
 /// `minecraft:visual/cloud_height` set to `height`.
-fn with_height(name: &str, height: f64) -> serde_json::Value {
+pub(in crate::game) fn with_height(name: &str, height: f64) -> serde_json::Value {
     let resources = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
     let path = format!("data/minecraft/dimension_type/{name}.json");
     let mut json: serde_json::Value =
@@ -21,7 +25,7 @@ fn with_height(name: &str, height: f64) -> serde_json::Value {
 
 /// The server's dimension types: each vanilla one with its cloud height raised (the Overworld's
 /// to 250, the Nether's to 300, the End's to 400), and a mod's type with the Overworld's 250.
-fn server_types() -> Vec<(&'static str, serde_json::Value)> {
+pub(in crate::game) fn server_types() -> Vec<(&'static str, serde_json::Value)> {
     vec![
         ("minecraft:overworld", with_height("overworld", 250.0)),
         ("minecraft:the_nether", with_height("the_nether", 300.0)),
@@ -30,7 +34,7 @@ fn server_types() -> Vec<(&'static str, serde_json::Value)> {
     ]
 }
 
-fn spawn(dimension_type: i32, dimension: &str) -> play::SpawnInfo {
+pub(in crate::game) fn spawn(dimension_type: i32, dimension: &str) -> play::SpawnInfo {
     play::SpawnInfo {
         dimension_type,
         dimension: dimension.into(),
@@ -47,7 +51,7 @@ fn spawn(dimension_type: i32, dimension: &str) -> play::SpawnInfo {
 
 /// The registry data a server sends in its configuration: `types` as its dimension types (ids
 /// in order).
-fn send_types(game: &mut Game<'_>, types: &[(&str, serde_json::Value)]) {
+pub(in crate::game) fn send_types(game: &mut Game<'_>, types: &[(&str, serde_json::Value)]) {
     let mut registries = (*game.remote.as_ref().unwrap().registries).clone();
     registries.registries.insert(
         "minecraft:dimension_type".into(),
@@ -65,7 +69,7 @@ fn send_types(game: &mut Game<'_>, types: &[(&str, serde_json::Value)]) {
 }
 
 /// The `Login` packet a server sends, into `entered`.
-fn login(game: &mut Game<'_>, entered: play::SpawnInfo) {
+pub(in crate::game) fn login(game: &mut Game<'_>, entered: play::SpawnInfo) {
     game.handle_packet(C::Login(play::Login {
         player_id: 7,
         hardcore: false,
@@ -88,7 +92,7 @@ fn login(game: &mut Game<'_>, entered: play::SpawnInfo) {
 }
 
 /// Connects to a server whose dimension types are [`server_types`] and joins `entered`.
-fn join(game: &mut Game<'_>, entered: play::SpawnInfo) -> Pipe {
+pub(in crate::game) fn join(game: &mut Game<'_>, entered: play::SpawnInfo) -> Pipe {
     let (client, server) = Pipe::pair();
     game.connect_local(client, "SyncedEnvironmentTest").unwrap();
     send_types(game, &server_types());
@@ -96,7 +100,7 @@ fn join(game: &mut Game<'_>, entered: play::SpawnInfo) -> Pipe {
     server
 }
 
-fn respawn(game: &mut Game<'_>, spawn: play::SpawnInfo) {
+pub(in crate::game) fn respawn(game: &mut Game<'_>, spawn: play::SpawnInfo) {
     game.handle_packet(C::Respawn(play::Respawn { spawn, keep: 0 }))
         .unwrap();
 }
@@ -104,10 +108,10 @@ fn respawn(game: &mut Game<'_>, spawn: play::SpawnInfo) {
 /// A resource pack in a directory of its own whose Polytone dimension modifiers add a
 /// post-process layer over each vanilla dimension's cloud height, each its own amount: the
 /// Overworld's 10, the Nether's 20, the End's 30.
-struct CloudPack(std::path::PathBuf);
+pub(in crate::game) struct CloudPack(pub(in crate::game) std::path::PathBuf);
 
 impl CloudPack {
-    fn new(case: &str) -> Self {
+    pub(in crate::game) fn new(case: &str) -> Self {
         let dir = std::env::temp_dir().join(format!(
             "client-level-environment-{case}-{}",
             std::process::id()
@@ -131,7 +135,7 @@ impl CloudPack {
         Self(dir)
     }
 
-    fn pack(&self) -> sunrise_client::packs::Pack {
+    pub(in crate::game) fn pack(&self) -> sunrise_client::packs::Pack {
         sunrise_client::packs::pack_for(
             "server/cloud_heights".into(),
             sunrise_client::text::Text::literal("cloud heights"),
@@ -150,7 +154,7 @@ impl Drop for CloudPack {
 
 /// The client's resources reloaded with `server` as the server's packs, through the reload's
 /// own staging and its render-thread apply.
-fn reload(game: &mut Game<'_>, server: &[sunrise_client::packs::Pack]) {
+pub(in crate::game) fn reload(game: &mut Game<'_>, server: &[sunrise_client::packs::Pack]) {
     let staged = stage_pack(
         &game.vanilla_root(),
         &[],
@@ -170,22 +174,22 @@ fn reload(game: &mut Game<'_>, server: &[sunrise_client::packs::Pack]) {
 }
 
 /// The frame's sample at the camera: the dimension's value, as no biome sets the height.
-fn drawn(game: &Game<'_>) -> sunrise_client::environment::Sky {
+pub(in crate::game) fn drawn(game: &Game<'_>) -> sunrise_client::environment::Sky {
     game.view_environment().sample(&Sample::default())
 }
 
 /// Gameplay's sample at the camera.
-fn gameplay(game: &Game<'_>) -> sunrise_client::environment::Sky {
+pub(in crate::game) fn gameplay(game: &Game<'_>) -> sunrise_client::environment::Sky {
     game.dim_environment().sample(&Sample::default())
 }
 
 /// The joined level's gameplay and frame environments.
-type Built = (
+pub(in crate::game) type Built = (
     Arc<sunrise_client::environment::Environment>,
     Option<Arc<sunrise_client::environment::Environment>>,
 );
 
-fn built(game: &Game<'_>) -> Built {
+pub(in crate::game) fn built(game: &Game<'_>) -> Built {
     let remote = game.remote.as_ref().unwrap();
     (
         remote.level_environment.clone().unwrap(),
@@ -263,186 +267,6 @@ fn a_joined_levels_synced_cloud_height_reaches_the_frame_under_its_own_pack_laye
         assert!(frame.is_none());
         assert!(Arc::ptr_eq(&gameplay_after, &overworld_gameplay));
     });
-}
-
-/// Cloud preparation and atmospheric fog read the synced attributes, not the skybox, while
-/// precipitation in a loaded column uses the joined level's sea level from the spawn packet.
-#[test]
-#[ignore = "daily"]
-fn client_clouds_fog_and_precipitation_follow_the_joined_level() {
-    use glam::DVec3;
-    use serde_json::json;
-    use sunrise_client::chunk::Chunk;
-    use sunrise_core::position::BlockPos;
-
-    let precipitation_at = |game: &Game<'_>, x, y, z| {
-        crate::game::weather::precipitation_at(
-            &game.world,
-            world_biomes!(game),
-            game.streaming.biome_zoom,
-            BlockPos::new(x, y, z),
-            game.weather_sea_level(),
-        )
-    };
-    crate::game::in_own_process(
-        "game::remote::tests::client_level_environment_tests::client_clouds_fog_and_precipitation_follow_the_joined_level",
-        || {
-            with_client_game(|game| {
-                let mut ty = with_height("overworld", 192.33);
-                ty["timelines"] = json!([]);
-                ty["attributes"] = json!({
-                    "minecraft:visual/cloud_color": "#804db5ed",
-                    "minecraft:visual/fog_color": "#335580",
-                    "minecraft:visual/sky_color": "#2a4099",
-                    "minecraft:visual/sun_angle": 90.0,
-                    "minecraft:visual/sunrise_sunset_color": "#99df6619",
-                    "minecraft:visual/sky_fog_end_distance": 512.0,
-                });
-                let types = [
-                    ("test:overworld", "overworld"),
-                    ("test:none", "none"),
-                    ("test:end", "end"),
-                    ("test:near", "none"),
-                ]
-                .map(|(name, skybox)| {
-                    let mut ty = ty.clone();
-                    ty["skybox"] = json!(skybox);
-                    if name == "test:near" {
-                        ty["attributes"]["minecraft:visual/sky_fog_end_distance"] = json!(64.0);
-                    }
-                    (name, ty)
-                });
-                let (client, _server) = Pipe::pair();
-                game.connect_local(client, "ClientWeatherTest").unwrap();
-                send_types(game, &types);
-                game.settings.sunrise.fog = true;
-                let camera = DVec3::new(0.0, 64.0, 0.0);
-                let mut clouds = Vec::new();
-                let mut fog = Vec::new();
-
-                for (index, (dimension, sea_level)) in [
-                    ("minecraft:overworld", 0),
-                    ("minecraft:the_nether", 63),
-                    ("minecraft:the_end", 120),
-                    ("test:near", 120),
-                ]
-                .into_iter()
-                .enumerate()
-                {
-                    let mut entered = spawn(index as i32, dimension);
-                    entered.sea_level = sea_level;
-                    entered.seed = 42;
-                    if index == 0 {
-                        login(game, entered);
-                    } else {
-                        respawn(game, entered);
-                    }
-                    assert_eq!(game.overworld_skybox(), index == 0);
-                    assert_eq!(game.end_skybox(), index == 2);
-                    let sky = drawn(game);
-                    let mut transparent = sky;
-                    transparent.cloud_color[3] = 0.0;
-                    game.settings.clouds = "true".into();
-                    let enabled = game.frame_cloud_uv(false, &sky).is_some();
-                    let zero_alpha = game.frame_cloud_uv(false, &transparent).is_some();
-                    game.settings.clouds = "false".into();
-                    let off = game.frame_cloud_uv(false, &sky).is_some();
-                    clouds.push([enabled, zero_alpha, off]);
-
-                    let mut no_tint = sky;
-                    no_tint.sunrise_color[3] = 0.0;
-                    let mut sample = |forward, distance, sky, draws_sky| {
-                        game.client.view.forwards = [forward, 0.0, 0.0];
-                        game.streaming.radius = distance;
-                        game.settings.sunrise.sky = draws_sky;
-                        let f = game.frame_fog(camera, sky, 0, [0.0; 3]);
-                        let [r, g, b, _] = f.color;
-                        ([r, g, b].map(f32::to_bits), f.sky_end)
-                    };
-                    fog.push([
-                        sample(-1.0, 8, &sky, true),
-                        sample(-1.0, 8, &sky, false),
-                        sample(1.0, 8, &sky, true),
-                        sample(-1.0, 8, &no_tint, true),
-                        sample(-1.0, 3, &sky, true),
-                        sample(-1.0, 3, &no_tint, true),
-                    ]);
-
-                    if index < 3 {
-                        assert_eq!(game.weather_sea_level(), sea_level);
-                        assert_eq!(precipitation_at(game, 16, 100, 8), None);
-                        let biomes = world_biomes!(game);
-                        let taiga = biomes.id("minecraft:taiga");
-                        let desert = biomes.id("minecraft:desert");
-                        let layout = game.world.layout();
-                        let mut chunk = Chunk::with_layout(0, 0, layout);
-                        for qy in 0..(layout.max_y() - layout.min_y()) / 4 {
-                            for qz in 0..4 {
-                                for qx in 0..4 {
-                                    let biome = if index == 0 && qx == 1 { desert } else { taiga };
-                                    chunk.set_biome_cell(qx, qy, qz, biome);
-                                }
-                            }
-                        }
-                        if index == 0 {
-                            // At this boundary 26.3 chooses desert (quart x=1 with seed 42),
-                            // not the raw quart's taiga (quart x=0).
-                            assert_eq!(chunk.biome(3, 100, 5), taiga);
-                        }
-                        game.world.chunks.insert((0, 0), Arc::new(chunk));
-                        if index == 0 {
-                            assert_eq!(precipitation_at(game, 3, 100, 5), None);
-                        }
-
-                        // The same biome and two already sampled positions keep their first
-                        // temperature; new positions use the newly joined level's sea level.
-                        assert_eq!(
-                            [100, 170].map(|y| precipitation_at(game, 10, y, 10)),
-                            [Some(true), Some(true)],
-                            "cached at sea level {sea_level}"
-                        );
-                        let fresh = [[true, true], [false, true], [false, false]][index];
-                        assert_eq!(
-                            [100, 170].map(|y| precipitation_at(game, 10 + index as i32, y, 10)),
-                            fresh.map(Some),
-                            "fresh at sea level {sea_level}"
-                        );
-                        if index == 2 {
-                            // Only this test's child process sees the competing server table.
-                            sunrise_world::level::register_sea_level(
-                                sunrise_core::LevelKey::parse(dimension).unwrap(),
-                                0,
-                            );
-                            assert_eq!(game.dim.sea_level(), 0);
-                            assert_eq!(game.weather_sea_level(), sea_level);
-                            assert_eq!(precipitation_at(game, 13, 170, 10), Some(false));
-
-                            let mut same_level = spawn(index as i32, dimension);
-                            same_level.sea_level = 0;
-                            respawn(game, same_level);
-                            assert_eq!(game.weather_sea_level(), sea_level);
-                            assert_eq!(precipitation_at(game, 9, 170, 10), Some(false));
-                        }
-                    }
-                }
-
-                assert_eq!(clouds, [[true, false, false]; 4]);
-                assert_eq!(fog[0], fog[1], "no skybox");
-                assert_eq!(fog[0], fog[2], "End skybox");
-                for [toward, sky_off, away, transparent, close, close_transparent] in &fog {
-                    assert_eq!(toward, sky_off);
-                    assert_ne!(toward.0, away.0);
-                    assert_eq!(away, transparent);
-                    assert_eq!(close, close_transparent);
-                }
-                // AtmosphericFogEnvironment.getBaseColor: first blend the synthetic fog
-                // toward sunrise at 153/255, then toward the sky by
-                // 1 - pow(lerp(min(distance / 16, 8) / 32, 0.25, 1), 0.25).
-                assert_eq!(fog[0][0].0, [0x3f05c604, 0x3eb3733e, 0x3ea575a1]);
-                assert_eq!(fog[3][0], ([0x3f0069df, 0x3eb07820, 0x3eadc0aa], 64.0));
-            })
-        },
-    );
 }
 
 /// A built-in level whose synchronized type is a mod's has no pack stack of its type: it draws

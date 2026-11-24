@@ -15,7 +15,7 @@ mixins = "MIXINS"
 # HEAD, cancellable, reaching a private field (`ticks_until_autosave`) and the clock.
 [[native.mixin]]
 id = "head"
-target = "sunrise_client::game::autosave::Game<'_>::on_tick_rate_changed"
+target = "sunrise_client::game::server_side::autosave_server::Game<'_>::on_tick_rate_changed"
 kind = "HEAD"
 cancellable = true
 helper = "src/mixins/head.rs"

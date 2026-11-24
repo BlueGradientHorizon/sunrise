@@ -4,7 +4,7 @@
 /// With the edit modifier held the key is a shortcut and its characters are
 /// not text (`types_text`): no hook hears them, as vanilla's `textInput`
 /// gets none for Ctrl+A.
-pub(super) fn chars_to_type(text: &str, types_text: bool) -> String {
+pub(in crate::game) fn chars_to_type(text: &str, types_text: bool) -> String {
     if !types_text {
         return String::new();
     }

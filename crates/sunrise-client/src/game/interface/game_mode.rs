@@ -1,16 +1,20 @@
 //! Game modes beyond survival and creative (`GameType`): adventure players
 //! cannot build, spectators fly through blocks and only watch.
+#[allow(unused_imports)]
 use super::{Game, Screen};
+#[allow(unused_imports)]
 use sunrise_client::{collisions::SceneCollisions, command::args::GameMode, items::ItemStack};
+#[allow(unused_imports)]
 use sunrise_world::world_movement::in_range_of_ground;
 
-pub(super) use sunrise_gameplay::game_modes::{
+#[allow(unused_imports)]
+pub(in crate::game) use sunrise_gameplay::game_modes::{
     loads_chunks, mode_from_id, projectile_predicate_supported,
 };
 
 /// `InventoryScreen.containerTick` / `CreativeModeInventoryScreen.containerTick`:
 /// reconcile an open player inventory with `Player.hasInfiniteMaterials`.
-fn inventory_after_infinite_materials(
+pub(in crate::game) fn inventory_after_infinite_materials(
     screen: Screen,
     player_inventory: bool,
     infinite_materials: bool,
@@ -23,49 +27,6 @@ fn inventory_after_infinite_materials(
 }
 
 impl Game<'_> {
-    /// Whether `Screen::Inventory` currently shows the player's own `InventoryScreen`
-    /// rather than a container, crafting table, workstation, mount, or server/mod menu.
-    pub(in crate::game) fn is_player_inventory_screen(&self) -> bool {
-        self.client.screen == Screen::Inventory
-            && self.container.is_none()
-            && self.station.is_none()
-            && self.craft_size == 2
-            && !self.mount_active()
-            && self.mod_screen.0.is_none()
-            && self.remote_menu_type().is_none()
-    }
-
-    /// Reconcile an open player inventory on its screen tick (`InventoryScreen.containerTick`
-    /// and `CreativeModeInventoryScreen.containerTick`) against live `instabuild`, keeping
-    /// the shared cursor (`carried`) stack across the switch.
-    pub(in crate::game) fn tick_inventory_screen(&mut self) {
-        if self.player.is_none() {
-            return;
-        }
-        let next = inventory_after_infinite_materials(
-            self.client.screen,
-            self.is_player_inventory_screen(),
-            self.instabuild(),
-        );
-        if next == self.client.screen {
-            return;
-        }
-        match next {
-            Screen::Creative => {
-                self.set_screen(Screen::Creative);
-                if self.client.screen == Screen::Creative {
-                    self.refresh_creative_tabs();
-                    self.creative_screen.0.reopen();
-                    self.refresh_saved_hotbars();
-                }
-            }
-            Screen::Inventory => {
-                self.set_screen(Screen::Inventory);
-            }
-            _ => {}
-        }
-    }
-
     /// `MultiPlayerGameMode.isSpectator()` on a client; `ServerPlayer.isSpectator()` on a server.
     pub(in crate::game) fn spectator(&self) -> bool {
         self.mode == GameMode::Spectator
@@ -94,7 +55,7 @@ impl Game<'_> {
         self.player_info_game_mode() == Some(GameMode::Creative)
     }
     /// `Abilities.mayBuild`.
-    pub(super) fn may_build(&self) -> bool {
+    pub(in crate::game) fn may_build(&self) -> bool {
         if let Some(a) = self.remote_abilities() {
             return a.may_build;
         }
@@ -112,10 +73,10 @@ impl Game<'_> {
             .acting_abilities
             .map_or(self.creative, |a| a.instabuild)
     }
-    pub(super) fn mode_id(&self) -> i32 {
+    pub(in crate::game) fn mode_id(&self) -> i32 {
         self.mode.id()
     }
-    pub(super) fn set_mode_id(&mut self, id: i32) {
+    pub(in crate::game) fn set_mode_id(&mut self, id: i32) {
         self.set_mode(mode_from_id(id));
     }
     /// `MultiPlayerGameMode.setLocalMode(GameType)`: updates only the local mode and `Abilities`.
@@ -140,7 +101,7 @@ impl Game<'_> {
         self.previous_mode = previous;
         self.finish_local_mode_update(mode);
     }
-    fn finish_local_mode_update(&mut self, mode: GameMode) {
+    pub(in crate::game) fn finish_local_mode_update(&mut self, mode: GameMode) {
         let r = self
             .remote
             .as_mut()
@@ -153,7 +114,7 @@ impl Game<'_> {
         }
     }
     /// `ServerPlayer.setGameMode` on a local/server world.
-    pub(super) fn set_mode(&mut self, mode: GameMode) {
+    pub(in crate::game) fn set_mode(&mut self, mode: GameMode) {
         debug_assert!(
             self.remote.is_none(),
             "set_mode is server-only; remote clients use set_local_mode"
@@ -224,7 +185,7 @@ impl Game<'_> {
     /// tests it: the state, then `nbt` against the block entity's
     /// `saveWithFullMetadata` (no block entity fails). `components` is not
     /// looked at on this path.
-    fn adventure_predicate(&self, component: &str, pos: [i32; 3]) -> bool {
+    pub(in crate::game) fn adventure_predicate(&self, component: &str, pos: [i32; 3]) -> bool {
         self.held()
             .is_some_and(|stack| self.stack_adventure_predicate(stack, component, pos))
     }
@@ -242,7 +203,7 @@ impl Game<'_> {
     }
     /// The existing supported block/state portion of `AdventureModePredicate.test`.
     /// The held-item wrapper and the projectile caller supply their own live value.
-    pub(super) fn adventure_predicate_at(
+    pub(in crate::game) fn adventure_predicate_at(
         &self,
         tag: &sunrise_core::nbt::Tag,
         pos: [i32; 3],
@@ -320,7 +281,7 @@ impl Game<'_> {
         }
     }
     /// A `HolderSet<Block>` entry: a block id or a `#tag`.
-    fn block_in_holder_set(&self, entry: &str, block: &str) -> bool {
+    pub(in crate::game) fn block_in_holder_set(&self, entry: &str, block: &str) -> bool {
         let namespaced = |id: &str| {
             if id.contains(':') {
                 id.to_owned()
@@ -336,7 +297,7 @@ impl Game<'_> {
     /// `Player.blockActionRestricted` for the block at `pos`: spectators never
     /// act on blocks, adventure players only with a main-hand item whose
     /// `can_break` matches it.
-    pub(super) fn block_action_restricted(&self, pos: [i32; 3]) -> bool {
+    pub(in crate::game) fn block_action_restricted(&self, pos: [i32; 3]) -> bool {
         if self.spectator() {
             return true;
         }
@@ -344,18 +305,18 @@ impl Game<'_> {
     }
     /// `ItemStack.canBreakBlockInAdventureMode`: an adventure player may break,
     /// or prime TNT at, only a block their held stack's `can_break` matches.
-    pub(super) fn can_break_in_adventure(&self, pos: [i32; 3]) -> bool {
+    pub(in crate::game) fn can_break_in_adventure(&self, pos: [i32; 3]) -> bool {
         self.adventure_predicate("minecraft:can_break", pos)
     }
     /// `ItemStack.useOn` in adventure mode: the used item's `can_place_on`
     /// matches the clicked block (`Player.mayUseItemAt`).
-    pub(super) fn can_place_on_in_adventure(&self, clicked: [i32; 3]) -> bool {
+    pub(in crate::game) fn can_place_on_in_adventure(&self, clicked: [i32; 3]) -> bool {
         self.adventure_predicate("minecraft:can_place_on", clicked)
     }
     /// `Player.mayUseItemAt(pos, face, stack)` for a player who `may_build`
     /// or not: builders always may, anyone else only when `stack`'s
     /// `can_place_on` matches the block clicked, the one `pos` lies against.
-    pub(super) fn may_use_item_at(
+    pub(in crate::game) fn may_use_item_at(
         &self,
         may_build: bool,
         pos: [i32; 3],
@@ -370,7 +331,7 @@ impl Game<'_> {
             )
     }
     /// `ItemStack.canPlaceOnBlockInAdventureMode` of the stack a use names.
-    pub(super) fn stack_can_place_on_in_adventure(
+    pub(in crate::game) fn stack_can_place_on_in_adventure(
         &self,
         stack: &ItemStack,
         clicked: [i32; 3],
@@ -380,11 +341,11 @@ impl Game<'_> {
     /// `ItemStack.useOn`'s gate before any item's own `useOn`: a player who
     /// may build, or an adventure player whose held item's `can_place_on`
     /// matches the clicked block.
-    pub(super) fn may_use_on(&self, clicked: [i32; 3]) -> bool {
+    pub(in crate::game) fn may_use_on(&self, clicked: [i32; 3]) -> bool {
         self.may_build() || self.can_place_on_in_adventure(clicked)
     }
     /// `ServerPlayer.setGameMode(SPECTATOR)`: `stopRiding`.
-    fn dismount_for_spectator(&mut self) {
+    pub(in crate::game) fn dismount_for_spectator(&mut self) {
         let Some(id) = self.riding else {
             return;
         };
@@ -399,7 +360,10 @@ impl Game<'_> {
 }
 
 // BlockPos.relative uses Java's wrapping integer arithmetic, including for mod input.
-fn relative(pos: [i32; 3], face: sunrise_core::geometry::Direction) -> [i32; 3] {
+pub(in crate::game) fn relative(
+    pos: [i32; 3],
+    face: sunrise_core::geometry::Direction,
+) -> [i32; 3] {
     let [dx, dy, dz] = face.normal();
     [
         pos[0].wrapping_add(dx),
@@ -410,10 +374,10 @@ fn relative(pos: [i32; 3], face: sunrise_core::geometry::Direction) -> [i32; 3] 
 
 #[cfg(test)]
 #[path = "tests/adventure_gate_tests.rs"]
-mod adventure_gate_tests;
+pub(in crate::game) mod adventure_gate_tests;
 
 #[cfg(test)]
-mod tests {
+pub(in crate::game) mod tests {
     #[test]
     fn face_offsets_wrap_at_integer_boundaries() {
         use sunrise_core::geometry::Direction::*;

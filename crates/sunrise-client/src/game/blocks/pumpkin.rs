@@ -8,7 +8,7 @@ use sunrise_core::random::RandomSource;
 impl Game<'_> {
     /// `PumpkinBlock.useItemOn` with `held` in the hand that acts, the block
     /// at `pos` clicked on `face`: true when shears carved it (SUCCESS).
-    pub(super) fn use_pumpkin(
+    pub(in crate::game) fn use_pumpkin(
         &mut self,
         pos: [i32; 3],
         face: [i32; 3],

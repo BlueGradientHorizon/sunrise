@@ -2,7 +2,7 @@ use super::*;
 
 /// The hurt sound of a `ClientboundDamageEventPacket`'s damage type, by its
 /// synchronized registry id: `Player.getHurtSound` picks the type's effects.
-pub(super) fn hurt_sound_for(
+pub(in crate::game) fn hurt_sound_for(
     registries: &Dynamic,
     damage: &sunrise_world::damage_source::Catalog,
     source_type: i32,
@@ -23,7 +23,7 @@ pub(super) fn hurt_sound_for(
 }
 
 impl Game<'_> {
-    pub(super) fn receive_selector_tokens(&mut self, data: &[u8]) -> Result<()> {
+    pub(in crate::game) fn receive_selector_tokens(&mut self, data: &[u8]) -> Result<()> {
         let Some(remote) = self.remote.as_mut() else {
             return Ok(());
         };

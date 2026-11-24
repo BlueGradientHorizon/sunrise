@@ -5,14 +5,14 @@
 use super::Game;
 use sunrise_core::bounding_box::BoundingBox;
 
-pub(super) use sunrise_gameplay::test_entities::{Aabb, intersects, standing};
+pub(in crate::game) use sunrise_gameplay::test_entities::{Aabb, intersects, standing};
 pub use sunrise_gameplay::test_entities::{aabb_of, inflate};
 
 impl Game<'_> {
     /// `level.getEntitiesOfClass(Entity.class, bounds, mob -> !(mob instanceof
     /// Player)).forEach(Entity::discard)`: every entity but a player whose box
     /// meets `bounds` is removed without dying or dropping anything.
-    pub(super) fn discard_entities_in(&mut self, bounds: Aabb) {
+    pub(in crate::game) fn discard_entities_in(&mut self, bounds: Aabb) {
         let at = |v: sunrise_core::geometry::Vec3| [v.x, v.y, v.z];
         for m in &mut self.mobs {
             if !m.removed
@@ -73,7 +73,7 @@ impl Game<'_> {
 
     /// `ServerLevel.setChunkForced(x, z, true)` for the chunks of `area`
     /// (`TestInstanceBlockEntity.forceLoadChunks`).
-    pub(super) fn force_load_test_chunks(&mut self, area: &BoundingBox) {
+    pub(in crate::game) fn force_load_test_chunks(&mut self, area: &BoundingBox) {
         let (x0, x1) = (area.min[0] >> 4, area.max[0] >> 4);
         let (z0, z1) = (area.min[2] >> 4, area.max[2] >> 4);
         self.streaming

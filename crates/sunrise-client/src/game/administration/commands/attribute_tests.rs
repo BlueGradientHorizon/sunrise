@@ -4,12 +4,16 @@
 //! `getModifierValue`; all three use the cached instance or the type's supplier,
 //! so a failed lookup leaves the entity's attribute map — and the `attributes`
 //! list `LivingEntity.addAdditionalSaveData` writes — untouched.
+#[allow(unused_imports)]
 use crate::game::Game;
+#[allow(unused_imports)]
 use sunrise_client::motion::PlayerMotion;
+#[allow(unused_imports)]
 use sunrise_core::geometry::Vec3;
+#[allow(unused_imports)]
 use sunrise_core::nbt::Tag;
 
-fn with_game(test: impl FnOnce(&mut Game<'_>)) {
+pub(in crate::game) fn with_game(test: impl FnOnce(&mut Game<'_>)) {
     crate::game::native_entity_refs::tests::with_game(|game| {
         game.build_registries();
         game.set_allow_commands(true);
@@ -17,19 +21,11 @@ fn with_game(test: impl FnOnce(&mut Game<'_>)) {
     });
 }
 
-/// What a command says, and whether it succeeded.
-fn say(game: &mut Game<'_>, command: &str) -> (bool, String) {
-    game.server.chat_capture = Some(Vec::new());
-    let ok = game.run_command(command);
-    let said = game.server.chat_capture.take().unwrap_or_default();
-    (
-        ok,
-        said.iter().map(sunrise_client::text::Text::plain).collect(),
-    )
-}
+#[allow(unused_imports)]
+pub(in crate::game) use crate::game::server_side::commands_server::world_cmds::attribute_tests::say;
 
 /// The `attributes` list the next save writes for the player.
-fn saved_attributes(game: &mut Game<'_>) -> Tag {
+pub(in crate::game) fn saved_attributes(game: &mut Game<'_>) -> Tag {
     game.sync_level();
     game.level
         .player_extra

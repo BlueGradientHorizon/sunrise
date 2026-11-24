@@ -7,10 +7,12 @@
 //! server the screen shows the server's menu (`ClientboundMountScreenOpenPacket`)
 //! and its clicks go out as container clicks; a server's players get theirs
 //! from game/network/lan_mount_menu.rs.
+#[allow(unused_imports)]
 use super::{
     Game, Screen,
     transactions::{After, SaveChunkScope},
 };
+#[allow(unused_imports)]
 use sunrise_client::{
     hud::{HudBatch, rgba},
     items::ItemStack,
@@ -18,44 +20,45 @@ use sunrise_client::{
 };
 
 /// `AbstractChestedHorse.INV_CHEST_COUNT`.
-const CHEST_SIZE: usize = 15;
-pub(super) use sunrise_gameplay::mount_rules::{
+pub(in crate::game) const CHEST_SIZE: usize = 15;
+#[allow(unused_imports)]
+pub(in crate::game) use sunrise_gameplay::mount_rules::{
     ARMOR, CHEST, SADDLE, body_armor_fits, has_mount_menu, mount_columns, shows_body, shows_saddle,
 };
 
 /// The open mount menu: copies of the mount's slots, written back on every change.
 #[derive(Default)]
-pub(super) struct MountMenu {
-    open: Option<Open>,
+pub(in crate::game) struct MountMenu {
+    pub(in crate::game) open: Option<Open>,
 }
 impl MountMenu {
     /// The mount whose menu is open.
-    pub(super) fn opened_mob(&self) -> Option<u32> {
+    pub(in crate::game) fn opened_mob(&self) -> Option<u32> {
         self.open.as_ref().map(|o| o.mob)
     }
 }
-struct Open {
-    mob: u32,
-    species: Species,
-    columns: usize,
-    saddle: Option<ItemStack>,
-    armor: Option<ItemStack>,
-    items: Vec<Option<ItemStack>>,
+pub(in crate::game) struct Open {
+    pub(in crate::game) mob: u32,
+    pub(in crate::game) species: Species,
+    pub(in crate::game) columns: usize,
+    pub(in crate::game) saddle: Option<ItemStack>,
+    pub(in crate::game) armor: Option<ItemStack>,
+    pub(in crate::game) items: Vec<Option<ItemStack>>,
     /// `shouldRenderSaddleSlot` / `shouldRenderArmorSlot`.
-    show_saddle: bool,
-    show_armor: bool,
+    pub(in crate::game) show_saddle: bool,
+    pub(in crate::game) show_armor: bool,
 }
 
 impl Game<'_> {
     /// Whether the mount menu is the open screen.
-    pub(super) fn mount_active(&self) -> bool {
+    pub(in crate::game) fn mount_active(&self) -> bool {
         self.client.screen == Screen::Inventory && self.client.mount_menu.open.is_some()
     }
-    fn mount_mob_index(&self, id: u32) -> Option<usize> {
+    pub(in crate::game) fn mount_mob_index(&self, id: u32) -> Option<usize> {
         self.mobs.iter().position(|m| m.id == id)
     }
     /// `AbstractHorse.openCustomInventoryScreen` for a tamed adult mount.
-    pub(super) fn open_mount_menu(&mut self, index: usize) {
+    pub(in crate::game) fn open_mount_menu(&mut self, index: usize) {
         let m = &self.mobs[index];
         let species = m.species();
         if !has_mount_menu(species) {
@@ -80,7 +83,7 @@ impl Game<'_> {
     }
     /// Open the screen for the server's already installed mount window. Its
     /// equipment and chest stacks arrive in the menu's content packets.
-    pub(super) fn open_remote_mount_menu(
+    pub(in crate::game) fn open_remote_mount_menu(
         &mut self,
         entity: u32,
         species: Species,
@@ -99,18 +102,8 @@ impl Game<'_> {
         });
         self.show_mount_menu();
     }
-    fn show_mount_menu(&mut self) {
-        if self.remote.is_none() && self.server.lan_acting.is_none() {
-            self.carried = None;
-        }
-        self.station = None;
-        self.container = None;
-        self.craft_size = 2;
-        self.set_screen(Screen::Inventory);
-        self.capture(false);
-    }
     /// E while riding a tamed mount opens its inventory instead of the player's.
-    pub(super) fn open_ridden_mount_menu(&mut self) -> bool {
+    pub(in crate::game) fn open_ridden_mount_menu(&mut self) -> bool {
         let Some(id) = self.riding else {
             return false;
         };
@@ -125,23 +118,23 @@ impl Game<'_> {
         true
     }
     /// Riding a mount that has a horse inventory (`HasCustomInventoryScreen`).
-    pub(super) fn riding_mount_with_menu(&self) -> bool {
+    pub(in crate::game) fn riding_mount_with_menu(&self) -> bool {
         self.riding
             .and_then(|id| self.mount_mob_index(id))
             .is_some_and(|i| has_mount_menu(self.mobs[i].species()))
     }
     /// A server closed its window: the screen's copy goes.
-    pub(super) fn mount_menu_reset(&mut self) {
+    pub(in crate::game) fn mount_menu_reset(&mut self) {
         self.client.mount_menu.open = None;
     }
     /// The entity type of the open mount menu's mount (`minecraft:horse`).
-    pub(super) fn mount_menu_entity(&self) -> Option<String> {
+    pub(in crate::game) fn mount_menu_entity(&self) -> Option<String> {
         let open = self.client.mount_menu.open.as_ref()?;
         let m = self.mobs.iter().find(|m| m.id == open.mob)?;
         Some(m.kind.id.to_string())
     }
     /// The chest columns of the open mount menu (the server's window's).
-    pub(super) fn mount_menu_columns(&self) -> Option<usize> {
+    pub(in crate::game) fn mount_menu_columns(&self) -> Option<usize> {
         self.client.mount_menu.open.as_ref().map(|o| o.columns)
     }
     /// The menu ends when the mount dies or its box leaves the entity
@@ -149,7 +142,7 @@ impl Game<'_> {
     /// (`AbstractMountInventoryMenu.stillValid` with
     /// `Player.isWithinEntityInteractionRange(mount, 4.0)`: 7 blocks away, 9
     /// in creative).
-    pub(super) fn tick_mount_menu(&mut self) {
+    pub(in crate::game) fn tick_mount_menu(&mut self) {
         // A server's menu ends when the server closes it.
         if self.remote.is_some() {
             return;
@@ -172,13 +165,13 @@ impl Game<'_> {
         }
     }
     /// Closing the screen keeps what is in the slots on the mount.
-    pub(super) fn mount_closed(&mut self) {
+    pub(in crate::game) fn mount_closed(&mut self) {
         self.mount_sync();
         self.client.mount_menu.open = None;
     }
     /// Writes the menu slots to the mount, with the equip sounds. A
     /// server's menu is the server's to write.
-    fn mount_sync(&mut self) {
+    pub(in crate::game) fn mount_sync(&mut self) {
         if self.remote.is_some() {
             return;
         }
@@ -195,7 +188,7 @@ impl Game<'_> {
     }
     /// The slots of mount `index` as its menu shows them: the saddle, the
     /// body item (None when the slot isn't active), the chest.
-    pub(super) fn mount_contents(
+    pub(in crate::game) fn mount_contents(
         &self,
         index: usize,
     ) -> (
@@ -213,7 +206,7 @@ impl Game<'_> {
     }
     /// The menu's slots back on mount `index` (`body` None: not its slot),
     /// with the equip sound of what was put on (`Equippable.equipSound`).
-    pub(super) fn mount_store(
+    pub(in crate::game) fn mount_store(
         &mut self,
         index: usize,
         saddle: Option<ItemStack>,
@@ -279,7 +272,7 @@ impl Game<'_> {
             });
         }
     }
-    pub(super) fn mount_slots(&self) -> Option<Vec<usize>> {
+    pub(in crate::game) fn mount_slots(&self) -> Option<Vec<usize>> {
         let open = self
             .client
             .mount_menu
@@ -298,7 +291,7 @@ impl Game<'_> {
     }
     /// How many slots `mount_slots` lists, counted without building it
     /// (`Game::slot_count` asks every frame).
-    pub(super) fn mount_slot_count(&self) -> Option<usize> {
+    pub(in crate::game) fn mount_slot_count(&self) -> Option<usize> {
         let open = self
             .client
             .mount_menu
@@ -307,7 +300,7 @@ impl Game<'_> {
             .filter(|_| self.mount_active())?;
         Some(36 + usize::from(open.show_saddle) + usize::from(open.show_armor) + open.columns * 3)
     }
-    pub(super) fn mount_layout_inputs(&self) -> Option<(usize, bool, bool)> {
+    pub(in crate::game) fn mount_layout_inputs(&self) -> Option<(usize, bool, bool)> {
         self.client
             .mount_menu
             .open
@@ -315,7 +308,7 @@ impl Game<'_> {
             .filter(|_| self.mount_active())
             .map(|s| (s.columns, s.show_saddle, s.show_armor))
     }
-    pub(super) fn mount_slot_position(&self, i: usize) -> Option<(f32, f32)> {
+    pub(in crate::game) fn mount_slot_position(&self, i: usize) -> Option<(f32, f32)> {
         let open = self
             .client
             .mount_menu
@@ -337,14 +330,14 @@ impl Game<'_> {
             _ => None,
         }
     }
-    pub(super) fn is_mount_chest_slot(&self, i: usize) -> bool {
+    pub(in crate::game) fn is_mount_chest_slot(&self, i: usize) -> bool {
         self.client
             .mount_menu
             .open
             .as_ref()
             .is_some_and(|open| i >= CHEST && i - CHEST < open.columns * 3)
     }
-    pub(super) fn mount_slot(&self, i: usize) -> &Option<ItemStack> {
+    pub(in crate::game) fn mount_slot(&self, i: usize) -> &Option<ItemStack> {
         match self.client.mount_menu.open.as_ref() {
             Some(open) if i == SADDLE => &open.saddle,
             Some(open) if i == ARMOR => &open.armor,
@@ -352,7 +345,7 @@ impl Game<'_> {
             _ => &self.scratch_slot,
         }
     }
-    pub(super) fn mount_slot_mut(&mut self, i: usize) -> &mut Option<ItemStack> {
+    pub(in crate::game) fn mount_slot_mut(&mut self, i: usize) -> &mut Option<ItemStack> {
         match self.client.mount_menu.open.as_mut() {
             Some(open) if i == SADDLE => &mut open.saddle,
             Some(open) if i == ARMOR => &mut open.armor,
@@ -361,7 +354,7 @@ impl Game<'_> {
         }
     }
     /// `ArmorSlot.mayPlace` and the stack limits of the mount's slots.
-    pub(super) fn mount_slot_rules(&self, slot: usize, stack: &ItemStack) -> (bool, u32) {
+    pub(in crate::game) fn mount_slot_rules(&self, slot: usize, stack: &ItemStack) -> (bool, u32) {
         let Some(open) = self.client.mount_menu.open.as_ref() else {
             return (false, 64);
         };
@@ -372,7 +365,7 @@ impl Game<'_> {
         }
     }
     /// A click in the mount menu before the generic handling.
-    pub(super) fn mount_click(&mut self, right: bool) -> bool {
+    pub(in crate::game) fn mount_click(&mut self, right: bool) -> bool {
         // A server's menu: the click goes out like any container click.
         if !self.mount_active() || self.remote.is_some() {
             return false;
@@ -399,11 +392,11 @@ impl Game<'_> {
         true
     }
     /// The inventory slot ids in menu order.
-    fn mount_player_slots() -> Vec<usize> {
+    pub(in crate::game) fn mount_player_slots() -> Vec<usize> {
         (9..36).chain(0..9).collect()
     }
     /// `AbstractMountInventoryMenu.quickMoveStack`.
-    fn mount_quick_move(&mut self, slot: usize) {
+    pub(in crate::game) fn mount_quick_move(&mut self, slot: usize) {
         let Some(open) = self.client.mount_menu.open.as_ref() else {
             return;
         };
@@ -442,7 +435,7 @@ impl Game<'_> {
         }
     }
     /// `HorseInventoryScreen`'s background, slot frames and the mount.
-    pub(super) fn draw_mount_background(&self, batch: &mut HudBatch, ox: f32, oy: f32) {
+    pub(in crate::game) fn draw_mount_background(&self, batch: &mut HudBatch, ox: f32, oy: f32) {
         let Some(open) = self.client.mount_menu.open.as_ref() else {
             return;
         };
@@ -514,7 +507,7 @@ impl Game<'_> {
     /// `extractEntityInInventoryFollowsMouse` for a mob: depth-sorted,
     /// back-face-culled quads turned toward the cursor.
     #[allow(clippy::too_many_arguments)]
-    fn draw_mob_preview(
+    pub(in crate::game) fn draw_mob_preview(
         &self,
         batch: &mut HudBatch,
         mob: &Mob,
@@ -593,10 +586,10 @@ impl Game<'_> {
 
 #[cfg(test)]
 #[path = "tests/mount_menu_reach_tests.rs"]
-mod reach_tests;
+pub(in crate::game) mod reach_tests;
 
 #[cfg(test)]
-mod tests {
+pub(in crate::game) mod tests {
     use super::*;
 
     #[test]

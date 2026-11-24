@@ -54,10 +54,11 @@ paths = [
   "crates/sunrise-client/src/game/blocks/nether_portal*", "crates/sunrise-client/src/game/entities/vehicle_teleport*",
 ]
 cargo = [
-  { package = "sunrise-client", target = "lib", filter = "game::explosion" },
   { package = "sunrise-client", target = "lib", filter = "game::server_side::explosion" },
   { package = "sunrise-client", target = "lib", filter = "game::server_side::tnt::" },
-  { package = "sunrise-client", target = "lib", filter = "game::wind::" },
+  { package = "sunrise-client", target = "lib", filter = "game::client_side::tnt_client::" },
+  { package = "sunrise-client", target = "lib", filter = "game::server_side::wind::" },
+  { package = "sunrise-client", target = "lib", filter = "game::client_side::wind_client::" },
 ]
 harnesses = [
   "explosions", "explosion_items", "bed_explosion", "tnt_*", "projectile_hits_tnt", "sulfur_portal_blast", "sulfur_prime_phase",
@@ -105,6 +106,8 @@ paths = [
 cargo = [
   { package = "sunrise-client-lib", target = "lib", filter = "mobs::" },
   { package = "sunrise-client", target = "lib", filter = "game::creatures::" },
+  { package = "sunrise-client", target = "lib", filter = "game::client_side::creatures_client::" },
+  { package = "sunrise-client", target = "lib", filter = "game::server_side::creatures_server::" },
   { package = "sunrise-client", target = "lib", filter = "game::server_side::stats::phantom_spawn_tests" },
   { package = "sunrise-client", target = "lib", filter = "game::server_side::wither_star_tests" },
 ]
@@ -139,6 +142,7 @@ cargo = [
   { package = "sunrise-client-render", target = "lib", filter = "light::" },
   { package = "sunrise-client-render", target = "lib", filter = "light_storage_tests::" },
   { package = "sunrise-client", target = "lib", filter = "game::dynamic_light_emission" },
+  { package = "sunrise-client", target = "lib", filter = "game::server_side::dynamic_light_emission" },
 ]
 harnesses = ["light", "light_storage"]
 lan = ["light"]
@@ -172,6 +176,8 @@ cargo = [
   { package = "sunrise-client-lib", target = "lib", filter = "lan::" },
   { package = "sunrise-protocol", target = "lib", filter = "" },
   { package = "sunrise-client", target = "lib", filter = "game::remote::" },
+  { package = "sunrise-client", target = "lib", filter = "game::client_side::remote_client::" },
+  { package = "sunrise-client", target = "lib", filter = "game::server_side::remote_server::" },
   { package = "sunrise-client-lib", target = "test:lan_bot", filter = "" },
 ]
 harnesses = [
@@ -220,7 +226,8 @@ paths = [
 ]
 cargo = [
   { package = "sunrise-client-lib", target = "lib", filter = "motion::" },
-  { package = "sunrise-client", target = "lib", filter = "game::mounts::" },
+  { package = "sunrise-client", target = "lib", filter = "game::server_side::mounts::" },
+  { package = "sunrise-client", target = "lib", filter = "game::client_side::mounts_client::" },
 ]
 harnesses = [
   "*motion*", "*move*", "*collision*", "collision", "climbing", "swimming", "auto_jump", "boat_*", "*vehicle*",
@@ -250,7 +257,7 @@ paths = [
 ]
 cargo = [
   { package = "sunrise-items", target = "lib", filter = "" },
-  { package = "sunrise-client", target = "lib", filter = "game::maps::" },
+  { package = "sunrise-client", target = "lib", filter = "game::server_side::maps::" },
 ]
 harnesses = [
   "item_*", "*_item", "extra_items", "entity_attribute", "use_*", "inventory_*", "consum*", "consume_effect", "stored_*", "active_effect*",
@@ -287,6 +294,8 @@ cargo = [
   { package = "sunrise-command", target = "lib", filter = "" },
   { package = "sunrise-world", target = "lib", filter = "nbt_path::" },
   { package = "sunrise-client", target = "lib", filter = "game::commands::" },
+  { package = "sunrise-client", target = "lib", filter = "game::client_side::commands_client::" },
+  { package = "sunrise-client", target = "lib", filter = "game::server_side::commands_server::" },
   { package = "sunrise-client", target = "lib", filter = "game::server_side::server_reload::" },
   { package = "sunrise-client", target = "lib", filter = "game::mob_discard_tests::" },
 ]
@@ -340,7 +349,8 @@ cargo = [
   { package = "sunrise-assets", target = "lib", filter = "" },
   { package = "sunrise-client-render", target = "lib", filter = "hud" },
   { package = "sunrise-client-render", target = "test:standard_pack_gpu_entities", filter = "" },
-  { package = "sunrise-client", target = "lib", filter = "game::advancements::" },
+  { package = "sunrise-client", target = "lib", filter = "game::server_side::advancements::" },
+  { package = "sunrise-client", target = "lib", filter = "game::client_side::advancements_client::" },
 ]
 harnesses = [
   "*render*", "*model*", "*particle*", "*sound*", "sound_*", "ambient_sound", "audio_attributes", "music",
@@ -391,9 +401,10 @@ cargo = [
   { package = "sunrise-client", target = "lib", filter = "game::client_side::native_" },
   { package = "sunrise-client", target = "lib", filter = "game::server_side::native_" },
   { package = "sunrise-client", target = "lib", filter = "game::server_side::transactions::" },
+  { package = "sunrise-client", target = "lib", filter = "game::client_side::transactions_client::" },
   { package = "sunrise-client", target = "lib", filter = "game::client_side::gui_entity::" },
   { package = "sunrise-client", target = "lib", filter = "game::host::" },
-  { package = "sunrise-client", target = "lib", filter = "game::api_values::" },
+  { package = "sunrise-client", target = "lib", filter = "game::server_side::api_values::" },
   { package = "sunrise-client", target = "lib", filter = "game::load_conditions::" },
   { package = "sunrise-client", target = "lib", filter = "game::creatures::pending_birth_matrix_tests" },
 ]

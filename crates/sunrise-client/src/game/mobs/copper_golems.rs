@@ -24,7 +24,7 @@ const RECHECK_TICKS: i64 = 5;
 impl Game<'_> {
     /// `OfferFlowerGoal.stop` (`MobEvent::Gift`): the item on the target's
     /// empty antenna, as a guaranteed drop.
-    pub(super) fn receive_gift(&mut self, target: u32, item: &'static str) {
+    pub(in crate::game) fn receive_gift(&mut self, target: u32, item: &'static str) {
         if let Some(m) = self.mobs.iter_mut().find(|m| m.id == target)
             && m.saddle_item().is_none()
         {
@@ -41,7 +41,7 @@ impl Game<'_> {
     /// first opener posts CONTAINER_OPEN and the last closer CONTAINER_CLOSE
     /// (`ContainerOpenersCounter.incrementOpeners` / `decrementOpeners`), and
     /// the clients see the block event (`openerCountChanged`).
-    pub(super) fn golem_chest_open(&mut self, chest: [i32; 3], open: bool, mob: u32) {
+    pub(in crate::game) fn golem_chest_open(&mut self, chest: [i32; 3], open: bool, mob: u32) {
         let key = (chest[0], chest[1], chest[2]);
         if self.mod_menu_at(key).is_some() {
             self.mod_container_opener(key, open, Some(sunrise_client::mobs::Who::Mob(mob)), 3.0);
@@ -73,7 +73,7 @@ impl Game<'_> {
         self.lan_block_event(chest, 1, count.max(0));
     }
     /// A copper golem took from or filled a chest slot.
-    pub(super) fn golem_chest_slot(
+    pub(in crate::game) fn golem_chest_slot(
         &mut self,
         chest: [i32; 3],
         slot: usize,
@@ -91,7 +91,7 @@ impl Game<'_> {
     /// `ContainerOpenersCounter.recheckOpeners` every five ticks: the golems
     /// whose opened chest is this one, within its range plus 4; when none
     /// is left the chest closes (a double chest the golem left open).
-    pub(super) fn recheck_golem_openers(&mut self) {
+    pub(in crate::game) fn recheck_golem_openers(&mut self) {
         if self.world.game_time % RECHECK_TICKS != 0 {
             return;
         }
@@ -175,7 +175,7 @@ impl Game<'_> {
         );
     }
     /// `CopperGolem.turnToStatue`, which its weathering asked for.
-    pub(super) fn golem_become_statue(&mut self, id: u32) {
+    pub(in crate::game) fn golem_become_statue(&mut self, id: u32) {
         let Some(i) = self.mobs.iter().position(|m| m.id == id && !m.removed) else {
             return;
         };
@@ -301,7 +301,7 @@ impl Game<'_> {
     /// `Mob.dropPreservedEquipment`: the guaranteed drops in `EquipmentSlot`
     /// order, the carried stack (main hand) then the antenna flower (saddle),
     /// taken off the golem.
-    pub(super) fn golem_preserved_equipment(m: &mut Mob) -> Vec<ItemStack> {
+    pub(in crate::game) fn golem_preserved_equipment(m: &mut Mob) -> Vec<ItemStack> {
         let mut stacks = Vec::new();
         if let Some(stack) = held(m).cloned() {
             set_held(m, None);
@@ -315,7 +315,7 @@ impl Game<'_> {
     }
     /// `golem_preserved_equipment`, each `spawnAtLocation` at the golem's feet
     /// (a golem turning into a statue).
-    pub(super) fn golem_drop_equipment(&mut self, m: &mut Mob) {
+    pub(in crate::game) fn golem_drop_equipment(&mut self, m: &mut Mob) {
         let at = m.position;
         for stack in Self::golem_preserved_equipment(m) {
             self.spawn_at_location(at, 0.0, stack);
@@ -326,7 +326,11 @@ impl Game<'_> {
     /// statue turns it back into a golem (`CopperGolemStatueBlockEntity.removeStatue`),
     /// wearing the axe. Weathered statues are scraped by the axe's own
     /// transform instead.
-    pub(super) fn use_golem_statue(&mut self, pos: [i32; 3], held: Option<&ItemStack>) -> bool {
+    pub(in crate::game) fn use_golem_statue(
+        &mut self,
+        pos: [i32; 3],
+        held: Option<&ItemStack>,
+    ) -> bool {
         if !held.is_some_and(|s| s.item.ends_with("_axe")) {
             return false;
         }
@@ -392,7 +396,7 @@ impl Game<'_> {
         true
     }
     /// `CopperGolem.mobInteract`; true when handled.
-    pub(super) fn interact_copper_golem(&mut self, index: usize, item: &str) -> bool {
+    pub(in crate::game) fn interact_copper_golem(&mut self, index: usize, item: &str) -> bool {
         if self.mobs[index].species() != Species::CopperGolem || !self.mobs[index].alive() {
             return false;
         }
@@ -487,7 +491,7 @@ impl Game<'_> {
         false
     }
     /// `readyForShearing`: the antenna holds a flower shears take.
-    pub(super) fn golem_shearable(&self, index: usize) -> bool {
+    pub(in crate::game) fn golem_shearable(&self, index: usize) -> bool {
         self.mobs[index].saddle_item().is_some_and(|a| {
             self.res
                 .items()

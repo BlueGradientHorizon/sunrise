@@ -1,6 +1,7 @@
 //! Breaking blocks: a held tool mining a block, `break_block` and the player's break with its drops
 //! (`Block.popResource` for a broken block), the destroy-progress cracks shown to everyone, and a
 //! bundle dropping its content.
+#[allow(unused_imports)]
 use super::*;
 
 impl Game<'_> {
@@ -8,7 +9,11 @@ impl Game<'_> {
     /// mined the block `name`: an item with a `tool` component counts as used
     /// and loses its `damage_per_block` on a block that doesn't break
     /// instantly (`ShearsItem`: on any block but fire).
-    pub(super) fn mine_block_with_held(&mut self, name: &str, hardness: f32) -> Option<ItemStack> {
+    pub(in crate::game) fn mine_block_with_held(
+        &mut self,
+        name: &str,
+        hardness: f32,
+    ) -> Option<ItemStack> {
         let stack = self.inventory[self.selected].clone()?;
         let per_block = self.items().mining_damage(&stack)?;
         let max = self.items().mining_damage_capacity(&stack);
@@ -31,23 +36,13 @@ impl Game<'_> {
         broken
     }
 
-    pub(super) fn break_block(&mut self, pos: [i32; 3]) -> Result<()> {
+    pub(in crate::game) fn break_block(&mut self, pos: [i32; 3]) -> Result<()> {
         self.carrier_break_block(pos)
-    }
-
-    /// `ServerPlayerGameMode.destroyBlock`: whether the block was removed.
-    /// A break inside another (a mod breaking more blocks from its
-    /// `native_destroy_block`) keeps the outer break's own events.
-    pub(super) fn player_break_block(&mut self, pos: [i32; 3]) -> Result<bool> {
-        let outer = self.server.lan_break_pos.replace(pos);
-        let broken = self.with_player_actor(|game| game.break_block_as_player(pos));
-        self.server.lan_break_pos = outer;
-        broken
     }
 
     /// `BundleItem.dropContent`: `removeOneItemFromBundle` and `Player.drop`,
     /// then the drop sound and the used statistic.
-    pub(super) fn drop_bundle_content(&mut self, slot: usize) {
+    pub(in crate::game) fn drop_bundle_content(&mut self, slot: usize) {
         let items = self.items();
         let Some(mut bundle) = self.stack_in(slot).cloned() else {
             return;
@@ -86,7 +81,12 @@ impl Game<'_> {
     /// `ServerPlayerGameMode.tick` while a player digs: level event 2020 every
     /// fourth tick since the START (the hit sound), else 2019 (the crack only),
     /// for everyone around, the digger included (`levelEvent(null, ...)`).
-    pub(super) fn destroy_progress_event(&mut self, pos: [i32; 3], face: [i32; 3], ticks: u32) {
+    pub(in crate::game) fn destroy_progress_event(
+        &mut self,
+        pos: [i32; 3],
+        face: [i32; 3],
+        ticks: u32,
+    ) {
         let id = if ticks.is_multiple_of(4) { 2020 } else { 2019 };
         let direction = sunrise_core::geometry::Direction::ALL
             .iter()

@@ -1,14 +1,18 @@
 //! Test pending children through real splitting and breeding with a native listener.
 
+#[allow(unused_imports)]
 use super::pending_birth_tests::{SEED, YAWS, breed_pair, cube, find, near};
+#[allow(unused_imports)]
 use super::*;
+#[allow(unused_imports)]
 use crate::game::native_entity_refs::tests::{run_fresh_cases, with_game};
+#[allow(unused_imports)]
 use mod_api::{BabyEntitySpawnEvent, Flow, Hooks, MobSplitEvent, ServerHost};
 
 #[path = "pending_birth_matrix_tests/fixture.rs"]
-mod fixture;
+pub(in crate::game) mod fixture;
 
-struct Native;
+pub(in crate::game) struct Native;
 #[mod_api::__subscriptions]
 impl Hooks for Native {
     fn mob_split(&self, host: &mut dyn ServerHost, event: &mut MobSplitEvent<'_>) -> Flow {
@@ -23,29 +27,16 @@ impl Hooks for Native {
     }
 }
 
-/// Select the fixture mode without reusing an ID issued to an earlier mob or breeding orb.
-fn next_parent_id(game: &Game<'_>, mode: u32) -> u32 {
-    (game.server.next_entity + 1).next_multiple_of(10) + mode
-}
+#[allow(unused_imports)]
+pub(in crate::game) use crate::game::server_side::creatures_server::pending_birth_matrix_tests::next_parent_id;
 
-/// A size-4 slime whose entity id ends in `mode`, split by the real route.
-fn split(game: &mut Game<'_>, mode: u32) -> Vec<Mob> {
-    game.mobs.clear();
-    let mut dying = cube(game, "minecraft:slime", 4, SEED);
-    game.server.next_entity = next_parent_id(game, mode);
-    dying.id = game.server.next_entity;
-    game.split_cube_children(&mut dying);
-    game.mobs.to_vec()
-}
+#[allow(unused_imports)]
+pub(in crate::game) use crate::game::server_side::creatures_server::pending_birth_matrix_tests::split;
 
-/// Two cows bred by the real route; the parent's id ends in `mode`.
-fn breed(game: &mut Game<'_>, mode: u32) -> (u32, u32, Option<u32>) {
-    game.mobs.clear();
-    game.server.next_entity = next_parent_id(game, mode) - 1;
-    breed_pair(game, "minecraft:cow")
-}
+#[allow(unused_imports)]
+pub(in crate::game) use crate::game::server_side::creatures_server::pending_birth_matrix_tests::breed;
 
-fn matrix(mods: mod_api::Mods) {
+pub(in crate::game) fn matrix(mods: mod_api::Mods) {
     mod_platform::testing::with_mods(mods, || {
         with_game(|game| {
             // No change: the vanilla three, in order.

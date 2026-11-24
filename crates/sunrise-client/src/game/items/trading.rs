@@ -2,11 +2,14 @@
 //! layout (276x166, drawn 50 px left of the usual 176-wide origin), offer
 //! buttons, payment slots, the result slot's `onTake`, villager experience and
 //! level-ups with new offers from the next trade set.
+#[allow(unused_imports)]
 use super::{
     Game,
     stations::{INPUT, Kind, RESULT, Station},
 };
+#[allow(unused_imports)]
 use sunrise_client::mobs::{Mob, Species, render::VILLAGER_TYPES, villager};
+#[allow(unused_imports)]
 use sunrise_client::{
     hud::HudBatch,
     items::ItemStack,
@@ -17,30 +20,30 @@ use sunrise_client::{
 };
 
 /// The merchant screen is 100 px wider than the 176-px menus it shares an origin with.
-const SHIFT: f32 = -50.0;
-const GREY: u32 = 0xFF40_4040;
+pub(in crate::game) const SHIFT: f32 = -50.0;
+pub(in crate::game) const GREY: u32 = 0xFF40_4040;
 
 #[derive(Clone)]
-pub(super) struct MerchantState {
+pub(in crate::game) struct MerchantState {
     /// The merchant's side of the menu: offers, experience, level, the
     /// selection hint and active offer (`sunrise_client::merchant::Session`).
-    pub(super) session: Box<merchant::Session>,
+    pub(in crate::game) session: Box<merchant::Session>,
     /// The offer list's scroll offset.
-    pub(super) scroll: usize,
+    pub(in crate::game) scroll: usize,
     /// The scroller is held by the mouse (`isDragging`).
-    pub(super) dragging: bool,
+    pub(in crate::game) dragging: bool,
     /// The offer button that keeps focus after a click (drawn highlighted).
-    pub(super) focused: Option<usize>,
+    pub(in crate::game) focused: Option<usize>,
     /// The trading mob (its offers and experience are written back on
     /// close) and its custom name.
-    pub(super) mob: Option<u32>,
+    pub(in crate::game) mob: Option<u32>,
     /// `Merchant.getDisplayName()`: the trading mob's custom name with its
     /// style, else nothing (the profession's name is the default).
-    pub(super) name: Option<Text>,
+    pub(in crate::game) name: Option<Text>,
 }
 /// `Merchant.getDisplayName`: the merchant's custom name (style and all), else
 /// the profession's or the wandering trader's.
-pub(super) fn merchant_display_name(
+pub(in crate::game) fn merchant_display_name(
     progress: bool,
     profession: &str,
     custom: Option<Text>,
@@ -63,7 +66,7 @@ pub(super) fn merchant_display_name(
 }
 /// `MerchantScreen.extractLabels`: a villager's title is `merchant.title` with
 /// the name and its level, so the name keeps the style it was given.
-pub(super) fn merchant_title(progress: bool, level: i32, name: Text) -> Text {
+pub(in crate::game) fn merchant_title(progress: bool, level: i32, name: Text) -> Text {
     // `extractLabels` joins the level for levels 1 to 5 only (`VillagerData`
     // clamps a villager to 1; a level past 5 draws the name alone).
     if !progress || !(1..=5).contains(&level) {
@@ -74,12 +77,12 @@ pub(super) fn merchant_title(progress: bool, level: i32, name: Text) -> Text {
 }
 impl MerchantState {
     /// `Merchant.showProgressBar`: villagers only.
-    pub(super) fn progress(&self) -> bool {
+    pub(in crate::game) fn progress(&self) -> bool {
         self.session.show_progress()
     }
 }
 /// Player inventory slot positions in `MerchantMenu` (x from 108).
-pub(super) fn inventory_slot(i: usize) -> (f32, f32) {
+pub(in crate::game) fn inventory_slot(i: usize) -> (f32, f32) {
     match i {
         0..9 => (108.0 + SHIFT + i as f32 * 18.0, 142.0),
         _ => (
@@ -92,16 +95,16 @@ pub(super) fn inventory_slot(i: usize) -> (f32, f32) {
 /// `ExplorationMapFunction` in the game world: the nearest structure of the
 /// tag through the generator's `/locate`, a new map centred on it with its
 /// target decoration.
-pub(super) type MadeMaps = Vec<(i32, [i32; 3], u8, String)>;
+pub(in crate::game) type MadeMaps = Vec<(i32, [i32; 3], u8, String)>;
 
 #[derive(Clone)]
-pub(super) struct GameMaps<'a> {
-    pub(super) terrain: Option<std::sync::Arc<sunrise_client::vanillagen::VanillaTerrain>>,
+pub(in crate::game) struct GameMaps<'a> {
+    pub(in crate::game) terrain: Option<std::sync::Arc<sunrise_client::vanillagen::VanillaTerrain>>,
     /// Structure tag -> its structures.
-    pub(super) structure_tag: &'a dyn Fn(&str) -> Vec<String>,
+    pub(in crate::game) structure_tag: &'a dyn Fn(&str) -> Vec<String>,
     /// Maps made, for the caller to register: (map id, centre x, z, scale, target).
-    pub(super) made: std::cell::RefCell<MadeMaps>,
-    pub(super) next_id: std::cell::Cell<i32>,
+    pub(in crate::game) made: std::cell::RefCell<MadeMaps>,
+    pub(in crate::game) next_id: std::cell::Cell<i32>,
 }
 impl merchant::MapMaker for GameMaps<'_> {
     fn with_staged(&self, edit: &mut dyn FnMut(&dyn merchant::MapMaker) -> bool) -> bool {
@@ -174,13 +177,13 @@ impl merchant::MapMaker for GameMaps<'_> {
 }
 
 /// The world's `data/minecraft/random_sequences.dat`.
-fn random_sequences_file(world_root: &std::path::Path) -> std::path::PathBuf {
+pub(in crate::game) fn random_sequences_file(world_root: &std::path::Path) -> std::path::PathBuf {
     world_root.join("data/minecraft/random_sequences.dat")
 }
 /// `RandomSequences` as opening the world reads it. A world with no file gets new data,
 /// which `MinecraftServer`'s `savedDataStorage.computeIfAbsent(RandomSequences.TYPE)` stores
 /// dirty (`SavedDataStorage.set`): its first save writes it.
-pub(super) fn read_random_sequences(world_root: &std::path::Path) -> RandomSequences {
+pub(in crate::game) fn read_random_sequences(world_root: &std::path::Path) -> RandomSequences {
     sunrise_client::save::read_dat(&random_sequences_file(world_root))
         .and_then(|t| t.get("data").cloned())
         .map(|d| RandomSequences::from_nbt(&d))
@@ -189,7 +192,10 @@ pub(super) fn read_random_sequences(world_root: &std::path::Path) -> RandomSeque
 /// `SavedDataStorage.saveAndJoin` for `RandomSequences`: written only while dirty, with
 /// whatever it holds then, so the emptied map and the salt a `/random reset *` left reach
 /// the file after a draw, and not without one.
-pub(super) fn write_random_sequences(world_root: &std::path::Path, data: &mut RandomSequences) {
+pub(in crate::game) fn write_random_sequences(
+    world_root: &std::path::Path,
+    data: &mut RandomSequences,
+) {
     let Some(data) = data.take_dirty_nbt() else {
         return;
     };
@@ -207,14 +213,14 @@ pub(super) fn write_random_sequences(world_root: &std::path::Path, data: &mut Ra
 
 impl Game<'_> {
     /// `RandomSequences` as `random_sequences.dat` (not on a server's guest).
-    pub(super) fn save_random_sequences(&mut self) {
+    pub(in crate::game) fn save_random_sequences(&mut self) {
         if self.remote.is_none() {
             write_random_sequences(&self.server.world_root, &mut self.server.rand_sequences);
         }
     }
     /// `AbstractVillager.addOffersFromTradeSet` with the world's random
     /// sequence of the set, at the merchant's position.
-    fn offers_from_set(
+    pub(in crate::game) fn offers_from_set(
         &mut self,
         set: &str,
         variant: &str,
@@ -250,7 +256,7 @@ impl Game<'_> {
         offers
     }
     /// `AbstractVillager.getOffers`: generated on first use.
-    pub(super) fn ensure_offers(&mut self, index: usize) {
+    pub(in crate::game) fn ensure_offers(&mut self, index: usize) {
         let species = self.mobs[index].species();
         if species == Species::Villager
             && self
@@ -301,7 +307,7 @@ impl Game<'_> {
     }
     /// `Villager.mobInteract` / `WanderingTrader.mobInteract`: shake the
     /// head without offers, else open the trading screen.
-    pub(super) fn interact_trader(
+    pub(in crate::game) fn interact_trader(
         &mut self,
         index: usize,
         item: &str,
@@ -411,7 +417,7 @@ impl Game<'_> {
     }
     /// `Villager.setTradingPlayer(null)`: the session goes back to the mob
     /// (special prices stay as they were), the borrowed sequences to the world.
-    pub(super) fn merchant_closed(&mut self, state: &mut MerchantState) {
+    pub(in crate::game) fn merchant_closed(&mut self, state: &mut MerchantState) {
         let session = &mut state.session;
         for (id, r) in std::mem::take(&mut session.sequences) {
             self.server.rand_sequences.give_back(id, r);
@@ -435,7 +441,7 @@ impl Game<'_> {
         trade.offers = session.offers.clone();
     }
     /// Opens a merchant menu without a mob (sunrise-ctl `trade`).
-    pub(super) fn open_merchant(&mut self, profession: &str, variant: &str, level: i32) {
+    pub(in crate::game) fn open_merchant(&mut self, profession: &str, variant: &str, level: i32) {
         let profession = if profession.contains(':') {
             profession.to_owned()
         } else {
@@ -468,7 +474,11 @@ impl Game<'_> {
         });
     }
     /// A server's trading window (no mob here: the server keeps it).
-    pub(super) fn open_remote_merchant(&mut self, session: merchant::Session, name: Option<Text>) {
+    pub(in crate::game) fn open_remote_merchant(
+        &mut self,
+        session: merchant::Session,
+        name: Option<Text>,
+    ) {
         self.open_merchant_state(MerchantState {
             session: Box::new(session),
             scroll: 0,
@@ -478,7 +488,7 @@ impl Game<'_> {
             name,
         });
     }
-    fn open_merchant_state(&mut self, state: MerchantState) {
+    pub(in crate::game) fn open_merchant_state(&mut self, state: MerchantState) {
         let mut s = Station::new_kind(Kind::Merchant, [0, 0, 0]);
         s.merchant = Some(Box::new(state));
         self.station = Some(s);
@@ -487,7 +497,7 @@ impl Game<'_> {
         self.set_mapping_held("key.use", false);
     }
     /// The trading mob's random before a menu click (it ticks meanwhile).
-    pub(super) fn merchant_sync_in(session: &mut merchant::Session, mob: Option<&Mob>) {
+    pub(in crate::game) fn merchant_sync_in(session: &mut merchant::Session, mob: Option<&Mob>) {
         if let Some(m) = mob {
             session.take_mob_clock(m);
             session.origin = [m.position.x, m.position.y, m.position.z];
@@ -495,7 +505,7 @@ impl Game<'_> {
     }
     /// After a menu click: the session back to the station, its random to
     /// the mob, and what it did (orbs, level-ups, the yes/no voice).
-    pub(super) fn merchant_sync_out(&mut self, session: Box<merchant::Session>) {
+    pub(in crate::game) fn merchant_sync_out(&mut self, session: Box<merchant::Session>) {
         let mob = self
             .station
             .as_ref()
@@ -525,7 +535,7 @@ impl Game<'_> {
     }
     /// What a menu click's session did, applied to the world and its mob;
     /// with the index of the offer of each trade made, for `merchant_traded`.
-    pub(super) fn merchant_apply(
+    pub(in crate::game) fn merchant_apply(
         &mut self,
         session: Box<merchant::Session>,
         mob: Option<u32>,
@@ -585,7 +595,7 @@ impl Game<'_> {
 
     /// `AbstractVillager.notifyTradeUpdated`: a hurt-triggered voice must be
     /// broadcast before the hit continues to its offers and damage.
-    pub(super) fn merchant_trade_feedback(
+    pub(in crate::game) fn merchant_trade_feedback(
         &mut self,
         villager: bool,
         yes: bool,
@@ -615,7 +625,7 @@ impl Game<'_> {
     /// `villager_trade` trigger, then the mods' `native_trade_with_villager`
     /// for a server's player (when the trader is still in the level), which
     /// may change the live offer (Bukkit's `PlayerTradeEvent#getTrade`).
-    pub(super) fn merchant_traded(
+    pub(in crate::game) fn merchant_traded(
         &mut self,
         mob: Option<u32>,
         offers: &mut [MerchantOffer],
@@ -640,7 +650,7 @@ impl Game<'_> {
     }
 
     /// The completed trade's criterion and statistic, before its collect hook.
-    pub(super) fn record_merchant_trade(
+    pub(in crate::game) fn record_merchant_trade(
         &mut self,
         mob: Option<u32>,
         result: &sunrise_client::items::ItemStack,
@@ -663,7 +673,7 @@ impl Game<'_> {
     /// selection and moves the payment itself (`setSelectionHint`, `tryMoveItems`), so its
     /// result and the clicks after it are its own; a server is then told
     /// (ServerboundSelectTradePacket) and does the same.
-    fn try_move_items(&mut self, index: usize) {
+    pub(in crate::game) fn try_move_items(&mut self, index: usize) {
         self.menu_session(|menu, env, _| {
             menu.merchant_select(env, index);
             Some(true)
@@ -677,65 +687,8 @@ impl Game<'_> {
             ));
         }
     }
-    /// Clicks on the offer list; true when one was hit. A press on the
-    /// scroller holds it (`MerchantScreen.mouseClicked`).
-    pub(super) fn merchant_click(&mut self, local: (f32, f32)) -> bool {
-        let Some(m) = self.station.as_mut().and_then(|s| s.merchant.as_mut()) else {
-            return false;
-        };
-        m.dragging = on_scroller(local, m.session.offers.len());
-        if m.dragging {
-            return true;
-        }
-        for i in 0..7 {
-            let (x, y) = (5.0 + SHIFT, 18.0 + 20.0 * i as f32);
-            if local.0 >= x
-                && local.0 < x + 88.0
-                && local.1 >= y
-                && local.1 < y + 20.0
-                && i + m.scroll < m.session.offers.len()
-            {
-                let index = i + m.scroll;
-                if let Some(m) = self.station.as_mut().and_then(|s| s.merchant.as_mut()) {
-                    m.focused = Some(i);
-                }
-                self.audio
-                    .0
-                    .play("minecraft:ui.button.click", None, 0.25, 1.0);
-                self.try_move_items(index);
-                return true;
-            }
-        }
-        false
-    }
-    /// `AbstractButton.keyPressed` on the focused offer button: Enter or
-    /// Space presses it again, key repeats included, so holding Space
-    /// refills the payment slots after every trade. Focus stays on the
-    /// button through slot clicks (`ContainerEventHandler.mouseClicked`).
-    pub(super) fn merchant_key(&mut self, key: winit::keyboard::KeyCode) -> bool {
-        use winit::keyboard::KeyCode;
-        if !matches!(key, KeyCode::Enter | KeyCode::NumpadEnter | KeyCode::Space) {
-            return false;
-        }
-        let Some(m) = self.station.as_ref().and_then(|s| s.merchant.as_ref()) else {
-            return false;
-        };
-        // Buttons past the last offer are hidden, and a hidden button is inactive.
-        let Some(index) = m
-            .focused
-            .map(|row| row + m.scroll)
-            .filter(|&index| index < m.session.offers.len())
-        else {
-            return false;
-        };
-        self.audio
-            .0
-            .play("minecraft:ui.button.click", None, 0.25, 1.0);
-        self.try_move_items(index);
-        true
-    }
     /// The offer buttons a controller can focus (GUI origin relative).
-    pub(super) fn merchant_targets(&self) -> Vec<[f32; 4]> {
+    pub(in crate::game) fn merchant_targets(&self) -> Vec<[f32; 4]> {
         let Some(m) = self.station.as_ref().and_then(|s| s.merchant.as_ref()) else {
             return Vec::new();
         };
@@ -744,27 +697,7 @@ impl Game<'_> {
             .map(|i| [5.0 + SHIFT, 18.0 + 20.0 * i as f32, 88.0, 20.0])
             .collect()
     }
-    /// `MerchantScreen.mouseDragged`: the held scroller follows the cursor.
-    pub(super) fn merchant_drag(&mut self) -> bool {
-        let Some(size) = self
-            .renderer
-            .0
-            .as_ref()
-            .map(|r| [r.config.width, r.config.height])
-        else {
-            return false;
-        };
-        let (_, oy) = self.inventory_origin(&HudBatch::new(size, self.settings.gui_scale_inputs()));
-        let y = self.client.cursor.1 - oy;
-        if let Some(m) = self.station.as_mut().and_then(|s| s.merchant.as_mut())
-            && m.dragging
-        {
-            m.scroll = drag_scroll(y, m.session.offers.len());
-            return true;
-        }
-        false
-    }
-    pub(super) fn merchant_scroll(&mut self, d: f32) -> bool {
+    pub(in crate::game) fn merchant_scroll(&mut self, d: f32) -> bool {
         let Some(m) = self.station.as_mut().and_then(|s| s.merchant.as_mut()) else {
             return false;
         };
@@ -775,266 +708,11 @@ impl Game<'_> {
         }
         false
     }
-    /// `MerchantScreen` rendering.
-    pub(super) fn draw_merchant(&mut self, batch: &mut HudBatch) -> bool {
-        let (ox, oy) = self.inventory_origin(batch);
-        let local = (self.client.cursor.0 - ox, self.client.cursor.1 - oy);
-        let Some(m) = self.station.as_ref().and_then(|s| s.merchant.as_ref()) else {
-            return false;
-        };
-        let (progress, custom) = (m.progress(), m.name.clone());
-        let (profession, level, xp, scroll, shop, future, focused, dragging) = (
-            m.session
-                .profession
-                .trim_start_matches("minecraft:")
-                .to_owned(),
-            m.session.level,
-            m.session.xp,
-            m.scroll,
-            m.session.selection_hint,
-            m.session.future_xp,
-            m.focused,
-            m.dragging,
-        );
-        let offers = m.session.offers.clone();
-        let costs: Vec<ItemStack> = offers.iter().map(|o| o.cost_a(self.items())).collect();
-        self.render_transparent_background("merchant", batch);
-        let atlas = &self.gui.atlas;
-        if let Some(mut r) = atlas.sprites.get("gui/container/villager").copied() {
-            let (du, dv) = ((r.u1 - r.u0) / r.w as f32, (r.v1 - r.v0) / r.h as f32);
-            r.u1 = r.u0 + 276.0 * du;
-            r.v1 = r.v0 + 166.0 * dv;
-            batch.rect_uv(ox + SHIFT, oy, 276.0, 166.0, r, u32::MAX);
-        }
-        self.draw_screen_phase(batch, sunrise_client::screen_draw::RenderPhase::Background);
-        let tr = |k: &str, f: &str| sunrise_client::lang::get_or(k, f);
-        let name = merchant_display_name(progress, &profession, custom);
-        // The screen's title is the merchant's name; its label adds the level.
-        super::screen_info::name_container(|| name.plain());
-        // `StringDecomposer.iterateFormatted`: `§` codes a name holds apply at draw time.
-        let title = merchant_title(progress, level, name).resolve_legacy();
-        let tw = atlas.font.width_text(&title);
-        batch.text_styled(
-            atlas,
-            &title,
-            ox + SHIFT + (49.0 + 138.0 - (tw / 2.0).floor()),
-            oy + 6.0,
-            GREY,
-            false,
-        );
-        let trades = tr("merchant.trades", "Trades");
-        let tw = HudBatch::text_width(atlas, &trades);
-        batch.text(
-            atlas,
-            &trades,
-            ox + SHIFT + 5.0 - (tw / 2.0).floor() + 48.0,
-            oy + 6.0,
-            GREY,
-            false,
-        );
-        batch.text(
-            atlas,
-            &tr("container.inventory", "Inventory"),
-            ox + SHIFT + 107.0,
-            oy + 72.0,
-            GREY,
-            false,
-        );
-        if offers.get(shop).is_some_and(MerchantOffer::out_of_stock) {
-            batch.sprite(
-                atlas,
-                "container/villager/out_of_stock",
-                ox + SHIFT + 182.0,
-                oy + 35.0,
-            );
-        }
-        // Experience bar (levels 1-4).
-        if progress && level < 5 {
-            batch.sprite(
-                atlas,
-                "container/villager/experience_bar_background",
-                ox + SHIFT + 136.0,
-                oy + 16.0,
-            );
-            let min = merchant::min_xp(level);
-            if xp >= min && merchant::can_level_up(level) {
-                let mult = 102.0 / (merchant::max_xp(level) - min) as f32;
-                let w = ((mult * (xp - min) as f32).floor()).min(102.0);
-                batch.sprite_part(
-                    atlas,
-                    "container/villager/experience_bar_current",
-                    ox + SHIFT + 136.0,
-                    oy + 16.0,
-                    w / 102.0,
-                );
-                if future > 0 {
-                    let fw = (future as f32 * mult).floor().min(102.0 - w);
-                    if let Some(mut r) = atlas
-                        .sprites
-                        .get("container/villager/experience_bar_result")
-                        .copied()
-                    {
-                        let du = (r.u1 - r.u0) / r.w as f32;
-                        r.u0 += w * du;
-                        r.u1 = r.u0 + fw * du;
-                        batch.rect_uv(ox + SHIFT + 136.0 + w, oy + 16.0, fw, 5.0, r, u32::MAX);
-                    }
-                }
-            }
-        }
-        // Scroller (`extractScroller`): its thumb, or the disabled sprite.
-        if let Some([x, y, w, h]) = scroller_rect(offers.len(), scroll) {
-            batch.sprite(atlas, "container/villager/scroller", ox + x, oy + y);
-            if let Some(cursor) = scroller_cursor(local, [x, y, w, h], dragging) {
-                request_cursor(cursor);
-            }
-        } else {
-            batch.sprite(
-                atlas,
-                "container/villager/scroller_disabled",
-                ox + SHIFT + 94.0,
-                oy + 18.0,
-            );
-        }
-        // Offer buttons.
-        let mut offer_tooltip: Option<ItemStack> = None;
-        for (row, (index, offer)) in offers.iter().enumerate().skip(scroll).take(7).enumerate() {
-            let (bx, by) = (ox + SHIFT + 5.0, oy + 18.0 + 20.0 * row as f32);
-            let hover = local.0 >= 5.0 + SHIFT
-                && local.0 < 93.0 + SHIFT
-                && local.1 >= 18.0 + 20.0 * row as f32
-                && local.1 < 38.0 + 20.0 * row as f32;
-            let sprite = if hover || focused == Some(row) {
-                "widget/button_highlighted"
-            } else {
-                "widget/button"
-            };
-            batch.sprite_scaled(&self.gui.atlas, sprite, bx, by, 88.0, 20.0, u32::MAX);
-            let y = oy + 16.0 + 1.0 + 20.0 * row as f32 + 2.0;
-            let base = offer.base_cost_a.stack.clone();
-            let cost_a = costs[index].clone();
-            let x = ox + SHIFT + 10.0;
-            if base.count == cost_a.count {
-                self.draw_item(batch, &cost_a, x, y);
-            } else {
-                // Discounted: the base price struck through, then the new price.
-                self.draw_item(
-                    batch,
-                    &ItemStack {
-                        count: 1,
-                        ..cost_a.clone()
-                    },
-                    x,
-                    y,
-                );
-                let atlas = &self.gui.atlas;
-                let t = base.count.to_string();
-                batch.text(
-                    atlas,
-                    &t,
-                    x + 17.0 - HudBatch::text_width(atlas, &t),
-                    y + 9.0,
-                    u32::MAX,
-                    true,
-                );
-                let t = cost_a.count.to_string();
-                batch.text(
-                    atlas,
-                    &t,
-                    x + 14.0 + 17.0 - HudBatch::text_width(atlas, &t),
-                    y + 9.0,
-                    u32::MAX,
-                    true,
-                );
-                batch.sprite(
-                    atlas,
-                    "container/villager/discount_strikethrough",
-                    x + 7.0,
-                    y + 12.0,
-                );
-            }
-            if let Some(b) = offer.cost_b() {
-                self.draw_item(batch, &b, ox + SHIFT + 40.0, y);
-            }
-            let arrow = if offer.out_of_stock() {
-                "trade_arrow_out_of_stock"
-            } else {
-                "trade_arrow"
-            };
-            batch.sprite(
-                &self.gui.atlas,
-                &format!("container/villager/{arrow}"),
-                ox + SHIFT + 60.0,
-                y + 3.0,
-            );
-            self.draw_item(batch, &offer.result, ox + SHIFT + 73.0, y);
-            if hover {
-                let rel = local.0 - (5.0 + SHIFT);
-                offer_tooltip = if rel < 20.0 {
-                    Some(cost_a)
-                } else if rel > 30.0 && rel < 50.0 {
-                    offer.cost_b()
-                } else if rel > 65.0 {
-                    Some(offer.result.clone())
-                } else {
-                    None
-                };
-            }
-        }
-        // Slots, hover highlight, carried stack, tooltip.
-        let slots: Vec<usize> = (0..36).chain([INPUT, INPUT + 1, RESULT]).collect();
-        let drag = self.drag_view();
-        self.draw_hovered_slot_highlight(batch, false, ox, oy);
-        for i in slots {
-            let (sx, sy) = self.slot_position(i);
-            let stack = self.slot_mut(i).clone();
-            self.draw_slot_item(batch, drag.as_ref(), i, &stack, ox + sx, oy + sy);
-        }
-        self.draw_hovered_slot_highlight(batch, true, ox, oy);
-        // An out-of-stock trade: "the villager needs to restock" over the
-        // result (isHovering(186, 35, 22, 21), canRestock).
-        let deprecated = progress
-            && offers.get(shop).is_some_and(MerchantOffer::out_of_stock)
-            && local.0 >= 186.0 + SHIFT - 1.0
-            && local.0 < 186.0 + SHIFT + 22.0 + 1.0
-            && local.1 >= 35.0 - 1.0
-            && local.1 < 35.0 + 21.0 + 1.0;
-        let slot_tooltip = if !deprecated && offer_tooltip.is_none() {
-            self.slot_at(batch, self.client.cursor.0, self.client.cursor.1)
-                .and_then(|slot| self.slot_mut(slot).clone())
-        } else {
-            None
-        };
-        let browser_tip = self.draw_mod_browser(batch);
-        self.draw_screen_phase(batch, sunrise_client::screen_draw::RenderPhase::Foreground);
-        if self.carried.is_some() {
-            self.draw_carried(batch);
-        }
-        // MerchantScreen.extractContents offers the restock message and trade preview before
-        // AbstractContainerScreen.extractTooltip. Only the actual slot checks the carried item.
-        if deprecated {
-            let text = sunrise_client::lang::get_or(
-                "merchant.deprecated",
-                "Villagers restock up to two times per day.",
-            );
-            let lines: Vec<(String, u32)> =
-                text.split('\n').map(|l| (l.to_owned(), u32::MAX)).collect();
-            self.draw_tooltip_lines(batch, &lines, self.client.cursor.0, self.client.cursor.1);
-        } else if let Some(stack) =
-            offer_tooltip.or_else(|| slot_tooltip.filter(|s| self.tooltip_with_carried(s)))
-        {
-            self.draw_stack_tooltip(batch, &stack, self.client.cursor.0, self.client.cursor.1);
-        }
-        if let Some(tooltip) = browser_tip {
-            self.draw_mod_browser_tooltip(batch, tooltip);
-        }
-        true
-    }
 }
 
 /// Whether a press at `local` (GUI origin relative) lands on the offer list's
 /// scroller, which only takes it when there are more than 7 offers.
-fn on_scroller(local: (f32, f32), offers: usize) -> bool {
+pub(in crate::game) fn on_scroller(local: (f32, f32), offers: usize) -> bool {
     let x = SHIFT + 94.0;
     offers > 7
         && local.0 > x
@@ -1044,7 +722,7 @@ fn on_scroller(local: (f32, f32), offers: usize) -> bool {
 }
 /// `MerchantScreen.extractScroller`: the thumb's rectangle (GUI origin
 /// relative) while the offers overflow; the track's 139 px, the thumb's 27.
-fn scroller_rect(offers: usize, scroll: usize) -> Option<[f32; 4]> {
+pub(in crate::game) fn scroller_rect(offers: usize, scroll: usize) -> Option<[f32; 4]> {
     let steps = offers as i32 + 1 - 7;
     if steps <= 1 {
         return None;
@@ -1059,7 +737,11 @@ fn scroller_rect(offers: usize, scroll: usize) -> Option<[f32; 4]> {
 }
 /// `MerchantScreen.extractScroller`'s cursor: only the thumb asks, a hand
 /// until it is dragged and the vertical resize while it is held.
-fn scroller_cursor(local: (f32, f32), rect: [f32; 4], dragging: bool) -> Option<Cursor> {
+pub(in crate::game) fn scroller_cursor(
+    local: (f32, f32),
+    rect: [f32; 4],
+    dragging: bool,
+) -> Option<Cursor> {
     let [x, y, w, h] = rect;
     (local.0 >= x && local.0 < x + w && local.1 >= y && local.1 <= y + h).then_some(if dragging {
         Cursor::ResizeNs
@@ -1069,7 +751,7 @@ fn scroller_cursor(local: (f32, f32), rect: [f32; 4], dragging: bool) -> Option<
 }
 /// The first shown offer for the scroller dragged to `y` (GUI origin
 /// relative): the 139-px track starts at 18 and the scroller is 27 px tall.
-fn drag_scroll(y: f32, offers: usize) -> usize {
+pub(in crate::game) fn drag_scroll(y: f32, offers: usize) -> usize {
     let max = offers.saturating_sub(7) as i32;
     let offs = (y - 18.0 - 13.5) / (139.0 - 27.0);
     ((offs * max as f32 + 0.5) as i32).clamp(0, max) as usize
@@ -1077,16 +759,16 @@ fn drag_scroll(y: f32, offers: usize) -> usize {
 
 /// `MerchantScreen.mouseScrolled`: `Mth.clamp((int)(scrollOff - scrollY), 0, max)`,
 /// so a fractional wheel step that truncates to zero does not move the list.
-fn scrolled(scroll: usize, max: usize, d: f32) -> usize {
+pub(in crate::game) fn scrolled(scroll: usize, max: usize, d: f32) -> usize {
     ((scroll as f64 - f64::from(d)) as i32).clamp(0, max as i32) as usize
 }
 
 #[cfg(test)]
 #[path = "tests/random_sequences_save_tests.rs"]
-mod random_sequences_save_tests;
+pub(in crate::game) mod random_sequences_save_tests;
 
 #[cfg(test)]
-mod tests {
+pub(in crate::game) mod tests {
     use super::*;
 
     /// `MerchantScreen.mouseScrolled`: the offset is `(int)(scrollOff - scrollY)`
@@ -1144,7 +826,7 @@ mod tests {
 }
 
 #[cfg(test)]
-mod select_on_a_server_tests {
+pub(in crate::game) mod select_on_a_server_tests {
     use crate::game::native_entity_refs::tests::with_game;
     use sunrise_client::items::ItemStack;
     use sunrise_client::merchant::{ItemCost, MerchantOffer};

@@ -23,7 +23,7 @@ struct ServerSources {
 static SOURCES: Mutex<Option<ServerSources>> = Mutex::new(None);
 
 /// Every byte of the packs' files, what a pack set is keyed by.
-pub(super) fn overlay_key(overlay: &sunrise_world::loot::PackOverlay) -> u64 {
+pub(in crate::game) fn overlay_key(overlay: &sunrise_world::loot::PackOverlay) -> u64 {
     use std::hash::{Hash, Hasher};
     let mut hasher = std::collections::hash_map::DefaultHasher::new();
     overlay.files.hash(&mut hasher);
@@ -194,23 +194,23 @@ pub(in crate::game) fn forget_server_sources() {
 
 /// What `sync_data` loaded from this resource generation.
 #[derive(Clone)]
-pub(super) struct Synced {
-    pub(super) root: std::path::PathBuf,
-    pub(super) with_packs: bool,
-    pub(super) generation: u64,
-    pub(super) result: std::result::Result<Arc<SyncData>, String>,
+pub(in crate::game) struct Synced {
+    pub(in crate::game) root: std::path::PathBuf,
+    pub(in crate::game) with_packs: bool,
+    pub(in crate::game) generation: u64,
+    pub(in crate::game) result: std::result::Result<Arc<SyncData>, String>,
 }
 
 /// Only damage is bound eagerly for gameplay. Full wire data remains lazy
 /// except when the entering world actually defines damage types.
 #[derive(Default)]
 pub(in crate::game) struct SyncCache {
-    pub(super) data: Option<Synced>,
-    pub(super) damage: Option<FrozenDamage>,
-    pub(super) world_tags: Option<WorldTags>,
-    pub(super) packed_registries: Option<Arc<PackRegistryDefinitions>>,
-    pub(super) advancements: Option<Arc<Tree>>,
-    pub(super) world_packs: bool,
+    pub(in crate::game) data: Option<Synced>,
+    pub(in crate::game) damage: Option<FrozenDamage>,
+    pub(in crate::game) world_tags: Option<WorldTags>,
+    pub(in crate::game) packed_registries: Option<Arc<PackRegistryDefinitions>>,
+    pub(in crate::game) advancements: Option<Arc<Tree>>,
+    pub(in crate::game) world_packs: bool,
 }
 
 static SYNC: Mutex<SyncCache> = Mutex::new(SyncCache {
@@ -233,7 +233,7 @@ pub(in crate::game) fn sync_data(
     cached_sync_data(&mut sync, root, overlay, item_data, items)
 }
 
-pub(super) fn cached_sync_data(
+pub(in crate::game) fn cached_sync_data(
     sync: &mut SyncCache,
     root: &std::path::Path,
     overlay: &sunrise_world::loot::PackOverlay,
@@ -313,7 +313,7 @@ pub(in crate::game) fn install_world_sync_data(staged: SyncCache) {
     *SYNC.lock().unwrap_or_else(|e| e.into_inner()) = staged;
 }
 
-pub(super) fn initialize_world_sync_data(
+pub(in crate::game) fn initialize_world_sync_data(
     sync: &mut SyncCache,
     root: &std::path::Path,
     overlay: &sunrise_world::loot::PackOverlay,
@@ -356,7 +356,7 @@ pub(in crate::game) fn cached_reload_sync() -> Option<Arc<SyncData>> {
 /// Keep lazy-cache admission aligned with the current packs even when no
 /// complete wire snapshot has been loaded yet. Damage definitions stay frozen.
 #[cfg(test)]
-pub(super) fn prepare_sync_reload(
+pub(in crate::game) fn prepare_sync_reload(
     sync: &mut SyncCache,
     overlay: &sunrise_world::loot::PackOverlay,
 ) -> Option<Arc<SyncData>> {

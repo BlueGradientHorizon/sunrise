@@ -3,12 +3,16 @@
 //! every case (a dispenser or dropper with items, blocks and target entities
 //! around it) through `dispense_from` on a fresh headless world and prints what
 //! changed in the format of `VanillaDispenserOracle`.
+#[allow(unused_imports)]
 use super::{
     Game,
     dispenser::{Slot, body_equipment_species, mob_set_slot, mob_slot_item},
 };
+#[allow(unused_imports)]
 use serde_json::Value;
+#[allow(unused_imports)]
 use std::{cell::RefCell, collections::HashMap, fmt::Write as _, io::Write as _, sync::Arc};
+#[allow(unused_imports)]
 use sunrise_client::{
     Result,
     chunk::Chunk,
@@ -24,14 +28,16 @@ use sunrise_client::{
     motion::PlayerMotion,
     projectiles::ProjectileKind,
 };
+#[allow(unused_imports)]
 use sunrise_core::{position::BlockPos, random::RandomSource};
+#[allow(unused_imports)]
 use sunrise_world::{level::Ticks, registry::BlockStateId};
 
 thread_local! {
     /// Level and game events recorded while a fixture case runs.
-    static LOG: RefCell<Option<Vec<String>>> = const { RefCell::new(None) };
+    pub(in crate::game) static LOG: RefCell<Option<Vec<String>>> = const { RefCell::new(None) };
     /// The running case is exact (`"exact": true`): `num` prints raw bits.
-    static EXACT: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+    pub(in crate::game) static EXACT: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
 }
 
 /// Record a line if a fixture case is running.
@@ -63,7 +69,7 @@ pub(in crate::game) fn record_events(events: &[sunrise_world::level::LevelEvent]
 /// client (`playLocalSound`), so Sunrise plays it unshared and never captures
 /// it: the lava fizz (1501, #7652) and `ComposterBlock.handleFill` (1500,
 /// `data > 0` = success, #9069).
-fn event_sound(line: &str) -> Option<String> {
+pub(in crate::game) fn event_sound(line: &str) -> Option<String> {
     let mut parts = line.strip_prefix("L ")?.split(' ');
     let (id, pos, data) = (parts.next()?, parts.next()?, parts.next()?);
     let sound = match id {
@@ -78,7 +84,7 @@ fn event_sound(line: &str) -> Option<String> {
 /// Java's `String.format("%.6f")`: the exact value rounded half up (away
 /// from zero) where Rust rounds a tie to even. An exact case prints the raw
 /// bits instead, as the oracle's `num` does then.
-fn num(v: f64) -> String {
+pub(in crate::game) fn num(v: f64) -> String {
     if EXACT.get() {
         return format!("{:x}", v.to_bits());
     }
@@ -92,7 +98,7 @@ fn num(v: f64) -> String {
         format!("{v:.6}")
     }
 }
-fn floor_pos(p: [f64; 3]) -> String {
+pub(in crate::game) fn floor_pos(p: [f64; 3]) -> String {
     format!(
         "{},{},{}",
         p[0].floor() as i32,
@@ -102,7 +108,7 @@ fn floor_pos(p: [f64; 3]) -> String {
 }
 
 /// The targets a case put in front of the dispenser.
-enum Target {
+pub(in crate::game) enum Target {
     Mob(u32),
     Stand(u32),
     /// A chest boat or raft (`ContainerEntity`).
@@ -141,7 +147,7 @@ impl Game<'_> {
         Ok(())
     }
 
-    fn fixture_reset(&mut self, seed: i64) {
+    pub(in crate::game) fn fixture_reset(&mut self, seed: i64) {
         self.world = Game::world_for_mods(self.res.facts().air, seed);
         // The oracle level is plains everywhere (bone meal's flowers, freezing).
         let plains = u32::from(world_biomes!(self).id("minecraft:plains"));
@@ -188,7 +194,7 @@ impl Game<'_> {
         self.server.rand_sequences = Default::default();
     }
 
-    fn dispense_case(&mut self, case: &Value) -> Result<Vec<String>> {
+    pub(in crate::game) fn dispense_case(&mut self, case: &Value) -> Result<Vec<String>> {
         let seed = case["seed"].as_i64().unwrap_or(0);
         EXACT.set(case["exact"].as_bool().unwrap_or(false));
         self.fixture_reset(seed);
@@ -510,15 +516,8 @@ impl Game<'_> {
         Ok(out)
     }
 
-    #[inline(always)]
-    pub(in crate::game) fn dispense_case_client_finish(&mut self, out: &mut Vec<String>) {
-        for sound in self.audio.0.capture.take().unwrap_or_default() {
-            out.push(format!("S {} {}", floor_pos(sound.position), sound.event));
-        }
-    }
-
     /// Actual player combat and blocking-item side effects, without a window or connection.
-    fn fixture_shield_hit(&mut self, op: &Value) -> Result<Vec<String>> {
+    pub(in crate::game) fn fixture_shield_hit(&mut self, op: &Value) -> Result<Vec<String>> {
         let stack = parse_stack(op["item"].as_str().ok_or("shield_hit item")?)?
             .ok_or("shield_hit requires an item")?;
         let item = stack.item.clone();
@@ -586,7 +585,11 @@ impl Game<'_> {
     /// A player holding the case's item right-clicks the block at `pos`
     /// (`use_item_as_player`'s block steps): the statistics, the result
     /// and the held stack, as `VanillaDispenserOracle.use` prints them.
-    fn fixture_use(&mut self, pos: BlockPos, op: &Value) -> Result<Vec<String>> {
+    pub(in crate::game) fn fixture_use(
+        &mut self,
+        pos: BlockPos,
+        op: &Value,
+    ) -> Result<Vec<String>> {
         let stack = parse_stack(op["item"].as_str().unwrap_or("-"))?;
         self.creative = op["creative"].as_bool().unwrap_or(false);
         self.inventory[self.selected] = stack.clone();
@@ -647,7 +650,11 @@ impl Game<'_> {
     /// the case's item (`use_item_as_player` on that hit): the statistics,
     /// the held stack and the item it started using, as
     /// `VanillaDispenserOracle.useItem` prints them.
-    fn fixture_use_item(&mut self, pos: BlockPos, op: &Value) -> Result<Vec<String>> {
+    pub(in crate::game) fn fixture_use_item(
+        &mut self,
+        pos: BlockPos,
+        op: &Value,
+    ) -> Result<Vec<String>> {
         let stack = parse_stack(op["item"].as_str().unwrap_or("-"))?;
         self.mode = if op["creative"].as_bool().unwrap_or(false) {
             GameMode::Creative
@@ -762,7 +769,7 @@ impl Game<'_> {
     }
 
     /// Compare a raised item's durability across two frontal hits.
-    fn fixture_blocking_wear(&mut self, op: &Value) -> Result<Vec<String>> {
+    pub(in crate::game) fn fixture_blocking_wear(&mut self, op: &Value) -> Result<Vec<String>> {
         let stack = parse_stack(op["item"].as_str().ok_or("missing blocking stack")?)?
             .ok_or("empty blocking stack")?;
         // Reload the stack just as a player inventory does between sessions.
@@ -812,7 +819,11 @@ impl Game<'_> {
     /// source, the hurt with the weapon's armor effects, then `weapon_hit`
     /// (the mace's smash, post-attack enchantments, the wear), as
     /// `VanillaDispenserOracle.attack` prints them.
-    fn fixture_attack(&mut self, op: &Value, targets: &[Target]) -> Result<Vec<String>> {
+    pub(in crate::game) fn fixture_attack(
+        &mut self,
+        op: &Value,
+        targets: &[Target],
+    ) -> Result<Vec<String>> {
         let stack = parse_stack(op["item"].as_str().unwrap_or("-"))?;
         self.mode = if op["creative"].as_bool().unwrap_or(false) {
             GameMode::Creative
@@ -999,7 +1010,12 @@ impl Game<'_> {
 
     /// A stack in a block entity's slot: a container's, a jukebox's record, a
     /// lectern's book, or the items of a block entity Sunrise keeps as saved.
-    fn fixture_fill(&mut self, p: (i32, i32, i32), slot: usize, stack: Option<ItemStack>) {
+    pub(in crate::game) fn fixture_fill(
+        &mut self,
+        p: (i32, i32, i32),
+        slot: usize,
+        stack: Option<ItemStack>,
+    ) {
         let jukebox =
             &*self.res.facts().get(self.world.block(p.0, p.1, p.2)).name == "minecraft:jukebox";
         match self.world.block_entities.get_mut(&p) {
@@ -1036,7 +1052,12 @@ impl Game<'_> {
     }
     /// The saved block entity of a campfire, decorated pot, chiseled
     /// bookshelf or shelf, as a loaded world keeps it.
-    fn fixture_fill_saved(&mut self, p: (i32, i32, i32), slot: usize, stack: Option<ItemStack>) {
+    pub(in crate::game) fn fixture_fill_saved(
+        &mut self,
+        p: (i32, i32, i32),
+        slot: usize,
+        stack: Option<ItemStack>,
+    ) {
         use sunrise_core::nbt::Tag;
         let name = self
             .res
@@ -1098,7 +1119,11 @@ impl Game<'_> {
     }
     /// `Level.setBlock`, `destroyBlock` or `removeBlock` on the case's block, or
     /// a player mining it (`fixture_mine`).
-    fn fixture_remove(&mut self, origin: BlockPos, op: &Value) -> Result<Vec<String>> {
+    pub(in crate::game) fn fixture_remove(
+        &mut self,
+        origin: BlockPos,
+        op: &Value,
+    ) -> Result<Vec<String>> {
         match op["op"].as_str().unwrap_or("") {
             "set" => {
                 let state = BlockStateId(op["state"].as_u64().unwrap_or(0) as u32);
@@ -1124,7 +1149,11 @@ impl Game<'_> {
     /// or in creative, where the block and its contents never drop: the
     /// statistics and the held stack, as `VanillaDispenserOracle.mine` prints
     /// them.
-    fn fixture_mine(&mut self, pos: BlockPos, op: &Value) -> Result<Vec<String>> {
+    pub(in crate::game) fn fixture_mine(
+        &mut self,
+        pos: BlockPos,
+        op: &Value,
+    ) -> Result<Vec<String>> {
         let stack = parse_stack(op["item"].as_str().unwrap_or("-"))?;
         self.mode = if op["creative"].as_bool().unwrap_or(false) {
             GameMode::Creative
@@ -1176,7 +1205,7 @@ impl Game<'_> {
 
     /// A villager lying in the bed at `origin` with `yaw` wakes up
     /// (`Villager.stopSleeping`): where it stands and the yaw it turns to.
-    fn fixture_wake(&mut self, origin: BlockPos, op: &Value) -> Result<String> {
+    pub(in crate::game) fn fixture_wake(&mut self, origin: BlockPos, op: &Value) -> Result<String> {
         let kind = self
             .res
             .mob_types()
@@ -1206,7 +1235,7 @@ impl Game<'_> {
     }
 
     /// `EntityType.create` and `snapTo` for one target: no spawn finalization.
-    fn fixture_target(&mut self, e: &Value) -> Result<Target> {
+    pub(in crate::game) fn fixture_target(&mut self, e: &Value) -> Result<Target> {
         let kind = e["type"].as_str().unwrap_or("minecraft:pig");
         let p = &e["pos"];
         let at = sunrise_core::geometry::Vec3::new(
@@ -1326,7 +1355,10 @@ impl Game<'_> {
     }
 
     /// Occupied vehicle slots, shared by the target summary and full item records.
-    fn fixture_vehicle_stacks(&self, target: &Target) -> impl Iterator<Item = (usize, &ItemStack)> {
+    pub(in crate::game) fn fixture_vehicle_stacks(
+        &self,
+        target: &Target,
+    ) -> impl Iterator<Item = (usize, &ItemStack)> {
         let items = match *target {
             Target::Boat(id) => self.boats.iter().find(|b| b.id == id).map(|b| &b.items),
             Target::Cart(id) => self.carts.iter().find(|c| c.id == id).map(|c| &c.items),
@@ -1341,7 +1373,12 @@ impl Game<'_> {
 
     /// `Tinv` lines: a container entity target's items by slot, as
     /// `VanillaDispenserOracle` prints a `ContainerEntity`'s.
-    fn fixture_vehicle_items(&self, index: usize, target: &Target, out: &mut Vec<String>) {
+    pub(in crate::game) fn fixture_vehicle_items(
+        &self,
+        index: usize,
+        target: &Target,
+        out: &mut Vec<String>,
+    ) {
         for (slot, stack) in self.fixture_vehicle_stacks(target) {
             out.push(format!(
                 "Tinv {index} {slot} {}",
@@ -1351,7 +1388,7 @@ impl Game<'_> {
     }
 
     /// `T` lines: removal, equipment by `EquipmentSlot`, shearing readiness, chests.
-    fn fixture_describe(&self, index: usize, target: &Target) -> String {
+    pub(in crate::game) fn fixture_describe(&self, index: usize, target: &Target) -> String {
         let mut line = format!("T {index} ");
         match *target {
             Target::Boat(id) => match self.boats.iter().find(|b| b.id == id) {
@@ -1443,7 +1480,7 @@ impl Game<'_> {
     }
 
     /// `N` lines for every entity the dispenser added.
-    fn fixture_entities(
+    pub(in crate::game) fn fixture_entities(
         &self,
         old_mobs: &[u32],
         old_stands: &[u32],

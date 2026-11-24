@@ -73,7 +73,7 @@ ClientboundPlayerInfoUpdatePacket.createPlayerInitializing	port	crates/sunrise-c
 ClientboundPlayerInfoUpdatePacket.entryCodec	port	crates/sunrise-protocol/src/packets/play/players.rs::PlayerInfoUpdate::write	per-entry write in action order
 ClientboundPlayerInfoUpdatePacket.toString	skip:debug		debug string
 ClientboundPlayerInfoUpdatePacket.EntryBuilder.build	inline	crates/sunrise-protocol/src/packets/play/players.rs::PlayerInfoUpdate::read	entry fields read in action order
-ClientboundPlayerLookAtPacket.<init>	port	crates/sunrise-client/src/game/administration/commands/mod.rs::Game::send_player_look_at	every target of /tp ... facing and /rotate ... facing gets the packet, a guest over its connection
+ClientboundPlayerLookAtPacket.<init>	port	crates/sunrise-client/src/game/administration/commands/mod_server.rs::Game::send_player_look_at	every target of /tp ... facing and /rotate ... facing gets the packet, a guest over its connection
 ClientboundPlayerLookAtPacket.write	port	crates/sunrise-protocol/src/buf.rs::write	packet! PlayerLookAt {from, target, entity LookAtEntity {id, anchor}}
 ClientboundPlayerLookAtPacket.getPosition	inline	crates/sunrise-client/src/game/network/remote/interaction_actions.rs::Game::remote_look_at	the point is read off the packet, unless the named entity is tracked, then its feet or eyes
 ClientboundRotateHeadPacket.write	port	crates/sunrise-protocol/src/buf.rs::write	packet! RotateHead {id VarInt, head_yaw Byte}
@@ -109,8 +109,8 @@ ServerboundSetStructureBlockPacket.write	port	crates/sunrise-protocol/src/packet
 VecDelta.Stepped.hasDeltaX	skip:other		no callers in vanilla
 VecDelta.Stepped.hasDeltaZ	skip:other		no callers in vanilla
 VecDelta.Stepped.tryEncode	missing		minor: the LAN host sends only linear deltas (send_changes); no stepped path is encoded
-VecDelta.Linear.decode	inline	crates/sunrise-client/src/game/network/remote/mod.rs::Game::apply_packet	MoveEntity arms: the delta applied to the tracked position (VecDelta::end)
-VecDelta.Stepped.decode	inline	crates/sunrise-client/src/game/network/remote/mod.rs::Game::apply_packet	MoveEntity arms: each step applied to the previous step's position, with its ticks
+VecDelta.Linear.decode	inline	crates/sunrise-client/src/game/network/remote/mod_client.rs::Game::apply_packet	MoveEntity arms: the delta applied to the tracked position (VecDelta::end)
+VecDelta.Stepped.decode	inline	crates/sunrise-client/src/game/network/remote/mod_client.rs::Game::apply_packet	MoveEntity arms: each step applied to the previous step's position, with its ticks
 VecDeltaCodec.isDeltaTooBig	inline	crates/sunrise-client/src/lan/entity.rs::ServerEntity::send_changes	the i16 range check on each delta
 VecDeltaCodec.tryEncode	inline	crates/sunrise-client/src/lan/entity.rs::ServerEntity::send_changes	gap: minor: linear positions only; stepped paths are not encoded
 ClientIntent.byId	missing		minor: an unknown handshake intent is not rejected; the intent stays a raw number in handshake.rs

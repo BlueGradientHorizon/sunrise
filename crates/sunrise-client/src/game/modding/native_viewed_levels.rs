@@ -20,7 +20,7 @@ use sunrise_client::world::World;
 impl Game<'_> {
     /// On a client, the key of the level `dimension` names: the one it shows, or one the server
     /// opened for viewing while that view is open. None before login.
-    pub(super) fn client_level_key(&self, dimension: &str) -> Option<DimensionKey> {
+    pub(in crate::game) fn client_level_key(&self, dimension: &str) -> Option<DimensionKey> {
         let remote = self.remote.as_ref().filter(|r| r.logged_in)?;
         if remote.level == dimension {
             return Some(remote.level_key);
@@ -29,7 +29,7 @@ impl Game<'_> {
     }
     /// On a client, the world a handle names now: the player's own, or a viewed level's while
     /// the server keeps it open. None before login, for a stale handle and for any other level.
-    pub(super) fn client_view_world(&self, level: LevelRef) -> Option<&World> {
+    pub(in crate::game) fn client_view_world(&self, level: LevelRef) -> Option<&World> {
         let remote = self.remote.as_ref().filter(|r| r.logged_in)?;
         if self.native_lifecycle.epoch() != Some(level.epoch()) {
             return None;
@@ -65,7 +65,7 @@ impl Game<'_> {
     }
     /// The world for reads such as `block_state`, `brightness` and `clip`: on a server an open
     /// level, in place or parked (`native_level_world`), on a client `client_view_world`.
-    pub(super) fn native_level_view_world(&self, level: LevelRef) -> Option<&World> {
+    pub(in crate::game) fn native_level_view_world(&self, level: LevelRef) -> Option<&World> {
         if self.is_logical_server() {
             self.native_level_world(level)
         } else {
@@ -151,7 +151,7 @@ mod tests {
     #[ignore = "daily"]
     fn brightness_reads_the_requested_client_world() {
         if run_fresh_cases(
-            "game::native_viewed_levels::tests::brightness_reads_the_requested_client_world",
+            "game::client_side::native_viewed_levels::tests::brightness_reads_the_requested_client_world",
             "SUNRISE_TEST_VIEWED_LEVEL_BRIGHTNESS",
             &["brightness"],
         ) {

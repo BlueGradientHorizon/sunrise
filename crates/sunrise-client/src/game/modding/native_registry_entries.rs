@@ -101,7 +101,7 @@ impl Game<'_> {
         }
     }
 
-    pub(super) fn registry_sync(&self) -> Option<Arc<SyncData>> {
+    pub(in crate::game) fn registry_sync(&self) -> Option<Arc<SyncData>> {
         self.native_lifecycle.epoch()?;
         if !self.is_logical_server() {
             return None;
@@ -183,7 +183,11 @@ impl Game<'_> {
     }
 
     /// `RegistryAccess.lookup` followed by `HolderGetter.get`: unknown registry/entry is absent.
-    pub(super) fn registry_entry(&self, registry: &str, id: &str) -> Option<RegistryEntry> {
+    pub(in crate::game) fn registry_entry(
+        &self,
+        registry: &str,
+        id: &str,
+    ) -> Option<RegistryEntry> {
         let registry = normalized(registry);
         let id = normalized(id);
         self.registry_has_entry(&registry, &id).then_some(())?;
@@ -194,7 +198,7 @@ impl Game<'_> {
     }
 
     /// `HolderLookup.listElements`, from the same owners used by `registry_entry`.
-    pub(super) fn registry_entries(&self, registry: &str) -> Option<Vec<Identifier>> {
+    pub(in crate::game) fn registry_entries(&self, registry: &str) -> Option<Vec<Identifier>> {
         let registry = normalized(registry);
         if !self.is_logical_server() && self.remote.is_none() {
             return None;
@@ -244,7 +248,11 @@ impl Game<'_> {
 
     /// `Holder.is(TagKey)`: plain values are resolved again against the current table.
     /// An absent tag is false; an absent registry or entry is None.
-    pub(super) fn registry_entry_in_tag(&self, entry: &RegistryEntry, tag: &str) -> Option<bool> {
+    pub(in crate::game) fn registry_entry_in_tag(
+        &self,
+        entry: &RegistryEntry,
+        tag: &str,
+    ) -> Option<bool> {
         let registry = entry.registry.to_string();
         let id = entry.id.to_string();
         if registry == "minecraft:damage_type" && self.is_logical_server() {
@@ -351,7 +359,7 @@ impl Game<'_> {
             .is_some_and(|tag| tag.ids.contains(&index))
     }
 
-    pub(super) fn registry_entry_key_slot(&self, entry: &RegistryEntry) -> Option<u32> {
+    pub(in crate::game) fn registry_entry_key_slot(&self, entry: &RegistryEntry) -> Option<u32> {
         if !self.registry_has_entry(&entry.registry.to_string(), &entry.id.to_string()) {
             return None;
         }
@@ -410,7 +418,7 @@ fn network_entries(
 
 /// TagLoader binds mod-registry tags against the already decoded candidate, before publication.
 /// No file's name can create an entry: required missing members invalidate that tag only.
-pub(super) fn bind_datapack_tags(
+pub(in crate::game) fn bind_datapack_tags(
     root: &std::path::Path,
     overlay: &sunrise_world::loot::PackOverlay<'_>,
     candidate: &mut mod_api::DatapackCandidate,

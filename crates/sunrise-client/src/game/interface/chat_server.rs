@@ -1,0 +1,513 @@
+#[allow(unused_imports)]
+pub(in crate::game::server_side) use super::{Game, Screen};
+#[allow(unused_imports)]
+pub(in crate::game::server_side) use crate::game::client_side::chat::BLOCK_PROPERTIES;
+#[allow(unused_imports)]
+pub(in crate::game::server_side) use crate::game::client_side::chat::BlockProperties;
+#[allow(unused_imports)]
+pub(in crate::game::server_side) use crate::game::client_side::chat::COMMAND_EXPORTS;
+#[allow(unused_imports)]
+pub(in crate::game::server_side) use crate::game::client_side::chat::ChatDraft;
+#[allow(unused_imports)]
+pub(in crate::game::server_side) use crate::game::client_side::chat::ChatExit;
+#[allow(unused_imports)]
+pub(in crate::game::server_side) use crate::game::client_side::chat::LINK_COPY;
+#[allow(unused_imports)]
+pub(in crate::game::server_side) use crate::game::client_side::chat::LINK_YES;
+#[allow(unused_imports)]
+pub(in crate::game::server_side) use crate::game::client_side::chat::PLAYER_NAME;
+#[allow(unused_imports)]
+pub(in crate::game::server_side) use crate::game::client_side::chat::RESOURCE_IDS;
+#[allow(unused_imports)]
+pub(in crate::game::server_side) use crate::game::client_side::chat::ResourceIds;
+#[allow(unused_imports)]
+pub(in crate::game::server_side) use crate::game::client_side::chat::SessionDispatcher;
+#[allow(unused_imports)]
+pub(in crate::game::server_side) use crate::game::client_side::chat::UiState;
+#[allow(unused_imports)]
+pub(in crate::game::server_side) use crate::game::client_side::chat::block_properties;
+#[allow(unused_imports)]
+pub(in crate::game::server_side) use crate::game::client_side::chat::chat_tree;
+#[allow(unused_imports)]
+pub(in crate::game::server_side) use crate::game::client_side::chat::command_export;
+#[allow(unused_imports)]
+pub(in crate::game::server_side) use crate::game::client_side::chat::ids_in;
+#[allow(unused_imports)]
+pub(in crate::game::server_side) use crate::game::client_side::chat::json_ids_in;
+#[allow(unused_imports)]
+pub(in crate::game::server_side) use crate::game::client_side::chat::json_ids_of_every_namespace;
+#[allow(unused_imports)]
+pub(in crate::game::server_side) use crate::game::client_side::chat::overworld_timelines;
+#[allow(unused_imports)]
+pub(in crate::game::server_side) use crate::game::client_side::chat::owner_permission;
+#[allow(unused_imports)]
+pub(in crate::game::server_side) use crate::game::client_side::chat::resource_ids;
+#[allow(unused_imports)]
+pub(in crate::game::server_side) use crate::game::client_side::chat::screenshot_cancel_line;
+#[allow(unused_imports)]
+pub(in crate::game::server_side) use crate::game::client_side::chat::screenshot_name;
+#[allow(unused_imports)]
+pub(in crate::game::server_side) use crate::game::client_side::chat::should_discard_draft;
+#[allow(unused_imports)]
+pub(in crate::game::server_side) use crate::game::client_side::chat::summonable_entities;
+#[allow(unused_imports)]
+pub(in crate::game::server_side) use crate::game::client_side::chat::sunrise_profiler_args;
+#[allow(unused_imports)]
+pub(in crate::game::server_side) use crate::game::client_side::chat::templates_under;
+#[allow(unused_imports)]
+pub(in crate::game::server_side) use crate::game::client_side::chat::with_native_commands;
+#[allow(unused_imports)]
+pub(in crate::game::server_side) use crate::game::client_side::chat::with_studio_commands;
+#[allow(unused_imports)]
+pub(in crate::game::server_side) use crate::game::client_side::chat::*;
+#[allow(unused_imports)]
+pub(in crate::game::server_side) use std::{
+    collections::BTreeMap,
+    path::{Path, PathBuf},
+    sync::{Arc, Mutex},
+};
+#[allow(unused_imports)]
+pub(in crate::game::server_side) use sunrise_client::{
+    chat::{
+        Chat, ChatAbilities, ChatAction, ChatScreen, ChatSource, ChatVisibility, Commands,
+        QUEUE_EXPAND_ID, SYSTEM_INDICATOR, normalize_chat_message,
+    },
+    command::{ArgType, Dispatcher, MOD_COMMAND, Registries},
+    gamerules::GameRules,
+    hud::HudBatch,
+    screen_draw::Measure,
+    text::{ClickEvent, Style, Text},
+};
+#[allow(unused_imports)]
+pub(in crate::game::server_side) use sunrise_gameplay::world_clock::OVERWORLD_CLOCK;
+#[allow(unused_imports)]
+pub(in crate::game::server_side) use sunrise_gameplay::world_clock::{TimeMarker, WorldClock};
+#[allow(unused_imports)]
+pub(in crate::game::server_side) use sunrise_world::registry::{BlockRegistry, BlockStateId};
+#[allow(unused_imports)]
+pub(in crate::game::server_side) use winit::keyboard::KeyCode;
+
+impl Game<'_> {
+    /// `ServerClockManager.ServerClockInstance.loadFrom`: restore the existing
+    /// Overworld state when a world opens; clear the other command-state cache.
+    /// The carrier store's open-time state settles here too, before the
+    /// first tick and any player: a refusal fails the open.
+    pub(in crate::game) fn load_world_state(&mut self) -> crate::Result<()> {
+        self.ui.dispatcher = SessionDispatcher(Arc::new(
+            sunrise_client::command::vanilla::session_dispatcher(
+                &self.level.rule_registry,
+                &self.level.enabled_features,
+            ),
+        ));
+        self.restore_native_commands();
+        self.ui.clock = WorldClock::default();
+        self.ui.end_clock = WorldClock::default();
+        self.ui.command_clocks.clear();
+        // PrimaryLevelData: the difficulty comes back from level.dat's difficulty_settings.
+        self.ui.difficulty = self.level.difficulty_id();
+        self.ui.active_clock = OVERWORLD_CLOCK.to_owned();
+        if let Ok(bytes) = std::fs::read(
+            self.server
+                .world_root
+                .join("data/minecraft/world_clocks.dat"),
+        ) && let Ok(raw) = sunrise_world::compression::Compression::Gzip.decode(&bytes, 1 << 20)
+            && let Ok((root, _)) =
+                sunrise_core::nbt::read_named(&raw, sunrise_core::nbt::Limits::default())
+            && let Some(sunrise_core::nbt::Tag::Compound(clocks)) = root.tag.get("data")
+        {
+            use sunrise_core::nbt::Tag;
+            for (name, c) in clocks {
+                let mut state = WorldClock::default();
+                if let Some(Tag::Float(r)) = c.get("rate") {
+                    state.rate = f32::from_bits(*r);
+                }
+                if let Some(Tag::Float(p)) = c.get("partial_tick") {
+                    state.partial = f32::from_bits(*p);
+                }
+                if let Some(Tag::Byte(p)) = c.get("paused") {
+                    state.paused = *p != 0;
+                }
+                let total = match c.get("total_ticks") {
+                    Some(Tag::Long(t)) => *t,
+                    _ => 0,
+                };
+                let name = name.to_string_lossy();
+                if name == OVERWORLD_CLOCK {
+                    self.ui.clock = state;
+                } else if name == "minecraft:the_end" {
+                    self.ui.end_clock = state;
+                } else {
+                    self.ui.command_clocks.insert(name, (total, state));
+                }
+            }
+        }
+        // The level the world opens in follows its own default clock; the Overworld's total
+        // (level.dat's day time, already in World.day_time) goes to the table.
+        let clock = self.level_clock_name(self.dim);
+        self.world.day_time = self.switch_clock(&clock);
+        self.ui.chat.clear();
+        self.build_registries();
+        // The world opens with its test instances (`Registries.TEST_INSTANCE`).
+        self.snapshot_test_defs();
+        self.sync_rules();
+        self.carrier_world_opened()
+    }
+    /// A player's chat line on the window's own chat: a guest's message on
+    /// the server's own chat (`HostEvent::Chat`). `ChatListener`
+    /// checks `canReceivePlayerMessages` for these, so Commands Only and
+    /// Hidden drop them; command feedback (`/list`, `/tp`) is a system
+    /// message and takes the system-message permission instead.
+    pub(in crate::game) fn player_message(&mut self, text: Text) {
+        if let Some(capture) = self.server.chat_capture.as_mut() {
+            capture.push(text);
+            return;
+        }
+        // A server's client receives the line as a packet (PlayerChat or
+        // DisguisedChat) and filters it there.
+        if self.remote.is_none() {
+            self.local_chat_line(text, None, ChatSource::Player);
+        }
+    }
+    /// Save the clock beside level.dat (Level.write saves the game rules: a
+    /// second writer of game_rules.dat could leave it with the rules loaded
+    /// when the world opened).
+    pub(in crate::game) fn save_world_state(&mut self) {
+        if self.server.world_root.as_os_str().is_empty() {
+            return;
+        }
+        use sunrise_core::nbt::Tag;
+        // Every clock the world has met is saved; the fields of a clock Sunrise does not model
+        // stay as saved, and (like vanilla's codec) rate, partial tick and pause are omitted
+        // while they have their defaults.
+        let path = self
+            .server
+            .world_root
+            .join("data/minecraft/world_clocks.dat");
+        let existing = sunrise_client::save::read_dat(&path);
+        let mut data = match existing.as_ref().and_then(|r| r.get("data")) {
+            Some(d @ Tag::Compound(_)) => d.clone(),
+            _ => Tag::Compound(Default::default()),
+        };
+        let mut clocks = vec![(
+            OVERWORLD_CLOCK.to_owned(),
+            self.command_clock_time(OVERWORLD_CLOCK),
+            self.ui.clock,
+        )];
+        clocks.push((
+            "minecraft:the_end".to_owned(),
+            self.command_clock_time("minecraft:the_end"),
+            self.ui.end_clock,
+        ));
+        for (name, (_, state)) in &self.ui.command_clocks {
+            if name != OVERWORLD_CLOCK && name != "minecraft:the_end" {
+                clocks.push((name.clone(), self.command_clock_time(name), *state));
+            }
+        }
+        for (name, total, c) in clocks {
+            let mut clock = match data.get(&name) {
+                Some(c @ Tag::Compound(_)) => c.clone(),
+                _ => Tag::Compound(Default::default()),
+            };
+            if let Tag::Compound(map) = &mut clock {
+                map.insert("total_ticks".into(), Tag::Long(total));
+                for (key, value, default) in [
+                    (
+                        "partial_tick",
+                        Tag::Float(c.partial.to_bits()),
+                        c.partial == 0.0,
+                    ),
+                    ("rate", Tag::Float(c.rate.to_bits()), c.rate == 1.0),
+                    ("paused", Tag::Byte(i8::from(c.paused)), !c.paused),
+                ] {
+                    if default {
+                        map.remove(&key.into());
+                    } else {
+                        map.insert(key.into(), value);
+                    }
+                }
+            }
+            if let Tag::Compound(map) = &mut data {
+                map.insert(name.as_str().into(), clock);
+            }
+        }
+        let root = Tag::compound([
+            ("data", data),
+            ("DataVersion", Tag::Int(sunrise_world::DATA_VERSION)),
+        ]);
+        if let Err(e) = sunrise_client::save::write_dat(&path, root) {
+            log::warn!("the world clocks were not written: {e}");
+        }
+    }
+    /// Command suggestions include the world's currently named random sequences.
+    pub(in crate::game) fn suggestion_registries(&mut self) -> &mut Registries {
+        self.ui.registries.random_sequences = self.server.rand_sequences.ids();
+        &mut self.ui.registries
+    }
+    /// A chat message from the game (ChatComponent.addServerSystemMessage).
+    pub(in crate::game) fn system_message(&mut self, text: Text) {
+        if let Some(capture) = self.server.chat_capture.as_mut() {
+            capture.push(text);
+            return;
+        }
+        // Connected to a server (single player's own included), the chat on
+        // screen is the connection's: the game's own messages join it.
+        if self.remote.is_some() {
+            self.add_chat_line(text, ChatSource::Server);
+            return;
+        }
+        // The Chat option's Hidden level takes the server's messages too.
+        self.local_chat_line(text, Some(SYSTEM_INDICATOR), ChatSource::Server);
+    }
+}
+
+#[cfg(test)]
+pub(in crate::game) mod enchantment_snapshot_tests {
+    #[allow(unused_imports)]
+pub(in crate::game::server_side) use crate::game::{Audio, Game, Options, Progress, Settings, load_resources};
+#[allow(unused_imports)]
+pub(in crate::game::server_side) use crate::game::client_side::chat::enchantment_snapshot_tests::*;
+
+    #[test]
+    #[ignore = "daily"]
+    fn synchronized_definitions_refresh_existing_enchantment_views() {
+        let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
+        let settings = Settings::default();
+        let loaded = load_resources(
+            sunrise_assets::resource_source::ResourceRoot::directory(root.clone()),
+            Vec::new(),
+            None,
+            &root,
+            &settings,
+            std::time::Instant::now(),
+            false,
+            crate::game::execution_role::ExecutionRole::IntegratedServer,
+            &Progress::new(),
+            &mut |_, _| unreachable!(),
+        )
+        .unwrap();
+        let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
+        options.resources = root.clone();
+        options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
+        let mut game = Game::new(
+            &loaded.resources,
+            loaded.pack,
+            loaded.gui.unwrap(),
+            options,
+            settings,
+            Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
+                root.clone(),
+            )),
+            None,
+        )
+        .unwrap();
+        game.build_registries();
+
+        let dir = std::env::temp_dir().join(format!("sunrise-h024-model-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let pack = dir.join("datapacks/model");
+        let tags = pack.join("data/h024/tags/enchantment");
+        std::fs::create_dir_all(&tags).unwrap();
+        std::fs::write(
+            pack.join("pack.mcmeta"),
+            r#"{"pack":{"description":"fixture"}}"#,
+        )
+        .unwrap();
+        std::fs::write(tags.join("empty.json"), r#"{"values":[]}"#).unwrap();
+        std::fs::write(
+            dir.join("datapacks.json"),
+            r#"{"enabled":["file/model"],"disabled":[]}"#,
+        )
+        .unwrap();
+        game.server.world_root = dir;
+        let stack = game.reload_datapacks(false, &[]).unwrap();
+        let root = game.options.resources.clone();
+        game.world_tables.0 = game
+            .stage_world_tables(&stack, false, &root)
+            .unwrap()
+            .tables;
+        assert!(
+            game.world_tables.0.is_some(),
+            "the real active table container must be available"
+        );
+        let base = game.stations().enchantments.clone();
+        assert!(base.get("minecraft:sharpness").is_some());
+        // Same definition independently admitted by fresh Java. This is controlled
+        // synchronized model input, NOT a world-pack or packet-delivery claim.
+        let definition = serde_json::json!({"description":"H024 audit","supported_items":"minecraft:diamond_sword",
+            "weight":1,"max_level":1,"min_cost":{"base":1,"per_level_above_first":0},
+            "max_cost":{"base":1,"per_level_above_first":0},"anvil_cost":1,"slots":["mainhand"],"effects":{}});
+        let synced = std::sync::Arc::new(
+            base.with_entries([("h024:audit", &definition)])
+                .unwrap()
+                .unwrap(),
+        );
+        game.world_tables.0.as_mut().unwrap().stations.enchantments = synced.clone();
+        std::sync::Arc::make_mut(&mut game.world_tables.0.as_mut().unwrap().items).enchantments =
+            synced;
+        assert!(
+            game.active_enchantment_definitions()
+                .get("h024:audit")
+                .is_some(),
+            "actual authority adopts the definition first"
+        );
+        let tags = vec!["h024:retained_tag".to_owned()];
+        game.ui
+            .registries
+            .by_registry
+            .entry("minecraft:enchantment".into())
+            .or_default()
+            .tags = tags.clone();
+        let item_ids = game.ui.registries.ids("minecraft:item").to_vec();
+        let effects = game.ui.registries.effects.clone();
+        game.sync_function_registries(&stack);
+        for phase in [0, 1] {
+            if phase == 1 {
+                game.build_registries();
+            }
+            let reg = &game.ui.registries;
+            assert!(
+                reg.ids("minecraft:enchantment")
+                    .contains(&"h024:audit".to_owned()),
+                "active custom ID reaches actual Game sync/build snapshot"
+            );
+            assert!(
+                reg.ids("minecraft:enchantment")
+                    .contains(&"minecraft:sharpness".to_owned())
+            );
+            assert!(
+                !reg.ids("minecraft:enchantment")
+                    .contains(&"h024:missing".to_owned())
+            );
+            assert_eq!(
+                reg.ids("minecraft:enchantment"),
+                reg.enchantments.as_slice()
+            );
+            assert_eq!(reg.by_registry["minecraft:enchantment"].tags, tags);
+            assert_eq!(reg.ids("minecraft:item"), item_ids);
+            assert_eq!(reg.effects, effects);
+        }
+        game.world_tables.0.as_mut().unwrap().stations.enchantments = base.clone();
+        std::sync::Arc::make_mut(&mut game.world_tables.0.as_mut().unwrap().items).enchantments =
+            base;
+        assert!(
+            game.active_enchantment_definitions()
+                .get("h024:audit")
+                .is_none()
+        );
+        game.sync_function_registries(&stack);
+        assert!(
+            !game
+                .ui
+                .registries
+                .ids("minecraft:enchantment")
+                .contains(&"h024:audit".to_owned()),
+            "refresh replaces rather than accumulating stale IDs"
+        );
+        assert_eq!(
+            game.ui.registries.ids("minecraft:enchantment"),
+            game.ui.registries.enchantments.as_slice()
+        );
+        assert_eq!(
+            game.ui.registries.by_registry["minecraft:enchantment"].tags,
+            tags
+        );
+    }
+}
+
+#[cfg(test)]
+pub(in crate::game) mod damage_type_registry_tests {
+    #[allow(unused_imports)]
+pub(in crate::game::server_side) use crate::game::{Audio, Game, Options, Progress, Settings, load_resources};
+#[allow(unused_imports)]
+pub(in crate::game::server_side) use crate::game::client_side::chat::damage_type_registry_tests::*;
+
+    /// A world pack's damage type is a `/damage` type once the world opens,
+    /// beside vanilla's, and the registry keeps vanilla's tags.
+    #[test]
+    #[ignore = "daily"]
+    fn a_world_packs_damage_type_parses_in_damage() {
+        let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
+        let settings = Settings::default();
+        let loaded = load_resources(
+            sunrise_assets::resource_source::ResourceRoot::directory(root.clone()),
+            Vec::new(),
+            None,
+            &root,
+            &settings,
+            std::time::Instant::now(),
+            false,
+            crate::game::execution_role::ExecutionRole::IntegratedServer,
+            &Progress::new(),
+            &mut |_, _| unreachable!(),
+        )
+        .unwrap();
+        let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
+        options.resources = root.clone();
+        options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
+        let mut game = Game::new(
+            &loaded.resources,
+            loaded.pack,
+            loaded.gui.unwrap(),
+            options,
+            settings,
+            Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
+                root.clone(),
+            )),
+            None,
+        )
+        .unwrap();
+
+        let dir = std::path::PathBuf::from(std::env::var_os("SUNRISE_HOME").unwrap())
+            .join("damage-type-ids");
+        let pack = dir.join("datapacks/model");
+        let types = pack.join("data/example/damage_type");
+        std::fs::create_dir_all(&types).unwrap();
+        std::fs::write(
+            pack.join("pack.mcmeta"),
+            r#"{"pack":{"description":"test","pack_format":121}}"#,
+        )
+        .unwrap();
+        std::fs::write(
+            types.join("test.json"),
+            r#"{"message_id":"example.test","scaling":"never","exhaustion":0.0}"#,
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join("datapacks.json"),
+            r#"{"enabled":["file/model"],"disabled":[]}"#,
+        )
+        .unwrap();
+        game.server.world_root = dir;
+        let stack = game.reload_datapacks(false, &[]).unwrap();
+        let staged = game.stage_world_tables(&stack, false, &root).unwrap();
+        game.world_tables.0 = staged.tables;
+        game.health_resources = staged.health;
+        game.level.allow_commands = Some(true);
+        game.build_registries();
+
+        let reg = &game.ui.registries;
+        assert!(
+            reg.damage_types.contains(&"example:test".to_owned()),
+            "the damage catalog holds the pack's type"
+        );
+        let parse = |input: &str| {
+            sunrise_client::command::vanilla::dispatcher()
+                .parse(input, reg)
+                .executable()
+                .map(|_| ())
+                .map_err(|e| format!("{e:?}"))
+        };
+        assert_eq!(parse("damage @s 1 example:test"), Ok(()));
+        assert_eq!(parse("damage @s 1 minecraft:magic"), Ok(()));
+        assert!(parse("damage @s 1 example:missing").is_err());
+        assert!(
+            reg.tags("minecraft:damage_type")
+                .contains(&"minecraft:is_fire".to_owned()),
+            "vanilla's damage type tags stay"
+        );
+    }
+}
+
+#[cfg(test)]
+#[path = "tests/end_clock_tests_server.rs"]
+pub(in crate::game) mod end_clock_tests;

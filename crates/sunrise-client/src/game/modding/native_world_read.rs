@@ -15,7 +15,7 @@ use sunrise_world::{
 
 /// Kinds of contextual block provider dispatched by the game.
 #[derive(Clone, Copy, PartialEq, Eq)]
-pub(super) enum BlockProviderQuery {
+pub(in crate::game) enum BlockProviderQuery {
     EnchantPower,
     LightEmission,
 }
@@ -45,7 +45,7 @@ impl Game<'_> {
     /// Refuse re-entry for the same state and query kind in this game, regardless of level and
     /// position. A provider can delegate to another state. Only actual dispatch enters here;
     /// the vector retains its capacity between calls.
-    pub(super) fn with_block_provider_query<R>(
+    pub(in crate::game) fn with_block_provider_query<R>(
         &self,
         state: BlockStateId,
         query: BlockProviderQuery,
@@ -70,7 +70,7 @@ impl Game<'_> {
 }
 
 /// Shared by the level handle and the restricted block-hook view.
-pub(super) fn block_face_sturdy(
+pub(in crate::game) fn block_face_sturdy(
     world: &World,
     b: &Behaviours,
     binding: &sunrise_world::block_collision::BlockCollisionRegistry<'_>,
@@ -116,7 +116,7 @@ pub(super) fn block_face_sturdy(
 }
 
 /// Read the published sky light without requiring a block or a resident column.
-pub(super) fn can_see_sky(world: &World, pos: [i32; 3]) -> bool {
+pub(in crate::game) fn can_see_sky(world: &World, pos: [i32; 3]) -> bool {
     world.shape.sky_light
         && super::native_level_refs::world_brightness(world, mod_api::LightLayer::Sky, pos) >= 15
 }
@@ -124,7 +124,7 @@ pub(super) fn can_see_sky(world: &World, pos: [i32; 3]) -> bool {
 /// Why a server block cannot be read.
 #[allow(dead_code)]
 #[derive(Debug, PartialEq, Eq)]
-pub(super) enum NativeBlockReadError {
+pub(in crate::game) enum NativeBlockReadError {
     /// The context is stale or the call is outside its server tick hook.
     InactiveContext,
     /// The dimension is unknown or is not currently open on the server.
@@ -141,7 +141,7 @@ thread_local! {
 
 /// Bind the world's merged tags alongside its block mappings, including the resource-only case.
 /// Never cache on Items: its string tables also serve tools and client network snapshots.
-pub(super) fn prepare_block_tags(
+pub(in crate::game) fn prepare_block_tags(
     tags: &std::collections::HashMap<String, std::collections::HashSet<String>>,
 ) -> std::collections::HashMap<String, std::collections::HashSet<BlockKey>> {
     tags.iter()
@@ -157,7 +157,7 @@ pub(super) fn prepare_block_tags(
         .collect()
 }
 
-pub(super) fn install_block_tags(
+pub(in crate::game) fn install_block_tags(
     tags: std::collections::HashMap<String, std::collections::HashSet<BlockKey>>,
 ) {
     BLOCK_TAGS.with(|snapshot| *snapshot.borrow_mut() = tags);
@@ -171,7 +171,7 @@ pub(in crate::game) fn installed_block_tag_snapshot()
 
 /// One availability check, one tag-name lookup and one API key membership test.
 /// An unavailable owning-thread mapping is not a missing tag.
-pub(super) fn block_in_tag(block: BlockKey, tag: &str) -> Option<bool> {
+pub(in crate::game) fn block_in_tag(block: BlockKey, tag: &str) -> Option<bool> {
     super::api_values::default_state(block)?;
     let tag = sunrise_client::command::args::normalized(tag);
     Some(BLOCK_TAGS.with(|snapshot| {
@@ -183,7 +183,7 @@ pub(super) fn block_in_tag(block: BlockKey, tag: &str) -> Option<bool> {
 }
 
 /// `BlockState.getFluidState`. None for an id no state has.
-pub(super) fn state_fluid(
+pub(in crate::game) fn state_fluid(
     behaviours: &Behaviours,
     registry: &BlockRegistry,
     state: BlockStateId,
@@ -193,7 +193,7 @@ pub(super) fn state_fluid(
 }
 
 /// Convert the engine's state using the load-owned kind-to-key mapping.
-pub(super) fn api_fluid_state(state: EngineFluidState) -> Option<FluidState> {
+pub(in crate::game) fn api_fluid_state(state: EngineFluidState) -> Option<FluidState> {
     Some(mod_api::__private::fluid_state(
         match state.kind().vanilla_index() {
             Some(index) => mod_api::__private::world_fluid_key(usize::from(index))?,
@@ -206,7 +206,7 @@ pub(super) fn api_fluid_state(state: EngineFluidState) -> Option<FluidState> {
 }
 
 /// `FluidState.is(TagKey)` over the merged fluid tags. The empty fluid is in none.
-pub(super) fn fluid_in_tag(items: &Items, fluid: &str, tag: &str) -> bool {
+pub(in crate::game) fn fluid_in_tag(items: &Items, fluid: &str, tag: &str) -> bool {
     items.fluid_in_tag(
         &sunrise_client::command::args::normalized(tag),
         &sunrise_client::command::args::normalized(fluid),
@@ -234,7 +234,7 @@ fn fluid_kind(fluid: &str) -> Option<FluidKind> {
 
 /// The world fluid a registered key names. None for a tank-only fluid, which has no world
 /// form, and for a key the registry doesn't hold.
-pub(super) fn engine_fluid_kind(fluid: FluidKey) -> Option<FluidKind> {
+pub(in crate::game) fn engine_fluid_kind(fluid: FluidKey) -> Option<FluidKind> {
     FluidKind::from_name(mod_api::__private::fluid_id(fluid)?)
 }
 
@@ -273,14 +273,14 @@ impl FluidHeightWorld for FluidColumn<'_, '_> {
 
 impl Game<'_> {
     /// The saved name for an engine-issued unresolved fluid.
-    pub(super) fn unresolved_fluid_id(&self, fluid: UnresolvedFluid) -> String {
+    pub(in crate::game) fn unresolved_fluid_id(&self, fluid: UnresolvedFluid) -> String {
         mod_api::__private::unresolved_fluid_name(fluid)
     }
 
     /// The tag tables mods read: on a client the tags its server sent, once they are installed
     /// (`install_remote_tags`), elsewhere the merged tables, once the world has built them (the
     /// world lock is installed after they are built). None before that.
-    pub(super) fn native_tag_items(&self) -> Option<&Items> {
+    pub(in crate::game) fn native_tag_items(&self) -> Option<&Items> {
         if self.options.execution_role.is_client() {
             return self.remote.as_ref()?.tags.as_ref();
         }
@@ -288,7 +288,7 @@ impl Game<'_> {
     }
 
     /// `items`' block tags, over this game's resolved block keys.
-    pub(super) fn block_tag_sets(
+    pub(in crate::game) fn block_tag_sets(
         &self,
         items: &Items,
     ) -> std::collections::HashMap<String, std::collections::HashSet<BlockKey>> {
@@ -298,7 +298,7 @@ impl Game<'_> {
     /// Whether the resolved block is in the world's merged block tag, on a client the tag its
     /// server sent. Unknown tags return false; unavailable tags or owning-thread block mappings
     /// return None.
-    pub(super) fn block_in_tag(&self, block: BlockKey, tag: &str) -> Option<bool> {
+    pub(in crate::game) fn block_in_tag(&self, block: BlockKey, tag: &str) -> Option<bool> {
         self.native_tag_items()?;
         block_in_tag(block, tag)
     }
@@ -308,28 +308,32 @@ impl Game<'_> {
     /// max x, y, z]` in the block's own space, with no random offset and none of a world's
     /// context (a state that reads its neighbours or block entity answers what its state alone
     /// gives). Empty for a state with no outline, such as air. None for an id no state has.
-    pub(super) fn state_outline(&self, state: BlockStateId) -> Option<Vec<[f64; 6]>> {
+    pub(in crate::game) fn state_outline(&self, state: BlockStateId) -> Option<Vec<[f64; 6]>> {
         self.pack.assets.registry.state(state)?;
         Some(self.res.facts().get(state).outline.to_vec())
     }
 
     /// The fluid state `state` holds (`BlockState.getFluidState`): water for a waterlogged state,
     /// the empty fluid for most. None for an id no state has.
-    pub(super) fn state_fluid_state(&self, state: BlockStateId) -> Option<FluidState> {
+    pub(in crate::game) fn state_fluid_state(&self, state: BlockStateId) -> Option<FluidState> {
         state_fluid(self.res.behaviours(), self.pack.assets.registry, state)
     }
 
     /// Whether `fluid` is in the fluid tag `tag` (`FluidState.is(TagKey)`, `minecraft:water` or
     /// `water`), over the merged fluid tags, on a client those its server sent. An unknown tag
     /// is false. None as for `block_in_tag`.
-    pub(super) fn fluid_in_tag(&self, fluid: &str, tag: &str) -> Option<bool> {
+    pub(in crate::game) fn fluid_in_tag(&self, fluid: &str, tag: &str) -> Option<bool> {
         Some(fluid_in_tag(self.native_tag_items()?, fluid, tag))
     }
 
     /// The fluid state at `pos` of the level `level` names (`BlockGetter.getFluidState`). None
     /// for a stale handle, a chunk that isn't loaded or a `y` outside the world: a read never
     /// loads a chunk.
-    pub(super) fn level_fluid_state(&self, level: LevelRef, pos: [i32; 3]) -> Option<FluidState> {
+    pub(in crate::game) fn level_fluid_state(
+        &self,
+        level: LevelRef,
+        pos: [i32; 3],
+    ) -> Option<FluidState> {
         let state = self.level_block_state(level, pos)?;
         self.state_fluid_state(state)
     }
@@ -338,7 +342,7 @@ impl Game<'_> {
     /// the floor to `FluidState.getHeight`, a full block under the same fluid and the fluid's
     /// own height otherwise. None as for `level_block_state`; an unloaded block above is no
     /// fluid.
-    pub(super) fn level_fluid_shape(
+    pub(in crate::game) fn level_fluid_shape(
         &self,
         level: LevelRef,
         pos: [i32; 3],
@@ -356,7 +360,7 @@ impl Game<'_> {
     /// `fluid_rules` parts change it there (the one rule path the flow itself reads). None for
     /// another level, a stale handle, a client, an unloaded or out-of-height position and a
     /// fluid with no world form.
-    pub(super) fn level_fluid_tick_delay(
+    pub(in crate::game) fn level_fluid_tick_delay(
         &self,
         level: LevelRef,
         fluid: FluidKey,
@@ -382,7 +386,11 @@ impl Game<'_> {
 
     /// `FluidState.getHeight(level, pos)` of the fluid at `pos`. None for a stale handle or a
     /// position that isn't loaded, as `level_block_state`.
-    pub(super) fn level_fluid_height(&self, level: LevelRef, pos: [i32; 3]) -> Option<f32> {
+    pub(in crate::game) fn level_fluid_height(
+        &self,
+        level: LevelRef,
+        pos: [i32; 3],
+    ) -> Option<f32> {
         let mut column = FluidColumn { game: self, level };
         self.level_block_state(level, pos)?;
         let Ok(height) = column.fluid_at(pos).height_at(&mut column, pos);
@@ -391,7 +399,7 @@ impl Game<'_> {
 
     /// The surface height the camera's immersion test reads at `pos`
     /// (`FluidState::camera_height_at`). None as for `level_fluid_height`.
-    pub(super) fn level_fluid_height_for_camera(
+    pub(in crate::game) fn level_fluid_height_for_camera(
         &self,
         level: LevelRef,
         pos: [i32; 3],
@@ -404,7 +412,7 @@ impl Game<'_> {
 
     /// `FluidState.canBeReplacedWith(level, pos, fluid, direction)` for the fluid at `pos`. False
     /// for a `fluid` with no world form; None as for `level_fluid_height`.
-    pub(super) fn level_fluid_can_be_replaced_with(
+    pub(in crate::game) fn level_fluid_can_be_replaced_with(
         &self,
         level: LevelRef,
         pos: [i32; 3],
@@ -427,7 +435,7 @@ impl Game<'_> {
     /// flowing form are, so `minecraft:water` and `minecraft:flowing_water` are the same, water
     /// and lava not. Names are fluid ids, with or without `minecraft:`; false when either
     /// names no fluid.
-    pub(super) fn fluid_is_same(&self, fluid: &str, other: &str) -> bool {
+    pub(in crate::game) fn fluid_is_same(&self, fluid: &str, other: &str) -> bool {
         match (fluid_kind(fluid), fluid_kind(other)) {
             (Some(fluid), Some(other)) => fluid.same_family(other),
             _ => false,
@@ -437,28 +445,28 @@ impl Game<'_> {
     /// The bucket item that picks `fluid` up (`Fluid.getBucket`), `minecraft:water_bucket` for
     /// water and flowing water. None for `minecraft:empty`, whose bucket is air, and for a name
     /// no fluid has.
-    pub(super) fn fluid_bucket(&self, fluid: &str) -> Option<mod_api::ItemKey> {
+    pub(in crate::game) fn fluid_bucket(&self, fluid: &str) -> Option<mod_api::ItemKey> {
         mod_api::__private::item_key(sunrise_world::level::fluid_bucket(fluid_kind(fluid)?)?)
     }
 
     /// The sound event a bucket plays as it picks `fluid` up (`Fluid.getPickupSound`),
     /// `minecraft:item.bucket.fill_lava` for lava and flowing lava. None for
     /// `minecraft:empty`, which has none, and for a name no fluid has.
-    pub(super) fn fluid_pickup_sound(&self, fluid: &str) -> Option<&'static str> {
+    pub(in crate::game) fn fluid_pickup_sound(&self, fluid: &str) -> Option<&'static str> {
         sunrise_world::level::fluid_pickup_sound(fluid_kind(fluid)?)
     }
 
     /// The sound event a bucket plays as it empties `fluid` (`BucketItem.playEmptySound`),
     /// `minecraft:item.bucket.empty_lava` for lava and flowing lava. None for
     /// `minecraft:empty`, for a tank-only fluid and for a name no fluid has.
-    pub(super) fn fluid_empty_sound(&self, fluid: &str) -> Option<&'static str> {
+    pub(in crate::game) fn fluid_empty_sound(&self, fluid: &str) -> Option<&'static str> {
         sunrise_world::level::fluid_empty_sound(fluid_kind(fluid)?)
     }
 
     /// Read a loaded block in a server tick hook, without loading a chunk.
     /// The returned name and properties are owned and remain valid after the hook.
     #[allow(dead_code)]
-    pub(super) fn native_server_block(
+    pub(in crate::game) fn native_server_block(
         &self,
         context: &LifecycleContext,
         dimension: &str,

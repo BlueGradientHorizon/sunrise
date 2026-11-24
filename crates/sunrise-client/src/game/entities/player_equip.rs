@@ -2,17 +2,19 @@
 //! game event when an armour or off-hand slot takes a different item, from
 //! every path that calls it (use, the inventory menu, the creative screen,
 //! the swap-hands key, dispensers), for the host and for LAN guests.
+#[allow(unused_imports)]
 use super::Game;
+#[allow(unused_imports)]
 use sunrise_client::items::ItemStack;
 
 /// The equipment slots `onEquipItem` can act on, as `EquipmentSlot` names:
 /// the armour (`Player.doesEmitEquipEvent`: these emit the game event) and
 /// the off hand.
-const ARMOR: [&str; 4] = ["head", "chest", "legs", "feet"];
-const OFFHAND: &str = "offhand";
+pub(in crate::game) const ARMOR: [&str; 4] = ["head", "chest", "legs", "feet"];
+pub(in crate::game) const OFFHAND: &str = "offhand";
 
 /// `ItemStack.isSameItemSameComponents` over optional stacks.
-fn same(a: Option<&ItemStack>, b: Option<&ItemStack>) -> bool {
+pub(in crate::game) fn same(a: Option<&ItemStack>, b: Option<&ItemStack>) -> bool {
     match (a, b) {
         (None, None) => true,
         (Some(a), Some(b)) => a.same_item_same_components(b),
@@ -57,55 +59,6 @@ impl Game<'_> {
                 slot.to_owned(),
                 new.cloned(),
             ));
-        }
-    }
-
-    /// The body of `onEquipItem` once the item changed: the item's
-    /// `Equippable.equipSound` when it is equipped in its own slot, and the
-    /// `equip` / `unequip` game event for armour. Nothing on a client (the
-    /// server plays it) or for a spectator. The player's `firstTick` never
-    /// sees an equip here: loading a save sets the slots directly.
-    pub(in crate::game) fn player_equipped(&mut self, slot: &str, new: Option<&ItemStack>) {
-        if self.remote.is_some() || self.spectator() {
-            return;
-        }
-        self.native_on_equip(slot, new);
-        // The equip sound plays at the player: none for one in another level than this one.
-        let Some(at) = self
-            .player
-            .as_ref()
-            .filter(|_| self.acting_in_level_in_place())
-            .map(|p| p.position)
-        else {
-            return;
-        };
-        let at = [at.x, at.y, at.z];
-        let equippable = new.and_then(|stack| {
-            let equippable = sunrise_client::item_sync::equippable(stack, self.items())?;
-            Some((
-                equippable.slot == slot,
-                sunrise_client::item_sync::equip_sound(stack, self.items()),
-            ))
-        });
-        if let Some((true, sound)) = &equippable {
-            let sound = sound
-                .as_deref()
-                .unwrap_or("minecraft:item.armor.equip_generic");
-            // Player.getSoundSource: PLAYERS.
-            let players = sunrise_client::settings::SOUND_SOURCES
-                .iter()
-                .position(|s| *s == "player")
-                .unwrap_or(0);
-            self.audio.0.play_on(players, sound, Some(at), 1.0, 1.0);
-        }
-        if ARMOR.contains(&slot) {
-            let event = if equippable.is_some() {
-                "minecraft:equip"
-            } else {
-                "minecraft:unequip"
-            };
-            let ctx = self.player_context(None);
-            self.post_game_event(event, at, ctx);
         }
     }
 }

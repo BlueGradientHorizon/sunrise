@@ -11,19 +11,25 @@
 //! that client's position back (`handleMoveVehicle`), so vanilla never moves
 //! it by the rope either. Here the pull lands on the server's copy and the
 //! rider's client overwrites it the same way (`tick_boats`).
+#[allow(unused_imports)]
 use super::{Game, boats::Boat};
+#[allow(unused_imports)]
 use sunrise_client::actions::Action;
+#[allow(unused_imports)]
 use sunrise_client::mobs::leash::{self, Holder, HolderState, Pending};
+#[allow(unused_imports)]
 use sunrise_core::geometry::Vec3;
+#[allow(unused_imports)]
 use sunrise_core::nbt::Tag;
+#[allow(unused_imports)]
 use sunrise_core::position::BlockPos;
 
 /// `AbstractBoat`'s `getBbWidth` and `getBbHeight`.
-const WIDTH: f32 = 1.375;
-const HEIGHT: f32 = 0.5625;
+pub(in crate::game) const WIDTH: f32 = 1.375;
+pub(in crate::game) const HEIGHT: f32 = 0.5625;
 
 /// Where the other end of a boat's lead is.
-enum Held {
+pub(in crate::game) enum Held {
     /// The holder is gone: the lead comes off (`canInteractWithLevel`).
     Gone,
     /// In another level or not loaded: nothing happens (`level() ==`).
@@ -32,7 +38,7 @@ enum Held {
     At(HolderState, bool),
 }
 
-fn center(b: &Boat) -> Vec3 {
+pub(in crate::game) fn center(b: &Boat) -> Vec3 {
     Vec3::new(
         b.position.x,
         b.position.y + f64::from(HEIGHT) / 2.0,
@@ -53,7 +59,7 @@ pub(in crate::game) fn boat_state(b: &Boat) -> (u32, HolderState) {
         },
     )
 }
-fn distance(a: Vec3, b: Vec3) -> f64 {
+pub(in crate::game) fn distance(a: Vec3, b: Vec3) -> f64 {
     ((a.x - b.x).powi(2) + (a.y - b.y).powi(2) + (a.z - b.z).powi(2)).sqrt()
 }
 
@@ -63,7 +69,7 @@ impl Game<'_> {
     pub(in crate::game) fn boat_leash_player(&self, b: &Boat) -> Option<[i32; 4]> {
         b.leash_player.or(self.level.player_uuid)
     }
-    fn boat_holder(&self, holder: Holder, player: Option<[i32; 4]>) -> Held {
+    pub(in crate::game) fn boat_holder(&self, holder: Holder, player: Option<[i32; 4]>) -> Held {
         match holder {
             Holder::Player => {
                 let want = player.or(self.level.player_uuid);
@@ -172,13 +178,13 @@ impl Game<'_> {
 
     /// `Leashable.dropLeash` / `removeLeash` on a boat: the lead falls as an
     /// item (`drop`). The change reaches clients through the entity tracker.
-    fn take_boat_leash(b: &mut Boat, drop: bool) -> Option<[f64; 3]> {
+    pub(in crate::game) fn take_boat_leash(b: &mut Boat, drop: bool) -> Option<[f64; 3]> {
         b.leash.take()?;
         b.leash_player = None;
         drop.then_some([b.position.x, b.position.y, b.position.z])
     }
 
-    fn release_boat_leash(&mut self, b: &mut Boat, drop: bool) {
+    pub(in crate::game) fn release_boat_leash(&mut self, b: &mut Boat, drop: bool) {
         let holder = b.leash;
         let at = Self::take_boat_leash(b, drop);
         self.notify_knot_leashee_removed(holder, b.id);
@@ -283,7 +289,7 @@ impl Game<'_> {
     }
 
     /// `Leashable.angularFriction`.
-    fn boat_angular_friction(&self, b: &Boat) -> f32 {
+    pub(in crate::game) fn boat_angular_friction(&self, b: &Boat) -> f32 {
         if b.ground.on_ground {
             let (x, z) = (b.position.x.floor() as i32, b.position.z.floor() as i32);
             let y = (b.position.y - 0.500_001).floor() as i32;
@@ -300,7 +306,7 @@ impl Game<'_> {
     /// `Leashable.restoreLeashFromSave`: a holder read from a save becomes
     /// real once its entity is found; one that never shows up in 100 ticks
     /// drops the lead.
-    fn restore_boat_leash(&mut self, b: &mut Boat, pending: Pending) {
+    pub(in crate::game) fn restore_boat_leash(&mut self, b: &mut Boat, pending: Pending) {
         let found = match pending {
             Pending::Knot(p) => Some((Holder::Knot(p), None)),
             Pending::Uuid(u) => {
@@ -364,7 +370,7 @@ impl Game<'_> {
     }
 
     /// Whether the player acting holds this boat's lead.
-    fn boat_led_by_player(&mut self, i: usize) -> bool {
+    pub(in crate::game) fn boat_led_by_player(&mut self, i: usize) -> bool {
         let me = self.acting_player_uuid();
         let b = &self.boats[i];
         b.leash == Some(Holder::Player) && self.boat_leash_player(b) == Some(me)
@@ -422,7 +428,7 @@ impl Game<'_> {
 
     /// `Leashable.canHaveALeashAttachedTo` for the boat at `i` and an entity
     /// whose box centre is `at`.
-    fn boat_can_attach(&self, i: usize, at: glam::DVec3) -> bool {
+    pub(in crate::game) fn boat_can_attach(&self, i: usize, at: glam::DVec3) -> bool {
         let c = center(&self.boats[i]);
         distance(Vec3::new(at.x, at.y, at.z), c) <= leash::SNAP
     }
@@ -480,81 +486,6 @@ impl Game<'_> {
         }
     }
 
-    /// `Entity.interact`'s lead part for the boat at `i`; whether it took
-    /// the click.
-    pub(in crate::game) fn interact_boat_leash(&mut self, i: usize) -> bool {
-        let item = self.held().map(|s| s.item.to_string());
-        let c = center(&self.boats[i]);
-        let at = [c.x, c.y, c.z];
-        let id = self.boats[i].id;
-        // The sneak branch: the player's mobs and boats on leads are re-tied
-        // to this boat.
-        let sneaking = self.held_mapping(Action::Sneak);
-        if sneaking
-            && self.tie_player_leads(glam::DVec3::new(c.x, c.y, c.z), Holder::Boat(id), None)
-        {
-            self.lead_game_event("minecraft:entity_action", at);
-            self.lead_sound("tied", at);
-            return true;
-        }
-        // Entity.shearOffAllLeashConnections: its own lead and every one
-        // hanging on it.
-        if item.as_deref() == Some("minecraft:shears") {
-            let held_mobs: Vec<u32> = self
-                .mobs
-                .iter()
-                .filter(|m| m.extra.leash == Some(Holder::Boat(id)))
-                .map(|m| m.id)
-                .collect();
-            let mut held_boats = self.boats_on(Holder::Boat(id));
-            if self.boats[i].leash.is_some() {
-                held_boats.push(i);
-            }
-            if !held_mobs.is_empty() || !held_boats.is_empty() {
-                for m in held_mobs {
-                    self.break_leash(m, true, false);
-                }
-                self.drop_boat_leashes(&held_boats);
-                self.lead_game_event("minecraft:shear", at);
-                self.audio
-                    .0
-                    .play("minecraft:item.shears.snip", Some(at), 1.0, 1.0);
-                self.damage_held_tool();
-                return true;
-            }
-        }
-        if self.boat_led_by_player(i) {
-            // hasInfiniteMaterials: removeLeash, else dropLeash.
-            let drop = !self.creative;
-            self.release_stored_boat_leash(i, drop);
-            self.lead_game_event("minecraft:entity_interact", at);
-            self.lead_sound("untied", at);
-            return true;
-        }
-        let taken_by_player = self.boats[i].leash == Some(Holder::Player);
-        if item.as_deref() == Some("minecraft:lead") && !taken_by_player {
-            let player = self.player_center();
-            if self.boat_can_attach(i, player) {
-                self.release_stored_boat_leash(i, true);
-                let Some(i) = self.boats.iter().position(|boat| boat.id == id) else {
-                    return true;
-                };
-                let player_uuid = self.acting_player_uuid();
-                self.boats.update(i, |b| {
-                    // LeashData.setLeashHolder forgets a holder still waiting in the save.
-                    b.leash = Some(Holder::Player);
-                    b.leash_pending = None;
-                    b.leash_player = Some(player_uuid);
-                });
-                self.lead_sound("tied", at);
-                // The lead is always used up.
-                self.consume_player_slot(self.held_slot(), 1);
-                return true;
-            }
-        }
-        false
-    }
-
     /// The leads on boats that hang on a player or a mob, for the entity
     /// tracker: the holder's entity id (`ClientboundSetEntityLinkPacket`).
     pub(in crate::game) fn boat_leash_link(&self, b: &Boat, guests: &[(u128, i32)]) -> Option<i32> {
@@ -573,7 +504,7 @@ impl Game<'_> {
 }
 
 #[cfg(test)]
-mod tests {
+pub(in crate::game) mod tests {
     use super::*;
 
     #[test]

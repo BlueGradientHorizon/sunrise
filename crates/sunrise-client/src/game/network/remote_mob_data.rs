@@ -17,7 +17,7 @@ use sunrise_world::registry::BlockStateId;
 /// The values `apply` takes from one SetEntityData packet, by vanilla's entry
 /// indices (Entity 0..=7, LivingEntity 8..=14, Mob 15, then the subclasses).
 /// `builtin` names the ids of built-in registries.
-pub(super) fn apply(
+pub(in crate::game) fn apply(
     m: &mut Mob,
     values: &[(u8, i32, Value)],
     builtin: &Builtin,
@@ -493,7 +493,7 @@ use super::villager_client::villager_data;
 
 impl Game<'_> {
     /// SetEntityData for a mob of the server's.
-    pub(super) fn remote_mob_data(&mut self, id: i32, values: &[(u8, i32, Value)]) {
+    pub(in crate::game) fn remote_mob_data(&mut self, id: i32, values: &[(u8, i32, Value)]) {
         let Some(r) = &self.remote else {
             return;
         };
@@ -538,7 +538,7 @@ impl Game<'_> {
 /// A mob as a client constructs it before its data arrives: the synched
 /// defaults the server leaves out (`getNonDefaultValues`) that differ from
 /// what `Mob::new` gives, such as a wolf's and a cat's red collar.
-pub(super) fn client_defaults(m: &mut Mob) {
+pub(in crate::game) fn client_defaults(m: &mut Mob) {
     m.air = m.max_air_supply();
     if matches!(m.species(), Species::Wolf | Species::Cat) {
         m.extra.color = tame::RED;

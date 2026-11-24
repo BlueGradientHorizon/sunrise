@@ -1,21 +1,29 @@
+#[allow(unused_imports)]
 use crate::game::native_entity_refs::tests::with_game;
+#[allow(unused_imports)]
 use mod_api::*;
+#[allow(unused_imports)]
 use std::sync::{
     Arc, Mutex,
     atomic::{AtomicBool, AtomicUsize, Ordering},
 };
+#[allow(unused_imports)]
 use sunrise_client::chunk::Chunk;
+#[allow(unused_imports)]
 use sunrise_core::position::BlockPos;
 
-type Notices = Arc<Mutex<Vec<(BlockPos, BlockPos)>>>;
-struct Counter(Notices);
+pub(in crate::game) type Notices = Arc<Mutex<Vec<(BlockPos, BlockPos)>>>;
+pub(in crate::game) struct Counter(pub(in crate::game) Notices);
 #[mod_api::sunrise_part]
 impl BlockPart for Counter {
     fn on_neighbor_change(&self, _: &dyn LevelHost, event: &mut OnNeighborChangeEvent) {
         self.0.lock().unwrap().push((event.pos, event.neighbor));
     }
 }
-struct Weak(Arc<AtomicBool>, Arc<AtomicUsize>);
+pub(in crate::game) struct Weak(
+    pub(in crate::game) Arc<AtomicBool>,
+    pub(in crate::game) Arc<AtomicUsize>,
+);
 #[mod_api::sunrise_part]
 impl BlockPart for Weak {
     fn weak_changes(&self, _: &dyn LevelHost, event: &mut WeakChangesEvent) {
@@ -23,7 +31,11 @@ impl BlockPart for Weak {
         event.receive = self.0.load(Ordering::SeqCst);
     }
 }
-struct Listener(Notices, Arc<AtomicBool>, Arc<AtomicUsize>);
+pub(in crate::game) struct Listener(
+    pub(in crate::game) Notices,
+    pub(in crate::game) Arc<AtomicBool>,
+    pub(in crate::game) Arc<AtomicUsize>,
+);
 #[mod_api::__subscriptions]
 impl Hooks for Listener {
     fn register(&self, r: &mut dyn Registrar, _: &RegistrationContext) {
@@ -33,76 +45,11 @@ impl Hooks for Listener {
     }
 }
 
-#[test]
-#[ignore = "daily"]
-fn installed_block_entity_neighbor_parts_dispatch_through_game() {
-    let notices = Arc::new(Mutex::new(Vec::new()));
-    let weak = Arc::new(AtomicBool::new(true));
-    let queries = Arc::new(AtomicUsize::new(0));
-    let mods: Mods = vec![ModEntry::new(
-        "neighbor_counter",
-        Box::new(Listener(notices.clone(), weak.clone(), queries.clone())),
-    )]
-    .into();
-    mod_platform::testing::with_mods(mods.clone(), || {
-        mod_platform::__private::part_tests::install_parts_fixture(&mods).unwrap();
-        with_game(|game| {
-            let directory = tempfile::tempdir().unwrap();
-            game.save.0 = Arc::new(sunrise_client::save::SaveDir::new(
-                directory.path().to_path_buf(),
-                sunrise_client::save::LevelShape::OVERWORLD,
-                Some(Default::default()),
-            ));
-            game.options.dedicated = Some(Vec::new());
-            game.world
-                .chunks
-                .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
-            let registry = game.pack.assets.registry;
-            let chest = registry.default_state("minecraft:chest").unwrap();
-            let glass = registry.default_state("minecraft:glass").unwrap();
-            let stone = registry.default_state("minecraft:stone").unwrap();
-            let source = BlockPos::new(4, 64, 4);
-            let adjacent = BlockPos::new(3, 64, 4);
-            let far = BlockPos::new(6, 64, 4);
-            let bare = BlockPos::new(4, 64, 3);
-            for (pos, state) in [
-                (source, chest),
-                (adjacent, glass),
-                (BlockPos::new(5, 64, 4), stone),
-                (far, glass),
-                (bare, stone),
-            ] {
-                game.world.set(pos.x, pos.y, pos.z, state).unwrap();
-            }
-            for enabled in [true, false] {
-                weak.store(enabled, Ordering::SeqCst);
-                queries.store(0, Ordering::SeqCst);
-                notices.lock().unwrap().clear();
-                game.container_changed((source.x, source.y, source.z));
-                let heard = notices.lock().unwrap();
-                assert_eq!(
-                    heard
-                        .iter()
-                        .filter(|&&(p, n)| p == adjacent && n == source)
-                        .count(),
-                    1
-                );
-                assert_eq!(
-                    heard
-                        .iter()
-                        .filter(|&&(p, n)| p == far && n == source)
-                        .count(),
-                    usize::from(enabled)
-                );
-                assert_eq!(heard.iter().filter(|&&(p, _)| p == bare).count(), 0);
-                assert_eq!(heard.len(), if enabled { 2 } else { 1 });
-                assert_eq!(queries.load(Ordering::SeqCst), 1);
-            }
-        });
-    });
-}
-
-struct EdgeListener(Notices, Arc<AtomicBool>, Arc<AtomicUsize>);
+pub(in crate::game) struct EdgeListener(
+    pub(in crate::game) Notices,
+    pub(in crate::game) Arc<AtomicBool>,
+    pub(in crate::game) Arc<AtomicUsize>,
+);
 #[mod_api::__subscriptions]
 impl Hooks for EdgeListener {
     fn register(&self, r: &mut dyn Registrar, _: &RegistrationContext) {

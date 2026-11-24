@@ -1,3 +1,4 @@
+#[allow(unused_imports)]
 use super::*;
 
 /// The hook points. Each does nothing in Sunrise.
@@ -10,13 +11,6 @@ impl Game<'_> {
             partial_tick
         };
         (world_partial_tick, partial_tick)
-    }
-
-    pub(in crate::game) fn frame_world_partial_tick(&self) -> f64 {
-        self.client
-            .extras
-            .frame_partial_ticks
-            .map_or_else(|| self.clock.fraction(), |(world, _)| f64::from(world))
     }
 
     /// Once a frame, in a world or not, after Sunrise's extras and just
@@ -32,7 +26,7 @@ impl Game<'_> {
 }
 
 #[cfg(test)]
-mod tests {
+pub(in crate::game) mod tests {
     use super::super::super::native_entity_refs::tests::{run_fresh_cases, with_client_game};
     use super::super::particle_count_tests::frame_scene;
     use mod_api::{

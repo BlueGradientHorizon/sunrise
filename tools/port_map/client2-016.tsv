@@ -41,17 +41,17 @@ LoomScreen.extractBannerOnButton	port	crates/sunrise-client/src/game/blocks/loom
 LoomScreen.hasClickedOutside	port	crates/sunrise-client/src/game/interface/inventory_input.rs::Game::clicked_outside	outside test against the container rectangle, plus the recipe book area
 MerchantScreen.postButtonClick	port	crates/sunrise-client/src/game/items/trading.rs::Game::try_move_items	selection hint, move the offer's items, and the SelectTrade packet on a server
 MerchantScreen.init	skip:ui		trade buttons are laid out in draw_merchant and hit-tested in merchant_click
-MerchantScreen.extractLabels	inline	crates/sunrise-client/src/game/items/trading.rs::Game::draw_merchant	title with the trader level, Trades and Inventory labels
-MerchantScreen.extractBackground	inline	crates/sunrise-client/src/game/items/trading.rs::Game::draw_merchant	villager background and the out-of-stock sprite
-MerchantScreen.extractProgressBar	inline	crates/sunrise-client/src/game/items/trading.rs::Game::draw_merchant	experience bar, with the pending trade's XP
-MerchantScreen.extractScroller	port	crates/sunrise-client/src/game/items/trading.rs::Game::draw_merchant	the thumb's sprite and its cursor (a hand, the vertical resize while dragged); the disabled sprite below 8 offers
-MerchantScreen.extractContents	inline	crates/sunrise-client/src/game/items/trading.rs::Game::draw_merchant	the seven offer rows from the scroll offset
-MerchantScreen.extractButtonArrows	inline	crates/sunrise-client/src/game/items/trading.rs::Game::draw_merchant	trade arrow, and the out-of-stock arrow
-MerchantScreen.extractAndDecorateCostA	inline	crates/sunrise-client/src/game/items/trading.rs::Game::draw_merchant	discount: base count struck through, new count drawn (merchant.rs cost_a)
+MerchantScreen.extractLabels	inline	crates/sunrise-client/src/game/items/trading_client.rs::Game::draw_merchant	title with the trader level, Trades and Inventory labels
+MerchantScreen.extractBackground	inline	crates/sunrise-client/src/game/items/trading_client.rs::Game::draw_merchant	villager background and the out-of-stock sprite
+MerchantScreen.extractProgressBar	inline	crates/sunrise-client/src/game/items/trading_client.rs::Game::draw_merchant	experience bar, with the pending trade's XP
+MerchantScreen.extractScroller	port	crates/sunrise-client/src/game/items/trading_client.rs::Game::draw_merchant	the thumb's sprite and its cursor (a hand, the vertical resize while dragged); the disabled sprite below 8 offers
+MerchantScreen.extractContents	inline	crates/sunrise-client/src/game/items/trading_client.rs::Game::draw_merchant	the seven offer rows from the scroll offset
+MerchantScreen.extractButtonArrows	inline	crates/sunrise-client/src/game/items/trading_client.rs::Game::draw_merchant	trade arrow, and the out-of-stock arrow
+MerchantScreen.extractAndDecorateCostA	inline	crates/sunrise-client/src/game/items/trading_client.rs::Game::draw_merchant	discount: base count struck through, new count drawn (merchant.rs cost_a)
 MerchantScreen.mouseScrolled	port	crates/sunrise-client/src/game/items/trading.rs::Game::merchant_scroll	gap: minor: one offer per wheel step; vanilla uses the float scroll amount
-MerchantScreen.mouseDragged	port	crates/sunrise-client/src/game/items/trading.rs::Game::merchant_drag	the scroller takes presses only past seven offers and picks the nearest one
-MerchantScreen.mouseClicked	port	crates/sunrise-client/src/game/items/trading.rs::Game::merchant_click	a press inside the scroller's 139-px track starts the drag (dragging set, merchant_drag follows the pointer), only past seven offers; otherwise the offer buttons are hit-tested
-MerchantScreen.TradeOfferButton.extractToolTip	inline	crates/sunrise-client/src/game/items/trading.rs::Game::draw_merchant	item tooltip for cost A, cost B or the result under the hovered offer
+MerchantScreen.mouseDragged	port	crates/sunrise-client/src/game/items/trading_client.rs::Game::merchant_drag	the scroller takes presses only past seven offers and picks the nearest one
+MerchantScreen.mouseClicked	port	crates/sunrise-client/src/game/items/trading_client.rs::Game::merchant_click	a press inside the scroller's 139-px track starts the drag (dragging set, merchant_drag follows the pointer), only past seven offers; otherwise the offer buttons are hit-tested
+MerchantScreen.TradeOfferButton.extractToolTip	inline	crates/sunrise-client/src/game/items/trading_client.rs::Game::draw_merchant	item tooltip for cost A, cost B or the result under the hovered offer
 MinecartCommandBlockEditScreen.populateAndSendPacket	port	crates/sunrise-client/src/game/administration/command_minecarts.rs::Game::open_cart_command_block	a game master's interact opens the editor on the cart's BaseCommandBlock, and the edit is written back to the cart
 PageButton.extractContents	inline	crates/sunrise-client/src/game/interface/books.rs::Game::draw_book	page arrows with their hover sprites (page_buttons)
 ShulkerBoxScreen.extractBackground	port	crates/sunrise-client/src/game/world/storage.rs::Game::draw_chest_screen	shulker box background texture, drawn with the other container screens
@@ -60,7 +60,7 @@ SmithingScreen.containerTick	port	crates/sunrise-gameplay/src/smithing_icons.rs:
 SmithingScreen.getTemplateItem	port	crates/sunrise-gameplay/src/smithing_icons.rs::smithing_slot_icons	the template's base and addition icons are picked there
 SmithingScreen.extractRenderState	inline	crates/sunrise-client/src/game/blocks/stations/draw.rs::Game::draw_station	gap: player: onboarding tooltips for empty slots are missing (see extractOnboardingTooltips)
 SmithingScreen.extractBackground	inline	crates/sunrise-client/src/game/blocks/stations/draw.rs::Game::draw_station	gap: player: the armour stand preview beside the slots is not drawn
-SmithingScreen.updateArmorStandPreview	port	crates/sunrise-client/src/game/entities/armor_stands.rs::Game::draw_smithing_armor_stand	the armour stand wearing the upgraded item, beside the slots
+SmithingScreen.updateArmorStandPreview	port	crates/sunrise-client/src/game/entities/armor_stands_client.rs::Game::draw_smithing_armor_stand	the armour stand wearing the upgraded item, beside the slots
 SmithingScreen.extractErrorIcon	inline	crates/sunrise-client/src/game/blocks/stations/draw.rs::Game::draw_station	error sprite at (65, 46) when all inputs are set and there is no result
 SmithingScreen.extractOnboardingTooltips	inline	crates/sunrise-client/src/game/blocks/stations/draw.rs::Game::draw_station	gap: player: only the upgrade error tooltip exists; the missing-template and slot description tooltips are not drawn
 StonecutterScreen.extractBackground	inline	crates/sunrise-client/src/game/blocks/stations/draw.rs::Game::draw_station	background, scroller and the recipe grid

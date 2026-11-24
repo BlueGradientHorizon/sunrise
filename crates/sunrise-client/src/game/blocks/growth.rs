@@ -11,7 +11,7 @@ impl Game<'_> {
     /// Load the configured/placed feature registry used by saplings, fungi
     /// and bone meal (for fixtures: the plain bundle, unless one is installed; worlds install
     /// their own in `prepare_world`).
-    pub(super) fn install_live_features(&self) {
+    pub(in crate::game) fn install_live_features(&self) {
         if self.res.behaviours().live_features().is_some() {
             return;
         }
@@ -20,7 +20,7 @@ impl Game<'_> {
     /// `BonemealEvent` for the acting hand's bone meal `stack` on `pos`:
     /// the event's answer, and the stack as the mods left it, which goes
     /// back in the hand (`useItemOn` puts a creative player's count back).
-    pub(super) fn held_bonemeal(
+    pub(in crate::game) fn held_bonemeal(
         &mut self,
         pos: BlockPos,
         stack: &ItemStack,
@@ -36,7 +36,7 @@ impl Game<'_> {
         (ask, held)
     }
     /// `BoneMealItem.useOn` for the targeted block.
-    pub(super) fn use_bone_meal(&mut self, stack: &ItemStack) -> Result<bool> {
+    pub(in crate::game) fn use_bone_meal(&mut self, stack: &ItemStack) -> Result<bool> {
         if &*stack.item != "minecraft:bone_meal" {
             return Ok(false);
         }
@@ -83,7 +83,11 @@ impl Game<'_> {
     /// `GrowingPlantHeadBlock.getMaxAgeState` (age 25) with
     /// `block.growing_plant.crop`, the level hears a `block_change`, and the
     /// shears wear by one. True when it cropped (SUCCESS).
-    pub(super) fn shears_crop(&mut self, pos: [i32; 3], stack: &ItemStack) -> Result<bool> {
+    pub(in crate::game) fn shears_crop(
+        &mut self,
+        pos: [i32; 3],
+        stack: &ItemStack,
+    ) -> Result<bool> {
         if &*stack.item != "minecraft:shears" {
             return Ok(false);
         }
@@ -187,7 +191,7 @@ fn live_features_for(
 /// world's. `overrides` are the world's: with the plain bundle only, a data
 /// pack's configured feature (a mod sapling's tree) is unknown here and its
 /// growth is dropped. Shared by world opening and fixture setup.
-pub(super) fn install_live_features(
+pub(in crate::game) fn install_live_features(
     res: &super::Resources,
     pack: &super::PackResources,
     options: &super::Options,
@@ -296,7 +300,7 @@ mod tests {
     #[ignore = "daily"]
     fn a_dispensers_bonemeal_follows_the_cancel_and_the_edited_stack() {
         if super::super::native_entity_refs::tests::run_fresh_cases(
-            "game::growth::tests::a_dispensers_bonemeal_follows_the_cancel_and_the_edited_stack",
+            "game::client_side::growth::tests::a_dispensers_bonemeal_follows_the_cancel_and_the_edited_stack",
             "SUNRISE_BONEMEAL_DISPENSE_CHILD",
             &["dispense"],
         ) {
@@ -411,7 +415,7 @@ mod tests {
     fn the_live_features_follow_the_world_being_opened() {
         // Other feature fixtures can evict the process-wide last-built cache.
         if super::super::native_entity_refs::tests::run_fresh_cases(
-            "game::growth::tests::the_live_features_follow_the_world_being_opened",
+            "game::client_side::growth::tests::the_live_features_follow_the_world_being_opened",
             "SUNRISE_LIVE_FEATURE_CACHE_CHILD",
             &["reopen"],
         ) {

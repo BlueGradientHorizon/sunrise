@@ -1,9 +1,11 @@
+#[allow(unused_imports)]
 use super::*;
+#[allow(unused_imports)]
 use sunrise_client::chat::{ChatSource, Tag as ChatTag};
 
 /// `ChatType`'s two decorations: how a message shows in the chat, and what the narrator says of it.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(in super::super) enum Decoration {
+pub(in crate::game) enum Decoration {
     Chat,
     Narration,
 }
@@ -12,7 +14,7 @@ pub(in super::super) enum Decoration {
 /// entry: its translation, with the sender, the target or the message as its
 /// parameters, in its style. A chat type the registry lacks decorates as
 /// `minecraft:chat` (`chat.type.text`, narrated `chat.type.text.narrate`).
-pub(super) fn chat_type_decorate(
+pub(in crate::game) fn chat_type_decorate(
     chat_type: Option<&Tag>,
     decoration: Decoration,
     bound: &play::ChatTypeBound,
@@ -56,14 +58,14 @@ pub(super) fn chat_type_decorate(
 }
 
 /// `ChatTrustLevel`; a modified message keeps the signed content it was changed from.
-pub(super) enum ChatTrust {
+pub(in crate::game) enum ChatTrust {
     Secure,
     Modified(String),
     NotSecure,
 }
 impl ChatTrust {
     /// `ChatTrustLevel.createTag`.
-    fn tag(&self) -> Option<ChatTag> {
+    pub(in crate::game) fn tag(&self) -> Option<ChatTag> {
         match self {
             Self::Secure => None,
             Self::Modified(original) => Some(ChatTag::modified(original)),
@@ -83,49 +85,9 @@ impl Game<'_> {
         self.push_chat_line(content, source, None, None);
         true
     }
-    /// Record a visible line, keeping a player message's signature for deletion.
-    fn push_chat_line(
-        &mut self,
-        content: Text,
-        source: ChatSource,
-        signature: Option<Signature>,
-        tag: Option<ChatTag>,
-    ) {
-        let text = content.plain();
-        let focused = self.client.screen == Screen::Chat;
-        if source == ChatSource::Player {
-            self.ui.chat.add_signed(
-                &self.gui.atlas,
-                content,
-                signature,
-                tag,
-                self.visual_ticks(),
-                focused,
-            );
-        } else {
-            // addServerSystemMessage and addClientSystemMessage both carry
-            // GuiMessageTag.systemSinglePlayer: the grey bar at the line's left.
-            let indicator = Some(sunrise_client::chat::SYSTEM_INDICATOR);
-            self.ui.chat.add(
-                &self.gui.atlas,
-                content,
-                indicator,
-                source,
-                self.visual_ticks(),
-                focused,
-            );
-        }
-        if let Some(r) = self.remote.as_mut() {
-            r.chat.push((text, Instant::now()));
-            r.chat_received += 1;
-            if r.chat.len() > 100 {
-                r.chat.remove(0);
-            }
-        }
-    }
     /// `ChatListener.handleChatMessageError`: a validation failure queues a
     /// red italic error line and acknowledges the invalid signature on acceptance.
-    pub(super) fn handle_chat_message_error(
+    pub(in crate::game) fn handle_chat_message_error(
         &mut self,
         sender: u128,
         chat_type: play::ChatTypeBound,
@@ -142,7 +104,7 @@ impl Game<'_> {
     /// own server is secure. `decorated` is the acceptance-time chat decoration
     /// before applying the server's filter mask.
     #[allow(clippy::too_many_arguments)]
-    pub(super) fn chat_trust(
+    pub(in crate::game) fn chat_trust(
         &self,
         sender: u128,
         signed: bool,
@@ -191,7 +153,10 @@ impl Game<'_> {
     /// (`ChatListener.removeFromDelayedMessageQueue`), a shown one is
     /// replaced (`ChatComponent.deleteMessage`). A signature the cache
     /// doesn't hold is an invalid packet.
-    pub(super) fn handle_delete_chat(&mut self, packed: &(i32, Option<Vec<u8>>)) -> Result<()> {
+    pub(in crate::game) fn handle_delete_chat(
+        &mut self,
+        packed: &(i32, Option<Vec<u8>>),
+    ) -> Result<()> {
         let Some(r) = self.remote.as_mut() else {
             return Ok(());
         };
@@ -210,7 +175,7 @@ impl Game<'_> {
     }
     /// `ChatListener.showMessageToPlayer`, `handleDisguisedChatMessage` and
     /// `handleChatMessageError`: check the current restrictions before presentation.
-    pub(super) fn show_queued_chat(&mut self, chat: QueuedChat) -> bool {
+    pub(in crate::game) fn show_queued_chat(&mut self, chat: QueuedChat) -> bool {
         let QueuedChat {
             signature,
             sender,

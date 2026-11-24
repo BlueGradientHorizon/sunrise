@@ -1,5 +1,5 @@
 #[cfg(test)]
-mod teleport_player_tests {
+pub(in crate::game) mod teleport_player_tests {
     use crate::game::native_entity_refs::tests::with_game;
     use sunrise_client::motion::PlayerMotion;
     use sunrise_core::geometry::Vec3;
@@ -57,82 +57,15 @@ mod teleport_player_tests {
 }
 
 #[cfg(test)]
-mod fake_travel_tests {
+pub(in crate::game) mod fake_travel_tests {
+    #[allow(unused_imports)]
     use super::super::super::Dim;
+    #[allow(unused_imports)]
     use super::super::Target;
-
-    #[test]
-    #[ignore = "daily"]
-    fn a_fake_player_is_not_teleported_to_another_dimension() {
-        super::super::super::native_entity_refs::tests::with_game(|game| {
-            super::super::super::bossbars::audience_tests::add_real_and_fake(game);
-            let host = game.lan.as_ref().unwrap();
-            let conn = |uuid| {
-                host.hub
-                    .guests
-                    .iter()
-                    .find(|g| g.uuid == uuid)
-                    .unwrap()
-                    .conn
-            };
-            let (fake, real) = (conn(2), conn(1));
-            let to_nether = |game: &mut super::super::super::Game<'_>, conn| {
-                game.as_guest(conn, |g| {
-                    g.teleport_across(
-                        Target::Player,
-                        Dim::Nether,
-                        [0.0, 64.0, 0.0],
-                        None,
-                        false,
-                        super::super::super::vehicle_teleport::TeleportMotion::Stop,
-                    )
-                })
-            };
-            // Taken (true), so no same-level teleport stands in for it, and nothing queued.
-            assert!(matches!(to_nether(game, fake), Some(Ok(true))));
-            assert!(game.server.level_teleports.is_empty());
-            // A real player's goes on the queue as before.
-            assert!(matches!(to_nether(game, real), Some(Ok(true))));
-            assert_eq!(game.server.level_teleports.len(), 1);
-        });
-    }
-
-    /// A mod's `teleport_to_level`: a player to another level goes on the queue; to their own
-    /// level, nothing is queued; an entity no level holds is refused.
-    #[test]
-    #[ignore = "daily"]
-    fn a_mod_sends_a_player_to_another_level_and_not_a_missing_entity() {
-        super::super::super::native_entity_refs::tests::with_game(|game| {
-            super::super::super::bossbars::audience_tests::add_real_and_fake(game);
-            let conn = game
-                .lan
-                .as_ref()
-                .unwrap()
-                .hub
-                .guests
-                .iter()
-                .find(|g| g.uuid == 1)
-                .unwrap()
-                .conn;
-            let sent = |game: &mut super::super::super::Game<'_>, level| {
-                game.as_guest(conn, |g| {
-                    g.teleport_to_level(Target::Player, level, [0.0, 64.0, 0.0], None)
-                })
-            };
-            assert_eq!(sent(game, Dim::Nether), Some(true));
-            assert_eq!(game.server.level_teleports.len(), 1);
-            // Their own level: the same-level teleport, nothing queued.
-            let home = game.target_level(Target::Guest(conn));
-            assert_eq!(sent(game, home), Some(true));
-            assert_eq!(game.server.level_teleports.len(), 1);
-            // No level holds this item.
-            assert!(!game.teleport_to_level(Target::Item(9_999), Dim::Nether, [0.0; 3], None));
-        });
-    }
 }
 
 #[cfg(test)]
-mod teleport_rider_tests {
+pub(in crate::game) mod teleport_rider_tests {
     #[test]
     #[ignore = "daily"]
     fn a_vehicle_carries_its_riders_and_a_rider_leaves_its_vehicle() {

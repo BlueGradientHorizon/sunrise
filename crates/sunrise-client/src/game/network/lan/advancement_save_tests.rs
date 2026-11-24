@@ -1,5 +1,5 @@
 #[cfg(test)]
-mod connected_advancement_save_tests {
+pub(in crate::game) mod connected_advancement_save_tests {
     use super::super::Game;
     use std::fs;
     fn command(game: &mut Game<'_>, text: &str) -> Vec<sunrise_client::text::Text> {
@@ -173,7 +173,7 @@ mod connected_advancement_save_tests {
 }
 
 #[cfg(test)]
-mod connected_advancement_preservation_tests {
+pub(in crate::game) mod connected_advancement_preservation_tests {
     use super::super::Game;
     use std::fs;
     fn command(game: &mut Game<'_>, text: &str) -> Vec<sunrise_client::text::Text> {

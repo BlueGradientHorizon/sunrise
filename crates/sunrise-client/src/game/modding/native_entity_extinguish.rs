@@ -3,7 +3,7 @@ use super::{Game, commands::Target, powder_snow::extinguish_pitch};
 use mod_api::{EntityRef, SoundSource};
 
 impl Game<'_> {
-    pub(super) fn entity_extinguish_fire(&mut self, entity: EntityRef) -> bool {
+    pub(in crate::game) fn entity_extinguish_fire(&mut self, entity: EntityRef) -> bool {
         match self.native_entity_target(entity) {
             Some(target @ (Target::Player | Target::Guest(_))) => self
                 .for_player(target, |game| {

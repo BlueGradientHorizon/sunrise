@@ -55,7 +55,11 @@ const FLIPPED_ROWS: [(&str, Flips); 9] = [
 ];
 
 /// The sticks as the row meant them.
-pub(super) fn sticks(pad: &Gamepad, left: [f32; 2], right: [f32; 2]) -> ([f32; 2], [f32; 2]) {
+pub(in crate::game) fn sticks(
+    pad: &Gamepad,
+    left: [f32; 2],
+    right: [f32; 2],
+) -> ([f32; 2], [f32; 2]) {
     if !cfg!(target_os = "linux") || pad.mapping_source() != MappingSource::SdlMappings {
         return (left, right);
     }

@@ -8,7 +8,7 @@ impl Game<'_> {
     /// `broadcastEntityEvent` moment (`ServerLivingEntityEvents.AFTER_DEATH`).
     /// `source` is the blow `living_death` heard; a death it cancelled never
     /// reaches here.
-    pub(super) fn finish_mob_death(
+    pub(in crate::game) fn finish_mob_death(
         &mut self,
         m: &Mob,
         dying: &mut Mob,

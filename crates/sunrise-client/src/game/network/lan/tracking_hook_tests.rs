@@ -3,33 +3,46 @@
 //! with the entity in the level once the player was sent its spawn bundle, a stop once it was
 //! sent the removal, and a payload a listener sends reaches the player right after that packet.
 //! A leaving player's stops follow `player_logged_out`.
+#[allow(unused_imports)]
 use crate::game::Game;
+#[allow(unused_imports)]
 use crate::game::native_entity_refs::tests::with_game;
+#[allow(unused_imports)]
 use crate::game::native_item_places::tests::{guest, open_to_lan};
+#[allow(unused_imports)]
 use mod_api::{Hooks, ModEntry, PayloadBytes, PayloadId, Registrar, ServerHost};
+#[allow(unused_imports)]
 use std::sync::{Arc, Mutex};
+#[allow(unused_imports)]
 use sunrise_client::{
     chunk::Chunk,
     items::ItemStack,
     lan::{PlayerSender, hub::HostEvent},
     raw_payloads::{Side, Transport},
 };
+#[allow(unused_imports)]
 use sunrise_protocol::{buf::Reader, ids::play::clientbound as id};
 
-const CHANNEL: &str = "tracktest:seen";
+pub(in crate::game) const CHANNEL: &str = "tracktest:seen";
 
 #[derive(Debug, PartialEq)]
-enum Heard {
+pub(in crate::game) enum Heard {
     /// A start, and whether the entity was in the level then.
     Start(u32, bool),
     Stop(u32),
     LoggedOut,
 }
 
-struct Probe(Arc<Mutex<Vec<Heard>>>);
+pub(in crate::game) struct Probe(pub(in crate::game) Arc<Mutex<Vec<Heard>>>);
 impl Probe {
     /// Tell the player which entity it heard of, on the mod's channel.
-    fn send(&self, host: &mut dyn ServerHost, player: u128, what: &str, entity: u32) {
+    pub(in crate::game) fn send(
+        &self,
+        host: &mut dyn ServerHost,
+        player: u128,
+        what: &str,
+        entity: u32,
+    ) {
         let Some(player) = host.player(player) else {
             return;
         };
@@ -76,7 +89,7 @@ impl Hooks for Probe {
 /// `AddEntity`, `End` for a bundle delimiter, `Remove(ids)`, `Said(text)` for the mod's payload,
 /// and `Other` with the packet id for the rest.
 #[derive(Debug, PartialEq)]
-enum Sent {
+pub(in crate::game) enum Sent {
     Add(u32),
     End,
     Remove(Vec<u32>),
@@ -84,7 +97,7 @@ enum Sent {
     Other(i32),
 }
 
-fn read(packets: Vec<Vec<u8>>) -> Vec<Sent> {
+pub(in crate::game) fn read(packets: Vec<Vec<u8>>) -> Vec<Sent> {
     packets
         .iter()
         .map(|body| {
@@ -108,7 +121,7 @@ fn read(packets: Vec<Vec<u8>>) -> Vec<Sent> {
 /// Two loaded guests in chunk (0, 0) on a vanilla peer's connection each, and two items near
 /// them that never come within pickup reach: `run` gets the game, each guest's packet reader and
 /// the items' ids.
-fn with_two_items(
+pub(in crate::game) fn with_two_items(
     run: impl FnOnce(&mut Game<'_>, &dyn Fn() -> Vec<Heard>, [&dyn Fn() -> Vec<Sent>; 2], [u32; 2]),
 ) {
     let log = Arc::new(Mutex::new(Vec::new()));
@@ -161,7 +174,10 @@ fn with_two_items(
 
 /// Run server ticks until a mod hears something, at most 20: a new guest is sent its chunks,
 /// and pairs the entities in them, over its first ticks.
-fn tick_until_heard(game: &mut Game<'_>, heard: &dyn Fn() -> Vec<Heard>) -> Vec<Heard> {
+pub(in crate::game) fn tick_until_heard(
+    game: &mut Game<'_>,
+    heard: &dyn Fn() -> Vec<Heard>,
+) -> Vec<Heard> {
     for _ in 0..20 {
         // The tracker pairs only what the client was sent the chunk of (`isChunkTracked`); this
         // fixture runs no chunk sending, so chunk (0, 0) stands as sent.
@@ -185,7 +201,7 @@ fn tick_until_heard(game: &mut Game<'_>, heard: &dyn Fn() -> Vec<Heard>) -> Vec<
 }
 
 /// The index of the first packet matching `wanted`.
-fn at(sent: &[Sent], wanted: &Sent) -> usize {
+pub(in crate::game) fn at(sent: &[Sent], wanted: &Sent) -> usize {
     sent.iter()
         .position(|s| s == wanted)
         .unwrap_or_else(|| panic!("{wanted:?} not sent: {sent:?}"))
@@ -193,7 +209,7 @@ fn at(sent: &[Sent], wanted: &Sent) -> usize {
 
 /// The stops a removal packet carries: it is followed at once by the mod's word for each,
 /// in the order the mods heard them.
-fn words_after_removal(sent: &[Sent], id: u32) -> (Vec<u32>, Vec<&Sent>) {
+pub(in crate::game) fn words_after_removal(sent: &[Sent], id: u32) -> (Vec<u32>, Vec<&Sent>) {
     let removed = sent
         .iter()
         .position(|s| matches!(s, Sent::Remove(ids) if ids.contains(&id)))
@@ -205,7 +221,7 @@ fn words_after_removal(sent: &[Sent], id: u32) -> (Vec<u32>, Vec<&Sent>) {
     (ids.clone(), words)
 }
 
-fn sorted(mut v: Vec<Heard>) -> Vec<Heard> {
+pub(in crate::game) fn sorted(mut v: Vec<Heard>) -> Vec<Heard> {
     v.sort_by_key(|h| format!("{h:?}"));
     v
 }
@@ -307,52 +323,5 @@ fn a_leaving_player_hears_its_stops_after_logging_out() {
             stops,
             [&Heard::Stop(far), &Heard::Stop(near), &Heard::Stop(21)]
         );
-    });
-}
-
-/// A stop whose removal waits for a captured sound: the item's sound comes after one from an
-/// emitter the players must be paired with first, so its removal is held until both sounds are out
-/// (`Hub::prepare_captured_sounds`, `finish_captured_sounds`). The mod hears the stop only then,
-/// and its word reaches each player after that removal.
-#[test]
-#[ignore = "daily"]
-fn a_stop_waiting_for_a_sound_is_heard_after_its_removal() {
-    with_two_items(|game, heard, [first, second], [_, near]| {
-        let _ = tick_until_heard(game, heard);
-        game.spawn_item(
-            ItemStack::new("minecraft:diamond", 1),
-            [8.5, 64.0, 12.5],
-            [0.0; 3],
-            32767,
-        );
-        let fresh = game.dropped.last().unwrap().id;
-        let index = game.dropped.iter().position(|d| d.id == near).unwrap();
-        let _ = game.dropped.remove(index);
-        let sound = |entity: u32| sunrise_client::audio::CapturedSound {
-            event: "minecraft:entity.item.pickup".into(),
-            position: [8.5, 64.0, 8.5],
-            volume: 1.0,
-            pitch: 1.0,
-            source: 7,
-            entity: Some(entity),
-            except_entity: None,
-            seed: 0,
-            particles_before: 0,
-        };
-        game.audio.0.capture = Some(vec![sound(fresh), sound(near)]);
-        let told = tick_until_heard(game, heard);
-        assert_eq!(
-            told.iter().filter(|h| **h == Heard::Stop(near)).count(),
-            2,
-            "{told:?}"
-        );
-        for sent in [first(), second()] {
-            let removed = sent
-                .iter()
-                .position(|s| matches!(s, Sent::Remove(ids) if ids.contains(&near)))
-                .unwrap_or_else(|| panic!("no removal of {near}: {sent:?}"));
-            let said = at(&sent, &Sent::Said(format!("stop {near}")));
-            assert!(removed < said, "the word came before the removal: {sent:?}");
-        }
     });
 }

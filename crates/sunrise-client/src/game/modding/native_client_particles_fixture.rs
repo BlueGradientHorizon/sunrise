@@ -34,7 +34,10 @@ impl Game<'_> {
         self.particles.0.tick(&level);
     }
 
-    pub(super) fn run_native_client_particles_fixture(&mut self, directory: &Path) -> Result<()> {
+    pub(in crate::game) fn run_native_client_particles_fixture(
+        &mut self,
+        directory: &Path,
+    ) -> Result<()> {
         // The fixture stands in for a joined client level, where the mods' calls run in the
         // World phase; the loading window it starts from is still in Setup.
         let at = [0.0, 100.0, 0.0];

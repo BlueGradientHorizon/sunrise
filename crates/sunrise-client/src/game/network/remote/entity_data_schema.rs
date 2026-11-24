@@ -1,7 +1,7 @@
 //! Vanilla 26.3 `SynchedEntityData` serializer layouts by `minecraft:entity_type` id.
 
 /// Base `Entity` data entries (`0..8`) shared by every entity type.
-pub(super) const ENTITY_BASE: &[i32] = &[0, 1, 6, 8, 8, 8, 20, 1];
+pub(in crate::game) const ENTITY_BASE: &[i32] = &[0, 1, 6, 8, 8, 8, 20, 1];
 
 const BOAT: &[i32] = &[0, 1, 6, 8, 8, 8, 20, 1, 1, 1, 3, 8, 8, 1];
 const ITEM_PROJECTILE: &[i32] = &[0, 1, 6, 8, 8, 8, 20, 1, 7];
@@ -32,7 +32,7 @@ const ZOMBIE: &[i32] = &[0, 1, 6, 8, 8, 8, 20, 1, 0, 3, 17, 8, 1, 1, 11, 0, 8, 1
 const ITEM_FRAME: &[i32] = &[0, 1, 6, 8, 8, 8, 20, 1, 12, 7, 1];
 
 /// Sorted `(minecraft:entity_type, serializer_ids)` table matching vanilla 26.3 `SynchedEntityData`.
-pub(super) const ENTITY_SERIALIZERS: &[(&str, &[i32])] = &[
+pub(in crate::game) const ENTITY_SERIALIZERS: &[(&str, &[i32])] = &[
     ("minecraft:acacia_boat", BOAT),
     ("minecraft:acacia_chest_boat", BOAT),
     ("minecraft:allay", AGEABLE),
@@ -375,7 +375,7 @@ pub(super) const ENTITY_SERIALIZERS: &[(&str, &[i32])] = &[
 ];
 
 /// Expected `EntityDataSerializers` id at each accessor index for vanilla 26.3 entity types.
-pub(super) fn serializers(kind: &str) -> Option<&'static [i32]> {
+pub(in crate::game) fn serializers(kind: &str) -> Option<&'static [i32]> {
     ENTITY_SERIALIZERS
         .binary_search_by_key(&kind, |&(id, _)| id)
         .ok()

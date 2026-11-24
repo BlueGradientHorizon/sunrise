@@ -136,14 +136,14 @@ impl MemorySchedule {
 }
 
 /// The game's capture state: the health history, the running capture and who is waiting on it.
-pub(super) struct Profile {
+pub(in crate::game) struct Profile {
     /// The server thread's health history and its side of a capture; set on its own Game only.
-    pub(super) server: Option<ServerSide>,
+    pub(in crate::game) server: Option<ServerSide>,
     link: ServerLink,
     /// The server thread's side of the running or last window capture, once it was asked.
     joined: Option<Arc<Live>>,
     server_only: Option<ServerOnly>,
-    pub(super) perf: ClientPerf,
+    pub(in crate::game) perf: ClientPerf,
     started_by: Trigger,
     memory: MemorySchedule,
     /// Where the answer to a `/profiler` request that finishes later arrives.
@@ -165,21 +165,21 @@ pub(super) struct Profile {
     /// What the running capture asks the renderer to time.
     gpu: GpuSwitch,
     /// The guests' requests to this server and the capture they ask of it (perf_remote.rs).
-    pub(super) served: Served,
+    pub(in crate::game) served: Served,
     /// This client's capture on the server it is connected to.
-    pub(super) server_link: Link,
+    pub(in crate::game) server_link: Link,
     /// `profile` waits for the server's answer to its start, or for its file after a stop.
-    pub(super) server_reply: Option<Sender<String>>,
+    pub(in crate::game) server_reply: Option<Sender<String>>,
     /// Whether the server's capture belongs to a window capture, whose stop ends it.
-    pub(super) server_joined: bool,
+    pub(in crate::game) server_joined: bool,
     /// The window capture's file, held open for the server's part until it has all arrived.
-    pub(super) server_sink: Option<super::perf_link::Sink>,
+    pub(in crate::game) server_sink: Option<super::perf_link::Sink>,
     /// The server's file while it arrives.
-    pub(super) incoming: Option<super::perf_link::Incoming>,
+    pub(in crate::game) incoming: Option<super::perf_link::Incoming>,
 }
 
 impl Profile {
-    pub(super) fn new(slow_ms: f32) -> Self {
+    pub(in crate::game) fn new(slow_ms: f32) -> Self {
         Self {
             server: None,
             link: ServerLink::Off,
@@ -210,7 +210,7 @@ impl Profile {
     }
 
     /// The GPU timing the running capture needs; off when none runs.
-    pub(super) fn gpu(&self) -> GpuSwitch {
+    pub(in crate::game) fn gpu(&self) -> GpuSwitch {
         self.gpu
     }
 
@@ -309,7 +309,7 @@ impl Profile {
     }
 }
 
-pub(super) fn reports_dir() -> PathBuf {
+pub(in crate::game) fn reports_dir() -> PathBuf {
     client_perf::reports_dir(
         std::env::var_os(ENV_DIR).as_deref(),
         &sunrise_client::logging::game_home(),
@@ -317,7 +317,7 @@ pub(super) fn reports_dir() -> PathBuf {
 }
 
 /// The path as the player sees it: under the game home's folder when it is there.
-pub(super) fn shown(path: &Path) -> String {
+pub(in crate::game) fn shown(path: &Path) -> String {
     shown_in(path, &sunrise_client::logging::game_home())
 }
 
@@ -350,7 +350,7 @@ fn json_of<T: serde::Serialize>(reply: &T) -> Result<Option<serde_json::Value>> 
     Ok(Some(serde_json::to_value(reply)?))
 }
 
-pub(super) fn reply_text<T: serde::Serialize>(reply: &T) -> String {
+pub(in crate::game) fn reply_text<T: serde::Serialize>(reply: &T) -> String {
     serde_json::to_string(reply).unwrap_or_default()
 }
 
@@ -363,7 +363,7 @@ struct ChatAnswer {
 }
 
 /// The words after `/profiler` when `command`, without its slash, is that command.
-pub(super) fn profiler_args(command: &str) -> Option<&str> {
+pub(in crate::game) fn profiler_args(command: &str) -> Option<&str> {
     command
         .strip_prefix("profiler")
         .filter(|rest| rest.is_empty() || rest.starts_with(' '))
@@ -437,7 +437,7 @@ fn profiler_words(literals: &[String], name: Option<&str>) -> Vec<String> {
 
 impl Game<'_> {
     /// `profile [client|server] start|stop|status|mark`; None while a `stop` waits for its file.
-    pub(super) fn profile_command(
+    pub(in crate::game) fn profile_command(
         &mut self,
         words: &[&str],
         reply: &Sender<String>,
@@ -519,7 +519,7 @@ impl Game<'_> {
     }
 
     /// `trace [FILE [SECONDS] | stop]`: a timeline-only capture written to FILE; None while a `stop` waits for its file.
-    pub(super) fn trace_command(
+    pub(in crate::game) fn trace_command(
         &mut self,
         words: &[&str],
         reply: &Sender<String>,
@@ -726,7 +726,7 @@ impl Game<'_> {
     }
 
     /// `/profiler start|stop|status|mark`: the requests of `sunrise-ctl profile`, answered in chat.
-    pub(super) fn profiler_chat(&mut self, args: &str) {
+    pub(in crate::game) fn profiler_chat(&mut self, args: &str) {
         let line = format!("profiler{args}");
         let tree = Dispatcher::profiler();
         let parse = tree.parse(&line, &Registries::default());
@@ -846,7 +846,7 @@ impl Game<'_> {
     }
 
     /// A capture from chat that asked for both sides, told the server refused to join it.
-    pub(super) fn profiler_client_only(&mut self, why: &str) {
+    pub(in crate::game) fn profiler_client_only(&mut self, why: &str) {
         if self.profile.started_by == Trigger::Command {
             self.notify(lines::client_only(why));
         }
@@ -1007,7 +1007,7 @@ impl Game<'_> {
     }
 
     /// One rendered frame: `wall_ms` long, `cpu_ms` of it the CPU's own work.
-    pub(super) fn record_perf_frame(
+    pub(in crate::game) fn record_perf_frame(
         &mut self,
         wall_ms: f32,
         cpu_ms: f32,
@@ -1100,7 +1100,7 @@ impl Game<'_> {
     }
 
     /// Once per loop turn: the captures whose files are whole, told to whoever waits for them.
-    pub(super) fn poll_profile(&mut self) {
+    pub(in crate::game) fn poll_profile(&mut self) {
         self.poll_server_link();
         self.poll_chat_answer();
         self.poll_progress();
@@ -1112,7 +1112,7 @@ impl Game<'_> {
     }
 
     /// Ends the capture a closing game still has, and waits for its file.
-    pub(super) fn finish_profile(&mut self) {
+    pub(in crate::game) fn finish_profile(&mut self) {
         if self.profile.perf.capturing() {
             let _ = self.stop_profile(StopReason::Shutdown);
         }

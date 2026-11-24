@@ -5,7 +5,7 @@ use mod_api::{
     Answered,
 };
 
-pub(super) fn collect_standalone_models(
+pub(in crate::game) fn collect_standalone_models(
     role: ExecutionRole,
 ) -> Option<Vec<Answered<StandaloneModelRegistration>>> {
     if !role.is_client() {

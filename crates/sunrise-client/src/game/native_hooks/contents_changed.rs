@@ -1,4 +1,6 @@
+#[allow(unused_imports)]
 use super::*;
+#[allow(unused_imports)]
 use mod_api::__private::game::Fields;
 
 /// The hook points. Each does nothing in Sunrise.
@@ -49,9 +51,5 @@ impl Game<'_> {
                     .fire_contents_changed(level, pos, state, Some(entity));
             }
         }
-    }
-
-    pub(in crate::game) fn contents_notice_active(&self, level: LevelRef, pos: BlockPos) -> bool {
-        self.server.contents_changing.contains(&(level, pos))
     }
 }
