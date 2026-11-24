@@ -14,7 +14,6 @@ pub(in crate::gfx) struct PostPassArgs<'a> {
     pub(in crate::gfx) after_pack_custom_geometry: bool,
     pub(in crate::gfx) pack_draws_weather: bool,
     pub(in crate::gfx) pack_draws_terrain: bool,
-    pub(in crate::gfx) pack_draws_water: bool,
     pub(in crate::gfx) pack_draws_shadow: bool,
     pub(in crate::gfx) pack_draws_outline: bool,
     pub(in crate::gfx) pack_draws_clouds: bool,
@@ -77,7 +76,6 @@ impl Renderer {
             after_pack_custom_geometry,
             pack_draws_weather,
             pack_draws_terrain,
-            pack_draws_water,
             pack_draws_shadow,
             pack_draws_outline,
             pack_draws_clouds,
@@ -123,15 +121,10 @@ impl Renderer {
             // The standard primitive blend cannot target an integer or unblendable colortex0.
             // On that route the pack world stages have no compatible pass, rather than firing
             // early.
-            let pack_blendable = pack_post::holds_floats(format)
-                && format
-                    .guaranteed_format_features(self.device.features())
-                    .flags
-                    .contains(wgpu::TextureFormatFeatureFlags::BLENDABLE);
+            let pack_blendable = post.colortex0_blendable(&self.device);
             let pack_features = after_pack_features && pack_blendable;
             let pack_opaque_blocks = hooks.is_some() && pack_draws_terrain && pack_blendable;
-            let pack_translucent_blocks =
-                hooks.is_some() && (pack_draws_terrain || pack_draws_water) && pack_blendable;
+            let pack_translucent_blocks = hooks.is_some() && pack_draws_terrain && pack_blendable;
             let pack_weather = hooks.is_some() && pack_draws_weather && pack_blendable;
             let pack_custom_geometry = after_pack_custom_geometry && pack_blendable;
             if pack_features
