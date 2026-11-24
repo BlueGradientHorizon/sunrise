@@ -1339,6 +1339,18 @@ impl Hub {
         });
     }
 
+    /// `PlayerList.isOp`: an entry of the operator list, a level-0 one too, or
+    /// the integrated server's owner while the world allows commands (the
+    /// owner's entry is kept at level 0 while it does not). Opening a world to
+    /// LAN with commands raises the guests' permission level; it does not make
+    /// them operators.
+    pub fn is_op(&self, uuid: u128) -> bool {
+        if self.config.integrated && self.singleplayer_owner == Some(uuid) {
+            return self.ops.get(&uuid).is_some_and(|&level| level > 0);
+        }
+        self.ops.contains_key(&uuid)
+    }
+
     /// Whether a player of `permission` sees the player `uuid`: not one a
     /// native mod hid from players below a higher level.
     pub fn sees(&self, permission: u8, uuid: u128) -> bool {
