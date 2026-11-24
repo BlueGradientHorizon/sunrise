@@ -2556,7 +2556,7 @@ impl Streaming {
                         cover: self
                             .async_request_cover
                             .as_ref()
-                            .filter(|_| self.async_request_cover_current),
+                            .filter(|_| self.cover_current),
                     }),
                 };
                 let (protos, generating) = (&self.protos, &self.generating);
@@ -2756,7 +2756,7 @@ impl Streaming {
                     cover: self
                         .async_request_cover
                         .as_ref()
-                        .filter(|_| self.async_request_cover_current),
+                        .filter(|_| self.cover_current),
                 }),
             };
             self.waiting.retain(|&(x, sy, z)| {
@@ -2931,7 +2931,7 @@ impl Streaming {
                     cover: self
                         .async_request_cover
                         .as_ref()
-                        .filter(|_| self.async_request_cover_current),
+                        .filter(|_| self.cover_current),
                 }),
             },
             world,

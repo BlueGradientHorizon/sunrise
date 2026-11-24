@@ -412,7 +412,7 @@ mod tests {
                     .expect("request admitted")
             };
             assert!(game.streaming.has_async_requests());
-            game.update_tickets(false);
+            game.rebuild_chunk_tickets(false);
             let levels = game.tickets.levels();
             assert!(!levels.entity_ticking(12, -8));
             assert!(!levels.block_ticking(12, -8));
