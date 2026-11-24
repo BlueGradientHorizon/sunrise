@@ -323,7 +323,8 @@ pub enum DatapackRegistrationError {
     InvalidKey,
     /// Another declaration already covers the registry key.
     Duplicate,
-    /// A field name is empty or repeated.
+    /// A field name is empty or repeated, or a dispatch variant's field is named like the
+    /// dispatch's key.
     InvalidFieldName,
     /// A field's kind is unusable: bounds that are not finite or `min > max`,
     /// a scalar text field's `max_len` of 0, a list's `min_len` over its `max_len`, an
