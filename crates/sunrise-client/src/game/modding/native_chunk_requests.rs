@@ -712,7 +712,11 @@ mod tests {
             assert_eq!(completed[0].pos, target);
             let snap = completed[0].result.as_ref().expect("snapshot ok");
             assert!(snap.has_light(), "streamed chunk is lit");
-            assert_eq!(snap.sky_light(8, 318, 8), Some(15), "open sky light");
+            assert_eq!(
+                snap.light(8, 318, 8).map(|(sky, _)| sky),
+                Some(15),
+                "open sky light"
+            );
             assert!(!game.streaming.has_async_requests());
 
             // Once the transient level-33 ticket is released, an area change triggers the unload
@@ -767,14 +771,16 @@ mod tests {
             assert!(!game.has_async_chunk_requests(Dim::Nether));
             if let Some(parked) = game.levels.parked.get(&Dim::Nether) {
                 assert!(!parked.streaming.has_async_requests());
-                assert!(
-                    !parked
-                        .tickets
-                        .levels()
-                        .loaded_full(nether_target[0], nether_target[1]),
-                    "parked dimension cleared released level-33 ticket"
-                );
             }
+            game.enter_level(Dim::Nether).unwrap();
+            assert!(
+                !game
+                    .tickets
+                    .levels()
+                    .loaded_full(nether_target[0], nether_target[1]),
+                "parked dimension cleared released level-33 ticket"
+            );
+            game.enter_level(back).unwrap();
 
             // 3. Paused level refuses even an already-resident lit chunk; aborted workers fail any
             // in-flight pending request with `ChunkLoadError::Unloaded` and release its ticket.
@@ -836,7 +842,7 @@ mod tests {
     fn request_chunk_reports_failed_on_generator_panic_mid_flight_and_at_admission() {
         use crate::game::native_entity_refs::tests::run_fresh_cases;
         use mod_api::{
-            Flow, Hooks, LevelTickEvent, ModEntry, RuntimeGenerator, RuntimeLevel, ServerHost,
+            Hooks, HostSide, LevelTickPostEvent, ModEntry, RuntimeGenerator, RuntimeLevel,
         };
         use sunrise_world::worldgen::mod_generators::{
             ChunkAccess, ModChunkGenerator, ModChunkGenerators, install_mod_chunk_generators,
@@ -869,8 +875,11 @@ mod tests {
         struct Opener;
         #[mod_api::__subscriptions]
         impl Hooks for Opener {
-            fn level_tick_post(&self, host: &mut dyn ServerHost, _event: &LevelTickEvent) -> Flow {
-                let _ = host.open_level(
+            fn level_tick_post(&self, host: HostSide, _event: &mut LevelTickPostEvent) {
+                let HostSide::Server(host) = host else {
+                    return;
+                };
+                let _ = host.runtime_levels().open(
                     "asyncfail:dim",
                     RuntimeLevel::new(
                         "minecraft:overworld",
@@ -878,7 +887,6 @@ mod tests {
                         1,
                     ),
                 );
-                Flow::Continue
             }
         }
 
