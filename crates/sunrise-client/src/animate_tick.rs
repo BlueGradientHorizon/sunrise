@@ -1953,8 +1953,6 @@ fn block_animate_tick(
         }
     }
 }
-/// `AmbientLeavesBlockSoundPlayer.playAmbientLeavesSounds` for the poplar leaves:
-/// one log and three leaves of the same kind around the block.
 /// `EnchantingTableBlock.animateTick`'s glyphs: for each of `BOOKSHELF_OFFSETS`, in its order,
 /// a `nextInt(16)` draw, and only when it is 0 `isValidBookShelf` (`valid`), then three
 /// `nextFloat`s for the glyph flying from that shelf to the table.
@@ -1971,14 +1969,16 @@ fn enchanting_table_particles(
         let [ox, oy, oz] = offset;
         let r = engine.random();
         let v = [
-            f64::from(ox as f32 + r.next_float() - 0.5),
+            f64::from(ox as f32 + r.next_float()) - 0.5,
             f64::from(oy as f32 - r.next_float() - 1.0),
-            f64::from(oz as f32 + r.next_float() - 0.5),
+            f64::from(oz as f32 + r.next_float()) - 0.5,
         ];
         add(engine, T::Enchant, [fx + 0.5, fy + 2.0, fz + 0.5], v);
     }
 }
 
+/// `AmbientLeavesBlockSoundPlayer.playAmbientLeavesSounds` for the poplar leaves:
+/// one log and three leaves of the same kind around the block.
 fn leaves_ambient_sound(
     tables: &AnimateTables,
     engine: &mut ParticleEngine,
