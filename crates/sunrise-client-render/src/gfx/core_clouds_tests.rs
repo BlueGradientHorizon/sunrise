@@ -478,7 +478,7 @@ fn oit_programs_of(
         crate::core_shader::translate_core_with(vertex, fragment, s.defines, include, &GLUE, &|b| {
             b == INFO_BLOCK || b == FACES || s.samplers.contains(&b)
         })
-        .unwrap_or_else(|e| panic!("{}: {e}", s.pipeline))
+        .unwrap_or_else(|e| panic!("{}: {e:?}", s.pipeline))
     };
     [
         stage(&OIT_STAGES[0]),
