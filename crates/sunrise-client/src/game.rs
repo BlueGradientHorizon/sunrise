@@ -5968,6 +5968,8 @@ impl Game<'_> {
                                 ticking: false,
                             }
                         }));
+                        viewed.sort_unstable();
+                        viewed.dedup();
                     }
                     viewed
                 },

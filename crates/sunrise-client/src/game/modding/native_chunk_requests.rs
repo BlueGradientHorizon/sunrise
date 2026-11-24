@@ -44,16 +44,31 @@ pub(super) struct AsyncChunkRequests {
     next_id: u64,
     last_mods_switched: u64,
     pending: FxHashMap<Dim, VecDeque<PendingChunkRequest>>,
+    /// Index of active pending requests by `(dim, request)` -> `(mod_id, pos)` so `cancel` is
+    /// O(1) (lazy tombstoning on `pending` queues avoids O(N) linear scan and shift).
+    pending_by_handle: FxHashMap<(Dim, ChunkRequestRef), (&'static str, (i32, i32))>,
     /// Active pending request count per `(dim, chunk)` so overlapping requests from multiple mods
     /// (or repeated requests from one mod) release the level-33 ticket only when the last holder
     /// completes or cancels.
     holders: FxHashMap<(Dim, (i32, i32)), usize>,
+    /// Count of active (non-tombstoned) pending requests per dimension.
+    active_counts: FxHashMap<Dim, usize>,
     completed: FxHashMap<(&'static str, LevelRef), Vec<CompletedChunkRequest>>,
 }
 
 impl AsyncChunkRequests {
     pub(super) fn has_pending_in(&self, dim: Dim) -> bool {
-        self.pending.get(&dim).is_some_and(|q| !q.is_empty())
+        self.active_counts.get(&dim).copied().unwrap_or(0) > 0
+    }
+
+    fn dec_active(&mut self, dim: Dim) {
+        if let Some(count) = self.active_counts.get_mut(&dim) {
+            if *count <= 1 {
+                self.active_counts.remove(&dim);
+            } else {
+                *count -= 1;
+            }
+        }
     }
 
     fn add_holder(&mut self, dim: Dim, pos: (i32, i32)) -> bool {
@@ -144,6 +159,15 @@ impl Game<'_> {
         if first_holder && let Some(streaming) = self.level_streaming_mut(dim) {
             streaming.add_async_request(chunk);
         }
+        let handle = mod_api::__private::game::chunk_request_ref(level, id);
+        self.async_chunk_requests
+            .pending_by_handle
+            .insert((dim, handle), (mod_id, chunk));
+        *self
+            .async_chunk_requests
+            .active_counts
+            .entry(dim)
+            .or_insert(0) += 1;
         self.async_chunk_requests
             .pending
             .entry(dim)
@@ -154,7 +178,7 @@ impl Game<'_> {
                 level,
                 pos: chunk,
             });
-        Ok(mod_api::__private::game::chunk_request_ref(level, id))
+        Ok(handle)
     }
 
     /// Drain all completed or failed chunk requests owned by the calling mod on `level`.
@@ -187,26 +211,23 @@ impl Game<'_> {
             return false;
         };
         self.prune_disabled_async_chunk_requests();
-        let mut cancelled_pos = None;
-        if let Some(queue) = self.async_chunk_requests.pending.get_mut(&dim)
-            && let Some(idx) = queue.iter().position(|req| {
-                req.mod_id == mod_id
-                    && req.level == level
-                    && mod_api::__private::game::chunk_request_ref(req.level, req.id) == request
-            })
+        if let Some(&(owner, pos)) = self
+            .async_chunk_requests
+            .pending_by_handle
+            .get(&(dim, request))
+            && owner == mod_id
         {
-            if let Some(removed) = queue.remove(idx) {
-                cancelled_pos = Some(removed.pos);
-            }
-            if queue.is_empty() {
-                self.async_chunk_requests.pending.remove(&dim);
-            }
-        }
-        if let Some(pos) = cancelled_pos {
+            self.async_chunk_requests
+                .pending_by_handle
+                .remove(&(dim, request));
+            self.async_chunk_requests.dec_active(dim);
             if self.async_chunk_requests.release_holder(dim, pos)
                 && let Some(streaming) = self.level_streaming_mut(dim)
             {
                 streaming.remove_async_request(pos);
+            }
+            if !self.async_chunk_requests.has_pending_in(dim) {
+                self.async_chunk_requests.pending.remove(&dim);
             }
             return true;
         }
@@ -216,7 +237,7 @@ impl Game<'_> {
             .get_mut(&(mod_id, level))
             && let Some(idx) = done.iter().position(|entry| entry.request == request)
         {
-            done.remove(idx);
+            done.swap_remove(idx);
             if done.is_empty() {
                 self.async_chunk_requests.completed.remove(&(mod_id, level));
             }
@@ -244,17 +265,29 @@ impl Game<'_> {
         }
         let mut released: Vec<(Dim, (i32, i32))> = Vec::new();
         let mut empty_dims: Vec<Dim> = Vec::new();
+        let pending_by_handle = &mut self.async_chunk_requests.pending_by_handle;
+        let active_counts = &mut self.async_chunk_requests.active_counts;
         for (&dim, queue) in &mut self.async_chunk_requests.pending {
-            let mut i = 0;
-            while i < queue.len() {
-                if is_disabled(queue[i].mod_id) {
-                    if let Some(removed) = queue.remove(i) {
-                        released.push((dim, removed.pos));
-                    }
-                } else {
-                    i += 1;
+            queue.retain(|req| {
+                let handle = mod_api::__private::game::chunk_request_ref(req.level, req.id);
+                if !pending_by_handle.contains_key(&(dim, handle)) {
+                    return false;
                 }
-            }
+                if is_disabled(req.mod_id) {
+                    pending_by_handle.remove(&(dim, handle));
+                    if let Some(count) = active_counts.get_mut(&dim) {
+                        if *count <= 1 {
+                            active_counts.remove(&dim);
+                        } else {
+                            *count -= 1;
+                        }
+                    }
+                    released.push((dim, req.pos));
+                    false
+                } else {
+                    true
+                }
+            });
             if queue.is_empty() {
                 empty_dims.push(dim);
             }
@@ -278,6 +311,10 @@ impl Game<'_> {
     pub(super) fn clear_async_chunk_requests_for_dim(&mut self, dim: Dim) {
         self.async_chunk_requests.pending.remove(&dim);
         self.async_chunk_requests
+            .pending_by_handle
+            .retain(|&(d, _), _| d != dim);
+        self.async_chunk_requests.active_counts.remove(&dim);
+        self.async_chunk_requests
             .holders
             .retain(|&(holder_dim, _), _| holder_dim != dim);
         let key = dim.key();
@@ -292,6 +329,8 @@ impl Game<'_> {
     /// Drop all pending and undrained async chunk requests across every dimension.
     pub(super) fn clear_all_async_chunk_requests(&mut self) {
         self.async_chunk_requests.pending.clear();
+        self.async_chunk_requests.pending_by_handle.clear();
+        self.async_chunk_requests.active_counts.clear();
         self.async_chunk_requests.holders.clear();
         self.async_chunk_requests.completed.clear();
         self.streaming.clear_async_requests();
@@ -329,7 +368,19 @@ impl Game<'_> {
             };
             scanned += 1;
             let handle = mod_api::__private::game::chunk_request_ref(req.level, req.id);
+            if !self
+                .async_chunk_requests
+                .pending_by_handle
+                .contains_key(&(dim, handle))
+            {
+                // Cancelled lazily via `chunk_request_cancel`.
+                continue;
+            }
             if self.streaming.full_column_failed(req.pos) {
+                self.async_chunk_requests
+                    .pending_by_handle
+                    .remove(&(dim, handle));
+                self.async_chunk_requests.dec_active(dim);
                 released_chunks.push(req.pos);
                 self.async_chunk_requests
                     .completed
@@ -347,9 +398,14 @@ impl Game<'_> {
             } else if full_column_ready(&self.world, req.pos)
                 && let Some(column) = self.world.chunks.get(&req.pos)
             {
+                self.async_chunk_requests
+                    .pending_by_handle
+                    .remove(&(dim, handle));
+                self.async_chunk_requests.dec_active(dim);
                 let has_light = column.lit || column.light_loaded;
                 let snapshot = EngineChunkSnapshot::from_chunk(
                     column,
+                    self.world.shape,
                     states.clone(),
                     biomes.clone(),
                     properties.clone(),

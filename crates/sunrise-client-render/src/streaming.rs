@@ -659,6 +659,10 @@ pub struct Streaming {
     /// radius it was last ranked for.
     decoration_order: DecorationOrder,
     order_area: Option<((i32, i32), i32)>,
+    /// Set when async chunk requests are added/removed so `decoration_order` prunes entries
+    /// whose requests have completed or been cancelled even while the player is stationary or on
+    /// a parked level.
+    decoration_order_dirty: bool,
     /// Something decoration reads may have changed since the last pass, so the
     /// finalize and decoration passes are worth running: a proto chunk, a
     /// decorated key, a finished column, the swept area, or a proto save came
@@ -1406,6 +1410,7 @@ impl Streaming {
             viewing: Default::default(),
             decoration_order: DecorationOrder::default(),
             order_area: None,
+            decoration_order_dirty: false,
             decoration_changed: false,
             decoration_revision: 0,
             decoration_basis: None,
@@ -2164,10 +2169,23 @@ impl Streaming {
         }
         ExtraCover::refresh(&mut self.cover, &self.extra);
         ForcedCover::refresh(&mut self.forced_cover, &self.forced);
+        let mut async_requests_changed = false;
         if self.async_requests.is_empty() {
+            async_requests_changed = self.async_request_cover.is_some();
             self.async_request_cover = None;
         } else {
-            ForcedCover::refresh(&mut self.async_request_cover, &self.async_requests);
+            let had_diff = self
+                .async_request_cover
+                .as_ref()
+                .is_none_or(|c| !c.matches(&self.async_requests));
+            if had_diff {
+                ForcedCover::refresh(&mut self.async_request_cover, &self.async_requests);
+                async_requests_changed = true;
+            }
+        }
+        if async_requests_changed {
+            self.generation_scan.invalidate();
+            self.decoration_order_dirty = true;
         }
         self.cover_current = true;
         // The sweeps below walk every loaded column and proto chunk. Run them
@@ -2535,14 +2553,18 @@ impl Streaming {
             // Decorate chunks whose 3x3 proto neighbourhood is available, in
             // vanilla's order: decoration is order dependent where write regions
             // overlap (see `DecorationOrder`).
-            if self.decorates && self.order_area != Some((self.center, self.radius)) {
-                let (decorated, chunks) = (&self.decorated, &world.chunks);
-                // The render distance is the server view distance in singleplayer.
-                self.decoration_order
-                    .reassign(self.center, self.radius, |x, z| {
-                        decorated.contains(&(x, z)) || chunks.contains_key(&(x, z))
-                    });
-                self.order_area = Some((self.center, self.radius));
+            let area_changed = self.order_area != Some((self.center, self.radius));
+            if self.decorates && (area_changed || self.decoration_order_dirty) {
+                if area_changed {
+                    let (decorated, chunks) = (&self.decorated, &world.chunks);
+                    // The render distance is the server view distance in singleplayer.
+                    self.decoration_order
+                        .reassign(self.center, self.radius, |x, z| {
+                            decorated.contains(&(x, z)) || chunks.contains_key(&(x, z))
+                        });
+                    self.order_area = Some((self.center, self.radius));
+                }
+                self.decoration_order_dirty = false;
                 let ranges = Ranges {
                     center: self.center,
                     radius: self.radius,
@@ -2589,7 +2611,9 @@ impl Streaming {
                             })
                         })
                 };
-                // Out for the call: ranking reads the streamer's ranges.
+                // Out for the call: ranking reads the streamer's ranges. Sort fresh chunks by
+                // `ranges.priority` so async-request-only chunks always receive ranks strictly
+                // after player, extra, forced, and band chunks.
                 let mut order = std::mem::take(&mut self.decoration_order);
                 let mut wanted = decoration_queue(
                     &mut order,
@@ -2597,7 +2621,7 @@ impl Streaming {
                         .iter()
                         .filter(|&(&(x, z), proto)| proto.is_some() && wants(self, x, z))
                         .map(|(&k, _)| k),
-                    |x, z| self.distance(x, z),
+                    |x, z| self.ranges().priority(x, z),
                 );
                 self.decoration_order = order;
                 // Most wanted chunks are blocked, and the same neighbours are
@@ -3433,20 +3457,14 @@ impl Streaming {
     /// views, forced chunks, and pregeneration bands until removed.
     pub fn add_async_request(&mut self, chunk: (i32, i32)) {
         if self.async_requests.insert(chunk) {
-            self.generation_scan.invalidate();
-            for dx in -2..=2 {
-                for dz in -2..=2 {
-                    self.decoration_order
-                        .rank_or_append(chunk.0 + dx, chunk.1 + dz);
-                }
-            }
+            self.decoration_order_dirty = true;
         }
     }
 
     /// Release a non-blocking mod chunk request's hold on `chunk`.
     pub fn remove_async_request(&mut self, chunk: (i32, i32)) {
         if self.async_requests.remove(&chunk) {
-            self.generation_scan.invalidate();
+            self.decoration_order_dirty = true;
         }
     }
 
@@ -3456,6 +3474,7 @@ impl Streaming {
             self.async_requests.clear();
             self.async_request_cover = None;
             self.generation_scan.invalidate();
+            self.decoration_order_dirty = true;
         }
     }
 
