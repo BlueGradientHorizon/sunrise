@@ -136,9 +136,20 @@ fn main() -> ExitCode {
             // is published in between.
             let requested = build.unwrap_or(sunrise_release_sign::NIGHTLY);
             let sunrise = resolve_build(requested)?;
-            sdk_cmds::pin_report(entry, Path::new("."), &sunrise)
-                .and_then(|()| repin(Path::new("."), &sdk_fetch::fetch_build, requested, &sunrise))
-                .map(|()| println!("Run `cargo sunrise-mod check`."))
+            let project = Path::new(".");
+            sdk_cmds::pin_report(entry, project, &sunrise)
+                .and_then(|()| repin(project, &sdk_fetch::fetch_build, requested, &sunrise))?;
+            // The lock names the SDK's local packages, so it moves with the pin: a release
+            // refuses a lock Cargo would change.
+            if project.join("Cargo.lock").is_file() {
+                sdk_fetch::fetch_pinned(project, &sunrise)?;
+                let rust = dev::native_sdk(&dev::cache_dir()?, &sunrise)?.rust;
+                dev::refresh_lock(&rust, project)
+                    .map_err(|e| format!("Cargo.lock could not follow the new pin: {e}"))?;
+                println!("Updated Cargo.lock to the new SDK");
+            }
+            println!("Run `cargo sunrise-mod check`.");
+            Ok(())
         }),
         None | Some("--help" | "-h") => {
             print!("{}", help::short());
