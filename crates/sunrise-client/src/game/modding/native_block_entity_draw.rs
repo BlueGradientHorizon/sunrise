@@ -343,7 +343,7 @@ pub struct BlockEntityDraw {
     spins: Vec<(usize, Option<Spin>)>,
     /// `level_light` is on: elements drawn now are lit by the level.
     level_lit: bool,
-    /// `unlit` is on: elements drawn now skip face shading and the lightmap.
+    /// `unlit` is on: elements drawn now skip face shading and draw full bright.
     unlit: bool,
     /// Each element drawn under `level_light` (vertex range and local centre),
     /// beside `spins`.
@@ -816,7 +816,7 @@ impl BlockEntityDraw {
     fn level_light(&mut self) {
         self.level_lit = true;
     }
-    /// What is drawn next skips directional shading and the lightmap (`native_draw_unlit`).
+    /// What is drawn next skips directional shading and draws full bright (`native_draw_unlit`).
     pub(super) fn unlit(&mut self, on: bool) {
         self.unlit = on;
     }
@@ -1448,7 +1448,7 @@ impl Game<'_> {
     pub(super) fn native_draw_level_light(&self, draw: &mut BlockEntityDraw) {
         draw.level_light();
     }
-    /// What is drawn next skips directional shading and the lightmap while `on`
+    /// What is drawn next skips directional shading and draws full bright while `on`
     /// (`BlockEntityDrawContext::unlit`).
     pub(super) fn native_draw_unlit(&self, draw: &mut BlockEntityDraw, on: bool) {
         draw.unlit(on);
@@ -3450,9 +3450,12 @@ mod tests {
         let mut d = draw();
         d.prepared = true;
         d.set_light(0x3070);
-        d.level_light();
         d.unlit(true);
-        assert!(!d.defer_model(0, 1, u32::MAX));
+        assert!(
+            !d.defer_model(0, 1, u32::MAX),
+            "unlit alone keeps it on the CPU"
+        );
+        d.level_light();
         d.model(&[face], u32::MAX);
         assert_eq!(d.vertices.len(), 4);
         assert!(d.lit.is_empty());
