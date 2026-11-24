@@ -678,7 +678,12 @@ fn read_builtin_state_provider(
             })
             .as_ref()?;
         if let Some(value) = map.get(name).or_else(|| map.get(path)) {
-            return Some(value.to_string());
+            return Some(
+                value
+                    .as_str()
+                    .map(str::to_owned)
+                    .unwrap_or_else(|| value.to_string()),
+            );
         }
     }
     None
@@ -1799,9 +1804,14 @@ mod tests {
 
                     // 8. Client sync round-trip: replaying the reload's wire packets in order
                     //    installs the newly added block tag before binding the snapshot.
-                    game.options.execution_role =
-                        crate::game::execution_role::ExecutionRole::Client;
-                    let _server = logged_client(game);
+                    let _server = crate::game::remote::tests::connect_menu_test(game);
+                    game.drain_test_remote_join();
+                    {
+                        let remote = game.remote.as_mut().unwrap();
+                        remote.logged_in = true;
+                        remote.entity_id = 7;
+                        remote.profile = 42;
+                    }
                     game.enter_remote_dimension(
                         &sunrise_protocol::packets::play::SpawnInfo {
                             dimension_type: 0,
@@ -1997,7 +2007,7 @@ mod tests {
                         "invalid vanilla value on Play reload must fail with PacketError",
                     );
                     assert!(
-                        err.is::<crate::game::remote::raw_ingress::PacketError>(),
+                        err.is::<crate::game::remote::PacketError>(),
                         "expected PacketError, got: {err}"
                     );
                     assert_eq!(live_int.sample(game, &mut rng), Ok(5));
@@ -2007,17 +2017,10 @@ mod tests {
                     );
 
                     // Dispatching the bad Play packet through poll_remote_events disconnects cleanly.
-                    let (bad_tx, bad_rx) = sunrise_client::ingress::channel(1024, |_| 1).unwrap();
-                    bad_tx
-                        .send(sunrise_client::net::Event::Packet(Box::new(bad_packet)))
-                        .unwrap();
-                    let (event, credit) = bad_rx.try_recv_owned().unwrap().into_parts();
-                    game.remote
-                        .as_mut()
-                        .unwrap()
-                        .backlog
-                        .push_back(crate::game::remote::Received::Event(event, credit));
-                    game.poll_remote_events(true).unwrap();
+                    game.dispatch_test_remote_event(sunrise_client::net::Event::Packet(Box::new(
+                        bad_packet,
+                    )))
+                    .unwrap();
                     assert!(
                         game.remote.is_none(),
                         "invalid Play datapack vanilla value must disconnect the client"
@@ -2030,21 +2033,13 @@ mod tests {
                         bad_receiver.accept_chunk(chunk).unwrap();
                     }
                     let joined_registries = game.remote.as_ref().unwrap().registries.clone();
-                    bad_tx
-                        .send(sunrise_client::net::Event::Joined {
-                            registries: joined_registries,
-                            datapacks: bad_receiver,
-                            name: "tester".into(),
-                            uuid: 1,
-                        })
-                        .unwrap();
-                    let (event, credit) = bad_rx.try_recv_owned().unwrap().into_parts();
-                    game.remote
-                        .as_mut()
-                        .unwrap()
-                        .backlog
-                        .push_back(crate::game::remote::Received::Event(event, credit));
-                    game.poll_remote_events(true).unwrap();
+                    game.dispatch_test_remote_event(sunrise_client::net::Event::Joined {
+                        registries: joined_registries,
+                        datapacks: bad_receiver,
+                        name: "tester".into(),
+                        uuid: 1,
+                    })
+                    .unwrap();
                     assert!(
                         game.remote.is_none(),
                         "invalid Joined datapack vanilla value must disconnect the client"
@@ -2070,8 +2065,10 @@ mod tests {
                         sunrise_client::level_loading::Reason::Other,
                     );
                     let synced_tag = sunrise_client::lan::data::json_to_nbt(&serde_json::json!({
-                        "type": "minecraft:simple_state_provider",
-                        "state": { "Name": "minecraft:emerald_block" }
+                        "type": "minecraft:weighted",
+                        "entries": [
+                            { "data": "minecraft:emerald_block", "weight": 1 }
+                        ]
                     }));
                     // Pick a real built-in provider name from the prepared resources if present.
                     let builtin_provider_name =

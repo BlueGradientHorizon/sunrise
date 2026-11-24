@@ -73,6 +73,25 @@ impl Game<'_> {
         self.poll_remote_events(true).unwrap();
     }
 
+    #[cfg(test)]
+    pub(in crate::game) fn drain_test_remote_join(&mut self) {
+        self.wait_for_test_remote_event(|event| matches!(event, Event::Joined { .. }));
+        self.poll_remote_events(true).unwrap();
+    }
+
+    #[cfg(test)]
+    pub(in crate::game) fn dispatch_test_remote_event(&mut self, event: Event) -> Result<()> {
+        let (tx, rx) = sunrise_client::net::ingress::channel(1024, |_| 1).unwrap();
+        tx.send(event).unwrap();
+        let (event, credit) = rx.try_recv_owned().unwrap().into_parts();
+        self.remote
+            .as_mut()
+            .unwrap()
+            .backlog
+            .push_back(Received::Event(event, credit));
+        self.poll_remote_events(true)
+    }
+
     /// `Minecraft.runTick`: exhaust the packet phase before starting client tasks. A
     /// worker-decoded column defers its position, every later packet and the task phase.
     pub(super) fn poll_remote_events(&mut self, before_tick: bool) -> Result<()> {

@@ -24,6 +24,8 @@ use inventory::{
 };
 mod level_format;
 mod raw_ingress;
+#[cfg(test)]
+pub(in crate::game) use raw_ingress::PacketError;
 mod recipe_properties;
 mod use_item;
 
