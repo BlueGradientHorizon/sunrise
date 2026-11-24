@@ -8,6 +8,8 @@
 //! copy: the local player and the entities the server told it of, in the level
 //! it shows. The entities are those of the level in place (the one a hook runs
 //! in) and the server's players, whatever their level.
+#[path = "native_entity_refs/death_loot.rs"]
+mod death_loot;
 #[path = "native_entity_refs/dragon_parts_table.rs"]
 pub(in crate::game) mod dragon_parts_table;
 #[path = "native_entity_refs/dragon_query.rs"]
@@ -268,11 +270,13 @@ impl Game<'_> {
     /// for viewing (`client_level_key`). None with no world open, or for a
     /// dimension the server hasn't loaded. API 373.
     pub(in crate::game) fn level(&self, dimension: &str) -> Option<LevelRef> {
-        let epoch = self.native_lifecycle.epoch()?;
         if !self.is_logical_server() {
-            return Some(LevelRef::new(epoch, self.client_level_key(dimension)?));
+            return self.client_level_by_name(dimension);
         }
-        let dim = std::iter::once(self.dim)
+        let epoch = self.native_lifecycle.epoch()?;
+        let dim = (!self.levels.active_closed)
+            .then_some(self.dim)
+            .into_iter()
             .chain(self.levels.parked_dims())
             .find(|d| d.id() == dimension)?;
         Some(self.level_ref(epoch, dim.key()))
@@ -302,14 +306,18 @@ impl Game<'_> {
             .as_ref()
             .map_or_else(|| self.dim.key(), |r| r.level_key)
     }
-    /// Loaded server levels, in vanilla dimension order. Empty without a server world.
+    /// Loaded server levels, in creation order. Empty without a server world.
     pub(super) fn native_list_levels(&self) -> Vec<LevelRef> {
-        if !self.is_logical_server() || self.native_lifecycle.epoch().is_none() {
+        let Some(epoch) = self
+            .native_lifecycle
+            .epoch()
+            .filter(|_| self.is_logical_server())
+        else {
             return Vec::new();
-        }
-        self.loaded_dims()
+        };
+        self.loaded_level_order()
             .into_iter()
-            .filter_map(|dim| self.level(dim.id()))
+            .map(|dim| self.level_ref(epoch, dim.key()))
             .collect()
     }
     fn level_entity_candidates(&self, level: LevelRef) -> impl Iterator<Item = EntityRef> + '_ {
@@ -1521,17 +1529,9 @@ pub(super) mod tests {
         let run = |case: &str| {
             let scratch = target.join(format!("fresh-case-{case}"));
             std::fs::create_dir(&scratch).unwrap();
-            let mut command = std::process::Command::new(std::env::current_exe().unwrap());
+            let mut command = mod_platform::testing::fresh_case_command(name, flag, case);
             command
-                .args([
-                    "--ignored",
-                    "--exact",
-                    name,
-                    "--nocapture",
-                    "--test-threads=4",
-                ])
                 .current_dir(&scratch)
-                .env(flag, case)
                 .env("SUNRISE_TEST_RESOURCES", &resources)
                 .env("SUNRISE_NO_AUDIO", "1")
                 .env("SUNRISE_LAUNCHER_NO_SELF_UPDATE", "1");
@@ -1802,6 +1802,63 @@ pub(super) mod tests {
             key,
             "a repeat registration declared another key"
         );
+    }
+
+    /// Create a hidden desktop window during winit's initial `Resumed` callback.
+    /// Keep the returned event loop alive while the fixture uses the window.
+    pub(in crate::game) fn test_window(
+        size: [u32; 2],
+    ) -> (
+        winit::event_loop::EventLoop<()>,
+        std::sync::Arc<winit::window::Window>,
+    ) {
+        use winit::application::ApplicationHandler;
+        use winit::dpi::PhysicalSize;
+        use winit::event::WindowEvent;
+        use winit::event_loop::{ActiveEventLoop, EventLoop};
+        use winit::platform::pump_events::EventLoopExtPumpEvents;
+        use winit::window::{Window, WindowId};
+
+        struct HiddenWindow {
+            size: [u32; 2],
+            window: Option<Window>,
+        }
+
+        impl ApplicationHandler for HiddenWindow {
+            fn resumed(&mut self, event_loop: &ActiveEventLoop) {
+                let [width, height] = self.size;
+                self.window = Some(
+                    event_loop
+                        .create_window(
+                            Window::default_attributes()
+                                .with_visible(false)
+                                .with_inner_size(PhysicalSize::new(width, height)),
+                        )
+                        .unwrap(),
+                );
+            }
+
+            fn window_event(&mut self, _: &ActiveEventLoop, _: WindowId, _: WindowEvent) {}
+        }
+
+        let mut builder = EventLoop::builder();
+        #[cfg(target_os = "linux")]
+        {
+            use winit::platform::x11::EventLoopBuilderExtX11;
+            builder.with_x11().with_any_thread(true);
+        }
+        #[cfg(target_os = "windows")]
+        {
+            use winit::platform::windows::EventLoopBuilderExtWindows;
+            builder.with_any_thread(true);
+        }
+        let mut event_loop = builder.build().unwrap();
+        let mut app = HiddenWindow { size, window: None };
+        event_loop.pump_app_events(Some(std::time::Duration::ZERO), &mut app);
+        let window = app
+            .window
+            .expect("winit did not resume to create the fixture window");
+        (event_loop, std::sync::Arc::new(window))
     }
 
     pub(in crate::game) fn with_client_game(test: impl FnOnce(&mut super::Game<'_>)) {
@@ -3146,6 +3203,7 @@ pub(super) mod tests {
                 mob.extra.set_body_stack(Some(stack.clone()));
                 let index = game.mobs.len();
                 game.mobs.push(mob);
+                game.inventory[game.selected] = Some(ItemStack::new("minecraft:shears", 1));
                 let used = if item.ends_with("carpet") {
                     game.interact_llama(index, "minecraft:shears")
                 } else {
@@ -3777,7 +3835,7 @@ pub(super) mod tests {
                 default: || 0i32,
                 codec: None,
                 copy_on_death: false,
-                sync: false,
+                sync_codec: None,
             };
             let holder = sunrise_mod_runtime::attachments::Holder::Player(2345);
             game.options.dedicated = Some(Vec::new());

@@ -18,6 +18,7 @@ impl Game<'_> {
     pub(super) fn prepare_entity_culling(&mut self) {
         // The mods' render hooks: whether any listens this frame, and no entity canceled yet.
         super::native_mob_draw::begin_entity_frame();
+        self.extract_local_player_vehicle();
         // Spans tell the pack's passes which entities are hidden; without them, nothing changes.
         self.occlusion.shadow_casters = match (&self.renderer, &self.pack_ids) {
             (Some(r), Some(_)) => r.pack_shadow_casters(),
@@ -195,14 +196,14 @@ pub(in crate::game) fn effective_render_distance_for(
     }
 }
 
-/// Client chunk streaming cache radius (`server_view_distance + 1` capped by client setting).
+/// Mesh streaming keeps the extra column it needs, separately from render and cache radii.
 pub(in crate::game) fn streaming_radius_for(
     client_render_distance: i32,
     server_view_distance: Option<i32>,
 ) -> i32 {
     match server_view_distance {
-        Some(server) => client_render_distance.min(server.saturating_add(1)).max(2),
-        None => client_render_distance,
+        Some(server) if server > 0 => client_render_distance.min(server.saturating_add(1)),
+        _ => client_render_distance,
     }
 }
 
@@ -464,6 +465,7 @@ mod precheck_envelope_tests {
         assert_eq!(streaming_radius_for(12, Some(4)), 5);
         assert_eq!(effective_render_distance_for(12, Some(10)), 10);
         assert_eq!(effective_render_distance_for(12, Some(0)), 12);
+        assert_eq!(streaming_radius_for(12, Some(0)), 12);
 
         // Local settings changes while connected to server=6: lowering wins, raising stays capped.
         assert_eq!(effective_render_distance_for(3, Some(6)), 3);

@@ -5,7 +5,7 @@
 use crate::resource_source::ResourceSource;
 use std::sync::Arc;
 
-use crate::core_shader::{CoreProgram, Glue};
+use sunrise_glsl::{Glue, Translated};
 
 use super::{HudBatch, HudVertex};
 use crate::gfx::hud_coverage::Pipeline;
@@ -35,7 +35,7 @@ const GLUE: Glue = Glue {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum Refusal {
     /// A stage or include over the translator's budget for a whole shader
-    /// (`core_shader::MAX_EXPANDED`).
+    /// (`sunrise_glsl::MAX_EXPANDED`).
     OverBudget { path: String },
     /// A stage or include that isn't UTF-8 text.
     NotText { path: String },
@@ -57,7 +57,7 @@ impl std::fmt::Display for Refusal {
             Self::OverBudget { path } => write!(
                 f,
                 "{path} is over the {} bytes a shader may have",
-                crate::core_shader::MAX_EXPANDED
+                sunrise_glsl::MAX_EXPANDED
             ),
             Self::NotText { path } => write!(f, "{path} is not UTF-8 text"),
             Self::Unreadable { path, error } => write!(f, "{path}: {error}"),
@@ -131,14 +131,14 @@ fn translate_selected(
     defines: &[&str],
     glue: &Glue,
     provided: &dyn Fn(&str) -> bool,
-) -> Result<CoreProgram, Refusal> {
+) -> Result<Translated, Refusal> {
     let unavailable = std::cell::RefCell::new(None);
     let include = |id: &str| {
         let (refusal, text) = include_of(root, id);
         *unavailable.borrow_mut() = refusal;
         text
     };
-    let stages = crate::core_shader::Stages {
+    let stages = sunrise_glsl::Stages {
         dir: "minecraft:shaders/core/",
         vertex,
         fragment,
@@ -178,15 +178,15 @@ fn include_of(
 /// `translate`'s result, or its panic as a refusal: a pack's GLSL is untrusted, and a fault the
 /// translator or naga meets in it must not end the game.
 fn contained(
-    translate: impl FnOnce() -> Result<CoreProgram, String>,
-) -> Result<CoreProgram, Refusal> {
+    translate: impl FnOnce() -> Result<Translated, String>,
+) -> Result<Translated, Refusal> {
     crate::crash::contain(translate)
         .map_err(Refusal::Panicked)
         .and_then(|translated| translated.map_err(Refusal::Translation))
 }
 
 /// A shader file (a stage or an include) of `base`, read only up to the translator's budget
-/// for a whole shader (`core_shader::MAX_EXPANDED`, 1 MiB): none when `base` hasn't it, the
+/// for a whole shader (`sunrise_glsl::MAX_EXPANDED`, 1 MiB): none when `base` hasn't it, the
 /// refusal naming its path when it is over the budget or isn't text.
 pub(crate) fn read_shader_file(
     base: &ResourceSource,
@@ -195,7 +195,7 @@ pub(crate) fn read_shader_file(
     if !base.contains(path) {
         return Ok(None);
     }
-    let max = crate::core_shader::MAX_EXPANDED as u64;
+    let max = sunrise_glsl::MAX_EXPANDED as u64;
     let path = path.to_owned();
     // `read_limited` refuses a resource over `max` as invalid data.
     let bytes = base.read_limited(&path, max).map_err(|e| match e.kind() {
@@ -386,7 +386,7 @@ type Blocks<'a> = (
 );
 
 /// A program with the expression uniforms of the blocks its stages read.
-type Checked = (CoreProgram, Vec<crate::polytone_post::ExpressionUniform>);
+type Checked = (Translated, Vec<crate::polytone_post::ExpressionUniform>);
 
 /// The packs' core shader stages `names` (`shaders/core/<name>.vsh` and `.fsh`, which may
 /// differ, as `core/screenquad` and `core/lightmap` do) over `defaults` (the game's own
@@ -394,11 +394,11 @@ type Checked = (CoreProgram, Vec<crate::polytone_post::ExpressionUniform>);
 /// changes either stage or an include any of them keeps, else each pipeline's program in
 /// `required`'s order, with its expression uniforms. A program any of them can't make refuses
 /// the whole load, named by that pipeline, whether Sunrise draws it or not: a stage or include
-/// that can't be read, the translator refusing it, its stages not meeting (`core_shader::link`),
-/// or a block its stages read that the pipeline can't give, as vanilla's builder refuses a
-/// descriptor missing from the pipeline's layout (a block that isn't one float, a `PolyGlobals`
-/// declared otherwise, an expression for one of the pass's own blocks;
-/// `ShaderModifiers::resolve`).
+/// that can't be read, the translator refusing it, its stages not meeting
+/// (`sunrise_glsl::LinkRefusal`), or a block its stages read that the pipeline can't give, as
+/// vanilla's builder refuses a descriptor missing from the pipeline's layout (a block that isn't
+/// one float, a `PolyGlobals` declared otherwise, an expression for one of the pass's own
+/// blocks; `ShaderModifiers::resolve`).
 fn translate_required(
     root: &ResourceSource,
     defaults: &ResourceSource,
@@ -439,7 +439,7 @@ fn translate_required(
 
 /// A loaded pack shader program with its expression uniforms, as the atlas keeps them.
 type Loaded = (
-    Arc<CoreProgram>,
+    Arc<Translated>,
     Vec<crate::polytone_post::ExpressionUniform>,
 );
 
@@ -460,7 +460,7 @@ fn loaded((program, expressions): Checked, pipeline: &str) -> Option<Loaded> {
 fn unzip_or_default(
     loaded: Option<Loaded>,
 ) -> (
-    Option<Arc<CoreProgram>>,
+    Option<Arc<Translated>>,
     Vec<crate::polytone_post::ExpressionUniform>,
 ) {
     match loaded {
@@ -654,11 +654,11 @@ impl PackText {
         device: &wgpu::Device,
         format: wgpu::TextureFormat,
         atlas: &wgpu::TextureView,
-        shader: (&CoreProgram, &[crate::polytone_post::ExpressionUniform]),
+        shader: (&Translated, &[crate::polytone_post::ExpressionUniform]),
         coverage: bool,
     ) -> Result<Option<Self>, String> {
         let pipeline = TEXT[TEXT_GUI].pipeline;
-        // A program past the device's limits draws natively (`core_shader::PastDeviceLimit`).
+        // A program past the device's limits draws natively (`sunrise_glsl::PastDeviceLimit`).
         if !crate::core_shader::within_device_limits(device, shader.0, pipeline, &[format]) {
             return Ok(None);
         }
@@ -680,7 +680,7 @@ impl PackText {
         device: &wgpu::Device,
         format: wgpu::TextureFormat,
         atlas: &wgpu::TextureView,
-        (program, expressions): (&CoreProgram, &[crate::polytone_post::ExpressionUniform]),
+        (program, expressions): (&Translated, &[crate::polytone_post::ExpressionUniform]),
         coverage: bool,
     ) -> Option<Self> {
         let module = |label, module: &naga::Module| {
@@ -863,7 +863,7 @@ mod tests {
         defines: &[&str],
         glue: &Glue,
         provided: &dyn Fn(&str) -> bool,
-    ) -> Option<Result<CoreProgram, Refusal>> {
+    ) -> Option<Result<Translated, Refusal>> {
         let stages = match selected_stages(root, defaults, names, &[defines])? {
             Ok(stages) => stages,
             Err(e) => return Some(Err(e)),
@@ -967,7 +967,7 @@ mod tests {
 
     /// The pack's lightmap program as the atlas loads it: none when no pack changes it, or why
     /// `LIGHTMAP` can't be made from it.
-    fn lightmap(own: &[(&str, &str)]) -> Result<Option<Arc<CoreProgram>>, RequiredShaderRefused> {
+    fn lightmap(own: &[(&str, &str)]) -> Result<Option<Arc<Translated>>, RequiredShaderRefused> {
         lightmap_with_expressions(own).map(|loaded| loaded.map(|(program, _)| program))
     }
 
@@ -1140,7 +1140,7 @@ mod tests {
     }
 
     /// [`lightmap`]'s translation, with why it is refused.
-    fn lightmap_translation(own: &[(&str, &str)]) -> Option<Result<CoreProgram, Refusal>> {
+    fn lightmap_translation(own: &[(&str, &str)]) -> Option<Result<Translated, Refusal>> {
         let (root, defaults) = lightmap_packs(own);
         translate_pair(
             &root,

@@ -66,6 +66,7 @@ pub mod game_event {
     pub const START_RAINING: u8 = 1;
     pub const STOP_RAINING: u8 = 2;
     pub const CHANGE_GAME_MODE: u8 = 3;
+    pub const PLAY_ARROW_HIT_SOUND: u8 = 6;
     pub const RAIN_LEVEL: u8 = 7;
     pub const THUNDER_LEVEL: u8 = 8;
     pub const GUARDIAN_ELDER_EFFECT: u8 = 10;
@@ -122,10 +123,11 @@ pub struct BodyFlags {
     pub gliding: bool,
     /// `Entity.isSwimming` (the swimming flag).
     pub swimming: bool,
-    /// The swimming pose of a player crawling under a block.
-    pub crawling: bool,
-    /// The crouching pose, held without sneaking under a low ceiling.
-    pub crouching: bool,
+    /// `Entity.getPose`: the pose the body's last `updatePlayerPose` took; none before the
+    /// body exists.
+    pub pose: Option<crate::pose::Pose>,
+    /// `Abilities.flying`.
+    pub flying: bool,
     /// `LivingEntity.isAutoSpinAttack`: Riptide's spin.
     pub spin_attack: bool,
     /// `Entity.isOnFire`.
@@ -285,6 +287,8 @@ pub struct TrackingBatch {
 pub struct AttachmentSnapshot {
     pub player: u128,
     pub holder: Holder,
+    /// For an entity pairing already written, the holder and watermark its bundle covered.
+    pub paired_sync_from: Option<(Holder, u64)>,
 }
 
 /// Queues `holders` as snapshots for `player`.
@@ -293,11 +297,11 @@ fn queue_snapshots(
     player: u128,
     holders: impl IntoIterator<Item = Holder>,
 ) {
-    snapshots.extend(
-        holders
-            .into_iter()
-            .map(|holder| AttachmentSnapshot { player, holder }),
-    );
+    snapshots.extend(holders.into_iter().map(|holder| AttachmentSnapshot {
+        player,
+        holder,
+        paired_sync_from: None,
+    }));
 }
 
 /// Moves a guest's tracking events into `out`, one batch, and the entities it
@@ -319,12 +323,13 @@ fn take_tracking(
     }
     if !events.is_empty() {
         if sync_attachments {
-            let started = events.iter().filter(|e| e.start);
-            queue_snapshots(
-                snapshots,
-                g.uuid,
-                started.map(|e| Holder::Entity(e.entity as u32)),
-            );
+            snapshots.extend(events.iter().filter(|event| event.start).map(|event| {
+                AttachmentSnapshot {
+                    player: g.uuid,
+                    holder: Holder::Entity(event.entity as u32),
+                    paired_sync_from: event.attachment_sync_from,
+                }
+            }));
         }
         out.push(TrackingBatch {
             player: g.uuid,
@@ -1040,30 +1045,32 @@ impl Hub {
     /// Entity deltas follow the same tracker as pairing, including held viewers.
     /// Own-player, level, chunk and block-entity routing otherwise stays unchanged.
     pub fn attachment_recipients(&self, holder: Holder) -> Vec<super::PlayerSender> {
+        self.attachment_recipient_rows(holder)
+            .map(|guest| guest.sender.clone())
+            .collect()
+    }
+    /// The eligible guest rows, for per-pairing cutoffs on ordered updates.
+    pub fn attachment_recipient_rows(&self, holder: Holder) -> impl Iterator<Item = &Guest> {
         let owner = match holder {
             Holder::Player(uuid) => self.holder_guest(uuid, &self.config.dimension),
             _ => None,
         };
-        self.guests
-            .iter()
-            .filter(|g| {
-                let sees = match holder {
-                    Holder::Entity(id) => self.watches(g) && g.tracker.is_tracking(id as i32),
-                    Holder::Player(_) => owner.is_some_and(|o| {
-                        (g.conn == o.conn && g.participates_online())
-                            || (self.watches(g) && g.tracker.is_tracking(o.entity_id))
-                    }),
-                    Holder::Level => self.here(g),
-                    Holder::Chunk([x, z]) => self.here(g) && g.sent_chunks.contains(&(x, z)),
-                    Holder::BlockEntity([x, _, z]) => {
-                        self.here(g) && g.sent_chunks.contains(&(x >> 4, z >> 4))
-                    }
-                    _ => false,
-                };
-                sees && g.negotiated_attachment_sync()
-            })
-            .map(|g| g.sender.clone())
-            .collect()
+        self.guests.iter().filter(move |g| {
+            let sees = match holder {
+                Holder::Entity(id) => self.watches(g) && g.tracker.is_tracking(id as i32),
+                Holder::Player(_) => owner.is_some_and(|o| {
+                    (g.conn == o.conn && g.participates_online())
+                        || (self.watches(g) && g.tracker.is_tracking(o.entity_id))
+                }),
+                Holder::Level => self.here(g),
+                Holder::Chunk([x, z]) => self.here(g) && g.sent_chunks.contains(&(x, z)),
+                Holder::BlockEntity([x, _, z]) => {
+                    self.here(g) && g.sent_chunks.contains(&(x >> 4, z >> 4))
+                }
+                _ => false,
+            };
+            sees && g.negotiated_attachment_sync()
+        })
     }
 
     /// How many passes the level in place's entity tracking has run (None before its first).
@@ -1336,6 +1343,18 @@ impl Hub {
                 )));
             }
         });
+    }
+
+    /// `PlayerList.isOp`: an entry of the operator list, a level-0 one too, or
+    /// the integrated server's owner while the world allows commands (the
+    /// owner's entry is kept at level 0 while it does not). Opening a world to
+    /// LAN with commands raises the guests' permission level; it does not make
+    /// them operators.
+    pub fn is_op(&self, uuid: u128) -> bool {
+        if self.config.integrated && self.singleplayer_owner == Some(uuid) {
+            return self.ops.get(&uuid).is_some_and(|&level| level > 0);
+        }
+        self.ops.contains_key(&uuid)
     }
 
     /// Whether a player of `permission` sees the player `uuid`: not one a
@@ -2793,11 +2812,22 @@ impl Hub {
         let mut g = self.guests.remove(i);
         g.listed_behind = behind;
         super::chunk_watch::unwatch_all(&mut self.chunk_watches, &mut g);
-        let closed = g
-            .menu
-            .as_ref()
-            .and_then(|menu| menu.native_closed(g.uuid, g.menu_generation, &mut g.native_menu));
-        self.native_menu_events.extend(closed);
+        if let Some(menu) = g.menu.as_ref() {
+            let inputs = menu.take_processing_inputs(&mut g.native_menu);
+            if !inputs.is_empty() {
+                self.native_menu_events.push(
+                    super::menu::NativeMenuEvent::ReturnProcessingInputs {
+                        conn: g.conn,
+                        items: inputs,
+                        drop_instead: true,
+                    },
+                );
+            }
+            if let Some(closed) = menu.native_closed(g.uuid, g.menu_generation, &mut g.native_menu)
+            {
+                self.native_menu_events.push(closed);
+            }
+        }
         // A held player a proxy dropped keeps, in the log, how its connection really ended
         // (an unreadable packet, a reset): the drop says only that it was dropped.
         if g.held
@@ -3394,21 +3424,24 @@ impl Hub {
     ) -> EntityState {
         let (sneaking, sprinting, sleeping) = flags;
         let shared = shared_flags(sneaking, sprinting, &body);
-        // Player.getDesiredPose (and updatePlayerPose's crawl): sleeping,
-        // swimming, gliding, Riptide's spin, crouching.
-        let pose = if sleeping {
-            2
-        } else if body.swimming || body.crawling {
-            3
-        } else if body.gliding {
-            1
-        } else if body.spin_attack {
-            4
-        } else if sneaking || body.crouching {
-            5
-        } else {
-            0
-        };
+        // Entity.DATA_POSE: the pose the body's updatePlayerPose took. Before
+        // the body exists, the pose it would ask for (Player.getDesiredPose).
+        let pose = body
+            .pose
+            .unwrap_or_else(|| {
+                crate::pose::desired_pose(
+                    id,
+                    crate::pose::PoseFlags {
+                        sleeping,
+                        swimming: body.swimming,
+                        fall_flying: body.gliding,
+                        auto_spin_attack: body.spin_attack,
+                        shift_key_down: sneaking,
+                        flying: body.flying,
+                    },
+                )
+            })
+            .id();
         let mut meta = Vec::new();
         if shared != 0 {
             meta.push((0, serializer::BYTE, Value::Byte(shared)));
@@ -5440,8 +5473,8 @@ pub fn guest_body(g: &Guest) -> BodyFlags {
     BodyFlags {
         gliding: g.fall_flying,
         swimming: m.is_some_and(|m| m.swimming),
-        crawling: m.is_some_and(|m| m.pose == crate::pose::Pose::Swimming && !m.swimming),
-        crouching: m.is_some_and(|m| m.pose == crate::pose::Pose::Crouching),
+        pose: m.map(|m| m.pose),
+        flying: g.abilities.flying,
         spin_attack: m.is_some_and(|m| m.auto_spin_attack_ticks > 0),
         on_fire: m.is_some_and(crate::motion::PlayerMotion::is_on_fire),
         // ServerPlayer.updateInvisibilityStatus: a spectator is always invisible.
@@ -5512,6 +5545,7 @@ mod tests {
     mod collision_part_tests;
     mod connection_group_sync_tests;
     mod debug_subscription_tests;
+    mod desired_pose_tests;
     mod displace_tests;
     mod effect_meta_tests;
     mod entity_move_check_tests;
@@ -5792,6 +5826,35 @@ mod tests {
             sunrise_protocol::registry::Ids::from_names(vec!["minecraft:speed".to_string()]),
         );
         hub_with_sync(sync)
+    }
+
+    #[test]
+    fn is_op_follows_player_list_on_integrated_and_dedicated_servers() {
+        let (mut hub, _rx) = hub_with_a_guest();
+        let owner = 1u128;
+        let level_0_op = 2u128;
+        let guest = 3u128;
+
+        hub.config.integrated = true;
+        hub.config.guest_commands = true;
+        hub.singleplayer_owner = Some(owner);
+        hub.ops.insert(owner, 0);
+        hub.ops.insert(level_0_op, 0);
+
+        assert!(!hub.is_op(owner), "owner at level 0 while commands off");
+        assert!(hub.is_op(level_0_op), "explicit level-0 op is still op");
+        assert!(
+            !hub.is_op(guest),
+            "LAN guest_commands does not make guest op"
+        );
+
+        hub.ops.insert(owner, 4);
+        assert!(hub.is_op(owner), "owner at level 4 while commands on");
+
+        hub.config.integrated = false;
+        hub.ops.insert(owner, 0);
+        assert!(hub.is_op(owner), "dedicated level-0 op is op");
+        assert!(!hub.is_op(guest), "dedicated non-op is not op");
     }
 
     #[test]
@@ -8389,6 +8452,10 @@ mod tests {
     }
 
     fn assert_player_initial_sync(held: bool) {
+        crate::lan::entity::with_synced_tags(&["test:badge"], || player_initial_sync(held));
+    }
+
+    fn player_initial_sync(held: bool) {
         use sunrise_core::nbt::Tag;
         use sunrise_mod_runtime::attachments::{AttachmentSync, Holder};
         use sunrise_protocol::{
@@ -8580,7 +8647,7 @@ mod tests {
                 "placement keeps the existing pair"
             );
             assert!(
-                replica.synced().is_empty(),
+                replica.entry("test", "badge").unwrap().is_none(),
                 "no stale badge after placement"
             );
         }

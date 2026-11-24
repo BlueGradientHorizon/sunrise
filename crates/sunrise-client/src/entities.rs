@@ -46,7 +46,9 @@ mod item_move;
 mod item_no_physics;
 pub mod nameplate;
 mod obstacles;
-pub use fluids::{fall_reset_hit, fluid_flow, update_entity_fluids, water_clip};
+pub use fluids::{
+    fall_reset_hit, fluid_flow, swept_fluid_contact, update_entity_fluids, water_clip,
+};
 pub use item_merge::{ItemCells, merge_with_neighbours};
 pub use obstacles::ObstacleGrid;
 
@@ -230,7 +232,7 @@ pub struct ItemEntity {
 /// Particles are drawn on the client (`Level.addParticle` is empty on the
 /// server). The sound is `Entity.playSound`, which the server broadcasts;
 /// `ClientLevel.playSeededSound` ignores it when the except entity is null.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum ItemSplash {
     Sound {
         at: [f64; 3],
@@ -325,6 +327,8 @@ pub struct ItemEnvironmentTick {
     /// stacks the destroyed item left, which `ItemUtils.onContainerDestroyed`
     /// adds to the level where it lay.
     pub spilled: Vec<ItemStack>,
+    /// The damage type that reduced the item's health to zero, when `!alive`.
+    pub destroyed_by: Option<&'static str>,
 }
 impl ItemEnvironmentTick {
     pub fn should_play_lava_hurt_sound(&self, tick: u32) -> bool {
@@ -490,13 +494,34 @@ impl ItemEntity {
         if self.health > 0 {
             return None;
         }
+        Some(self.spill_destroyed_contents())
+    }
+    /// Built-in `ItemStack.onDestroyed` spills (`BundleItem.onDestroyed` and
+    /// `BlockItem.onDestroyed` for shulker boxes) computed without modifying
+    /// `self.stack`, so `ItemPart::item_destroyed` sees the original intact
+    /// stack (`ItemEntity.hurtServer` -> `ItemStack.onDestroyed` -> `discard()`).
+    pub fn peek_destroyed_contents(&self) -> Vec<ItemStack> {
+        let Some(data) = self.stack.data() else {
+            return Vec::new();
+        };
+        if data.bundle_contents.is_empty() && data.container.is_empty() {
+            return Vec::new();
+        }
+        let mut copy = self.stack.clone();
+        let mut spilled = crate::bundle::destroyed(&mut copy);
+        spilled.extend(crate::item_data::destroyed_container(&mut copy));
+        spilled
+    }
+    /// Clears built-in container contents (`bundle_contents`, `container`) in place
+    /// and returns them for dropping (`ItemStack.onDestroyed`).
+    pub fn spill_destroyed_contents(&mut self) -> Vec<ItemStack> {
         // `ItemStack.onDestroyed` runs the item's own arm, and the component
         // the stack holds is the dispatch: a bundle's (`BundleItem.onDestroyed`)
         // `bundle_contents` and a container item's (`BlockItem.onDestroyed`)
         // `container`, which a mod's own item carries in the same way.
         let mut spilled = crate::bundle::destroyed(&mut self.stack);
         spilled.extend(crate::item_data::destroyed_container(&mut self.stack));
-        Some(spilled)
+        spilled
     }
     /// The ItemEntity snapshot used by both its move and its noCollision check.
     pub fn collision_context(&self) -> sunrise_world::collision_context::CollisionContext<'static> {
@@ -1772,6 +1797,8 @@ pub struct ArmorStand {
     /// Unsaved fire immunity granted on this logical side.
     pub mod_fire_immune: bool,
     pub health: f32,
+    /// `LivingEntity.deathTime`: the ticks a stand at 0 health has been dead.
+    pub death_time: i16,
     pub tick_count: i32,
     /// Transient `LivingEntity.lastHurtMob`; an owned arrow or wind charge can set it.
     pub last_hurt_mob: Option<(u32, i32)>,
@@ -1781,10 +1808,23 @@ pub struct ArmorStand {
     /// the renderer blends toward `position` by the partial tick.
     pub previous: Vec3,
     pub velocity: Vec3,
-    /// `yRot`, which the body follows (`ArmorStand.tickHeadTurn`: `yBodyRot`).
+    /// `LivingEntity.hurtTime`, counted down each tick.
+    pub hurt_time: i32,
+    /// `Entity.airSupply`: refilled by 4 a tick up to 300 while it can breathe.
+    pub air: i32,
+    /// Shared flag 7, `FallFlying`: a stand cannot glide, so its first tick clears it.
+    pub fall_flying: bool,
+    /// `LivingEntity.currentImpulseContextResetGraceTime`.
+    pub impulse_grace: i32,
+    /// `Entity.yRot`; `ArmorStand.tickHeadTurn` copies it to `yBodyRot`.
     pub yaw: f32,
-    /// `yBodyRotO`: the body's yaw at the start of the tick.
+    pub body_yaw: f32,
+    /// `Entity.yRotO`: previous view yaw.
     pub previous_yaw: f32,
+    /// `LivingEntity.yBodyRotO`; `tickHeadTurn` syncs it to `yRotO` after admission.
+    pub previous_body_yaw: f32,
+    pub head_yaw: f32,
+    pub previous_head_yaw: f32,
     /// Every `EquipmentSlot`, by ordinal: mainhand, offhand, feet, legs, chest,
     /// head, body, saddle. Vanilla's `canUseSlot` refuses body and saddle only
     /// for interaction; `setItemSlot` and the save keep them.
@@ -2044,7 +2084,8 @@ impl ArmorStand {
     /// (`LivingEntityRenderer.solveBodyRot`: `Mth.rotLerp(partialTick,
     /// yBodyRotO, yBodyRot)`).
     pub fn render_yaw(&self, alpha: f32) -> f32 {
-        self.previous_yaw + alpha * crate::camera::wrap_degrees(self.yaw - self.previous_yaw)
+        self.previous_body_yaw
+            + alpha * crate::camera::wrap_degrees(self.body_yaw - self.previous_body_yaw)
     }
     /// A server's stand on its client, each tick:
     /// `setOldPosAndRot` (`ClientLevel.tickNonPassenger`), then the step of
@@ -2061,9 +2102,11 @@ impl ArmorStand {
             self.yaw += crate::camera::wrap_degrees(yaw - self.yaw);
             self.pitch = (pitch % 360.0).clamp(-90.0, 90.0);
         }
+        self.previous_body_yaw = self.previous_yaw;
+        self.body_yaw = self.yaw;
     }
-    /// Put there at once, with nothing to blend from
-    /// (`Entity.snapTo`).
+    /// Snap position and view rotation without changing the body's or head's
+    /// yaw samples (`Entity.snapTo`).
     pub fn snap(&mut self, at: Vec3, yaw: f32, pitch: f32) {
         self.position = at;
         self.previous = at;
@@ -2081,15 +2124,24 @@ impl ArmorStand {
             join: Default::default(),
             fire_ticks: 0,
             mod_fire_immune: false,
+            death_time: 0,
             health: 20.0,
             tick_count: 0,
             last_hurt_mob: None,
             id,
             position,
+            hurt_time: 0,
+            air: 300,
+            fall_flying: false,
+            impulse_grace: 0,
             previous: position,
             velocity: Vec3::ZERO,
             yaw,
+            body_yaw: yaw,
             previous_yaw: yaw,
+            previous_body_yaw: yaw,
+            head_yaw: yaw,
+            previous_head_yaw: yaw,
             equipment: Default::default(),
             small: false,
             show_arms: false,
@@ -2237,9 +2289,9 @@ impl ArmorStand {
                 }
             }
         }
-        // Dead: the damage type that ran its health out, which vanilla's
-        // `brokenByAnything` receives as the `DamageSource`.
-        (self.health <= 0.5).then(|| hit_by.unwrap_or("minecraft:generic"))
+        // `ArmorStand.causeDamage` breaks it only when this tick's damage left
+        // it at 0.5 or less: the damage type `brokenByAnything` receives.
+        hit_by.filter(|_| self.health <= 0.5)
     }
     /// `ArmorStand.getDefaultDimensions`: MARKER_DIMENSIONS, or BABY_DIMENSIONS (the type's at
     /// half scale, its eyes at 0.9875) for a small one, else the type's.
@@ -2906,6 +2958,163 @@ mod destroyed_bundle_environment_tests {
                 .is_none_or(|d| d.bundle_contents.is_empty()),
             "the destroyed bundle keeps nothing inside"
         );
+        assert_eq!(second.destroyed_by, Some("minecraft:lava"));
+    }
+
+    fn test_item_entity(health: i32, fire_ticks: i32, stack: ItemStack) -> ItemEntity {
+        let at = Vec3::new(0.5, 64.5, 0.5);
+        ItemEntity {
+            size_answer: None,
+            random: sunrise_core::random::LegacyRandom::new(1),
+            attachment_lifetime: Default::default(),
+            fall_distance: 0.0,
+            rotation: [0.0, 0.0],
+            join: Default::default(),
+            no_gravity: false,
+            id: 1,
+            thrower: None,
+            target: None,
+            stack,
+            health,
+            fire_ticks,
+            position: at,
+            previous: at,
+            velocity: Vec3::ZERO,
+            ground: Default::default(),
+            vertical_collision: false,
+            age: 0,
+            pickup_delay: 0,
+            bob_offset: 0.0,
+            ticks: 0,
+            needs_sync: false,
+            stuck: Vec3::ZERO,
+            was_touching_water: false,
+        }
+    }
+
+    fn air_world_and_facts() -> (World, BlockFacts, sunrise_world::registry::BlockRegistry) {
+        let registry = sunrise_world::registry::BlockRegistry::from_facts_json(
+            br#"{"defaults":{"minecraft:air":0},"states":[["minecraft:air",false,false,"","minecraft:air"]]}"#
+                .as_slice(),
+        )
+        .unwrap();
+        let text = |s: &str| -> std::sync::Arc<str> { s.into() };
+        let air = sunrise_items::blocks::StateFacts {
+            name: text("minecraft:air"),
+            emission: 0,
+            dynamic_light: false,
+            dampening: 0,
+            skylight_down: true,
+            shape_occlusion: false,
+            can_occlude: false,
+            solid_render: false,
+            hardness: 0.0,
+            requires_tool: false,
+            replaceable: true,
+            random_ticks: false,
+            block_entity: false,
+            render_shape: sunrise_items::blocks::RenderShape::Invisible,
+            spawn_terrain_particles: true,
+            destroy_overlay: false,
+            full_collision: false,
+            friction: 0.6,
+            explosion_resistance: 0.0,
+            item: text("minecraft:air"),
+            pick_item: text("minecraft:air"),
+            sounds: sunrise_items::blocks::Sounds {
+                volume: 1.0,
+                pitch: 1.0,
+                break_sound: text(""),
+                step: text(""),
+                place: text(""),
+                hit: text(""),
+                fall: text(""),
+            },
+            fluid: Fluid::None,
+            fluid_level: 0,
+            fluid_falling: false,
+            waterlogged: false,
+            random_offset: false,
+            offset_limits: None,
+            outline_offset: false,
+            legacy_solid: false,
+            sturdy_full: 0,
+            classes: std::sync::Arc::from([text("AirBlock"), text("Block")]),
+            outline: std::sync::Arc::from([]),
+            outline_edges: std::sync::Arc::from([]),
+            map_color: 0,
+        };
+        let air_id = registry.default_state("minecraft:air").unwrap();
+        let facts = BlockFacts {
+            states: vec![air],
+            air: air_id,
+            woods: Default::default(),
+            sign_texts: Default::default(),
+        };
+        let world = World::new(facts.air, 1);
+        (world, facts, registry)
+    }
+
+    #[test]
+    fn environment_tick_records_on_fire_and_pre_killed_damage_types() {
+        let mut stack = ItemStack::new("minecraft:bundle", 1);
+        stack.data_mut().bundle_contents = vec![ItemStack::new("minecraft:diamond", 2)];
+        let (world, facts, registry) = air_world_and_facts();
+        let can_hurt = |_: &ItemStack, _: &str| true;
+
+        let mut burning = test_item_entity(1, 20, stack.clone());
+        let result = burning.environment_tick(&world, &facts, &registry, &can_hurt);
+        assert!(!result.alive);
+        assert_eq!(result.destroyed_by, Some("minecraft:on_fire"));
+        assert_eq!(result.spilled.len(), 1);
+        assert_eq!(&*result.spilled[0].item, "minecraft:diamond");
+
+        let mut pre_killed = test_item_entity(0, 0, stack);
+        let result = pre_killed.environment_tick(&world, &facts, &registry, &can_hurt);
+        assert!(!result.alive);
+        assert_eq!(result.destroyed_by, Some("minecraft:generic"));
+        assert_eq!(result.spilled.len(), 1);
+        assert_eq!(result.spilled[0].count, 2);
+    }
+
+    #[test]
+    fn environment_tick_deferring_spill_preserves_original_bundle_contents_for_hook() {
+        let mut stack = ItemStack::new("minecraft:bundle", 1);
+        stack.data_mut().bundle_contents = vec![ItemStack::new("minecraft:diamond", 3)];
+        let (mut world, facts, registry) = air_world_and_facts();
+        let can_hurt = |_: &ItemStack, _: &str| true;
+
+        let mut burning = test_item_entity(1, 20, stack);
+        let result = burning.environment_tick_with_hook_deferring_spill(
+            &mut world,
+            &facts,
+            &registry,
+            &can_hurt,
+            |_, _| false,
+        );
+        assert!(!result.alive);
+        assert_eq!(result.destroyed_by, Some("minecraft:on_fire"));
+        assert!(result.spilled.is_empty());
+        // Original stack contents stay intact until `item_destroyed` finishes.
+        let intact = &burning.stack.data().unwrap().bundle_contents;
+        assert_eq!(intact.len(), 1);
+        assert_eq!(&*intact[0].item, "minecraft:diamond");
+        assert_eq!(intact[0].count, 3);
+
+        let peeked = burning.peek_destroyed_contents();
+        assert_eq!(peeked.len(), 1);
+        assert_eq!(peeked[0].count, 3);
+        assert_eq!(burning.stack.data().unwrap().bundle_contents.len(), 1);
+
+        let spilled = burning.spill_destroyed_contents();
+        assert_eq!(spilled.len(), 1);
+        assert_eq!(spilled[0].count, 3);
+        assert!(
+            burning
+                .stack
+                .data()
+                .is_none_or(|d| d.bundle_contents.is_empty())
+        );
     }
 }
 #[cfg(test)]
@@ -2945,14 +3154,16 @@ mod armor_stand_render_tests {
         assert_eq!(stand.render_yaw(0.5), 190.0);
     }
 
-    /// A snap (a move too far to interpolate) leaves nothing to blend from.
+    /// A snap leaves no position or view samples to blend from. The body
+    /// keeps its own turn between ticks.
     #[test]
     fn a_snapped_stand_is_drawn_where_it_landed() {
         let mut stand = ArmorStand::new(1, Vec3::new(0.5, 70.0, 0.5), 0.0);
-        stand.interpolate(Some((Vec3::new(0.5, 69.0, 0.5), 0.0, 0.0)));
+        stand.interpolate(Some((Vec3::new(0.5, 69.0, 0.5), 20.0, 0.0)));
         stand.snap(Vec3::new(200.5, 64.0, 0.5), 90.0, 0.0);
         assert_eq!(stand.render_position(0.5), Vec3::new(200.5, 64.0, 0.5));
-        assert_eq!(stand.render_yaw(0.5), 90.0);
+        assert_eq!([stand.previous_yaw, stand.yaw], [90.0; 2]);
+        assert_eq!(stand.render_yaw(0.5), 10.0);
     }
 }
 #[cfg(test)]

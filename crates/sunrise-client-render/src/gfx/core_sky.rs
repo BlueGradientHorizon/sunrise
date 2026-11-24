@@ -3,9 +3,9 @@
 //! to the horizon or tints the night sky expects. Without one the sky draws natively (`fs_sky` in
 //! terrain.wgsl, stars.rs).
 
-use crate::core_shader::{CoreProgram, Glue};
 use crate::polytone_post::ExpressionUniform;
 use glam::Mat4;
+use sunrise_glsl::{Glue, Translated};
 use wgpu::util::DeviceExt;
 
 /// `DefaultVertexFormat.POSITION`: the disc's and the stars' vertices.
@@ -49,7 +49,7 @@ impl Part {
     fn new(
         device: &wgpu::Device,
         format: wgpu::TextureFormat,
-        (program, expressions): (&CoreProgram, &[ExpressionUniform]),
+        (program, expressions): (&Translated, &[ExpressionUniform]),
         (name, location): (&str, &str),
         blend: Option<wgpu::BlendState>,
         triangles: &[[f32; 3]],
@@ -77,7 +77,7 @@ impl Part {
     fn pipeline(
         device: &wgpu::Device,
         format: wgpu::TextureFormat,
-        (program, expressions): (&CoreProgram, &[ExpressionUniform]),
+        (program, expressions): (&Translated, &[ExpressionUniform]),
         name: &str,
         blend: Option<wgpu::BlendState>,
     ) -> (
@@ -182,8 +182,8 @@ impl super::Renderer {
     /// reload.
     pub fn set_sky_shaders(
         &mut self,
-        disc: Option<(&CoreProgram, &[ExpressionUniform])>,
-        stars: Option<(&CoreProgram, &[ExpressionUniform])>,
+        disc: Option<(&Translated, &[ExpressionUniform])>,
+        stars: Option<(&Translated, &[ExpressionUniform])>,
     ) -> Result<(), String> {
         self.core_sky = sky_for_frame(&self.device, self.output.frame, disc, stars)?;
         Ok(())
@@ -195,8 +195,8 @@ impl super::Renderer {
 pub(super) fn sky_for_frame(
     device: &wgpu::Device,
     frame: super::FrameConfiguration,
-    disc: Option<(&CoreProgram, &[ExpressionUniform])>,
-    stars: Option<(&CoreProgram, &[ExpressionUniform])>,
+    disc: Option<(&Translated, &[ExpressionUniform])>,
+    stars: Option<(&Translated, &[ExpressionUniform])>,
 ) -> Result<Option<CoreSky>, String> {
     let sky = CoreSky::new(device, frame.format, disc, stars)?;
     Ok(sky.filter(|_| !frame.linear_light))
@@ -208,13 +208,13 @@ impl CoreSky {
     pub(super) fn new(
         device: &wgpu::Device,
         format: wgpu::TextureFormat,
-        disc: Option<(&CoreProgram, &[ExpressionUniform])>,
-        stars: Option<(&CoreProgram, &[ExpressionUniform])>,
+        disc: Option<(&Translated, &[ExpressionUniform])>,
+        stars: Option<(&Translated, &[ExpressionUniform])>,
     ) -> Result<Option<Self>, String> {
         use crate::hud::pack_text::{SKY, STARS};
-        // A program past the device's limits draws natively (`core_shader::PastDeviceLimit`).
+        // A program past the device's limits draws natively (`sunrise_glsl::PastDeviceLimit`).
         let fits = |pipeline| {
-            move |(program, _): &(&CoreProgram, &[ExpressionUniform])| {
+            move |(program, _): &(&Translated, &[ExpressionUniform])| {
                 crate::core_shader::within_device_limits(device, program, pipeline, &[format])
             }
         };
@@ -379,7 +379,7 @@ mod tests {
             linear_light,
             ..super::super::EffectiveOutput::NONE.frame
         };
-        let made = |linear, disc: &CoreProgram, stars: &CoreProgram| {
+        let made = |linear, disc: &Translated, stars: &Translated| {
             sky_for_frame(
                 &device,
                 frame(linear),

@@ -2054,12 +2054,16 @@ impl Renderer {
         // Metal draws solid terrain in two passes (`split_solid`): meshes put all
         // their opaque quads first, so each pass draws its part in a run or two.
         crate::mesher::group_parts(adapter.get_info().backend == wgpu::Backend::Metal);
-        // Readable as storage where flat draws run: a shader pack's terrain program reads them.
+        // Readable as storage where flat draws run, or while a `shaders/` pack's terrain programs
+        // read them per section (`arena_storage`): it starts as for the picked pack, taken to
+        // read them, so the pack loading keeps it (`follow_arena_storage`).
+        let terrain_pages = flat::pages_readable(&adapter, &device);
+        let arena_storage = arena_storage(flat_wanted, pack_starts_wide && terrain_pages);
         let arena = arena::Arena::new(
             &device,
             std::mem::size_of::<TerrainVertex>() as u64,
             1 << 20,
-            flat_wanted,
+            arena_storage,
         );
         // Sections as one index list per frame where multi-draw is emulated.
         let mut flat = flat_wanted.then(|| {
@@ -2203,7 +2207,13 @@ impl Renderer {
             &device,
             std::mem::size_of::<TerrainVertex>() as u64,
             flat.is_some(),
-            translucent_split(translucent_batching, flat.is_some(), shader_pack, false),
+            translucent_split(
+                translucent_batching,
+                flat.is_some(),
+                pack_starts_wide && terrain_pages,
+                shader_pack,
+                false,
+            ),
         );
         if let (Some(flat), Some(arena)) = (&mut flat, &translucent_arena) {
             flat.set_translucent_page_vertices(arena.page_vertices());
@@ -2394,7 +2404,7 @@ impl Renderer {
             lightning_pipeline,
             lightning: lightning::Renderer::new(),
             see_through_pipeline,
-            world_primitives,
+            world_primitives: Some(world_primitives),
             text_polygon_offset_pipeline,
             world_text_pipeline,
             text_mark_pipelines,
@@ -2505,6 +2515,11 @@ impl Renderer {
             multi_draw,
             visible: Vec::new(),
             visible_lods: Vec::new(),
+            visible_renderable_sections: Vec::new(),
+            visible_renderable_scratch: Vec::new(),
+            hook_geometry: Default::default(),
+            hook_entities_scratch: Vec::new(),
+            hook_see_through_scratch: Vec::new(),
             translucent_lods: Vec::new(),
             shadow_visible: Vec::new(),
             translucent_draws: Vec::new(),
@@ -2560,6 +2575,10 @@ impl Renderer {
             pack_material_atlases: None,
             shared_material_maps: [None, None],
             pack_terrain_flat: false,
+            terrain_pages,
+            pack_terrain_pages: false,
+            pack_terrain_bindings: Default::default(),
+            arena_storage,
             separate_ao: false,
             pack_pages: Vec::new(),
             outline_edges_scratch: Vec::new(),

@@ -187,7 +187,7 @@ fn a_world_text_pipeline_over_the_block_limit_draws_natively() {
         .expect("the see-through program");
     assert_eq!(
         see_through.past_device_limit(&device.limits(), &[wgpu::TextureFormat::Rgba8Unorm]),
-        Some(crate::core_shader::PastDeviceLimit::UniformBlocks {
+        Some(sunrise_glsl::PastDeviceLimit::UniformBlocks {
             stage: wgpu::ShaderStages::FRAGMENT,
             blocks: 13,
             limit: 12

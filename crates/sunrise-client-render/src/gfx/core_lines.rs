@@ -2,9 +2,9 @@
 //! and `secondaryBlockOutline` under a high contrast one): an outline its fragment shader colours
 //! or animates. Without one the outline draws natively (`vs_line` in terrain.wgsl).
 
-use crate::core_shader::{CoreProgram, Glue};
 use crate::polytone_post::ExpressionUniform;
 use glam::Mat4;
+use sunrise_glsl::{Glue, Translated};
 
 /// The outline's edges (`pack_lines::layout`: start, end, ARGB colour and width per instance) as
 /// vanilla's lines: four vertices an edge, the start twice and the end twice, the side
@@ -45,7 +45,7 @@ impl super::Renderer {
     /// device's refusal of a pipeline vanilla requires, which fails the pack reload.
     pub fn set_lines_shader(
         &mut self,
-        program: Option<(&CoreProgram, &[ExpressionUniform])>,
+        program: Option<(&Translated, &[ExpressionUniform])>,
     ) -> Result<(), String> {
         self.core_lines = lines_for_frame(&self.device, self.output.frame, program)?;
         Ok(())
@@ -55,11 +55,11 @@ impl super::Renderer {
 /// The pack's outline pipelines, made whatever the frame draws so the device's refusal fails
 /// the load in every mode, then kept only where the frame draws them: a pack's GLSL writes
 /// vanilla's gamma, so a frame of linear light keeps the built-in outline. A program past the
-/// device's limits draws natively (`core_shader::PastDeviceLimit`).
+/// device's limits draws natively (`sunrise_glsl::PastDeviceLimit`).
 pub(super) fn lines_for_frame(
     device: &wgpu::Device,
     frame: super::FrameConfiguration,
-    program: Option<(&CoreProgram, &[ExpressionUniform])>,
+    program: Option<(&Translated, &[ExpressionUniform])>,
 ) -> Result<Option<CoreLines>, String> {
     let Some((program, expressions)) = program else {
         return Ok(None);
@@ -78,7 +78,7 @@ impl CoreLines {
     pub(super) fn new(
         device: &wgpu::Device,
         format: wgpu::TextureFormat,
-        program: &CoreProgram,
+        program: &Translated,
         expressions: &[ExpressionUniform],
     ) -> Result<Self, String> {
         let pipeline = crate::hud::pack_text::LINES[0].pipeline;
@@ -90,7 +90,7 @@ impl CoreLines {
     fn made(
         device: &wgpu::Device,
         format: wgpu::TextureFormat,
-        program: &CoreProgram,
+        program: &Translated,
         expressions: &[ExpressionUniform],
     ) -> Self {
         let module = |label, module: &naga::Module| {
@@ -326,7 +326,7 @@ mod tests {
 
     /// One edge across the middle of a 64 by 64 target, 4 pixels wide, blue (ARGB `ff0000ff`),
     /// at `GameTime` 0.25, drawn with `program`: the RGBA rows read back.
-    fn draw_edge(device: &wgpu::Device, queue: &wgpu::Queue, program: &CoreProgram) -> Vec<u8> {
+    fn draw_edge(device: &wgpu::Device, queue: &wgpu::Queue, program: &Translated) -> Vec<u8> {
         draw_edge_with(device, queue, program, &[], None)
     }
 
@@ -335,7 +335,7 @@ mod tests {
     fn draw_edge_with(
         device: &wgpu::Device,
         queue: &wgpu::Queue,
-        program: &CoreProgram,
+        program: &Translated,
         expressions: &[ExpressionUniform],
         poly_globals: Option<&super::super::expression_blocks::PolyGlobalsBytes>,
     ) -> Vec<u8> {

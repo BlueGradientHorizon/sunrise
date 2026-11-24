@@ -18,7 +18,7 @@ use super::api_values::TryIntoApi;
 use super::commands::Target;
 use super::{
     Game,
-    creatures::{Finalized, SpawnSite},
+    creatures::SpawnSite,
     potions::{Victim, mob_can_be_affected},
 };
 use mod_api::DragonPhase;
@@ -442,6 +442,10 @@ pub(in crate::game) struct Dragon {
     pub yaw: f32,
     pub pitch: f32,
     pub previous_yaw: f32,
+    /// LivingEntity.yBodyRot, distinct from the flight and part yaw.
+    pub body_yaw: f32,
+    head_yaw: f32,
+    body_rotation: sunrise_client::mobs::control::BodyRotation,
     yaw_accel: f32,
     pub health: f32,
     pub hurt_time: i32,
@@ -699,6 +703,9 @@ impl Dragon {
             yaw,
             pitch: 0.0,
             previous_yaw: yaw,
+            body_yaw: yaw,
+            head_yaw: yaw,
+            body_rotation: Default::default(),
             yaw_accel: 0.0,
             health: MAX_HEALTH,
             hurt_time: 0,
@@ -2588,38 +2595,8 @@ impl Game<'_> {
                         next = Some(Phase::Attacking { ticks: 0 });
                     } else {
                         let d = self.dragon.as_mut().expect("dragon");
-                        // It turns only while the player is more than 10 degrees off its
-                        // heading (`Math.acos` of the float dot, in degrees, plus 0.5).
-                        let aim = vanilla_normalize(glam::DVec3::new(
-                            pp.x - d.position.x,
-                            0.0,
-                            pp.z - d.position.z,
-                        ));
-                        let r = f64::from(d.yaw * trig::DEG_TO_RAD);
-                        let dir = vanilla_normalize(glam::DVec3::new(
-                            f64::from(trig::sin(r)),
-                            0.0,
-                            f64::from(-trig::cos(r)),
-                        ));
-                        let dot = dir.dot(aim) as f32;
-                        let angle = (f64::from(dot).acos() * 180.0
-                            / f64::from(std::f32::consts::PI))
-                            as f32
-                            + 0.5;
-                        if angle < 0.0 || angle > 10.0 {
-                            let head = d.parts[0].0;
-                            let (xd, zd) = (pp.x - head.x, pp.z - head.z);
-                            let delta = wrap64(
-                                180.0
-                                    - trig::atan2(xd, zd) * 180.0 / f64::from(std::f32::consts::PI)
-                                    - f64::from(d.yaw),
-                            )
-                            .clamp(-100.0, 100.0);
-                            d.yaw_accel *= 0.8;
-                            let dist = ((xd * xd + zd * zd).sqrt() as f32 + 1.0).min(40.0);
-                            d.yaw_accel += delta as f32 * (0.7 / dist / dist);
-                            d.yaw += d.yaw_accel;
-                        }
+                        let head = d.parts[0].0;
+                        scanning_turn(&mut d.yaw, &mut d.yaw_accel, d.position, head, pp);
                     }
                 } else if *time >= 100 {
                     // CHARGE_TARGETING: within 150 blocks.
@@ -2680,6 +2657,9 @@ impl Game<'_> {
                         id,
                         at: [x, y.floor() + 1.0, z],
                         motion: [0.0; 3],
+                        fall_distance: 0.0,
+                        fire_ticks: 0,
+                        first_tick: true,
                         radius: 5.0,
                         age: 0,
                         duration: 200,
@@ -2771,8 +2751,24 @@ impl Game<'_> {
             [look[0] / norm, look[1] / norm, look[2] / norm]
         }
     }
-    /// `EnderDragon.aiStep` (and `tickDeath`) for the dragon's own entity tick.
+    /// The inherited LivingEntity.tick runs Mob.tickHeadTurn after aiStep.
     pub(super) fn tick_dragon(&mut self) {
+        self.dragon_ai_step();
+        if let Some(d) = self.dragon.as_mut() {
+            let (dx, dz) = (d.position.x - d.previous.x, d.position.z - d.previous.z);
+            // EnderDragon inherits Mob.getMaxHeadYRot (75 degrees).
+            d.body_rotation.tick(
+                dx * dx + dz * dz,
+                d.yaw,
+                &mut d.body_yaw,
+                &mut d.head_yaw,
+                75.0,
+            );
+        }
+    }
+
+    /// `EnderDragon.aiStep` (and `tickDeath`) for the dragon's own entity tick.
+    fn dragon_ai_step(&mut self) {
         // updateDragon runs when the fight dragon ticks or dies, but not with NoAI.
         let ticks = self.dragon.as_ref().is_some_and(|d| !d.alive() || !d.no_ai);
         if ticks && self.is_fight_dragon() {
@@ -2952,6 +2948,8 @@ impl Game<'_> {
                 d.velocity.z * slide,
             );
         }
+        // EnderDragon.aiStep assigns the body's angle after flight, before placing parts.
+        d.body_yaw = d.yaw;
         self.place_dragon_parts();
         self.dragon_contacts();
         // The chunks the dragon passes through re-save their entity lists.
@@ -3255,6 +3253,9 @@ impl Game<'_> {
             id,
             at,
             motion: [0.0; 3],
+            fall_distance: 0.0,
+            fire_ticks: 0,
+            first_tick: true,
             radius: 3.0,
             age: 0,
             duration: 600,
@@ -3318,6 +3319,7 @@ impl Game<'_> {
         self.end_dragon_flame();
         let mut harmed_mobs: Vec<(u32, i32, [f64; 3])> = Vec::new();
         let ticking = self.entity_ticking_area();
+        let through = self.ticked_entities_through;
         let mut clouds = self.breath_clouds.lift();
         #[cfg(test)]
         super::entity::taken_pass_tests::after_take(self);
@@ -3326,9 +3328,10 @@ impl Game<'_> {
             if c.potion.is_some() {
                 return true;
             }
-            if !ticking(c.at[0].floor() as i32, c.at[2].floor() as i32) {
+            if c.id > through || !ticking(c.at[0].floor() as i32, c.at[2].floor() as i32) {
                 return true;
             }
+            self.cloud_fluid_step(c);
             c.age += 1;
             if breath_expired(c.age, c.duration) {
                 return self.forget_expired_cloud(c.id);
@@ -3621,6 +3624,13 @@ pub(super) struct Breath {
     pub(super) id: u32,
     pub(super) at: [f64; 3],
     pub(super) motion: [f64; 3],
+    /// `Entity.fallDistance`: as loaded, until water resets or lava halves it.
+    pub(super) fall_distance: f64,
+    /// `Entity.remainingFireTicks`: a cloud is fire immune, so its first tick
+    /// clears a burning one to 0.
+    pub(super) fire_ticks: i32,
+    /// `Entity.firstTick`: true until the first base tick finishes, gating `isInLava()`.
+    pub(super) first_tick: bool,
     pub(super) radius: f32,
     pub(super) age: i32,
     pub(super) duration: i32,
@@ -4710,6 +4720,9 @@ impl Game<'_> {
         let yaw = self.world.random.next_float() * 360.0;
         let seed = random_source::unique_seed();
         let mut dragon = Dragon::new(Vec3::new(0.0, 128.0, 0.0), yaw, seed);
+        // The fight's snapTo sets only the view yaw, not the new living angles.
+        dragon.body_yaw = 0.0;
+        dragon.head_yaw = 0.0;
         dragon.join = sunrise_client::join_seq::JoinSeq::next();
         dragon.id = self.next_entity + 1;
         dragon.phase = Phase::Holding {
@@ -4932,18 +4945,16 @@ impl Game<'_> {
                 self.finalize_spawn_at("minecraft:ender_dragon", at, reason, None)
                     .0
             }
-            SpawnSite::Plain | SpawnSite::Raw => Finalized::Done,
+            SpawnSite::Plain | SpawnSite::Raw => Default::default(),
         };
-        match finalized {
-            Finalized::Cancelled => return None,
-            Finalized::Skipped => {}
-            Finalized::Done => {
-                // Mob.finalizeSpawn (EnderDragon keeps it): the follow range's
-                // `random.triangle(0, 0.11485)`, then `setLeftHanded(nextFloat() < 0.05)`, from the
-                // level's random. Neither changes how the dragon flies.
-                let _ = self.world.random.triangle(0.0, 0.114_850_000_000_000_01);
-                let _ = self.world.random.next_float();
-            }
+        if !finalized.skip_initialization {
+            // Mob.finalizeSpawn (EnderDragon keeps it): the follow range's
+            // triangle and left-handed roll, neither of which changes how the dragon flies.
+            let _ = self.world.random.triangle(0.0, 0.114_850_000_000_000_01);
+            let _ = self.world.random.next_float();
+        }
+        if finalized.veto_admission {
+            return None;
         }
         // The dragon's own random (`Entity.random`), not the level's.
         let seed = random_source::unique_seed();
@@ -5233,9 +5244,105 @@ impl Game<'_> {
 #[path = "dragon/crystal.rs"]
 mod crystal;
 
+/// `DragonSittingScanningPhase.doServerTick` with a player at `target` and 25 ticks or fewer of
+/// scanning: the dragon turns only while that player is more than 10 degrees off its heading
+/// (`Math.acos` of the float dot, in degrees, plus 0.5). `yRotA` then eases by 0.8 and gains the
+/// delta (`180 - Mth.atan2` in degrees less the yaw, wrapped, held within 100) over the distance
+/// from the head plus one capped at 40 and over that distance uncapped, and the yaw takes it.
+fn scanning_turn(yaw: &mut f32, yaw_accel: &mut f32, body: Vec3, head: Vec3, target: Vec3) {
+    let aim = vanilla_normalize(glam::DVec3::new(target.x - body.x, 0.0, target.z - body.z));
+    let r = f64::from(*yaw * trig::DEG_TO_RAD);
+    let dir = vanilla_normalize(glam::DVec3::new(
+        f64::from(trig::sin(r)),
+        0.0,
+        f64::from(-trig::cos(r)),
+    ));
+    let dot = dir.dot(aim) as f32;
+    let angle =
+        (sunrise_core::jmath::acos(f64::from(dot)) * f64::from(trig::RAD_TO_DEG)) as f32 + 0.5;
+    if angle < 0.0 || angle > 10.0 {
+        let (xd, zd) = (target.x - head.x, target.z - head.z);
+        let delta =
+            wrap64(180.0 - trig::atan2(xd, zd) * f64::from(trig::RAD_TO_DEG) - f64::from(*yaw))
+                .clamp(-100.0, 100.0);
+        *yaw_accel *= 0.8;
+        let rot_speed = (xd * xd + zd * zd).sqrt() as f32 + 1.0;
+        let dist = if rot_speed > 40.0 { 40.0 } else { rot_speed };
+        *yaw_accel += delta as f32 * (0.7 / dist / rot_speed);
+        *yaw += *yaw_accel;
+    }
+}
+
 #[cfg(test)]
 pub(in crate::game) mod tests {
     use super::*;
+
+    /// The pinned vanilla 26.3 side is `VanillaTurnOracle`'s `dragon.txt`
+    /// (`tools/test_mob_turn_parity.py`, recorded into `.local/witness/26.3/mob_turn/dragon.txt`):
+    /// `DragonSittingScanningPhase.doServerTick` with its scan's player at each place, from each
+    /// yaw, `yRotA` and head, as the yaw and `yRotA` bits it leaves.
+    #[test]
+    #[ignore = "run by tools/test_mob_turn_parity.py"]
+    fn the_scanning_turn_matches_the_pinned_oracle() {
+        run_the_scanning_turn_matches_the_pinned_oracle();
+    }
+
+    pub(in crate::game) fn run_the_scanning_turn_matches_the_pinned_oracle() {
+        let witness_dir = std::env::var_os("SUNRISE_MOB_TURN_WITNESS_DIR").expect(
+            "SUNRISE_MOB_TURN_WITNESS_DIR must be set; run through tools/test_mob_turn_parity.py, which records the witness",
+        );
+        let witness_path = std::path::Path::new(&witness_dir).join("dragon.txt");
+        let witness = std::fs::read_to_string(&witness_path).unwrap_or_else(|err| {
+            panic!(
+                "failed to read {} ({err}); run through tools/test_mob_turn_parity.py, which records the witness",
+                witness_path.display()
+            )
+        });
+        let bits = |v: f64| format!("{:016x}", v.to_bits());
+        let mut rows = Vec::new();
+        let places = [
+            [4.0, -3.0],
+            [0.0, 30.0],
+            [-35.0, 25.0],
+            [50.0, 0.0],
+            [0.5, -0.5],
+            [12.0, 12.0],
+            [-1.0, -60.0],
+        ];
+        for [px, pz] in places {
+            for yaw in [45.0f32, 0.0, -170.0, 359.5, 180.0] {
+                for accel in [0.0f32, 2.5, -7.25] {
+                    for [hx, hz] in [[0.0, 0.0], [6.0, -4.0]] {
+                        let (mut y, mut a) = (yaw, accel);
+                        super::scanning_turn(
+                            &mut y,
+                            &mut a,
+                            Vec3::new(0.0, 70.0, 0.0),
+                            Vec3::new(hx, 72.0, hz),
+                            Vec3::new(px, 70.0, pz),
+                        );
+                        rows.push(format!(
+                            "{} {} {:08x} {:08x} {} {} {:08x} {:08x}",
+                            bits(px),
+                            bits(pz),
+                            yaw.to_bits(),
+                            accel.to_bits(),
+                            bits(hx),
+                            bits(hz),
+                            y.to_bits(),
+                            a.to_bits()
+                        ));
+                    }
+                }
+            }
+        }
+        let actual = rows.join("\n") + "\n";
+        if let Some(dir) = std::env::var_os("SUNRISE_TURN_OUTPUT_DIR") {
+            std::fs::write(std::path::Path::new(&dir).join("dragon.txt"), &actual).unwrap();
+        }
+        assert_eq!(rows.len(), 7 * 5 * 3 * 2);
+        assert_eq!(actual, witness);
+    }
 
     #[test]
     fn dragon_part_wire_ids_wrap_like_vanilla_i32() {
@@ -6753,6 +6860,28 @@ pub(in crate::game) mod tests {
         // Past 1.0 or NaN, `Math.acos` is NaN and the gate refuses, as vanilla's does.
         assert!(strafe_angle(f32::from_bits(0x3f80_0001)).is_nan());
         assert!(strafe_angle(f32::NAN).is_nan());
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn a_stationary_no_ai_dragon_runs_its_living_body_turn() {
+        super::super::native_entity_refs::tests::with_game(|game| {
+            game.create_new_dragon();
+            let dragon = game.dragon.as_mut().unwrap();
+            assert_ne!(dragon.yaw, 0.0);
+            assert_eq!((dragon.body_yaw, dragon.head_yaw), (0.0, 0.0));
+            dragon.yaw = 35.0;
+            dragon.no_ai = true;
+            dragon.head_yaw = 90.0;
+            let id = dragon.id;
+            let entity = game.entity(id).unwrap();
+            assert_eq!(entity.set_body_yaw(game, 0.0), Ok(true));
+            game.tick_dragon();
+            // The changed head is 90 degrees off the raw body. With a 75
+            // degree limit the controller turns the body by 15, not the view.
+            assert_eq!(entity.body_yaw(game), Some(15.0));
+            assert_eq!(game.dragon.as_ref().unwrap().yaw, 35.0);
+        });
     }
 
     #[test]

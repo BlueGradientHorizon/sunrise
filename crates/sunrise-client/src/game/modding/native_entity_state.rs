@@ -274,6 +274,20 @@ impl Game<'_> {
                     self.stack_can_be_hurt_by(&item.stack, "minecraft:in_fire") == Some(false),
                 )
             }
+            Some(Body::Other(Target::Projectile(id))) => {
+                let p = self.creatures.projectiles.iter().find(|p| p.id == id)?;
+                match p.arrow.as_ref() {
+                    Some(a) => (a.fire_ticks, false),
+                    None => (
+                        p.fire_ticks,
+                        matches!(
+                            p.kind,
+                            sunrise_client::projectiles::ProjectileKind::WitherSkull { .. }
+                                | sunrise_client::projectiles::ProjectileKind::ShulkerBullet { .. }
+                        ),
+                    ),
+                }
+            }
             _ => (0, self.client_tracked_player_fire_immunity(entity)?),
         };
         let synced = !self.is_logical_server()
@@ -365,7 +379,7 @@ impl Game<'_> {
     }
 
     /// The ticks the entity burns for (`Entity.getRemainingFireTicks`):
-    /// players, mobs, armor stands and items.
+    /// players, mobs, armor stands, items and projectiles.
     pub(super) fn entity_fire_ticks(&self, entity: EntityRef) -> Option<i32> {
         match self.native_entity_body(entity)? {
             Body::Player(p) => Some(p.fire_ticks),
@@ -375,6 +389,10 @@ impl Game<'_> {
             }
             Body::Other(Target::Item(id)) => {
                 Some(self.dropped.iter().find(|i| i.id == id)?.fire_ticks)
+            }
+            Body::Other(Target::Projectile(id)) => {
+                let p = self.creatures.projectiles.iter().find(|p| p.id == id)?;
+                Some(p.arrow.as_ref().map_or(p.fire_ticks, |a| a.fire_ticks))
             }
             Body::Other(_) => None,
         }
@@ -509,6 +527,19 @@ impl Game<'_> {
                         true
                     })
             }
+            Some(Target::Projectile(id)) => {
+                let Some(i) = self.creatures.projectiles.iter().position(|p| p.id == id) else {
+                    return false;
+                };
+                self.creatures.projectiles.update(i, |p| {
+                    if let Some(a) = p.arrow.as_mut() {
+                        a.fire_ticks = ticks;
+                    } else {
+                        p.fire_ticks = ticks;
+                    }
+                });
+                true
+            }
             _ => false,
         }
     }
@@ -591,8 +622,8 @@ impl Game<'_> {
         }
     }
     /// Whether the entity's model is hidden (`Entity.isInvisible`): the
-    /// invisibility effect on a player or a mob, a mob's or an armor stand's
-    /// flag.
+    /// invisibility effect on a player or a mob, the flag of a mob, an armor
+    /// stand or an item frame.
     pub(super) fn entity_is_invisible(&self, entity: EntityRef) -> Option<bool> {
         match self.native_entity_target(entity)? {
             Target::Player => Some(self.potions.effects.get("invisibility").is_some()),
@@ -607,6 +638,7 @@ impl Game<'_> {
                 Some(m.is_invisible())
             }
             Target::Stand(id) => Some(self.armor_stands.iter().find(|s| s.id == id)?.invisible),
+            Target::Frame(id) => Some(self.item_frames.iter().find(|f| f.id == id)?.invisible),
             _ => None,
         }
     }
@@ -736,7 +768,8 @@ impl Game<'_> {
             _ => false,
         }
     }
-    /// Sets the entity's shared invisibility flag (`Entity.setInvisible`). Returns false for players and guests.
+    /// Sets the entity's shared invisibility flag (`Entity.setInvisible`) on a mob, an armor
+    /// stand or an item frame. Returns false for players, guests and other kinds.
     pub(super) fn entity_set_invisible(&mut self, entity: EntityRef, invisible: bool) -> bool {
         match self.native_entity_target(entity) {
             Some(Target::Mob(id)) => self.mobs.iter_mut().find(|m| m.id == id).is_some_and(|m| {
@@ -752,6 +785,16 @@ impl Game<'_> {
                     s.invisible = invisible;
                     true
                 }),
+            // `ItemFrame` saves the flag with its chunk.
+            Some(Target::Frame(id)) => {
+                let Some(frame) = self.item_frames.iter_mut().find(|f| f.id == id) else {
+                    return false;
+                };
+                frame.invisible = invisible;
+                let pos = frame.pos;
+                self.world.modified.insert((pos[0] >> 4, pos[2] >> 4));
+                true
+            }
             _ => false,
         }
     }
@@ -1035,6 +1078,38 @@ mod tests {
             game.dropped[0].fire_ticks = 19;
             let item = game.entity(game.dropped[0].id).unwrap();
             assert_eq!(item.fire_ticks(game), Some(19));
+
+            let mut snowball = sunrise_client::projectiles::Projectile::new(
+                sunrise_client::projectiles::ProjectileKind::Snowball,
+                Vec3::ZERO,
+                None,
+            );
+            snowball.id = 45;
+            snowball.fire_ticks = 159;
+            game.creatures.projectiles.push(snowball);
+            let proj = game.entity(45).unwrap();
+            assert_eq!(proj.fire_ticks(game), Some(159));
+            assert_eq!(proj.is_on_fire(game), Some(true));
+            assert!(proj.set_remaining_fire_ticks(game, 40));
+            assert_eq!(proj.fire_ticks(game), Some(40));
+
+            let mut arrow = sunrise_client::projectiles::Projectile::new(
+                sunrise_client::projectiles::ProjectileKind::Arrow {
+                    base_damage: 2.0,
+                    critical: false,
+                    effect: None,
+                },
+                Vec3::ZERO,
+                None,
+            );
+            arrow.id = 46;
+            arrow.arrow.as_mut().unwrap().fire_ticks = 80;
+            game.creatures.projectiles.push(arrow);
+            let arrow_ref = game.entity(46).unwrap();
+            assert_eq!(arrow_ref.fire_ticks(game), Some(80));
+            assert_eq!(arrow_ref.is_on_fire(game), Some(true));
+            assert!(arrow_ref.clear_fire(game));
+            assert_eq!(arrow_ref.fire_ticks(game), Some(0));
 
             game.boats.push(super::super::boats::Boat::new(
                 44,

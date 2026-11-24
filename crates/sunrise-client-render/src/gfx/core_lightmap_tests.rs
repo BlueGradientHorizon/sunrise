@@ -389,7 +389,7 @@ fn the_light_texture_is_read_back_only_while_f3_charts_it() {
 /// them) and whose fragment stage reads `F0`, `F1`, ... (`fragment`), with every one's
 /// expression from its `shader_modifiers` file, resolved as the atlas resolves them. The
 /// fragment writes `F0` in red, `SkyFactor` in green and `F1` in blue.
-fn expression_lightmap(vertex: usize, fragment: usize) -> (CoreProgram, Vec<ExpressionUniform>) {
+fn expression_lightmap(vertex: usize, fragment: usize) -> (Translated, Vec<ExpressionUniform>) {
     let block =
         |name: String| format!("layout(std140) uniform {name} {{\n    float {name}v;\n}};\n");
     let blocks = |prefix: &str, n: usize| -> String {
@@ -562,7 +562,7 @@ fn a_lightmap_shaders_blocks_count_for_the_stages_that_read_them() {
         made(0, 12),
         (
             false,
-            Some(crate::core_shader::PastDeviceLimit::UniformBlocks {
+            Some(sunrise_glsl::PastDeviceLimit::UniformBlocks {
                 stage: wgpu::ShaderStages::FRAGMENT,
                 blocks: 13,
                 limit: 12

@@ -119,6 +119,7 @@ pub(super) const GOAL_VIEW_READS: &[&str] = &[
     "mob_navigation_speed",
     "mob_pathfinding_malus",
     "mob_is_aggressive",
+    "mob_is_in_sitting_pose",
     "mob_persistence_required",
     "mob_requires_custom_persistence",
     "mob_no_ai",
@@ -291,6 +292,10 @@ fn area_tiers(camel: &str, file: syn::File) -> Result<BTreeMap<Tier, Vec<Entry>>
                         | "BlockEntityDrawContext"
                         | "WorldDrawContext"
                         | "CameraDrawContext"
+                        | "WorldPassDrawContext"
+                        | "WorldOitPassDrawContext"
+                        | "RenderLevelStageContext"
+                        | "PrepareRenderBuffersContext"
                 ) | (
                     "Services",
                     "ClientSession"
@@ -675,7 +680,7 @@ pub(super) fn game_forwarders(root: &Path) -> Result<String, String> {
 /// API records whose game representation is owned by another crate. Conversions are
 /// implemented once by the game; this rule only selects the boundary, never its behaviour.
 fn text_value(ty: &Type) -> bool {
-    contains_value(ty, &["Text", "GuiDraw"])
+    contains_value(ty, &["Text"])
 }
 
 fn boundary_value(ty: &Type) -> bool {

@@ -26,6 +26,22 @@
 //! let into = host.level.block_entity_at([1, 64, 0]).unwrap().items.as_ref().unwrap();
 //! assert_eq!(into.count("minecraft:stone"), 3);
 //! ```
+/// Build the command for one exact ignored test in a fresh copy of this test binary.
+/// The caller supplies scratch resources and verifies the fixture's completion.
+pub fn fresh_case_command(name: &str, flag: &str, case: &str) -> std::process::Command {
+    let mut command = std::process::Command::new(std::env::current_exe().unwrap());
+    command
+        .args([
+            "--ignored",
+            "--exact",
+            name,
+            "--nocapture",
+            "--test-threads=4",
+        ])
+        .env(flag, case);
+    command
+}
+
 #[path = "testing/journal.rs"]
 mod journal;
 #[path = "testing/level.rs"]
@@ -535,6 +551,12 @@ impl crate::prelude::TagsHost for FakeHost {
     fn tags(&self) -> &dyn crate::Tags {
         &self.registries
     }
+    fn fluid_bucket(&self, fluid: &str) -> Option<crate::ItemKey> {
+        self.registries.bucket_of(fluid)
+    }
+    fn bucket_fluid(&self, bucket: crate::ItemKey) -> Option<crate::FluidKey> {
+        self.registries.fluid_of(bucket)
+    }
     fn fluid_pickup_sound(&self, fluid: &str) -> Option<&'static str> {
         self.registries.fluid_sound(fluid, true)
     }
@@ -845,9 +867,13 @@ impl crate::prelude::ItemsBackend for FakeHost {
     fn entity_equipment_size(&self, _: u32) -> Option<usize> {
         None
     }
-    fn item_bundle_slots(&self, _: &ItemStack) -> Option<Vec<Option<ItemStack>>> {
+    fn bundle_slots(
+        &self,
+        _: &ItemStack,
+        _: &crate::BundleConfig,
+    ) -> Result<Option<Vec<Option<ItemStack>>>, crate::BundleReadError> {
         // The fake registry models declared containers, not game bundle components.
-        None
+        Ok(None)
     }
     fn item_container_slots(&self, stack: &ItemStack) -> Option<Vec<Option<ItemStack>>> {
         self.registries.container_slots(stack)
@@ -1399,6 +1425,40 @@ impl crate::__private::WorldgenReader for TestReader {
     fn setting(&self, _: &str, _: &str) -> Option<&str> {
         None
     }
+}
+
+/// Build a `(RegisteredAttachment, AttachmentKey<T>)` pair for tests without running full
+/// mod registration.
+// hidden: API-owned test setup uses this vocabulary fixture, not mod authoring code.
+#[doc(hidden)]
+pub fn registered_attachment_fixture<T: Send + Sync + 'static>(
+    owner: &'static str,
+    descriptor: crate::AttachmentDescriptor<T>,
+) -> (crate::RegisteredAttachment, crate::AttachmentKey<T>) {
+    crate::parts::registered_attachment_fixture(owner, descriptor)
+}
+
+/// Install a single attachment descriptor in the test thread's Parts table and return its live
+/// [`AttachmentKey<T>`](crate::AttachmentKey).
+// hidden: API-owned test setup uses this vocabulary fixture, not mod authoring code.
+#[doc(hidden)]
+pub fn install_attachment_fixture<T: Send + Sync + 'static>(
+    owner: &'static str,
+    descriptor: crate::AttachmentDescriptor<T>,
+) -> crate::AttachmentKey<T> {
+    crate::parts::install_attachment_fixture(owner, descriptor)
+}
+
+/// Retrieve the key issued by this test thread's registration fixture.
+// hidden: API-owned test setup uses this vocabulary fixture, not mod authoring code.
+#[doc(hidden)]
+pub fn attachment_key<T: Send + Sync + 'static>(
+    namespace: &str,
+    name: &str,
+) -> crate::AttachmentKey<T> {
+    crate::parts::installed().unwrap().attachment_types[namespace][name]
+        .downcast_key()
+        .unwrap()
 }
 
 #[cfg(test)]

@@ -69,7 +69,7 @@ impl Game<'_> {
         if use_item.or(true)
             && let Some(hit) = block_hit
             && let Some(held) = self.held().cloned()
-            && let Some(answer) = self.item_use_first(hit, self.hand, &held)
+            && let Ok(Some(answer)) = self.item_use_first(hit, self.hand, &held)
             && answer != Answer::Pass
         {
             if matches!(answer, Answer::Success | Answer::SuccessServer) {
@@ -206,7 +206,9 @@ impl Game<'_> {
                 let sign_consumes = self.sign_consumes_click(hit.pos);
                 use sunrise_world::level::{InteractionResult, UseBranch};
                 let item_result = match block_answer {
-                    Some(answer) => native_hooks::block_use_result(answer),
+                    Some(answer) => {
+                        native_hooks::block_use_result(answer, mod_api::LogicalSide::Server)
+                    }
                     None => self.with_level(|b, level, ticks| {
                         b.block_use_item_on(level, ticks, state, block_hit, player, item.as_deref())
                     }),
@@ -252,7 +254,8 @@ impl Game<'_> {
                             })
                     });
                     let result = if let Some(answer) = answer {
-                        native_hooks::block_use_result(answer).unwrap_or(InteractionResult::Pass)
+                        native_hooks::block_use_result(answer, mod_api::LogicalSide::Server)
+                            .unwrap_or(InteractionResult::Pass)
                     } else {
                         empty_template_ran = true;
                         let player = self.use_context();
@@ -792,6 +795,7 @@ impl Game<'_> {
                     pitch: 1.0,
                     except: None,
                     entity: None,
+                    seed: None,
                 }) {
                     return None;
                 }

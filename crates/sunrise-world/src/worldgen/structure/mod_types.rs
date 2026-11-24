@@ -8,10 +8,11 @@
 //! [`StructureInputs::assemble_jigsaw`] are jigsaw pieces (`Piece::Pool`), saved
 //! and loaded as `minecraft:jigsaw` pieces are. Runs on the worldgen worker
 //! threads, so a type keeps no mutable state and its contexts carry no `Host`.
-use super::jigsaw::{JigsawConfig, Pools, assemble};
+use super::jigsaw::{Jigsaw, JigsawConfig, PoolElement, PoolPiece, Pools, assemble, attach};
 use super::legacy::LegacyPiece;
 use super::start::{Piece, StartContext};
 use crate::worldgen::block_feature::FeatureBlockBindings;
+use mod_api::JigsawSpace;
 use std::collections::BTreeMap;
 use std::sync::{Arc, OnceLock};
 use sunrise_core::nbt::{Compound, Tag};
@@ -39,6 +40,11 @@ impl<'a> StructureInputs<'a> {
             bindings,
         }
     }
+    /// The bundle's template pool `name`: `None` for one it lacks or one left
+    /// out because an element failed to decode.
+    pub fn pool(&self, name: &str) -> Option<Arc<super::jigsaw::Pool>> {
+        self.pools.get(name, self.resources, self.bindings)
+    }
     /// `JigsawPlacement.addPieces` from the bundle's template pools with the
     /// type's own decoded settings, as a NeoForge structure type calls it from
     /// its own `findGenerationPoint`: [`assemble`] with `config`'s depth and
@@ -65,6 +71,33 @@ impl<'a> StructureInputs<'a> {
             position,
         )?;
         Some((position, pieces.into_iter().map(Piece::Pool).collect()))
+    }
+    /// One candidate on one jigsaw of `source`, as a structure type laying
+    /// its own jigsaw out calls it: [`attach`] with the bundle's pools looked
+    /// up by name, without aliases.
+    #[allow(clippy::too_many_arguments)]
+    pub fn attach(
+        &self,
+        source: &mut PoolPiece,
+        jigsaw: &Jigsaw<'_>,
+        target: &Arc<PoolElement>,
+        space: &mut JigsawSpace,
+        use_expansion_hack: bool,
+        mut context: &mut dyn StartContext,
+        random: &mut impl RandomSource,
+    ) -> Option<PoolPiece> {
+        attach(
+            source,
+            jigsaw,
+            target,
+            space,
+            use_expansion_hack,
+            &|name| self.pool(name),
+            self.resources,
+            &mut None,
+            &mut context,
+            random,
+        )
     }
 }
 

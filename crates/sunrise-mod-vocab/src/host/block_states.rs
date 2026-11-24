@@ -175,10 +175,30 @@ pub trait BlockStatesBackend {
     /// for slime. None for an unknown state.
     fn block_state_friction(&self, state: BlockState) -> Option<f32>;
     /// Side: both.
+    /// The speed factor of the state's block (`Block.getSpeedFactor`, its
+    /// `BlockBehaviour.Properties.speedFactor`): 1.0 for most blocks, 0.4 for soul sand and
+    /// honey. The declared value, not what the block's parts answer in a level. None for an
+    /// unknown state.
+    fn block_state_speed_factor(&self, state: BlockState) -> Option<f32>;
+    /// Side: both.
+    /// The jump factor of the state's block (`Block.getJumpFactor`, its
+    /// `BlockBehaviour.Properties.jumpFactor`): 1.0 for most blocks, 0.5 for honey. The
+    /// declared value, not what the block's parts answer in a level. None for an unknown state.
+    fn block_state_jump_factor(&self, state: BlockState) -> Option<f32>;
+    /// Side: both.
     /// `BlockState.isSolidRender()`: whether the state is a full, occluding cube for rendering
     /// and light (stone yes; glass, leaves and slabs no). Not `isSolid` and not full collision.
     /// None for an unknown state.
     fn block_state_is_solid_render(&self, state: BlockState) -> Option<bool>;
+    /// Side: both.
+    /// `BlockState.propagatesSkylightDown()`: whether sky light passes down through the state
+    /// unchanged, the block's own answer included (glass, barriers and vegetation override the
+    /// shape's). None for an unknown state.
+    fn block_state_propagates_skylight_down(&self, state: BlockState) -> Option<bool>;
+    /// Side: both.
+    /// `BlockState.isAir()`: air, cave air and void air, by the block's own flag rather than
+    /// the `#minecraft:air` tag a data pack may change. None for an unknown state.
+    fn block_state_is_air(&self, state: BlockState) -> Option<bool>;
     /// Side: both.
     /// `BlockState.isRedstoneConductor` for a state alone. None if the state is unknown
     /// or the predicate needs a level and position.

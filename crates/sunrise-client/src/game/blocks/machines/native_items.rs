@@ -2,7 +2,9 @@
 //! container slots and the composter's state-backed input/output, by the rules hoppers follow.
 //! Side-local slots are numbered from zero. It acts where the world is simulated, never on
 //! a client's copy, and only on the level in place.
-use super::{Game, Insertion, Kind, MoveIn, PlacementAttempt, Pos, Slots, View};
+use super::{
+    Game, Insertion, Kind, MoveIn, PlacementAttempt, Pos, Slots, TakeAsk, TakeAttempt, View,
+};
 use crate::game::{decorated_pot::DECORATED_POT, transactions::After};
 use mod_api::{
     BlockCapabilitySite, BlockSide, ItemResource, LevelReadError, LevelRef, TransactionContext,
@@ -530,6 +532,7 @@ impl Game<'_> {
             return 0;
         };
         let (mut left, mut told) = (amount, false);
+        let mut attempt = TakeAttempt::default();
         for slot in view.capability_slots(at.side) {
             if left == 0 {
                 break;
@@ -539,9 +542,13 @@ impl Game<'_> {
                 continue;
             };
             if !held.same_item_same_components(resource)
-                || at
-                    .side
-                    .is_some_and(|face| !c.can_take(&view, slot, &held, face))
+                || at.side.is_some_and(|face| {
+                    let ask = TakeAsk {
+                        game: self,
+                        attempt: &mut attempt,
+                    };
+                    !c.can_take(&view, slot, &held, face, ask)
+                })
             {
                 continue;
             }
@@ -595,9 +602,13 @@ impl Game<'_> {
         let c = self.containers();
         let stack = c.insertion_item(&view, slot)?;
         if max == 0
-            || at
-                .side
-                .is_some_and(|face| !c.can_take(&view, slot, &stack, face))
+            || at.side.is_some_and(|face| {
+                let ask = TakeAsk {
+                    game: self,
+                    attempt: &mut TakeAttempt::default(),
+                };
+                !c.can_take(&view, slot, &stack, face, ask)
+            })
         {
             return None;
         }

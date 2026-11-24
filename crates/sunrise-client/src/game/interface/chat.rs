@@ -1,6 +1,9 @@
 //! Chat, the command registries and the per-world state behind commands
 //! (game rules, the world clock, difficulty), bound to the game.
 #[cfg(test)]
+#[path = "chat/submit_order_tests.rs"]
+mod submit_order_tests;
+#[cfg(test)]
 #[path = "chat/suggestion_completion_tests.rs"]
 mod suggestion_completion_tests;
 
@@ -844,6 +847,10 @@ impl Game<'_> {
         reg.structures = ids.structures.clone();
         reg.biomes = ids.biomes.clone();
         reg.clocks = ids.clocks.clone();
+        // The mods' clocks (`register_world_clock`) for `/time of`.
+        reg.clocks
+            .extend(mod_api::__private::world_clock_declarations());
+        reg.clocks.sort();
         reg.dimensions = vec![
             "minecraft:overworld".into(),
             "minecraft:the_nether".into(),
@@ -1268,19 +1275,28 @@ impl Game<'_> {
                 self.close_chat(ChatExit::Intentional);
             }
             ChatAction::Submit(message) => {
-                // InBedChatScreen sends without closing (`closeOnSubmit` is
-                // false): the box empties and the screen stays.
-                if self.ui.in_bed_chat && self.sleeping.is_some() {
-                    screen.suggest_command(&m, &c, "");
-                    self.ui.chat.reset_scroll();
-                    self.ui.chat_screen = Some(screen);
-                } else {
-                    // The screen is taken here, so close_chat sees no text: a sent
-                    // message discards the draft (DONE).
-                    self.close_chat(ChatExit::Done);
-                }
+                // ChatScreen.keyPressed: handleChatInput runs with the screen still open,
+                // then `closeOnSubmit` closes it. InBedChatScreen sends without closing
+                // (`closeOnSubmit` is false): the box empties and the screen stays.
+                let close_on_submit = !(self.ui.in_bed_chat && self.sleeping.is_some());
+                self.ui.chat_screen = Some(screen);
                 if !message.is_empty() {
                     self.handle_chat_input(&message);
+                }
+                if close_on_submit {
+                    // A sent message discards the draft (DONE), whatever the box holds.
+                    self.close_chat(ChatExit::Done);
+                } else {
+                    // The line is handled first, then the box empties and chat scrolls back.
+                    if let Some(screen) = self.ui.chat_screen.as_mut() {
+                        let m = Measure(&self.gui.atlas.font);
+                        let c = Commands {
+                            dispatcher: chat_tree(&self.remote),
+                            registries: &self.ui.registries,
+                        };
+                        screen.suggest_command(&m, &c, "");
+                    }
+                    self.ui.chat.reset_scroll();
                 }
             }
             ChatAction::None => {
@@ -1915,8 +1931,9 @@ impl Game<'_> {
         self.ui.registries.random_sequences = self.rand_sequences.ids();
         &mut self.ui.registries
     }
-    /// Advance every clock the world has met (ServerClockManager.tick) when `advance_time` allows
-    /// it: each at its own rate, unless paused. The active clock's total is World.day_time.
+    /// Advance every clock of the world's `minecraft:world_clock` registry, the mods' own included,
+    /// and every other clock the world has met (ServerClockManager.tick) when `advance_time`
+    /// allows it: each at its own rate, unless paused. The active clock's total is World.day_time.
     pub(super) fn advance_clock(&mut self) {
         if !self
             .ui
@@ -1929,11 +1946,17 @@ impl Game<'_> {
         }
         let mut names: Vec<String> = self.ui.command_clocks.keys().cloned().collect();
         let active = self.active_clock().to_owned();
+        // ServerClockManager.init holds every `minecraft:world_clock` entry, the mods' own
+        // (`register_world_clock`) among them, and `tick` advances each one, touched or not.
         for name in [
             OVERWORLD_CLOCK.to_owned(),
             "minecraft:the_end".to_owned(),
             active,
-        ] {
+        ]
+        .into_iter()
+        .chain(self.ui.registries.clocks.iter().cloned())
+        .chain(mod_api::__private::world_clock_declarations())
+        {
             if !names.contains(&name) {
                 names.push(name);
             }

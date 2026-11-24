@@ -126,12 +126,12 @@ fn each_improved_transparency_stage_is_given_its_passs_samplers() {
     .expect("every sampler is its stage's")
     .expect("the pack's clouds");
     let oit = &given.oit;
-    let at = |name: &str| {
-        let index = oit[0].other.iter().position(|n| n == name).unwrap();
-        crate::core_shader::other_binding(index)
+    let at = |program: &Translated, name: &str| {
+        let index = program.other.iter().position(|n| n == name).unwrap();
+        program.other_binding(index)
     };
-    let fragment_reads = |program: &CoreProgram, name: &str| {
-        program.stages_reading(at(name)) == wgpu::ShaderStages::FRAGMENT
+    let fragment_reads = |program: &Translated, name: &str| {
+        program.stages_reading(at(program, name)) == wgpu::ShaderStages::FRAGMENT
     };
     assert!(!fragment_reads(&oit[0], "DepthBoundsSampler"));
     assert!(fragment_reads(&oit[1], "DepthBoundsSampler"));
@@ -206,7 +206,7 @@ fn a_clouds_program_reading_a_sampler_no_pass_binds_fails_the_load() {
         programs
             .classic
             .past_device_limit(&wgpu::Limits::default(), &[target]),
-        Some(crate::core_shader::PastDeviceLimit::ColourOutput {
+        Some(sunrise_glsl::PastDeviceLimit::ColourOutput {
             location: 0,
             kind: Some(naga::ScalarKind::Sint),
             components: 4,

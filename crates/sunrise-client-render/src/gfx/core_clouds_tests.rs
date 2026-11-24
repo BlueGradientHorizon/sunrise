@@ -69,10 +69,10 @@ const SIZE: u32 = 8;
 
 /// `program` as the classic clouds' only.
 fn classic(
-    program: &crate::core_shader::CoreProgram,
+    program: &sunrise_glsl::Translated,
 ) -> (
-    Option<&crate::core_shader::CoreProgram>,
-    Option<&[crate::core_shader::CoreProgram; 3]>,
+    Option<&sunrise_glsl::Translated>,
+    Option<&[sunrise_glsl::Translated; 3]>,
 ) {
     (Some(program), None)
 }
@@ -464,7 +464,7 @@ const OIT_VSH: &str = "#version 330\n\
 fn oit_programs(
     fragment: &str,
     include: &dyn Fn(&str) -> Option<String>,
-) -> [crate::core_shader::CoreProgram; 3] {
+) -> [sunrise_glsl::Translated; 3] {
     oit_programs_of(OIT_VSH, fragment, include)
 }
 
@@ -473,7 +473,7 @@ fn oit_programs_of(
     vertex: &str,
     fragment: &str,
     include: &dyn Fn(&str) -> Option<String>,
-) -> [crate::core_shader::CoreProgram; 3] {
+) -> [sunrise_glsl::Translated; 3] {
     let stage = |s: &OitStageSource| {
         crate::core_shader::translate_core_with(vertex, fragment, s.defines, include, &GLUE, &|b| {
             b == INFO_BLOCK || b == FACES || s.samplers.contains(&b)
@@ -1067,7 +1067,7 @@ fn linear_light_links_the_required_programs_before_suppressing_the_draw() {
     // checks, `check`) or made to fit, so the refused program is built by hand: it samples
     // binding 4 (`Sampler0`'s), which no clouds pipeline binds.
     let refused = || {
-        crate::core_shader::CoreProgram::validated(
+        crate::core_shader::validated(
             naga::front::wgsl::parse_str(
                 "@vertex fn main() -> @builtin(position) vec4<f32> { return vec4(1.0); }",
             )
