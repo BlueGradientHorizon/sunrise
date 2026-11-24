@@ -545,16 +545,28 @@ pub(in crate::game) struct ClientCpuResources {
     pub(in crate::game) creative_screen: Creative,
 }
 
+pub(in crate::game) struct ClientConstructEffects {
+    pub(in crate::game) fog: sunrise_client::fog::FogState,
+    pub(in crate::game) vanilla_mappings: sunrise_client::keymapping::VanillaMappings,
+    pub(in crate::game) health_hud: hud_layout::HealthHud,
+    pub(in crate::game) music: sunrise_client::music::MusicManager,
+    pub(in crate::game) ambience: sunrise_client::ambience::Ambience,
+    pub(in crate::game) frame_clock: sunrise_client::window::SystemClock,
+    pub(in crate::game) narration: sunrise_client::screen_narrator::ScreenNarrator,
+    pub(in crate::game) tick_script: tick_script::TickScript,
+    pub(in crate::game) debug_entries: sunrise_client::debug_entries::DebugEntries,
+}
+
 impl ClientState {
     // Kept out-of-line so its field temporaries do not bloat `Game::construct`'s unoptimised frame.
     #[inline(never)]
     pub(in crate::game) fn new(
         now: Instant,
-        music_frequency: sunrise_client::music::MusicFrequency,
         music_toast: u8,
         tutorial: tutorial::Tutorial,
         standalone_geometry: native_block_entity_draw::StandaloneGeometry,
-        prepared: ClientCpuResources,
+        prepared: Box<ClientCpuResources>,
+        effects: Box<ClientConstructEffects>,
     ) -> Self {
         Self {
             debug_density: RefCell::default(),
@@ -570,7 +582,7 @@ impl ClientState {
             world_renderer_ready: false,
             instance_groups: Default::default(),
             standalone_geometry,
-            fog: Default::default(),
+            fog: effects.fog,
             screen_fx: Default::default(),
             item_activation: Default::default(),
             weather_parameters: Default::default(),
@@ -621,7 +633,7 @@ impl ClientState {
             mouse: MouseLook::default(),
             agent_pointer: false,
             smooth_camera: false,
-            vanilla_mappings: Default::default(),
+            vanilla_mappings: effects.vanilla_mappings,
             was_playing: false,
             debug: false,
             gpu_passes: false,
@@ -645,7 +657,7 @@ impl ClientState {
             mod_clear_particles: Default::default(),
             lent_level_random: None,
             pack_ids: None,
-            health_hud: hud_layout::HealthHud::default(),
+            health_hud: effects.health_hud,
             started: now,
             spectator_gui: Default::default(),
             last_input: now,
@@ -669,18 +681,13 @@ impl ClientState {
             gui_ticks: 0,
             texture_ticks: 0,
             message: None,
-            music: {
-                // The manager starts with the saved option (MusicManager's constructor).
-                let mut music = sunrise_client::music::MusicManager::default();
-                music.frequency = music_frequency;
-                music
-            },
+            music: effects.music,
             music_layers: Default::default(),
             // ToastManager.initializeMusicToast: Pause and Pause and Toast make the toast.
             now_playing: (music_toast != 0).then(Default::default),
             music_toast_state: music_toast,
             music_notes: Default::default(),
-            ambience: Default::default(),
+            ambience: effects.ambience,
             sound_paused: false,
             cart_sounds: HashSet::new(),
             riding_cart_sounds: None,
@@ -697,7 +704,7 @@ impl ClientState {
             moving_pistons_stale: false,
             view: Default::default(),
             limiter: sunrise_client::window::FramerateLimiter::new(0),
-            frame_clock: Default::default(),
+            frame_clock: effects.frame_clock,
             scope_scale: 0.5,
             frame_ticks: 0.0,
             hotbar_pop: [0; 10],
@@ -712,7 +719,7 @@ impl ClientState {
             look: Default::default(),
             tutorial,
             toast_manager: Default::default(),
-            narration: Default::default(),
+            narration: effects.narration,
             options_from_title: false,
             avatar: Default::default(),
             custom_sky: Default::default(),
@@ -770,7 +777,7 @@ impl ClientState {
             agent_last: None,
             frame_stats: Default::default(),
             alloc_mark: None,
-            tick_script: tick_script::TickScript::from_env(),
+            tick_script: effects.tick_script,
             view_frustum: None,
             pending_uploads_order: None,
             upload_pace: Default::default(),
@@ -795,9 +802,7 @@ impl ClientState {
             social: Default::default(),
             debug_keys: Default::default(),
             debug_charts: Default::default(),
-            debug_entries: sunrise_client::debug_entries::DebugEntries::load(
-                &std::env::current_dir().unwrap_or_default(),
-            ),
+            debug_entries: effects.debug_entries,
             debug_options: None,
             memory_meter: Default::default(),
             debug_paint: Default::default(),

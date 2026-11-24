@@ -343,11 +343,11 @@ pub(in crate::game) struct ServerState {
 impl ServerState {
     // Kept out-of-line so its field temporaries do not bloat `Game::construct`'s unoptimised frame.
     #[inline(never)]
-    pub(in crate::game) fn new(resources: &std::path::Path) -> Self {
+    pub(in crate::game) fn new(
+        structure_spawns: sunrise_client::mobs::spawn_selection::StructureSpawns,
+    ) -> Self {
         Self {
-            structure_spawns: sunrise_client::mobs::spawn_selection::StructureSpawns::load(
-                resources,
-            ),
+            structure_spawns,
             data_map_registries: Vec::new(),
             craft_table: None,
             open_container_slots: None,

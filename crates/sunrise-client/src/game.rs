@@ -12869,7 +12869,9 @@ fn load_forcefield(root: &sunrise_assets::resource_source::ResourceSource) -> (u
 struct ConstructPrep {
     level: Level,
     save: Arc<SaveDir>,
-    prepared: GameCpuResources,
+    painting_variants: paintings::PaintingVariants,
+    armor_stand_assets: armor_stands::ArmorStandAssets,
+    client_prepared: Box<client_state::ClientCpuResources>,
     world: World,
     tutorial: tutorial::Tutorial,
     now: Instant,
@@ -12882,6 +12884,16 @@ struct ConstructPrep {
     audio: Audio,
     streaming: Streaming,
     standalone_geometry: native_block_entity_draw::StandaloneGeometry,
+}
+
+struct ConstructEffects {
+    structure_spawns: sunrise_client::mobs::spawn_selection::StructureSpawns,
+    tick: sunrise_client::parallel::TickThread,
+    skin_downloads: RefCell<sunrise_client::skins::Downloader>,
+    skin_profiles: RefCell<sunrise_client::skins::Resolver>,
+    registered_debug_entries: std::sync::Arc<[sunrise_client::debug_entries::RegisteredDebugEntry]>,
+    ui: chat::UiState,
+    client: Box<client_state::ClientConstructEffects>,
 }
 
 impl<'a> Game<'a> {
@@ -12910,10 +12922,11 @@ impl<'a> Game<'a> {
         prepared: Option<GameCpuResources>,
         initial: Option<&mut Option<initial_client_models::InitialModelGeneration>>,
     ) -> Result<Self> {
-        // Preparation and struct assembly live in separate out-of-line frames so unoptimised builds do not overlap `GameCpuResources::load` with the `Game` literal.
+        // Preparation, effectful init, and struct assembly live in separate out-of-line frames to keep unoptimised stack small.
         let prep =
             Self::prepare_construct(res, pack, gui, options, settings, audio, prepared, initial)?;
-        Self::finish_construct(res, prep)
+        let effects = Self::prepare_effects(&prep);
+        Self::finish_construct(res, prep, effects)
     }
 
     #[inline(never)]
@@ -13002,44 +13015,6 @@ impl<'a> Game<'a> {
         );
         streaming.paused = true;
         let standalone_geometry = native_block_entity_draw::StandaloneGeometry::new(&pack, &gui);
-        Ok(Box::new(ConstructPrep {
-            level,
-            save,
-            prepared,
-            world,
-            tutorial,
-            now,
-            particles,
-            resource_source,
-            pack,
-            gui,
-            options,
-            settings,
-            audio,
-            streaming,
-            standalone_geometry,
-        }))
-    }
-
-    #[inline(never)]
-    fn finish_construct(res: &'a Arc<Resources>, mut prep: Box<ConstructPrep>) -> Result<Self> {
-        let loop_side = prep.options.execution_role.loop_side();
-        let mod_sources = prep.options.mods.clone();
-        let registry = prep.pack.assets.registry;
-        let creative = prep.options.creative;
-        let inventory = vec![None; 36];
-        let look = prep.options.look;
-        let yaw = look.map_or(prep.level.rotation[0], |l| l.0);
-        let pitch = look.map_or(prep.level.rotation[1], |l| l.1);
-        let slow_frame_ms = prep
-            .options
-            .spikes
-            .unwrap_or(sunrise_client::client_perf::SLOW_FRAME_MS);
-        let music_frequency = sunrise_client::music::MusicFrequency::parse(
-            &prep.settings.file.name("musicFrequency"),
-        );
-        let music_toast = prep.settings.file.int("musicToast").clamp(0, 2) as u8;
-        let resources_path = prep.options.resources.clone();
         let GameCpuResources {
             painting_variants,
             frame_model,
@@ -13058,8 +13033,8 @@ impl<'a> Game<'a> {
             trident_model,
             entity_models,
             creative_screen,
-        } = prep.prepared;
-        let client_prepared = client_state::ClientCpuResources {
+        } = prepared;
+        let client_prepared = Box::new(client_state::ClientCpuResources {
             frame_model,
             glow_frame_model,
             map_frame_model,
@@ -13075,7 +13050,105 @@ impl<'a> Game<'a> {
             trident_model,
             entity_models,
             creative_screen,
+        });
+        Ok(Box::new(ConstructPrep {
+            level,
+            save,
+            painting_variants,
+            armor_stand_assets,
+            client_prepared,
+            world,
+            tutorial,
+            now,
+            particles,
+            resource_source,
+            pack,
+            gui,
+            options,
+            settings,
+            audio,
+            streaming,
+            standalone_geometry,
+        }))
+    }
+
+    // Evaluates all effectful literal initialisers in their original base order before tail assembly.
+    #[inline(never)]
+    fn prepare_effects(prep: &ConstructPrep) -> Box<ConstructEffects> {
+        let structure_spawns =
+            sunrise_client::mobs::spawn_selection::StructureSpawns::load(&prep.options.resources);
+        let fog = sunrise_client::fog::FogState::default();
+        let vanilla_mappings = sunrise_client::keymapping::VanillaMappings::default();
+        let health_hud = hud_layout::HealthHud::default();
+        let tick = sunrise_client::parallel::TickThread::mint();
+        let music = {
+            // The manager starts with the saved option (MusicManager's constructor).
+            let mut music = sunrise_client::music::MusicManager::default();
+            music.frequency = sunrise_client::music::MusicFrequency::parse(
+                &prep.settings.file.name("musicFrequency"),
+            );
+            music
         };
+        let ambience = sunrise_client::ambience::Ambience::default();
+        let frame_clock = sunrise_client::window::SystemClock::default();
+        let narration = sunrise_client::screen_narrator::ScreenNarrator::default();
+        let skin_downloads = RefCell::new({
+            let mut downloads = sunrise_client::skins::Downloader::new(
+                std::env::current_dir()
+                    .unwrap_or_default()
+                    .join("assets/skins"),
+            );
+            downloads.set_resource_root(prep.resource_source.clone());
+            downloads
+        });
+        let skin_profiles = RefCell::new(sunrise_client::skins::Resolver::new());
+        let tick_script = tick_script::TickScript::from_env();
+        let registered_debug_entries = sunrise_client::debug_entries::registered();
+        let debug_entries = sunrise_client::debug_entries::DebugEntries::load(
+            &std::env::current_dir().unwrap_or_default(),
+        );
+        let ui = chat::UiState::new();
+        let client = Box::new(client_state::ClientConstructEffects {
+            fog,
+            vanilla_mappings,
+            health_hud,
+            music,
+            ambience,
+            frame_clock,
+            narration,
+            tick_script,
+            debug_entries,
+        });
+        Box::new(ConstructEffects {
+            structure_spawns,
+            tick,
+            skin_downloads,
+            skin_profiles,
+            registered_debug_entries,
+            ui,
+            client,
+        })
+    }
+
+    #[inline(never)]
+    fn finish_construct(
+        res: &'a Arc<Resources>,
+        prep: Box<ConstructPrep>,
+        effects: Box<ConstructEffects>,
+    ) -> Result<Self> {
+        let loop_side = prep.options.execution_role.loop_side();
+        let mod_sources = prep.options.mods.clone();
+        let registry = prep.pack.assets.registry;
+        let creative = prep.options.creative;
+        let inventory = vec![None; 36];
+        let look = prep.options.look;
+        let yaw = look.map_or(prep.level.rotation[0], |l| l.0);
+        let pitch = look.map_or(prep.level.rotation[1], |l| l.1);
+        let slow_frame_ms = prep
+            .options
+            .spikes
+            .unwrap_or(sunrise_client::client_perf::SLOW_FRAME_MS);
+        let music_toast = prep.settings.file.int("musicToast").clamp(0, 2) as u8;
         let mut game = Game {
             world_biomes: None,
             world_biomes_base: None,
@@ -13138,7 +13211,7 @@ impl<'a> Game<'a> {
             session_lock: None,
             audio: prep.audio,
             loop_context: Arc::new(res.core.item_data.context().loop_context(loop_side, [])),
-            tick: sunrise_client::parallel::TickThread::mint(),
+            tick: effects.tick,
             setting_overrides: Default::default(),
             damage_hooks: native_hooks::DAMAGE_HOOKS,
             paused_mob_hurt: None,
@@ -13185,12 +13258,12 @@ impl<'a> Game<'a> {
             level_events: Vec::new(),
             falling: Default::default(),
             paintings: Default::default(),
-            painting_variants,
+            painting_variants: prep.painting_variants,
             item_frames: Default::default(),
             armor_stands: Default::default(),
             cushions: Default::default(),
             others: Default::default(),
-            armor_stand_assets,
+            armor_stand_assets: prep.armor_stand_assets,
             boats: Default::default(),
             carts: Default::default(),
             jukebox_sounds: HashMap::new(),
@@ -13199,16 +13272,8 @@ impl<'a> Game<'a> {
             dragon: Default::default(),
             crystals: Default::default(),
             breath_clouds: Default::default(),
-            skin_downloads: RefCell::new({
-                let mut downloads = sunrise_client::skins::Downloader::new(
-                    std::env::current_dir()
-                        .unwrap_or_default()
-                        .join("assets/skins"),
-                );
-                downloads.set_resource_root(prep.resource_source.clone());
-                downloads
-            }),
-            skin_profiles: RefCell::new(sunrise_client::skins::Resolver::new()),
+            skin_downloads: effects.skin_downloads,
+            skin_profiles: effects.skin_profiles,
             riding: None,
             posed_rider: None,
             pending: Default::default(),
@@ -13271,7 +13336,7 @@ impl<'a> Game<'a> {
             command_block_screen: None,
             test_defs: std::cell::RefCell::new(HashMap::new()),
             game_tests: game_tests::GameTests::default(),
-            registered_debug_entries: sunrise_client::debug_entries::registered(),
+            registered_debug_entries: effects.registered_debug_entries,
             passages: Default::default(),
             previous_mode: None,
             clipboard: Default::default(),
@@ -13282,7 +13347,7 @@ impl<'a> Game<'a> {
             player_state: Default::default(),
             server_items: None,
             reload_resources: Default::default(),
-            ui: chat::UiState::new(),
+            ui: effects.ui,
             mount: Default::default(),
             stats: Default::default(),
             score: Default::default(),
@@ -13290,14 +13355,14 @@ impl<'a> Game<'a> {
             border: Default::default(),
             adv: Default::default(),
             fangs: Default::default(),
-            server: ServerState::new(&resources_path),
+            server: ServerState::new(effects.structure_spawns),
             client: ClientState::new(
                 prep.now,
-                music_frequency,
                 music_toast,
                 prep.tutorial,
                 prep.standalone_geometry,
-                client_prepared,
+                prep.client_prepared,
+                effects.client,
             ),
         };
         game.reset_entity_residency();
