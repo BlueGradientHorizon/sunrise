@@ -1142,6 +1142,13 @@ impl Game<'_> {
         self.native_level_read_world(level)?;
         Some(horizontal_in_bounds(pos) && (-20_000_000..20_000_000).contains(&pos[1]))
     }
+    pub(super) fn level_tick_rate(
+        &self,
+        level: LevelRef,
+    ) -> Result<Option<f32>, mod_api::LevelReadError> {
+        Ok((self.native_client_level() == Some(level)).then(|| self.clock.rate()))
+    }
+
     /// The ticks the server has run (`Level.getGameTime`), shared by every
     /// level as in vanilla. API 381.
     pub(super) fn level_game_time(&self, level: LevelRef) -> Option<i64> {
