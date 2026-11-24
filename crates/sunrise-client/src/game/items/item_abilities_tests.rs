@@ -257,3 +257,162 @@ fn without_parts_the_vanilla_item_checks_stand() {
         assert!(game.mobs[sheep].extra.sheared);
     });
 }
+
+/// The abilities [`Lights`] heard `block_tool_modification` ask.
+static HEARD: std::sync::Mutex<Vec<mod_api::ToolAbility>> = std::sync::Mutex::new(Vec::new());
+/// Where [`Lights`] takes every tool's answer away.
+const REFUSED: [i32; 3] = [6, 64, 8];
+
+/// Parts as [`Mod`] attaches them, and a `block_tool_modification` listener that records
+/// the ability and keeps the block at [`REFUSED`] as it is.
+struct Lights(Vec<Abilities>);
+
+#[mod_api::__subscriptions]
+impl Hooks for Lights {
+    fn register(&self, r: &mut dyn Registrar, _: &RegistrationContext) {
+        for part in &self.0 {
+            let key = r.item_key(part.item);
+            r.item_part(key, part.clone());
+        }
+    }
+    fn block_tool_modification(
+        &self,
+        _: &dyn Host,
+        event: &mut mod_api::BlockToolModificationEvent<'_>,
+    ) -> mod_api::Flow {
+        HEARD.lock().unwrap().push(event.tool.ability);
+        if event.tool.pos == REFUSED {
+            *event.final_state = None;
+        }
+        mod_api::Flow::Continue
+    }
+}
+
+/// A grounded player with a full charge at (0.5, 64, 0.5).
+fn grounded(game: &mut Game<'_>) {
+    let start = Vec3::new(0.5, 64.0, 0.5);
+    game.player = Some(sunrise_client::motion::PlayerMotion::new(game.motion, start).unwrap());
+    game.player.as_mut().unwrap().ground.on_ground = true;
+}
+
+/// A part granting a blaze rod `sword_sweep` and `shears_trim` sweeps and trims with it, one
+/// denying a diamond sword `sword_sweep` stops its sweep on the server and the client, a fire
+/// starter lighting a campfire asks `block_tool_modification` with `FirestarterLight`, and
+/// the host lists the fourteen abilities.
+#[test]
+#[ignore = "daily"]
+fn parts_answer_the_abilities_at_every_site() {
+    crate::game::in_own_process(
+        "game::item_abilities_tests::parts_answer_the_abilities_at_every_site",
+        parts_answer_the_abilities_at_every_site_isolated,
+    );
+}
+
+fn parts_answer_the_abilities_at_every_site_isolated() {
+    use crate::game::native_entity_refs::tests::{with_client_game, with_game};
+    let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
+        "abilities",
+        Box::new(Lights(vec![
+            Abilities {
+                item: "minecraft:blaze_rod",
+                grants: &[ability::SWORD_SWEEP, ability::SHEARS_TRIM],
+                denies: &[],
+            },
+            Abilities {
+                item: "minecraft:diamond_sword",
+                grants: &[],
+                denies: &[ability::SWORD_SWEEP],
+            },
+        ])),
+    )]
+    .into();
+    let sweeps = |game: &mut Game<'_>| {
+        grounded(game);
+        [
+            "minecraft:blaze_rod",
+            "minecraft:diamond_sword",
+            "minecraft:iron_sword",
+        ]
+        .map(|item| {
+            game.inventory[game.selected] = Some(ItemStack::new(item, 1));
+            game.sweep_decision(1.0, false, "minecraft:zombie")
+        })
+    };
+    mod_platform::testing::with_mods(mods.clone(), || {
+        crate::game::api_values::install_parts(&mods).unwrap();
+        with_client_game(|client| {
+            assert_eq!(
+                sweeps(client),
+                [true, false, true],
+                "the client predicts the sweep"
+            );
+        });
+        with_game(|game| {
+            field(game);
+            assert_eq!(sweeps(game), [true, false, true], "the server sweeps");
+
+            // A blaze rod crops a cave vine's tip to its top age; a stick does nothing.
+            let registry = game.pack.assets.registry;
+            let vine = registry.default_state("minecraft:cave_vines").unwrap();
+            game.world.set(2, 64, 2, vine).unwrap();
+            let stick = ItemStack::new("minecraft:stick", 1);
+            assert!(!game.shears_crop([2, 64, 2], &stick).unwrap());
+            let rod = ItemStack::new("minecraft:blaze_rod", 1);
+            assert!(game.shears_crop([2, 64, 2], &rod).unwrap());
+            let cropped = registry.state(game.world.block(2, 64, 2)).unwrap();
+            assert_eq!(cropped.properties["age"], "25");
+
+            // Flint and steel lights an unlit campfire through `block_tool_modification`; the
+            // listener takes the answer away for the campfire at `REFUSED`.
+            let mut campfire = registry
+                .state(registry.default_state("minecraft:campfire").unwrap())
+                .unwrap()
+                .clone();
+            campfire.properties.insert("lit".into(), "false".into());
+            let unlit = registry.resolve(&campfire).unwrap();
+            let hit = |pos: [i32; 3]| crate::game::Hit {
+                pos,
+                face: [0, 1, 0],
+                point: [6.5, 65.0, 6.5],
+                inside: false,
+            };
+            for pos in [[6, 64, 6], REFUSED] {
+                game.world.set(pos[0], pos[1], pos[2], unlit).unwrap();
+            }
+            HEARD.lock().unwrap().clear();
+            let flint = ItemStack::new("minecraft:flint_and_steel", 1);
+            let lit = game
+                .fire_starter_lit(&hit([6, 64, 6]), &flint)
+                .unwrap()
+                .unwrap();
+            assert_eq!(registry.state(lit).unwrap().properties["lit"], "true");
+            assert_eq!(game.fire_starter_lit(&hit(REFUSED), &flint).unwrap(), None);
+            assert_eq!(
+                *HEARD.lock().unwrap(),
+                [mod_api::ToolAbility::FirestarterLight; 2]
+            );
+
+            let mut listed = game.item_abilities();
+            listed.sort();
+            assert_eq!(
+                listed,
+                [
+                    "brush_brush",
+                    "firestarter_light",
+                    "fishing_rod_cast",
+                    "shears_carve",
+                    "shears_dig",
+                    "shears_disarm",
+                    "shears_harvest",
+                    "shears_remove_armor",
+                    "shears_trim",
+                    "shield_block",
+                    "shovel_douse",
+                    "spyglass_scope",
+                    "sword_sweep",
+                    "trident_throw",
+                ]
+            );
+        });
+    });
+}

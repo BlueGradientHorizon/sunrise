@@ -19,13 +19,27 @@ impl ItemPart for CarvingTool {
 
 Attach this Part to your item with the registrar's `item_part` method. This grants pumpkin carving only: `shears_harvest` is a separate ability for mob and dispenser shearing. `shield_block` permits blocking and uses the stack's blocking component, or the default component when absent. Leave unknown abilities unchanged.
 
-The game asks these abilities at the following action sites:
+The game asks these abilities at the following action sites; `host.items().item_abilities()` lists them:
 
 | Ability | Consumers |
 | --- | --- |
+| `brush_brush` | Brushing a scute off an armadillo. |
+| `firestarter_light` | Priming TNT. |
+| `fishing_rod_cast` | A cast line staying out while a hand holds the stack, and the line drawn from that hand. |
 | `shears_carve` | Pumpkin carving. |
+| `shears_dig` | A mined block wearing the stack as shears wear (every block but fire). |
+| `shears_disarm` | Disarming a tripwire before breaking it. |
 | `shears_harvest` | Shearing sheep, mooshrooms, snow golems and bogged; dispenser shearing; harvesting bee nest honeycombs. |
+| `shears_remove_armor` | Shearing a saddle, a llama's carpet, a happy ghast's harness or a sulfur cube's block off. |
+| `shears_trim` | Cropping the tip of kelp, weeping, twisting or cave vines so it stops growing. |
 | `shield_block` | Raising a blocking item and blocking attacks. |
+| `shovel_douse` | Putting out a lit campfire. |
+| `spyglass_scope` | The zoom, overlay and slower look of the item in use, on the client and the server. |
+| `sword_sweep` | A charged, grounded hit sweeping its neighbours, on the client and the server. |
+| `trident_throw` | A trident's throw: a denial stops it; a grant gives no other item a throw. |
+
+The block's side of a fire starter lighting a campfire, candle or candle cake is `tool_modified_state` and
+`block_tool_modification` with `ToolAbility::FirestarterLight`, as a shovel's douse is with `ShovelDouse`.
 
 `event.can_perform` starts with vanilla's answer. Set it to `true` to grant an ability or `false` to deny it. The answer controls permission, not the action's world effects or item wear.
 

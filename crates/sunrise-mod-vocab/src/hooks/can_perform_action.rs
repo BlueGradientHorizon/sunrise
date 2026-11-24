@@ -2,19 +2,27 @@
 
 pub trait Hooks {
     /// NeoForge's `IItemExtension.canPerformAction`: can `stack` perform the item
-    /// ability `ability`, a plain, case-sensitive name such as `shield_block`,
-    /// `shears_harvest` or `shears_carve` (a mod's own
-    /// abilities also use plain names, such as `my_mod_chop`)? `can_perform` arrives with
-    /// vanilla's answer for that ability: the item kind's (shears shear) or the
-    /// stack's component (`blocks_attacks`, a shield's, blocks); set it either
-    /// way and the stack grants or loses the ability. Loot conditions use the shared
-    /// item defaults; action sites retain their own vanilla answers until #3330. Asked where vanilla checks
-    /// the item for an action: a raised item blocking attacks
+    /// ability `ability`, a plain, case-sensitive name such as `shield_block` or
+    /// `sword_sweep` (a mod's own abilities also use plain names, such as
+    /// `my_mod_chop`; `host.items().item_abilities()` lists the game's)?
+    /// `can_perform` arrives with vanilla's answer for that ability: the item kind's
+    /// (shears shear), its tag's (`#minecraft:swords` sweep) or the stack's component
+    /// (`blocks_attacks`, a shield's, blocks); set it either way and the stack grants or
+    /// loses the ability. Loot conditions use the shared item defaults. Asked where
+    /// vanilla checks the item for an action: a raised item blocking attacks
     /// (`shield_block`: a granted stack blocks as a bare
     /// `blocks_attacks` component does, a denied one never blocks nor is raised);
     /// shearing a sheep, mooshroom, snow golem or bogged, a dispenser's shears
     /// and a bee nest's honeycombs (`shears_harvest`); carving a pumpkin
-    /// (`shears_carve`). It decides whether the stack may do the action,
+    /// (`shears_carve`); shearing a mob's saddle, carpet, harness or body block off
+    /// (`shears_remove_armor`); cropping a growing plant's tip (`shears_trim`);
+    /// disarming a broken tripwire (`shears_disarm`); a mined block's wear as shears
+    /// wear (`shears_dig`); brushing an armadillo (`brush_brush`); priming TNT
+    /// (`firestarter_light`); putting out a campfire (`shovel_douse`); a cast line
+    /// staying out and drawn from the hand (`fishing_rod_cast`); a trident's throw
+    /// (`trident_throw`, a trident's own use, so only a denial counts); a charged
+    /// grounded hit sweeping (`sword_sweep`); and the spyglass's zoom, overlay and
+    /// view (`spyglass_scope`, of the item in use). It decides whether the stack may do the action,
     /// not what the action does to the world or the tool (`block_tool_modification`
     /// is the block's side of a tool action; item wear is its own). Only the
     /// `ItemPart`s attached to `stack`'s item are asked, on both sides, so the
