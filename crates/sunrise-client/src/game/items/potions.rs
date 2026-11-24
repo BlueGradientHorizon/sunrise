@@ -2329,7 +2329,11 @@ impl Game<'_> {
                             };
                             if (*id == "instant_damage") != inverted {
                                 // HealOrHarmMobEffect.applyInstantaneousEffect: indirectMagic(cloud, owner).
-                                let source = Damage::indirect_magic(owner, at);
+                                let source = Damage::indirect_magic(
+                                    "minecraft:area_effect_cloud",
+                                    owner,
+                                    at,
+                                );
                                 let attack = self.potion_attack(
                                     owner,
                                     guest,
@@ -2747,7 +2751,11 @@ impl Game<'_> {
                 } else if harm {
                     // HealOrHarmMobEffect.applyInstantaneousEffect: indirectMagic(potion, owner).
                     let harm = (intensity * f64::from(6 << amp) + 0.5) as i32 as f32;
-                    let source = Damage::indirect_magic(owner.who(), [at.x, at.y, at.z]);
+                    let source = Damage::indirect_magic(
+                        "minecraft:splash_potion",
+                        owner.who(),
+                        [at.x, at.y, at.z],
+                    );
                     let mob = m.id;
                     let mut attack = self.potion_attack(
                         owner.who(),

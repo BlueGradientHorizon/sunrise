@@ -291,7 +291,7 @@ impl Game<'_> {
                 }) =>
             {
                 self.combat.blast_resistance_cap = Some(0.8);
-                self.combat.explosion_direct = Some(id);
+                self.combat.explosion_direct = Some((id, "minecraft:wither_skull"));
             }
             // MinecartTNT.isPrimed (fuse > -1).
             Target::Cart(_)
@@ -301,7 +301,7 @@ impl Game<'_> {
                     .any(|c| c.id == id && c.kind == CartKind::Tnt && c.fuse >= 0) =>
             {
                 self.combat.rail_proof_blast = true;
-                self.combat.explosion_direct = Some(id);
+                self.combat.explosion_direct = Some((id, "minecraft:tnt_minecart"));
             }
             _ => {}
         }
@@ -382,7 +382,7 @@ pub(super) struct BlastState {
     blast_guest: Option<u32>,
     explicit_direct: Option<sunrise_client::text::Text>,
     source: Option<u32>,
-    direct: Option<u32>,
+    direct: Option<(u32, &'static str)>,
     cause: Option<sunrise_client::advancements::EntityView>,
     source_named: bool,
     in_water: bool,

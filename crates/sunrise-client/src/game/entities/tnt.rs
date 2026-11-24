@@ -626,7 +626,7 @@ impl Game<'_> {
             let interaction =
                 self.destroy_type(sunrise_client::gamerules::vanilla::TNT_EXPLOSION_DROP_DECAY);
             self.combat.explosion_in_water = in_water;
-            self.combat.explosion_direct = Some(id);
+            self.combat.explosion_direct = Some((id, "minecraft:tnt"));
             self.set_blast_owner(owner, guest);
             let result = self.with_hive_emptying_blast(|g| {
                 g.server_explode_from(

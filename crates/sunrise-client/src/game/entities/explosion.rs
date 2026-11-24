@@ -687,7 +687,7 @@ impl Game<'_> {
         BlastRules {
             resists,
             cap,
-            direct: self.combat.explosion_direct,
+            direct: self.combat.explosion_direct.map(|(id, _)| id),
             // WitherSkull.getBlockExplosionResistance: a dangerous skull's blast
             // caps a block the wither may destroy at 0.8.
             wither_immune: cap.and_then(|_| self.block_tag_blocks("minecraft:wither_immune")),
@@ -1361,6 +1361,9 @@ impl Game<'_> {
                                         .map(sunrise_client::mobs::Who::Mob)
                                 }),
                             from: Some(center),
+                            // The primed TNT, cart, fireball, skull or crystal
+                            // that went off; an exploding mob deals it itself.
+                            direct: self.combat.explosion_direct.map(|(_, kind)| kind),
                             attacker_species: cause,
                         };
                         // `EXPLOSION_KNOCKBACK_RESISTANCE`, not `KNOCKBACK_RESISTANCE`:
@@ -2168,6 +2171,7 @@ impl Game<'_> {
             let entity = self
                 .combat
                 .explosion_direct
+                .map(|(id, _)| id)
                 .or(self.combat.explosion_source);
             let mut drops = sunrise_world::loot::with_native_loot_place(place, || {
                 let roll = sunrise_client::items::BlockLootRoll {

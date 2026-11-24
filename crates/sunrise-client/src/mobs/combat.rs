@@ -246,6 +246,7 @@ mod tests {
                 kind: DamageKind::MobAttack,
                 attacker,
                 from: None,
+                direct: None,
                 attacker_species: None,
             },
             damage: 2.0,

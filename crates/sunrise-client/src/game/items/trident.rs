@@ -929,6 +929,7 @@ impl Game<'_> {
                                             kind: trident_source,
                                             attacker: owner_who,
                                             from: from_pos,
+                                            direct: Some("minecraft:trident"),
                                             attacker_species: None,
                                         },
                                         aim,

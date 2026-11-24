@@ -421,6 +421,7 @@ impl Game<'_> {
                     kind: DamageKind::WindCharge,
                     attacker: p.owner,
                     from: Some([p.previous.x, p.previous.y, p.previous.z]),
+                    direct: Some(p.entity_type()),
                     attacker_species: owner_breeze.then_some(Species::Breeze),
                 };
                 let Some(index) = self.mob_index.find(&self.mobs, id) else {
@@ -838,7 +839,19 @@ impl Game<'_> {
         // griefing disables a breeze charge's block triggers.
         let outer = std::mem::take(&mut self.combat.blast_hit_list);
         let outer_ids = std::mem::take(&mut self.combat.blast_hit_ids);
-        let outer_direct = std::mem::replace(&mut self.combat.explosion_direct, cause.source);
+        // The direct entity: the charge that burst (a breeze's or a thrown one), or for Wind
+        // Burst the player who attacked, who deals the blast itself.
+        let direct_kind = if src.breeze {
+            "minecraft:breeze_wind_charge"
+        } else if src.wind_charge {
+            "minecraft:wind_charge"
+        } else {
+            "minecraft:player"
+        };
+        let outer_direct = std::mem::replace(
+            &mut self.combat.explosion_direct,
+            cause.source.map(|id| (id, direct_kind)),
+        );
         if self.is_logical_server() {
             self.explosion_detonate(center, radius, &mut targets);
         }

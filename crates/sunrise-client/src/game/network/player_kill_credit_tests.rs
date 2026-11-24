@@ -408,6 +408,7 @@ fn a_displaced_archer_receives_resistance_credit() {
         kind: game.projectile_damage_kind(&arrow),
         attacker: arrow.owner,
         from: Some(arrow.position.components()),
+        direct: None,
         attacker_species: None,
     };
     let stat = "minecraft:damage_dealt_resisted";

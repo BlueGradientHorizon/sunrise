@@ -277,6 +277,7 @@ fn stab_attack(
             kind: DamageKind::Spear,
             attacker: Some(Who::Mob(m.id)),
             from: Some(from),
+            direct: None,
             attacker_species: Some(m.species()),
         },
         weapon: weapon.clone(),

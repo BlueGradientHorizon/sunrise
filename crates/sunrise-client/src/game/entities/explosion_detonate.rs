@@ -32,6 +32,7 @@ impl Game<'_> {
         let source = self
             .combat
             .explosion_direct
+            .map(|(id, _)| id)
             .or(self.combat.explosion_source);
         let mut entities = self
             .level(self.dim.id())
@@ -319,7 +320,7 @@ mod tests {
             with_game(|game| {
                 zombie(game, 900, 2.0);
                 zombie(game, 910, -2.0);
-                game.combat.explosion_direct = Some(900);
+                game.combat.explosion_direct = Some((900, "minecraft:zombie"));
                 explode(game);
                 let source = game.mobs.iter().find(|m| m.id == 900).unwrap();
                 assert_eq!(source.health, 20.0);
