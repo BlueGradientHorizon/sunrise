@@ -104,11 +104,27 @@ pub trait Commands {
         unimplemented!("Commands::refresh_commands")
     }
     /// Side: server.
-    /// An executor can send success feedback to the command's originating source, using
-    /// vanilla's silence, send-command-feedback and block/cart track-output rules.
-    /// This sends a message; the executor's return value determines the command result.
+    /// An executor's success line, as vanilla's `CommandSourceStack.sendSuccess(line,
+    /// broadcast_to_admins)`. A silent source (`execute` run quietly, a function, a mod's
+    /// suppressed run) sends nothing at all. Otherwise the line goes to the originating
+    /// source when it takes success feedback: a player while `send_command_feedback` is on,
+    /// the console and RCON always, a command block or minecart that tracks output while
+    /// `send_command_feedback` is on; never to the `execute as` entity.
+    ///
+    /// With `broadcast_to_admins`, and when the origin informs operators (a player always,
+    /// a block or minecart that tracks output while `command_block_output` is on, the
+    /// console and RCON per `broadcast-console-to-ops` / `broadcast-rcon-to-ops`), the line
+    /// is also wrapped as `[name: line]` (`chat.type.admin`, gray and italic, with the
+    /// display name of the `execute as` entity, else the block's, minecart's or server's).
+    /// That line goes to every operator (`PlayerList.isOp`, a level-0 operator too) but
+    /// the source player while `send_command_feedback` is on, and to the server log while
+    /// `log_admin_commands` is on unless the console is the source; neither rule gates
+    /// the other. Pass `false` for a query or list, as vanilla does.
+    ///
+    /// The text is converted once. Delivering to no one is still `Ok(())`, and the
+    /// executor's return value alone determines the command result.
     /// Refuses text deeper than 512 component nodes before applying any changes.
-    fn feedback(&mut self, line: Text) -> Result<(), TextFormError> {
+    fn feedback(&mut self, line: Text, broadcast_to_admins: bool) -> Result<(), TextFormError> {
         unimplemented!("Commands::feedback")
     }
     /// Side: server.
@@ -163,7 +179,9 @@ pub trait Commands {
 /// The levels service, reached through its host.
 pub trait Levels {
     /// Side: server.
-    /// Loaded server levels, in vanilla dimension order. Empty without a server world.
+    /// Loaded server levels, in creation order: the Overworld first, then the
+    /// other configured levels in registry traversal, then later opens.
+    /// This is the order used for full saves and shutdown. Empty without a server world.
     fn list_levels(&self) -> Vec<LevelRef> {
         unimplemented!("Levels::list_levels")
     }
@@ -299,11 +317,12 @@ pub trait RenderAssets {
     }
     /// Side: client.
     /// Published asset/data read: available in Setup, Reloading and World.
-    /// Resolve a pipeline registered in `register_render_pipelines` once in `client_setup` and
-    /// again in `client_resources_reloaded`, not each frame. `Unknown` for an id no mod
-    /// registered, `Invalid` for one whose shader the current resources don't give or that
+    /// Resolve the handle of a registered render pipeline by ID once in `client_setup` and
+    /// again in `client_resources_reloaded`, not each frame. `Unknown` for an ID
+    /// no mod registered, `Invalid` for one whose shader the current resources don't give or that
     /// didn't compile. Nothing is read or compiled here.
     fn render_pipeline(&self, id: &Identifier) -> Result<RenderPipelineRef, RenderPipelineError> {
+        let _ = id;
         unimplemented!("RenderAssets::render_pipeline")
     }
     /// Side: client.
@@ -356,9 +375,7 @@ pub trait RenderAssets {
 
 /// Client-side persistent copies of resolved models.
 pub trait InstanceGroups {
-    /// Allocate up to 16,384 copies, initially length zero. Each mod may reserve 65,536
-    /// copies total (an empty group reserves one slot). Only visible copies in the drawn
-    /// length, not capacity, consume the view budget. At most 16,384 groups per view.
+    /// Allocate storage for `capacity` copies, initially length zero.
     /// Create at setup/reload, not each frame. Visible GPU-routed copies upload each drawn frame.
     /// Reload, world close, disabling the owning mod, or explicit destroy retires the group.
     /// Re-enabling a mod never revives its old handles; recreate groups after publication.

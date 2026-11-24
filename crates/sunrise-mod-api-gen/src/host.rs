@@ -44,6 +44,7 @@ pub(super) const GOAL_VIEW_READS: &[&str] = &[
     "living_can_use_portal",
     "entity_tags",
     "entity_name",
+    "entity_custom_name",
     "entity_added_to_level",
     "entity_portal_cooldown",
     "entity_invulnerable_to_damage",
@@ -102,6 +103,7 @@ pub(super) const GOAL_VIEW_READS: &[&str] = &[
     "living_is_sleeping",
     "living_sleeping_pos",
     "living_is_jumping",
+    "living_no_jump_delay",
     "living_baby",
     "living_equipment",
     "living_hand_item",
@@ -292,6 +294,10 @@ fn area_tiers(camel: &str, file: syn::File) -> Result<BTreeMap<Tier, Vec<Entry>>
                         | "BlockEntityDrawContext"
                         | "WorldDrawContext"
                         | "CameraDrawContext"
+                        | "WorldPassDrawContext"
+                        | "WorldOitPassDrawContext"
+                        | "RenderLevelStageContext"
+                        | "PrepareRenderBuffersContext"
                 ) | (
                     "Services",
                     "ClientSession"
@@ -676,7 +682,7 @@ pub(super) fn game_forwarders(root: &Path) -> Result<String, String> {
 /// API records whose game representation is owned by another crate. Conversions are
 /// implemented once by the game; this rule only selects the boundary, never its behaviour.
 fn text_value(ty: &Type) -> bool {
-    contains_value(ty, &["Text", "GuiDraw"])
+    contains_value(ty, &["Text"])
 }
 
 fn boundary_value(ty: &Type) -> bool {

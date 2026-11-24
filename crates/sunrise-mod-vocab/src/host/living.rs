@@ -70,6 +70,12 @@ pub trait LivingBackend {
     /// an armor stand or the dragon.
     fn living_is_jumping(&self, living: LivingRef) -> Option<bool>;
     /// Side: both.
+    /// The ticks before a held jump can jump again (`LivingEntity.noJumpDelay`: 10 after a
+    /// ground jump, counting down each tick): the player in place or a mob on a server, the
+    /// local player's own prediction on a client. None for a server's guests (their clients
+    /// keep their jump), other entities on a client, armor stands, the dragon and stale handles.
+    fn living_no_jump_delay(&self, living: LivingRef) -> Option<i32>;
+    /// Side: both.
     /// Whether the entity is on a climbable block this tick
     /// (`LivingEntity.onClimbable`; Paper's `LivingEntity#isClimbing`), by
     /// the block at its feet: a ladder, a vine, a scaffold or an open
@@ -358,6 +364,13 @@ pub trait LivingBackendMut {
     /// them. False when the entity has none, or for an armor stand, the
     /// dragon, a stale handle or a client.
     fn living_remove_all_effects(&mut self, living: LivingRef) -> bool;
+    /// Side: server.
+    /// `LivingEntity.startFallFlying`: sets the glide flag, so the next tick glides,
+    /// wears the glider and the players around learn it with the entity's next flag
+    /// sync. This is the raw flag write, not `tryToStartFallFlying`: it does not check
+    /// the glider, the ground, levitation, a liquid or a vehicle. True for a player, a
+    /// guest or a mob; false for an armor stand, the dragon, a stale handle or a client.
+    fn living_start_gliding(&mut self, living: LivingRef) -> bool;
     /// Side: server.
     /// `LivingEntity.stopFallFlying`: clears the glide flag, so the glide's
     /// wear and sound stop and the next fall is a fall. The players around

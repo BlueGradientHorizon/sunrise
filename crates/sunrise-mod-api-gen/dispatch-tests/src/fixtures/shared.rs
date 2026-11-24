@@ -288,8 +288,8 @@ mod generated {
     }
     include!(concat!(env!("OUT_DIR"), "/mod_api_generated.rs"));
     pub(super) use self::mod_api::InlineImageReplacement;
-    use self::mod_api::StandaloneModelRegistration;
     pub(super) use self::mod_api::{BlockFace, BlockKey, BlockState, CrosshairTarget};
+    use self::mod_api::{GuiCanvas, StandaloneModelRegistration};
     pub use sunrise_mod_api_macros::__subscriptions;
 }
 use generated::*;
@@ -532,7 +532,7 @@ fn a_disabled_owner_answers_only_at_its_dispatch_position() {
         }
         fn use_without_item(
             &self,
-            _: &mut dyn ServerHost,
+            _: HostSide<'_>,
             _: &mut UseWithoutItemEvent<'_>,
         ) -> Option<InteractionResult> {
             self.1.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
@@ -558,7 +558,7 @@ fn a_disabled_owner_answers_only_at_its_dispatch_position() {
         });
         let mut answer = None;
         dispatch_use_without_item(
-            &mut TestHost,
+            HostSide::Server(&mut TestHost),
             BlockState::new(BlockKey::Test, 0),
             &BlockClick(&()),
             &mut answer,

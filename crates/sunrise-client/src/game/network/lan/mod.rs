@@ -369,9 +369,20 @@ pub(super) fn mob_meta(
     // A name taken away or hidden again is sent as none / false.
     defaults.push((2, serializer::OPTIONAL_COMPONENT, Value::OptText(None)));
     defaults.push((3, serializer::BOOLEAN, Value::Bool(false)));
+    // Entity.DATA_NO_GRAVITY (`setNoGravity`: `/data`, a summon's NoGravity, a mod).
+    if m.no_gravity {
+        meta.push((5, serializer::BOOLEAN, Value::Bool(true)));
+    }
+    defaults.push((5, serializer::BOOLEAN, Value::Bool(false)));
     // LivingEntity.DATA_LIVING_ENTITY_FLAGS: using an item 1, in the off
-    // hand 2 (a skeleton draws its bow, a witch raises her potion).
-    let using = i8::from(m.extra.using_item > 0) | i8::from(m.extra.using_off_hand) << 1;
+    // hand 2 (a skeleton draws its bow). Only startUsingItem and
+    // stopUsingItem write them: a drinking witch's count is her own
+    // (`Witch.usingTime`, with `Witch.DATA_USING_ITEM` in `mob_raider_meta`),
+    // so her living flags stay 0 while she drinks. A witch that starts a real
+    // use is sent as one. An admiring piglin's count still goes out as a use:
+    // a client draws `PiglinArmPose.ADMIRING_ITEM` from it.
+    let uses_item = m.extra.using_item > 0 && !(m.species() == Species::Witch && m.extra.flag);
+    let using = i8::from(uses_item) | i8::from(m.extra.using_off_hand) << 1;
     if using != 0 {
         meta.push((8, serializer::BYTE, Value::Byte(using)));
     }
@@ -663,9 +674,11 @@ pub(super) fn mob_meta(
             }
             defaults.push((18, serializer::INT, Value::Int(1)));
             if kind == "minecraft:sulfur_cube" {
-                let fuse = sunrise_client::mobs::sulfur_cube::fuse(m);
-                if fuse >= 0 {
-                    meta.push((19, serializer::INT, Value::Int(fuse)));
+                // The synced MAX_FUSE, not the countdown: a late tracker gets the value the
+                // fuse was set from, and only a change of it reaches those already tracking.
+                let max = sunrise_client::mobs::sulfur_cube::max_fuse(m);
+                if max != -1 {
+                    meta.push((19, serializer::INT, Value::Int(max)));
                 }
                 defaults.push((19, serializer::INT, Value::Int(-1)));
                 if e.scratch[3] != 0 {
@@ -986,7 +999,9 @@ fn mob_effects(m: &Mob) -> impl Iterator<Item = ShownEffect> + '_ {
     })
 }
 
-/// Raider.IS_CELEBRATING: also list false so tracking sends the end of a celebration.
+/// Raider.IS_CELEBRATING, and a witch's Witch.DATA_USING_ITEM (17, after it):
+/// `isDrinkingPotion`, set for the drink and cleared when it is done. Both also
+/// list false, so tracking sends the end of a celebration or a drink.
 pub(super) fn mob_raider_meta(
     m: &Mob,
     meta: &mut Vec<(u8, i32, Value)>,
@@ -998,6 +1013,12 @@ pub(super) fn mob_raider_meta(
             meta.push((16, serializer::BOOLEAN, Value::Bool(true)));
         }
         defaults.push((16, serializer::BOOLEAN, Value::Bool(false)));
+    }
+    if m.species() == Species::Witch {
+        if m.extra.flag {
+            meta.push((17, serializer::BOOLEAN, Value::Bool(true)));
+        }
+        defaults.push((17, serializer::BOOLEAN, Value::Bool(false)));
     }
 }
 
@@ -1356,15 +1377,30 @@ impl Game<'_> {
         self.lan_disconnect(announce);
     }
 
+    /// `ServerConnectionListener.stop`: stop accepting new connections and
+    /// refuse incoming logins before player and world shutdown saves run,
+    /// while keeping connected guest entries alive for `save_leaving_guests`
+    /// and `lan_disconnect`.
+    pub(super) fn stop_network_transport(&mut self) {
+        if let Some(host) = self.lan.as_mut() {
+            host.hub.lan.shared.refuse_logins();
+            host.hub.lan.stop();
+            let _ = host.hub.lan.poll();
+        }
+    }
+
     /// The transport close, separate from player callbacks and saves so that
     /// server shutdown can still disconnect after one of those unwinds.
     pub(super) fn lan_disconnect(&mut self, announce: bool) {
         let Some(mut host) = self.lan.take() else {
             return;
         };
+        let had_guests = !host.hub.guests.is_empty();
         host.hub.disconnect_all();
-        // Give the network threads a moment to flush the disconnect packets.
-        std::thread::sleep(std::time::Duration::from_millis(100));
+        if had_guests {
+            // Give the network threads a moment to flush the disconnect packets.
+            std::thread::sleep(std::time::Duration::from_millis(100));
+        }
         self.world.block_log = None;
         self.world.connection_group_log = None;
         self.world.light_log = None;
@@ -1384,10 +1420,11 @@ impl Game<'_> {
     }
 
     /// `PlayerList.removeAll`: every guest leaves in turn, the vehicle it
-    /// alone rides with it (`PlayerList.remove`), and is saved.
-    pub(super) fn save_leaving_guests(&mut self) {
+    /// alone rides with it (`PlayerList.remove`), and is saved. Returns whether
+    /// the integrated owner's file was replaced, for the later metadata save.
+    pub(super) fn save_leaving_guests(&mut self) -> bool {
         let Some(host) = self.lan.as_ref() else {
-            return;
+            return false;
         };
         // Remove the open menu and window 0 in the guest's own level before
         // saving, so held stacks and inputs return to their inventory or drop
@@ -1413,35 +1450,39 @@ impl Game<'_> {
             log::error!("could not reopen {}: {e}", back.id());
         }
         let Some(host) = self.lan.as_ref() else {
-            return;
+            return false;
         };
         let count = host.hub.guests.len();
+        let owner = host.owner.as_ref().map(|owner| owner.uuid);
+        let mut owner_saved = false;
         for i in 0..count {
             let Some(host) = self.lan.as_mut() else {
-                return;
+                break;
             };
             if !host.hub.guests[i].participates_in_player_simulation() {
                 continue;
             }
             let mut g = host.hub.guests.take_for_save(i);
             self.take_parent_vehicle(&mut g);
-            self.save_guest(&mut g);
+            if self.save_guest(&mut g) && owner == Some(g.uuid) {
+                owner_saved = true;
+            }
             let Some(host) = self.lan.as_mut() else {
-                return;
+                break;
             };
             host.hub.guests.insert(i, g);
         }
+        owner_saved
     }
-    /// Save a guest when they leave or the world closes (after
-    /// `take_parent_vehicle`, `PlayerList.save`): an integrated server's owner
-    /// into the level (`/data`) and both its files (`playerdata::save_owner`),
-    /// anyone else into their own file.
-    pub(super) fn save_guest(&mut self, guest: &mut sunrise_client::lan::guest::Guest) {
+    /// Save a guest after `take_parent_vehicle` (`PlayerList.save`). Returns
+    /// whether their player file was replaced; the owner's state also goes
+    /// into the in-memory level data, without writing level.dat here.
+    pub(super) fn save_guest(&mut self, guest: &mut sunrise_client::lan::guest::Guest) -> bool {
         if !guest.participates_in_player_simulation() {
-            return;
+            return false;
         }
         // A proxy released this record to another server, which now owns saving it.
-        if guest.joined() && !guest.released && !self.crash_save.excludes(guest.conn) {
+        let saved = if guest.joined() && !guest.released && !self.crash_save.excludes(guest.conn) {
             let _ = self.finish_player_autosaves(true);
             if self
                 .lan
@@ -1449,17 +1490,21 @@ impl Game<'_> {
                 .and_then(|host| host.owner.as_ref())
                 .is_some_and(|o| o.uuid == guest.uuid)
             {
-                playerdata::save_owner(guest, &mut self.level, &self.world_root, self.res.items());
+                playerdata::save_owner(guest, &mut self.level, &self.world_root, self.res.items())
             } else {
-                self.player_autosaves
-                    .save_after(guest, &self.world_root, self.res.items());
+                playerdata::save(guest, &self.world_root, self.res.items())
             }
+        } else {
+            false
+        };
+        if saved {
             let directory = playerdata::directory(&self.world_root);
             self.native_player_save_to_file(guest.uuid, &guest.name, &directory);
         }
         if let Some(host) = self.lan.as_ref() {
             self.save_guest_records(host, guest);
         }
+        saved
     }
     /// The vehicles the other players in level `dim` ride, all but the
     /// guest `but` (`Entity.hasExactlyOnePlayerPassenger`); `host` adds the
@@ -1694,14 +1739,17 @@ impl Game<'_> {
         stats.mark_all_dirty();
         host.play.entry(conn).or_default().stats = stats;
     }
-    /// The integrated server's owner into the world's player, for `Level::write`.
+    /// Copy the placed integrated owner's player state for the player-save phase.
     /// Returns the owner's uuid and name when they were stored.
     pub(super) fn store_owner(&mut self) -> Option<(u128, String)> {
         let uuid = self.lan.as_ref().and_then(|h| h.owner.as_ref())?.uuid;
-        let (riding, dim, others) = self.lan.as_ref().and_then(|h| {
-            let g = h.hub.online_players().find(|g| g.uuid == uuid)?;
+        let (conn, riding, dim, others) = self.lan.as_ref().and_then(|h| {
+            let g = h
+                .hub
+                .online_players()
+                .find(|g| g.uuid == uuid && !g.released && !self.crash_save.excludes(g.conn))?;
             let others = self.ridden_by_others(&h.hub.guests, &g.dimension, Some(uuid), true);
-            Some((g.vehicle, g.dimension.clone(), others))
+            Some((g.conn, g.vehicle, g.dimension.clone(), others))
         })?;
         // The vehicle the owner rides (`ServerPlayer.saveParentVehicle`).
         let vehicle = self
@@ -1709,28 +1757,27 @@ impl Game<'_> {
             .map(|(tag, _)| tag);
         let mut host = self.lan.take()?;
         let mut stored = None;
-        if let Some(i) = host
-            .hub
-            .guests
-            .iter()
-            .position(|g| g.uuid == uuid && g.placed && !self.crash_save.excludes(g.conn))
-        {
+        if let Some(i) = host.hub.guests.iter().position(|g| g.conn == conn) {
             // The owner's map is the game's only during their own turn
             // (`guest_turn`); otherwise their record holds it, whoever acts.
             let live =
                 (self.lan_acting_uuid == Some(uuid)).then(|| self.player_state.attachments.clone());
+            let mut store_ok = true;
             host.hub.guests.update(i, |g| {
                 let held = live.map(|a| std::mem::replace(&mut g.attachments, a));
-                playerdata::store(g, &mut self.level, vehicle);
+                if let Err(error) = playerdata::try_store(g, &mut self.level, vehicle) {
+                    log::error!("Sunrise: the owner's playerdata is not saved: {error}");
+                    store_ok = false;
+                }
                 if let Some(held) = held {
                     g.attachments = held;
                 }
             });
             let g = &host.hub.guests[i];
             self.save_guest_records(&host, g);
-            stored = Some(g.name.clone());
-        } else if let Some(saved) = host.owner.as_ref().and_then(|o| o.saved.as_ref()) {
-            self.level.position = saved.position;
+            if store_ok {
+                stored = Some(g.name.clone());
+            }
         }
         self.lan = Some(host);
         stored.map(|name| (uuid, name))
@@ -1951,6 +1998,13 @@ impl Game<'_> {
             if self.tracked_entity_glowing(d.id) {
                 e.meta.push((0, serializer::BYTE, Value::Byte(0x40)));
             }
+            // Entity.DATA_NO_GRAVITY, which `setNoGravity` writes: also false by
+            // default, so a flag taken away goes out too.
+            if d.no_gravity {
+                e.meta.push((5, serializer::BOOLEAN, Value::Bool(true)));
+            }
+            e.defaults
+                .push((5, serializer::BOOLEAN, Value::Bool(false)));
             e.meta.push((8, serializer::ITEM_STACK, Value::Item(stack)));
         }
         for o in self.orbs.iter().filter(|o| o.id > after) {
@@ -2834,6 +2888,8 @@ impl Game<'_> {
         // Apply its packets before taking the snapshot too.
         self.tick_lan_packets();
         if self.lan.is_none() {
+            // No one else to tell: the host's `broadcastToAdmins` lines go.
+            self.admin_feedback.clear();
             if self.level_pass.running.is_none() {
                 self.level_pass.packets_drained = false;
             }
@@ -2848,7 +2904,7 @@ impl Game<'_> {
             self.run_level_teleports();
         }
         if !self.admin_feedback.is_empty() {
-            self.send_admin_feedback(None);
+            self.send_admin_feedback();
         }
         // An animal whose rider left the game (or the level) stops taking
         // its input.
@@ -3173,7 +3229,13 @@ impl Game<'_> {
         spawn: [f64; 3],
         prepared: Option<PreparedSpawn>,
     ) {
+        let loaded = self.loaded_level_order();
         let spawn_level = self.world_spawn_level();
+        let spawn_level = if loaded.contains(&spawn_level) {
+            spawn_level
+        } else {
+            super::Dim::Overworld
+        };
         let back = self.dim;
         // `PrepareSpawnTask.Ready.spawn` waits for saved entities before the player loads.
         // Streaming commits terrain and the corresponding entity records together.
@@ -3201,7 +3263,6 @@ impl Game<'_> {
         let force = host.hub.config.force_game_mode;
         let root = self.world_root.clone();
         let in_place = host.hub.config.dimension.clone();
-        let levels = host.hub.config.levels;
         let owner = host.owner.as_mut();
         let Some((known, uuid, name)) = host.hub.update_guest(conn, |g| {
             // PlayerList.loadPlayerData: the owner gets the world's player file,
@@ -3213,7 +3274,7 @@ impl Game<'_> {
             // `PrepareSpawnTask.start`: a saved level the world no longer has is the world
             // spawn's (the Overworld when that one is gone too); the saved position and
             // rotation stay.
-            if !levels.has(&g.dimension) {
+            if !loaded.iter().any(|dim| dim.id() == g.dimension) {
                 g.dimension = spawn_level.id().to_owned();
             }
             // PlayerEvent.LoadFromFile: the player's data is read and applied,
@@ -5836,7 +5897,7 @@ pub(in crate::game) mod tests {
 }
 
 #[cfg(test)]
-mod sources_tests {
+pub(in crate::game) mod sources_tests {
     use super::sync::overlay_key;
     use sunrise_world::loot::PackOverlay;
 
@@ -6171,6 +6232,8 @@ mod world_spawn_join_tests {
     fn a_returning_player_from_a_missing_level_joins_in_the_world_spawn_level() {
         crate::game::native_guest_turn_tests::with_guests(|game| {
             game.world_root = game.save.root.clone();
+            game.enter_level(super::super::Dim::Nether).unwrap();
+            game.enter_level(super::super::Dim::Overworld).unwrap();
             game.level.world_spawn_dimension = Some("minecraft:the_nether".into());
             let guests = &mut game.lan.as_mut().unwrap().hub.guests;
             guests.update(0, |g| {
@@ -7148,5 +7211,7 @@ mod merchant_packet_tests {
 
 #[cfg(test)]
 mod login_profile_tests;
+#[cfg(test)]
+mod no_gravity_sync_tests;
 #[cfg(test)]
 mod tracking_hook_tests;

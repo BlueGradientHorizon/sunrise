@@ -32,6 +32,7 @@ use {
 mod lod;
 mod structure_mobs;
 use lod::VanillaLodSampler;
+pub use structure_mobs::GeneratedMob;
 use structure_mobs::StructureMobFinalizer;
 
 /// The references a saved chunk keeps for its structure start: `(structure, chunk x, chunk z)`.
@@ -285,15 +286,38 @@ impl VanillaTerrain {
         flat: &sunrise_world::worldgen::generator::FlatSettings,
         structures: bool,
     ) -> crate::Result<Self> {
-        let data: Arc<GeneratorData> = shared_resource_data(resources, overrides)?;
-        let generator = OverworldGenerator::flat(data, seed, flat, structures)?;
-        let mut terrain = Self::assemble(
+        Self::for_flat_level(
             resources,
-            generator,
+            overrides,
             seed,
-            "minecraft:normal",
+            flat,
+            structures,
             "minecraft:overworld",
+            None,
+        )
+    }
+
+    /// `FlatLevelSource` for a resolved level stem: the layers start at this
+    /// dimension's build minimum, and its structure references belong to it.
+    pub fn for_flat_level(
+        resources: TerrainResources<'_>,
+        overrides: &WorldgenOverrides,
+        seed: i64,
+        flat: &sunrise_world::worldgen::generator::FlatSettings,
+        structures: bool,
+        dimension: &str,
+        shape: Option<crate::chunk::LevelShape>,
+    ) -> crate::Result<Self> {
+        let data: Arc<GeneratorData> = shared_resource_data(resources, overrides)?;
+        let generator = OverworldGenerator::flat(
+            data,
+            seed,
+            flat,
+            structures,
+            shape.map(|s| (s.min_y, s.height)),
         )?;
+        let mut terrain =
+            Self::assemble(resources, generator, seed, "minecraft:normal", dimension)?;
         terrain.flat = true;
         Ok(terrain)
     }
@@ -460,19 +484,26 @@ impl VanillaTerrain {
     pub fn region_random(&self, cx: i32, cz: i32) -> Box<dyn PieceRandom> {
         self.generator.region_random(ChunkPos::new(cx, cz))
     }
-    /// A mob chunk generation spawns, as the chunk saves it
-    /// (`StructureMobFinalizer::spawn_generated`).
+    /// Finalize a chunk-generation candidate for admission.
+    #[allow(clippy::too_many_arguments)]
     pub fn spawn_generated(
         &self,
-        kind: &str,
-        position: sunrise_core::geometry::Vec3,
-        yaw: f32,
+        mob: crate::mobs::Mob,
+        uuid: [i32; 4],
         biome: &str,
         random: &mut dyn PieceRandom,
         group: &mut Option<crate::mobs::finalize::Group>,
-    ) -> Option<sunrise_core::nbt::Compound> {
+        prepare: impl FnOnce(
+            &mut crate::mobs::Mob,
+            crate::mobs::spawning::LocalDifficulty,
+            &mut Option<crate::mobs::finalize::Group>,
+        ) -> (
+            crate::mobs::finalize::SpawnEvent,
+            crate::mobs::spawning::LocalDifficulty,
+        ),
+    ) -> Option<Vec<GeneratedMob>> {
         self.structure_mobs
-            .spawn_generated(kind, position, yaw, biome, random, group)
+            .spawn_generated(mob, uuid, biome, random, group, prepare)
     }
     /// Only the generated range of a proto chunk (the Nether is 0..256)
     /// is copied into a column.
@@ -767,22 +798,93 @@ impl VanillaTerrain {
         let worker = worker.get_or_insert_with(|| self.generator.worker());
         worker.noise_biomes(quarts)
     }
-    /// Exact undecorated surface queries, sharing the generator's bounded query worker.
-    /// Custom terrain without a noise surface has no answer. No gameplay chunk is allocated.
-    pub fn terrain_surfaces(&self, columns: &[(i32, i32)]) -> Vec<Option<crate::columns::Surface>> {
-        if self.mod_terrain {
-            return vec![None; columns.len()];
+    /// Create a fresh per-thread generator worker with structure-mob bindings.
+    pub fn new_worker(&self) -> GeneratorWorker {
+        <Self as ChunkGenerator>::worker(self)
+    }
+    /// Exact undecorated surface query using a caller-owned worker (no shared query lock).
+    /// Custom terrain without a noise surface returns `None`.
+    pub fn detached_surface(
+        &self,
+        worker: &mut GeneratorWorker,
+        x: i32,
+        z: i32,
+    ) -> Option<crate::columns::Surface> {
+        <Self as ChunkGenerator>::lod_surface(self, worker, x, z)
+    }
+    /// Generate one detached chunk purely in memory up to `stage` using a caller-owned worker,
+    /// without touching `World`, `Streaming`, or `SaveDir`. Returns `(chunk, has_light)`.
+    pub fn detached_chunk(
+        &self,
+        worker: &mut GeneratorWorker,
+        pos: [i32; 2],
+        stage: mod_api::GenerationStage,
+        light_tables: &crate::light::LightTables,
+        sky_light: bool,
+    ) -> std::result::Result<(Chunk, bool), String> {
+        use mod_api::GenerationStage;
+        use sunrise_world::worldgen::generator::ProtoStage;
+
+        let proto_stage = match stage {
+            GenerationStage::Biomes => Some(ProtoStage::Biomes),
+            GenerationStage::Noise => Some(ProtoStage::Noise),
+            GenerationStage::Surface => Some(ProtoStage::Surface),
+            GenerationStage::Carvers => Some(ProtoStage::Carvers),
+            GenerationStage::Features | GenerationStage::Light => None,
+            _ => return Err("unsupported generation stage".to_owned()),
+        };
+        if let Some(proto_stage) = proto_stage {
+            let proto = worker
+                .generate_proto_stage(ChunkPos::new(pos[0], pos[1]), proto_stage)
+                .map_err(|e| e.to_string())?;
+            return Ok((self.column(&proto), false));
         }
-        let mut worker = self.query.lock().unwrap_or_else(|e| e.into_inner());
-        let worker = worker.get_or_insert_with(|| self.generator.worker());
-        columns
-            .iter()
-            .map(|&(x, z)| {
-                worker
-                    .surface_sample(x, z)
-                    .map(|surface| self.client_surface(surface))
-            })
-            .collect()
+
+        // Features / Light: generate a 3x3 detached scratch neighbourhood and decorate center.
+        let mut protos = Vec::with_capacity(9);
+        for dz in -1..=1 {
+            for dx in -1..=1 {
+                let p = ChunkPos::new(pos[0].wrapping_add(dx), pos[1].wrapping_add(dz));
+                protos.push(
+                    worker
+                        .generate_proto_stage(p, ProtoStage::Carvers)
+                        .map_err(|e| e.to_string())?,
+                );
+            }
+        }
+        let mut region: [ProtoChunk; 9] = protos.try_into().map_err(|_| "3x3 region size")?;
+        worker.decorate(&mut region).map_err(|e| e.to_string())?;
+
+        if stage == GenerationStage::Features {
+            return Ok((self.column(&region[4]), false));
+        }
+
+        // Light: run Sunrise's real light engine over the detached 3x3 neighbourhood.
+        let mut center = self.column(&region[4]);
+        let neighbors: [Option<Chunk>; 9] = std::array::from_fn(|i| {
+            if i == 4 {
+                None
+            } else {
+                Some(self.block_column(&region[i]))
+            }
+        });
+        let grid: [[Option<&Chunk>; 3]; 3] = [
+            [
+                neighbors[0].as_ref(),
+                neighbors[1].as_ref(),
+                neighbors[2].as_ref(),
+            ],
+            [neighbors[3].as_ref(), Some(&center), neighbors[5].as_ref()],
+            [
+                neighbors[6].as_ref(),
+                neighbors[7].as_ref(),
+                neighbors[8].as_ref(),
+            ],
+        ];
+        let lights = crate::light::light_chunk(&grid, light_tables, sky_light);
+        crate::light::apply_lighting(&mut center, lights);
+        center.lit = true;
+        Ok((center, true))
     }
     /// `/place jigsaw`: `JigsawPlacement.addPieces`.
     pub fn jigsaw_pieces(

@@ -167,6 +167,40 @@ pub fn wrap(a: f32) -> f32 {
     }
     a
 }
+/// `LivingEntity.tick` and `tickHeadTurn` for a player, with
+/// `Player.getMaxHeadRotationRelativeToBody`'s smaller turn when blocking.
+pub fn player_body_yaw(
+    mut body: f32,
+    yaw: f32,
+    dx: f64,
+    dz: f64,
+    swinging: bool,
+    blocking: bool,
+) -> f32 {
+    use sunrise_core::geometry::trig;
+
+    let mut target = body;
+    if (dx * dx + dz * dz) as f32 > 0.002_500_000_2_f32 {
+        let walk = trig::atan2(dz, dx) as f32 * trig::RAD_TO_DEG - 90.0;
+        let facing = (wrap(yaw) - walk).abs();
+        target = if 95.0 < facing && facing < 265.0 {
+            walk - 180.0
+        } else {
+            walk
+        };
+    }
+    if swinging {
+        target = yaw;
+    }
+    body += wrap(target - body) * 0.3;
+    let diff = wrap(yaw - body);
+    let max_head_turn = if blocking { 15.0 } else { 50.0 };
+    if diff.abs() > max_head_turn {
+        body += diff - diff.signum() * max_head_turn;
+    }
+    body
+}
+
 /// `BlockState.getCollisionShape(level, pos)` with the empty collision context.
 fn block_shape_in(
     world: &crate::world::World,
@@ -1285,8 +1319,12 @@ impl Mob {
             .filter(|(id, _)| self.extra.mount == Some(*id));
         self.fluids = self.fluid_interaction(w, boat.map(|(_, b)| b));
         self.fluids.boat = boat;
-        // EntityFluidInteraction.applyCurrentTo: the flow pushes the mob.
-        if (self.fluids.in_water || self.fluids.in_lava) && self.pushed_by_fluid() {
+        // EntityFluidInteraction.applyCurrentTo: the flow pushes the mob, but
+        // `Shulker.setDeltaMovement` drops the push.
+        if (self.fluids.in_water || self.fluids.in_lava)
+            && self.pushed_by_fluid()
+            && self.species() != super::Species::Shulker
+        {
             self.velocity = w.pushed_by_currents(self.bounds(), self.velocity);
         }
         if self.fluids.in_water {
@@ -4648,7 +4686,6 @@ mod climbable_tests;
 fn fall_reset_hit(w: &MobWorld, from: Vec3, moved: Vec3) -> bool {
     let reset = w.block_tags.get("minecraft:fall_damage_resetting");
     crate::entities::fall_reset_hit(
-        w.loop_context,
         w.world,
         w.fluid_tables,
         |p| {

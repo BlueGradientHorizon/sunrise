@@ -6,16 +6,21 @@ no such state for reads `None` and writes `false`, as every handle does.
 
 ## Living flags
 
-Through `LivingRef`: the glide (`is_gliding`, `gliding_ticks`, `stop_gliding`), the sleep of a server player or a
+Through `LivingRef`: the glide (`is_gliding`, `gliding_ticks`, `start_gliding`, `stop_gliding`), the sleep of a server player or a
 villager (`is_sleeping`, `sleeping_pos`, `start_sleeping`, `stop_sleeping`, `set_sleeping_pos`, `clear_sleeping_pos`),
-the jump of the player in place (`is_jumping`, `set_is_jumping`), climbing (`is_climbing`, the same `onClimbable`
+the jump of the player in place (`is_jumping`, `set_is_jumping`), the jump cooldown (`no_jump_delay`:
+`LivingEntity.noJumpDelay`, 10 after a ground jump and counting down, for the player in place and mobs on a server and the
+local player on a client), climbing (`is_climbing`, the same `onClimbable`
 movement uses, including the gliding exclusion for vines), the baby read (`baby`) and shield blocking
 (`is_blocking`: `LivingEntity.isBlocking`, an item with `blocks_attacks` in use past its block delay, for players
 and mobs). Server player sleep writes
 work for the integrated owner, LAN guests and dedicated-server guests in the level in place, both inside and
 outside their own turn; guests in another dimension and fake players refuse all four sleep writes without
-mutation. A suspended outer actor is unavailable during a nested turn. Glide counters and stops follow the
-same authoritative body across turns. These reads do not add client tracked-entity coverage.
+mutation. A suspended outer actor is unavailable during a nested turn. Glide counters and starts and stops follow the
+same authoritative body across turns. `start_gliding` is vanilla's raw `startFallFlying` flag write, not
+`tryToStartFallFlying`: it does not check the glider, the ground, levitation or a liquid, so the caller decides. A
+client mod starts the local player's glide with `ClientHost::start_local_player_gliding` from `player_tick_pre`; the
+tick then reports `START_FALL_FLYING` as a jump-started glide does. These reads do not add client tracked-entity coverage.
 
 `start_sleeping` requires a bed with an available sleep shape before changing any state (a villager also refuses an
 occupied bed). It moves the sleeper onto that shape and occupies the bed. `stop_sleeping` stands the sleeper up
@@ -29,7 +34,8 @@ Villagers use `start_sleeping`/`stop_sleeping`, not the raw player position sett
 `EntityRef::is_sprinting` reads `Entity.isSprinting` and `EntityRef::set_sprinting(host, sprinting)` sets it
 (`Entity.setSprinting`, server only): a player's flag with the movement speed modifier that goes with it, or a mob's flag, which the
 mob's movement speed already reads as that modifier (a cat's or ocelot's own AI may set it again on its next step). It returns `false` for a stale
-handle, on a client and for a kind with no sprinting flag. It is the flag `Entity.isSprinting` reads, not
+handle, on a client and for a kind with no sprinting flag. The read also answers on a client: the local player's
+predicted flag, or a tracked entity's synced one. It is the flag `Entity.isSprinting` reads, not
 the player's sprint key: a player's own client sets its flag again from its input.
 
 ## No gravity
@@ -253,3 +259,23 @@ let armor = host.entity_type_default_attribute("minecraft:zombie", "minecraft:ar
 
 `None` means the catalog has not been published yet, the type is not registered or has no attribute supplier
 (such as `minecraft:item`), or the supplier has no entry for that attribute. Names are read as `Identifier.parse` reads them: `zombie` and `:zombie` are `minecraft:zombie`.
+
+## Extinguishing fire
+
+`EntityRef::extinguish_fire(host)` exposes vanilla `Entity.extinguishFire` on
+players, guests, mobs, armor stands and dropped items. If the entity is burning,
+it first emits `minecraft:entity.generic.extinguish_fire` at its feet with volume
+0.7 and vanilla's pitch from two ordered random float draws. It then clears
+positive remaining fire ticks, preserving a negative fire-immunity countdown.
+Intrinsically fire-immune mobs, living entities with a live fire immunity grant,
+and dropped stacks resistant to in-fire damage do not count as burning, even when their timer is positive.
+Extinguishing them draws no pitch randomness and emits no sound.
+
+The sound uses the entity's sound source, including `SoundSource::Players` for
+players and guests. The operation draws no pitch randomness for a non-burning
+entity and returns `false` for stale or unsupported handles.
+
+`EntityRef::clear_fire(host)` is the distinct vanilla `Entity.clearFire` operation:
+it is silent, draws no random, and preserves the same negative countdown. Choose
+it only when the original behavior explicitly calls `clearFire`, rather than
+using it as a substitute for extinguishing.

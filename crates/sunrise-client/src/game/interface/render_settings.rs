@@ -52,10 +52,10 @@ impl Game<'_> {
             Ok(renderer)
         })
     }
-    /// Under `SUNRISE_HDR_FRAME=float` the frame follows what draws the picture
-    /// (docs/design/hdr-linear-light.md, "When it changes"): when HDR, Smooth Gradients or the
-    /// pick (unless refused) call for another frame than the renderer's, it is made again before
-    /// this frame draws. Without the switch a frame stays until the next start, as before.
+    /// Under `SUNRISE_HDR_FRAME=float` the frame follows what draws the picture: when HDR,
+    /// Smooth Gradients or the pick (unless refused) call for another frame than the renderer's,
+    /// it is made again before this frame draws. Without the switch a frame stays until the next
+    /// start, as before.
     pub(super) fn follow_frame(&mut self) {
         if !native_shaders::linear_frame_switch() {
             return;
@@ -263,8 +263,10 @@ impl Game<'_> {
             // A new renderer starts with the vanilla column.
             renderer.clear_sections(self.world.layout());
         }
-        // And has no wall for the world border.
+        // And has no wall for the world border. Its sections' sources are kept as the meshes
+        // on their way carry them.
         self.border_renderer.invalidate();
+        renderer.keep_pack_sources(self.streaming.shader_pack);
         self.renderer = Some(renderer);
         self.forget_atlas_slots();
         if !world_kept {

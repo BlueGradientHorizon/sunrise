@@ -46,7 +46,9 @@ mod item_move;
 mod item_no_physics;
 pub mod nameplate;
 mod obstacles;
-pub use fluids::{fall_reset_hit, fluid_flow, update_entity_fluids, water_clip};
+pub use fluids::{
+    fall_reset_hit, fluid_flow, swept_fluid_contact, update_entity_fluids, water_clip,
+};
 pub use item_merge::{ItemCells, merge_with_neighbours};
 pub use obstacles::ObstacleGrid;
 
@@ -230,7 +232,7 @@ pub struct ItemEntity {
 /// Particles are drawn on the client (`Level.addParticle` is empty on the
 /// server). The sound is `Entity.playSound`, which the server broadcasts;
 /// `ClientLevel.playSeededSound` ignores it when the except entity is null.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum ItemSplash {
     Sound {
         at: [f64; 3],
@@ -1795,6 +1797,8 @@ pub struct ArmorStand {
     /// Unsaved fire immunity granted on this logical side.
     pub mod_fire_immune: bool,
     pub health: f32,
+    /// `LivingEntity.deathTime`: the ticks a stand at 0 health has been dead.
+    pub death_time: i16,
     pub tick_count: i32,
     /// Transient `LivingEntity.lastHurtMob`; an owned arrow or wind charge can set it.
     pub last_hurt_mob: Option<(u32, i32)>,
@@ -1804,10 +1808,23 @@ pub struct ArmorStand {
     /// the renderer blends toward `position` by the partial tick.
     pub previous: Vec3,
     pub velocity: Vec3,
-    /// `yRot`, which the body follows (`ArmorStand.tickHeadTurn`: `yBodyRot`).
+    /// `LivingEntity.hurtTime`, counted down each tick.
+    pub hurt_time: i32,
+    /// `Entity.airSupply`: refilled by 4 a tick up to 300 while it can breathe.
+    pub air: i32,
+    /// Shared flag 7, `FallFlying`: a stand cannot glide, so its first tick clears it.
+    pub fall_flying: bool,
+    /// `LivingEntity.currentImpulseContextResetGraceTime`.
+    pub impulse_grace: i32,
+    /// `Entity.yRot`; `ArmorStand.tickHeadTurn` copies it to `yBodyRot`.
     pub yaw: f32,
-    /// `yBodyRotO`: the body's yaw at the start of the tick.
+    pub body_yaw: f32,
+    /// `Entity.yRotO`: previous view yaw.
     pub previous_yaw: f32,
+    /// `LivingEntity.yBodyRotO`; `tickHeadTurn` syncs it to `yRotO` after admission.
+    pub previous_body_yaw: f32,
+    pub head_yaw: f32,
+    pub previous_head_yaw: f32,
     /// Every `EquipmentSlot`, by ordinal: mainhand, offhand, feet, legs, chest,
     /// head, body, saddle. Vanilla's `canUseSlot` refuses body and saddle only
     /// for interaction; `setItemSlot` and the save keep them.
@@ -2067,7 +2084,8 @@ impl ArmorStand {
     /// (`LivingEntityRenderer.solveBodyRot`: `Mth.rotLerp(partialTick,
     /// yBodyRotO, yBodyRot)`).
     pub fn render_yaw(&self, alpha: f32) -> f32 {
-        self.previous_yaw + alpha * crate::camera::wrap_degrees(self.yaw - self.previous_yaw)
+        self.previous_body_yaw
+            + alpha * crate::camera::wrap_degrees(self.body_yaw - self.previous_body_yaw)
     }
     /// A server's stand on its client, each tick:
     /// `setOldPosAndRot` (`ClientLevel.tickNonPassenger`), then the step of
@@ -2084,9 +2102,11 @@ impl ArmorStand {
             self.yaw += crate::camera::wrap_degrees(yaw - self.yaw);
             self.pitch = (pitch % 360.0).clamp(-90.0, 90.0);
         }
+        self.previous_body_yaw = self.previous_yaw;
+        self.body_yaw = self.yaw;
     }
-    /// Put there at once, with nothing to blend from
-    /// (`Entity.snapTo`).
+    /// Snap position and view rotation without changing the body's or head's
+    /// yaw samples (`Entity.snapTo`).
     pub fn snap(&mut self, at: Vec3, yaw: f32, pitch: f32) {
         self.position = at;
         self.previous = at;
@@ -2104,15 +2124,24 @@ impl ArmorStand {
             join: Default::default(),
             fire_ticks: 0,
             mod_fire_immune: false,
+            death_time: 0,
             health: 20.0,
             tick_count: 0,
             last_hurt_mob: None,
             id,
             position,
+            hurt_time: 0,
+            air: 300,
+            fall_flying: false,
+            impulse_grace: 0,
             previous: position,
             velocity: Vec3::ZERO,
             yaw,
+            body_yaw: yaw,
             previous_yaw: yaw,
+            previous_body_yaw: yaw,
+            head_yaw: yaw,
+            previous_head_yaw: yaw,
             equipment: Default::default(),
             small: false,
             show_arms: false,
@@ -2260,9 +2289,9 @@ impl ArmorStand {
                 }
             }
         }
-        // Dead: the damage type that ran its health out, which vanilla's
-        // `brokenByAnything` receives as the `DamageSource`.
-        (self.health <= 0.5).then(|| hit_by.unwrap_or("minecraft:generic"))
+        // `ArmorStand.causeDamage` breaks it only when this tick's damage left
+        // it at 0.5 or less: the damage type `brokenByAnything` receives.
+        hit_by.filter(|_| self.health <= 0.5)
     }
     /// `ArmorStand.getDefaultDimensions`: MARKER_DIMENSIONS, or BABY_DIMENSIONS (the type's at
     /// half scale, its eyes at 0.9875) for a small one, else the type's.
@@ -3125,14 +3154,16 @@ mod armor_stand_render_tests {
         assert_eq!(stand.render_yaw(0.5), 190.0);
     }
 
-    /// A snap (a move too far to interpolate) leaves nothing to blend from.
+    /// A snap leaves no position or view samples to blend from. The body
+    /// keeps its own turn between ticks.
     #[test]
     fn a_snapped_stand_is_drawn_where_it_landed() {
         let mut stand = ArmorStand::new(1, Vec3::new(0.5, 70.0, 0.5), 0.0);
-        stand.interpolate(Some((Vec3::new(0.5, 69.0, 0.5), 0.0, 0.0)));
+        stand.interpolate(Some((Vec3::new(0.5, 69.0, 0.5), 20.0, 0.0)));
         stand.snap(Vec3::new(200.5, 64.0, 0.5), 90.0, 0.0);
         assert_eq!(stand.render_position(0.5), Vec3::new(200.5, 64.0, 0.5));
-        assert_eq!(stand.render_yaw(0.5), 90.0);
+        assert_eq!([stand.previous_yaw, stand.yaw], [90.0; 2]);
+        assert_eq!(stand.render_yaw(0.5), 10.0);
     }
 }
 #[cfg(test)]

@@ -7,7 +7,7 @@ players.
 
 | Accessor | Operations |
 |---|---|
-| `host.commands()` | `run_command(line)` runs through the console command path with permission level 4. `feedback(text)` answers the command source. |
+| `host.commands()` | `run_command(line)` runs through the console command path with permission level 4. `feedback(text, broadcast_to_admins)` answers the command source and, broadcast, tells the other operators and the log (`sendSuccess(text, true)`). |
 | `host.messages()` | `broadcast(text)` fires the broadcast hook and writes to the server log. |
 | `host.players()` | `server_players()` returns `Vec<PlayerRef>` in join order. `acting_player()` returns the optional player whose state is active in the hook. `player_by_name(name)` finds a connected real player by case-insensitive account name, not nickname. `singleplayer_profile()` is an integrated server's launch profile ([below](#identity-and-location)). |
 | `host.levels()` | `list_levels()` returns loaded server levels in vanilla dimension order, or an empty list before a server world opens. |
@@ -145,6 +145,10 @@ identities.
 | `disconnect(host, reason)` | Disconnects the player with a `Text` reason, as `/kick` does, also inside their own hook or a payload handler (the connection closes after it). Answers `false` for a stale or unavailable handle, the single-player owner and a player already being disconnected (the first reason stands). A fake player's kick keeps the first reason and completes at the next hub poll through the shared leave path. Invalid reason text returns `TextFormError` before anything changes. |
 | `hide(host, permission)` | Hides the player from players below the supplied permission level, starting next tick; `None` restores visibility. Hidden players disappear from the world and Tab list, and their join and leave messages are suppressed for those viewers. |
 | `hidden(host)` | Reads the level `hide` set: `Ok(None)` when the player is shown. A player who rejoined hidden reads it too, and a level set before the world is opened to others reads as stored. Refuses with `PlayerWorldRefusal::Client` on a client and `Stale` for a handle of an earlier open of the world. |
+| `post_effects(host)` | Reads the ordered `Vec<Identifier>` of active server-driven post effects (`ServerPlayer.getPostEffects`), shared with `/posteffect` and persisted with playerdata. Refuses with `PlayerWorldRefusal::Client` on a client and `Stale` for a stale or offline player. |
+| `add_post_effect(host, effect)` | Appends `effect` if not already active (`ServerPlayer.addPostEffect`), marking the player dirty to send `ClientboundPostEffectsPacket` at the end of the tick, and returns `Ok(true)` (`Ok(false)` when already present). |
+| `remove_post_effect(host, effect)` | Removes `effect` if active (`ServerPlayer.removePostEffect`), marking dirty for client sync, and returns `Ok(true)` (`Ok(false)` when absent). |
+| `clear_post_effects(host)` | Clears all active post effects (`ServerPlayer.clearPostEffects`), marking dirty for client sync, and returns `Ok(true)` (`Ok(false)` when already empty). |
 
 Nickname and sleep settings require an online player. These settings survive
 reconnections until the server stops or you change them. Visibility is stored by
@@ -328,6 +332,11 @@ for a stale handle, a client, a level the server has not opened, a chunk past `C
 generation is paused or stopped; `Err(ChunkLoadError::Failed)` when a mod's chunk generator panicked for the chunk
 or one its generation needs, which the call reports instead of waiting forever.
 
+For bulk or background loads that must not block the server tick, use `level.request_chunk(host, [x, z])` to queue a
+non-blocking level-33 (`FULL`, non-ticking) load at priority below player views and `/forceload`, drain finished
+[`ChunkSnapshot`] results on subsequent ticks with `level.drain_chunk_requests(host)`, or release a queued ticket
+early with `request.cancel(host)`.
+
 ## World mutation: chunks, blocks shown and placed as a player
 
 For mods that write blocks by other means (an editor's own section writes, a schematic) and then have to make the game and the client agree. Server only. Each method returns `Result` and names every refusal; a refusal changes nothing.
@@ -435,6 +444,11 @@ kept body:
 | `on_ground` | The local player's own predicted flag; for another kept entity, its client copy's flag. |
 | `is_in_water` | The local player's own fluid state, or a kept entity's last client update. |
 | `is_swimming` | The local player's swimming flag, not the pose (crawling can share that pose). `None` for other players and other entity kinds. |
+| `is_in_lava` | The local player's own fluid state, or a kept entity's last client update. |
+| `is_sprinting` | The local player's predicted sprinting flag, or a kept entity's synced flag. |
+| `pose` | The local player's predicted pose, or the `DATA_POSE` the server last sent for a kept entity. |
+| `is_crouching` | `LocalPlayer.isCrouching` for the local player: its own crouching flag, set before its input each tick, so it can differ from its pose for a tick. A kept entity's crouching pose otherwise. |
+| `LivingRef::no_jump_delay` | `LivingEntity.noJumpDelay` of the local player's prediction: 10 after a ground jump, counting down. `None` for other entities. |
 | `main_arm` | `LivingEntity.getMainArm` for every living entity the client tracks, as the server last sent it: another player's or a mannequin's main hand, a mob's left-handed flag; the local player's own Main Hand option. `None` for an entity that isn't living. |
 
 Client reads are views, not server authority. Inventory access here is read-only;
@@ -450,3 +464,31 @@ server, but the crash save writes nothing for that player: their `players/data/<
 advancements stay as last saved, so an item taken but not yet placed is never duplicated or lost in the player's
 files. The world save does not roll back what the turn already changed in the world, and a vehicle that player rides
 alone stays in the world. The log names the turn with a warning. A panic your code caught does not count: the record ends with the server tick.
+
+## Custom statistics
+
+Declare custom statistic identities in `Hooks::register`, using `Registrar`:
+
+```rust,ignore
+fn register(&self, registrar: &mut dyn Registrar, _: &RegistrationContext) {
+    registrar.register_custom_stat("steps").unwrap();
+}
+```
+
+For a mod named `rewrite`, this declares `rewrite:steps` in
+`minecraft:custom_stat`. An explicit `rewrite:steps`, another manifest-owned
+namespace, or a namespace delegated to the mod through `served_by` (see
+[Declare content in code](../content-mods.md#declare-content-in-code)) is also accepted; `minecraft`, foreign namespaces, malformed IDs and
+duplicates are refused. Ignoring the returned `Result<(), DeclarationError>` does not
+bypass installation failure. A mod's explicit registration refusal rolls back
+its declarations, and the installed inventory freezes before worlds open.
+
+These declarations populate the integrated command/statistic inventory and
+append after vanilla's IDs in LAN and client built-in registry reads, preserving
+vanilla IDs. Servers declaring custom statistics require Sunrise clients with
+the same ordered statistic inventory; configuration rejects mismatches before
+play. Register the target before rewriting an award to it; an arbitrary
+identifier alone does not register a statistic.
+
+`/scoreboard objectives add steps minecraft.custom:rewrite.steps` creates an
+objective for this registered counter.

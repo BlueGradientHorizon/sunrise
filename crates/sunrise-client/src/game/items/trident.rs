@@ -107,9 +107,11 @@ impl Game<'_> {
     }
     /// `TridentItem.use`: start the throw unless one more use would break it.
     /// Returns false for `InteractionResult.FAIL` (about to break, or Riptide
-    /// while dry) so callers neither dip the hand nor consume the click.
+    /// while dry, or a part denied `trident_throw`) so callers neither dip the
+    /// hand nor consume the click.
     pub(super) fn use_trident(&mut self, stack: &ItemStack) -> bool {
-        if &*stack.item != "minecraft:trident" {
+        let throw = super::item_abilities::ability::TRIDENT_THROW;
+        if &*stack.item != "minecraft:trident" || !self.stack_can_perform(stack, throw, true) {
             return false;
         }
         let max = self.trident_max_damage(stack);
@@ -154,8 +156,8 @@ impl Game<'_> {
         }
         self.spawn_bolt(at, false);
         // The summon effect's owner is the thrower: LightningBolt.setCause.
-        if let Some(bolt) = self.bolts.last_mut() {
-            bolt.cause = Some(guest);
+        if let Some(last) = self.bolts.len().checked_sub(1) {
+            self.bolts.update(last, |bolt| bolt.cause = Some(guest));
         }
         self.audio
             .play("minecraft:item.trident.thunder", Some(at), 5.0, 1.0);
@@ -442,16 +444,10 @@ impl Game<'_> {
         damage: f32,
         attack: sunrise_client::health::Attack,
     ) -> bool {
-        let Some(host) = self.lan.as_ref() else {
+        if self.lan.is_none() {
             return false;
-        };
-        let team_of = |game: &Self, name: &str| game.score.board.players_team(name).cloned();
-        let attacker = match t.guest {
-            Some(c) => host.hub.guest(c).and_then(|g| team_of(self, &g.name)),
-            None => self.player_team().cloned(),
-        };
-        let target = host.hub.guest(conn).and_then(|g| team_of(self, &g.name));
-        let refused = !self.player_may_harm(target.as_ref(), attacker.as_ref());
+        }
+        let refused = !self.guest_may_harm(t.guest, conn);
         let shooter = self.player_attacker(t.guest);
         let from = [t.previous.x, t.previous.y, t.previous.z];
         self.guest_hit_by(conn, |g| {
@@ -937,15 +933,22 @@ impl Game<'_> {
                                 if let Some(mob_idx) = self.mob_index.find(&self.mobs, id) {
                                     let plan = self
                                         .prepare_knockback_credit(id as i32, owner_who, &attack);
+                                    // The hit's causing entity, lent to its listeners beside the victim.
+                                    let causing = self.causer_id(owner_who);
+                                    let decision =
+                                        crate::game::entity::causer_decision!(self, causing);
                                     let mut credit = plan.lend(&mut self.last_hurt_by_player);
                                     let from_pos = Some([t.position.x, t.position.y, t.position.z]);
                                     let join = self.mobs[mob_idx].join;
-                                    let hurt = self.mobs[mob_idx].damage_projectile(
+                                    let (victim, lend) = crate::game::entity::victim_and_causer!(
+                                        self, mob_idx, causing, decision
+                                    );
+                                    let hurt = victim.damage_projectile(
                                         crate::game::entity::damage_level_of!(
                                             self,
                                             &attack,
                                             &mut credit,
-                                            None
+                                            lend
                                         ),
                                         damage,
                                         Damage {

@@ -62,7 +62,7 @@ pub struct MenuKey(pub(crate) u32);
 // exhaustive: only the load-owned table creates keys
 pub struct EnchantmentKey(pub(crate) u32);
 
-/// The registry facts a client mod reads for an enchantment.
+/// The registry facts a mod reads for an enchantment.
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[non_exhaustive]
 #[derive(sunrise_mod_api_macros::Wire)]
@@ -654,6 +654,8 @@ pub enum ToolAbility {
     ShovelDouse,
     /// A hoe tills soil.
     HoeTill,
+    /// A fire starter (flint and steel, a fire charge) lights a campfire, candle or candle cake.
+    FirestarterLight,
 }
 
 /// Read-only context for a tool modification.

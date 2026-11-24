@@ -28,7 +28,6 @@ use winit::event::{
 };
 use winit::event_loop::{ControlFlow, EventLoop};
 use winit::keyboard::KeyCode;
-use winit::window::Window;
 
 #[path = "screen_widgets_input_tests.rs"]
 mod input_routing;
@@ -50,23 +49,7 @@ impl Drop for DropCounter {
 /// and real `WindowEvent` input paths execute end to end. Returns the `EventLoop` (kept alive
 /// for the test's duration) and `WindowId`.
 fn attach_offscreen_window(game: &mut Game<'_>) -> (EventLoop<()>, winit::window::WindowId) {
-    let mut builder = EventLoop::builder();
-    #[cfg(target_os = "linux")]
-    {
-        use winit::platform::x11::EventLoopBuilderExtX11;
-        builder.with_x11().with_any_thread(true);
-    }
-    let event_loop = builder.build().unwrap();
-    #[allow(deprecated)]
-    let window = Arc::new(
-        event_loop
-            .create_window(
-                Window::default_attributes()
-                    .with_visible(false)
-                    .with_inner_size(PhysicalSize::new(640, 480)),
-            )
-            .unwrap(),
-    );
+    let (event_loop, window) = crate::game::native_entity_refs::tests::test_window([640, 480]);
     let id = window.id();
     game.options.offscreen = true;
     game.settings.gui_scale = 1;
@@ -953,6 +936,7 @@ fn mounted_widgets_draw_as_the_games_own() {
         return;
     }
     use crate::game::screen_widgets::MountedWidgetKind;
+    use std::time::{Duration, Instant};
     const LONG: &str = "a long name that does not fit in sixty pixels";
     struct StockWidgets;
     #[mod_api::__subscriptions]
@@ -978,14 +962,16 @@ fn mounted_widgets_draw_as_the_games_own() {
             with_client_game(|game| {
                 game.set_screen(Screen::Paused);
                 game.cursor = (11.0, 11.0);
+                let focus_time = Instant::now();
                 game.with_mounted_widget(1, |_, entry| {
                     let MountedWidgetKind::TextField { edit_box, .. } = &mut entry.kind else {
                         panic!("expected the initialized text field")
                     };
-                    edit_box.reset_blink();
+                    edit_box.reset_blink_at(focus_time);
                 });
+                let visible_at = focus_time + Duration::from_millis(299);
                 let mut ours = HudBatch::scratch([320, 240]);
-                game.draw_mounted_screen_widgets(&mut ours);
+                game.draw_mounted_screen_widgets_at(&mut ours, visible_at);
                 let mut stock = HudBatch::scratch([320, 240]);
                 sunrise_client::ui::button(
                     &mut stock,
@@ -1009,8 +995,8 @@ fn mounted_widgets_draw_as_the_games_own() {
                 stock_field.max_length = 64;
                 stock_field.set_value(LONG);
                 stock_field.focused = true;
-                stock_field.reset_blink();
-                stock_field.draw(&mut stock, &game.gui.atlas, None);
+                stock_field.reset_blink_at(focus_time);
+                stock_field.draw_at(&mut stock, &game.gui.atlas, None, visible_at);
                 assert_eq!(
                     bytemuck::cast_slice::<_, u8>(&ours.vertices),
                     bytemuck::cast_slice::<_, u8>(&stock.vertices)
@@ -1059,6 +1045,15 @@ fn mounted_widgets_draw_as_the_games_own() {
                 assert_eq!(
                     shadow_origins,
                     EXPECTED_FOREGROUND_ORIGINS.map(|[x, y]| [x + 1.0, y + 1.0])
+                );
+
+                let mut hidden = HudBatch::scratch([320, 240]);
+                let hidden_at = focus_time + Duration::from_millis(300);
+                game.draw_mounted_screen_widgets_at(&mut hidden, hidden_at);
+                // The final glyph and its shadow disappear at the phase boundary.
+                assert_eq!(
+                    hidden.vertices.iter().filter(|v| v.text == 1).count() + 12,
+                    ours.vertices.iter().filter(|v| v.text == 1).count(),
                 );
 
                 assert!(game.mounted_widget_mouse_clicked([16.0, 50.0], 0, 0, false));
@@ -2241,30 +2236,37 @@ fn separate_input_pre_post_parity_and_receiving_screen() {
             );
             send_mouse_button(game, win_id, MouseButton::Left, false);
 
-            //    KeyPressed.Post returning Flow::Cancel blocks mapped_key_event_from (Advancements
-            //    handles KeyL only after KeyPressed.Post, via immediate_key_pressed).
+            // Advancements consumes its binding itself, so Post never sees it and cannot veto it.
             game.set_screen(Screen::Advancements);
             take_log(&log);
             cancel_key_post.store(true, Ordering::SeqCst);
             send_key_control(game, "key l down");
-            assert_eq!(game.screen, Screen::Advancements);
-            assert_eq!(
-                take_log(&log),
-                vec![
-                    "key_press_pre:advancements:key.keyboard.l",
-                    "key_press_post:advancements:key.keyboard.l",
-                ]
-            );
-            cancel_key_post.store(false, Ordering::SeqCst);
-            send_key_control(game, "key l down");
             assert_eq!(game.screen, Screen::Playing);
             assert_eq!(
                 take_log(&log),
-                vec![
+                ["key_press_pre:advancements:key.keyboard.l"]
+            );
+
+            game.set_screen(Screen::Advancements);
+            game.settings.keys.set("key.advancements", "key.keyboard.u");
+            take_log(&log);
+            send_key_control(game, "key l down");
+            assert_eq!(game.screen, Screen::Advancements);
+            assert_eq!(
+                take_log(&log),
+                [
                     "key_press_pre:advancements:key.keyboard.l",
-                    "key_press_post:advancements:key.keyboard.l",
+                    "key_press_post:advancements:key.keyboard.l"
                 ]
             );
+            send_key_control(game, "key u down");
+            assert_eq!(game.screen, Screen::Playing);
+            assert_eq!(
+                take_log(&log),
+                ["key_press_pre:advancements:key.keyboard.u"]
+            );
+            game.settings.keys.set("key.advancements", "key.keyboard.l");
+            cancel_key_post.store(false, Ordering::SeqCst);
 
             // 8) Advancements blank-space press/release and no-tab scroll report unhandled.
             game.set_screen(Screen::Advancements);
@@ -2740,6 +2742,125 @@ fn controller_activates_the_selected_mount_and_edits_its_field() {
             );
             game.pad_osk_output(Output::Enter);
             assert_eq!(take_log(&log), ["submit:mounted draft"]);
+        });
+    });
+}
+
+/// NeoForge's `IConfigScreenFactory`: the Mods screen's Config opens the mod's own screen over
+/// the Mods screen, in a world and on the title, and closing it (Escape's `close_mod_screen`)
+/// returns there. A factory answering `false` keeps the Mods screen; a mod without one keeps
+/// its settings page.
+#[test]
+#[ignore = "daily"]
+fn config_opens_the_mods_own_screen_and_closing_it_returns_to_the_mods_screen() {
+    use sunrise_client::options_ui::{Event, Page};
+    if run_fresh_cases(
+        "game::native_hooks::base::screen_widgets_tests::config_opens_the_mods_own_screen_and_closing_it_returns_to_the_mods_screen",
+        "SUNRISE_CONFIG_SCREEN_CHILD",
+        &["window"],
+    ) {
+        return;
+    }
+    struct ConfigScreen {
+        open: Arc<AtomicBool>,
+        asked: Arc<AtomicUsize>,
+    }
+    #[mod_api::__subscriptions]
+    impl Hooks for ConfigScreen {
+        fn register(
+            &self,
+            registrar: &mut dyn mod_api::Registrar,
+            _: &mod_api::RegistrationContext,
+        ) {
+            let (open, asked) = (self.open.clone(), self.asked.clone());
+            registrar
+                .register_config_screen(Arc::new(move |_: &dyn ClientHost| {
+                    asked.fetch_add(1, Ordering::SeqCst);
+                    open.load(Ordering::SeqCst)
+                }))
+                .unwrap();
+            let refused = registrar.register_config_screen(Arc::new(|_: &dyn ClientHost| true));
+            assert_eq!(
+                refused,
+                Err("mod configured registers a second config screen".into())
+            );
+        }
+    }
+    struct NoScreen;
+    #[mod_api::__subscriptions]
+    impl Hooks for NoScreen {}
+
+    let open = Arc::new(AtomicBool::new(true));
+    let asked = Arc::new(AtomicUsize::new(0));
+    let mods = vec![
+        ModEntry::new(
+            "configured",
+            Box::new(ConfigScreen {
+                open: open.clone(),
+                asked: asked.clone(),
+            }),
+        ),
+        ModEntry::new("plain", Box::new(NoScreen)),
+    ];
+    with_mods(mods.into(), || {
+        with_client_game(|game| {
+            let (_event_loop, _) = attach_offscreen_window(game);
+            assert!(mod_api::__private::has_config_screen("configured"));
+            assert!(!mod_api::__private::has_config_screen("plain"));
+            game.settings.mods.installed = ["configured", "plain"]
+                .map(|id| sunrise_client::mod_list::Installed {
+                    id: id.into(),
+                    title: id.into(),
+                    description: String::new(),
+                    problem: None,
+                    dev: false,
+                    native: Some(sunrise_client::mod_list::NativePage {
+                        own_screen: mod_api::__private::has_config_screen(id),
+                        ..Default::default()
+                    }),
+                })
+                .into();
+            let config = |game: &mut Game<'_>| {
+                game.handle_option_events(vec![Event::ModConfigScreen(0)])
+                    .unwrap();
+            };
+            let on_mods = |game: &Game<'_>| {
+                assert_eq!(game.screen, Screen::Options);
+                assert_eq!(game.ui.options.page(), Page::Mods);
+            };
+
+            // In a world: over the pause menu's Options > Mods.
+            game.open_options_at(false, Page::Mods);
+            config(game);
+            assert_eq!(asked.load(Ordering::SeqCst), 1);
+            assert_eq!(game.screen, Screen::Mod);
+            assert_eq!(game.mod_screen(), Some("configured"));
+            game.close_mod_screen();
+            on_mods(game);
+            assert_eq!(game.mod_screen(), None);
+
+            // Declined: the Mods screen stays.
+            open.store(false, Ordering::SeqCst);
+            config(game);
+            assert_eq!(asked.load(Ordering::SeqCst), 2);
+            on_mods(game);
+
+            // On the title: closing returns to the Mods screen, not the title.
+            open.store(true, Ordering::SeqCst);
+            let saves = std::env::temp_dir().join("sunrise-config-screen-test-no-saves");
+            game.title = Some(game.new_title(saves));
+            game.open_options_at(true, Page::Mods);
+            config(game);
+            assert_eq!(game.mod_screen(), Some("configured"));
+            game.close_mod_screen();
+            on_mods(game);
+            assert!(game.title.is_some());
+
+            // A mod screen opened another way still closes to the title.
+            assert!(game.mod_screen_open("configured"));
+            game.close_mod_screen();
+            assert_eq!(game.screen, Screen::Playing);
+            assert_eq!(game.mod_screen(), None);
         });
     });
 }

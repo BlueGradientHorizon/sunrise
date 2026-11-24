@@ -95,6 +95,13 @@ pub trait MenusBackend {
     /// Side: both.
     /// Carried (cursor) stack; outer None means unavailable.
     fn menu_carried(&self, menu: MenuRef) -> Option<Option<ItemStack>>;
+    /// Side: both.
+    /// The menu's synchronized state id (`AbstractContainerMenu.getStateId`): the server counts
+    /// it up with every slot or content sync it sends for the menu, and a client holds the value
+    /// of the last `ContainerSetContent` or `ContainerSetSlot` it received for it, so a fresh
+    /// snapshot shows even when the stacks look the same. None for a stale, foreign or closed
+    /// menu, as for `menu_carried`.
+    fn menu_state_id(&self, menu: MenuRef) -> Option<i32>;
     /// Side: server.
     /// The storage menu slot `slot` shows (`Slot.container` and `getContainerSlot`): the
     /// player's inventory by `ENTITY_ITEMS` index (`InventoryMenu`'s armour slots 5..9 go head
@@ -208,8 +215,11 @@ pub trait MenusBackendMut {
     /// Side: server.
     /// Close a player's open menu as `ServerPlayer.closeContainer` does. The server queues
     /// `ContainerClose`, then removes the menu, returns the carried stack to the inventory,
-    /// and fires `player_container_close`. Refuses stale menus, clients, a player whose state
-    /// is swapped in for a turn, a pending disconnect, and the player's own inventory menu.
+    /// and fires `player_container_close`. Refuses stale menus, clients, a player held out by
+    /// another player's active turn, a pending disconnect, and the player's own inventory menu.
+    /// Inside a hook of the player's own action (their item use, block use or command) the menu
+    /// closes at the call, its cursor going back to the inventory the action uses, as vanilla's
+    /// `ServerPlayer.openMenu` closes the open menu there before it opens the next one.
     /// During a click action, true accepts a request to close that same window at commit; an
     /// aborted action leaves it open. A client closes its own screen with `close`.
 
