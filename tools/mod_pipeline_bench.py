@@ -16,7 +16,7 @@ each in a fresh seeded creative world:
 
 - `no mod`: the same binary with no mod loaded;
 - `mod, cold`: the driver's shader cache off and a fresh game home, so every shader compiles;
-- `mod, warm`: a second run on the cache the cold run left.
+- `mod, warm`: a second run on the cache a prior cached mod run left.
 
 Each row records the time from launch to the control socket answering and to the world being
 ready, then flies the first graphics_bench scene and records its frame times. Run it at the
@@ -79,6 +79,7 @@ def run_row(args, ctl, game_exe, name, extra_env, home):
     env.update(extra_env)
     env["SUNRISE_HOME"] = str(home)
     env["XDG_CACHE_HOME"] = str(home / "cache")
+    env["__GL_SHADER_DISK_CACHE_PATH"] = str(home / "cache" / "nvidia")
     socket = cwd / "control.sock"
     game = gb.Game(ctl, socket, env, cwd)
     scene, start, end, pitch = gb.SCENES[0]
@@ -176,12 +177,15 @@ def main():
     runs = []
     for number in range(args.runs):
         print(f"run {number + 1} of {args.runs}", flush=True)
-        home = Path(tempfile.mkdtemp(prefix="home-", dir=args.scratch))
-        runs.append([
-            run_row(args, ctl, game_exe, "no mod", {"SUNRISE_PIPELINE_BENCH": "off"}, home),
-            run_row(args, ctl, game_exe, "mod, cold", COLD, Path(tempfile.mkdtemp(prefix="home-", dir=args.scratch))),
-            run_row(args, ctl, game_exe, "mod, warm", {}, home),
-        ])
+        no_mod_home = Path(tempfile.mkdtemp(prefix="home-", dir=args.scratch))
+        cold_home = Path(tempfile.mkdtemp(prefix="home-", dir=args.scratch))
+        warm_home = Path(tempfile.mkdtemp(prefix="home-", dir=args.scratch))
+        no_mod = run_row(args, ctl, game_exe, "no mod", {"SUNRISE_PIPELINE_BENCH": "off"}, no_mod_home)
+        cold = run_row(args, ctl, game_exe, "mod, cold", COLD, cold_home)
+        # Prime the driver shader cache with the mod loaded before measuring the warm row.
+        run_row(args, ctl, game_exe, "mod, warmup", {}, warm_home)
+        warm = run_row(args, ctl, game_exe, "mod, warm", {}, warm_home)
+        runs.append([no_mod, cold, warm])
     report = {
         "label": args.label, "date": datetime.date.today().isoformat(), "commit": commit,
         "host": os.uname().nodename, "offscreen": args.offscreen, "distance": args.distance,
