@@ -152,10 +152,10 @@ pub mod tests {
         assert!(errors[1].contains("invalid identifier \"test:\""));
     }
 
-    /// Rule test and position rule test types registered twice, in an unowned
-    /// namespace, or with an empty name are refused at startup, naming the mod.
+    /// Rule test and position rule test types registered twice or with an
+    /// empty name are refused at startup, naming the mod.
     #[test]
-    pub(crate) fn duplicate_and_foreign_rule_test_types_refuse_registration() {
+    pub(crate) fn duplicate_and_invalid_rule_test_types_refuse_registration() {
         #[derive(Debug)]
         struct AlwaysRule;
         impl mod_api::RuleTest for AlwaysRule {
@@ -244,13 +244,13 @@ pub mod tests {
             |_| false,
         )
         .unwrap_err();
-        assert_eq!(errors.len(), 6);
+        // A code registry key may take any namespace (RegisterEvent.register), so
+        // `other:phase` and `other:y_band` register.
+        assert_eq!(errors.len(), 4);
         assert!(errors[0].contains("test registered rule test type test:phase twice"));
-        assert!(errors[1].contains("namespace"));
-        assert!(errors[2].contains("invalid identifier \"test:\""));
-        assert!(errors[3].contains("test registered position rule test type test:y_band twice"));
-        assert!(errors[4].contains("namespace"));
-        assert!(errors[5].contains("invalid identifier \"test:\""));
+        assert!(errors[1].contains("invalid identifier \"test:\""));
+        assert!(errors[2].contains("test registered position rule test type test:y_band twice"));
+        assert!(errors[3].contains("invalid identifier \"test:\""));
     }
 }
 
