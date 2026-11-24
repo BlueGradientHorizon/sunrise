@@ -71,14 +71,23 @@ fn invocations_round_trip_through_wire() {
 #[test]
 fn a_record_whose_player_is_not_its_entity_does_not_decode() {
     let mob = EntityRef::new(WorldEpoch::new(3), 40);
+    for entity in [Some(mob), None] {
+        let mut record = InvocationRecord::from(&invocation());
+        record.entity = entity;
+        record.player = Some(alex());
+        assert!(Reader::decode::<CommandInvocation>(&encoded(&record)).is_err());
+    }
+}
+
+#[test]
+fn a_changed_entity_encodes_without_its_old_player() {
+    let mob = EntityRef::new(WorldEpoch::new(3), 40);
     let mut changed = invocation().with_player(alex());
     changed.entity = Some(mob);
     let mut cleared = invocation().with_player(alex());
     cleared.entity = None;
     for command in [changed, cleared] {
-        // The same layout as the invocation's own encoding.
-        let record = InvocationRecord::from(&command);
-        assert_eq!(encoded(&record), encoded(&command));
-        assert!(Reader::decode::<CommandInvocation>(&encoded(&command)).is_err());
+        let decoded = Reader::decode::<CommandInvocation>(&encoded(&command)).unwrap();
+        assert_eq!((decoded.entity, decoded.player()), (command.entity, None));
     }
 }

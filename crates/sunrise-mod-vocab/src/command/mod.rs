@@ -198,7 +198,7 @@ impl From<&CommandInvocation> for InvocationRecord {
             position: invocation.position,
             entity: invocation.entity,
             rotation: invocation.rotation,
-            player: invocation.player,
+            player: invocation.player(),
         }
     }
 }
