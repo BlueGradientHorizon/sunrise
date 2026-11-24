@@ -171,10 +171,17 @@ pub enum EffectAction {
     Exhaust(f32),
     /// FoodData.eat(nutrition, saturation modifier).
     Eat(i32, f32),
-    /// The active instance promoted its hidden effect, or updated in place.
-    Update(&'static str, i32),
-    /// The active instance expired or its tick returned false.
-    Remove(&'static str),
+    /// The active instance promoted its hidden effect, or updated in place:
+    /// its id, registry index ([`EffectInstance::registry_index`]) and
+    /// amplifier.
+    Update(&'static str, Option<usize>, i32),
+    /// The active instance expired or its tick returned false: its id and
+    /// registry index.
+    Remove(&'static str, Option<usize>),
+}
+/// The action for an instance that left the list.
+fn removed(effect: EffectInstance) -> EffectAction {
+    EffectAction::Remove(effect.id, effect.registry_index)
 }
 /// `shouldApplyEffectTickThisTick` + `applyEffectTick` for the periodic effects.
 fn periodic(id: &str, tick: i32, amp: i32) -> Option<EffectAction> {
@@ -467,7 +474,7 @@ impl PlayerEffects {
                 if keep_expired.contains(&e.id) {
                     i += 1;
                 } else {
-                    actions.push(EffectAction::Remove(self.list.remove(i).id));
+                    actions.push(removed(self.list.remove(i)));
                 }
                 continue;
             }
@@ -490,15 +497,19 @@ impl PlayerEffects {
             match answer {
                 OmenTick::Continue => {}
                 OmenTick::Remove => {
-                    actions.push(EffectAction::Remove(self.list.remove(i).id));
+                    actions.push(removed(self.list.remove(i)));
                     continue;
                 }
                 OmenTick::Add(effect) => {
                     if let Some(existing) = self.list.iter_mut().find(|x| x.id == effect.id) {
                         if existing.update(&effect) {
-                            actions.push(EffectAction::Update(existing.id, existing.amplifier));
+                            actions.push(EffectAction::Update(
+                                existing.id,
+                                existing.registry_index,
+                                existing.amplifier,
+                            ));
                         }
-                        actions.push(EffectAction::Remove(self.list.remove(i).id));
+                        actions.push(removed(self.list.remove(i)));
                         continue;
                     }
                     self.list.push(effect);
@@ -509,14 +520,14 @@ impl PlayerEffects {
             let e = &mut self.list[i];
             e.tick_down();
             if e.downgrade() {
-                actions.push(EffectAction::Update(e.id, e.amplifier));
+                actions.push(EffectAction::Update(e.id, e.registry_index, e.amplifier));
             }
             // `MobEffectEvent.Expired`: a kept expiry leaves the effect at
             // no ticks instead of removing it here.
             if e.infinite() || e.duration > 0 || keep_expired.contains(&e.id) {
                 i += 1;
             } else {
-                actions.push(EffectAction::Remove(self.list.remove(i).id));
+                actions.push(removed(self.list.remove(i)));
             }
         }
         (actions, added)
