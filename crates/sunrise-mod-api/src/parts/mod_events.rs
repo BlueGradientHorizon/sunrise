@@ -15,6 +15,7 @@ impl ModEventsRegistrar for PartRegistrar {
             priority,
             receive_cancelled,
             listener,
+            ..
         } = subscription;
         let result = (|| {
             if mod_vocab::__private::parts_installation::parts_installed() {

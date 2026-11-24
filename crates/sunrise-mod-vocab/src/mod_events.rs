@@ -125,14 +125,16 @@ pub(crate) type ErasedListener<E> = Box<
 /// mod's own [`Hooks`] type, with the host of `E`'s side and `()` for an event that can't be
 /// cancelled. [`Registrar::add_listener`](crate::Registrar) takes one.
 pub trait IntoListener<M, E: Event, S> {
+    // hidden: only `Registrar::add_listener` erases a listener; mods pass the method itself.
     #[doc(hidden)]
     fn into_listener(self) -> ListenerFn;
 }
 
 // no wire: a process-local callback.
-// exhaustive: built only by `IntoListener`, read only by the registrar.
 /// A listener erased for the registrar.
+// hidden: `IntoListener` builds it and the registrar reads it; mods never name it.
 #[doc(hidden)]
+#[non_exhaustive]
 pub struct ListenerFn {
     /// The mod type whose method this is; registration refuses another mod's.
     pub mod_type: TypeId,
@@ -170,6 +172,7 @@ into_listener!(BothSides, dyn Host);
 /// Which events a host may post: the server's posts server and both-sides events, the
 /// client's posts client and both-sides events, and a plain [`Host`] only both-sides events.
 pub trait PostsTo<'a, S: EventSide>: sealed::Poster {
+    // hidden: `host.post` reaches the side's host through it; mods call `post`.
     #[doc(hidden)]
     fn event_host(&mut self) -> &mut S::Host<'a>;
 }

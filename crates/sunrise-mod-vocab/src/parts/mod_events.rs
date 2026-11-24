@@ -35,9 +35,10 @@ impl Installed {
 }
 
 // no wire: a process-local registration of a callback.
-// exhaustive: built only by `add_listener`, read only by the registrar.
 /// A listener as `add_listener` hands it to the registrar.
+// hidden: `add_listener` builds it for the registrar; mods never name it.
 #[doc(hidden)]
+#[non_exhaustive]
 pub struct ModEventSubscription {
     /// The event's id.
     pub id: &'static str,
@@ -111,6 +112,7 @@ impl dyn Registrar + '_ {
 /// Registrar operations for mod event listeners.
 pub trait ModEventsRegistrar {
     /// Add a listener; mods reach it through `add_listener`.
+    // hidden: mods reach it through `add_listener`.
     #[doc(hidden)]
     fn add_mod_event_listener(
         &mut self,
