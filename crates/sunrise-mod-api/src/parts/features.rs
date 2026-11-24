@@ -136,10 +136,10 @@ pub mod tests {
         assert!(registrar.feature_types.is_empty());
     }
 
-    /// A placement modifier type twice, one in an unowned namespace and one
-    /// without a name: every registration is refused at startup, naming the mod.
+    /// Explicit namespaces succeed. A placement modifier type registered twice or without a name
+    /// is refused at startup, naming the mod.
     #[test]
-    pub(crate) fn duplicate_and_foreign_placement_modifier_types_refuse_registration() {
+    pub(crate) fn duplicate_and_invalid_placement_modifier_types_refuse_registration() {
         #[derive(Debug)]
         struct Pass;
         impl mod_api::PlacementModifier for Pass {
@@ -169,13 +169,16 @@ pub mod tests {
         impl Hooks for Valid {
             fn register(&self, r: &mut dyn Registrar, _: &mod_api::RegistrationContext) {
                 r.register_placement_modifier_type("below_sea", BelowSea);
+                r.register_placement_modifier_type("other:below_sea", BelowSea);
             }
         }
         crate::parts::tests::install_parts_fixture(&[ModEntry::new("test", Box::new(Valid))])
             .unwrap();
         let types = crate::__private::placement_modifier_type_declarations();
-        assert!(types.iter().any(|(id, _)| id == "test:below_sea"));
-        assert_eq!(types.len(), 1);
+        assert_eq!(
+            types.iter().map(|(id, _)| id.as_str()).collect::<Vec<_>>(),
+            ["test:below_sea", "other:below_sea"]
+        );
 
         struct Invalid;
         #[mod_api::__subscriptions]
@@ -183,7 +186,6 @@ pub mod tests {
             fn register(&self, r: &mut dyn Registrar, _: &mod_api::RegistrationContext) {
                 r.register_placement_modifier_type("below_sea", BelowSea);
                 r.register_placement_modifier_type("below_sea", BelowSea);
-                r.register_placement_modifier_type("other:below_sea", BelowSea);
                 r.register_placement_modifier_type("", BelowSea);
             }
         }
@@ -193,10 +195,9 @@ pub mod tests {
             |_| false,
         )
         .unwrap_err();
-        assert_eq!(errors.len(), 3);
+        assert_eq!(errors.len(), 2, "{errors:?}");
         assert!(errors[0].contains("test registered placement modifier type test:below_sea twice"));
-        assert!(errors[1].contains("namespace"));
-        assert!(errors[2].contains("invalid identifier \"test:\""));
+        assert!(errors[1].contains("invalid identifier \"test:\""));
     }
 }
 
