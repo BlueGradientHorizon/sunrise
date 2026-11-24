@@ -6859,6 +6859,41 @@ impl Game<'_> {
             }
         }
     }
+    /// `CommonHooks.fireBlockBreak` where `ServerPlayerGameMode.destroyBlock` asks it: the
+    /// acting player's checks, then the mods' `break_block`. The state at `pos` and the
+    /// experience `break_block` left, or None when a check refused the break or a mod canceled it.
+    pub(in crate::game) fn break_block_allowed(
+        &mut self,
+        pos: [i32; 3],
+    ) -> Result<Option<(BlockStateId, Option<u32>)>> {
+        // ServerPlayerGameMode.destroyBlock and CommonHooks.fireBlockBreak read the main hand,
+        // whichever hand is acting.
+        self.with_hand(Hand::Main, |game| {
+            let state = game.world.block(pos[0], pos[1], pos[2]);
+            let mut canceled = !game.debug_stick_can_destroy(pos)?
+                || !game
+                    .res
+                    .items()
+                    .can_destroy_block(game.held(), game.creative)
+                || game.block_action_restricted(pos)
+                || (!game.can_use_game_master_blocks()
+                    && is_game_master_block(&game.res.facts().get(state).name));
+            let mut exp_to_drop = None;
+            if game.native_authoritative()
+                && (!canceled || mod_api::__private::listened(mod_api::HookId::BreakBlock))
+            {
+                game.native_break_block(pos, state, &mut canceled, &mut exp_to_drop);
+            }
+            if canceled
+                || (!game.can_use_game_master_blocks()
+                    && is_game_master_block(&game.res.facts().get(state).name))
+                || game.block_action_restricted(pos)
+            {
+                return Ok(None);
+            }
+            Ok(Some((state, exp_to_drop)))
+        })
+    }
     fn break_block_as_player(
         &mut self,
         pos: [i32; 3],
