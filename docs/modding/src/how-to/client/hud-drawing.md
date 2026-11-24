@@ -126,6 +126,14 @@ You can keep a `GuiDraw` list: pass it to `draw.gui_paint(&draws)` and handle it
 Sunrise's radial overlay keeps clear of the actual paint from installed status-layer bodies,
 including replacements and wrappers.
 
+To sit on a row, read how far the status rows reach: `host.gui_status_heights()` gives the left
+and right columns' heights above the bottom edge (NeoForge's `Hud.leftHeight` and `rightHeight`),
+as they stand when your layer starts. Both are 39 before the hearts; each vanilla row adds its
+height as it draws, so a layer `Below("minecraft:food_level".into())` sees the height the food row
+draws at and one `Above` it the height after it. A row that is hidden, cancelled or replaced adds
+nothing, and a replacement does not reserve space for the rows after it. Outside the HUD layers
+the read is `None`.
+
 Adding a taller status bar does not move the selected item name or the action bar. The name starts
 59 GUI pixels from the bottom (45 outside survival and adventure); the action bar is centred 68
 pixels from the bottom. A mod that needs to move either can cancel and redraw its layer:
@@ -151,8 +159,10 @@ way round. Nothing is added to chat, narrated or sent. Text the boundary refuses
 Push a `DebugEntry::text(id, group, lines)` in `Hooks::register_debug_entries` at client
 startup. Use any valid `<namespace>:<path>` ID (including custom `minecraft:<path>` IDs that do
 not collide with built-in vanilla entries); it identifies the entry in the debug options and
-saved profile. The group says which vanilla lines yours join; the closure receives the current
-client host and appends to the entry's lines.
+saved profile. The group says which vanilla lines yours join, or `DebugGroup::Named(id)` puts
+them in a group of your own that every entry naming the same ID shares (`minecraft:memory` is
+vanilla's memory group). The closure receives the current client host and appends to the
+entry's lines.
 
 ```rust,ignore
 use mod_api::{DebugEntry, DebugGroup, RegisterDebugEntriesEvent, RegistrationContext};
