@@ -624,8 +624,8 @@ impl Game<'_> {
         }
     }
     /// Whether the entity's model is hidden (`Entity.isInvisible`): the
-    /// invisibility effect on a player or a mob, a mob's or an armor stand's
-    /// flag.
+    /// invisibility effect on a player or a mob, the flag of a mob, an armor
+    /// stand or an item frame.
     pub(super) fn entity_is_invisible(&self, entity: EntityRef) -> Option<bool> {
         match self.native_entity_target(entity)? {
             Target::Player => Some(self.potions.effects.get("invisibility").is_some()),
@@ -640,6 +640,7 @@ impl Game<'_> {
                 Some(m.is_invisible())
             }
             Target::Stand(id) => Some(self.armor_stands.iter().find(|s| s.id == id)?.invisible),
+            Target::Frame(id) => Some(self.item_frames.iter().find(|f| f.id == id)?.invisible),
             _ => None,
         }
     }
@@ -769,7 +770,8 @@ impl Game<'_> {
             _ => false,
         }
     }
-    /// Sets the entity's shared invisibility flag (`Entity.setInvisible`). Returns false for players and guests.
+    /// Sets the entity's shared invisibility flag (`Entity.setInvisible`) on a mob, an armor
+    /// stand or an item frame. Returns false for players, guests and other kinds.
     pub(super) fn entity_set_invisible(&mut self, entity: EntityRef, invisible: bool) -> bool {
         match self.native_entity_target(entity) {
             Some(Target::Mob(id)) => self.mobs.iter_mut().find(|m| m.id == id).is_some_and(|m| {
@@ -785,6 +787,16 @@ impl Game<'_> {
                     s.invisible = invisible;
                     true
                 }),
+            // `ItemFrame` saves the flag with its chunk.
+            Some(Target::Frame(id)) => {
+                let Some(frame) = self.item_frames.iter_mut().find(|f| f.id == id) else {
+                    return false;
+                };
+                frame.invisible = invisible;
+                let pos = frame.pos;
+                self.world.modified.insert((pos[0] >> 4, pos[2] >> 4));
+                true
+            }
             _ => false,
         }
     }

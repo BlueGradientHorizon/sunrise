@@ -89,6 +89,8 @@ impl PartRegistrar {
             structure_types,
             pool_element_types,
             structure_processor_types,
+            rule_test_types,
+            pos_rule_test_types,
             feature_types,
             placement_modifier_types,
             loot_modifier_serializers,

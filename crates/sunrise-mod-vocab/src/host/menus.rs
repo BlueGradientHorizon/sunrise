@@ -36,6 +36,13 @@ pub trait MenusBackend {
     /// Side: both.
     /// Carried (cursor) stack; outer None means unavailable.
     fn menu_carried(&self, menu: MenuRef) -> Option<Option<ItemStack>>;
+    /// Side: both.
+    /// The menu's synchronized state id (`AbstractContainerMenu.getStateId`): the server counts
+    /// it up with every slot or content sync it sends for the menu, and a client holds the value
+    /// of the last `ContainerSetContent` or `ContainerSetSlot` it received for it, so a fresh
+    /// snapshot shows even when the stacks look the same. None for a stale, foreign or closed
+    /// menu, as for `menu_carried`.
+    fn menu_state_id(&self, menu: MenuRef) -> Option<i32>;
     /// Side: server.
     /// The storage menu slot `slot` shows (`Slot.container` and `getContainerSlot`): the
     /// player's inventory by `ENTITY_ITEMS` index (`InventoryMenu`'s armour slots 5..9 go head

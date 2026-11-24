@@ -152,6 +152,17 @@ pub trait BlockStatesBackend {
     /// for slime. None for an unknown state.
     fn block_state_friction(&self, state: BlockState) -> Option<f32>;
     /// Side: both.
+    /// The speed factor of the state's block (`Block.getSpeedFactor`, its
+    /// `BlockBehaviour.Properties.speedFactor`): 1.0 for most blocks, 0.4 for soul sand and
+    /// honey. The declared value, not what the block's parts answer in a level. None for an
+    /// unknown state.
+    fn block_state_speed_factor(&self, state: BlockState) -> Option<f32>;
+    /// Side: both.
+    /// The jump factor of the state's block (`Block.getJumpFactor`, its
+    /// `BlockBehaviour.Properties.jumpFactor`): 1.0 for most blocks, 0.5 for honey. The
+    /// declared value, not what the block's parts answer in a level. None for an unknown state.
+    fn block_state_jump_factor(&self, state: BlockState) -> Option<f32>;
+    /// Side: both.
     /// `BlockState.isSolidRender()`: whether the state is a full, occluding cube for rendering
     /// and light (stone yes; glass, leaves and slabs no). Not `isSolid` and not full collision.
     /// None for an unknown state.

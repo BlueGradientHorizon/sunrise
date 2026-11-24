@@ -397,6 +397,18 @@ impl<'a> BlockTables<'a> {
         self.pack.assets.registry.state(state)?;
         Some(self.res.facts().get(state).friction)
     }
+    /// `Block.getSpeedFactor()` of the state's block. None for an unknown state.
+    pub(in crate::game) fn block_state_speed_factor(&self, state: BlockStateId) -> Option<f32> {
+        self.pack.assets.registry.state(state)?;
+        let block = self.res.motion().blocks.get(state).ok()?;
+        Some(block.coefficients.speed_factor)
+    }
+    /// `Block.getJumpFactor()` of the state's block. None for an unknown state.
+    pub(in crate::game) fn block_state_jump_factor(&self, state: BlockStateId) -> Option<f32> {
+        self.pack.assets.registry.state(state)?;
+        let block = self.res.motion().blocks.get(state).ok()?;
+        Some(block.coefficients.jump_factor)
+    }
     /// `BlockState.isSolidRender()`. None for an unknown state.
     pub(in crate::game) fn block_state_is_solid_render(&self, state: BlockStateId) -> Option<bool> {
         self.pack.assets.registry.state(state)?;

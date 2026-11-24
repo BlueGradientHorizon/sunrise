@@ -1098,6 +1098,15 @@ mod facts_tests {
             assert_eq!(facts.friction(stone), Some(0.6));
             assert_eq!(facts.friction(state("minecraft:ice")), Some(0.98));
             assert_eq!(facts.friction(state("minecraft:slime_block")), Some(0.8));
+            // getSpeedFactor and getJumpFactor: 1.0 by default, soul sand 0.4 speed, honey 0.4
+            // speed and 0.5 jump.
+            let (soul_sand, honey) = (state("minecraft:soul_sand"), state("minecraft:honey_block"));
+            assert_eq!(facts.speed_factor(stone), Some(1.0));
+            assert_eq!(facts.jump_factor(stone), Some(1.0));
+            assert_eq!(facts.speed_factor(soul_sand), Some(0.4));
+            assert_eq!(facts.jump_factor(soul_sand), Some(1.0));
+            assert_eq!(facts.speed_factor(honey), Some(0.4));
+            assert_eq!(facts.jump_factor(honey), Some(0.5));
             // isSolidRender: a full occluding cube only.
             assert_eq!(facts.is_solid_render(stone), Some(true));
             assert_eq!(facts.is_solid_render(state("minecraft:glass")), Some(false));

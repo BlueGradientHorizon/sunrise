@@ -69,12 +69,14 @@ pub trait FeatureWorld {
 pub enum FeatureError<E> {
     Random(InvalidBound),
     World(E),
+    Failed(String),
 }
 impl<E: std::fmt::Display> std::fmt::Display for FeatureError<E> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Random(e) => e.fmt(f),
             Self::World(e) => e.fmt(f),
+            Self::Failed(message) => f.write_str(message),
         }
     }
 }
