@@ -103,7 +103,7 @@ impl Game<'_> {
             },
         )
         .unwrap();
-        if let Some(tables) = &self.server.world_tables {
+        if let Some(tables) = &self.world_tables {
             prepared.loot.bind_from(&tables.loot_modifier_manager);
         }
         self.reload_resources.install(prepared.retained, &skipped);

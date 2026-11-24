@@ -86,7 +86,7 @@ fn run(mode: Option<u8>) -> (Vec<(String, u32)>, usize, i32, u32, i64, bool) {
                 game.res.item_defaults(),
             )
             .unwrap();
-            game.server.server_loot.set(Some(Arc::new(loot)));
+            game.server_loot.set(Some(Arc::new(loot)));
             let mut hook = Hook {
                 uuid: [0; 4],
                 attachment_lifetime: Default::default(),

@@ -48,7 +48,7 @@ impl Game<'_> {
             .map(|e| e.path)
             .filter(|path| {
                 self.client.debug_entries.enabled(
-                    &self.client.registered_debug_entries,
+                    &self.registered_debug_entries,
                     path,
                     self.client.debug,
                     reduced,
@@ -229,7 +229,7 @@ impl Game<'_> {
         }
         // A native mod's entries come after vanilla's, in registration order.
         for (group, lines) in debug_entries::mod_lines(
-            &self.client.registered_debug_entries,
+            &self.registered_debug_entries,
             self,
             &self.client.debug_entries,
             self.client.debug,

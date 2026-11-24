@@ -209,8 +209,8 @@ fn code_only_reload_publishes_one_new_inventory_after_prepare_and_preserves_old_
                         items.songs.contains_key(id),
                         items.instruments.contains_key(id),
                         items.enchantments.list.iter().any(|e| &*e.id == id),
-                        game.server.fns.store.predicates.contains_key(id),
-                        game.server.fns.store.item_modifiers.contains_key(id),
+                        game.fns.store.predicates.contains_key(id),
+                        game.fns.store.item_modifiers.contains_key(id),
                     )
                 };
                 assert_eq!(

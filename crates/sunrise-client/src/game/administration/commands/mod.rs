@@ -4107,7 +4107,6 @@ impl Game<'_> {
             // joined in resource-stack order; a pack file with `replace`
             // drops what the lower sources put in (`TagLoader.load`).
             let packed = self
-                .server
                 .fns
                 .store
                 .files

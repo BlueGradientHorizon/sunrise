@@ -338,7 +338,7 @@ impl Game<'_> {
         &self,
         worn: [Option<(&str, Option<&ItemStack>)>; 4],
     ) -> Vec<(&Part, [f32; 4], u32, u32, bool)> {
-        let assets = &self.client.armor_stand_assets;
+        let assets = &self.armor_stand_assets;
         let mut out = Vec::new();
         for (item, (layer, slot)) in worn.into_iter().zip([
             ("helmet", "head"),
@@ -375,7 +375,7 @@ impl Game<'_> {
     /// goes into an atlas trim slot, a free one, else the least recently
     /// drawn. Reuse the completed preparation while the requests and atlas stay the same.
     pub(super) fn prepare_trims(&mut self) {
-        let assets = &self.client.armor_stand_assets;
+        let assets = &self.armor_stand_assets;
         let items = self.items();
         let mut wanted: Vec<TrimTexture> = Vec::new();
         let guests = self.lan.iter().flat_map(|host| host.hub.guests.iter());
@@ -1542,7 +1542,7 @@ impl Game<'_> {
                 .bool_at(sunrise_client::gamerules::vanilla::MOB_DROPS),
             dying,
             |table| {
-                let Some(loot) = self.server.server_loot.get() else {
+                let Some(loot) = self.server_loot.get() else {
                     return Vec::new();
                 };
                 if !loot.has_table(table) {
@@ -1992,7 +1992,7 @@ impl Game<'_> {
         out: &mut Vec<Vertex>,
     ) {
         use sunrise_client::mobs::render::put;
-        let assets = &self.client.armor_stand_assets;
+        let assets = &self.armor_stand_assets;
         let sprites = &self.gui.atlas.sprites;
         let uv_of = |name: &str| sprites.get(name).map(|r| [r.u0, r.v0, r.u1, r.v1]);
         // A texture's OptiFine emissive overlay. The lock is read per lookup and let go:
@@ -3340,7 +3340,7 @@ mod setup_anim_tests {
                 stand.pitch = 30.0;
                 stand.vehicle = Some(9);
                 stand.pose = [[10.0, 20.0, 30.0]; 6];
-                let model = game.client.armor_stand_assets.main.as_ref().unwrap();
+                let model = game.armor_stand_assets.main.as_ref().unwrap();
                 let mut poses = Poses::new(model);
                 game.setup_armor_stand_pose(&stand, 0.5, &mut poses);
                 for name in [

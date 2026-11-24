@@ -88,7 +88,7 @@ impl TrialSpawnerLevel for GameLevel<'_, '_> {
             .is_empty()
     }
     fn loot_items(&self, table: &str, seed: i64) -> Vec<ItemStack> {
-        let Some(loot) = self.game.server.server_loot.get() else {
+        let Some(loot) = self.game.server_loot.get() else {
             return Vec::new();
         };
         loot.roll_split(table, &mut LegacyRandom::new(seed))
@@ -194,7 +194,7 @@ impl Game<'_> {
             level.spawner = Some(mod_api::Spawner::Trial {
                 pos: mod_api::BlockPos::new(key.0, key.1, key.2),
             });
-            let loot = self.server.server_loot.get();
+            let loot = self.server_loot.get();
             let seed = self.level.seed;
             let mut spawn = |l: &GameLevel, rng: &mut LevelRandom, r: &SpawnerSpawn| {
                 let added = l.game.plan_spawner_mob(l, r, source, &mut planned, rng)?;

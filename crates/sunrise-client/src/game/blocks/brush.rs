@@ -183,7 +183,7 @@ impl Game<'_> {
             self.res.items(),
         );
         self.trigger_loot_table(&table);
-        let loot = self.server.server_loot.get();
+        let loot = self.server_loot.get();
         let brusher = self.killer_loot_entity(None);
         let luck = self.acting_luck();
         let tool = self.stack_in(slot).map(super::creatures::to_loot);

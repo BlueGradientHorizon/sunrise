@@ -14,7 +14,7 @@ macro_rules! section_scene {
             facts: $game.res.facts(),
             renderer: $game.renderer.as_ref(),
             streaming: &$game.streaming,
-            pending_uploads: &$game.client.pending_uploads,
+            pending_uploads: &$game.pending_uploads,
         }
     };
 }

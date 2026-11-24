@@ -88,7 +88,7 @@ impl Game<'_> {
     /// apart: ordinary particles, firework starters and elder guardians in the engine,
     /// and ITEM_PICKUP in `pickups`.
     pub(in crate::game) fn client_particle_count(&self) -> usize {
-        self.particles.group_count() + self.client.pickups.live.len()
+        self.particles.group_count() + self.pickups.live.len()
     }
     /// `ParticleEngine.clearParticles` over every group Sunrise keeps apart: the engine's
     /// particles, starters, queue and emitters, the item pickups and the elder guardian
@@ -96,7 +96,7 @@ impl Game<'_> {
     pub(in crate::game) fn clear_client_particles(&mut self) {
         self.client.mod_clear_particles.set(false);
         self.particles.clear();
-        self.client.pickups.clear();
+        self.pickups.clear();
     }
     /// Applies a client mod's `clear_particles` if one is waiting. Called at the start of
     /// each particle tick, after `RenderFrameEvent.Pre`, and at particle extraction, after

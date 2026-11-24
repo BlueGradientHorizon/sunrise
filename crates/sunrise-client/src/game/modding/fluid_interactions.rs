@@ -94,7 +94,6 @@ impl Game<'_> {
     /// id that names no fluid or block refuses the world by name.
     pub(in crate::game) fn install_fluid_interactions(&self) -> Result<(), String> {
         let items = self
-            .server
             .world_tables
             .as_ref()
             .map_or_else(|| self.items(), |t| &t.items);

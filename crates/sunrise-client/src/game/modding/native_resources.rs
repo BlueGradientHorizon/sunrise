@@ -28,7 +28,7 @@ impl Game<'_> {
             }
             sources.push(&self.pack.data_changes);
             if self.options.execution_role.is_logical_server() {
-                sources.extend(self.server.fns.pack_sources().rev());
+                sources.extend(self.fns.pack_sources().rev());
             }
             ("data", sources)
         })

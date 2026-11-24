@@ -271,7 +271,7 @@ impl Game<'_> {
         self.forget_atlas_slots();
         if !world_kept {
             self.clear_lod();
-            self.client.pending_uploads.clear();
+            self.pending_uploads.clear();
             let context = self.worker_context();
             self.streaming.reload_resources(&mut self.world, context);
         }
@@ -285,7 +285,7 @@ impl Game<'_> {
     /// discarded, then every loaded section is rebuilt.
     pub(super) fn all_sections_changed(&mut self) {
         self.clear_lod();
-        self.client.pending_uploads.clear();
+        self.pending_uploads.clear();
         if let Some(renderer) = self.renderer.as_mut() {
             renderer.clear_sections(self.world.layout());
         }

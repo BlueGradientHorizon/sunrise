@@ -215,7 +215,7 @@ fn indexed_pickup_keeps_bound_survivors_and_processes_shifted_tail() {
                     }
                 }
                 assert_eq!(
-                    game.client.pickups.made().get("item").copied().unwrap_or(0),
+                    game.pickups.made().get("item").copied().unwrap_or(0),
                     2,
                     "full and partial pickup animations"
                 );

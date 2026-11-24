@@ -2274,10 +2274,7 @@ mod tests {
                 assert!(natural.checked.borrow().is_none(), "no created mob is left");
                 let used = natural.provisional.get();
                 drop(natural);
-                assert!(
-                    game.server.lent_mobs.borrow().is_empty(),
-                    "every lend ended"
-                );
+                assert!(game.lent_mobs.borrow().is_empty(), "every lend ended");
                 (
                     pending.iter().map(snap).collect::<Vec<_>>(),
                     used,
@@ -2362,10 +2359,7 @@ mod tests {
                 };
                 game.server_tick_spawner_of(key, &mut spawner, None)
                     .unwrap();
-                assert!(
-                    game.server.lent_mobs.borrow().is_empty(),
-                    "every lend ended"
-                );
+                assert!(game.lent_mobs.borrow().is_empty(), "every lend ended");
                 let added: Vec<Snap> = game.mobs[mobs..].iter().map(snap).collect();
                 let out = (
                     added,
@@ -2454,10 +2448,7 @@ mod tests {
                 };
                 game.server_tick_trial_spawner(key, &mut spawner, TrialState::Active, false)
                     .unwrap();
-                assert!(
-                    game.server.lent_mobs.borrow().is_empty(),
-                    "every lend ended"
-                );
+                assert!(game.lent_mobs.borrow().is_empty(), "every lend ended");
                 let added: Vec<Snap> = game.mobs[mobs..].iter().map(snap).collect();
                 let out = (
                     added,

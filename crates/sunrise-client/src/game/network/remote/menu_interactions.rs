@@ -680,7 +680,7 @@ impl Game<'_> {
         // container's keyboard focus must not outlive it (a Tab bound to the
         // inventory moves the focus and closes the container in one press).
         self.pad_clear_focus();
-        self.client.recipe_ui.reset_screen();
+        self.recipe_ui.reset_screen();
         if self.mod_screen.take().is_some() {
             self.clear_mod_book_placement_screen();
             self.screen_state.build.reopened();
@@ -795,7 +795,7 @@ impl Game<'_> {
             // the replaced menu's local state, not the screen or pointer grab.
             self.remote_close_local();
         } else {
-            self.client.recipe_ui.reset_screen();
+            self.recipe_ui.reset_screen();
         }
         if menu == "minecraft:lectern" {
             // LecternScreen: the book and page come in the menu's content and data.

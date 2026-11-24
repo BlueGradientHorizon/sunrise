@@ -2259,7 +2259,7 @@ impl Game<'_> {
     /// happens where no world is open to players, and nothing for a server
     /// whose mods never call it. API @API:refresh_commands@.
     pub(super) fn native_refresh_commands(&mut self) {
-        self.server.native_commands.refresh = true;
+        self.native_commands.refresh = true;
     }
 
     /// Asks the mods what root commands each player's tree keeps
@@ -2369,8 +2369,7 @@ impl Game<'_> {
             .executor
             .filter(|&key| self.ui.dispatcher.0.owns_executor(key))
             .and_then(|key| {
-                self.server
-                    .native_commands
+                self.native_commands
                     .registered
                     .as_ref()?
                     .executors
@@ -2543,7 +2542,7 @@ impl Game<'_> {
         quiet: bool,
     ) -> Option<bool> {
         let host = self.lan.as_ref()?;
-        if self.server.native_commands.level(line)? > permission {
+        if self.native_commands.level(line)? > permission {
             return None;
         }
         host.hub.guest(conn)?;
@@ -2564,7 +2563,7 @@ impl Game<'_> {
     /// usage is always allowed; a command no mod takes answers as vanilla's
     /// unknown command.
     pub(super) fn perform_native_console_command(&mut self, line: &str) -> bool {
-        if self.lan.is_none() || self.server.native_commands.level(line).is_none() {
+        if self.lan.is_none() || self.native_commands.level(line).is_none() {
             return false;
         }
         self.as_console_in_spawn_level(|game| {
@@ -4176,8 +4175,7 @@ mod tests {
                             changed.store(true, Ordering::Relaxed);
                             game.register_native_commands();
                             assert_eq!(registrations.load(Ordering::Relaxed), 1);
-                            let registered =
-                                game.server.native_commands.registered.as_ref().unwrap();
+                            let registered = game.native_commands.registered.as_ref().unwrap();
                             assert!(registered.levels.contains_key("before"));
                             mod_api::Commands::refresh_commands(game);
                             mod_api::Commands::refresh_commands(game);
@@ -4187,7 +4185,7 @@ mod tests {
                                 "requests are deferred"
                             );
                             game.register_native_commands();
-                            assert!(!game.server.native_commands.refresh);
+                            assert!(!game.native_commands.refresh);
                             assert_eq!(
                                 registrations.load(Ordering::Relaxed),
                                 2,
@@ -4217,7 +4215,7 @@ mod tests {
                                 [Some("refresh"), Some("replacement")]
                             );
                             assert!(mod_api::__private::set_mod_enabled("replacement", true));
-                            let commands = game.server.native_commands.registered.as_ref().unwrap();
+                            let commands = game.native_commands.registered.as_ref().unwrap();
                             assert!(!commands.levels.contains_key("before"));
                             assert!(commands.levels.contains_key("after"));
                             let dispatcher = &game.ui.dispatcher.0;
@@ -4244,7 +4242,7 @@ mod tests {
                             mod_api::Commands::refresh_commands(game);
                             game.register_native_commands();
                             assert_eq!(registrations.load(Ordering::Relaxed), 3);
-                            assert!(game.server.native_commands.level("after").is_some());
+                            assert!(game.native_commands.level("after").is_some());
                             changed.store(false, Ordering::Relaxed);
                             game.reload_datapacks(false, &game.level.enabled_features.clone())
                                 .unwrap();
@@ -4609,8 +4607,7 @@ mod tests {
                                 parameters: vec![],
                             };
                             game.ensure_datapacks();
-                            game.server
-                                .fns
+                            game.fns
                                 .store
                                 .functions
                                 .insert(function.id.clone(), function.clone());

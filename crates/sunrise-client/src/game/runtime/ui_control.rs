@@ -139,8 +139,8 @@ impl Game<'_> {
         if !matches!(words[0], "ui" | "click" | "set") && !first_frame {
             return Ok(Handled::No);
         }
-        if self.client.ui_wait.stale() {
-            self.client.ui_wait.waiting.push(Request {
+        if self.ui_wait.stale() {
+            self.ui_wait.waiting.push(Request {
                 line: line.to_owned(),
                 reply: reply.clone(),
             });
@@ -189,7 +189,7 @@ impl Game<'_> {
                     };
                     self.synth_click(event_loop, x, y, button)?;
                 }
-                self.client.ui_wait.clicked();
+                self.ui_wait.clicked();
                 Ok(Handled::Reply(
                     json!({ "ok": true, "clicked": node.id, "screen": self.screen_label() }),
                 ))
@@ -216,7 +216,7 @@ impl Game<'_> {
                 let x = track[0] + value.clamp(0.0, 1.0) * track[1];
                 let y = node.rect[1] + node.rect[3] / 2.0;
                 self.synth_click(event_loop, x, y, MouseButton::Left)?;
-                self.client.ui_wait.clicked();
+                self.ui_wait.clicked();
                 Ok(Handled::Reply(
                     json!({ "ok": true, "set": node.id, "screen": self.screen_label() }),
                 ))

@@ -23,7 +23,7 @@ fn editor(
     action: Action,
     breeding: bool,
 ) -> Children {
-    assert!(Rc::ptr_eq(arena, &game.server.lent_mobs.borrow().pending));
+    assert!(Rc::ptr_eq(arena, &game.lent_mobs.borrow().pending));
     Children::new(game, action, breeding)
 }
 
@@ -54,7 +54,7 @@ impl sunrise_client::mobs::goals::Goal for NeverClone {
 #[ignore = "daily"]
 fn edit_remove_append_uses_the_actual_mob_and_expires_metadata_borrows() {
     with_game(|game| {
-        let arena = game.server.lent_mobs.borrow().pending.clone();
+        let arena = game.lent_mobs.borrow().pending.clone();
         let before = (
             game.mobs.len(),
             game.persist.uuids.len(),
@@ -126,7 +126,7 @@ fn edit_remove_append_uses_the_actual_mob_and_expires_metadata_borrows() {
                 assert_eq!(game.unspawned_mob_tags(a).unwrap(), ["test:kept"]);
                 retained = Some(a);
                 assert!(
-                    game.server.lent_mobs.borrow().is_empty(),
+                    game.lent_mobs.borrow().is_empty(),
                     "no second lend or stand-in Mob"
                 );
                 assert_eq!(
@@ -186,7 +186,7 @@ fn edit_remove_append_uses_the_actual_mob_and_expires_metadata_borrows() {
 #[ignore = "daily"]
 fn invalid_input_and_second_baby_refuse_before_changing_the_collection() {
     with_game(|game| {
-        let arena = game.server.lent_mobs.borrow().pending.clone();
+        let arena = game.lent_mobs.borrow().pending.clone();
         let mut frozen = PendingChildren::run_scoped(
             &arena,
             game.lend_epoch().get(),
@@ -305,7 +305,7 @@ fn collection_editor_can_share_a_callback_with_mutable_server_host() {
         assert_eq!(a.position(host), Ok([9.25, 65.0, 4.5]));
     }
     with_game(|game| {
-        let arena = game.server.lent_mobs.borrow().pending.clone();
+        let arena = game.lent_mobs.borrow().pending.clone();
         let mut frozen = PendingChildren::run_scoped(
             &arena,
             game.lend_epoch().get(),
@@ -343,7 +343,7 @@ fn collection_editor_can_share_a_callback_with_mutable_server_host() {
 #[ignore = "daily"]
 fn pending_reentrancy_expires_standalone_kind_and_position_metadata() {
     with_game(|game| {
-        let arena = game.server.lent_mobs.borrow().pending.clone();
+        let arena = game.lent_mobs.borrow().pending.clone();
         game.lend_unspawned("minecraft:cow", [8.5, 64.0, 8.5], None, |outer, _| {
             assert!(game.unspawned_mob_kind(outer).is_ok());
             let mut frozen = PendingChildren::run_scoped(
@@ -385,7 +385,7 @@ fn pending_reentrancy_expires_standalone_kind_and_position_metadata() {
 #[ignore = "daily"]
 fn final_invalid_child_suppresses_the_entire_frozen_output() {
     with_game(|game| {
-        let arena = game.server.lent_mobs.borrow().pending.clone();
+        let arena = game.lent_mobs.borrow().pending.clone();
         let resident = game.mobs.len();
         // Model invalidity discovered after an accepted operation. No child may enter an
         // insertion consumer when a final object violates the action policy.

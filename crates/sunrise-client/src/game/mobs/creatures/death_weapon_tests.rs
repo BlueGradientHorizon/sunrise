@@ -93,7 +93,7 @@ fn weapon_case(item: &str, enchantment: &str, level: u32, projectile: bool, swap
             game.res.item_defaults(),
         )
         .unwrap();
-        game.server.server_loot.set(Some(Arc::new(loot)));
+        game.server_loot.set(Some(Arc::new(loot)));
         let ty = game
             .res
             .mob_types()
@@ -254,7 +254,7 @@ fn death_weapon_e_fall_has_no_weapon() {
             game.res.item_defaults(),
         )
         .unwrap();
-        game.server.server_loot.set(Some(Arc::new(loot)));
+        game.server_loot.set(Some(Arc::new(loot)));
         let seen = Arc::new(Mutex::new(0));
         let mods = vec![mod_api::ModEntry::new(
             "fall_weapon_probe",
@@ -291,7 +291,7 @@ fn a_player_credited_death_drops_experience_without_a_loot_snapshot() {
     crate::game::native_entity_refs::tests::with_game(|game| {
         game.build_registries();
         game.server.next_entity = 1000;
-        game.server.server_loot.set(None);
+        game.server_loot.set(None);
         game.orbs.clear();
         let pos = [2.0, 64.0, 0.0];
         let mut mob = Mob::new(

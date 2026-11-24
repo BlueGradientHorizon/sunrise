@@ -259,7 +259,7 @@ impl Game<'_> {
             if self.client.tutorial.open_inventory() {
                 self.persist_tutorial_step();
             }
-            self.client.recipe_ui.reset_screen();
+            self.recipe_ui.reset_screen();
             self.craft_size = 2;
             self.open_player_inventory();
         }

@@ -101,7 +101,7 @@ fn with_debug_renderers(test: impl FnOnce(&mut Game<'_>, &Mutex<Fixture>)) {
             {
                 Game::native_register_debug_entries(&RegistrationContext::new(), &mut entries);
             }
-            game.client.registered_debug_entries = debug_entries::collect_registrations(entries);
+            game.registered_debug_entries = debug_entries::collect_registrations(entries);
             // Status changes stay out of debug-profile.json.
             game.client.debug_entries = DebugEntries::default();
             test(game, &fixture);
@@ -147,7 +147,7 @@ fn push(fixture: &Mutex<Fixture>, ids: &[&'static str]) {
 fn the_renderer_list_refreshes_with_the_selection_and_leaves_nothing_behind() {
     with_debug_renderers(|game, fixture| {
         push(fixture, &[SHOWN, OTHER, UNDECLARED]);
-        let toggles: Vec<_> = rows(&game.client.registered_debug_entries, "marker:")
+        let toggles: Vec<_> = rows(&game.registered_debug_entries, "marker:")
             .into_iter()
             .filter_map(|row| match row {
                 Row::Option(entry) if entry.category == Category::Renderer => Some(entry.path),

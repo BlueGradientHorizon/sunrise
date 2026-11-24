@@ -56,7 +56,7 @@ impl Game<'_> {
         }
         let states = EntryStates {
             selection: &self.client.debug_entries,
-            entries: &self.client.registered_debug_entries,
+            entries: &self.registered_debug_entries,
             overlay: self.client.debug,
             reduced: self.reduced_debug_info(),
         };

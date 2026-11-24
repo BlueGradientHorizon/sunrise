@@ -3121,12 +3121,12 @@ mod enchantment_snapshot_tests {
         game.server.world_root = dir;
         let stack = game.reload_datapacks(false, &[]).unwrap();
         let root = game.options.resources.clone();
-        game.server.world_tables = game
+        game.world_tables = game
             .stage_world_tables(&stack, false, &root)
             .unwrap()
             .tables;
         assert!(
-            game.server.world_tables.is_some(),
+            game.world_tables.is_some(),
             "the real active table container must be available"
         );
         let base = game.stations().enchantments.clone();
@@ -3141,14 +3141,9 @@ mod enchantment_snapshot_tests {
                 .unwrap()
                 .unwrap(),
         );
-        game.server
-            .world_tables
-            .as_mut()
-            .unwrap()
-            .stations
-            .enchantments = synced.clone();
-        std::sync::Arc::make_mut(&mut game.server.world_tables.as_mut().unwrap().items)
-            .enchantments = synced;
+        game.world_tables.as_mut().unwrap().stations.enchantments = synced.clone();
+        std::sync::Arc::make_mut(&mut game.world_tables.as_mut().unwrap().items).enchantments =
+            synced;
         assert!(
             game.active_enchantment_definitions()
                 .get("h024:audit")
@@ -3191,14 +3186,9 @@ mod enchantment_snapshot_tests {
             assert_eq!(reg.ids("minecraft:item"), item_ids);
             assert_eq!(reg.effects, effects);
         }
-        game.server
-            .world_tables
-            .as_mut()
-            .unwrap()
-            .stations
-            .enchantments = base.clone();
-        std::sync::Arc::make_mut(&mut game.server.world_tables.as_mut().unwrap().items)
-            .enchantments = base;
+        game.world_tables.as_mut().unwrap().stations.enchantments = base.clone();
+        std::sync::Arc::make_mut(&mut game.world_tables.as_mut().unwrap().items).enchantments =
+            base;
         assert!(
             game.active_enchantment_definitions()
                 .get("h024:audit")
@@ -3287,7 +3277,7 @@ mod damage_type_registry_tests {
         game.server.world_root = dir;
         let stack = game.reload_datapacks(false, &[]).unwrap();
         let staged = game.stage_world_tables(&stack, false, &root).unwrap();
-        game.server.world_tables = staged.tables;
+        game.world_tables = staged.tables;
         game.health_resources = staged.health;
         game.level.allow_commands = Some(true);
         game.build_registries();

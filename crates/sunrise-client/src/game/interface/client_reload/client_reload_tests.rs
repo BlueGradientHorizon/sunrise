@@ -609,7 +609,7 @@ fn initial_load_stages_and_applies_client_reload_listeners() {
                         game.pack.render.model(&id("startup_anchor:stone")),
                         Err(mod_api::ModelError::UnknownModel)
                     );
-                    let pending = game.client.pending_initial_models.take().unwrap();
+                    let pending = game.pending_initial_models.take().unwrap();
                     let candidate = pending.models.pack.render.generation;
                     let renderer = if refusal == Some("renderer") {
                         Err("renderer validation refused".into())

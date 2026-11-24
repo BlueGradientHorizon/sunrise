@@ -129,7 +129,7 @@ impl Game<'_> {
                 ("z", Tag::Int(pos[2])),
             ])
         });
-        let loot = self.server.server_loot.get();
+        let loot = self.server_loot.get();
         unpack_loot(
             &mut tag,
             loot.as_deref(),

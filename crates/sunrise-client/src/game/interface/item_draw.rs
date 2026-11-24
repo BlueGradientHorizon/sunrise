@@ -919,20 +919,15 @@ impl Game<'_> {
         out: &mut Vec<Vertex>,
     ) {
         // ItemPickupParticle: the render state extracted at partial tick 1.
-        let taken = self
-            .client
-            .pickups
-            .live
-            .iter()
-            .filter_map(|p| match &p.taken {
-                super::pickups::Taken::Item(item) => Some(ItemEntityDraw {
-                    item,
-                    at: super::pickups::position(p, alpha),
-                    partial: 1.0,
-                    entity: false,
-                }),
-                _ => None,
-            });
+        let taken = self.pickups.live.iter().filter_map(|p| match &p.taken {
+            super::pickups::Taken::Item(item) => Some(ItemEntityDraw {
+                item,
+                at: super::pickups::position(p, alpha),
+                partial: 1.0,
+                entity: false,
+            }),
+            _ => None,
+        });
         self.item_entity_geometry(camera, taken, out);
     }
 

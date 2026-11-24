@@ -87,7 +87,7 @@ fn caster(game: &mut Game<'_>) {
         game.res.item_defaults(),
     )
     .unwrap();
-    game.server.server_loot.set(Some(Arc::new(loot)));
+    game.server_loot.set(Some(Arc::new(loot)));
 }
 /// Cast a bobber at (5.5, 66, 0.5), over the air, and tick it `ticks` times: its id.
 fn cast(game: &mut Game<'_>, ticks: usize) -> u32 {

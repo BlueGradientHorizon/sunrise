@@ -574,31 +574,31 @@ fn registered_data_commands_respect_flags_required_packs_and_default_priority() 
                 let disable = format!("datapack disable \"{}\"", fixture.data_id());
                 if feature {
                     assert!(!game.run_command(&enable));
-                    assert!(!game.server.fns.enabled().contains(&fixture.data_id()));
+                    assert!(!game.fns.enabled().contains(&fixture.data_id()));
                     let flags = vec![
                         "minecraft:vanilla".into(),
                         "minecraft:trade_rebalance".into(),
                     ];
                     game.level.enabled_features = flags.clone().into();
                     game.reload_datapacks(false, &flags).unwrap();
-                    assert!(game.server.fns.enabled().contains(&fixture.data_id()));
+                    assert!(game.fns.enabled().contains(&fixture.data_id()));
                     assert!(!game.run_command(&disable));
-                    assert!(game.server.fns.enabled().contains(&fixture.data_id()));
+                    assert!(game.fns.enabled().contains(&fixture.data_id()));
                 } else if required {
-                    assert!(game.server.fns.enabled().contains(&fixture.data_id()));
+                    assert!(game.fns.enabled().contains(&fixture.data_id()));
                     assert!(!game.run_command(&disable));
-                    assert!(game.server.fns.enabled().contains(&fixture.data_id()));
+                    assert!(game.fns.enabled().contains(&fixture.data_id()));
                 } else {
-                    assert!(!game.server.fns.enabled().contains(&fixture.data_id()));
+                    assert!(!game.fns.enabled().contains(&fixture.data_id()));
                     assert!(game.run_command(&enable));
                     assert_eq!(
-                        game.server.fns.store.functions["packmod:probe"].lines,
+                        game.fns.store.functions["packmod:probe"].lines,
                         [FunctionLine::Command("say from-user".into())]
                     );
                     assert!(game.run_command(&disable));
                     assert!(game.run_command(&format!("{enable} last")));
                     assert_eq!(
-                        game.server.fns.store.functions["packmod:probe"].lines,
+                        game.fns.store.functions["packmod:probe"].lines,
                         [FunctionLine::Command("say from-optional".into())]
                     );
                 }

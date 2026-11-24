@@ -51,8 +51,8 @@ pub(super) fn pending_key(
     mob: UnspawnedMobRef,
 ) -> Result<Option<Borrow>, UnspawnedMobError> {
     sync_listener(
-        &game.server.lent_mobs.borrow().pending,
-        &game.server.lent_mobs.borrow().hook,
+        &game.lent_mobs.borrow().pending,
+        &game.lent_mobs.borrow().hook,
     );
     if game.native_lifecycle.epoch() != Some(mob.epoch()) {
         return Err(UnspawnedMobError::Expired);
@@ -87,12 +87,12 @@ impl Children {
         game.expire_standalone_lends();
         Self {
             resources: game.res.clone(),
-            arena: game.server.lent_mobs.borrow().pending.clone(),
+            arena: game.lent_mobs.borrow().pending.clone(),
             action,
             epoch: game.lend_epoch(),
             dimension: game.dim,
             breeding,
-            hook: game.server.lent_mobs.borrow().hook.clone(),
+            hook: game.lent_mobs.borrow().hook.clone(),
         }
     }
 

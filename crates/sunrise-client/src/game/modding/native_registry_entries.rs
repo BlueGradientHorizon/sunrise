@@ -76,9 +76,9 @@ impl Game<'_> {
             }
             "minecraft:advancement" => LocalRegistry::Advancements(&self.adv.tree),
             "minecraft:game_rule" => LocalRegistry::Rules(&self.level.rule_registry),
-            "minecraft:predicate" => LocalRegistry::Json(&self.server.fns.store.predicates),
-            "minecraft:item_modifier" => LocalRegistry::Json(&self.server.fns.store.item_modifiers),
-            "minecraft:slot_source" => LocalRegistry::Json(&self.server.fns.store.slot_sources),
+            "minecraft:predicate" => LocalRegistry::Json(&self.fns.store.predicates),
+            "minecraft:item_modifier" => LocalRegistry::Json(&self.fns.store.item_modifiers),
+            "minecraft:slot_source" => LocalRegistry::Json(&self.fns.store.slot_sources),
             "minecraft:loot_table" => LocalRegistry::Loot(self.items()),
             "minecraft:recipe" => LocalRegistry::Recipes(self.recipes()),
             "minecraft:trade_set" => LocalRegistry::HashJson(&self.stations().trades.sets),
@@ -281,8 +281,7 @@ impl Game<'_> {
         }
         if registry == "minecraft:slot_source" {
             return Some(
-                self.server
-                    .fns
+                self.fns
                     .store
                     .slot_source_tag(&tag)
                     .is_ok_and(|members| members.iter().any(|member| member == &id)),
@@ -324,7 +323,7 @@ impl Game<'_> {
         {
             return Some(found);
         }
-        if let Some(tables) = &self.server.world_tables
+        if let Some(tables) = &self.world_tables
             && let Some(kind) = registry.strip_prefix("minecraft:")
             && let Some(tags) = tables.pack_tags.get(kind)
         {

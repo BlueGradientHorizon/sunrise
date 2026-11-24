@@ -2229,7 +2229,7 @@ impl sunrise_client::interaction_input::InteractionWorld for RemoteInputWorld<'_
         self.0.release_tick_targets();
     }
     fn using_item(&self) -> bool {
-        self.0.client.client_item_use.is_some() || self.0.using.is_some()
+        self.0.client_item_use.is_some() || self.0.using.is_some()
     }
     fn release_using(&mut self) {
         if !self.0.end_client_item_use(true) && self.0.using.is_some() {

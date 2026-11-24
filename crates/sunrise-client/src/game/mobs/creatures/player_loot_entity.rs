@@ -10,7 +10,6 @@ impl Game<'_> {
         guest: Option<u32>,
     ) -> sunrise_world::loot::LootEntity {
         let capture_nbt = self
-            .server
             .server_loot
             .get()
             .is_some_and(|data| data.copies_entity_nbt());

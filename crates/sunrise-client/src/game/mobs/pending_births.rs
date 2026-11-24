@@ -116,7 +116,7 @@ impl Game<'_> {
             })
             .collect();
         let (arena, hook_cell) = {
-            let lent = self.server.lent_mobs.borrow();
+            let lent = self.lent_mobs.borrow();
             (lent.pending.clone(), lent.hook.clone())
         };
         let run = catch_unwind(AssertUnwindSafe(|| {

@@ -68,7 +68,7 @@ impl Game<'_> {
             slot,
             leggings,
             baby,
-            &self.client.armor_stand_assets.equipment,
+            &self.armor_stand_assets.equipment,
             overlay,
         )
     }
@@ -222,8 +222,7 @@ impl Game<'_> {
         let cit = stack.and_then(|s| self.cit_worn_rule(sunrise_optifine::cit::Kind::Armor, s));
         let trim = stack
             .and_then(|s| {
-                self.client
-                    .armor_stand_assets
+                self.armor_stand_assets
                     .trim_texture(&piece.asset, piece.kind, s)
             })
             .and_then(|t| bind(&t.sprite()));

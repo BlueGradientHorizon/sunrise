@@ -32,7 +32,7 @@ impl Game<'_> {
             }
             self.renderer = Some(renderer);
         }
-        self.client.stitching_block_atlas = Some(atlas.clone());
+        self.stitching_block_atlas = Some(atlas.clone());
         self.native_texture_atlas_stitched(mod_api::TextureAtlas::Blocks);
         self.gui = gui;
         let (pool, mut names) = self.gui.atlas.dynamic_names();
@@ -43,7 +43,7 @@ impl Game<'_> {
     }
 
     pub(super) fn install_model_upload(&mut self, prepared: Option<PreparedModels>) {
-        self.client.stitching_block_atlas = None;
+        self.stitching_block_atlas = None;
         if let Some(renderer) = &mut self.renderer {
             renderer.publish_prepared_models(prepared);
         }
@@ -68,7 +68,7 @@ impl Game<'_> {
             let context = game.worker_context();
             game.streaming.reload_resources(&mut game.world, context);
             game.install_model_upload(upload);
-            game.client.armor_stand_assets.extensions = item_extensions;
+            game.armor_stand_assets.extensions = item_extensions;
             game.resolve_entity_renderers();
             game.native_model_baking_completed();
         });

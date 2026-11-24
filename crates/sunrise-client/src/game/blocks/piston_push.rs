@@ -1567,7 +1567,7 @@ impl Game<'_> {
                 if let Some(hit) = paused_hurt
                     && let Some(index) = self.mob_index.find(&self.mobs, hit.victim)
                 {
-                    self.server.paused_mob_hurt = Some(hit);
+                    self.paused_mob_hurt = Some(hit);
                     self.finish_mob_damage_at(index);
                 }
             }

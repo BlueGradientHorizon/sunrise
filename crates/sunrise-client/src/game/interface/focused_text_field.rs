@@ -67,7 +67,7 @@ impl Game<'_> {
                 let screen = if self.client.screen == Screen::Chat {
                     self.ui.chat_screen.as_mut()?
                 } else {
-                    &mut self.client.command_block_screen.as_mut()?.command
+                    &mut self.command_block_screen.as_mut()?.command
                 };
                 if let Some(edited) = edited {
                     screen.edit_input(&measure, &commands, |field| {
@@ -101,7 +101,7 @@ impl Game<'_> {
                 Some(state)
             }
             Screen::Inventory if self.recipe_search_focused() => {
-                Some(visit_box(self.client.recipe_ui.search.as_mut()?, edited))
+                Some(visit_box(self.recipe_ui.search.as_mut()?, edited))
             }
             Screen::Inventory if self.station_typing() => {
                 let state = visit_box(&mut self.station.as_mut()?.rename, edited);

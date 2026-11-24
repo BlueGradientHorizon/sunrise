@@ -42,7 +42,7 @@ impl Game<'_> {
         let stateful = self.world.block_entities.stateful_entities();
         let registry = self.pack.assets.registry;
         // (the tags as `block_matches` reads them for commands)
-        let world_items = match &self.server.world_tables {
+        let world_items = match &self.world_tables {
             Some(t) => &t.items,
             None => self.res.items(),
         };

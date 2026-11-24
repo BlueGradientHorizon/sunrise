@@ -62,7 +62,7 @@ impl Game<'_> {
             return;
         };
         let integrated = host.hub.config.integrated;
-        if let Some(level) = self.server.native_commands.level(command)
+        if let Some(level) = self.native_commands.level(command)
             && let Some(permission) = host.hub.guest(conn).map(|g| g.permission)
             && permission >= level
         {

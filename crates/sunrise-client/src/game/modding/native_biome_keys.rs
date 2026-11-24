@@ -17,8 +17,7 @@ impl Game<'_> {
     pub(in crate::game) fn biome_key_snapshot(
         &self,
     ) -> std::sync::Arc<mod_api::__private::BiomeKeys> {
-        self.server
-            .world_tables
+        self.world_tables
             .as_ref()
             .map(|tables| tables.data_maps.biome_keys.clone())
             .unwrap_or_default()

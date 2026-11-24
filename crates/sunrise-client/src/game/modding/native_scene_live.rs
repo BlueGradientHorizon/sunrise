@@ -247,7 +247,6 @@ impl Game<'_> {
         }
         let owner = mod_api::content::crash::current_native_mod().unwrap_or("");
         let mut scenes = self
-            .client
             .live_scenes
             .try_borrow_mut()
             .map_err(|_| SceneError::Unavailable)?;
@@ -524,7 +523,7 @@ fn entity_quads(verts: &[Vertex], quads: &mut Vec<SceneQuad>) {
 impl Game<'_> {
     /// The live particles of the mod's scene `id`: positions, previous positions and ages.
     pub(super) fn scene_particles(&self, owner: &str, id: u32) -> Vec<([f64; 3], [f64; 3], i32)> {
-        let scenes = self.client.live_scenes.borrow();
+        let scenes = self.live_scenes.borrow();
         scenes
             .live
             .iter()
@@ -539,7 +538,7 @@ impl Game<'_> {
     }
     /// The tick the mod's scene `id` last ran, when it is kept.
     pub(super) fn scene_tick(&self, owner: &str, id: u32) -> Option<u64> {
-        let scenes = self.client.live_scenes.borrow();
+        let scenes = self.live_scenes.borrow();
         scenes
             .live
             .iter()

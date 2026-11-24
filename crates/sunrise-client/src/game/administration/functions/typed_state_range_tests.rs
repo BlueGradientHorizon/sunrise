@@ -20,20 +20,14 @@ mod typed_state_range_read_tests {
         game.build_registries();
         game.set_allow_commands(true);
         assert!(game.run_command("reload"));
+        assert!(game.fns.enabled.contains(&"file/typed_ranges".to_owned()));
         assert!(
-            game.server
-                .fns
-                .enabled
-                .contains(&"file/typed_ranges".to_owned())
-        );
-        assert!(
-            game.server.fns.store.errors.is_empty(),
+            game.fns.store.errors.is_empty(),
             "{:?}",
-            game.server.fns.store.errors
+            game.fns.store.errors
         );
         assert_eq!(
-            game.server
-                .fns
+            game.fns
                 .store
                 .predicates
                 .keys()
@@ -46,11 +40,7 @@ mod typed_state_range_read_tests {
             let id = format!("ranges:{}", path.file_stem().unwrap().to_str().unwrap());
             let expected: serde_json::Value =
                 serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
-            assert_eq!(
-                game.server.fns.store.predicates.get(&id),
-                Some(&expected),
-                "{id}"
-            );
+            assert_eq!(game.fns.store.predicates.get(&id), Some(&expected), "{id}");
         }
         // The helper's empty resident column has not passed server loading.
         // Use actual streaming and forced-ticket paths, never a lit/status override.
@@ -179,20 +169,14 @@ mod typed_state_range_read_tests {
         game.build_registries();
         game.set_allow_commands(true);
         assert!(game.run_command("reload"));
+        assert!(game.fns.enabled.contains(&"file/typed_ranges".to_owned()));
         assert!(
-            game.server
-                .fns
-                .enabled
-                .contains(&"file/typed_ranges".to_owned())
-        );
-        assert!(
-            game.server.fns.store.errors.is_empty(),
+            game.fns.store.errors.is_empty(),
             "{:?}",
-            game.server.fns.store.errors
+            game.fns.store.errors
         );
         assert_eq!(
-            game.server
-                .fns
+            game.fns
                 .store
                 .predicates
                 .keys()
@@ -205,11 +189,7 @@ mod typed_state_range_read_tests {
             let id = format!("ranges:{}", path.file_stem().unwrap().to_str().unwrap());
             let expected: serde_json::Value =
                 serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
-            assert_eq!(
-                game.server.fns.store.predicates.get(&id),
-                Some(&expected),
-                "{id}"
-            );
+            assert_eq!(game.fns.store.predicates.get(&id), Some(&expected), "{id}");
         }
         // The helper's empty resident column has not passed server loading.
         // Use actual streaming and forced-ticket paths, never a lit/status override.
@@ -259,8 +239,7 @@ mod typed_state_range_read_tests {
         }
         assert!(game.run_command("reload"));
         assert_eq!(
-            game.server
-                .fns
+            game.fns
                 .store
                 .predicates
                 .keys()

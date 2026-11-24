@@ -32,10 +32,7 @@ impl super::super::Game<'_> {
     pub(in crate::game) fn stack_boundary_items(&self) -> Option<ItemSnapshot> {
         Some(ItemSnapshot::capture(
             self.server_items.as_ref(),
-            self.server
-                .world_tables
-                .as_ref()
-                .map(|tables| &tables.items),
+            self.world_tables.as_ref().map(|tables| &tables.items),
             || ItemSnapshot::Resources(Arc::clone(&self.res)),
         ))
     }

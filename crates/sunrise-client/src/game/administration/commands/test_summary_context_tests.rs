@@ -113,7 +113,6 @@ fn added_issuer_actor_missing_guest_and_restoration_controls() {
         conn: 2, command: "execute as 00000000-0000-0000-0000-000000000063 store result score result context store success score success context run test run minecraft:always_pass".into(),
         permission: 2, integrated: false, quiet: false }));
     let context = game
-        .server
         .game_tests
         .runner
         .as_ref()
@@ -148,8 +147,7 @@ fn added_issuer_actor_missing_guest_and_restoration_controls() {
         })
     );
     assert_eq!(
-        game.server
-            .game_tests
+        game.game_tests
             .runner
             .as_ref()
             .unwrap()
@@ -207,8 +205,7 @@ fn added_issuer_actor_missing_guest_and_restoration_controls() {
         .guests
         .retain(|g| g.conn != 2);
     game.test_source_output(context, marker, true);
-    game.server
-        .game_tests
+    game.game_tests
         .outbox
         .push(Out::Coordinates(context, vec![Dim::Overworld]));
     game.flush_game_test_output();
@@ -251,8 +248,7 @@ fn added_issuer_actor_missing_guest_and_restoration_controls() {
     );
     game.track_and_start_runner(vec![info], false, None, false);
     assert!(
-        game.server
-            .game_tests
+        game.game_tests
             .runner
             .as_ref()
             .unwrap()

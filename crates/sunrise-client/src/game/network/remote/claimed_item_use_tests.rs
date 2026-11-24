@@ -175,7 +175,7 @@ fn interception_does_not_send_item_use_or_release_packets() {
             game.queue_mapping_click(Button::Use.mapping());
             game.queue_mapping_click(Button::Use.mapping());
             game.remote_handle_input();
-            assert!(game.client.client_item_use.is_some());
+            assert!(game.client_item_use.is_some());
             assert!(game.using.is_none());
 
             game.use_delay = 0;
@@ -186,7 +186,7 @@ fn interception_does_not_send_item_use_or_release_packets() {
 
             game.set_mapping_held("key.use", false);
             game.remote_handle_input();
-            assert!(game.client.client_item_use.is_none());
+            assert!(game.client_item_use.is_none());
             assert!(game.using.is_none());
             assert_eq!(
                 calls
@@ -227,13 +227,13 @@ fn owner_gets_release_or_reset_with_live_typed_stack() {
         game.set_mapping_held("key.use", true);
         game.queue_mapping_click(Button::Use.mapping());
         game.remote_handle_input();
-        assert!(game.client.client_item_use.is_some());
+        assert!(game.client_item_use.is_some());
         assert!(game.using.is_none());
     }
     fn key_up(game: &mut Game<'_>) {
         game.set_mapping_held("key.use", false);
         game.remote_handle_input();
-        assert!(game.client.client_item_use.is_none());
+        assert!(game.client_item_use.is_none());
     }
 
     with_owner(|calls| {
@@ -291,7 +291,7 @@ fn owner_gets_release_or_reset_with_live_typed_stack() {
             game.remote_tick_using();
             game.inventory[3] = None;
             game.remote_tick_using();
-            assert!(game.client.client_item_use.is_none());
+            assert!(game.client_item_use.is_none());
             assert_eq!(
                 calls.take(),
                 [
@@ -320,9 +320,9 @@ fn owner_gets_release_or_reset_with_live_typed_stack() {
             // A keybind opening a screen releases mappings and runs release_using then on_stop_using.
             start(game);
             game.queue_mapping_click("key.chat");
-            assert!(game.client.client_item_use.is_some());
+            assert!(game.client_item_use.is_some());
             game.remote_handle_input();
-            assert!(game.client.client_item_use.is_none());
+            assert!(game.client_item_use.is_none());
             game.close_chat(crate::game::chat::ChatExit::Intentional);
             key_up(game);
             assert_eq!(
@@ -344,7 +344,7 @@ fn owner_gets_release_or_reset_with_live_typed_stack() {
             .unwrap();
             game.remote_handle_input();
             assert!(!game.dialog_open());
-            assert!(game.client.client_item_use.is_some());
+            assert!(game.client_item_use.is_some());
             {
                 let registries = Arc::make_mut(&mut game.remote.as_mut().unwrap().registries);
                 let mut notice = std::collections::BTreeMap::new();
@@ -376,7 +376,7 @@ fn owner_gets_release_or_reset_with_live_typed_stack() {
             .unwrap();
             game.remote_handle_input();
             assert!(game.dialog_open());
-            assert!(game.client.client_item_use.is_none());
+            assert!(game.client_item_use.is_none());
             game.close_dialogs();
             key_up(game);
             assert_eq!(
@@ -396,7 +396,7 @@ fn owner_gets_release_or_reset_with_live_typed_stack() {
                 saturation: 5.0,
             }))
             .unwrap();
-            assert!(game.client.client_item_use.is_none());
+            assert!(game.client_item_use.is_none());
             game.reset_client_item_use();
             assert_eq!(
                 calls.take(),

@@ -426,7 +426,7 @@ impl Game<'_> {
                 for (id, negated) in &s.predicates {
                     // EntitySelectorOptions rejects a missing registry entry
                     // before applying the predicate's negation.
-                    let Some(json) = self.server.fns.store.predicates.get(id) else {
+                    let Some(json) = self.fns.store.predicates.get(id) else {
                         ok = false;
                         break;
                     };

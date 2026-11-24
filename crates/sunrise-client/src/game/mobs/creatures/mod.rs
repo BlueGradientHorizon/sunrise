@@ -1785,16 +1785,11 @@ impl Game<'_> {
         let victim = self.mobs.get(index)?;
         let (id, join) = (victim.id, victim.join);
         while self
-            .server
             .paused_mob_hurt
             .as_ref()
             .is_some_and(|hit| hit.victim == id && hit.join == join)
         {
-            let mut paused = *self
-                .server
-                .paused_mob_hurt
-                .take()
-                .expect("matching paused hit");
+            let mut paused = *self.paused_mob_hurt.take().expect("matching paused hit");
             // Nested hits from this callback are independent of the suspended hit.
             self.mobs[index].release_hurt_pause();
             match paused.action {
@@ -2431,7 +2426,7 @@ impl Game<'_> {
     fn drop_gift_loot(&mut self, mob: u32, table: &'static str, at: [f64; 3]) -> bool {
         use sunrise_client::mobs::drops;
         use sunrise_world::loot::EntityLootParams;
-        let loot = self.server.server_loot.get();
+        let loot = self.server_loot.get();
         let this = self
             .mobs
             .iter()
@@ -9101,7 +9096,7 @@ impl Game<'_> {
                 && self.cull_entity_camera_bounds(lo, hi)
                 && let Some((mark, _)) = skinned
             {
-                if self.client.occlusion.shadow_casters.0 {
+                if self.occlusion.shadow_casters.0 {
                     let mut frame = self.client.skin_frame.borrow_mut();
                     let end = frame.vertices as usize;
                     sunrise_client::gfx::pack_draw::EntitySpan::hide(
@@ -9158,14 +9153,13 @@ impl Game<'_> {
         // keep the existing exact mesh-culling path.
         let precheck = self.settings.sunrise.entity_culling == EntityCullingMode::Asynchronous
             && self
-                .client
                 .occlusion
                 .async_culler
                 .as_ref()
                 .is_some_and(|culler| culler.camera_is_stationary())
             && self.settings.sunrise.entity_culling_precheck != 0
             && self.mobs.len() >= self.settings.sunrise.entity_culling_precheck as usize
-            && !self.client.occlusion.shadow_casters.0
+            && !self.occlusion.shadow_casters.0
             && mod_api::__private::mods().is_empty();
         self.client.rendered_mobs.set(0);
         // What custom entity model animations read of the frame.
@@ -9269,15 +9263,10 @@ impl Game<'_> {
         out: &mut Vec<Vertex>,
     ) {
         // ItemPickupParticle: a picked-up arrow flying to its collector.
-        let taken = self
-            .client
-            .pickups
-            .live
-            .iter()
-            .filter_map(|p| match &p.taken {
-                super::pickups::Taken::Arrow(a) => Some((&**a, super::pickups::position(p, alpha))),
-                _ => None,
-            });
+        let taken = self.pickups.live.iter().filter_map(|p| match &p.taken {
+            super::pickups::Taken::Arrow(a) => Some((&**a, super::pickups::position(p, alpha))),
+            _ => None,
+        });
         self.projectile_geometry(camera, alpha, taken, out);
     }
 

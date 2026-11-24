@@ -115,7 +115,7 @@ impl Game<'_> {
         let holders = self
             .creative_holders()
             .ok_or(CreativeTabReadError::Unavailable)?;
-        let items = match (&self.server_items, &self.server.world_tables) {
+        let items = match (&self.server_items, &self.world_tables) {
             (Some(items), _) => Arc::clone(items),
             (_, Some(tables)) => Arc::clone(&tables.items),
             _ => self.res.shared_items(),

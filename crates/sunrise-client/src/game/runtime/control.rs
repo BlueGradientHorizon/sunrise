@@ -112,7 +112,7 @@ impl Game<'_> {
         block_entity_work: [u64; 2],
         spans: &[sunrise_client::spans::Span],
     ) {
-        if let Some(flight) = self.client.flight.as_mut().filter(|flight| flight.raw) {
+        if let Some(flight) = self.flight.as_mut().filter(|flight| flight.raw) {
             let visited = self.world.block_entities.take_column_unload_entries();
             let [sorted, merged] = std::mem::take(&mut flight.upload_queue_work);
             let mesh_uploads = std::mem::take(&mut flight.mesh_uploads);
@@ -137,7 +137,7 @@ impl Game<'_> {
             .map_or(self.client.debug_charts.smoothed_tick_ms, |s| {
                 s.smoothed_tick_ms()
             });
-        let Some(flight) = self.client.flight.as_mut() else {
+        let Some(flight) = self.flight.as_mut() else {
             return;
         };
         flight.tick_ms.push(tick_ms);
@@ -158,7 +158,7 @@ impl Game<'_> {
             self.previous_position = at;
         }
         if t >= 1.0
-            && let Some(flight) = self.client.flight.take()
+            && let Some(flight) = self.flight.take()
         {
             let mut summary = self.client.frame_stats.summary();
             self.add_async_occlusion_stats(&mut summary);
@@ -220,7 +220,7 @@ impl Game<'_> {
     }
 
     fn add_async_occlusion_stats(&self, summary: &mut Value) {
-        if let Some(culler) = &self.client.occlusion.async_culler {
+        if let Some(culler) = &self.occlusion.async_culler {
             summary["async_occlusion_culling"] = culler.stats_value();
         }
     }
@@ -247,7 +247,7 @@ impl Game<'_> {
     }
     fn reset_frame_stats(&mut self) {
         self.client.frame_stats.reset();
-        if let Some(culler) = &self.client.occlusion.async_culler {
+        if let Some(culler) = &self.occlusion.async_culler {
             culler.reset_stats();
         }
     }
@@ -268,7 +268,7 @@ impl Game<'_> {
         self.poll_repro(event_loop);
         self.poll_profile();
         self.advance_agent();
-        for request in self.client.ui_wait.ready() {
+        for request in self.ui_wait.ready() {
             self.answer(request, event_loop);
         }
         while let Some(request) = self.control.as_ref().and_then(|c| c.try_recv()) {
@@ -1303,7 +1303,7 @@ impl Game<'_> {
             }
             "fly" => {
                 self.require_world()?;
-                if self.client.flight.is_some() || self.pending_bench.is_some() {
+                if self.flight.is_some() || self.pending_bench.is_some() {
                     return Err("a benchmark is already running".into());
                 }
                 let n = |i: usize| -> Result<f64> { Ok(arg(i)?.parse()?) };
@@ -1313,7 +1313,7 @@ impl Game<'_> {
                     self.world.block_entities.take_column_unload_entries();
                 }
                 self.reset_frame_stats();
-                self.client.flight = Some(Flight {
+                self.flight = Some(Flight {
                     from: Vec3::new(n(1)?, n(2)?, n(3)?),
                     to: Vec3::new(n(4)?, n(5)?, n(6)?),
                     pitch,
@@ -1674,7 +1674,7 @@ impl Game<'_> {
             "chunks": self.world.chunks.len(),
             "mobs": self.mobs.len(),
             "block_entities": self.world.block_entities.len(),
-            "pending_chunks": self.streaming.pending() + self.client.pending_uploads.len() + self.remote_backlog(),
+            "pending_chunks": self.streaming.pending() + self.pending_uploads.len() + self.remote_backlog(),
             "generated_chunks": self.streaming.generated_total,
             "meshed_sections": self.streaming.meshed_total,
             "streaming": self.streaming.stages().into_iter().map(|(k, v)| (k.to_string(), v.into())).collect::<serde_json::Map<_, _>>(),
@@ -1709,7 +1709,7 @@ impl Game<'_> {
             .map_or((0, 0), |lod| lod.detail_progress());
         status["lod"]["detail_target_columns"] = wanted.into();
         status["lod"]["refined_target_columns"] = refined.into();
-        status["pending_uploads"] = self.client.pending_uploads.len().into();
+        status["pending_uploads"] = self.pending_uploads.len().into();
         status["destroying"] = json!(destroying);
         status["physical_keys"] = json!(physical_keys);
         status["heard"] = json!(self.audio.heard);
@@ -1727,7 +1727,7 @@ impl Game<'_> {
         // The particles made so far, by type.
         status["particles"] = json!(self.particles.made());
         // The pickup particles made so far, by what was taken.
-        status["pickups"] = json!(self.client.pickups.made());
+        status["pickups"] = json!(self.pickups.made());
         // The world border this side knows of.
         status["border"] = json!({ "center": self.border.center(), "size": self.border.size() });
         // The scoreboard sidebar the HUD shows.

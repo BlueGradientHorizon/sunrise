@@ -17,7 +17,7 @@ impl Game<'_> {
     /// Minecraft.startUseItem: use one crosshair target, then the item itself.
     fn remote_use_inner(&mut self, attempt: mod_api::InteractionAttempt) {
         // Another queued press in the same input drain cannot restart a capture.
-        if self.client.client_item_use.is_some() {
+        if self.client_item_use.is_some() {
             return;
         }
         // Minecraft.startUseItem returns before resetting rightClickDelay
@@ -168,7 +168,7 @@ impl Game<'_> {
         // A piercing weapon neither breaks blocks nor swings on its own.
         if self.clicks.miss_time > 0
             || self.using.is_some()
-            || self.client.client_item_use.is_some()
+            || self.client_item_use.is_some()
             || self
                 .held()
                 .is_some_and(|s| sunrise_client::spear::Kinetic::of(&s.item).is_some())

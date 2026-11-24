@@ -136,7 +136,7 @@ fn game<'a>(
         &[],
         &[],
     );
-    game.server.world_tables = game
+    game.world_tables = game
         .stage_world_tables(&stack, false, &root)
         .unwrap()
         .tables;

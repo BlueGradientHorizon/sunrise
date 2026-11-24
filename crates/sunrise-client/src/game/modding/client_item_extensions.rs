@@ -342,7 +342,7 @@ impl Game<'_> {
     ) -> Cow<'static, mod_api::Identifier> {
         use super::api_values::TryIntoApi;
         let default = Cow::Borrowed(&*DEFAULT_TOOLTIP_FONT_ID);
-        let state = &self.client.armor_stand_assets.extensions;
+        let state = &self.armor_stand_assets.extensions;
         if state.items.is_empty() {
             return default;
         }
@@ -377,7 +377,7 @@ impl Game<'_> {
         mut emissive: impl FnMut(&str) -> Option<super::equipment_piece::MaterialBinding<'a>>,
     ) -> Option<Vec<super::equipment_piece::EquipmentMaterial<'a>>> {
         use super::api_values::TryIntoApi;
-        let state = &self.client.armor_stand_assets.extensions;
+        let state = &self.armor_stand_assets.extensions;
         if state.items.is_empty() {
             return None;
         }

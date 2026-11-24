@@ -184,7 +184,7 @@ fn harvest_game<'a>(
         )
         .unwrap(),
     );
-    game.server.server_loot.set(Some(std::sync::Arc::new(
+    game.server_loot.set(Some(std::sync::Arc::new(
         sunrise_world::loot::LootData::load(
             &game.options.resources,
             &Default::default(),

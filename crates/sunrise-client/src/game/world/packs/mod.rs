@@ -605,10 +605,8 @@ impl Game<'_> {
                 game.client.glow_map_frame_model,
             ] = frame_models;
             game.client.waypoint_styles = waypoint_styles;
-            game.client
-                .armor_stand_assets
-                .apply_resources(armor_stand_assets);
-            game.client.armor_stand_assets.extensions = item_extensions;
+            game.armor_stand_assets.apply_resources(armor_stand_assets);
+            game.armor_stand_assets.extensions = item_extensions;
             game.server.random_tick_sections.clear();
             game.portals.sections.clear();
             game.options.resources = root.clone();
@@ -630,7 +628,7 @@ impl Game<'_> {
             // Kept mod block entities name the old atlas's sprites, and their view distances the old
             // registry's states.
             game.client.kept_block_entities.get_mut().clear();
-            game.client.live_scenes.get_mut().clear();
+            game.live_scenes.get_mut().clear();
             game.client.mod_view_distances.take();
             // The atlas's sprites moved: the particle engine re-reads every rect
             // and the packs' sprite sets, or every particle draws a stale region.
@@ -688,7 +686,7 @@ impl Game<'_> {
                 lang::Language::load(&[&game.pack.source], &code)
             });
             // Book search terms and resolved result icons belong to these resources.
-            game.client.recipe_ui.reset_screen();
+            game.recipe_ui.reset_screen();
             game.refresh_remote_language();
             game.audio.reload_with(&game.pack.source, sounds);
             game.clear_lod();
@@ -697,7 +695,7 @@ impl Game<'_> {
             game.streaming.leaf_culling = game.effective_leaf_culling();
             let context = game.worker_context();
             game.streaming.reload_resources(&mut game.world, context);
-            game.client.pending_uploads.clear();
+            game.pending_uploads.clear();
             game.install_model_upload(upload);
             if has_renderer {
                 game.apply_ui_settings();

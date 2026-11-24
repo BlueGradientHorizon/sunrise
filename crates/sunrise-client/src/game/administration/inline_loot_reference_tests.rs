@@ -94,7 +94,7 @@ fn game<'a>(resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>) -
         &[],
         &[],
     );
-    game.server.world_tables = game
+    game.world_tables = game
         .stage_world_tables(&stack, false, &root)
         .unwrap()
         .tables;
@@ -260,7 +260,7 @@ fn pack_functions_admit_inline_references_on_first_open() {
         format!("loot give @s loot {}\n", reference("\"parity:il_one\"")),
     )
     .unwrap();
-    game.server.world_tables = None;
+    game.world_tables = None;
     game.open_world_datapacks(&[]).unwrap();
     assert!(game.run_command("function parity:il_good"));
     assert!(game.run_command("execute store result score d il run clear @s minecraft:diamond"));

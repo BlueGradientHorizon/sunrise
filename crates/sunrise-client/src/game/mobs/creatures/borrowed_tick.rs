@@ -1052,7 +1052,7 @@ impl Game<'_> {
                         && sting.same_target(&self.mobs[i])
                     {
                         if let Some(hit) = paused_hurt.take() {
-                            self.server.paused_mob_hurt = Some(hit);
+                            self.paused_mob_hurt = Some(hit);
                             if let Some((i, hurt)) = self.complete_mob_hurt(i, false) {
                                 sting.resolved_hit(hurt);
                                 self.finish_mob_damage_at(i);
@@ -1108,7 +1108,7 @@ impl Game<'_> {
                                 && self.mobs[i].join == join
                                 && !self.mobs[i].removed
                             {
-                                self.server.paused_mob_hurt = paused_hurt.take();
+                                self.paused_mob_hurt = paused_hurt.take();
                                 self.finish_mob_damage_at(i);
                                 self.settle_creaking_hurt(id);
                             }

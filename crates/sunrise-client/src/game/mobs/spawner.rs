@@ -85,7 +85,7 @@ impl Game<'_> {
     /// Drops the display mobs of spawners and trial spawners that are gone.
     pub(super) fn forget_spawner_displays(&mut self) {
         let entities = &self.world.block_entities;
-        self.client.spawners.displays.retain(|k, _| {
+        self.spawners.displays.retain(|k, _| {
             matches!(
                 entities.get(k),
                 Some(BlockEntity::Spawner(_) | BlockEntity::TrialSpawner(_))
@@ -344,7 +344,7 @@ impl Game<'_> {
         if let Some(BlockEntity::Spawner(s)) = self.world.block_entities.get_mut(&key) {
             s.client_loaded();
         }
-        self.client.spawners.displays.remove(&key);
+        self.spawners.displays.remove(&key);
         if let Some(log) = self.world.block_log.as_mut() {
             log.push(key);
         }
@@ -429,11 +429,10 @@ impl Game<'_> {
     /// when its type changes. False when there is none.
     pub(super) fn update_spawner_display(&mut self, key: Pos) -> bool {
         let Some(kind) = self.spawner_display_kind(key) else {
-            self.client.spawners.displays.remove(&key);
+            self.spawners.displays.remove(&key);
             return false;
         };
         if self
-            .client
             .spawners
             .displays
             .get(&key)
@@ -443,7 +442,7 @@ impl Game<'_> {
                 return false;
             };
             let mob = Mob::new(u32::MAX, t, Vec3::ZERO, 0.0);
-            self.client.spawners.displays.insert(key, (kind, mob));
+            self.spawners.displays.insert(key, (kind, mob));
         }
         true
     }
@@ -574,8 +573,8 @@ impl Game<'_> {
         let shadow_sections = self
             .renderer
             .as_ref()
-            .filter(|_| self.client.pack_ids.is_some() && self.client.occlusion.shadow_casters.0);
-        for (key, (_, mob)) in &self.client.spawners.displays {
+            .filter(|_| self.client.pack_ids.is_some() && self.occlusion.shadow_casters.0);
+        for (key, (_, mob)) in &self.spawners.displays {
             let at = glam::DVec3::new(f64::from(key.0), f64::from(key.1), f64::from(key.2));
             if !Reach::Default.should_render([key.0, key.1, key.2], camera, 0) {
                 continue;

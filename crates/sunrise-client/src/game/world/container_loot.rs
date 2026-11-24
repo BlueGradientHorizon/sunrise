@@ -131,7 +131,7 @@ impl Game<'_> {
         if player.is_some() {
             self.trigger_loot_table(&table);
         }
-        let Some(loot) = self.server.server_loot.get() else {
+        let Some(loot) = self.server_loot.get() else {
             return;
         };
         let biome = self

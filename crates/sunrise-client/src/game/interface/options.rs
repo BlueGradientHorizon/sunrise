@@ -92,7 +92,7 @@ impl Game<'_> {
                     _ => {}
                 }
                 // Labels change (a language, a value): `ui` reads the redrawn screen.
-                self.client.ui_wait.clicked();
+                self.ui_wait.clicked();
                 let now = self.settings.to_file().describe(key);
                 Ok(Some(json!({ "ok": true, "key": key, "option": now })))
             }

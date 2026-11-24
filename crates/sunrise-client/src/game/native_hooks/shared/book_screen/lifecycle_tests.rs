@@ -370,7 +370,7 @@ fn authoritative_custom_book_rebuilds_cached_geometry_without_observe_screen() {
             game.settings.gui_scale = 1;
             // The fixture has no renderer; layout still needs the same viewport
             // used by geometry() to evaluate toggle gutters and book placement.
-            game.client.recipe_ui.test_viewport = Some([1280, 720]);
+            game.recipe_ui.test_viewport = Some([1280, 720]);
             game.client.screen = Screen::Inventory;
             game.title = None;
             game.container = Some((i32::MIN, 0, 0));
@@ -562,7 +562,7 @@ fn a_moved_slot_takes_its_place_for_drawing_and_input_from_the_next_frame() {
         crate::game::native_entity_refs::tests::with_client_game(|game| {
             let generation = seed_native_menu(game, 1, MENU);
             game.settings.gui_scale = 1;
-            game.client.recipe_ui.test_viewport = Some([1280, 720]);
+            game.recipe_ui.test_viewport = Some([1280, 720]);
             game.client.screen = Screen::Inventory;
             game.title = None;
             game.container = Some((i32::MIN, 0, 0));
@@ -689,7 +689,7 @@ fn a_hidden_slot_leaves_the_screen_and_comes_back_where_put() {
         crate::game::native_entity_refs::tests::with_client_game(|game| {
             let generation = seed_native_menu(game, 1, MENU);
             game.settings.gui_scale = 1;
-            game.client.recipe_ui.test_viewport = Some([1280, 720]);
+            game.recipe_ui.test_viewport = Some([1280, 720]);
             game.client.screen = Screen::Inventory;
             game.title = None;
             game.container = Some((i32::MIN, 0, 0));
@@ -817,7 +817,7 @@ fn a_bound_books_catalogue_survives_slot_moves_and_hides() {
                     sunrise_protocol::registry::Ids::from_names(vec!["bound:menu".into()]),
                 );
                 game.settings.gui_scale = 1;
-                game.client.recipe_ui.test_viewport = Some([1280, 720]);
+                game.recipe_ui.test_viewport = Some([1280, 720]);
                 game.title = None;
                 let open = |game: &mut Game<'_>| {
                     game.handle_packet(Clientbound::OpenScreen(OpenScreen {

@@ -135,7 +135,7 @@ impl Game<'_> {
             .map(|m| (m.kind.id.as_str(), m.silent))
             .collect();
         let peaceful = self.ui.difficulty == 0;
-        let maps = self.server.world_tables.as_ref().map_or_else(
+        let maps = self.world_tables.as_ref().map_or_else(
             || sunrise_client::neoforge_mob_maps::NeoForgeMobMaps::vanilla().as_ref(),
             |tables| tables.data_maps.mob_maps.as_ref(),
         );

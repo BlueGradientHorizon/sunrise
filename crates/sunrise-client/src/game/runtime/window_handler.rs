@@ -451,7 +451,7 @@ impl ApplicationHandler for Game<'_> {
             sunrise_threads::system_menu::suppress(hwnd);
         }
         drop(window_step);
-        let pending = self.client.pending_initial_models.take();
+        let pending = self.pending_initial_models.take();
         let renderer = match &pending {
             Some(start) => self.renderer_for(window.clone(), &start.models.pack, &start.models.gui),
             None => self.new_renderer(window.clone()),

@@ -149,7 +149,7 @@ impl StartupMenu {
             }
             None => game.title = None,
         }
-        game.client.pending_entry = self.pending.take();
+        game.pending_entry = self.pending.take();
         game.perf = std::mem::take(&mut self.perf);
         game.mod_jobs = std::mem::take(&mut self.mod_jobs);
         game.client.cursor = self.cursor;
@@ -1662,7 +1662,7 @@ mod tests {
                 let Some(PendingWorldEntry::Local {
                     create: Some(options),
                     ..
-                }) = &game.client.pending_entry
+                }) = &game.pending_entry
                 else {
                     panic!("pending")
                 };

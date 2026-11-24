@@ -272,7 +272,7 @@ impl Game<'_> {
         self.client.post_effects.clear();
         self.clear_spectated_entity_post_effect();
         // Mod screens' living scenes go with the world their entities were copied from.
-        self.client.live_scenes.get_mut().clear();
+        self.live_scenes.get_mut().clear();
         if self.external_server() {
             return self.leave_server(None);
         }

@@ -227,7 +227,7 @@ impl Game<'_> {
         self.hide_title();
         self.dim = Dim::Overworld;
         self.clear_lod();
-        self.client.pending_uploads.clear();
+        self.pending_uploads.clear();
         if let Some(r) = self.renderer.as_mut() {
             r.clear_sections(self.world.layout());
         }
@@ -493,7 +493,7 @@ impl Game<'_> {
         self.creatures.projectiles.clear();
         self.dropped.clear();
         self.particles.clear();
-        self.client.pickups.clear();
+        self.pickups.clear();
         self.orbs.clear();
         self.falling.clear();
         self.mining = None;
@@ -514,7 +514,7 @@ impl Game<'_> {
         self.title = None;
         self.dim = Dim::Overworld;
         self.clear_lod();
-        self.client.pending_uploads.clear();
+        self.pending_uploads.clear();
         if let Some(r) = self.renderer.as_mut() {
             r.clear_sections(self.world.layout());
         }
@@ -827,7 +827,7 @@ impl Game<'_> {
         self.set_screen(Screen::Playing);
         self.container = None;
         self.clear_lod();
-        self.client.pending_uploads.clear();
+        self.pending_uploads.clear();
         if let Some(r) = self.renderer.as_mut() {
             r.clear_sections(self.world.layout());
         }
@@ -1025,7 +1025,7 @@ impl Game<'_> {
                 r.awaiting_viewed_chunk_center = false;
             }
             self.clear_lod();
-            self.client.pending_uploads.clear();
+            self.pending_uploads.clear();
             if let Some(renderer) = self.renderer.as_mut() {
                 renderer.clear_sections(self.world.layout());
             }

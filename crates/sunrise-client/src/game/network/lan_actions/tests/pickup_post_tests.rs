@@ -188,7 +188,7 @@ fn host_case(game: &mut Game<'_>, probe: &Probe, case: &Case) -> Outcome {
 }
 
 fn host_animations(game: &Game<'_>) -> u64 {
-    game.client.pickups.made().get("item").copied().unwrap_or(0)
+    game.pickups.made().get("item").copied().unwrap_or(0)
 }
 
 fn host_stat(game: &Game<'_>) -> i64 {

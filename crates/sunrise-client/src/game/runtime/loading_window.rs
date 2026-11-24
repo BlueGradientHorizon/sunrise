@@ -407,7 +407,7 @@ pub(super) fn start_game<'a>(
             let ready = game.apply_pending_client_start(pending, Ok(None))?;
             Ok(ready.then_some(game))
         } else {
-            game.client.pending_initial_models = Some(Box::new(pending));
+            game.pending_initial_models = Some(Box::new(pending));
             Ok(Some(game))
         }
     } else {
@@ -493,7 +493,7 @@ impl Game<'_> {
                         .new_title(std::env::current_dir()?.join("saves"))
                         .with_user(|| game.options.player_name());
                     game.show_title(title);
-                    game.client.pending_entry = Some(PendingWorldEntry::Local {
+                    game.pending_entry = Some(PendingWorldEntry::Local {
                         folder,
                         name: None,
                         seed: Some(seed),

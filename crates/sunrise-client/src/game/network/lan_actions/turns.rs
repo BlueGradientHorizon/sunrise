@@ -466,7 +466,7 @@ impl Game<'_> {
         let screen = std::mem::replace(&mut self.client.screen, Screen::Playing);
         let host_sign = self.client.sign_edit.take();
         let host_book = self.client.book.take();
-        let host_command_block = self.client.command_block_screen.take();
+        let host_command_block = self.command_block_screen.take();
         let host_mount_menu = std::mem::take(&mut self.client.mount_menu);
         // The host's crafting grid stays theirs; a crafting table the guest
         // opens shows as the 3x3 size.
@@ -847,8 +847,7 @@ impl Game<'_> {
         };
         // A command block the guest's use opened (Player.openCommandBlock).
         let guest_command_block =
-            std::mem::replace(&mut self.client.command_block_screen, host_command_block)
-                .map(|s| s.pos());
+            std::mem::replace(&mut self.command_block_screen, host_command_block).map(|s| s.pos());
         // A mount inventory the guest's action opened (shift + use, or the
         // inventory key while riding).
         let guest_mount =

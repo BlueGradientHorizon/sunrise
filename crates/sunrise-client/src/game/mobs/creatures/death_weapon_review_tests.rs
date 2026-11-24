@@ -27,7 +27,7 @@ fn fixture_with_source(
             game.res.item_defaults(),
         )
         .unwrap();
-        game.server.server_loot.set(Some(Arc::new(loot)));
+        game.server_loot.set(Some(Arc::new(loot)));
         let seen = Arc::new(Mutex::new(0));
         let mods = vec![mod_api::ModEntry::new(
             "review_weapon",

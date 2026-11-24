@@ -189,11 +189,7 @@ fn progress_events_capture_each_players_full_mutation_state() {
                 reload(game);
             }
             assert!(
-                game.server
-                    .fns
-                    .store
-                    .functions
-                    .contains_key("testmod:reward"),
+                game.fns.store.functions.contains_key("testmod:reward"),
                 "reward function was not loaded"
             );
             let events = observed.lock().unwrap();

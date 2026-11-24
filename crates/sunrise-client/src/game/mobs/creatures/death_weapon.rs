@@ -280,7 +280,7 @@ impl Game<'_> {
         }
         let weapon = accepted.as_ref().and_then(|hit| hit.weapon.as_ref());
         let weapon = weapon.and_then(|stack| stack.try_into_api().ok());
-        let Some(loot) = self.server.server_loot.get() else {
+        let Some(loot) = self.server_loot.get() else {
             return self.death_experience(m, player_uuid, player_killed, consumed);
         };
         let player = || killer.clone();

@@ -58,7 +58,7 @@ fn a_client_mod_counts_and_clears_particles() {
         let host: &dyn ClientHost = game;
         assert_eq!(host.particle_count(), 0);
         fill(game);
-        assert_eq!(game.client.pickups.live.len(), 1, "the pickup is live");
+        assert_eq!(game.pickups.live.len(), 1, "the pickup is live");
         let engine = game.particles.group_count();
         assert_eq!(engine, 5, "three flames, one starter and one guardian");
         let host: &dyn ClientHost = game;
@@ -79,7 +79,7 @@ fn a_client_mod_counts_and_clears_particles() {
         assert_eq!(host.particle_count(), 0);
         game.extras_frame(Duration::ZERO);
         assert_eq!(game.particles.group_count(), 0);
-        assert!(game.client.pickups.live.is_empty());
+        assert!(game.pickups.live.is_empty());
         assert!(game.particles.elder_guardians().is_empty());
         // The emitter and the queue went too: a tick brings nothing back.
         game.tick_particles();
@@ -89,7 +89,7 @@ fn a_client_mod_counts_and_clears_particles() {
         assert!(host_clear(game));
         game.tick_particles();
         assert_eq!(game.particles.group_count(), 0);
-        assert!(game.client.pickups.live.is_empty());
+        assert!(game.pickups.live.is_empty());
         let host: &dyn ClientHost = game;
         assert_eq!(host.particle_count(), 0);
         game.options.execution_role = super::ExecutionRole::IntegratedServer;

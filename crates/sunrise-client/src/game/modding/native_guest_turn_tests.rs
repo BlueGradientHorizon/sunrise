@@ -206,11 +206,7 @@ fn player_dimensions_validate_identity_on_both_server_roles() {
 fn refused_wire_reload_preserves_hub_and_engine_generation() {
     with_guests(|game| {
         let before = game.lan.as_ref().unwrap().hub.lan.shared.sync();
-        let old_tables = game
-            .server
-            .world_tables
-            .as_ref()
-            .map(|tables| tables as *const _);
+        let old_tables = game.world_tables.as_ref().map(|tables| tables as *const _);
         let old_context = game.loop_context.clone();
         let root = std::env::temp_dir().join(format!("reload-wire-{}", std::process::id()));
         std::fs::create_dir_all(&root).unwrap();
@@ -258,10 +254,7 @@ fn refused_wire_reload_preserves_hub_and_engine_generation() {
         assert!(Arc::ptr_eq(&old_context, &game.loop_context));
         assert_eq!(
             old_tables,
-            game.server
-                .world_tables
-                .as_ref()
-                .map(|tables| tables as *const _)
+            game.world_tables.as_ref().map(|tables| tables as *const _)
         );
         let good = game.options.resources.clone();
         let stack = super::functions::pack_stack(

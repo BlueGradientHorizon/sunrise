@@ -142,7 +142,7 @@ impl Game<'_> {
                 let (x, y, bw, bh) = self.built_chat(w, h).ok_or("no build")?.leave_bed;
                 widgets.push(rect(x, y, bw, bh));
             }
-            if let Some(screen) = &self.client.command_block_screen {
+            if let Some(screen) = &self.command_block_screen {
                 let (i, p) = (&screen.command.input, screen.previous());
                 widgets.push(rect(i.x, i.y, i.width, i.height));
                 widgets.push(rect(p[0] as i32, p[1] as i32, p[2] as i32, p[3] as i32));
@@ -152,7 +152,7 @@ impl Game<'_> {
                 }
             }
             self.ui.chat_screen = None;
-            self.client.command_block_screen = None;
+            self.command_block_screen = None;
             return Ok(serde_json::json!({
                 "gui": [gui.scale, gui.size[0], gui.size[1]],
                 "widgets": widgets,

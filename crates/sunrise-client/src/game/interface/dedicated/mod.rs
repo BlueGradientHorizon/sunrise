@@ -1019,7 +1019,7 @@ impl Game<'_> {
         // now rather than at the first tick (reading parses functions; it runs none), and a broken
         // predicate graph stops the start before anything listens (a partial check: predicate_graph.rs).
         self.ensure_datapacks();
-        let store = &self.server.fns.store;
+        let store = &self.fns.store;
         let tag = |id: &str| {
             let (ns, path) = id.split_once(':').unwrap_or(("minecraft", id));
             store
@@ -1302,7 +1302,7 @@ impl Game<'_> {
         let mut next = Instant::now();
         // The panic that ended the tick loop, when one did.
         let mut crashed: Option<String> = None;
-        self.server.fns.permission = Some(props.function_permission_level.clamp(0, 4) as u8);
+        self.fns.permission = Some(props.function_permission_level.clamp(0, 4) as u8);
         let watchdog = Watchdog::start(
             props.max_tick_time,
             self.options.save_failure_diagnostics.clone(),

@@ -23,7 +23,7 @@ use resource_load::{
 /// which borrows stay disjoint from.
 macro_rules! world_items {
     ($s:ident) => {
-        match (&$s.server_items, &$s.server.world_tables) {
+        match (&$s.server_items, &$s.world_tables) {
             (Some(items), _) => &**items,
             (None, Some(t)) => &t.items,
             (None, None) => $s.res.items(),
@@ -32,7 +32,7 @@ macro_rules! world_items {
 }
 macro_rules! world_recipes {
     ($s:ident) => {
-        match &$s.server.world_tables {
+        match &$s.world_tables {
             Some(t) => &t.recipes,
             None => $s.res.recipes(),
         }
@@ -40,7 +40,7 @@ macro_rules! world_recipes {
 }
 macro_rules! world_stations {
     ($s:ident) => {
-        match &$s.server.world_tables {
+        match &$s.world_tables {
             Some(t) => &t.stations,
             None => $s.res.stations(),
         }
@@ -4833,7 +4833,7 @@ impl Game<'_> {
             loot: if self.remote.is_some() {
                 None
             } else {
-                self.server.server_loot.get()
+                self.server_loot.get()
             },
             loot_storage: self.score.storage.snapshot(),
             registry: self.pack.assets.registry,
@@ -4843,7 +4843,7 @@ impl Game<'_> {
             fire_players,
             rand_sequences: &mut self.server.rand_sequences,
             pending: &mut self.pending,
-            spill: &mut self.server.spill,
+            spill: &mut self.spill,
             tickets: self.server.tickets.levels(),
             random_tick_sections: &mut self.server.random_tick_sections,
             lid_openers: &mut self.server.lid_openers,
@@ -4866,7 +4866,7 @@ impl Game<'_> {
                 dimension: self.dim.id(),
                 end: &self.end,
                 tags: advancements::TagSources {
-                    pack_tags: self.server.world_tables.as_ref().map(|t| &t.pack_tags),
+                    pack_tags: self.world_tables.as_ref().map(|t| &t.pack_tags),
                     items: world_items!(self),
                     mob_data: self.res.mob_data(),
                     damage: &self.health_resources.damage,
@@ -7210,7 +7210,7 @@ impl Game<'_> {
         self.reset_inventory_clicks();
         self.close_station();
         self.mount_closed();
-        self.client.recipe_ui.reset_screen();
+        self.recipe_ui.reset_screen();
         if self.remote.is_some() {
             return self.remote_close_container();
         }
@@ -7771,7 +7771,7 @@ impl Game<'_> {
             // in the view or not (`Renderer::shadow_pass_block_entities`, #8464): those the
             // view leaves out go in hidden from the camera.
             let shadow_only: Vec<&([i32; 3], u32)> =
-                if self.client.pack_ids.is_some() && self.client.occlusion.shadow_casters.0 {
+                if self.client.pack_ids.is_some() && self.occlusion.shadow_casters.0 {
                     let listed: HashSet<[i32; 3]> = camera_list.iter().map(|b| b.0).collect();
                     r.shadow_pass_block_entities(camera)
                         .filter(|(pos, state)| {
@@ -7795,7 +7795,7 @@ impl Game<'_> {
                     return false;
                 }
                 if self.settings.sunrise.entity_culling == EntityCullingMode::Off
-                    || self.client.occlusion.shadow_casters.0
+                    || self.occlusion.shadow_casters.0
                     || self.block_entity_reach_entry(state).1
                     || hi.y - lo.y > 2.0
                 {
@@ -8266,15 +8266,10 @@ impl Game<'_> {
         self.pickup_trident_geometry(camera, alpha, out);
         self.mark_entity(out.len(), "minecraft:experience_orb");
         // ItemPickupParticle: the render state extracted at partial tick 1.
-        let taken = self
-            .client
-            .pickups
-            .live
-            .iter()
-            .filter_map(|p| match &p.taken {
-                pickups::Taken::Orb(o) => Some((&**o, pickups::position(p, alpha), 1.0)),
-                _ => None,
-            });
+        let taken = self.pickups.live.iter().filter_map(|p| match &p.taken {
+            pickups::Taken::Orb(o) => Some((&**o, pickups::position(p, alpha), 1.0)),
+            _ => None,
+        });
         let frame = self.orb_frame();
         self.orb_geometry(camera, &frame, taken, None, out);
         self.elder_apparition_geometry(alpha, out);
@@ -8501,7 +8496,7 @@ impl Game<'_> {
             loot,
             owner_migration,
         } = prepared;
-        self.server.server_loot = loot;
+        self.server_loot = loot;
         let dim = Dim::from_id(&level.dimension);
         self.server.level_shapes = shapes;
         self.server.world_root = save_root.clone();
@@ -8664,7 +8659,7 @@ impl Game<'_> {
         self.set_screen(Screen::Playing);
         self.hide_title();
         self.clear_lod();
-        self.client.pending_uploads.clear();
+        self.pending_uploads.clear();
         if let Some(r) = self.renderer.as_mut() {
             r.clear_sections(self.world.layout());
         }
@@ -8690,7 +8685,7 @@ impl Game<'_> {
         // The save screen has finished every write before releasing storage.
         self.ui.dispatcher = Default::default();
         self.reset_creative_contents();
-        self.server.server_loot.set(None);
+        self.server_loot.set(None);
         self.server_items = None;
         self.session_lock = None;
         self.clear_world_parts();
@@ -8717,7 +8712,7 @@ impl Game<'_> {
         self.clear_entities();
         self.set_screen(Screen::Playing);
         self.clear_lod();
-        self.client.pending_uploads.clear();
+        self.pending_uploads.clear();
         if let Some(r) = self.renderer.as_mut() {
             r.clear_sections(self.world.layout());
         }
@@ -10262,7 +10257,7 @@ impl Game<'_> {
             }
             return Ok(false);
         }
-        if self.client.pending_entry.is_some() {
+        if self.pending_entry.is_some() {
             if let (Some(renderer), Some(loader)) = (&mut self.renderer, &self.rest_loader) {
                 sunrise_client::widgets::begin_screen(|| {
                     screen_info::level_loading(Some(loader.progress.fraction()), &screen_info::tr)
@@ -11416,16 +11411,16 @@ impl Game<'_> {
                 return true;
             }
         }
-        if self.client.pending_entry.is_some()
+        if self.pending_entry.is_some()
             && matches!(event, WindowEvent::KeyboardInput { event, .. }
                 if event.state == ElementState::Pressed
                     && event.physical_key == PhysicalKey::Code(KeyCode::Escape))
         {
-            self.client.pending_entry = None;
+            self.pending_entry = None;
             self.perf.cancel_world_opening();
             return true;
         }
-        if (self.client.pending_entry.is_some() || self.integrated_starting.is_some())
+        if (self.pending_entry.is_some() || self.integrated_starting.is_some())
             && !matches!(
                 event,
                 WindowEvent::CloseRequested
@@ -12205,7 +12200,7 @@ impl Game<'_> {
                         || self.mod_mappings_screen_open()
                         || self.remote_loading()
                         || self.client.reload_overlay.is_some()
-                        || self.client.pending_entry.is_some()
+                        || self.pending_entry.is_some()
                         || self.integrated_starting.is_some()
                         || self.pending_save.is_some()
                     {
@@ -12231,7 +12226,6 @@ impl Game<'_> {
                 }
                 WindowEvent::RedrawRequested => {
                     let flight_spans = self
-                        .client
                         .flight
                         .as_ref()
                         .filter(|flight| flight.raw)
@@ -12459,7 +12453,7 @@ impl Game<'_> {
                                 let mut fill: Vec<(&'static str, usize)> =
                                     self.streaming.stages().to_vec();
                                 fill.push(("resident", self.world.chunks.len()));
-                                fill.push(("uploads", self.client.pending_uploads.len()));
+                                fill.push(("uploads", self.pending_uploads.len()));
                                 fill.push(("backlog", self.remote_backlog()));
                                 startup::counters("world.fill", &fill);
                             }
@@ -12467,7 +12461,7 @@ impl Game<'_> {
                                 startup::view_filled(
                                     self.world.chunks.len(),
                                     self.streaming.pending()
-                                        + self.client.pending_uploads.len()
+                                        + self.pending_uploads.len()
                                         + self.remote_backlog(),
                                     self.streaming.radius.max(0) as u32,
                                 );

@@ -438,7 +438,7 @@ impl Game<'_> {
         // takeAutoScreenshot only saves with every loaded section rendered, or
         // the icon would picture the holes the streamer has not filled yet.
         if self.streaming.pending() != 0
-            || !self.client.pending_uploads.is_empty()
+            || !self.pending_uploads.is_empty()
             || self.remote_backlog() != 0
         {
             return;

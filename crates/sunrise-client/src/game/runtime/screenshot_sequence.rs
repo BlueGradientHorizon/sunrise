@@ -64,17 +64,17 @@ impl Game<'_> {
             || self.client.screen != Screen::Playing
             || self.player.is_none()
             || self.integrated_starting.is_some()
-            || self.client.pending_entry.is_some()
+            || self.pending_entry.is_some()
             || self.client.reload_overlay.is_some()
             || self.pending_save.is_some()
             || self
                 .remote
                 .as_ref()
                 .is_some_and(|r| r.level_load.is_active())
-            || self.client.flight.is_some()
+            || self.flight.is_some()
             || self.world.chunks.is_empty()
             || self.streaming.pending() != 0
-            || !self.client.pending_uploads.is_empty()
+            || !self.pending_uploads.is_empty()
             || self.remote_backlog() != 0
             || !self.world.dirty_light.is_empty()
             || !self.world.dirty_sections.is_empty()

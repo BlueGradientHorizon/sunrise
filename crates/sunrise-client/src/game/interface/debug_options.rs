@@ -215,7 +215,7 @@ impl Game<'_> {
         let in_world = self.player.is_some();
         ui::menu_background(batch, atlas, 0.0, 0.0, w, h, in_world);
         let reduced = self.reduced_debug_info();
-        let rows = rows(&self.client.registered_debug_entries, &s.search.value);
+        let rows = rows(&self.registered_debug_entries, &s.search.value);
         let (top, bottom) = (HEADER, h - FOOTER);
         let content = content_height(rows.len());
         self.client
@@ -366,7 +366,7 @@ impl Game<'_> {
         };
         let (w, h) = self.gui_size();
         let (top, bottom) = (HEADER, h - FOOTER);
-        let rows = rows(&self.client.registered_debug_entries, &s.search.value);
+        let rows = rows(&self.registered_debug_entries, &s.search.value);
         let left = row_left(w);
         // A press on the scrollbar holds it and clicks nothing else.
         if s.scroll.press(
@@ -451,7 +451,7 @@ impl Game<'_> {
             || (HEADER..h - FOOTER).contains(&self.client.cursor.1);
         if scroll && let Some(s) = &mut self.client.debug_options {
             let content =
-                content_height(rows(&self.client.registered_debug_entries, &s.search.value).len());
+                content_height(rows(&self.registered_debug_entries, &s.search.value).len());
             s.scroll
                 .wheel(delta, ITEM / 2.0, HEADER, h - FOOTER, content);
             return true;
@@ -466,7 +466,7 @@ impl Game<'_> {
             && s.scroll.held()
         {
             let content =
-                content_height(rows(&self.client.registered_debug_entries, &s.search.value).len());
+                content_height(rows(&self.registered_debug_entries, &s.search.value).len());
             s.scroll.drag(y, HEADER, h - FOOTER, content);
             return true;
         }

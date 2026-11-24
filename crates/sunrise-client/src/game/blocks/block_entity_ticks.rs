@@ -1431,13 +1431,7 @@ mod furnace_changed_tests {
         .unwrap();
         request.save_root = root.to_owned();
         game.load_world(request).unwrap();
-        assert!(
-            game.server
-                .fns
-                .enabled()
-                .iter()
-                .any(|name| name == "file/furnace")
-        );
+        assert!(game.fns.enabled().iter().any(|name| name == "file/furnace"));
         game.world
             .chunks
             .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));

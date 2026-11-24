@@ -905,7 +905,7 @@ fn piston_push_reaction_position_state_opens_ticks_and_saves() {
                         game.res.item_defaults(),
                     )
                     .unwrap();
-                    game.server.server_loot.set(Some(Arc::new(loot)));
+                    game.server_loot.set(Some(Arc::new(loot)));
                     let mut extras = game.world.block_entity_extras(from);
                     extras.pending_loot = Some(PendingContainerLoot {
                         table: Tag::String("test:carry".into()),

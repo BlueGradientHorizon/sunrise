@@ -824,7 +824,7 @@ impl Game<'_> {
                 }
             }
             Screen::CommandBlock => {
-                if let Some(screen) = self.client.command_block_screen.as_mut() {
+                if let Some(screen) = self.command_block_screen.as_mut() {
                     screen.resize(&m, &c, w, h);
                 }
             }
@@ -846,7 +846,7 @@ impl Game<'_> {
         let (w, h) = (gui.size[0] as f32, gui.size[1] as f32);
         let cart = match self.client.screen {
             Screen::Chat => None,
-            Screen::CommandBlock => Some(self.client.command_block_screen.as_ref()?.cart()),
+            Screen::CommandBlock => Some(self.command_block_screen.as_ref()?.cart()),
             _ => return None,
         };
         self.resize_text_screens(w, h);

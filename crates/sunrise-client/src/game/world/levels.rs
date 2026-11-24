@@ -1818,7 +1818,7 @@ impl Game<'_> {
                     || self.player_bed_levels().any(|b| b == *d)
                     || forced
                     // A game test runs in its own level, players or not.
-                    || self.server.game_tests.has_tests_in(*d)
+                    || self.game_tests.has_tests_in(*d)
                     || self.pregen_level() == Some(*d)
                     // A pending portal arrival keeps its destination level
                     // running so it can land and tick (the portal ticket).

@@ -1698,13 +1698,13 @@ mod player_status_tests {
                     entity: None,
                     skip_hooks: false,
                 });
-            game.server.spill.orbs.push((at, 1, 0));
+            game.spill.orbs.push((at, 1, 0));
             rain_on_the_player(game, true);
 
             assert!(game.pack_player_status().wet, "rain");
             assert_eq!(game.creatures.lan_particles.len(), 1, "particles");
             assert_eq!(game.creatures.lan_sounds.len(), 1, "sounds");
-            assert_eq!(game.server.spill.orbs.len(), 1, "spill");
+            assert_eq!(game.spill.orbs.len(), 1, "spill");
             game.lan = None;
         });
     }

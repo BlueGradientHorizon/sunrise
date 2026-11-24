@@ -222,7 +222,7 @@ fn a_spectator_following_an_entity_submits_no_local_body() {
             (CameraType::FirstPerson, true),
         ] {
             game.client.camera_type = camera;
-            game.client.occlusion.shadow_casters.1 = player_shadow;
+            game.occlusion.shadow_casters.1 = player_shadow;
             game.entity_geometry(CAMERA, 1.0, None, Vec::new(), &mut Vec::new());
             assert!(
                 !game

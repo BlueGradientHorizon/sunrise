@@ -66,12 +66,12 @@ fn a_packs_own_item_and_block_tags_admit_and_match_its_functions() {
     assert!(game.run_command("scoreboard objectives add p dummy"));
     assert!(game.run_command("reload"));
     assert!(
-        game.server.fns.store.errors.is_empty(),
+        game.fns.store.errors.is_empty(),
         "{:?}",
-        game.server.fns.store.errors
+        game.fns.store.errors
     );
     assert!(
-        game.server.fns.store.functions.contains_key("p:t"),
+        game.fns.store.functions.contains_key("p:t"),
         "the pack's function loaded against its own tags"
     );
     let stone = game

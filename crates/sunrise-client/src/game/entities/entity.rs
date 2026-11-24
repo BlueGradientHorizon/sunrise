@@ -1944,7 +1944,7 @@ macro_rules! damage_level_of {
         )
         .attacked_by($attack)
         .no_push()
-        .with_mob_hurt_handoff(&mut $game.server.paused_mob_hurt)
+        .with_mob_hurt_handoff(&mut $game.paused_mob_hurt)
         .with_effects(crate::game::entity::hit_effects_of!($game, $lend))
         .with_reads(crate::game::entity::hit_reads_of!($game))
         $(.with_player_equipment($equipment))?
@@ -1959,7 +1959,7 @@ macro_rules! damage_level_of {
         )
         .attacked_by($attack)
         .with_knockback_credit($credit)
-        .with_mob_hurt_handoff(&mut $game.server.paused_mob_hurt)
+        .with_mob_hurt_handoff(&mut $game.paused_mob_hurt)
         .with_effects(crate::game::entity::hit_effects_of!($game, $lend))
         .with_reads(crate::game::entity::hit_reads_of!($game))
     };

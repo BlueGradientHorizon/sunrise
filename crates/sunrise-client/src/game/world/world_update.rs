@@ -13,7 +13,7 @@ impl Game<'_> {
         self.lod = None;
         self.client.lod_source_attempted = false;
         self.client.lod_observe.clear();
-        self.client.lod_blue_map = None;
+        self.lod_blue_map = None;
         self.client.lod_covered_at = None;
         if let Some(renderer) = &mut self.renderer {
             renderer.clear_lods();
@@ -93,7 +93,7 @@ impl Game<'_> {
                     map.start();
                     map
                 });
-                self.client.lod_blue_map = blue_map.clone();
+                self.lod_blue_map = blue_map.clone();
                 terrain::ServerTerrain::new(dir, blue_map) as _
             }),
             _ => Some(self.streaming.lod_source()),
@@ -141,9 +141,7 @@ impl Game<'_> {
         self.observe_light_edits();
         self.ask_edited_light_emission();
         let camera_pos = self.visual_camera_position();
-        if let (Some(map), Some(pos), Some(lod)) =
-            (&self.client.lod_blue_map, camera_pos, &mut self.lod)
-        {
+        if let (Some(map), Some(pos), Some(lod)) = (&self.lod_blue_map, camera_pos, &mut self.lod) {
             map.set_center(pos[0].floor() as i32, pos[2].floor() as i32);
             for change in map.take_changed() {
                 lod.refresh(change.area, change.widths);
@@ -199,7 +197,7 @@ impl Game<'_> {
             .extend(waiting.into_iter().map(|chunk| (chunk, 0)));
         // `Level.getChunk`'s tickets keep their columns until they expire.
         self.streaming.hold_unknown_tickets();
-        self.streaming.upload_backlog = self.client.pending_uploads.len();
+        self.streaming.upload_backlog = self.pending_uploads.len();
         let plan = sunrise_client::spans::time("streaming_plan", || {
             let mut step = self.streaming.begin_plan_update(&mut self.world);
             loop {
@@ -328,16 +326,14 @@ impl Game<'_> {
         if let Some(renderer) = self.renderer.as_mut() {
             let g = &self.settings.sunrise;
             let budgeted = g.chunk_updates > 0 || g.upload_budget_kib > 0;
-            let mut raw_flight = self.client.flight.as_mut().filter(|flight| flight.raw);
+            let mut raw_flight = self.flight.as_mut().filter(|flight| flight.raw);
             let vertex_bytes = |mesh: &sunrise_client::mesher::SectionMesh| {
                 ((mesh.solid.len() + mesh.translucent.len())
                     * std::mem::size_of::<sunrise_client::mesher::TerrainVertex>())
                     as u64
             };
             // The meshes, once copied, are freed by a worker (`Streaming::free`).
-            if !budgeted
-                && self.client.pending_uploads.is_empty()
-                && uploads.len() <= AUTO_UPLOADS_AT_ONCE
+            if !budgeted && self.pending_uploads.is_empty() && uploads.len() <= AUTO_UPLOADS_AT_ONCE
             {
                 sunrise_client::spans::time("upload", || {
                     for upload in &uploads {
@@ -355,7 +351,7 @@ impl Game<'_> {
                 // sections go first, the rest wait for later frames; a newer
                 // mesh of a waiting section replaces it, and sections of
                 // chunks no longer loaded are dropped.
-                let pending = &mut self.client.pending_uploads;
+                let pending = &mut self.pending_uploads;
                 let order_span = sunrise_client::spans::guard("order_uploads");
                 let fresh: sunrise_client::fast_hash::FxHashSet<(i32, i32, i32)> =
                     uploads.iter().map(|upload| upload.key).collect();
@@ -382,7 +378,7 @@ impl Game<'_> {
                 let work = order_uploads(
                     pending,
                     &mut uploads,
-                    &mut self.client.pending_uploads_merge,
+                    &mut self.pending_uploads_merge,
                     self.client.pending_uploads_order == order,
                     priority,
                 );
@@ -431,7 +427,7 @@ impl Game<'_> {
             }
             renderer.remove_columns(unloaded.iter().map(|c| (c.x, c.z)));
             // Meshes in the works are the view's terrain while it is new, then edits'.
-            let meshing = self.streaming.busy() || !self.client.pending_uploads.is_empty();
+            let meshing = self.streaming.busy() || !self.pending_uploads.is_empty();
             let sampling = self.lod.as_ref().is_some_and(|lod| lod.sampling());
             renderer.set_terrain_loading(
                 arriving || (meshing && self.client.view_arrival.recent(now)) || sampling,

@@ -341,7 +341,7 @@ impl Game<'_> {
     pub(in crate::game) fn debug_overlay_visible(&self) -> bool {
         let screen_open = self.title.is_some() || self.client.screen != Screen::Playing;
         self.client.debug_entries.any_enabled(
-            &self.client.registered_debug_entries,
+            &self.registered_debug_entries,
             self.client.debug,
             self.reduced_debug_info(),
         ) && (!self.ui.hide_gui || screen_open)
@@ -681,7 +681,7 @@ impl Game<'_> {
     /// `DebugScreenEntryList.isCurrentlyEnabled` for an entry's path.
     pub(super) fn debug_entry(&self, path: &str) -> bool {
         self.client.debug_entries.enabled(
-            &self.client.registered_debug_entries,
+            &self.registered_debug_entries,
             path,
             self.client.debug,
             self.reduced_debug_info(),

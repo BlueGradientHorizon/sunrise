@@ -104,7 +104,6 @@ impl Game<'_> {
     /// the block state here (vanilla's `CommandBlockEntity.Mode`).
     pub(super) fn command_block_data_arrived(&mut self, pos: Pos) {
         if self
-            .client
             .command_block_screen
             .as_ref()
             .is_none_or(|s| s.cart.is_some() || s.pos != pos)
@@ -123,7 +122,7 @@ impl Game<'_> {
             dispatcher: super::chat::chat_tree(&self.remote),
             registries: &self.ui.registries,
         };
-        let Some(screen) = self.client.command_block_screen.as_mut() else {
+        let Some(screen) = self.command_block_screen.as_mut() else {
             return;
         };
         if let Some((mode, conditional)) = state {
@@ -401,17 +400,17 @@ impl Game<'_> {
             self.settings.auto_suggestions,
             std::time::Instant::now(),
         );
-        self.client.command_block_screen = Some(screen);
+        self.command_block_screen = Some(screen);
         self.set_screen(Screen::CommandBlock);
         self.capture(false);
     }
     pub(super) fn close_command_block(&mut self) {
-        self.client.command_block_screen = None;
+        self.command_block_screen = None;
         self.set_screen(Screen::Playing);
         self.capture(true);
     }
     pub(super) fn draw_command_block(&mut self, batch: &mut HudBatch) {
-        let Some(s) = self.client.command_block_screen.as_ref() else {
+        let Some(s) = self.command_block_screen.as_ref() else {
             self.draw_screen_phase(batch, sunrise_client::screen_draw::RenderPhase::Background);
             self.draw_screen_phase(batch, sunrise_client::screen_draw::RenderPhase::Foreground);
             return;
@@ -459,7 +458,7 @@ impl Game<'_> {
         let grey = rgba(160, 160, 160, 255);
         let label = Text::translate("advMode.command", &[]);
         batch.text_styled(atlas, &label, mid - 149.0, 40.0, grey, true);
-        let s = self.client.command_block_screen.as_mut().unwrap();
+        let s = self.command_block_screen.as_mut().unwrap();
         let cart = s.cart.is_some();
         if !s.previous.value.is_empty() {
             let label = Text::translate("advMode.previousOutput", &[]);
@@ -468,7 +467,7 @@ impl Game<'_> {
             batch.text_styled(atlas, &label, mid - 149.0, y, grey, true);
             s.previous.draw(batch, atlas, None);
         }
-        let s = self.client.command_block_screen.as_ref().unwrap();
+        let s = self.command_block_screen.as_ref().unwrap();
         let fallback;
         let buttons = match self.built_command_block(w, h) {
             Some(layout) => &layout.buttons,
@@ -508,7 +507,7 @@ impl Game<'_> {
         let blink = s.opened.elapsed().as_millis() as u64;
         // The command box is added first.
         let mark = sunrise_client::widgets::narratables_mark();
-        let s = self.client.command_block_screen.as_mut().unwrap();
+        let s = self.command_block_screen.as_mut().unwrap();
         let draws = s.command.draw(&m, mouse, blink, 0);
         sunrise_client::widgets::move_narratables(mark, 0);
         let tooltip = sunrise_client::screen_draw::paint(batch, atlas, &draws);
@@ -521,18 +520,13 @@ impl Game<'_> {
             self.client.cursor.0.floor() as i32,
             self.client.cursor.1.floor() as i32,
         );
-        self.client
-            .command_block_screen
+        self.command_block_screen
             .as_mut()
             .is_some_and(|s| s.command.scroll(mouse, f64::from(amount)))
     }
     /// The command box's completion request for an `ask_server` node.
     pub(super) fn command_block_suggestion_request(&mut self) -> Option<(i32, String)> {
-        self.client
-            .command_block_screen
-            .as_mut()?
-            .command
-            .take_request()
+        self.command_block_screen.as_mut()?.command.take_request()
     }
     /// The server's completions for the command box's `ask_server` request.
     pub(super) fn command_block_server_suggestions(
@@ -541,7 +535,7 @@ impl Game<'_> {
         range: (usize, usize),
         list: Vec<(String, Option<String>)>,
     ) {
-        let Some(mut s) = self.client.command_block_screen.take() else {
+        let Some(mut s) = self.command_block_screen.take() else {
             return;
         };
         let m = Measure(&self.gui.atlas.font);
@@ -550,10 +544,10 @@ impl Game<'_> {
             registries: &self.ui.registries,
         };
         s.command.server_suggestions(&m, &c, id, range, list);
-        self.client.command_block_screen = Some(s);
+        self.command_block_screen = Some(s);
     }
     pub(super) fn command_block_click(&mut self) -> bool {
-        let Some(mut s) = self.client.command_block_screen.take() else {
+        let Some(mut s) = self.command_block_screen.take() else {
             return false;
         };
         // CommandSuggestions.mouseClicked first, then the command box.
@@ -569,7 +563,7 @@ impl Game<'_> {
             );
             let double_click = s.command.live_double_click(x, y);
             if s.command.click(&m, &c, x, y, double_click) {
-                self.client.command_block_screen = Some(s);
+                self.command_block_screen = Some(s);
                 return true;
             }
         }
@@ -614,7 +608,7 @@ impl Game<'_> {
             }
             None => {}
         }
-        self.client.command_block_screen = Some(s);
+        self.command_block_screen = Some(s);
         hit.is_some()
     }
     /// `AbstractCommandBlockEditScreen.keyPressed`: the suggestions first,
@@ -631,7 +625,7 @@ impl Game<'_> {
         let shift = self.has_shift_down();
         // Windows' AltGr is Ctrl+Alt, and its characters still type.
         let types_text = self.types_text();
-        let Some(mut s) = self.client.command_block_screen.take() else {
+        let Some(mut s) = self.command_block_screen.take() else {
             return false;
         };
         let m = Measure(&self.gui.atlas.font);
@@ -640,7 +634,7 @@ impl Game<'_> {
             registries: &self.ui.registries,
         };
         if s.command.suggestions_key(&m, &c, key, shift) {
-            self.client.command_block_screen = Some(s);
+            self.command_block_screen = Some(s);
             return true;
         }
         let handled = match key {
@@ -654,7 +648,7 @@ impl Game<'_> {
                 }
             }
         };
-        self.client.command_block_screen = Some(s);
+        self.command_block_screen = Some(s);
         if !handled
             && types_text
             && let Some(text) = text
@@ -664,7 +658,7 @@ impl Game<'_> {
         match key {
             KeyCode::Escape => self.close_command_block(),
             KeyCode::Enter | KeyCode::NumpadEnter => {
-                if let Some(s) = self.client.command_block_screen.take() {
+                if let Some(s) = self.command_block_screen.take() {
                     self.set_command_block(&s);
                 }
                 self.close_command_block();
@@ -682,7 +676,7 @@ impl Game<'_> {
         if allowed.is_empty() {
             return;
         }
-        let Some(mut s) = self.client.command_block_screen.take() else {
+        let Some(mut s) = self.command_block_screen.take() else {
             return;
         };
         let m = Measure(&self.gui.atlas.font);
@@ -691,7 +685,7 @@ impl Game<'_> {
             registries: &self.ui.registries,
         };
         s.command.type_text(&m, &c, &allowed);
-        self.client.command_block_screen = Some(s);
+        self.command_block_screen = Some(s);
     }
     /// The edit screen's Done: a server's client sends the packet, the
     /// window's own world applies it (`handleSetCommandBlock`).
@@ -882,7 +876,7 @@ mod tests {
             assert_eq!(game.client.screen, Screen::CommandBlock);
             game.build_screen();
             let boxes = |game: &Game<'_>| {
-                let s = game.client.command_block_screen.as_ref().unwrap();
+                let s = game.command_block_screen.as_ref().unwrap();
                 let (i, p) = (&s.command.input, &s.previous);
                 ([i.x, i.y, i.width, i.height], [p.x, p.y, p.width, p.height])
             };

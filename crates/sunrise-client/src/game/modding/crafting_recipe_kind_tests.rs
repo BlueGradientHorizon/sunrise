@@ -120,7 +120,7 @@ fn registered_crafting_remainder_drops_through_server_item_toss() {
                 game.res.core.item_data.context(),
             )
             .unwrap();
-            game.server.world_tables = None;
+            game.world_tables = None;
             game.recipe_tables.install_test_recipes(recipes);
             let host: &dyn mod_api::Host = game;
             let machine = host.recipes_of_type("recipe_probe:machine_type");
@@ -241,7 +241,7 @@ fn unregistered_serializer_failed_reload_preserves_previous_recipes() {
                 game.res.core.item_data.context(),
             )
             .unwrap();
-            game.server.world_tables = None;
+            game.world_tables = None;
             game.recipe_tables.install_test_recipes(recipes);
             assert!(game.recipes().recipe("recipe_probe:literal").is_some());
             bad_recipe.store(true, Ordering::Relaxed);

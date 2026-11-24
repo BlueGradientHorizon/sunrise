@@ -969,7 +969,7 @@ impl Game<'_> {
             Value::Array(list) => list.iter().fold(stack, |s, f| {
                 self.apply_item_modifier(f, s, rng, this, origin, depth + 1)
             }),
-            Value::String(id) => match self.server.fns.store.item_modifiers.get(id).cloned() {
+            Value::String(id) => match self.fns.store.item_modifiers.get(id).cloned() {
                 Some(f) => self.apply_item_modifier(&f, stack, rng, this, origin, depth + 1),
                 None => stack,
             },
@@ -1247,8 +1247,7 @@ impl Game<'_> {
         } else {
             format!("minecraft:{raw}")
         };
-        self.server
-            .fns
+        self.fns
             .store
             .item_modifiers
             .get(&id)
@@ -2020,13 +2019,7 @@ mod mob_equipment_command_tests {
             std::fs::write(functions.join("ready.mcfunction"), "return 1\n").unwrap();
             let features = game.level.enabled_features.clone();
             let stack = game.reload_datapacks(false, &features).unwrap();
-            assert!(
-                game.server
-                    .fns
-                    .store
-                    .functions
-                    .contains_key("wpenchant:ready")
-            );
+            assert!(game.fns.store.functions.contains_key("wpenchant:ready"));
             let root = game.options.resources.clone();
             let prepared = game.prepare_world_reload(&stack, &root).unwrap();
             game.install_world_tables(prepared);
@@ -2818,8 +2811,7 @@ mod registered_slot_source_read_tests {
         game.server.world_root = root;
         game.ensure_datapacks();
         assert_eq!(
-            game.server
-                .fns
+            game.fns
                 .data_resource("data/parity/slot_source/first_three.json")
                 .unwrap()
                 .read()

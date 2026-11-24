@@ -354,8 +354,7 @@ impl Game<'_> {
         if self.serving.is_none() && self.options.dedicated.is_none() {
             return Err(mod_api::DataMapError::Unavailable);
         }
-        self.server
-            .world_tables
+        self.world_tables
             .as_ref()
             .map(|tables| &tables.data_maps)
             .ok_or(mod_api::DataMapError::Unavailable)

@@ -34,7 +34,7 @@ impl Game<'_> {
             // A client's tag install never asks, writes or clears the server's primary answers.
             return;
         }
-        if let Some(loot) = self.server.server_loot.get() {
+        if let Some(loot) = self.server_loot.get() {
             loot.support_answers().install(support);
         }
         let mut answers = sunrise_world::enchantment_answers::Answers::new();
@@ -61,7 +61,7 @@ impl Game<'_> {
         for table in self.enchantment_snapshots() {
             table.primary_answers().install(answers.clone());
         }
-        if let Some(loot) = self.server.server_loot.get() {
+        if let Some(loot) = self.server_loot.get() {
             loot.primary_answers().install(answers);
         }
     }
@@ -74,7 +74,7 @@ impl Game<'_> {
             }
         }
         if self.is_logical_server()
-            && let Some(loot) = self.server.server_loot.get()
+            && let Some(loot) = self.server_loot.get()
         {
             loot.primary_answers().clear();
             loot.support_answers().clear();
