@@ -536,7 +536,6 @@ paint it in one operation, inside the current pose and scissor:
 ```rust
 {{#include ../../../examples/src/client_rendering.rs:scaled_text_lines}}
 ```
-```
 
 The width is in label-local GUI pixels after scaling, so the text wraps at `max_width / scale`.
 Wrapping follows `Font.split`: fitting spaces break lines, overlong words break at a character,
