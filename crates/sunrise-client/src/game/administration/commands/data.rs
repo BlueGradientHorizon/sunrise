@@ -694,6 +694,7 @@ impl Game<'_> {
                 if let Some(i) = self.fangs.list.iter().position(|e| e.id == id) {
                     self.fangs.list.update(i, |f| {
                         f.pos = [at.x, at.y, at.z];
+                        f.motion = entity_nbt::loaded_motion(&tag);
                         f.yaw = entity_nbt::rotation(&tag)[0];
                         f.warmup =
                             sunrise_client::save::number(tag.get("Warmup")).unwrap_or(0) as i32;

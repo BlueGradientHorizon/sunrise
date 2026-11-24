@@ -1430,5 +1430,13 @@
     "path": "crates/sunrise-client/src/game/items/potions/cloud_water_tests.rs",
     "reason": "run by tools/test_cloud_water_parity.py",
     "rationale": "Parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_cloud_water_parity.py records the vanilla 26.3 cloud-water witness into .local and runs this test against it through SUNRISE_CLOUD_WATER_WITNESS, so no recorded vanilla data is committed."
+  },
+  {
+    "package": "sunrise-client",
+    "target": "lib",
+    "test": "game::fangs::current_tests::fangs_in_a_current_are_pushed_and_fangs_in_still_water_are_not",
+    "path": "crates/sunrise-client/src/game/mobs/fangs/current_tests.rs",
+    "reason": "run by tools/test_fangs_fluid_current_parity.py",
+    "rationale": "Parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_fangs_fluid_current_parity.py records the vanilla 26.3 fangs fluid-current witness into .local and runs this test against it through SUNRISE_FANGS_FLUID_CURRENT_WITNESS, so no recorded vanilla data is committed."
   }
 ]
