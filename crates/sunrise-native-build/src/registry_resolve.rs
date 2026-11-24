@@ -1,10 +1,18 @@
 //! Resolve the staged graph on the game's registry pins without downloading archives.
 use super::registry_lock::RegistryLock;
-use crate::host::trf;
+use crate::host::{tr, trf};
 use std::{collections::BTreeSet, fs, path::Path, process::Command};
+
+/// The crate an excluded release depends on, which no version satisfies.
+const EXCLUDED: &str = "sunrise-registry-pin-excluded";
 
 /// Prefer the supplied locks, but let Cargo backtrack through their versions if it needs to.
 /// A game pin constrains the version on its line; it does not require that line to be present.
+///
+/// After the seeded pass, one pass requires each moved game pin exactly, as most graphs that
+/// can keep the game's version resolve that way. Only when that fails, as when the line can be
+/// left out of the graph instead (a `links` conflict), are the rejected releases excluded one at
+/// a time until Cargo finds a graph without them.
 pub(super) fn resolve(
     directory: &Path,
     game: &RegistryLock,
@@ -84,6 +92,94 @@ pub(super) fn resolve(
     let mut excluded = BTreeSet::new();
     let mut patched = false;
     let result = (|| {
+        fs::write(work.path().join("inert.rs"), "").map_err(|e| e.to_string())?;
+        if let Some((resolved, refusal)) = &rejected {
+            let moved: BTreeSet<_> = game.moved_pins(resolved).map(|(game, _)| game).collect();
+            if !moved.is_empty() {
+                // A temporary member requires each moved pin exactly: an edge from the root,
+                // so this pass only shows a graph that keeps the game's line.
+                let pins = work.path().join("pins");
+                fs::create_dir(&pins).map_err(|e| e.to_string())?;
+                let dependencies: toml::Table = moved
+                    .iter()
+                    .enumerate()
+                    .map(|(index, pin)| {
+                        let spec = toml::Table::from_iter([
+                            ("package".into(), pin.name.clone().into()),
+                            ("version".into(), format!("={}", pin.version).into()),
+                            ("default-features".into(), false.into()),
+                        ]);
+                        (format!("pin_{index}"), spec.into())
+                    })
+                    .collect();
+                let member = toml::Table::from_iter([
+                    (
+                        "package".into(),
+                        toml::Table::from_iter([
+                            ("name".into(), format!("{name}-pins").into()),
+                            ("version".into(), "0.0.0".into()),
+                            ("edition".into(), "2024".into()),
+                        ])
+                        .into(),
+                    ),
+                    (
+                        "lib".into(),
+                        toml::Table::from_iter([("path".into(), "../inert.rs".into())]).into(),
+                    ),
+                    ("dependencies".into(), dependencies.into()),
+                ]);
+                fs::write(pins.join("Cargo.toml"), member.to_string())
+                    .map_err(|e| e.to_string())?;
+                let mut constrained = manifest.clone();
+                constrained
+                    .get_mut("workspace")
+                    .and_then(toml::Value::as_table_mut)
+                    .ok_or("Missing staged Cargo workspace")?
+                    .entry("members")
+                    .or_insert_with(|| toml::Value::Array(Vec::new()))
+                    .as_array_mut()
+                    .ok_or("Invalid staged Cargo workspace members")?
+                    .push(format!("{name}/pins").into());
+                patched = true;
+                fs::write(&manifest_path, constrained.to_string()).map_err(|e| e.to_string())?;
+                fs::write(&lock_path, &unlocked_seed).map_err(|e| e.to_string())?;
+                match update(unlock) {
+                    Ok(()) => {
+                        let (text, constrained) = read()?;
+                        if check(&constrained).is_ok() {
+                            return Ok(text);
+                        }
+                    }
+                    // A line the mods' own packages require directly is in every graph, and
+                    // no graph holds the game's release of each such line: leaving releases
+                    // out one by one would only walk the lines down to this refusal.
+                    Err(conflict)
+                        if game
+                            .moved_pins(resolved)
+                            .all(|(_, pin)| resolved.required_locally(game, pin)) =>
+                    {
+                        let pins = format!("{name}-pins");
+                        let report = conflict
+                            .lines()
+                            .map(|line| {
+                                if !line.contains(&pins) {
+                                    line
+                                } else if line.contains("required by package") {
+                                    tr("    ... required by the game's lock")
+                                } else {
+                                    tr("    ... which the game's lock requires")
+                                }
+                            })
+                            .collect::<Vec<_>>()
+                            .join("\n");
+                        return Err(format!("{refusal}\n\n{report}"));
+                    }
+                    Err(_) => {}
+                }
+                crate::check_cancelled()?;
+                fs::write(&manifest_path, manifest.to_string()).map_err(|e| e.to_string())?;
+            }
+        }
         let mut refusal = None;
         loop {
             if let Some((resolved, error)) = rejected {
@@ -105,7 +201,9 @@ pub(super) fn resolve(
                     .map(|(_, selected)| selected)
                     .chain(unpinned)
                 {
-                    if !excluded.insert(pin.clone()) {
+                    // The SDK already patches the release it builds from source, and Cargo
+                    // takes one patch per release: refused below, not excluded.
+                    if game.supplies(pin) || !excluded.insert(pin.clone()) {
                         continue;
                     }
                     // A patch shadows just this exact release. Give it an impossible local
@@ -117,7 +215,7 @@ pub(super) fn resolve(
                     fs::write(
                         path.join("Cargo.toml"),
                         format!(
-                            "[package]\nname={:?}\nversion='{}'\nedition='2024'\n[lib]\npath='../inert.rs'\n[dependencies]\nsunrise-registry-pin-excluded={{path='..',version='=0.0.1'}}\n",
+                            "[package]\nname={:?}\nversion='{}'\nedition='2024'\n[lib]\npath='../inert.rs'\n[dependencies]\n{EXCLUDED}={{path='..',version='=0.0.1'}}\n",
                             pin.name, pin.version,
                         ),
                     ).map_err(|e| e.to_string())?;
@@ -137,8 +235,7 @@ pub(super) fn resolve(
                 }
                 refusal.get_or_insert(error);
                 if before == 0 {
-                    fs::write(work.path().join("inert.rs"), "").map_err(|e| e.to_string())?;
-                    fs::write(work.path().join("Cargo.toml"), "[package]\nname='sunrise-registry-pin-excluded'\nversion='0.0.0'\nedition='2024'\n[lib]\npath='inert.rs'\n").map_err(|e| e.to_string())?;
+                    fs::write(work.path().join("Cargo.toml"), format!("[package]\nname='{EXCLUDED}'\nversion='0.0.0'\nedition='2024'\n[lib]\npath='inert.rs'\n")).map_err(|e| e.to_string())?;
                 }
                 patched = true;
                 fs::write(&manifest_path, manifest.to_string()).map_err(|e| e.to_string())?;
@@ -147,6 +244,34 @@ pub(super) fn resolve(
             if let Err(error) = update(unlock) {
                 crate::check_cancelled()?;
                 return Err(match refusal {
+                    // Cargo's report names the stand-in that leaves a release out, not the
+                    // release: say which, and keep the chain of what still requires it.
+                    Some(refusal) if error.contains(EXCLUDED) => {
+                        let report = error
+                            .lines()
+                            .filter_map(|line| {
+                                if let Some(package) = line
+                                    .strip_prefix("required by package `")
+                                    .filter(|_| line.contains(name))
+                                {
+                                    let package = package.split(" (").next().unwrap_or(package);
+                                    Some(trf(
+                                        "{package} was left out, and is still required:",
+                                        &[("package", package)],
+                                    ))
+                                } else if line.contains(EXCLUDED)
+                                    || line.contains(name)
+                                    || line.starts_with("candidate versions found")
+                                {
+                                    None
+                                } else {
+                                    Some(line.to_owned())
+                                }
+                            })
+                            .collect::<Vec<_>>()
+                            .join("\n");
+                        format!("{refusal}\n\n{report}")
+                    }
                     Some(refusal) => format!("{refusal}\n\n{error}"),
                     None => error,
                 });

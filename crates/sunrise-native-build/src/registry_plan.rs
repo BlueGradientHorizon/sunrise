@@ -730,6 +730,8 @@ mod tests {
             assert!(error.contains(detail), "{error}");
         }
         assert!(!error.contains("loose_mod"), "{error}");
+        // The stand-ins that leave releases out stay out of what the author reads.
+        assert!(!error.contains("sunrise-registry"), "{error}");
     }
 
     #[test]
@@ -760,5 +762,82 @@ mod tests {
             assert!(error.contains(expected), "{error}");
         }
         assert!(!dir.path().join("target").exists());
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn a_line_the_mod_requires_itself_is_refused_without_trying_each_release() {
+        use std::{cell::Cell, fs, process::Command};
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        fs::create_dir_all(super::super::root()).unwrap();
+        let mut pins = BTreeMap::new();
+        // The game locks 3.0.6; the mod asks for 3.0.10 or newer on the same line.
+        for (index, patch) in std::iter::once(6).chain(10..=40).enumerate() {
+            let version = format!("3.0.{patch}");
+            let vendor = root.join("vendor").join(format!("syn-{version}"));
+            fs::create_dir_all(vendor.join("src")).unwrap();
+            fs::write(vendor.join("src/lib.rs"), "").unwrap();
+            fs::write(
+                vendor.join("Cargo.toml"),
+                format!("[package]\nname='syn'\nversion='{version}'\nedition='2024'\n"),
+            )
+            .unwrap();
+            let checksum = format!("{:064x}", index + 1);
+            fs::write(
+                vendor.join(".cargo-checksum.json"),
+                format!(r#"{{"package":"{checksum}","files":{{}}}}"#),
+            )
+            .unwrap();
+            pins.insert(patch, format!(
+                "[[package]]\nname='syn'\nversion='{version}'\nsource='{}'\nchecksum='{checksum}'\n",
+                sunrise_addresses::CARGO_CRATES_IO_SOURCE,
+            ));
+        }
+        let game = RegistryLock::parse(&format!("version=4\n{}", pins[&6])).unwrap();
+        let mut seed = game.clone();
+        seed.extend(&RegistryLock::parse(&format!("version=4\n{}", pins[&10])).unwrap())
+            .unwrap();
+        fs::create_dir(root.join(".cargo")).unwrap();
+        fs::write(
+            root.join(".cargo/config.toml"),
+            "[source.crates-io]\nreplace-with='fixture'\n[source.fixture]\ndirectory='vendor'\n",
+        )
+        .unwrap();
+        fs::create_dir(root.join("src")).unwrap();
+        fs::write(root.join("src/lib.rs"), "").unwrap();
+        fs::write(
+            root.join("Cargo.toml"),
+            "[workspace]\n[package]\nname='fixture'\nversion='1.0.0'\nedition='2024'\n[dependencies]\nsyn='3.0.10'\n",
+        )
+        .unwrap();
+        let runs = Cell::new(0);
+        let cargo = |subcommand: &str| {
+            runs.set(runs.get() + 1);
+            let mut command = Command::new("cargo");
+            command
+                .args([subcommand, "--offline"])
+                .current_dir(root)
+                .env("CARGO_HOME", root.join("cargo-home"));
+            command
+        };
+        let plan = Plan {
+            game,
+            allowed: seed.clone(),
+            seed,
+        };
+        let error = plan.resolve_and_fetch(root, cargo).unwrap_err();
+        for detail in [
+            "syn",
+            "3.0.6",
+            "^3.0.10",
+            "fixture v1.0.0",
+            "the game's lock",
+        ] {
+            assert!(error.contains(detail), "{error}");
+        }
+        assert!(!error.contains("sunrise-registry"), "{error}");
+        // One resolution, then one that keeps the game's release: none per release of the line.
+        assert_eq!(runs.get(), 2, "{error}");
     }
 }
