@@ -71,19 +71,20 @@ impl Game<'_> {
         }
     }
     /// Whether a shader pack is currently loaded and active (`IrisApi.isShaderPackInUse()`).
-    /// Returns `false` on the title screen even if a loaded pack remains cached from an earlier
-    /// world, matching `draw_frame.rs`'s title-screen suppression.
+    /// Returns `false` while the panorama shows (the title screen, waiting on a server, or a
+    /// screen that asks for it) even if a loaded pack remains cached, matching the renderer,
+    /// which suppresses the pack whenever `frame.title` is set.
     pub(in crate::game) fn shader_pack_active(&self) -> bool {
         shader_pack_in_use(
-            self.title.is_some(),
+            self.shows_panorama(),
             self.renderer.as_ref().and_then(|r| r.shader_pack_kind()),
         )
     }
 }
 
 /// Pure lifecycle rule for [`Game::shader_pack_active`]: a loaded pack is inactive while the
-/// title screen is showing (the renderer suppresses it via `!frame.title` rather than dropping
-/// it when leaving a world).
+/// panorama shows (the renderer suppresses it via `!frame.title` rather than dropping it when
+/// leaving a world).
 fn shader_pack_in_use(on_title_screen: bool, loaded_pack: Option<&str>) -> bool {
     !on_title_screen && loaded_pack.is_some()
 }

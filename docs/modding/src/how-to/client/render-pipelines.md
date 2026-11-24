@@ -212,7 +212,7 @@ vertex stage.
 ## Participating in translated shader packs
 
 To let an active Iris/OptiFine shader pack shade a pipeline's geometry with its own program, declare
-its [`PipelineGeometryClass`] on registration via `.geometry_class(...)`:
+its `PipelineGeometryClass` on registration via `.geometry_class(...)`:
 
 ```rust,ignore
 event.register(
