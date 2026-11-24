@@ -2105,15 +2105,13 @@ impl ArmorStand {
         self.previous_body_yaw = self.previous_yaw;
         self.body_yaw = self.yaw;
     }
-    /// Put there at once, with nothing to blend from
-    /// (`Entity.snapTo`).
+    /// Snap position and view rotation without changing the body's or head's
+    /// yaw samples (`Entity.snapTo`).
     pub fn snap(&mut self, at: Vec3, yaw: f32, pitch: f32) {
         self.position = at;
         self.previous = at;
         self.yaw = yaw;
-        self.body_yaw = yaw;
         self.previous_yaw = yaw;
-        self.previous_body_yaw = yaw;
         self.pitch = (pitch % 360.0).clamp(-90.0, 90.0);
         self.previous_pitch = self.pitch;
     }
@@ -3156,14 +3154,16 @@ mod armor_stand_render_tests {
         assert_eq!(stand.render_yaw(0.5), 190.0);
     }
 
-    /// A snap (a move too far to interpolate) leaves nothing to blend from.
+    /// A snap leaves no position or view samples to blend from. The body
+    /// keeps its own turn between ticks.
     #[test]
     fn a_snapped_stand_is_drawn_where_it_landed() {
         let mut stand = ArmorStand::new(1, Vec3::new(0.5, 70.0, 0.5), 0.0);
-        stand.interpolate(Some((Vec3::new(0.5, 69.0, 0.5), 0.0, 0.0)));
+        stand.interpolate(Some((Vec3::new(0.5, 69.0, 0.5), 20.0, 0.0)));
         stand.snap(Vec3::new(200.5, 64.0, 0.5), 90.0, 0.0);
         assert_eq!(stand.render_position(0.5), Vec3::new(200.5, 64.0, 0.5));
-        assert_eq!(stand.render_yaw(0.5), 90.0);
+        assert_eq!([stand.previous_yaw, stand.yaw], [90.0; 2]);
+        assert_eq!(stand.render_yaw(0.5), 10.0);
     }
 }
 #[cfg(test)]
