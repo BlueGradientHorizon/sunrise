@@ -6,4 +6,3 @@ sunrise-client game::remote::tests::client_vanilla_reads_tests::a_client_counts_
 sunrise-client game::remote::tests::client_vanilla_reads_tests::has_channel_follows_what_the_server_negotiated lib daily resources
 sunrise-client game::remote::tests::client_vanilla_reads_tests::the_client_count_follows_the_entity_tick_not_the_motion lib daily resources
 sunrise-client game::remote::tests::client_vanilla_reads_tests::the_contextual_bar_facts_read_the_jumpable_mount_and_the_tracked_waypoints lib daily resources
-sunrise-client game::remote::tests::client_vanilla_reads_tests::a_client_reads_hardcore_from_the_login_for_the_level_it_is_in lib daily resources
