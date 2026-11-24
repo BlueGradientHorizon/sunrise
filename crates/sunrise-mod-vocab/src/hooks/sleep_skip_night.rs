@@ -12,8 +12,10 @@ pub trait Hooks {
     /// Set `canceled` and none of it happens this tick: the clock stays, nobody is woken, the
     /// weather is kept, and `sleep_finished_time` and `time_skip` are not asked. The players stay
     /// in bed; vanilla's own checks still wake each one, such as at daytime
-    /// (`can_continue_sleeping`). NeoForge has no such event: its `SleepFinishedTimeEvent` cancels
-    /// only the clock move.
+    /// (`can_continue_sleeping`). The night is not skipped either when the listeners' own writes
+    /// leave too few players asleep, such as a sleeper's timer set back with
+    /// `PlayerRef::set_sleep_timer`. NeoForge has no such event: its `SleepFinishedTimeEvent`
+    /// cancels only the clock move.
     #[hook(
         target = "sunrise_client::game::native_hooks::base::Game<'_>::native_sleep_skip_night",
         dispatch = "flat",
