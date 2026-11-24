@@ -250,8 +250,10 @@ impl Renderer {
                 indices: self.indices.clone(),
                 quads: cloud_quads,
             }));
-            for (name, value) in frame.primitives.pack_uniforms {
-                post.set_mod_uniform(name, crate::mod_pipelines::mod_uniform_value(*value));
+            if let Some(wp) = self.world_primitives.as_ref() {
+                for (name, value) in wp.pack_uniforms() {
+                    post.set_mod_uniform(name, crate::mod_pipelines::mod_uniform_value(*value));
+                }
             }
             let bound_mod_slots: Vec<usize> = if post.has_mod_passes() {
                 post.bound_mod_slots().collect()

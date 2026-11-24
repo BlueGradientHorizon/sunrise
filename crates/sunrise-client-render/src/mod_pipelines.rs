@@ -660,7 +660,7 @@ fn shader_group_for_slot(slot: PackPassSlot) -> sunrise_shaders::Group {
 fn pack_blend_for(blend: PipelineBlend) -> Option<sunrise_shaders::Blend> {
     use sunrise_shaders::Factor;
     match blend {
-        PipelineBlend::Alpha => Some(sunrise_shaders::TRANSLUCENT_BLEND),
+        PipelineBlend::Translucent => Some(sunrise_shaders::TRANSLUCENT_BLEND),
         PipelineBlend::Additive => Some([Factor::SrcAlpha, Factor::One, Factor::Zero, Factor::One]),
         _ => Some(sunrise_shaders::TRANSLUCENT_BLEND),
     }
@@ -1411,8 +1411,8 @@ fn pipeline_fragment(input: PipelineInput) -> vec4<f32> {
         let opaque = RenderPipeline::new(
             id("example:opaque"),
             id("example:opaque"),
-            PipelineBlend::Alpha,
-            WorldDepth::DepthTested,
+            PipelineBlend::Translucent,
+            WorldDepth::Tested,
         )
         .geometry_class(PipelineGeometryClass::Terrain)
         .pack_binding(
@@ -1434,8 +1434,8 @@ fn pipeline_fragment(input: PipelineInput) -> vec4<f32> {
         let water = RenderPipeline::new(
             id("example:water"),
             id("example:water"),
-            PipelineBlend::Alpha,
-            WorldDepth::DepthTested,
+            PipelineBlend::Translucent,
+            WorldDepth::Tested,
         )
         .geometry_class(PipelineGeometryClass::Translucent)
         .pack_binding(

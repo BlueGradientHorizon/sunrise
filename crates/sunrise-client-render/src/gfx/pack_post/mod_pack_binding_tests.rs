@@ -166,7 +166,7 @@ fn run_frame_and_sample_center(
     let slice = read.slice(..);
     slice.map_async(wgpu::MapMode::Read, |_| {});
     let _ = gpu.device.poll(wgpu::PollType::wait_indefinitely());
-    let data = slice.get_mapped_range();
+    let data = slice.get_mapped_range().unwrap();
     let offset = (SIZE[1] / 2) as usize * stride as usize + (SIZE[0] / 2) as usize * 4;
     let px = [
         data[offset],

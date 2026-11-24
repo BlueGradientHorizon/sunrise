@@ -212,6 +212,7 @@ pub struct WorldPrimitives {
     oit_stage_ends: [[u32; 4]; OIT_STAGES - 1],
     /// Mods' own pipelines and their quads, drawn after each stage's primitives.
     pub(super) pipelines: super::mod_pipelines::ModPipelines,
+    pack_uniforms: Vec<(String, mod_api::PackUniformValue)>,
 }
 
 struct AtlasGroup {
@@ -399,6 +400,7 @@ impl WorldPrimitives {
             oit_counts: [0; 4],
             oit_stage_ends: [[0; 4]; OIT_STAGES - 1],
             pipelines: super::mod_pipelines::ModPipelines::new(device, color_format),
+            pack_uniforms: Vec::new(),
         }
     }
 
@@ -764,6 +766,8 @@ impl WorldPrimitives {
         let oit_lines = [batch.oit.lines, batch.oit.lines_through].map(|l| l.len() as u32);
         self.oit_counts = [oit_quads[0], oit_quads[1], oit_lines[0], oit_lines[1]];
         self.oit_stage_ends = clamped_ends(batch.oit.stage_ends, self.oit_counts);
+        self.pack_uniforms.clear();
+        self.pack_uniforms.extend_from_slice(batch.pack_uniforms);
         // Before the empty check, which counts the pipeline runs this queues; the pipelines
         // themselves were built with the renderer (`Renderer::build_mod_pipelines`).
         let pipeline_quads =
@@ -909,6 +913,11 @@ impl WorldPrimitives {
             ..Default::default()
         });
         self.draw_prepared_ranges(&mut pass, pipelines, false, draws)
+    }
+
+    /// Per-frame shader-pack uniform values uploaded from the latest [`Batch`].
+    pub(super) fn pack_uniforms(&self) -> &[(String, mod_api::PackUniformValue)] {
+        &self.pack_uniforms
     }
 
     /// Collect uploaded vertex chunks for mod pipelines bound to translated shader-pack passes.
