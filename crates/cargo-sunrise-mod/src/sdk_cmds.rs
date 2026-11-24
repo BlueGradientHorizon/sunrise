@@ -947,6 +947,73 @@ mod tests {
     }
 
     #[test]
+    fn update_report_shows_migration_for_a_removed_world_lifecycle_member() {
+        use mod_surface::uses::{Entry, Origin, Used, Uses};
+        // Keep the formatter fixture independent of the real lifecycle note's IDs and wording.
+        let id = "type:FixturePhase.Gone";
+        let uses = Uses {
+            items: vec![Used {
+                entry: Entry::plain(id.into(), "old-version".into()),
+                origin: Origin::Source {
+                    file: "src/lib.rs".into(),
+                    line: 19,
+                },
+                note: None,
+            }],
+        };
+        let lifecycle: ChangeNote = toml::from_str(include_str!(
+            "../../sunrise-mod-vocab/changes/debt-re-wl-re-wl.toml"
+        ))
+        .unwrap();
+        for changed in [
+            "type:WorldPhase.WorldCloseFailed",
+            "hook:world_lifecycle",
+            "hook:client_level_load",
+            "hook:client_level_unload",
+        ] {
+            assert!(
+                lifecycle.ids.iter().any(|id| id == changed),
+                "missing ID {changed}"
+            );
+        }
+        assert!(
+            lifecycle
+                .migrate
+                .is_some_and(|text| !text.trim().is_empty())
+        );
+        let notes = migrate_notes(&[note(
+            &[id],
+            "The fixture phase was removed.",
+            Some("switch to the replacement fixture phase"),
+        )]);
+        let pinned = |name: &str, build: &str| PinnedSdk {
+            name: name.into(),
+            build: build.into(),
+            dir: Default::default(),
+            surface: Default::default(),
+        };
+        let text = report(
+            "greeter",
+            &pinned("old", BUILD),
+            &pinned("new", OTHER_BUILD),
+            &uses,
+            &surface(vec![]),
+            &surface(vec![]),
+            &notes,
+        );
+        assert!(
+            text.lines()
+                .any(|line| line.trim() == "the variant `FixturePhase::Gone` (removed)"),
+            "{text}"
+        );
+        assert!(
+            text.lines().any(|line| line.trim()
+                == "note from the change: \"switch to the replacement fixture phase\""),
+            "{text}"
+        );
+    }
+
+    #[test]
     fn sdk_diff_prints_the_newer_builds_notes_under_the_changes_they_name() {
         let old = surface(vec![hook("hook:gone", "", &[])]);
         let new = surface(vec![]);

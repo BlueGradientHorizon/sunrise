@@ -1,6 +1,6 @@
 //! On-demand GUI pictures. The atlas keeps weak references; only a frame and
 //! the renderer keep decoded pixels/textures alive, so leaving the screen frees both.
-//! A mod's standalone texture (`GuiDraw::Texture`) is held instead for the atlas's
+//! A mod's standalone texture (`GuiCanvas::texture`) is held instead for the atlas's
 //! resource generation, as vanilla's `TextureManager` keeps a texture until a reload.
 use super::*;
 use std::sync::{
@@ -150,14 +150,14 @@ impl HudBatch {
         self.picture_quad(picture, [x, y, w, h], [0.0, 0.0, 1.0, 1.0], tint);
     }
 
-    /// `GuiGraphicsExtractor.blit` of the standalone texture `id` (see `GuiDraw::Texture`):
+    /// `GuiGraphicsExtractor.blit` of the standalone texture `id` (see `GuiCanvas::texture`):
     /// `innerBlit`'s quad at `x, y, w, h`, sampling `uv / tex` to `(uv + src) / tex` unclamped,
     /// tinted `tint` (the batch's RGBA), at its place in the HUD's ordered runs.
     pub fn texture(
         &mut self,
         atlas: &HudAtlas,
         id: &Identifier,
-        [x, y, w, h]: [i32; 4],
+        at: [f32; 4],
         uv: [f32; 2],
         [src, tex]: [[i32; 2]; 2],
         tint: u32,
@@ -170,7 +170,6 @@ impl HudBatch {
             (uv[0] + src[0] as f32) / tw,
             (uv[1] + src[1] as f32) / th,
         ];
-        let at = [x as f32, y as f32, w as f32, h as f32];
         self.picture_quad(picture, at, uvs, tint);
     }
 
