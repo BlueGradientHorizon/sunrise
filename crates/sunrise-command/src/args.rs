@@ -18,6 +18,11 @@ pub enum CustomArgumentKind {
     Word,
     /// The rest of the line, spaces included.
     Greedy,
+    /// Brigadier's `StringArgumentType.string()` (`QUOTABLE_PHRASE`), read by
+    /// [`Reader::read_string`]: one unquoted word, or one single- or double-quoted phrase, empty
+    /// included, in which only the active quote and `\` are escaped. The parser receives the
+    /// decoded text.
+    Quotable,
     /// A Brigadier `integer` within its bounds (`IntegerArgumentType.integer(min, max)`):
     /// refused below `min` or above `max` with `argument.integer.low` / `big`.
     Integer { min: i32, max: i32 },
@@ -658,8 +663,24 @@ fn modified_utf8_len(text: &str) -> usize {
 /// match the typed text (at its start, or after each `.`, `_` or `/`) within the protocol's text
 /// bounds and the reply's count. A candidate past a bound is dropped by name in the diagnostics
 /// and the others stay; nothing here panics.
-fn add_provider_suggestions(builder: &mut SuggestionsBuilder, candidates: Vec<CustomSuggestion>) {
-    let (count, lower) = (candidates.len(), builder.remaining_lower());
+///
+/// For a [`CustomArgumentKind::Quotable`] argument the match compares phrase content: the typed
+/// text and each candidate without an opening quote, a closing one or their `\` escapes, so `Get`,
+/// `"Get` and `'Get` all keep `"Getting Started"`. The provider still sees the raw typed text, and
+/// each kept candidate is inserted as written over the same range.
+fn add_provider_suggestions(
+    builder: &mut SuggestionsBuilder,
+    candidates: Vec<CustomSuggestion>,
+    quotable: bool,
+) {
+    let content = |text: &str| match quotable {
+        true => phrase_content(text),
+        false => text.to_owned(),
+    };
+    let (count, lower) = (
+        candidates.len(),
+        content(builder.remaining()).to_lowercase(),
+    );
     // The cap counts what the reply keeps, not what the provider answered: a candidate that does
     // not match the typed text, equals it (the builder adds nothing for it), repeats an earlier
     // text and tooltip pair, or is past a bound, spends none of it, so a long list of those
@@ -672,7 +693,7 @@ fn add_provider_suggestions(builder: &mut SuggestionsBuilder, candidates: Vec<Cu
             break;
         }
         if candidate.text == typed
-            || !matches_sub_str(&lower, &candidate.text.to_lowercase())
+            || !matches_sub_str(&lower, &content(&candidate.text).to_lowercase())
             || !seen.insert((candidate.text.clone(), candidate.tooltip.clone()))
         {
             continue;
@@ -702,6 +723,30 @@ fn add_provider_suggestions(builder: &mut SuggestionsBuilder, candidates: Vec<Cu
              {MAX_PROVIDER_SUGGESTIONS} are kept"
         );
     }
+}
+/// The content of a quotable phrase as typed so far, or of a whole one: without its opening
+/// `"` or `'`, without the matching closing quote, and with `\"` / `\'` / `\\` decoded as
+/// `StringReader.readStringUntil` decodes them. A word, or a phrase still being typed (no closing
+/// quote, perhaps ending in a lone `\`), keeps what it has.
+fn phrase_content(text: &str) -> String {
+    let Some(quote) = text.chars().next().filter(|&c| c == '"' || c == '\'') else {
+        return text.to_owned();
+    };
+    let mut out = String::new();
+    let mut escaped = false;
+    for c in text[1..].chars() {
+        if escaped {
+            out.push(c);
+            escaped = false;
+        } else if c == '\\' {
+            escaped = true;
+        } else if c == quote {
+            break;
+        } else {
+            out.push(c);
+        }
+    }
+    out
 }
 /// SharedSuggestionProvider.filterResources (no prefix).
 pub fn resource_matches(contents: &str, id: &str) -> bool {
@@ -1852,6 +1897,9 @@ impl ArgType {
             ArgType::Custom(custom) => {
                 let text = match custom.kind {
                     CustomArgumentKind::Word => reader.read_unquoted_string().to_owned(),
+                    // `StringArgumentType.parse` for `QUOTABLE_PHRASE`: the shared reader, with
+                    // its escape and unclosed-quote errors at their cursor.
+                    CustomArgumentKind::Quotable => reader.read_string()?,
                     CustomArgumentKind::Greedy => {
                         let text = reader.remaining().to_owned();
                         reader.cursor = reader.string.len();
@@ -2060,7 +2108,8 @@ impl ArgType {
                     let prefix = builder.remaining().to_owned();
                     let arguments = parsed_arguments(context, builder.input, builder.start);
                     let candidates = provider(reg, &prefix, &arguments);
-                    add_provider_suggestions(builder, candidates);
+                    let quotable = custom.kind == CustomArgumentKind::Quotable;
+                    add_provider_suggestions(builder, candidates, quotable);
                 }
                 None => {
                     let prefix = builder.remaining().to_owned();
