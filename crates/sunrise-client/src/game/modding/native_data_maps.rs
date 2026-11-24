@@ -87,6 +87,15 @@ impl<'a> WorldRegistries<'a> {
             .iter()
             .any(|declaration| declaration.key == registry)
     }
+    /// A frozen mod-declared static custom registry with `registry`, if any.
+    fn custom_registry(
+        &self,
+        registry: &str,
+    ) -> Option<&'static std::sync::Arc<dyn mod_api::__private::RegistryDirectory>> {
+        mod_api::__private::custom_registry_directories()
+            .iter()
+            .find(|dir| dir.id() == registry)
+    }
     /// The loaded entries of a mod-declared datapack registry, read once.
     fn datapack_entries(&self, registry: &str) -> Option<HashSet<String>> {
         let mut sets = self.datapack_ids.borrow_mut();
@@ -104,9 +113,15 @@ impl<'a> WorldRegistries<'a> {
 }
 impl MapRegistries for WorldRegistries<'_> {
     fn known(&self, registry: &str) -> bool {
-        self.ids.contains_key(registry) || TYPED.contains(&registry) || self.declared(registry)
+        self.ids.contains_key(registry)
+            || TYPED.contains(&registry)
+            || self.declared(registry)
+            || self.custom_registry(registry).is_some()
     }
     fn contains(&self, registry: &str, entry: &str) -> bool {
+        if let Some(dir) = self.custom_registry(registry) {
+            return dir.contains_id(entry);
+        }
         if let Some(ids) = self.ids.get(registry).filter(|ids| !ids.is_empty()) {
             let mut sets = self.id_sets.borrow_mut();
             let set = sets
@@ -140,11 +155,30 @@ impl MapRegistries for WorldRegistries<'_> {
             _ => {
                 let mut loaded = self.tags.borrow_mut();
                 let tags = loaded.entry(registry.to_owned()).or_insert_with(|| {
-                    sunrise_client::items::load_tags(self.root, &folder(registry), self.overlay)
+                    if let Some(dir) = self.custom_registry(registry) {
+                        sunrise_world::tag_layers::load(
+                            self.root,
+                            dir.tag_directory(),
+                            self.overlay,
+                            |id| dir.contains_id(id),
+                        )
+                        .map(|loaded| {
+                            loaded
+                                .into_iter()
+                                .map(|(tag, ids)| (tag, ids.into_iter().collect()))
+                                .collect()
+                        })
                         .unwrap_or_else(|e| {
                             log::warn!("Sunrise: the {registry} tags data maps read: {e}");
                             HashMap::new()
                         })
+                    } else {
+                        sunrise_client::items::load_tags(self.root, &folder(registry), self.overlay)
+                            .unwrap_or_else(|e| {
+                                log::warn!("Sunrise: the {registry} tags data maps read: {e}");
+                                HashMap::new()
+                            })
+                    }
                 });
                 members(tags)
             }

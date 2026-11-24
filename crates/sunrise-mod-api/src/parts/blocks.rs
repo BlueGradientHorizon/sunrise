@@ -84,7 +84,7 @@ impl BlocksRegistrar for PartRegistrar {
         };
         self.capability(
             |p| &mut p.block_capabilities,
-            Some(|p| &p.capabilities),
+            TypeIdentityKind::BlockCapability,
             name,
             ProviderTarget::Id(&id),
             before_game,

@@ -2,17 +2,24 @@
 use super::*;
 
 impl PartRegistrar {
-    pub(crate) fn capability_parts() -> Parts {
+    pub(crate) fn capability_parts() -> (Parts, TypeIdentityTable) {
         let mut parts = Parts::default();
+        let mut type_identities = TypeIdentityTable::default();
         for (name, handler) in
             mod_vocab::__private::parts_installation::builtin_block_capabilities()
         {
             parts.block_capability_order.push(name);
+            let handler: Arc<str> = Arc::from(handler);
             parts
                 .block_capability_metadata
-                .insert(name, (Arc::from(handler), None));
+                .insert(name, (handler.clone(), None));
+            type_identities.seed(
+                TypeIdentityKind::BlockCapability,
+                name,
+                TypeIdentity::by_name(handler),
+            );
         }
-        parts
+        (parts, type_identities)
     }
 
     /// A name has one handler type whether first encountered by a provider, a query or metadata.
@@ -24,17 +31,21 @@ impl PartRegistrar {
             ));
             return false;
         }
-        if let Some((known, _)) = self.parts.block_capability_metadata.get(name) {
-            if *known != handler {
-                self.refused.push(format!("capability {name} is answered with two handler types, {known} and {handler} by {}", self.mod_id));
-                return false;
-            }
-            return true;
+        if let Err(error) = self.type_identities.claim(
+            TypeIdentityKind::BlockCapability,
+            name,
+            self.mod_id,
+            TypeIdentity::by_name(handler.clone()),
+        ) {
+            self.refused.push(error);
+            return false;
         }
-        self.parts.block_capability_order.push(name);
-        self.parts
-            .block_capability_metadata
-            .insert(name, (handler, None));
+        if !self.parts.block_capability_metadata.contains_key(name) {
+            self.parts.block_capability_order.push(name);
+            self.parts
+                .block_capability_metadata
+                .insert(name, (handler, None));
+        }
         true
     }
 

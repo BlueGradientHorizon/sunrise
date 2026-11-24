@@ -323,8 +323,66 @@ impl Game<'_> {
             files: &files,
             ..sunrise_world::loot::PackOverlay::default()
         };
+        // A registry whose pack tags don't load keeps the game's own tags
+        // (`in_tag` falls back to them), rather than matching no tag at all.
+        let mut pack_tags: HashMap<String, HashMap<String, Vec<String>>> =
+            WorldTables::PACK_TAG_REGISTRIES
+                .into_iter()
+                .chain(
+                    sunrise_client::neoforge_mob_maps::MAPS.map(|definition| definition.directory),
+                )
+                .filter(|directory| !matches!(*directory, "item" | "entity_type" | "damage_type"))
+                .collect::<std::collections::BTreeSet<_>>()
+                .into_iter()
+                .filter_map(|registry| {
+                    let registries = sunrise_world::tag_layers::builtin_ids(root).ok();
+                    let ids = registries.as_ref().and_then(|map| map.get(registry));
+                    match sunrise_world::tag_layers::load(root, registry, &tag_files, |id| {
+                        ids.is_none_or(|ids| ids.contains(id))
+                    }) {
+                        Ok(tags) => Some((registry.to_owned(), tags)),
+                        Err(e) => {
+                            log::warn!("Sunrise: the world's {registry} tags are not applied: {e}");
+                            None
+                        }
+                    }
+                })
+                .collect();
+        let custom_dirs = mod_api::__private::custom_registry_directories();
+        // Bind tags for mod-declared static custom registries into the same `pack_tags` store,
+        // keyed by canonical registry ID (`chemlib:gas`) and preserving tag order.
+        for dir in custom_dirs {
+            match sunrise_world::tag_layers::load(root, dir.tag_directory(), &tag_files, |id| {
+                dir.contains_id(id)
+            }) {
+                Ok(tags) => {
+                    pack_tags.insert(dir.id().to_owned(), tags);
+                }
+                Err(e) => {
+                    log::warn!(
+                        "Sunrise: the world's {} tags are not applied: {e}",
+                        dir.id()
+                    );
+                }
+            }
+        }
+        let mut bound_tags: Vec<(&str, Vec<&str>)> = items
+            .bound_tags()
+            .map(|(registry, tags)| (registry, tags.collect()))
+            .collect();
+        for dir in custom_dirs {
+            if let Some(tags) = pack_tags.get(dir.id()) {
+                bound_tags.push((
+                    dir.id(),
+                    tags.iter()
+                        .filter(|(_, members)| !members.is_empty())
+                        .map(|(tag, _)| tag.as_str())
+                        .collect(),
+                ));
+            }
+        }
         // The other tables read from here on see this load's bound tags (`neoforge:tag_empty`).
-        let conditions = conditions.with_tags(items.bound_tags());
+        let conditions = conditions.with_tags(bound_tags);
         let overlay = sunrise_world::loot::PackOverlay {
             conditions: &conditions,
             files: &files,
@@ -468,22 +526,16 @@ impl Game<'_> {
             self.res.core.collision.clone(),
             &causes_suffocation,
         )?;
-        // A registry whose pack tags don't load keeps the game's own tags
-        // (`in_tag` falls back to them), rather than matching no tag at all.
-        let pack_tags: HashMap<_, _> = WorldTables::PACK_TAG_REGISTRIES
-            .into_iter()
-            .chain(sunrise_client::neoforge_mob_maps::MAPS.map(|definition| definition.directory))
-            .filter(|directory| !matches!(*directory, "item" | "entity_type" | "damage_type"))
-            .collect::<std::collections::BTreeSet<_>>()
-            .into_iter()
-            .filter_map(|registry| {
-                match sunrise_client::items::load_tags(root, registry, &tag_files) {
-                    Ok(tags) => Some((registry, tags)),
-                    Err(e) => {
-                        log::warn!("Sunrise: the world's {registry} tags are not applied: {e}");
-                        None
-                    }
-                }
+        let pack_tag_sets: HashMap<&str, HashMap<String, HashSet<String>>> = pack_tags
+            .iter()
+            .filter(|(key, _)| !key.contains(':'))
+            .map(|(key, tags)| {
+                (
+                    key.as_str(),
+                    tags.iter()
+                        .map(|(tag, members)| (tag.clone(), members.iter().cloned().collect()))
+                        .collect(),
+                )
             })
             .collect();
         // Items already decoded the root's command export. Block-state-only
@@ -502,7 +554,7 @@ impl Game<'_> {
             |directory| match directory {
                 "item" => Some(&items.item_tags),
                 "entity_type" => Some(items.entity_type_tags.members()),
-                _ => pack_tags.get(directory),
+                _ => pack_tag_sets.get(directory),
             },
             |registry, id| match registry {
                 "minecraft:item" => items.items.contains_key(id),
@@ -892,7 +944,11 @@ impl Game<'_> {
             .as_ref()
             .map_or_else(|| self.res.shared_items(), |tables| tables.items.clone());
         let parts = self.prepare_parts(&items)?;
-        let wire_tags = sunrise_client::lan::data::WorldTags::new(items.clone(), &health.damage);
+        let mut wire_tags =
+            sunrise_client::lan::data::WorldTags::new(items.clone(), &health.damage);
+        if let Some(tables) = &tables {
+            wire_tags = wire_tags.with_pack_tags(&tables.pack_tags);
+        }
         let overlay = pack_files(&tables);
         let kept = self
             .lan

@@ -161,6 +161,12 @@ fn candidate_registries<'a>(
     for declaration in mod_api::__private::datapack_registry_declarations().iter() {
         registries.entry(declaration.key.clone()).or_default();
     }
+    for dir in mod_api::__private::custom_registry_directories() {
+        registries.insert(
+            dir.id().to_owned(),
+            dir.entry_ids().iter().map(ToString::to_string).collect(),
+        );
+    }
     // A pack file's key is `<folder>/<namespace>:<path>`: `worldgen/biome/test:dunes` for
     // `minecraft:worldgen/biome`, `mymod/spell/test:fire` for a mod's `mymod:spell`.
     let folder = |registry: &str| match registry.split_once(':') {

@@ -383,11 +383,13 @@ impl Game<'_> {
             Event::Joined {
                 registries,
                 datapacks,
+                custom_registries,
                 name,
                 uuid,
             } => {
                 if let Some(remote) = &mut self.remote {
                     remote.datapacks = datapacks;
+                    remote.custom_registries = custom_registries;
                 }
                 self.set_registries(registries);
                 self.connection_joined();
@@ -452,6 +454,7 @@ impl Game<'_> {
                 // own features again.
                 if let Some(remote) = &mut self.remote {
                     remote.datapacks = Default::default();
+                    remote.custom_registries = Default::default();
                     remote.has_logical_player = false;
                     remote.viewed.clear();
                     remote.far_terrain = None;
@@ -487,6 +490,7 @@ impl Game<'_> {
             Event::Reconfigured {
                 registries,
                 datapacks,
+                custom_registries,
             } => {
                 // handleConfigurationStart → clearClientLevel, and the next
                 // ClientPacketListener starts with no players or scoreboard,
@@ -500,6 +504,7 @@ impl Game<'_> {
                 self.clear_waypoints();
                 if let Some(r) = self.remote.as_mut() {
                     r.datapacks = datapacks;
+                    r.custom_registries = custom_registries;
                     r.clear_attachments();
                     r.players.clear();
                     r.tab_players.clear();

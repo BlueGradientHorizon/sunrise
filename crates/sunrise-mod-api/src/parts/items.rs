@@ -2121,7 +2121,7 @@ impl ItemsRegistrar for PartRegistrar {
     ) {
         self.capability(
             |p| &mut p.item_capabilities,
-            None,
+            TypeIdentityKind::ItemCapability,
             name,
             ProviderTarget::Id(item),
             before_game,

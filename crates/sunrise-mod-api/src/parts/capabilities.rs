@@ -13,7 +13,7 @@ impl PartRegistrar {
     pub(crate) fn capability<P>(
         &mut self,
         table: fn(&mut Parts) -> &mut Capabilities<P>,
-        shares_names: Option<fn(&Parts) -> &Capabilities<P>>,
+        kind: TypeIdentityKind,
         name: &'static str,
         target: ProviderTarget<'_>,
         before_game: bool,
@@ -51,19 +51,15 @@ impl PartRegistrar {
                 id
             }
         };
-        let answered = |table: &Capabilities<P>| {
-            let other = table.get(name)?.values().flatten().next()?;
-            (other.type_name != handler).then(|| format!("{} by {}", other.type_name, other.mod_id))
-        };
-        let other = answered(table(&mut self.parts))
-            .or_else(|| shares_names.and_then(|shares| answered(shares(&self.parts))));
-        if let Some(other) = other {
-            self.refused.push(format!(
-                "capability {name} is answered with two handler types, {other} and {handler} by {me}",
-            ));
-            return;
-        }
-        if shares_names.is_some() && !self.note_block_capability(name, handler.clone()) {
+        if kind == TypeIdentityKind::BlockCapability {
+            if !self.note_block_capability(name, handler.clone()) {
+                return;
+            }
+        } else if let Err(error) =
+            self.type_identities
+                .claim(kind, name, me, TypeIdentity::by_name(handler.clone()))
+        {
+            self.refused.push(error);
             return;
         }
         let providers = table(&mut self.parts)

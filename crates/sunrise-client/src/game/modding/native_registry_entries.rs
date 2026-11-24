@@ -139,7 +139,18 @@ impl Game<'_> {
             })
     }
 
+    fn custom_registry(
+        registry: &str,
+    ) -> Option<&'static std::sync::Arc<dyn mod_api::__private::RegistryDirectory>> {
+        mod_api::__private::custom_registry_directories()
+            .iter()
+            .find(|dir| dir.id() == registry)
+    }
+
     fn registry_has_entry(&self, registry: &str, id: &str) -> bool {
+        if let Some(dir) = Self::custom_registry(registry) {
+            return dir.contains_id(id);
+        }
         if let Some(remote) = &self.remote {
             if registry == "minecraft:game_rule" {
                 return self.ui.rules.registry().position(id).is_some();
@@ -205,6 +216,9 @@ impl Game<'_> {
         if self.remote.is_none() {
             self.native_lifecycle.epoch()?;
         }
+        if let Some(dir) = Self::custom_registry(&registry) {
+            return Some(dir.entry_ids().to_vec());
+        }
         if let Some(set) = self.registry_datapacks(&registry)
             && let Ok(entries) = set.entries(&registry)
         {
@@ -265,6 +279,17 @@ impl Game<'_> {
             return Some(found);
         }
         if let Some(remote) = &self.remote {
+            if Self::custom_registry(&registry).is_some() {
+                let Some(index) = remote.custom_registries.raw_id(&registry, &id) else {
+                    return Some(false);
+                };
+                return Some(
+                    remote
+                        .registries
+                        .tag(&registry, &tag)
+                        .is_some_and(|members| members.contains(&index)),
+                );
+            }
             let Some(index) = network_id(&remote.builtin, &remote.registries, &registry, &id)
             else {
                 return Some(false);
@@ -326,14 +351,21 @@ impl Game<'_> {
         {
             return Some(found);
         }
-        if let Some(tables) = &self.world_tables
-            && let Some(kind) = registry.strip_prefix("minecraft:")
-            && let Some(tags) = tables.pack_tags.get(kind)
-        {
-            return Some(
-                tags.get(tag.as_ref())
-                    .is_some_and(|members| members.contains(&id)),
-            );
+        if let Some(tables) = &self.world_tables {
+            if let Some(tags) = tables.pack_tags.get(registry.as_str()) {
+                return Some(
+                    tags.get(tag.as_ref())
+                        .is_some_and(|members| members.iter().any(|member| member == &id)),
+                );
+            }
+            if let Some(kind) = registry.strip_prefix("minecraft:")
+                && let Some(tags) = tables.pack_tags.get(kind)
+            {
+                return Some(
+                    tags.get(tag.as_ref())
+                        .is_some_and(|members| members.iter().any(|member| member == &id)),
+                );
+            }
         }
         Some(self.sync_tag_contains(&registry, &id, &tag))
     }
