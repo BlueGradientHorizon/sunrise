@@ -5095,6 +5095,7 @@ version = "0.1.0"
 dependencies = [
  "libloading",
  "log",
+ "memchr",
  "object",
  "serde",
  "serde_json",
