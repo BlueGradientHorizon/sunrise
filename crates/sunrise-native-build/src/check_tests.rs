@@ -53,18 +53,22 @@ fn judged_with(
     data: Option<&Path>,
 ) -> Verdict {
     let bundle = crate::bundle_in(dir).unwrap().unwrap();
-    let project = api::Project::read(&bundle).unwrap();
     let target = Rc::new(target.clone());
     judge(
-        &project,
+        &bundle.manifest,
+        &bundle.native().sunrise,
+        table(&bundle.dir).as_mut().map_err(|why| *why),
         build,
+        crate::MIXINS_REV,
         &mut || Ok::<_, String>(target.clone()),
         &mut || match data {
             Some(data) => game_uses::entries(&bundle.manifest, data, build),
             None => Err("no game code declared: never read".to_owned()),
         },
+        None,
     )
     .unwrap()
+    .verdict
 }
 
 fn pin(dir: &Path) -> String {
@@ -153,6 +157,84 @@ fn a_list_that_holds_no_version_of_a_hook_cannot_show_the_mod_fits() {
             why: Unlisted::NewerSchema,
             hooks: Vec::new(),
         }
+    );
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn an_older_list_is_completed_by_the_build_it_was_made_for_and_its_unchecked_entries_are_carried() {
+    let dir = project_dir("fit-older-list", None, None);
+    let made_for = pin(&dir);
+    let list = |schema: u32, entries: serde_json::Value| {
+        let table = serde_json::json!({"schema": schema, "made_for": made_for, "entries": entries});
+        std::fs::write(dir.join(uses::USES_FILE), table.to_string()).unwrap();
+    };
+    let hook = |version: u64| {
+        serde_json::json!({
+            "schema": mod_surface::SCHEMA, "hash": "s",
+            "hooks": [{
+                "id": "hook:joined", "hash": "h1", "engine": {"target": "t"}, "call": "c",
+                "version": version, "side": "server", "contract": "listen", "cancellable": false, "arguments": [],
+            }],
+        })
+    };
+    // `made_for_surface` gives the build it was made for's surface, or why it cannot.
+    let judge_with = |target: &serde_json::Value, made_for_surface: Result<String, String>| {
+        let bundle = crate::bundle_in(&dir).unwrap().unwrap();
+        let target = Rc::new(serde_json::from_value(target.clone()).unwrap());
+        judge(
+            &bundle.manifest,
+            &made_for,
+            table(&bundle.dir).as_mut().map_err(|why| *why),
+            OTHER_BUILD,
+            crate::MIXINS_REV,
+            &mut || Ok::<_, String>(Rc::clone(&target)),
+            &mut || Err("no game code declared: never read".to_owned()),
+            Some(&mut || made_for_surface.clone().map(String::into_bytes)),
+        )
+    };
+    let unread = || Err("unread".to_owned());
+    list(1, serde_json::json!([{"id": "hook:joined", "hash": "h1"}]));
+    let judged = judge_with(&hook(1), Ok(hook(1).to_string())).unwrap();
+    assert_eq!(
+        (judged.verdict, judged.deferred),
+        (
+            Verdict::Fits {
+                made_for: made_for.clone()
+            },
+            None
+        )
+    );
+    let judged = judge_with(&hook(2), Ok(hook(1).to_string())).unwrap();
+    assert!(
+        matches!(&judged.verdict, Verdict::DoesNotFit { misfits, .. } if misfits.iter().all(|m| m.id == "hook:joined")),
+        "{judged:?}"
+    );
+    // Without the versions the verdict is not known.
+    assert_eq!(judge_with(&hook(1), unread()).unwrap_err(), "unread");
+    // A list this tool's scan wrote is never completed: its build is not asked for.
+    list(
+        uses::USES_SCHEMA,
+        serde_json::json!([{"id": "hook:joined", "hash": "h1"}]),
+    );
+    assert_eq!(
+        judge_with(&hook(1), unread()).unwrap().verdict,
+        Verdict::NoList {
+            made_for: made_for.clone(),
+            why: Unlisted::HookVersions,
+            hooks: vec!["hook:joined".into()],
+        }
+    );
+    // A record an old list names that the build no longer has is left to the compile: said beside the fit, not refused.
+    list(2, serde_json::json!([{"id": "fn:gone", "hash": "h"}]));
+    let judged = judge_with(&hook(1), unread()).unwrap();
+    assert_eq!(judged.verdict, Verdict::Fits { made_for });
+    assert!(
+        judged
+            .deferred
+            .as_deref()
+            .is_some_and(|note| note.contains("`fn:gone`")),
+        "{judged:?}"
     );
     std::fs::remove_dir_all(dir).unwrap();
 }
