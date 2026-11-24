@@ -10659,7 +10659,7 @@ impl Game<'_> {
         // skip to morning if `advance_time` is on, wake everyone, and
         // resetWeatherCycle if `advance_weather` is on and it is raining,
         // unless a mod's `sleep_skip_night` cancels it.
-        if self.enough_slept() && self.sleep_skips_night() {
+        if self.sleep_skips_night() {
             if self
                 .ui
                 .rules

@@ -1,6 +1,6 @@
 //! `sleep_skip_night`: a mod keeps the night from being skipped while enough players sleep.
 use crate::game::Game;
-use mod_api::{Hooks, ModEntry, ServerHost, SleepSkipNightEvent};
+use mod_api::{Hooks, ModEntry, PlayerRef, ServerHost, SleepSkipNightEvent};
 use std::sync::{Arc, Mutex};
 
 /// Records what each call saw, and cancels the skip.
@@ -19,6 +19,20 @@ impl Hooks for Keep {
             event.active,
         ));
         mod_api::Flow::Cancel
+    }
+}
+
+/// Wakes the only deep sleeper's timer and lets the skip go on.
+struct Unsettle(PlayerRef);
+#[mod_api::__subscriptions]
+impl Hooks for Unsettle {
+    fn sleep_skip_night(
+        &self,
+        host: &mut dyn ServerHost,
+        _: &mut SleepSkipNightEvent<'_>,
+    ) -> mod_api::Flow {
+        assert!(self.0.set_sleep_timer(host, 0));
+        mod_api::Flow::Continue
     }
 }
 
@@ -50,15 +64,16 @@ fn a_canceled_skip_keeps_the_clock_the_sleepers_and_the_rain() {
         ));
         let clock = game.level_clock_name(game.dim);
         deep_asleep(game);
-        let (active, sleeping, _) = game.sleep_counts();
         assert!(game.enough_slept());
 
+        // The fixture is the server thread with no player of its own: guests 12 and 13
+        // count, and only guest 12 is in bed.
         let heard = Arc::new(Mutex::new(Vec::new()));
         let mods: mod_api::Mods = vec![ModEntry::new("keep", Box::new(Keep(heard.clone())))].into();
         mod_platform::testing::with_mods(mods, || game.tick_sleep());
         assert_eq!(
             *heard.lock().unwrap(),
-            [(game.dim.id().to_owned(), 1, sleeping, active)]
+            [(game.dim.id().to_owned(), 1, 1, 2)]
         );
         assert_eq!(game.command_clock_time(&clock), 13_000);
         assert!(game.world.weather.raining);
@@ -69,5 +84,26 @@ fn a_canceled_skip_keeps_the_clock_the_sleepers_and_the_rain() {
         assert_eq!(game.command_clock_time(&clock), 24_000);
         assert!(!game.world.weather.raining);
         assert!(game.lan.as_ref().unwrap().hub.guests[0].bed.is_none());
+    });
+}
+
+#[test]
+#[ignore = "daily"]
+fn a_listener_that_unsettles_the_sleepers_keeps_the_night() {
+    crate::game::native_guest_turn_tests::with_guests(|game| {
+        assert!(game.ui.rules.set(
+            "players_sleeping_percentage",
+            sunrise_client_core::gamerules::Value::Int(1)
+        ));
+        let clock = game.level_clock_name(game.dim);
+        deep_asleep(game);
+        assert!(game.enough_slept());
+
+        let guest = game.player(12).unwrap();
+        let mods: mod_api::Mods = vec![ModEntry::new("unsettle", Box::new(Unsettle(guest)))].into();
+        mod_platform::testing::with_mods(mods, || game.tick_sleep());
+        assert_eq!(game.command_clock_time(&clock), 13_000);
+        assert!(game.world.weather.raining);
+        assert!(game.lan.as_ref().unwrap().hub.guests[0].bed.is_some());
     });
 }

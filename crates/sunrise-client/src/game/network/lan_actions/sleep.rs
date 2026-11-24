@@ -234,13 +234,17 @@ impl Game<'_> {
         sleeping >= needed && deep >= needed
     }
 
-    /// `ServerLevel.tick`'s night skip, once `enough_slept`: false when a mod's
-    /// `sleep_skip_night` canceled it for this tick.
+    /// `ServerLevel.tick`'s night skip: `SleepStatus.areEnoughSleeping` and
+    /// `areEnoughDeepSleeping`, unless a mod's `sleep_skip_night` cancels it for this tick.
     pub(in crate::game) fn sleep_skips_night(&mut self) -> bool {
+        let (active, sleeping, deep) = self.sleep_counts();
+        let needed = self.sleepers_needed(active);
+        if sleeping < needed || deep < needed {
+            return false;
+        }
         if !mod_api::__private::listened(mod_api::HookId::SleepSkipNight) {
             return true;
         }
-        let (active, sleeping, _) = self.sleep_counts();
         let percentage = self
             .ui
             .rules
@@ -248,7 +252,9 @@ impl Game<'_> {
         let mut canceled = false;
         let dimension = self.dim.id();
         self.native_sleep_skip_night(dimension, percentage, sleeping, active, &mut canceled);
-        !canceled
+        // The listener's writes (`PlayerRef::set_sleep_timer`, a teleport) can leave too
+        // few sleepers; the night is then not skipped, as the counts it answered are gone.
+        !canceled && self.enough_slept()
     }
 
     /// `ServerLevel.updateSleepingPlayerList` and `announceSleepStatus`: when
