@@ -2034,7 +2034,7 @@ mod own_block_entity_tests {
     /// `LevelRef::block_entities` names each block entity's own type: vanilla ones (chest-backed
     /// ones by their block, a copper chest's being a chest's), mod B's on its own block and on a daylight detector (an additional
     /// valid type the detector's factory doesn't make), before and while each is taken out, even
-    /// when the block there is replaced meanwhile. Entries a chunk saved but hasn't made live are
+    /// when the block there is replaced meanwhile, and a moving piston's. Entries a chunk saved but hasn't made live are
     /// not listed. It reads the level parked too, and answers None for a stale handle or on a
     /// client.
     #[test]
@@ -2069,8 +2069,27 @@ mod own_block_entity_tests {
                 .block_entities
                 .push(((20, 64, 1), BlockEntity::Chest(vec![None; 27])));
             game.world.chunks.insert((1, 0), Arc::new(pending));
+            // A piston mid-extension, and one in chunk (2, 0), which is not loaded.
+            for pos in [[15, 64, 1], [40, 64, 1]] {
+                game.world.moving_pistons.push((
+                    pos,
+                    sunrise_world::piston_shape::MovingPistonState {
+                        moved_state: game
+                            .pack
+                            .assets
+                            .registry
+                            .default_state("minecraft:stone")
+                            .unwrap(),
+                        direction: sunrise_core::geometry::Direction::East,
+                        extending: true,
+                        source: false,
+                        progress: 0.5,
+                        previous_progress: 0.5,
+                    },
+                ));
+            }
             let level = game.level(game.dim.id()).unwrap();
-            let (min, max) = ([0, 64, 0], [32, 65, 16]);
+            let (min, max) = ([0, 64, 0], [48, 65, 16]);
             let listed = |game: &Game<'_>| {
                 let mut found: Vec<([i32; 3], String)> = level
                     .block_entities(game, min, max)
@@ -2088,6 +2107,7 @@ mod own_block_entity_tests {
                 ([9, 64, 1], "minecraft:chest"),
                 ([11, 64, 1], "minecraft:barrel"),
                 ([13, 64, 1], "minecraft:chest"),
+                ([15, 64, 1], "minecraft:piston"),
             ]
             .map(|(pos, kind)| (pos, kind.to_string()))
             .into();

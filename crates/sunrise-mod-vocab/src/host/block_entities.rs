@@ -51,7 +51,8 @@ pub trait BlockEntitiesBackend {
     /// build height (`LevelHeightAccessor.isInsideBuildHeight`), in no order. Only chunks
     /// already loaded are read (`ServerChunkCache.getChunkNow`), from their live entries
     /// (`LevelChunk.getBlockEntities`): nothing is loaded or generated, and saved entries not
-    /// yet made live are not listed. One taken out for its tick is still listed. Empty for a box
+    /// yet made live are not listed. A moving piston's (`minecraft:piston`) is listed, and one taken
+    /// out for its tick is still listed with its own type. Empty for a box
     /// with no block entity, including one of zero volume, one outside the build height and one
     /// that meets no loaded chunk; any corners are valid, `i32::MIN` and `i32::MAX` included,
     /// and there is no cap on the chunks a box covers. None for reversed bounds (`min` above

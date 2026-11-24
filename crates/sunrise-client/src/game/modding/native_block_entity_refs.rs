@@ -128,8 +128,8 @@ impl Game<'_> {
         mod_api::__private::block_entity_type_key(save::block_entity_id(block_entity, block))
     }
 
-    /// The block entities of an open server level in the box `min..max` and the build height,
-    /// read from loaded chunks only (`ServerChunkCache.getChunkNow`,
+    /// The block entities of an open server level, moving pistons' included, in the box
+    /// `min..max` and the build height, read from loaded chunks only (`ServerChunkCache.getChunkNow`,
     /// `LevelChunk.getBlockEntities`). None for reversed bounds, a stale handle or a client.
     pub(super) fn level_block_entities(
         &self,
@@ -158,6 +158,10 @@ impl Game<'_> {
                     let kind = mod_api::__private::block_entity_type_key(id)?;
                     Some(BlockEntityAt::new([x, y, z], kind))
                 })
+                .chain(world.moving_pistons_in_box(min, max).filter_map(|pos| {
+                    let kind = mod_api::__private::block_entity_type_key("minecraft:piston")?;
+                    Some(BlockEntityAt::new(pos, kind))
+                }))
                 .collect(),
         )
     }

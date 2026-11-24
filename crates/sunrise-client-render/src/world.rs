@@ -951,14 +951,25 @@ impl World {
                 .into_iter()
                 .flat_map(|chunk| self.block_entities.in_chunk(chunk))
                 .copied()
-                .filter(|&(x, y, z)| {
-                    (min[0]..max[0]).contains(&x)
-                        && (min[1]..max[1]).contains(&y)
-                        && (min[2]..max[2]).contains(&z)
-                        && self.shape.contains_y(y)
-                })
+                .filter(|&(x, y, z)| self.in_box(min, max, [x, y, z]))
                 .collect(),
         )
+    }
+    /// The moving pistons' block entities (`PistonMovingBlockEntity`) of loaded chunks in the
+    /// box from `min` (inclusive) to `max` (exclusive) and the build height, in no order.
+    pub fn moving_pistons_in_box(
+        &self,
+        min: [i32; 3],
+        max: [i32; 3],
+    ) -> impl Iterator<Item = [i32; 3]> + '_ {
+        self.moving_pistons
+            .iter()
+            .map(|&(pos, _)| pos)
+            .filter(move |&pos| self.in_box(min, max, pos) && self.loaded(pos[0], pos[2]))
+    }
+    fn in_box(&self, min: [i32; 3], max: [i32; 3], pos: [i32; 3]) -> bool {
+        (0..3).all(|axis| (min[axis]..max[axis]).contains(&pos[axis]))
+            && self.shape.contains_y(pos[1])
     }
     /// Persisted container capacity override; absence preserves vanilla capacity.
     pub fn container_stack_limit(&self, key: (i32, i32, i32)) -> Option<u32> {
@@ -1208,6 +1219,23 @@ mod tests {
             Some(vec![])
         );
         assert_eq!(world.block_entities_in_box(top, top), Some(vec![]));
+        // Moving pistons: in a loaded chunk inside the box only, the maximum exclusive.
+        for pos in [[2, 64, 2], [40, 64, 40]] {
+            world.moving_pistons.push((
+                pos,
+                sunrise_world::piston_shape::MovingPistonState {
+                    moved_state: BlockStateId(0),
+                    direction: sunrise_core::geometry::Direction::East,
+                    extending: true,
+                    source: false,
+                    progress: 0.5,
+                    previous_progress: 0.5,
+                },
+            ));
+        }
+        let pistons = |min, max| world.moving_pistons_in_box(min, max).collect::<Vec<_>>();
+        assert_eq!(pistons(all, top), [[2, 64, 2]]);
+        assert_eq!(pistons([0, 0, 0], [2, 100, 16]), [[0; 3]; 0]);
         assert_eq!(world.block_entities_in_box([2, 0, 0], [1, 10, 10]), None);
         assert_eq!(world.block_entities_in_box(top, all), None);
     }
