@@ -217,13 +217,6 @@ impl RecordHash {
         self.0.push((HashOps::create_string(name), value));
         self
     }
-    #[cfg(test)]
-    pub fn optional(self, name: &str, value: Option<HashCode>) -> Self {
-        match value {
-            Some(v) => self.field(name, v),
-            None => self,
-        }
-    }
     pub fn build(self) -> HashCode {
         HashOps::create_map(self.0)
     }
