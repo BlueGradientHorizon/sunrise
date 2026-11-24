@@ -65,6 +65,25 @@ pub struct BlockEntityLease {
 
 pub type Pos = (i32, i32, i32);
 
+/// The type of a block entity taken out (`take`), kept until its lease ends.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TakenType {
+    /// A chest-backed container by its own ID, which its block can name over (a barrel or a
+    /// trapped chest).
+    Container(&'static str),
+    /// Any other vanilla block entity, by its type ID.
+    Vanilla(&'static str),
+    /// A mod's, which its block's factory may not name (an additional valid type): its own key,
+    /// `None` for an unregistered type.
+    Mod(Option<mod_api::BlockEntityTypeKey>),
+}
+
+/// The lease of a block entity taken out, and its type.
+struct Taken {
+    token: u64,
+    kind: TakenType,
+}
+
 /// What a block state's block entity does each tick (`BlockState.getTicker`).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum Ticking {
@@ -119,7 +138,7 @@ pub struct BlockEntities {
     freed: bool,
     /// Positions whose block entity `take` took and `put` has not brought
     /// back.
-    out: FxHashMap<Pos, u64>,
+    out: FxHashMap<Pos, Taken>,
     /// Positions a loaded chunk gave a new block entity over an old one: at
     /// the next tick their slot stays only if their block state ticks
     /// (`updateBlockEntityTicker`: rebind, or remove without a ticker).
@@ -697,6 +716,14 @@ impl BlockEntities {
     pub fn mods_in(&self, chunk: (i32, i32)) -> impl Iterator<Item = &Pos> {
         self.mods.get(&chunk).into_iter().flatten()
     }
+    /// The type of the block entity taken out at `pos`; `None` when none is out.
+    pub fn taken_type(&self, pos: &Pos) -> Option<TakenType> {
+        self.out.get(pos).map(|taken| taken.kind)
+    }
+    /// Every block entity of chunk `chunk`, in no order; one taken out is listed too.
+    pub fn in_chunk(&self, chunk: (i32, i32)) -> impl Iterator<Item = &Pos> {
+        self.columns.get(&chunk).into_iter().flatten()
+    }
     /// `SignBlockEntity.playerWhoMayEdit` of the sign at `pos`.
     pub fn sign_editor(&self, pos: &Pos) -> Option<u128> {
         match self.map.get(pos) {
@@ -940,7 +967,12 @@ impl BlockEntities {
         self.wake_at(pos);
         let entity = self.map.remove(pos)?;
         let token = next_token();
-        self.out.insert(*pos, token);
+        let kind = match &entity {
+            BlockEntity::Mod(entity) => TakenType::Mod(entity.kind()),
+            BlockEntity::Chest(_) => TakenType::Container(entity.vanilla_id().unwrap_or_default()),
+            other => TakenType::Vanilla(other.vanilla_id().unwrap_or_default()),
+        };
+        self.out.insert(*pos, Taken { token, kind });
         let generation = self.generations[pos];
         Some((
             BlockEntityLease {
@@ -954,20 +986,22 @@ impl BlockEntities {
     /// Re-key a live lease when an intentional state change keeps the instance.
     /// Ordinary removal still revokes it; a retired or foreign lease cannot re-key.
     pub fn rekey(&mut self, pos: &Pos, lease: &mut BlockEntityLease) -> bool {
-        if lease.pos != *pos
-            || self.out.get(pos) != Some(&lease.token)
-            || self.generation(pos) != Some(lease.generation)
-        {
+        if lease.pos != *pos || self.generation(pos) != Some(lease.generation) {
             return false;
         }
-        lease.token = next_token();
-        self.out.insert(*pos, lease.token);
-        true
+        match self.out.get_mut(pos) {
+            Some(taken) if taken.token == lease.token => {
+                lease.token = next_token();
+                taken.token = lease.token;
+                true
+            }
+            _ => false,
+        }
     }
     /// Return the taken instance in its slot; false if its lease was retired.
     pub fn put(&mut self, lease: BlockEntityLease, entity: BlockEntity) -> bool {
         let pos = lease.pos;
-        if self.out.get(&pos) != Some(&lease.token)
+        if self.out.get(&pos).map(|taken| taken.token) != Some(lease.token)
             || self.generation(&pos) != Some(lease.generation)
         {
             return false;
@@ -1590,7 +1624,7 @@ mod tests {
             default: || 0,
             codec: None,
             copy_on_death: false,
-            sync: false,
+            sync_codec: None,
         };
         let p = (1, 64, 2);
         let mut entities = level();

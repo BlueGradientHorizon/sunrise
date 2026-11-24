@@ -315,7 +315,7 @@ impl HudAtlas {
     /// texture's; else the GUI list's own (a removed or failed entry ends the search); else, where
     /// the list says nothing of the id, a registered atlas's sprite of the name, and last a packed
     /// sprite no model or GUI entry owns.
-    pub(super) fn gui_present(&self, id: &str) -> Option<(&Rect, Option<crate::ui::NineSlice>)> {
+    pub(super) fn gui_present(&self, id: &str) -> Option<(&Rect, Option<crate::ui::Scaling>)> {
         if let Some(rect) = self.live.get(id) {
             return Some((rect, None));
         }

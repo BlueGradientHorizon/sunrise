@@ -114,6 +114,9 @@ impl ProjectileWorld for LiveProjWorld<'_, '_> {
     fn in_water(&self, bounds: Aabb) -> bool {
         self.base().in_water(bounds)
     }
+    fn in_lava_box(&self, bounds: Aabb) -> bool {
+        self.base().in_lava_box(bounds)
+    }
     fn pushed_by_currents(&self, bounds: Aabb, velocity: Vec3) -> Vec3 {
         self.base().pushed_by_currents(bounds, velocity)
     }
@@ -141,12 +144,6 @@ impl ProjectileWorld for LiveProjWorld<'_, '_> {
     }
     fn can_stand_on(&self, p: [i32; 3], entity_y: f64) -> bool {
         self.base().can_stand_on(p, entity_y)
-    }
-    fn ignites(&self, p: [i32; 3]) -> bool {
-        self.base().ignites(p)
-    }
-    fn lava_height(&self, p: BlockPos) -> Option<f64> {
-        self.base().lava_height(p)
     }
     fn bubble_column(&self, p: [i32; 3]) -> Option<(bool, bool)> {
         self.base().bubble_column(p)
@@ -1086,14 +1083,7 @@ impl<'r> Game<'r> {
                 let Some(i) = self.creatures.projectiles.iter().position(|p| p.id == id) else {
                     return NonMobHit::Refused;
                 };
-                let bullet = self.remove_projectile_at(i);
-                let at = [bullet.position.x, bullet.position.y, bullet.position.z];
-                self.shulker_bullet_hurt(at);
-                self.entity_event_by(
-                    "minecraft:entity_damage",
-                    at,
-                    Some(Target::Projectile(bullet.id)),
-                );
+                let _ = self.destroy_shulker_bullet(i);
                 return NonMobHit::Hurt;
             }
             if super::super::deflect::redirectable(&self.creatures.projectiles[i]) {

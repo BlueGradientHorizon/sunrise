@@ -51,6 +51,11 @@ pub trait ItemsHost {
     /// world's enchantment definitions. API @API:item_components@.
     fn enchantments_compatible(&self, a: &str, b: &str) -> bool;
     /// Side: both.
+    /// Every item ability the game asks `can_perform_action` about (NeoForge's
+    /// `ItemAbility.getActions`): plain names such as `sword_sweep` and `shears_trim`,
+    /// sorted. A mod's own abilities are ids it owns and are not listed.
+    fn item_abilities(&self) -> Vec<String>;
+    /// Side: both.
     /// `EntityType.is(TagKey)`: whether `entity_type` (`minecraft:player`) is in the entity
     /// type tag `tag` (`minecraft:cannot_be_pushed_onto_boats`).
     fn entity_type_in_tag(&self, entity_type: &str, tag: &str) -> bool;

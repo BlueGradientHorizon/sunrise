@@ -21,12 +21,6 @@ pub trait Notes {
   require a validated stack. Trail and vibration remain unsupported. Count zero sends one directional
   particle. The return value says whether the call was accepted, not whether any player received it.
 
-- Authoritative world lifecycle events through `world_lifecycle`: open failed, final close and
-  close failed (contract version 2). **Migration (`WorldPhase::WorldOpenReady` → `server_started`):** a mod that matched
-  `WorldOpenReady` in `world_lifecycle` implements `server_started` instead, fired at the same moment (after the worlds
-  open, before the tick loop; one call per successful open, with the same `dedicated` flag as `server_about_to_start`);
-  delete the match arm. Nothing else about the phases changed. Diverges from upstream: upstream still has the phase.
-
 - Authoritative server tick events through `server_tick`: start (before any level ticks, like NeoForge's `ServerTickEvent.Pre`) and end of each non-paused
   server tick, with `world_running`. A frozen world reports false except during a requested step.
 
@@ -68,14 +62,14 @@ pub trait Notes {
   Consuming answers end the client's hand loop: `Success` swings client-side, `SuccessServer`
   server-side, `Consume` never. Client hosts permit reads/effects, not authoritative writes.
 
-- A block's own item-use behaviour, on the server for every player: attach a `BlockPart` and implement
-  `use_item_on(host, event) -> Option<InteractionResult>`. `event.state` keys the per-state table;
-  `event.click` carries the level, position, hit, hand, stack and player. `Some` replaces the template's
-  `Block.useItemOn`: `Success`/`SuccessServer` consume and swing, `Consume` consumes without swinging,
-  `Pass`/`Fail` let the item try its `useOn`, and `TryWithEmptyHand` tries the block's `useWithoutItem`
-  on the main hand only. `None` leaves the template in charge. This is the block's behaviour, not
-  NeoForge's separate `UseItemOnBlockEvent` broadcast interceptor. The earlier `right_click_block`
-  event still decides whether the block is used at all. Dispatch visits only the clicked state's parts.
+- A block's own item-use behaviour on both sides: attach a `BlockPart` and implement
+  `use_item_on(host: HostSide, event) -> Option<InteractionResult>`. `event.state` keys the per-state
+  table; `event.click` carries the level, position, hit, hand, stack and player. `Some` replaces
+  the template's `Block.useItemOn`: `Success` predicts a client swing, `SuccessServer` and `Consume`
+  consume without a client swing, `Pass`/`Fail` let the item try its `useOn`, and `TryWithEmptyHand`
+  tries the block's `useWithoutItem` on the main hand only. `None` leaves the template in charge.
+  This is the block's behaviour, not the `UseItemOnBlockEvent` interceptor. `right_click_block`
+  still decides whether to use the block. Only the clicked state's parts run.
 
 - Global interaction interception on both sides: `Hooks::use_item_on_block(host, event)` is NeoForge's
   `UseItemOnBlockEvent`. `event.phase` is `UsePhase::Block` just before the block's item method/Part,
@@ -89,11 +83,10 @@ pub trait Notes {
   canceling skips that item's Part, but `Pass` continues to the block. Any non-`Pass` answer ends the block interaction.
   Client Parts predict hands only; server-only answers cannot retroactively suppress client offhand use.
   `Fail` ends only block interaction; `Pass`/`TryWithEmptyHand` fall through.
-- `ItemPart::on_item_use_first(host, event)` is `IItemExtension.onItemUseFirst`, server side, for the
-  held item (`event.click` is the same `BlockClick`). Return `Some(result)` to end the click:
-  neither the block nor the item's `use_on` runs, and `Success` swings the hand. `None` or `Pass`
-  goes on to the block. It has no global method: NeoForge's bus event for this moment is
-  `use_item_on_block`'s `ItemBeforeBlock` phase.
+- `ItemPart::on_item_use_first(host, event)` is `IItemExtension.onItemUseFirst` on both sides, for
+  the held item (`event.click` is the same `BlockClick`). Any non-`Pass` answer skips the block
+  and the item's `use_on` for this hand; only `Success` predicts a swing. `None` or `Pass` goes on
+  to the block. NeoForge's bus event for this moment is `use_item_on_block`'s `ItemBeforeBlock` phase.
 
 - `Hooks::right_click_item(host, event)` is NeoForge's `PlayerInteractEvent.RightClickItem`, before
   `Item.use` and the item's `use_item` Part on both sides, after the same hand's target interaction falls through.
@@ -105,12 +98,13 @@ pub trait Notes {
   rather than on UseItemOn.
 
 - A block's empty-hand behaviour: `BlockPart::use_without_item(host, event)` replaces
-  `Block.useWithoutItem` on the server, on the main hand only, after `useItemOn` returns
-  `TryWithEmptyHand`. The event keeps the original state's key even if the item phase
-  changed the block. `Some` replaces the template; `None` runs it, including jukebox ejection,
-  pot wobble and bookshelf removal. Consuming results trigger DEFAULT_BLOCK_USE.
-  `Pass`, `Fail` and `TryWithEmptyHand` continue to the item; the empty method is never
-  retried. Dispatch visits only the clicked state's parts.
+  `Block.useWithoutItem` on either side, on the main hand only, when the block result is
+  `TryWithEmptyHand`. This includes a canceled `Block` event with that result. There is no
+  fourth event phase. The Part sees the captured state's key and the hand's optional stack.
+  `Some` replaces the template; `None` lets it run. Consuming results trigger DEFAULT_BLOCK_USE
+  on the server. `Pass`, `Fail` and `TryWithEmptyHand` continue to the item without retrying.
+  A client Part has reads and local effects, and cannot suppress the ordinary server request.
+  Prediction keeps the ordinary path for a refused payload and discards a stale result.
 
 - Breaking and placing a block, on the server for every player: `break_block` hears a player break a
   block once the game allowed it (`ServerPlayerGameMode.destroyBlock`) and may cancel it, which keeps the block and its
@@ -192,7 +186,7 @@ pub trait Notes {
 
 - To draw custom status rows, replace or wrap `minecraft:player_health` (hearts), `minecraft:armor_level`,
   `minecraft:food_level` or `minecraft:air_level` in `register_gui_layers`. Use the installed body's
-  `DrawContext` (`gui_paint` accepts a `GuiDraw` list). `gui_layer_pre` can veto a slot without vetoing
+  `DrawContext` (`draw_gui` lends a scoped canvas). `gui_layer_pre` can veto a slot without vetoing
   the other rows. Heart bookkeeping belongs to the vanilla heart body; bubble sounds belong to the
   vanilla air body.
 
@@ -328,19 +322,26 @@ pub trait Notes {
   directly and are not rolled back on panic/unwind or transaction abort, matching vanilla
   `Level.getRandom()`. A mod that sets its own seed uses a separate `LegacyRandomSource`.
 
-- Server lifecycle hooks run once per start, on both the single-player server thread and a dedicated server.
-  `server_about_to_start(dedicated)` runs before worlds load (`ServerAboutToStartEvent`).
-  `server_starting(dedicated)` (`ServerStartingEvent`) follows world and pack loading and spawn preparation on dedicated servers, or immediately follows about-to-start on integrated servers. Both precede accepting play.
-  `server_started(dedicated)` runs after every level loads but before the first tick (`ServerStartedEvent`).
-  On every exit after startup began, including a failed open, failed tick, or caught panic,
-  `server_stopping(dedicated)` (`ServerStoppingEvent`) runs before player cleanup and the final world save attempt.
-  `server_stopped(dedicated)` (`ServerStoppedEvent`) runs last, after network teardown, flushing saves and releasing
-  storage, even when the save failed or a shutdown listener panicked. An early callback panic (including
-  `config_unloading`) still reaches the final adopted-world save attempt and full server/network teardown,
-  not just unpublishing or flushing queued writes. The first failure is retained if cleanup also fails.
-  These are server-side, mutable `ServerHost` notifications, not cancellable.
-  A failed open never overwrites a world the server did not successfully adopt: the session lock is taken before the prepared level is installed, and only that installation allows the final save. `WorldOpenFailed` or `WorldCloseFailed`
-  still reports the failure; `WorldCloseFinal` is only emitted after a successful orderly close. No tick-time cost:
+- Server lifecycle hooks run once per start, on both the single-player server thread and a dedicated server,
+  matching NeoForge 26.3 and vanilla's `MinecraftServer` order.
+  `server_about_to_start(dedicated)` runs before worlds load (`ServerAboutToStartEvent`), after a successful dedicated bind.
+  After the Overworld loads and initializes spawn if needed, other configured levels load in `LEVEL_STEM` traversal order.
+  After level loading, adopted datapack/text setup,
+  spawn preparation, and the initial world save, `server_starting(dedicated)` (`ServerStartingEvent`) runs on both
+  dedicated and integrated servers, before accepting play.
+  `server_started(dedicated)` runs after initialization completes and before the first tick (`ServerStartedEvent`),
+  and before the integrated client receives its ready connection.
+  On an orderly shutdown (when the tick loop exits normally), `server_stopping(dedicated)` (`ServerStoppingEvent`)
+  runs before `stopServer` (network admission stop, player save/disconnect, final world save in level creation order,
+  per-level close and `level_unload`, and storage release) and `server_stopped(dedicated)` (`ServerStoppedEvent`).
+  `config_unloading` follows `server_stopped`.
+  On a failed open (including a dedicated TCP port bind failure before `server_about_to_start`) or a tick
+  error/panic, `server_stopping` is skipped; `stopServer` still runs (saving adopted worlds only, closing levels
+  with `level_unload` only after a successful save and per-level close, logging stop errors, and releasing storage)
+  and `server_stopped` still fires unconditionally, even if the final save failed or a shutdown listener panicked.
+  A failed open never overwrites a world the server did not successfully adopt: the session lock is taken before the
+  prepared level is installed, and only that installation allows the final save. The first failure is retained if
+  cleanup also fails. These are server-side, mutable `ServerHost` notifications, not cancellable. No tick-time cost:
   these hooks dispatch only at server startup and shutdown.
 
 - Mod block entities are sent to clients. Only declared types receive wire IDs after vanilla's, and several valid

@@ -1285,8 +1285,12 @@ impl Mob {
             .filter(|(id, _)| self.extra.mount == Some(*id));
         self.fluids = self.fluid_interaction(w, boat.map(|(_, b)| b));
         self.fluids.boat = boat;
-        // EntityFluidInteraction.applyCurrentTo: the flow pushes the mob.
-        if (self.fluids.in_water || self.fluids.in_lava) && self.pushed_by_fluid() {
+        // EntityFluidInteraction.applyCurrentTo: the flow pushes the mob, but
+        // `Shulker.setDeltaMovement` drops the push.
+        if (self.fluids.in_water || self.fluids.in_lava)
+            && self.pushed_by_fluid()
+            && self.species() != super::Species::Shulker
+        {
             self.velocity = w.pushed_by_currents(self.bounds(), self.velocity);
         }
         if self.fluids.in_water {
@@ -4648,7 +4652,6 @@ mod climbable_tests;
 fn fall_reset_hit(w: &MobWorld, from: Vec3, moved: Vec3) -> bool {
     let reset = w.block_tags.get("minecraft:fall_damage_resetting");
     crate::entities::fall_reset_hit(
-        w.loop_context,
         w.world,
         w.fluid_tables,
         |p| {

@@ -360,7 +360,9 @@ impl Game<'_> {
                 })
             }
             "minecraft:pumpkin" => held
-                .is_some_and(|s| &*s.item == "minecraft:shears")
+                .is_some_and(|s| {
+                    self.stack_shears(s, super::super::item_abilities::ability::SHEARS_CARVE)
+                })
                 .then_some(InteractionResult::Success),
             "minecraft:copper_golem_statue" => held
                 .is_some_and(|s| self.item_in_tag("minecraft:axes", &s.item))
