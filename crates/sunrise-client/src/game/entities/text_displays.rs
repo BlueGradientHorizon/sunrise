@@ -967,38 +967,17 @@ impl Game<'_> {
             return;
         }
         let mut round = self.native_tick_round();
-        if !round.listening() {
+        if !round.told_listening() {
             for id in eligible {
                 self.count_client_tick(id as u32);
                 self.tick_and_file_display(id);
             }
             return;
         }
-        let mut alone = Vec::new();
-        let mut batch = Vec::new();
         for id in eligible {
-            let Some(display) = self.text_displays.get(&id) else {
+            let Some(kind) = self.text_displays.get(&id).map(|d| d.shows.kind()) else {
                 continue;
             };
-            if round.alone_kind(display.shows.kind()) {
-                alone.push((id, display.shows.kind()));
-            } else {
-                round.add(
-                    id as u32,
-                    super::native_ticks::TickKind::Fixed(display.shows.kind()),
-                );
-                batch.push(id);
-            }
-        }
-        self.native_tick_pre_batch(&mut round);
-        for id in batch {
-            let ticks = !round.canceled(id as u32);
-            self.count_told_client_tick(id as u32, ticks);
-            if ticks {
-                self.tick_and_file_display(id);
-            }
-        }
-        for (id, kind) in alone {
             // A passenger's ride visit counts it before its own Pre.
             let passenger = self.client_passenger(id as u32);
             if passenger {
@@ -1012,7 +991,6 @@ impl Game<'_> {
                 self.native_tick_post_one(&round, id as u32, kind);
             }
         }
-        self.native_tick_post_batch(round);
     }
     /// Active render `Camera` yaw and pitch (`DisplayRenderer.extractRenderState`), sharing the
     /// same camera source of truth as `particle_rotation` (`ThirdPersonFront` already baked in).

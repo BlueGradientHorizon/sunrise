@@ -1390,9 +1390,11 @@ mod nested_vehicle_discard_tests {
             &self,
             _: mod_api::HostSide<'_>,
             event: &mut mod_api::EntityTickPreEvent<'_>,
-        ) {
-            if event.entities.contains(&72) && self.0.load(Ordering::Relaxed) {
-                event.canceled.push(72);
+        ) -> mod_api::Flow {
+            if event.entity == 72 && self.0.load(Ordering::Relaxed) {
+                mod_api::Flow::Cancel
+            } else {
+                mod_api::Flow::Continue
             }
         }
     }

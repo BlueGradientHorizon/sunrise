@@ -1136,10 +1136,6 @@ fn active_poison(host: &dyn mod_api::ServerHost, victim: mod_api::LivingRef) -> 
 
 #[mod_api::__subscriptions]
 impl Hooks for PufferfishProbe {
-    fn register(&self, r: &mut dyn mod_api::Registrar, _: &mod_api::RegistrationContext) {
-        r.entity_tick_each("minecraft:pufferfish");
-    }
-
     fn living_incoming_damage(
         &self,
         _: &mut dyn HitHost,
@@ -1190,7 +1186,7 @@ impl Hooks for PufferfishProbe {
         host: mod_api::HostSide<'_>,
         event: &mut mod_api::EntityTickPostEvent<'_>,
     ) {
-        if event.entities == [self.fish]
+        if event.entity == self.fish
             && let mod_api::HostSide::Server(host) = host
         {
             let victim = host.living(host.entity(self.first).unwrap()).unwrap();
@@ -1779,7 +1775,7 @@ impl Hooks for MobLandingProbe {
         host: mod_api::HostSide<'_>,
         event: &mut mod_api::EntityTickPostEvent<'_>,
     ) {
-        if event.entities.contains(&self.id)
+        if event.entity == self.id
             && let mod_api::HostSide::Server(host) = host
         {
             let entity = host.entity(self.id).unwrap();

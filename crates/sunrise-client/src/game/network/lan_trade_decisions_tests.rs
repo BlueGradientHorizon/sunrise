@@ -444,8 +444,8 @@ struct RemoveHero {
 }
 
 impl RemoveHero {
-    fn remove(host: HostSide<'_>, entities: &[u32]) {
-        assert_eq!(entities, [40]);
+    fn remove(host: HostSide<'_>, entity: u32) {
+        assert_eq!(entity, 40);
         let HostSide::Server(host) = host else {
             panic!("server fixture");
         };
@@ -457,19 +457,20 @@ impl RemoveHero {
 
 #[mod_api::__subscriptions]
 impl Hooks for RemoveHero {
-    fn register(&self, registrar: &mut dyn mod_api::Registrar, _: &mod_api::RegistrationContext) {
-        registrar.entity_tick_each("minecraft:villager");
-    }
-
-    fn entity_tick_pre(&self, host: HostSide<'_>, event: &mut mod_api::EntityTickPreEvent<'_>) {
+    fn entity_tick_pre(
+        &self,
+        host: HostSide<'_>,
+        event: &mut mod_api::EntityTickPreEvent<'_>,
+    ) -> mod_api::Flow {
         if self.before_work {
-            Self::remove(host, event.entities);
+            Self::remove(host, event.entity);
         }
+        mod_api::Flow::Continue
     }
 
     fn entity_tick_post(&self, host: HostSide<'_>, event: &mut mod_api::EntityTickPostEvent<'_>) {
         if !self.before_work {
-            Self::remove(host, event.entities);
+            Self::remove(host, event.entity);
         }
     }
 }
@@ -565,12 +566,8 @@ fn restock_after_hero_change(test: &str, before_work: bool) {
 struct EditInPost;
 #[mod_api::__subscriptions]
 impl Hooks for EditInPost {
-    fn register(&self, registrar: &mut dyn mod_api::Registrar, _: &mod_api::RegistrationContext) {
-        registrar.entity_tick_each("minecraft:villager");
-    }
-
     fn entity_tick_post(&self, host: HostSide<'_>, event: &mut mod_api::EntityTickPostEvent<'_>) {
-        assert_eq!(event.entities, [40]);
+        assert_eq!(event.entity, 40);
         let HostSide::Server(host) = host else {
             panic!("server fixture");
         };

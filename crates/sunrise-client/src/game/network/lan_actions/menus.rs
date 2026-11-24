@@ -712,33 +712,41 @@ impl Game<'_> {
         }
     }
 
-    /// `ServerPlayer.tick`'s `stillValid`: a guest's block container closes
-    /// once its block is removed or out of reach. Death removes every kind
-    /// of open menu through the same cleanup and synchronous close boundary.
+    /// `ServerPlayer.tick`'s `stillValid` for one guest: closes its block container once its
+    /// block is removed or out of reach, or closes every open menu on death.
+    pub(in crate::game) fn lan_container_tick_one(&mut self, conn: u32) {
+        let Some(dead) = self.lan.as_ref().and_then(|host| {
+            let g = host.hub.guest(conn).filter(|g| host.hub.here(g))?;
+            let close = (g.dead && super::super::native_menus::open_menu_of(host, conn).is_some())
+                || !self.container_menu_valid(g);
+            close.then_some(g.dead)
+        }) else {
+            return;
+        };
+        self.guest_close_menus(
+            conn,
+            if dead {
+                MenuRemoval::Killed
+            } else {
+                MenuRemoval::Live
+            },
+        );
+    }
+
+    #[cfg(test)]
     pub(in crate::game) fn lan_containers_tick(&mut self) {
         let Some(host) = self.lan.as_ref() else {
             return;
         };
-        let far: Vec<_> = host
+        let conns: Vec<u32> = host
             .hub
             .guests
             .iter()
             .filter(|g| host.hub.here(g) && !self.player_tick_canceled(g.conn))
-            .filter(|g| {
-                (g.dead && super::super::native_menus::open_menu_of(host, g.conn).is_some())
-                    || !self.container_menu_valid(g)
-            })
-            .map(|g| (g.conn, g.dead))
+            .map(|g| g.conn)
             .collect();
-        for (conn, dead) in far {
-            self.guest_close_menus(
-                conn,
-                if dead {
-                    MenuRemoval::Killed
-                } else {
-                    MenuRemoval::Live
-                },
-            );
+        for conn in conns {
+            self.lan_container_tick_one(conn);
         }
     }
 
