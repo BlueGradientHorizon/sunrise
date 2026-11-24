@@ -82,9 +82,6 @@ macro_rules! acting_equipment {
 /// borrows of the game. Build it before taking a field mutably.
 macro_rules! game_side {
     ($s:expr) => {
-        game_side!($s, $s.server.lan_acting_uuid)
-    };
-    ($s:expr, $player_uuid:expr) => {
         $crate::game::native_surface::GameSide {
             dim: $s.dim,
             level: $s.native_lifecycle.epoch().and_then(|epoch| {
@@ -112,7 +109,7 @@ macro_rules! game_side {
                 living_types: $s.res.living_type_keys(),
                 attributes: &$s.motion.attributes,
                 player_effects: &$s.potions.effects,
-                player_uuid: $player_uuid,
+                player_uuid: $s.server.lan_acting_uuid,
                 player_attachments: &$s.player_state.attachments,
                 entity_attachments: &*$s.entity_attachments,
             },
@@ -123,6 +120,39 @@ macro_rules! game_side {
             },
         }
     };
+    ($s:expr, $server:expr) => {{
+        let (player_uuid, level, session_lock): (Option<u128>, Option<mod_api::LevelRef>, bool) =
+            $server;
+        $crate::game::native_surface::GameSide {
+            dim: $s.dim,
+            level,
+            facts: $s.res.facts(),
+            biomes: world_biomes!($s),
+            behaviours: $s.res.behaviours(),
+            features: $s
+                .remote
+                .as_ref()
+                .map_or($s.level.enabled_features.as_arc(), |remote| {
+                    &remote.features
+                }),
+            items: $s.res.items(),
+            damage_types: &$s.health_resources.damage,
+            player_equipment: acting_equipment!($s),
+            hit_borrows: $crate::game::native_surface::HitBorrows {
+                living_types: $s.res.living_type_keys(),
+                attributes: &$s.motion.attributes,
+                player_effects: &$s.potions.effects,
+                player_uuid,
+                player_attachments: &$s.player_state.attachments,
+                entity_attachments: &*$s.entity_attachments,
+            },
+            tag_items: if $s.options.execution_role.is_client() {
+                $s.remote.as_ref().and_then(|remote| remote.tags.as_ref())
+            } else {
+                session_lock.then(|| $s.res.items())
+            },
+        }
+    }};
 }
 /// The world's packs' content files, as a field-level borrow (see the macros).
 fn pack_files(world_tables: &Option<WorldTables>) -> sunrise_world::loot::PackOverlay<'_> {

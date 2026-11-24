@@ -105,9 +105,7 @@ impl Game<'_> {
                     for at in [from, to] {
                         let p = [at.0, at.1, at.2];
                         self.be_anims.remove_position(p);
-                        if let Some(renderer) = self.renderer.0.as_mut() {
-                            renderer.invalidate_block_entity_position(p);
-                        }
+                        self.finish_piston_position_changes_renderer_client(p);
                         self.world.shulkers.remove(&p);
                         self.world.chest_openers.remove(&at);
                         self.server.lid_openers.remove(&at);
@@ -174,6 +172,13 @@ impl Game<'_> {
                     self.mark_block_entity_updated(at);
                 }
             }
+        }
+    }
+
+    #[inline(always)]
+    pub(in crate::game) fn finish_piston_position_changes_renderer_client(&mut self, p: [i32; 3]) {
+        if let Some(renderer) = self.renderer.0.as_mut() {
+            renderer.invalidate_block_entity_position(p);
         }
     }
 }

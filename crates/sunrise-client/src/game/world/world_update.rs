@@ -64,30 +64,7 @@ impl Game<'_> {
             return;
         }
         let areas = self.streaming.extra.len();
-        // The configuration connection is not a guest and owns no player area.
-        // `extra` finishes chunks through radius + 1, even with no players.
-        self.streaming.extra.extend(
-            self.tickets
-                .0
-                .spawn_areas()
-                .map(|(center, radius)| (center, radius - 1)),
-        );
         let dim = self.dim;
-        if let Some(host) = &self.lan {
-            self.streaming.extra.extend(
-                host.hub
-                    .lan
-                    .configuration_tasks
-                    .loading_spawns(dim.id())
-                    .filter(|&center| !self.tickets.0.holds_player_spawn(center))
-                    .map(|center| {
-                        (
-                            center,
-                            sunrise_client::ticket_levels::PLAYER_SPAWN_RADIUS - 1,
-                        )
-                    }),
-            );
-        }
         self.update_world_server(dim);
         // `Level.getChunk`'s tickets keep their columns until they expire.
         self.streaming.hold_unknown_tickets();
@@ -132,11 +109,7 @@ impl Game<'_> {
         let modified = sunrise_client::spans::time("with_entities", || self.with_entities(&dirty));
         self.native_full_chunk_snapshots(&modified);
         if !modified.is_empty()
-            && let Err(e) = sunrise_client::spans::time("save_chunks", || {
-                self.save
-                    .0
-                    .save_later(&modified, self.pack.assets.registry, world_biomes!(self))
-            })
+            && let Err(e) = self.update_world_save_server(&modified)
         {
             log::warn!("Sunrise: failed to save unloaded chunks: {e}");
         }
@@ -372,6 +345,18 @@ impl Game<'_> {
                 });
             }
         }
+    }
+
+    #[inline(always)]
+    pub(in crate::game) fn update_world_save_server(
+        &mut self,
+        modified: &[std::sync::Arc<sunrise_client::chunk::Chunk>],
+    ) -> Result<usize> {
+        sunrise_client::spans::time("save_chunks", || {
+            self.save
+                .0
+                .save_later(modified, self.pack.assets.registry, world_biomes!(self))
+        })
     }
 }
 

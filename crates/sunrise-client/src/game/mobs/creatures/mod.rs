@@ -2720,9 +2720,8 @@ impl Game<'_> {
             filled.extra = Some(Box::new(sunrise_client::entity_nbt::bucket_components(
                 &self.mobs[index],
             )));
-            self.audio
-                .0
-                .play(sound, Some(self.mobs[index].center()), 1.0, 1.0);
+            let center = self.mobs[index].center();
+            self.client_audio_play(sound, Some(center), 1.0, 1.0);
             self.trigger_item("minecraft:filled_bucket", &filled);
             // PlayerInteractTrigger: the water bucket as it was, and the mob picked up.
             if let Some(stack) = &held {
@@ -2988,16 +2987,18 @@ impl Game<'_> {
                 }
             }
             Species::Sheep if shears && !m.extra.sheared && !m.is_baby() => {
-                self.audio.0.play_bound(
+                let sound_entity =
+                    sunrise_client::sound_engine::SoundEntity::new(m.id, feet, m.silent);
+                m.extra.sheared = true;
+                let color = sunrise_client::mobs::render::DYE_NAMES[m.extra.color as usize & 15];
+                self.client_audio_play_bound(
                     "minecraft:entity.sheep.shear",
                     7,
                     1.0,
                     1.0,
-                    sunrise_client::sound_engine::SoundEntity::new(m.id, feet, m.silent),
+                    sound_entity,
                     None,
                 );
-                m.extra.sheared = true;
-                let color = sunrise_client::mobs::render::DYE_NAMES[m.extra.color as usize & 15];
                 drops_table = format!("minecraft:shearing/sheep/{color}");
                 let stacks = world_items!(self).loot_table(
                     &drops_table,
@@ -3455,9 +3456,7 @@ impl Game<'_> {
             let (spread, count) = ([0.5, 0.0, 0.5], if fresh { 4 } else { 2 });
             // shortcut: scalar speed models DEFAULT randomization; 26.3 sends
             // ALTERNATIVE_WITH_SPEED with a per-axis maximum speed.
-            self.particles
-                .0
-                .send_particles(&options, at, spread, 0.2, count);
+            self.client_particles_send_particles(&options, at, spread, 0.2, count);
             self.lan_send_particles(super::lan_particles::QueuedParticle {
                 dimension: self.dim.id(),
                 options,
@@ -3497,7 +3496,7 @@ impl Game<'_> {
                 self.play_bound_sound(sound, id, None);
             }
             Some((s, volume, pitch)) => {
-                self.audio.0.play(&full_id(s), Some(feet), volume, pitch);
+                self.client_audio_play(&full_id(s), Some(feet), volume, pitch);
             }
             None => {}
         }
@@ -3509,7 +3508,7 @@ impl Game<'_> {
                     LevelSound::new(&name, feet, volume, pitch).in_source(SoundSource::Neutral);
                 self.play_bound_sound(sound, id, None);
             } else {
-                self.audio.0.play(&name, Some(feet), volume, pitch);
+                self.client_audio_play(&name, Some(feet), volume, pitch);
             }
         }
         if consume && !creative {

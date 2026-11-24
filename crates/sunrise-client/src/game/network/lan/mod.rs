@@ -125,6 +125,26 @@ impl Game<'_> {
     pub(in crate::game) fn lan_acting_uuid(&self) -> Option<u128> {
         self.server.lan_acting_uuid
     }
+
+    #[inline(always)]
+    pub(in crate::game) fn game_side_server(
+        &self,
+    ) -> (Option<u128>, Option<mod_api::LevelRef>, bool) {
+        let level = self.native_lifecycle.epoch().and_then(|epoch| {
+            let key = self.dim.key();
+            let id = mod_api::__private::dimension_id(key)?;
+            Some(mod_api::LevelRef::with_generation(
+                epoch,
+                key,
+                self.levels.0.runtime.generation_of(id),
+            ))
+        });
+        (
+            self.lan_acting_uuid(),
+            level,
+            !self.options.execution_role.is_client() && self.session_lock.0.is_some(),
+        )
+    }
     /// `PlayerList.remove`: `player.awardStat(Stats.LEAVE_GAME)` before the
     /// player is saved, heard by native mods first. Once per guest, however
     /// often they are saved.

@@ -653,7 +653,7 @@ impl Game<'_> {
                 .next_float()
         };
         if running {
-            let lan_acting_uuid = self.lan_acting_uuid();
+            let side_server = self.game_side_server();
             let sections = self.client.client_pick.sections.get_mut();
             self.orbs.retain_mut(|o| {
                 let distance = |feet: &[f64; 3]| -> f64 {
@@ -687,7 +687,7 @@ impl Game<'_> {
                     sections.move_id(o.id, o.position.components());
                 }
                 let before = o.position;
-                let side = game_side!(self, lan_acting_uuid);
+                let side = game_side!(self, side_server);
                 let kept = o.tick(
                     world,
                     facts,
@@ -1044,7 +1044,7 @@ impl Game<'_> {
                 }
             };
         }
-        let lan_acting_uuid = self.lan_acting_uuid();
+        let side_server = self.game_side_server();
         let Some(player) = self.player.as_mut() else {
             return Ok(None);
         };
@@ -1055,7 +1055,7 @@ impl Game<'_> {
         // shape is unavailable here; only the server decides when to wake.
         if sleeping.is_some() {
             // Entity.baseTick still samples fluids while sleeping, before LocalPlayer.aiStep.
-            let side = game_side!(self, lan_acting_uuid);
+            let side = game_side!(self, side_server);
             player.client_side = true;
             motion_world!(side, player).fluid_base_tick()?;
             if let Some(player) = self.player.as_mut().filter(|p| p.entity_id == body) {
@@ -1066,7 +1066,7 @@ impl Game<'_> {
                 self.tick_local_water_vision();
             }
         } else if walks {
-            let side = game_side!(self, lan_acting_uuid);
+            let side = game_side!(self, side_server);
             player.client_side = true;
             // LivingEntity.checkAutoSpinAttack: a Riptide spin that touches a
             // mob ends and bounces back; the server deals the hit.
@@ -1087,8 +1087,8 @@ impl Game<'_> {
                 None
             };
             let answer = self.ask_swim_entry(decision);
-            let lan_acting_uuid = self.lan_acting_uuid();
-            let side = game_side!(self, lan_acting_uuid);
+            let side_server = self.game_side_server();
+            let side = game_side!(self, side_server);
             let Some(player) = self.player.as_mut().filter(|p| p.entity_id == body) else {
                 return Ok(None);
             };
@@ -1102,8 +1102,8 @@ impl Game<'_> {
             // LocalPlayer.aiStep: water vision reads this tick's `Entity.baseTick`
             // `isEyeInFluid(FluidTags.WATER)` sample and `this.isSpectator()`, before `super.aiStep()`.
             self.tick_local_water_vision();
-            let lan_acting_uuid = self.lan_acting_uuid();
-            let side = game_side!(self, lan_acting_uuid);
+            let side_server = self.game_side_server();
+            let side = game_side!(self, side_server);
             let Some(player) = self.player.as_mut().filter(|p| p.entity_id == body) else {
                 return Ok(None);
             };
@@ -1117,7 +1117,7 @@ impl Game<'_> {
             // player too (controlled_simulation_tick does it otherwise): left
             // at 10, the hurt tilt restarted every frame and shook the camera.
             player.health.advance_clock();
-            let side = game_side!(self, lan_acting_uuid);
+            let side = game_side!(self, side_server);
             player.client_side = true;
             let mut passenger = motion_world!(side, player);
             if riding && !dead {
@@ -1133,8 +1133,8 @@ impl Game<'_> {
                     None
                 };
                 let answer = self.ask_swim_entry(decision);
-                let lan_acting_uuid = self.lan_acting_uuid();
-                let side = game_side!(self, lan_acting_uuid);
+                let side_server = self.game_side_server();
+                let side = game_side!(self, side_server);
                 let Some(player) = self.player.as_mut().filter(|p| p.entity_id == body) else {
                     return Ok(None);
                 };
@@ -1144,8 +1144,8 @@ impl Game<'_> {
                     return Ok(None);
                 }
                 self.tick_local_water_vision();
-                let lan_acting_uuid = self.lan_acting_uuid();
-                let side = game_side!(self, lan_acting_uuid);
+                let side_server = self.game_side_server();
+                let side = game_side!(self, side_server);
                 let Some(player) = self.player.as_mut().filter(|p| p.entity_id == body) else {
                     return Ok(None);
                 };

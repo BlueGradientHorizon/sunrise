@@ -360,8 +360,8 @@ impl Game<'_> {
             Some(self.border.geometry()),
             Some(&self.res.motion().blocks),
         );
-        let acting_uuid = self.lan_acting_uuid();
-        let side = game_side!(self, acting_uuid);
+        let side_server = self.game_side_server();
+        let side = game_side!(self, side_server);
         let sections = self.client.client_pick.sections.get_mut();
         self.tnts.retain_mut(|t| {
             // A fluid lookup that fails leaves it where its move put it.
@@ -522,8 +522,8 @@ impl Game<'_> {
         #[cfg(test)]
         nested_spawn_tests::after_lift(self, nested_spawn_tests::Point::RemoteRocket);
         for r in &mut rockets {
-            let acting_uuid = self.lan_acting_uuid();
-            r.remote_step(self.body_motion(&game_side!(self, acting_uuid)));
+            let side_server = self.game_side_server();
+            r.remote_step(self.body_motion(&game_side!(self, side_server)));
             if let Some(target) = r.attached_to {
                 if me == Some(target) {
                     self.pick_section_move(r.id, r.position.components());

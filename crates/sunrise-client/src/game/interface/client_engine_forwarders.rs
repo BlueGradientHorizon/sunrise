@@ -15,6 +15,21 @@ impl Game<'_> {
     }
 
     #[inline(always)]
+    pub(in crate::game) fn client_audio_play_bound(
+        &mut self,
+        event: &str,
+        source: usize,
+        volume: f32,
+        pitch: f32,
+        entity: sunrise_client::sound_engine::SoundEntity,
+        except_entity: Option<u32>,
+    ) {
+        self.audio
+            .0
+            .play_bound(event, source, volume, pitch, entity, except_entity);
+    }
+
+    #[inline(always)]
     pub(in crate::game) fn client_audio_play_on(
         &mut self,
         source: usize,
