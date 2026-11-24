@@ -9026,6 +9026,82 @@ def explosion_creaking_heart_experience():
                        f'/forceload remove {x0} {z0}')
 
 
+def moved_thrown_item_save():
+    """#2691 (26.3): thrown-item projectiles decode, edit, move, unload and reload their typed Item."""
+    x0, y0, z0 = 5696, 300, 5568
+    ring = [[(x0 >> 4) + i, (z0 >> 4) + k] for i in range(-2, 3) for k in range(-2, 3)]
+    # (kind, offset (dx, dy, dz), summon fields, optional pre-tick /data edit, expects movement)
+    cases = [
+        # All four throwables with custom Item + motion.
+        ('egg', (2.5, 2, 2.5), 'Item:{id:"minecraft:stone",count:5},Motion:[0.05d,0.0d,0.0d],NoGravity:1b', None, True),
+        ('snowball', (2.5, 2, 5.5), 'Item:{id:"minecraft:stone",count:5},Motion:[0.05d,0.0d,0.0d],NoGravity:1b', None, True),
+        ('ender_pearl', (2.5, 2, 8.5), 'Item:{id:"minecraft:stone",count:5},Motion:[0.05d,0.0d,0.0d],NoGravity:1b', None, True),
+        ('experience_bottle', (2.5, 2, 11.5), 'Item:{id:"minecraft:stone",count:5},Motion:[0.05d,0.0d,0.0d],NoGravity:1b', None, True),
+        ('egg', (2.5, 2, 14.5), 'Item:{id:"minecraft:blue_egg",count:3},Motion:[0.05d,0.0d,0.0d],NoGravity:1b', None, True),
+        # Missing Item defaults to the kind's item for all four throwables.
+        ('egg', (2.5, 4, 2.5), 'Motion:[0.05d,0.0d,0.0d],NoGravity:1b', None, True),
+        ('snowball', (2.5, 4, 5.5), 'Motion:[0.05d,0.0d,0.0d],NoGravity:1b', None, True),
+        ('ender_pearl', (2.5, 4, 8.5), 'Motion:[0.05d,0.0d,0.0d],NoGravity:1b', None, True),
+        ('experience_bottle', (2.5, 4, 11.5), 'Motion:[0.05d,0.0d,0.0d],NoGravity:1b', None, True),
+        # Same-position distinct stacks (stationary and moved).
+        ('snowball', (2.5, 6, 2.5), 'Item:{id:"minecraft:diamond",count:2},Motion:[0.0d,0.0d,0.0d],NoGravity:1b', None, False),
+        ('snowball', (2.5, 6, 2.5), 'Item:{id:"minecraft:emerald",count:4},Motion:[0.0d,0.0d,0.0d],NoGravity:1b', None, False),
+        ('snowball', (2.5, 6, 5.5), 'Item:{id:"minecraft:gold_ingot",count:3},Motion:[0.05d,0.0d,0.0d],NoGravity:1b', None, True),
+        ('snowball', (2.5, 6, 5.5), 'Item:{id:"minecraft:iron_ingot",count:3},Motion:[0.05d,0.0d,0.0d],NoGravity:1b', None, True),
+        # /data edits before movement (valid moved, valid stationary, rejected reset).
+        ('snowball', (2.5, 6, 8.5), 'Item:{id:"minecraft:stone",count:5},Motion:[0.05d,0.0d,0.0d],NoGravity:1b',
+         '/data modify entity {uuid} Item set value {id:"minecraft:emerald",count:3}', True),
+        ('snowball', (2.5, 6, 11.5), 'Item:{id:"minecraft:stone",count:5},Motion:[0.0d,0.0d,0.0d],NoGravity:1b',
+         '/data modify entity {uuid} Item set value {id:"minecraft:copper_ingot",count:2}', False),
+        ('egg', (2.5, 6, 14.5), 'Item:{id:"minecraft:stone",count:5},Motion:[0.05d,0.0d,0.0d],NoGravity:1b',
+         '/data modify entity {uuid} Item set value {count:5}', True),
+        # Rejected items fall back to the kind's default item.
+        ('snowball', (2.5, 8, 2.5), 'Item:{count:5},Motion:[0.05d,0.0d,0.0d],NoGravity:1b', None, True),
+        ('snowball', (2.5, 8, 5.5), 'Item:{id:"minecraft:air",count:1},Motion:[0.05d,0.0d,0.0d],NoGravity:1b', None, True),
+        ('snowball', (2.5, 8, 8.5), 'Item:{id:"minecraft:not_an_item",count:1},Motion:[0.05d,0.0d,0.0d],NoGravity:1b', None, True),
+        ('snowball', (2.5, 8, 11.5), 'Item:{id:"minecraft:stone",count:0},Motion:[0.05d,0.0d,0.0d],NoGravity:1b', None, True),
+        ('snowball', (2.5, 8, 14.5), 'Item:{id:"minecraft:stone",count:100},Motion:[0.05d,0.0d,0.0d],NoGravity:1b', None, True),
+        ('snowball', (2.5, 10, 2.5), 'Item:{id:"minecraft:stone",count:1,components:{"minecraft:not_a_component":1}},Motion:[0.05d,0.0d,0.0d],NoGravity:1b', None, True),
+        ('snowball', (2.5, 10, 5.5), 'Item:{id:"minecraft:stone",count:1,components:{"minecraft:damage":"bad"}},Motion:[0.05d,0.0d,0.0d],NoGravity:1b', None, True),
+        ('snowball', (2.5, 10, 8.5), 'Item:{id:"minecraft:stone",count:1,components:{"minecraft:creative_slot_lock":{}}},Motion:[0.05d,0.0d,0.0d],NoGravity:1b', None, True),
+        # Mixed valid + rejected components and non-compound Item / components.
+        ('snowball', (2.5, 14, 2.5), 'Item:{id:"minecraft:stone",count:1,components:{"minecraft:custom_name":"pebble","minecraft:damage":"bad"}},Motion:[0.05d,0.0d,0.0d],NoGravity:1b', None, True),
+        ('snowball', (2.5, 14, 5.5), 'Item:{id:"minecraft:stone",count:1,components:{"minecraft:custom_name":"pebble","minecraft:not_a_component":1}},Motion:[0.05d,0.0d,0.0d],NoGravity:1b', None, True),
+        ('snowball', (2.5, 14, 8.5), 'Item:{id:"minecraft:stone",count:1,components:123},Motion:[0.05d,0.0d,0.0d],NoGravity:1b', None, True),
+        ('snowball', (2.5, 14, 11.5), 'Item:"minecraft:stone",Motion:[0.05d,0.0d,0.0d],NoGravity:1b', None, True),
+        # Bare ids and modeled potion stacks.
+        ('splash_potion', (2.5, 10, 11.5), 'Item:{id:"splash_potion",count:5},Motion:[0.05d,0.0d,0.0d],NoGravity:1b', None, True),
+        ('snowball', (2.5, 10, 14.5), 'Item:{id:"stone",count:5},Motion:[0.05d,0.0d,0.0d],NoGravity:1b', None, True),
+        ('splash_potion', (2.5, 12, 2.5), 'Item:{id:"minecraft:splash_potion",count:2,components:{"minecraft:potion_contents":{potion:"minecraft:harming"}}},Motion:[0.05d,0.0d,0.0d],NoGravity:1b', None, True),
+        # Valid component-bearing stacks.
+        ('egg', (2.5, 12, 5.5), 'Item:{id:"minecraft:stone",count:5,components:{"minecraft:custom_name":"pebble","minecraft:custom_data":{tag:1b}}},Motion:[0.05d,0.0d,0.0d],NoGravity:1b', None, True),
+        ('ender_pearl', (2.5, 12, 8.5), 'Item:{id:"minecraft:diamond_sword",count:1,components:{"minecraft:damage":7,"minecraft:enchantments":{"minecraft:unbreaking":2}}},Motion:[0.05d,0.0d,0.0d],NoGravity:1b', None, True),
+        # Moved projectile landing on another projectile's exact load position.
+        ('snowball', (2.549500000476837, 16, 2.5), 'Item:{id:"minecraft:coal",count:1},Motion:[0.0d,0.0d,0.0d],NoGravity:1b', None, False),
+        ('snowball', (2.5, 16, 2.5), 'Item:{id:"minecraft:quartz",count:2},Motion:[0.05d,0.0d,0.0d],NoGravity:1b', None, True),
+    ]
+    ops = [cmd(f'/forceload add {x0} {z0}', False), {'op': 'wait_chunks', 'chunks': ring},
+           cmd('/tick freeze', False)]
+    for n, (kind, (dx, dy, dz), fields, edit, _) in enumerate(cases, 1):
+        uuid = f'00000a83-0000-0000-0000-{n:04x}00000001'
+        ops.append(cmd(f'/summon {kind} {x0 + dx} {y0 + dy} {z0 + dz} {{UUID:[I;2691,0,{n},1],{fields}}}', expect_result=1))
+        if edit is not None:
+            ops.append(cmd(edit.replace('{uuid}', uuid), expect_result=1))
+    ops += [cmd('/tick unfreeze', False), {'op': 'tick', 'n': 1}, cmd('/tick freeze', False)]
+    for n in range(1, len(cases) + 1):
+        uuid = f'00000a83-0000-0000-0000-{n:04x}00000001'
+        ops.append(cmd(f'/data get entity {uuid} Pos'))
+        ops.append(cmd(f'/data get entity {uuid} Item'))
+    ops += [cmd('/tick unfreeze', False), cmd(f'/forceload remove {x0} {z0}', False), {'op': 'tick', 'n': 60},
+            cmd(f'/execute unless loaded {x0} {y0} {z0}', expect_result=1),
+            cmd(f'/forceload add {x0} {z0}', False), {'op': 'wait_chunks', 'chunks': ring}]
+    for n in range(1, len(cases) + 1):
+        uuid = f'00000a83-0000-0000-0000-{n:04x}00000001'
+        ops.append(cmd(f'/data get entity {uuid} Item'))
+    return ops + setup(f'/kill @e[type=!player,x={x0},y={y0 - 8},z={z0},dx=16,dy=32,dz=16]',
+                       f'/forceload remove {x0} {z0}')
+
+
 def groups():
     try:
         from .spectral_duration_corpus import cases as spectral_saved_duration
@@ -9354,6 +9430,7 @@ def groups():
         ('boat float height', boat_float_height()),
         ('vehicle fall clip', vehicle_fall_clip()),
         ('projectile saved ground', projectile_saved_ground()),
+        ('moved thrown item save', moved_thrown_item_save()),
         ('teleport lands', teleport_lands()),
         ('rocket data merge', rocket_data_merge()),
         ('mob fall clip', mob_fall_clip()),

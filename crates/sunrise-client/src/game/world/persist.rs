@@ -2466,7 +2466,12 @@ impl Game<'_> {
             _ => None,
         };
         let owner = p.owner_uuid;
-        let raw = anon_raw(&self.persist, p.kind.id(), p.position);
+        // Throwables own their typed Item and use id-keyed memory, never a position-keyed entry.
+        let raw = if p.kind.is_throwable_item() {
+            self.persist.raw.get(&p.id).cloned()
+        } else {
+            anon_raw(&self.persist, p.kind.id(), p.position)
+        };
         let uuid = saved_uuid(&self.persist, p.id);
         let in_block = p
             .arrow
@@ -4337,6 +4342,10 @@ mod invalid_passenger_tests {
 #[cfg(test)]
 #[path = "persist/summon_uuid_conflict_tests.rs"]
 mod summon_uuid_conflict_tests;
+
+#[cfg(test)]
+#[path = "persist/thrown_item_tests.rs"]
+pub(in crate::game) mod thrown_item_tests;
 
 #[cfg(test)]
 mod h262_enderman_absolute_anger_tests {

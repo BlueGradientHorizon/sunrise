@@ -215,6 +215,8 @@ def main():
                         const=lab.LOCAL / 'witness' / lab.VERSION / 'fangs_ticking_gate' / 'fangs_ominous_spawner_ticking_gate.json',
                         type=Path,
                         help='record the 26.3 vanilla ticking-gate witness JSON into .local (Java only)')
+    parser.add_argument('--record-thrown-item-witness', type=Path,
+                        help='write verified vanilla oracle records to this witness JSON file')
     args = parser.parse_args()
     if args.record_eye_item_witness:
         args.reference_only = True
@@ -698,6 +700,8 @@ def main():
             args.record_stand_living_witness.parent.mkdir(parents=True, exist_ok=True)
             args.record_stand_living_witness.write_text(json.dumps(witness, indent=2) + '\n', encoding='utf-8')
             print(f'Recorded witness: {args.record_stand_living_witness}')
+        if args.record_thrown_item_witness:
+            write_witness(args.record_thrown_item_witness, lock, groups, reference)
         if args.record_moving_piston_witness:
             target = args.record_moving_piston_witness if args.record_moving_piston_witness.is_absolute() else lab.ROOT / args.record_moving_piston_witness
             target.parent.mkdir(parents=True, exist_ok=True)
@@ -817,6 +821,8 @@ def main():
             sys.exit(f'Java weather guard failed: {op["label"]}: {reference.get("results")}')
         if 'expect_light' in op and reference.get('results') != [[True, n] for n in op['expect_light']]:
             sys.exit(f'Java light prerequisite failed: {op}: {reference}')
+    if args.record_thrown_item_witness:
+        write_witness(args.record_thrown_item_witness, lock, groups, vanilla)
     commands_by_group = []
     index = 0
     for name, lines in groups:
@@ -859,6 +865,25 @@ def main():
     if mismatches and not args.allow_gaps:
         sys.exit(f'{len(mismatches)} command execution mismatches; see {build}')
     print(f'Command execution parity report: {report_path}')
+
+
+def write_witness(path, lock, groups, reference):
+    witness = {
+        'minecraft': lock['minecraft']['version'],
+        'oracle': 'dev.sunriselab.parity.VanillaCommandExecOracle',
+        'seed': SEED,
+        'groups': [name for name, _ in groups if name != 'setup'],
+        'records': [
+            {
+                'cmd': row['cmd'],
+                'text': ''.join(span[0] for m in row['messages'] for span in m),
+                'results': row['results'],
+            }
+            for row in reference
+        ],
+    }
+    lab.write_json(path, witness)
+    print(f'Wrote witness: {path}')
 
 
 def assemble(groups, unsynced_randoms=False):

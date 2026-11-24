@@ -3334,14 +3334,99 @@ const THROWABLE_ITEMS: [&str; 6] = [
     "minecraft:lingering_potion",
     "minecraft:experience_bottle",
 ];
-/// The item a throwable flies as: its stack (a potion's), the mod type's
-/// item, or the item its entity type is named after.
-fn throwable_item(kind: &ProjectileKind) -> Option<&str> {
-    match kind {
-        ProjectileKind::Thrown(t) => Some(t.item),
-        ProjectileKind::Potion(stack, _) => Some(&stack.item),
-        _ => THROWABLE_ITEMS.iter().find(|id| **id == kind.id()).copied(),
+
+fn decode_throwable_components(raw: &Tag, items: &crate::items::Items) -> Option<Tag> {
+    let Tag::Compound(entries) = raw else {
+        return None;
+    };
+    let reg = &items.component_registry;
+    let type_ids = reg.ids("minecraft:data_component_type");
+    let check_registry = !type_ids.is_empty();
+    let mut decoded = Compound::new();
+    for (raw_key, value) in entries {
+        let Ok(key_text) = raw_key.to_string() else {
+            continue;
+        };
+        let (removed, name) = match key_text.strip_prefix('!') {
+            Some(rest) => (true, rest),
+            None => (false, key_text.as_str()),
+        };
+        let Ok(parsed) = sunrise_core::identifier::Identifier::parse(name) else {
+            continue;
+        };
+        let id = parsed.to_string();
+        if sunrise_world::item_defaults::is_transient_component(&id) {
+            continue;
+        }
+        if check_registry {
+            let known = type_ids.iter().any(|entry| entry == &id)
+                || reg.persistent_components.iter().any(|entry| entry == &id)
+                || sunrise_command::item::DECODED_COMPONENTS.contains(&id.as_str())
+                || sunrise_protocol::item::custom::id(&id).is_some();
+            if !known {
+                continue;
+            }
+        }
+        if removed {
+            if !matches!(value, Tag::Compound(_)) {
+                continue;
+            }
+            decoded.remove(&JavaString::from(id.as_str()));
+            decoded.insert(
+                JavaString::from(format!("!{id}").as_str()),
+                Tag::Compound(Compound::new()),
+            );
+            continue;
+        }
+        let value = if id.starts_with("minecraft:") {
+            let Ok(value) = sunrise_command::item::decoded_component_value(&id, value, reg) else {
+                continue;
+            };
+            value
+        } else {
+            if sunrise_core::nbt::validate_component_value(value).is_err() {
+                continue;
+            }
+            value.clone()
+        };
+        decoded.remove(&JavaString::from(format!("!{id}").as_str()));
+        decoded.insert(JavaString::from(id.as_str()), value);
     }
+    (!decoded.is_empty()).then_some(Tag::Compound(decoded))
+}
+
+/// Decodes a throwable `Item` tag with vanilla's item and per-entry component codec rules.
+pub fn decode_throwable_item(
+    tag: &Tag,
+    items: &crate::items::Items,
+) -> Option<crate::items::ItemStack> {
+    let Tag::Compound(_) = tag else {
+        return None;
+    };
+    let (namespace, path) = sunrise_world::datafix::identifier(&text(tag.get("id"))?)?;
+    let id = format!("{namespace}:{path}");
+    if id == "minecraft:air" || (!items.items.is_empty() && items.get(&id).is_none()) {
+        return None;
+    }
+    let components = tag
+        .get("components")
+        .and_then(|raw| decode_throwable_components(raw, items));
+    let (damage, extra) = crate::item_data::decode_components(components.as_ref());
+    Some(crate::items::ItemStack {
+        item: Arc::from(id.as_str()),
+        count: 1,
+        damage,
+        extra,
+    })
+}
+
+/// Decode the `Item` field of a throwable compound using vanilla's item and component codecs.
+pub fn decode_throwable_item_field(
+    tag: &Tag,
+    items: &crate::items::Items,
+) -> Option<crate::items::ItemStack> {
+    tag.get("Item")
+        .and_then(|item| decode_throwable_item(item, items))
 }
 
 /// The thrown kind an entity id names: vanilla's, or a content mod's type.
@@ -3401,7 +3486,7 @@ pub fn throwable_to_nbt(
     raw: Option<&Tag>,
     items: &crate::items::Items,
 ) -> Option<Tag> {
-    let item = throwable_item(&p.kind)?;
+    let stack = p.thrown_item_stack()?;
     let base = Base {
         id: p.kind.id(),
         uuid,
@@ -3418,35 +3503,22 @@ pub fn throwable_to_nbt(
     if p.no_gravity {
         put(&mut tag, "NoGravity", Tag::Byte(1));
     }
-    // the loaded item stays (blue egg, potion effects) at `setItem`'s count 1.
-    if let Tag::Compound(m) = &mut tag {
-        let st = match &p.kind {
-            ProjectileKind::Potion(s, _) => (**s).clone(),
-            _ => crate::items::ItemStack::new(item, 1),
-        };
-        if let Tag::Compound(i) = m
-            .entry("Item".into())
-            .or_insert_with(|| item_to_nbt(&st, items))
-        {
-            i.insert("count".into(), Tag::Int(1));
-        }
-    }
+    // ThrowableItemProjectile.addAdditionalSaveData writes the entity's typed Item at count 1.
+    put(&mut tag, "Item", item_to_nbt(&stack, items));
     Some(tag)
 }
 
-/// `ThrowableItemProjectile.readAdditionalSaveData` for the kinds
-/// [`throwable_to_nbt`] writes; the owner is the player when it is theirs.
-pub fn throwable_from_nbt(tag: &Tag, player: Option<[i32; 4]>) -> Option<Projectile> {
-    let mut kind = throwable_kind(&kind(tag)?)?;
-    if let ProjectileKind::Potion(stack, _) = &mut kind
-        && let Some(item) = tag.get("Item").and_then(item_from_nbt)
-    {
-        **stack = item;
-        stack.count = 1;
-    }
+/// `ThrowableItemProjectile.readAdditionalSaveData`, validating `Item` against `items`.
+pub fn throwable_from_nbt_with_items(
+    tag: &Tag,
+    player: Option<[i32; 4]>,
+    items: &crate::items::Items,
+) -> Option<Projectile> {
+    let kind = throwable_kind(&kind(tag)?)?;
     let owner = owner_uuid(tag);
     let from_player = player.is_some() && owner == player;
     let mut p = Projectile::new(kind, position(tag)?, from_player.then_some(Who::Player));
+    p.set_thrown_item(decode_throwable_item_field(tag, items));
     p.velocity = motion(tag);
     [p.yaw, p.pitch] = rotation(tag);
     p.left_owner = flag(tag, "LeftOwner");
@@ -3456,6 +3528,11 @@ pub fn throwable_from_nbt(tag: &Tag, player: Option<[i32; 4]>) -> Option<Project
     load_projectile_entity_fields(&mut p, tag);
     p.ground.on_ground = flag(tag, "OnGround");
     Some(p)
+}
+
+/// `ThrowableItemProjectile.readAdditionalSaveData` without a loaded item catalog.
+pub fn throwable_from_nbt(tag: &Tag, player: Option<[i32; 4]>) -> Option<Projectile> {
+    throwable_from_nbt_with_items(tag, player, &crate::items::Items::default())
 }
 
 /// `LlamaSpit` and `ShulkerBullet` as `/summon` or a chunk loads them, with
