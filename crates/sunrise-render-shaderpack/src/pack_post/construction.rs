@@ -2065,6 +2065,27 @@ impl PackPost {
                 notes.push(format!("`{name}` is {t} ticks"));
             }
         }
+        // Pre-scan every loaded program before `post` is partially moved so mod geometry passes
+        // targeting an actively sampled auxiliary depth buffer can legally sample `depthtex0`.
+        let mut pre_mod_depth_sampled = vec![false; mods.depth_targets.len()];
+        if !mods.depth_targets.is_empty() {
+            let samplers = post
+                .every_program()
+                .flat_map(|p| {
+                    p.program
+                        .iter()
+                        .map(|q| &q.interface)
+                        .chain(p.compute.iter().map(|(_, c)| &c.interface))
+                })
+                .flat_map(|i| &i.samplers);
+            for s in samplers {
+                if let Some(Source::ModDepth(idx) | Source::ModOpaqueDepth(idx)) =
+                    mod_depth_source(mods.depth_targets, &s.name)
+                {
+                    pre_mod_depth_sampled[idx] = true;
+                }
+            }
+        }
         // shadowcolor2 to 7 only for a pack that names `HIGHER_SHADOWCOLOR`.
         let shadow_colors = (1u16 << post.shadow_colors) - 1;
         let mut custom = post.custom;
@@ -2172,28 +2193,6 @@ impl PackPost {
         });
         let stand_ins = std::cell::RefCell::new(Vec::new());
         let mod_uniform_mismatches = std::cell::RefCell::new(HashSet::new());
-        // Pre-scan the pack's programs to know which mod-declared auxiliary depth targets any
-        // pack pass samples before building mod geometry passes (so a mod pass targeting an
-        // actively sampled auxiliary depth buffer can legally sample `depthtex0`).
-        let mut pre_mod_depth_sampled = vec![false; mods.depth_targets.len()];
-        if !mods.depth_targets.is_empty() {
-            let samplers = post
-                .every_program()
-                .flat_map(|p| {
-                    p.program
-                        .iter()
-                        .map(|q| &q.interface)
-                        .chain(p.compute.iter().map(|(_, c)| &c.interface))
-                })
-                .flat_map(|i| &i.samplers);
-            for s in samplers {
-                if let Some(Source::ModDepth(idx) | Source::ModOpaqueDepth(idx)) =
-                    mod_depth_source(mods.depth_targets, &s.name)
-                {
-                    pre_mod_depth_sampled[idx] = true;
-                }
-            }
-        }
         let pack = Resources {
             textures: &textures,
             images: &images,
