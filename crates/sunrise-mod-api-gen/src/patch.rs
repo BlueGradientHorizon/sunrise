@@ -800,40 +800,54 @@ pub(crate) fn replaceable_with_binding(
         return Err("it is generic over types or takes `impl Trait`: one copy can't stand for every instance".into());
     }
     let mut trait_binding = None;
-    if let Some(block) = &found.owner
-        && block.trait_.is_some()
-    {
-        struct Associated(bool);
-        impl<'ast> Visit<'ast> for Associated {
-            fn visit_path(&mut self, path: &'ast syn::Path) {
-                self.0 |= path.segments.len() > 1 && path.segments[0].ident == "Self";
-                syn::visit::visit_path(self, path);
-            }
-        }
-        let mut associated = Associated(false);
-        let (_, path, _) = block.trait_.as_ref().expect("a trait implementation");
-        associated.visit_signature(&crate::replace::qualified(sig, path));
-        if associated.0 {
-            return Err("its signature names a trait-associated constant through Self".into());
-        }
+    if let Some(block) = &found.owner {
         let krate = found
             .module
             .split("::")
             .next()
             .unwrap_or_default()
             .to_owned();
-        if source.cache.traits.is_none() {
-            source.cache.traits = Some(crate::replace::WorkspaceTraits::load(&source.root)?);
+        if let Some((_, path, _)) = &block.trait_ {
+            struct Associated(bool);
+            impl<'ast> Visit<'ast> for Associated {
+                fn visit_path(&mut self, path: &'ast syn::Path) {
+                    self.0 |= path.segments.len() > 1 && path.segments[0].ident == "Self";
+                    syn::visit::visit_path(self, path);
+                }
+            }
+            let mut associated = Associated(false);
+            associated.visit_signature(&crate::replace::qualified(sig, path));
+            if associated.0 {
+                return Err("its signature names a trait-associated constant through Self".into());
+            }
+            if source.cache.traits.is_none() {
+                source.cache.traits = Some(crate::replace::WorkspaceTraits::load(&source.root)?);
+            }
+            source.owner_types(&krate)?;
+            let workspace = source.cache.traits.as_ref().expect("read above");
+            trait_binding = Some(crate::replace::resolve_trait_binding(
+                &found.module,
+                block,
+                &sig.ident,
+                &source.owners[&krate],
+                workspace,
+            )?);
+        } else {
+            if source.cache.traits.is_none() {
+                source.cache.traits = Some(crate::replace::WorkspaceTraits::load(&source.root)?);
+            }
+            source.owner_types(&krate)?;
+            let workspace = source.cache.traits.as_ref().expect("read above");
+            if let Some(reason) = crate::replace::module_widened_glob_shadow_refusal(
+                &found.module,
+                &source.owners[&krate],
+                workspace,
+            ) {
+                return Err(format!(
+                    "its `impl` has no replacement installer ({reason})"
+                ));
+            }
         }
-        source.owner_types(&krate)?;
-        let workspace = source.cache.traits.as_ref().expect("read above");
-        trait_binding = Some(crate::replace::resolve_trait_binding(
-            &found.module,
-            block,
-            &sig.ident,
-            &source.owners[&krate],
-            workspace,
-        )?);
     }
     if let Some(block) = &found.owner
         && block.attrs.iter().any(|attr| attr.path().is_ident("cfg"))

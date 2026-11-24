@@ -322,6 +322,8 @@ mod subject {
             },
             installer_module: "sunrise_client::game::subject".into(),
             installer: "__fnr_as_Entity_f".into(),
+            reader: Some("__fnr_read_slot_0".into()),
+            cell: Some(0),
         })
     );
     rustc_check(
@@ -333,9 +335,11 @@ mod subject {
 
 #[test]
 fn final_declaration_visibility_handles_hidden_and_public_globs_and_private_string() {
-    // Hidden + public globbed Boat: only `b::Boat` is visible, so it binds unambiguously to `b::Boat`.
     let dir = tempfile::tempdir().unwrap();
-    let root = dir.path().join("hidden-and-public");
+    let out = dir.path().join("rustc-out");
+    fs::create_dir_all(&out).unwrap();
+
+    // Hidden + public globbed Boat becomes ambiguous after staging and emits no installer.
     let game_rs = r#"
 mod a { struct Boat; }
 mod b { pub struct Boat; }
@@ -346,50 +350,147 @@ mod subject {
     impl Entity for Boat { fn f(&self) {} }
 }
 "#;
+    let key = "sunrise_client::game::subject::<Boat as Entity>::f";
+    let root_replace_only = dir.path().join("hidden-and-public-replace-only");
+    minimal_workspace(
+        &root_replace_only,
+        "pub mod game; mod entry;\n",
+        game_rs,
+        &[],
+    );
+    let lib_ro = root_replace_only.join("crates/sunrise-client/src/lib.rs");
+    rustc_check(&lib_ro, &out, &["--crate-name=sunrise_client"]);
+    let replace_only = replace::stage(&root_replace_only).unwrap();
+    assert!(!replace_only.slots.contains(key));
+    assert!(
+        !fs::read_to_string(root_replace_only.join("crates/sunrise-client/src/game.rs"))
+            .unwrap()
+            .contains("__fnr_")
+    );
+    rustc_check(&lib_ro, &out, &["--crate-name=sunrise_client"]);
+
+    let root = dir.path().join("hidden-and-public");
     minimal_workspace(&root, "pub mod game; mod entry;\n", game_rs, &[]);
     let (staged, index) = run_stage(&root);
-    let key = "sunrise_client::game::subject::<Boat as Entity>::f";
-    assert!(staged.replace.slots.contains(key));
+    assert!(!staged.replace.slots.contains(key));
     assert_eq!(
-        index.trait_slots.get(key),
-        Some(&TraitSlotEvidence {
-            owner: ResolvedItem {
-                module: "sunrise_client::game::b".into(),
-                item: "Boat".into(),
-            },
-            trait_decl: ResolvedItem {
-                module: "sunrise_client::game::subject".into(),
-                item: "Entity".into(),
-            },
-            installer_module: "sunrise_client::game::subject".into(),
-            installer: "__fnr_as_Entity_f".into(),
-        })
+        index.refused.get(key).map(|r| r.why.as_str()),
+        Some(
+            "its trait implementation has no replacement installer (ambiguous trait owner after staging)"
+        )
+    );
+    assert!(
+        !fs::read_to_string(root.join("crates/sunrise-client/src/game.rs"))
+            .unwrap()
+            .contains("__fnr_")
     );
 
-    // Private glob with prelude String: `other::String` is private, so `String` is prelude String -> refused.
+    // Hidden + public globbed trait: refused as ambiguous trait after staging.
+    assert_eq!(
+        refusal_of(
+            &[
+                ("k::a", "trait Entity { fn f(&self); }"),
+                ("k::b", "pub trait Entity { fn f(&self); }"),
+            ],
+            "k::subject",
+            "use super::a::*; use super::b::*; pub struct Boat; impl Entity for Boat { fn f(&self) {} }",
+        )
+        .as_deref(),
+        Some("its trait implementation has no replacement installer (ambiguous trait after staging)")
+    );
+
+    // Private glob String shadows prelude after widening: every impl in `subject` is refused and compiles.
     let root_priv = dir.path().join("private-string");
     let game_priv = r#"
 mod other { struct String; }
-mod subject {
+pub mod subject {
     use super::other::*;
+    pub struct Local;
     pub trait Entity { fn f(&self); }
     impl Entity for String { fn f(&self) {} }
+    impl Entity for Local { fn f(&self) {} }
+    impl Local { pub fn inherent(&self) {} }
 }
 "#;
     minimal_workspace(&root_priv, "pub mod game; mod entry;\n", game_priv, &[]);
+    let lib_priv = root_priv.join("crates/sunrise-client/src/lib.rs");
+    rustc_check(&lib_priv, &out, &["--crate-name=sunrise_client"]);
     let (staged_priv, index_priv) = run_stage(&root_priv);
     let str_key = "sunrise_client::game::subject::<String as Entity>::f";
-    assert!(!staged_priv.replace.slots.contains(str_key));
-    assert_eq!(
-        index_priv.refused.get(str_key).map(|r| r.why.as_str()),
-        Some("its trait implementation has no replacement installer (foreign trait owner)")
+    let local_trait_key = "sunrise_client::game::subject::<Local as Entity>::f";
+    let local_inherent_key = "sunrise_client::game::subject::Local::inherent";
+    for refused_key in [str_key, local_trait_key, local_inherent_key] {
+        assert!(
+            !staged_priv.replace.slots.contains(refused_key),
+            "{refused_key}"
+        );
+        assert!(
+            index_priv.refused.get(refused_key).is_some_and(|r| r
+                .why
+                .contains("widened glob shadows prelude or external name")),
+            "{refused_key}: {:?}",
+            index_priv.refused.get(refused_key)
+        );
+    }
+    assert!(
+        !fs::read_to_string(root_priv.join("crates/sunrise-client/src/game.rs"))
+            .unwrap()
+            .contains("__fnr_")
     );
-    // Verify original (non-widened) source compiles cleanly with no E0116 installer added.
-    let out = dir.path().join("rustc-out");
-    fs::create_dir_all(&out).unwrap();
-    let check_src = dir.path().join("priv_check.rs");
-    fs::write(&check_src, format!("pub mod game {{ {game_priv} }}\n")).unwrap();
-    rustc_check(&check_src, &out, &["--crate-name=priv_check"]);
+    rustc_check(&lib_priv, &out, &["--crate-name=sunrise_client"]);
+
+    // Foreign glob + hidden local glob item: widening may collide with the foreign glob.
+    let root_foreign_glob = dir.path().join("foreign-glob-shadow");
+    let game_foreign_glob = r#"
+mod other { struct Secret; }
+pub mod subject {
+    use std::fmt::*;
+    use super::other::*;
+    pub struct Local;
+    pub trait Entity { fn f(&self); }
+    impl Entity for Local { fn f(&self) {} }
+}
+"#;
+    minimal_workspace(
+        &root_foreign_glob,
+        "pub mod game; mod entry;\n",
+        game_foreign_glob,
+        &[],
+    );
+    let (staged_fg, index_fg) = run_stage(&root_foreign_glob);
+    assert!(!staged_fg.replace.slots.contains(local_trait_key));
+    assert!(index_fg.refused.get(local_trait_key).is_some_and(|r| {
+        r.why
+            .contains("widened glob shadows prelude or external name")
+    }));
+    rustc_check(
+        &root_foreign_glob.join("crates/sunrise-client/src/lib.rs"),
+        &out,
+        &["--crate-name=sunrise_client"],
+    );
+
+    // Positive controls: non-prelude hidden glob item and locally shadowed prelude name keep slots.
+    let root_ok = dir.path().join("non-prelude-hidden-glob");
+    let game_ok = r#"
+mod other { struct Helper; struct String; }
+pub mod subject {
+    use super::other::*;
+    pub struct Local;
+    pub struct String;
+    pub trait Entity { fn f(&self); }
+    impl Entity for Local { fn f(&self) {} }
+    impl Entity for String { fn f(&self) {} }
+}
+"#;
+    minimal_workspace(&root_ok, "pub mod game; mod entry;\n", game_ok, &[]);
+    let (staged_ok, _) = run_stage(&root_ok);
+    assert!(staged_ok.replace.slots.contains(local_trait_key));
+    assert!(staged_ok.replace.slots.contains(str_key));
+    rustc_check(
+        &root_ok.join("crates/sunrise-client/src/lib.rs"),
+        &out,
+        &["--crate-name=sunrise_client"],
+    );
 }
 
 #[test]
@@ -604,6 +705,8 @@ impl Entity for super::decoy::Boat { fn bounds(&self) -> u32 { self.0 + 100 } }
             },
             installer_module: "sunrise_client::game::server_side::entity".into(),
             installer: "__fnr_as_Entity_bounds".into(),
+            reader: Some("__fnr_read_slot_0".into()),
+            cell: Some(0),
         })
     );
     let out = dir.path().join("rustc-out");
@@ -920,41 +1023,59 @@ mod self_import_dep {
         );
     }
     // Verify alias evidence points to the canonical trait declaration (`defs::RealTrait`).
+    let alias_ev = index
+        .trait_slots
+        .get("sunrise_client::game::aliased::<Host as LocalAlias>::h")
+        .unwrap();
+    assert!(alias_ev.same_binding(&TraitSlotEvidence {
+        owner: ResolvedItem {
+            module: "sunrise_client::game".into(),
+            item: "Host".into(),
+        },
+        trait_decl: ResolvedItem {
+            module: "sunrise_client::game::defs".into(),
+            item: "RealTrait".into(),
+        },
+        installer_module: "sunrise_client::game::aliased".into(),
+        installer: "__fnr_as_LocalAlias_h".into(),
+        reader: None,
+        cell: None,
+    }));
     assert_eq!(
-        index
-            .trait_slots
-            .get("sunrise_client::game::aliased::<Host as LocalAlias>::h"),
-        Some(&TraitSlotEvidence {
-            owner: ResolvedItem {
-                module: "sunrise_client::game".into(),
-                item: "Host".into(),
-            },
-            trait_decl: ResolvedItem {
-                module: "sunrise_client::game::defs".into(),
-                item: "RealTrait".into(),
-            },
-            installer_module: "sunrise_client::game::aliased".into(),
-            installer: "__fnr_as_LocalAlias_h".into(),
-        })
+        alias_ev.reader.as_deref(),
+        alias_ev
+            .cell
+            .map(|c| format!("__fnr_read_slot_{c}"))
+            .as_deref()
     );
+    assert!(alias_ev.cell.is_some());
     // Verify cross-crate trait evidence points to `sunrise_low::CrossCrate`.
+    let cross_ev = index
+        .trait_slots
+        .get("sunrise_client::game::<Host as CrossCrate>::ping")
+        .unwrap();
+    assert!(cross_ev.same_binding(&TraitSlotEvidence {
+        owner: ResolvedItem {
+            module: "sunrise_client::game".into(),
+            item: "Host".into(),
+        },
+        trait_decl: ResolvedItem {
+            module: "sunrise_low".into(),
+            item: "CrossCrate".into(),
+        },
+        installer_module: "sunrise_client::game".into(),
+        installer: "__fnr_as_CrossCrate_ping".into(),
+        reader: None,
+        cell: None,
+    }));
     assert_eq!(
-        index
-            .trait_slots
-            .get("sunrise_client::game::<Host as CrossCrate>::ping"),
-        Some(&TraitSlotEvidence {
-            owner: ResolvedItem {
-                module: "sunrise_client::game".into(),
-                item: "Host".into(),
-            },
-            trait_decl: ResolvedItem {
-                module: "sunrise_low".into(),
-                item: "CrossCrate".into(),
-            },
-            installer_module: "sunrise_client::game".into(),
-            installer: "__fnr_as_CrossCrate_ping".into(),
-        })
+        cross_ev.reader.as_deref(),
+        cross_ev
+            .cell
+            .map(|c| format!("__fnr_read_slot_{c}"))
+            .as_deref()
     );
+    assert!(cross_ev.cell.is_some());
 
     // Compile the staged crates with rustc to prove every emitted installer is valid Rust.
     let out = dir.path().join("rustc-out");
@@ -973,5 +1094,111 @@ mod self_import_dep {
             "--extern",
             &format!("sunrise_low={}", low_rlib.display()),
         ],
+    );
+}
+
+#[test]
+fn per_slot_reader_and_cell_identity_matches_staged_methods_and_installers() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path().join("paired");
+    let game_rs = r#"
+pub mod real {
+    pub struct Boat;
+    pub trait Entity { fn f(&self) -> u32; fn g(&self) -> u32; }
+}
+pub mod decoy {
+    pub struct Boat;
+    pub trait Entity { fn f(&self) -> u32; fn g(&self) -> u32; }
+}
+pub mod subject {
+    use super::real::{Boat, Entity};
+    impl Entity for Boat {
+        fn f(&self) -> u32 { 1 }
+        fn g(&self) -> u32 { 2 }
+    }
+}
+"#;
+    minimal_workspace(&root, "pub mod game; mod entry;\n", game_rs, &[]);
+    let (_, index) = run_stage(&root);
+    let kf = "sunrise_client::game::subject::<Boat as Entity>::f";
+    let kg = "sunrise_client::game::subject::<Boat as Entity>::g";
+    let ev_f = &index.trait_slots[kf];
+    let ev_g = &index.trait_slots[kg];
+    assert_eq!(index.functions[kf].trait_binding.as_ref(), Some(ev_f));
+    assert_eq!(index.functions[kg].trait_binding.as_ref(), Some(ev_g));
+    assert_eq!(ev_f.cell, Some(0));
+    assert_eq!(ev_f.reader.as_deref(), Some("__fnr_read_slot_0"));
+    assert_eq!(ev_f.installer, "__fnr_as_Entity_f");
+    assert_eq!(ev_g.cell, Some(1));
+    assert_eq!(ev_g.reader.as_deref(), Some("__fnr_read_slot_1"));
+    assert_eq!(ev_g.installer, "__fnr_as_Entity_g");
+
+    // Verify per-method body reader call and installer cell in the parsed staged file.
+    let staged_src = fs::read_to_string(root.join("crates/sunrise-client/src/game.rs")).unwrap();
+    let parsed = syn::parse_file(&staged_src).unwrap();
+    let subject_items = parsed
+        .items
+        .iter()
+        .find_map(|item| match item {
+            syn::Item::Mod(m) if m.ident == "subject" => {
+                m.content.as_ref().map(|(_, items)| items.as_slice())
+            }
+            _ => None,
+        })
+        .expect("subject module");
+    let mut method_bodies = std::collections::BTreeMap::new();
+    let mut generated_fns = std::collections::BTreeMap::new();
+    for item in subject_items {
+        if let syn::Item::Impl(block) = item {
+            for member in &block.items {
+                if let syn::ImplItem::Fn(method) = member {
+                    let body = quote::ToTokens::to_token_stream(&method.block).to_string();
+                    if block.trait_.is_some() {
+                        method_bodies.insert(method.sig.ident.to_string(), body);
+                    } else {
+                        generated_fns.insert(method.sig.ident.to_string(), body);
+                    }
+                }
+            }
+        }
+    }
+    for (method, ev) in [("f", ev_f), ("g", ev_g)] {
+        let reader = ev.reader.as_deref().unwrap();
+        let cell = ev.cell.unwrap();
+        let body = &method_bodies[method];
+        assert!(
+            body.contains(&format!("Self :: {reader} ()")),
+            "{method} body: {body}"
+        );
+        let reader_body = &generated_fns[reader];
+        let installer_body = &generated_fns[ev.installer.as_str()];
+        let cell_tok = format!("__REPLACE [{cell}usize]");
+        assert!(reader_body.contains(&cell_tok), "{reader}: {reader_body}");
+        assert!(
+            installer_body.contains(&cell_tok),
+            "{}: {installer_body}",
+            ev.installer
+        );
+    }
+
+    // Compiled dispatch confirms installing `f` affects only `f`, never `g`.
+    let out = dir.path().join("out");
+    fs::create_dir_all(&out).unwrap();
+    let rlib = rustc_rlib(
+        &root.join("crates/sunrise-client/src/lib.rs"),
+        &out,
+        "sunrise_client",
+        &[],
+    );
+    let driver = root.join("driver.rs");
+    fs::write(
+        &driver,
+        "use sunrise_client::game::real::{Boat, Entity}; fn patched(_: &Boat) -> u32 { 11 } fn main() { assert_eq!([Boat.f(), Boat.g()], [1, 2]); assert!(Boat::__fnr_as_Entity_f(patched)); assert_eq!([Boat.f(), Boat.g()], [11, 2]); }",
+    )
+    .unwrap();
+    rustc_run_bin(
+        &driver,
+        &out,
+        &["--extern", &format!("sunrise_client={}", rlib.display())],
     );
 }

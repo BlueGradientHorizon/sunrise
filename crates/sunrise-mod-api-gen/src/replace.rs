@@ -125,6 +125,7 @@ pub fn installer(trait_name: Option<&syn::Ident>, name: &syn::Ident) -> syn::Ide
     }
 }
 
+pub(crate) use crate::replace_resolve::module_widened_glob_shadow_refusal;
 use crate::replace_resolve::{AMBIGUOUS_OWNER, ResolvedTraitImpl, resolve_trait_impl};
 pub use crate::replace_resolve::{OwnerTypes, ResolvedItem, TraitSlotEvidence, WorkspaceTraits};
 
@@ -160,6 +161,8 @@ pub(crate) fn resolve_trait_binding(
             trait_decl,
             installer_module: module.to_owned(),
             installer: installer(Some(last), method).to_string(),
+            reader: None,
+            cell: None,
         }),
         Err(reason) => Err(format_trait_refusal(block, reason)),
     }
@@ -410,7 +413,12 @@ fn functions<'a>(
                         let last = &path.segments.last().expect("a trait path has a name").ident;
                         (Some(last), Some(resolved))
                     }
-                    None => (None, None),
+                    None => {
+                        if module_widened_glob_shadow_refusal(module, types, workspace).is_some() {
+                            continue;
+                        }
+                        (None, None)
+                    }
                 };
                 for member in &block.items {
                     if let ImplItem::Fn(method) = member
@@ -425,6 +433,8 @@ fn functions<'a>(
                                 trait_decl: resolved.trait_decl.clone(),
                                 installer_module: module.to_owned(),
                                 installer: installer(trait_name, &method.sig.ident).to_string(),
+                                reader: None,
+                                cell: None,
                             });
                         out.push(Found {
                             module: module.to_owned(),
@@ -492,8 +502,10 @@ fn inventory(
                         Some("impl type/const generics")
                     } else if !matches!(&*block.self_ty, Type::Path(ty) if ty.qself.is_none()) {
                         Some("non-path/qualified impl owner")
-                    } else {
+                    } else if block.trait_.is_some() {
                         trait_exclusion(module, block, types, workspace)
+                    } else {
+                        module_widened_glob_shadow_refusal(module, types, workspace)
                     }
                 });
                 for member in &block.items {
@@ -795,6 +807,9 @@ pub(crate) fn stage_with_context(
                         .is_some()
                 });
             }
+            let Some(text) = rewrite(&file.path, text, &mut found, &mut cells)? else {
+                continue;
+            };
             for function in &found {
                 let key = crate::functions::key(&function.target());
                 if let Some(binding) = &function.trait_binding {
@@ -807,9 +822,6 @@ pub(crate) fn stage_with_context(
                 .filter(|function| function.trait_name.is_some())
                 .count();
             count += found.len();
-            let Some(text) = rewrite(&file.path, text, &found, &mut cells)? else {
-                continue;
-            };
             staged.files += 1;
             texts.insert(&file.path, text);
         }
@@ -1039,7 +1051,7 @@ fn locked_with(lock: &str, name: &str, added: &[&str]) -> Option<String> {
 fn rewrite(
     path: &Path,
     text: &str,
-    found: &[Found<'_>],
+    found: &mut [Found<'_>],
     cells: &mut usize,
 ) -> Result<Option<String>, String> {
     if found.is_empty() {
@@ -1059,6 +1071,10 @@ fn rewrite(
         let name = source::unraw(&function.sig.ident);
         let installer = installer(function.trait_name, &function.sig.ident);
         let reader = quote::format_ident!("__fnr_read_slot_{slot}");
+        if let Some(binding) = &mut function.trait_binding {
+            binding.reader = Some(reader.to_string());
+            binding.cell = Some(slot);
+        }
         if function.owner.is_none() {
             free.insert(name.clone(), reader.to_string());
         }
@@ -1224,7 +1240,7 @@ mod tests {
             &mut found,
         );
         let mut count = 0;
-        rewrite(Path::new("k.rs"), source, &found, &mut count)
+        rewrite(Path::new("k.rs"), source, &mut found, &mut count)
             .unwrap()
             .unwrap_or_else(|| source.to_owned())
     }
@@ -1350,7 +1366,7 @@ mod tests {
             &mut found,
         );
         let mut count = 0;
-        let mut out = rewrite(Path::new("k.rs"), source, &found, &mut count)
+        let mut out = rewrite(Path::new("k.rs"), source, &mut found, &mut count)
             .unwrap()
             .unwrap();
         assert_eq!(count, 1);
@@ -1418,7 +1434,7 @@ mod tests {
             &mut found,
         );
         let mut count = 7;
-        let out = rewrite(Path::new("k.rs"), source, &found, &mut count)
+        let out = rewrite(Path::new("k.rs"), source, &mut found, &mut count)
             .unwrap()
             .unwrap();
         assert_eq!(count, 9);
@@ -1445,7 +1461,7 @@ mod tests {
             &WorkspaceTraits::empty(),
             &mut found,
         );
-        let error = rewrite(Path::new("k.rs"), source, &found, &mut 0).unwrap_err();
+        let error = rewrite(Path::new("k.rs"), source, &mut found, &mut 0).unwrap_err();
         assert!(error.contains("replaced!(elsewhere)"), "{error}");
     }
 
@@ -1482,7 +1498,7 @@ mod tests {
             &WorkspaceTraits::empty(),
             &mut found,
         );
-        let out = rewrite(Path::new("k.rs"), source, &found, &mut 0)
+        let out = rewrite(Path::new("k.rs"), source, &mut found, &mut 0)
             .unwrap()
             .unwrap();
         assert!(

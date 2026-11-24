@@ -5,6 +5,7 @@ use std::{
     collections::{BTreeMap, BTreeSet},
     fs,
     path::{Path, PathBuf},
+    sync::atomic::{AtomicU64, Ordering},
 };
 use syn::{Item, Visibility};
 
@@ -15,13 +16,27 @@ pub struct ResolvedItem {
     pub item: String,
 }
 
-/// Resolved owner, trait, and installer module for one trait-method replacement slot.
+/// Resolved owner, trait, installer, and reader/cell identity for one trait-method slot.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct TraitSlotEvidence {
     pub owner: ResolvedItem,
     pub trait_decl: ResolvedItem,
     pub installer_module: String,
     pub installer: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reader: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cell: Option<usize>,
+}
+
+impl TraitSlotEvidence {
+    /// Whether two evidence records describe the same owner, trait, and installer binding.
+    pub fn same_binding(&self, other: &Self) -> bool {
+        self.owner == other.owner
+            && self.trait_decl == other.trait_decl
+            && self.installer_module == other.installer_module
+            && self.installer == other.installer
+    }
 }
 
 /// Resolved owner and trait declarations for a replaceable trait implementation.
@@ -32,6 +47,7 @@ pub(crate) struct ResolvedTraitImpl {
 }
 
 pub(crate) const AMBIGUOUS_OWNER: &str = "ambiguous trait owner";
+pub(crate) const WIDENED_GLOB_SHADOW: &str = "widened glob shadows prelude or external name";
 
 #[derive(Clone, PartialEq, Eq, Debug)]
 enum Vis {
@@ -107,6 +123,7 @@ enum TypeItemDecl {
         kind: TypeItemKind,
         limit: Vis,
         enum_variants: Option<(BTreeSet<String>, bool)>,
+        also_value: bool,
     },
 }
 
@@ -137,6 +154,7 @@ struct ModuleScope {
 pub struct OwnerTypes {
     modules: BTreeMap<String, ModuleScope>,
     self_aliases: BTreeMap<String, bool>,
+    widened_glob_shadow: RefCell<BTreeMap<(String, u64), bool>>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -187,10 +205,14 @@ enum GlobCandidate {
 struct WorkspaceCrateInfo {
     lib_path: PathBuf,
     deps: BTreeMap<String, String>,
+    extern_crates: BTreeSet<String>,
 }
+
+static NEXT_WORKSPACE_ID: AtomicU64 = AtomicU64::new(1);
 
 /// Lazy workspace-wide resolver for cross-crate trait declarations.
 pub struct WorkspaceTraits {
+    id: u64,
     root: Option<PathBuf>,
     crates_by_id: BTreeMap<String, WorkspaceCrateInfo>,
     lib_name_to_crates: BTreeMap<String, Vec<String>>,
@@ -402,6 +424,7 @@ impl OwnerTypes {
 
     /// Adds any modules from `items` not yet present (for materialized generated inline modules).
     pub(crate) fn declare_missing_inline(&mut self, module: &str, items: &[Item]) {
+        self.widened_glob_shadow.borrow_mut().clear();
         for item in items {
             if let Item::Mod(inline) = item
                 && cfg_state(&inline.attrs) == CfgState::Always
@@ -611,6 +634,7 @@ impl OwnerTypes {
             }
         }
 
+        self.widened_glob_shadow.borrow_mut().clear();
         let is_root = !module.contains("::");
         let mut scope = self.modules.remove(module).unwrap_or_default();
         for item in items {
@@ -632,6 +656,10 @@ impl OwnerTypes {
                                 kind: TypeItemKind::Nominal,
                                 limit: vis_limit(module, &item.vis),
                                 enum_variants: None,
+                                also_value: matches!(
+                                    item.fields,
+                                    syn::Fields::Unit | syn::Fields::Unnamed(_)
+                                ),
                             },
                         );
                     }
@@ -653,6 +681,7 @@ impl OwnerTypes {
                                 kind: TypeItemKind::Nominal,
                                 limit: vis_limit(module, &item.vis),
                                 enum_variants: None,
+                                also_value: false,
                             },
                         );
                     }
@@ -685,6 +714,7 @@ impl OwnerTypes {
                                 kind: TypeItemKind::Nominal,
                                 limit: vis_limit(module, &item.vis),
                                 enum_variants: Some((variants, has_gated)),
+                                also_value: false,
                             },
                         );
                     }
@@ -706,6 +736,7 @@ impl OwnerTypes {
                                 kind: TypeItemKind::Trait,
                                 limit: vis_limit(module, &item.vis),
                                 enum_variants: None,
+                                also_value: false,
                             },
                         );
                     }
@@ -727,6 +758,7 @@ impl OwnerTypes {
                                 kind: TypeItemKind::TypeAlias,
                                 limit: vis_limit(module, &item.vis),
                                 enum_variants: None,
+                                also_value: false,
                             },
                         );
                     }
@@ -748,6 +780,7 @@ impl OwnerTypes {
                                 kind: TypeItemKind::TraitAlias,
                                 limit: vis_limit(module, &item.vis),
                                 enum_variants: None,
+                                also_value: false,
                             },
                         );
                     }
@@ -784,6 +817,7 @@ impl OwnerTypes {
                                 kind: TypeItemKind::ExternCrate { target },
                                 limit: vis_limit(module, &item.vis),
                                 enum_variants: None,
+                                also_value: false,
                             },
                         );
                     }
@@ -970,6 +1004,7 @@ impl WorkspaceTraits {
     /// Empty workspace resolver for single-crate tests where every trait is in `OwnerTypes`.
     pub fn empty() -> Self {
         Self {
+            id: NEXT_WORKSPACE_ID.fetch_add(1, Ordering::Relaxed),
             root: None,
             crates_by_id: BTreeMap::new(),
             lib_name_to_crates: BTreeMap::new(),
@@ -1028,37 +1063,54 @@ impl WorkspaceTraits {
         let mut lib_name_to_crates: BTreeMap<String, Vec<String>> = BTreeMap::new();
         for (pkg_dir, crate_id, lib_name, lib_path, manifest) in raw_packages {
             let mut deps = BTreeMap::new();
+            let mut extern_crates = BTreeSet::new();
             if let Some(table) = manifest.get("dependencies").and_then(toml::Value::as_table) {
                 for (dep_key, spec) in table {
-                    let Some(path) = spec.get("path").and_then(toml::Value::as_str) else {
-                        continue;
-                    };
-                    let target_dir = lexical(&pkg_dir.join(path));
-                    let Some((target_id, target_lib)) = dir_to_crate.get(&target_dir) else {
-                        continue;
-                    };
                     let renamed = spec.get("package").is_some();
-                    let extern_ident = if renamed {
-                        dep_key.replace('-', "_")
-                    } else {
-                        target_lib.clone()
-                    };
-                    deps.insert(extern_ident, target_id.clone());
+                    if let Some(path) = spec.get("path").and_then(toml::Value::as_str) {
+                        let target_dir = lexical(&pkg_dir.join(path));
+                        if let Some((target_id, target_lib)) = dir_to_crate.get(&target_dir) {
+                            let extern_ident = if renamed {
+                                dep_key.replace('-', "_")
+                            } else {
+                                target_lib.clone()
+                            };
+                            extern_crates.insert(extern_ident.clone());
+                            deps.insert(extern_ident, target_id.clone());
+                            continue;
+                        }
+                    }
+                    extern_crates.insert(dep_key.replace('-', "_"));
                 }
             }
             lib_name_to_crates
                 .entry(lib_name.clone())
                 .or_default()
                 .push(crate_id.clone());
-            crates_by_id.insert(crate_id, WorkspaceCrateInfo { lib_path, deps });
+            crates_by_id.insert(
+                crate_id,
+                WorkspaceCrateInfo {
+                    lib_path,
+                    deps,
+                    extern_crates,
+                },
+            );
         }
         Ok(Self {
+            id: NEXT_WORKSPACE_ID.fetch_add(1, Ordering::Relaxed),
             root: Some(root.to_owned()),
             crates_by_id,
             lib_name_to_crates,
             loaded: RefCell::new(BTreeMap::new()),
             vocab_generated: RefCell::new(None),
         })
+    }
+
+    fn extern_crates_of(&self, krate: &str) -> impl Iterator<Item = &str> {
+        self.crates_by_id
+            .get(krate)
+            .into_iter()
+            .flat_map(|info| info.extern_crates.iter().map(String::as_str))
     }
 
     fn dependency_crate(&self, from_crate: &str, extern_ident: &str) -> Option<String> {
@@ -1289,12 +1341,69 @@ fn lexical(path: &Path) -> PathBuf {
     out
 }
 
+fn kind_widened_by_staging(kind: &TypeItemKind) -> bool {
+    matches!(
+        kind,
+        TypeItemKind::Nominal | TypeItemKind::Trait | TypeItemKind::TypeAlias
+    )
+}
+
+fn is_prelude_type(name: &str) -> bool {
+    matches!(
+        name,
+        "AsMut"
+            | "AsRef"
+            | "AsyncFn"
+            | "AsyncFnMut"
+            | "AsyncFnOnce"
+            | "Box"
+            | "Clone"
+            | "Copy"
+            | "Default"
+            | "DoubleEndedIterator"
+            | "Drop"
+            | "Eq"
+            | "ExactSizeIterator"
+            | "Extend"
+            | "Fn"
+            | "FnMut"
+            | "FnOnce"
+            | "From"
+            | "FromIterator"
+            | "Future"
+            | "Into"
+            | "IntoFuture"
+            | "IntoIterator"
+            | "Iterator"
+            | "Option"
+            | "Ord"
+            | "PartialEq"
+            | "PartialOrd"
+            | "Result"
+            | "Send"
+            | "Sized"
+            | "String"
+            | "Sync"
+            | "ToOwned"
+            | "ToString"
+            | "TryFrom"
+            | "TryInto"
+            | "Unpin"
+            | "Vec"
+    )
+}
+
+fn is_prelude_value(name: &str) -> bool {
+    matches!(name, "Err" | "None" | "Ok" | "Some" | "drop")
+}
+
 /// Resolution state threaded through owner and trait path lookups.
 struct Resolver<'a> {
     current_crate: &'a str,
     current: &'a OwnerTypes,
     workspace: &'a WorkspaceTraits,
     mode: ResolveMode,
+    widened: bool,
     active_mods: BTreeSet<(String, String)>,
     active_items: BTreeSet<(String, String)>,
 }
@@ -1305,12 +1414,14 @@ impl<'a> Resolver<'a> {
         current: &'a OwnerTypes,
         workspace: &'a WorkspaceTraits,
         mode: ResolveMode,
+        widened: bool,
     ) -> Self {
         Self {
             current_crate,
             current,
             workspace,
             mode,
+            widened,
             active_mods: BTreeSet::new(),
             active_items: BTreeSet::new(),
         }
@@ -1509,14 +1620,14 @@ impl<'a> Resolver<'a> {
                 ModuleBinding::Failed(FailureReason::Conditional)
             }
             LocalStep::Submodule(SubmoduleDecl::Unconditional { limit }) => {
-                if visible_to(viewer, &limit) {
+                if self.widened || visible_to(viewer, &limit) {
                     ModuleBinding::Local(direct)
                 } else {
                     ModuleBinding::NotVisible
                 }
             }
             LocalStep::ImplicitChild => {
-                if visible_to(viewer, &Vis::Restricted(in_module.to_owned())) {
+                if self.widened || visible_to(viewer, &Vis::Restricted(in_module.to_owned())) {
                     ModuleBinding::Local(direct)
                 } else {
                     ModuleBinding::NotVisible
@@ -1526,7 +1637,8 @@ impl<'a> Resolver<'a> {
                 ModuleBinding::Failed(FailureReason::Conditional)
             }
             LocalStep::TypeItem(TypeItemDecl::Unconditional { kind, limit, .. }) => {
-                if !visible_to(viewer, &limit) {
+                if !((self.widened && kind_widened_by_staging(&kind)) || visible_to(viewer, &limit))
+                {
                     return ModuleBinding::NotVisible;
                 }
                 match kind {
@@ -1699,12 +1811,14 @@ impl<'a> Resolver<'a> {
     }
 
     fn is_proven_value_only(&mut self, in_module: &str, viewer: Viewer<'_>, name: &str) -> bool {
+        let widened = self.widened;
         let has_value = self
             .workspace
             .with_scope(self.current_crate, self.current, in_module, |_, scope| {
                 matches!(
                     scope.value_items.get(name),
-                    Some(ValueItemDecl::Unconditional { limit }) if visible_to(viewer, limit)
+                    Some(ValueItemDecl::Unconditional { limit })
+                        if widened || visible_to(viewer, limit)
                 )
             })
             .unwrap_or(false);
@@ -1791,7 +1905,7 @@ impl<'a> Resolver<'a> {
                 TypeNsResult::Failed(FailureReason::Conditional)
             }
             DirectStep::Submodule(SubmoduleDecl::Unconditional { limit }) => {
-                if visible_to(viewer, &limit) {
+                if self.widened || visible_to(viewer, &limit) {
                     TypeNsResult::Resolved(TypeNsItem::Module(direct))
                 } else {
                     TypeNsResult::NotVisible
@@ -1807,7 +1921,9 @@ impl<'a> Resolver<'a> {
                 match decl {
                     TypeItemDecl::Gated => TypeNsResult::Failed(FailureReason::Conditional),
                     TypeItemDecl::Unconditional { kind, limit, .. } => {
-                        if !visible_to(viewer, &limit) {
+                        if !((self.widened && kind_widened_by_staging(&kind))
+                            || visible_to(viewer, &limit))
+                        {
                             return TypeNsResult::NotVisible;
                         }
                         let id = ResolvedItem {
@@ -2138,6 +2254,244 @@ impl<'a> Resolver<'a> {
             | TypeNsResult::Resolved(_) => Err("unresolved trait"),
         }
     }
+    fn collect_widened_glob_exposures(
+        &mut self,
+        in_module: &str,
+        viewer: Viewer<'_>,
+        globs: &[Glob],
+        visited: &mut BTreeSet<(String, String)>,
+        newly_exposed_types: &mut BTreeSet<String>,
+        newly_exposed_values: &mut BTreeSet<String>,
+        has_foreign_glob: &mut bool,
+    ) {
+        let mut narrowed_buf = String::new();
+        let glob_viewer = narrow_viewer(in_module, viewer, &mut narrowed_buf);
+        let viewer_key = match glob_viewer {
+            Viewer::Inside(m) => m.to_owned(),
+            Viewer::External => String::new(),
+        };
+        for glob in globs {
+            if !visible_to(viewer, &glob.limit) || glob.gated {
+                continue;
+            }
+            match self.resolve_module_path(
+                in_module,
+                Viewer::Inside(in_module),
+                &glob.anchor,
+                &glob.path,
+            ) {
+                ModuleBinding::Local(target_mod) => {
+                    if crate_of(&target_mod) != self.current_crate {
+                        *has_foreign_glob = true;
+                        continue;
+                    }
+                    if !visited.insert((target_mod.clone(), viewer_key.clone())) {
+                        continue;
+                    }
+                    let next_globs = if let Some(scope) = self.current.modules.get(&target_mod) {
+                        let target_private = Vis::Restricted(target_mod.clone());
+                        let hidden_if_private = !visible_to(glob_viewer, &target_private);
+                        for (name, decl) in &scope.submodules {
+                            match decl {
+                                SubmoduleDecl::Unconditional { limit }
+                                    if !visible_to(glob_viewer, limit) =>
+                                {
+                                    newly_exposed_types.insert(name.clone());
+                                }
+                                SubmoduleDecl::Gated if hidden_if_private => {
+                                    newly_exposed_types.insert(name.clone());
+                                }
+                                _ => {}
+                            }
+                        }
+                        for (name, decl) in &scope.type_items {
+                            match decl {
+                                TypeItemDecl::Unconditional {
+                                    kind,
+                                    limit,
+                                    also_value,
+                                    ..
+                                } if kind_widened_by_staging(kind)
+                                    && !visible_to(glob_viewer, limit) =>
+                                {
+                                    newly_exposed_types.insert(name.clone());
+                                    if *also_value {
+                                        newly_exposed_values.insert(name.clone());
+                                    }
+                                }
+                                TypeItemDecl::Gated if hidden_if_private => {
+                                    newly_exposed_types.insert(name.clone());
+                                }
+                                _ => {}
+                            }
+                        }
+                        for (name, decl) in &scope.value_items {
+                            match decl {
+                                ValueItemDecl::Unconditional { limit }
+                                    if !visible_to(glob_viewer, limit) =>
+                                {
+                                    newly_exposed_values.insert(name.clone());
+                                }
+                                ValueItemDecl::Gated if hidden_if_private => {
+                                    newly_exposed_values.insert(name.clone());
+                                }
+                                _ => {}
+                            }
+                        }
+                        scope.globs.clone()
+                    } else {
+                        Vec::new()
+                    };
+                    if !next_globs.is_empty() {
+                        self.collect_widened_glob_exposures(
+                            &target_mod,
+                            glob_viewer,
+                            &next_globs,
+                            visited,
+                            newly_exposed_types,
+                            newly_exposed_values,
+                            has_foreign_glob,
+                        );
+                    }
+                }
+                ModuleBinding::Foreign
+                | ModuleBinding::Failed(FailureReason::Foreign | FailureReason::GlobInPath) => {
+                    *has_foreign_glob = true;
+                }
+                _ => {}
+            }
+        }
+    }
+
+    fn is_explicitly_bound_in_type_ns(&mut self, module: &str, name: &str) -> bool {
+        let Some(scope) = self.current.modules.get(module) else {
+            return false;
+        };
+        if matches!(
+            scope.submodules.get(name),
+            Some(SubmoduleDecl::Unconditional { .. })
+        ) || matches!(
+            scope.type_items.get(name),
+            Some(TypeItemDecl::Unconditional { .. })
+        ) {
+            return true;
+        }
+        let Some(imports) = scope.named.get(name) else {
+            return false;
+        };
+        let imports: Vec<NamedImport> = imports
+            .iter()
+            .filter(|imp| !imp.gated && visible_to(Viewer::Inside(module), &imp.limit))
+            .cloned()
+            .collect();
+        if imports.is_empty() {
+            return false;
+        }
+        matches!(
+            self.resolve_named_type_imports(module, Viewer::Inside(module), &imports),
+            Some(TypeNsResult::Resolved(_))
+        )
+    }
+
+    fn is_explicitly_bound_in_value_ns(&self, module: &str, name: &str) -> bool {
+        let Some(scope) = self.current.modules.get(module) else {
+            return false;
+        };
+        matches!(
+            scope.value_items.get(name),
+            Some(ValueItemDecl::Unconditional { .. })
+        ) || matches!(
+            scope.type_items.get(name),
+            Some(TypeItemDecl::Unconditional {
+                also_value: true,
+                ..
+            })
+        )
+    }
+}
+
+/// Refuses impls in `module` if staging widens a hidden glob item over a prelude or external name.
+pub(crate) fn module_widened_glob_shadow_refusal(
+    module: &str,
+    types: &OwnerTypes,
+    workspace: &WorkspaceTraits,
+) -> Option<&'static str> {
+    let cache_key = (module.to_owned(), workspace.id);
+    if let Some(&cached) = types.widened_glob_shadow.borrow().get(&cache_key) {
+        return cached.then_some(WIDENED_GLOB_SHADOW);
+    }
+    let has_hazard = compute_module_widened_glob_shadow(module, types, workspace);
+    types
+        .widened_glob_shadow
+        .borrow_mut()
+        .insert(cache_key, has_hazard);
+    has_hazard.then_some(WIDENED_GLOB_SHADOW)
+}
+
+fn compute_module_widened_glob_shadow(
+    module: &str,
+    types: &OwnerTypes,
+    workspace: &WorkspaceTraits,
+) -> bool {
+    let Some(globs) = types.modules.get(module).map(|s| s.globs.clone()) else {
+        return false;
+    };
+    if globs.is_empty() {
+        return false;
+    }
+    let current_crate = crate_of(module);
+    let mut resolver = Resolver::new(current_crate, types, workspace, ResolveMode::Trait, true);
+    let mut visited = BTreeSet::new();
+    let mut newly_exposed_types = BTreeSet::new();
+    let mut newly_exposed_values = BTreeSet::new();
+    let mut has_foreign_glob = false;
+    resolver.collect_widened_glob_exposures(
+        module,
+        Viewer::Inside(module),
+        &globs,
+        &mut visited,
+        &mut newly_exposed_types,
+        &mut newly_exposed_values,
+        &mut has_foreign_glob,
+    );
+    if newly_exposed_types.is_empty() && newly_exposed_values.is_empty() {
+        return false;
+    }
+    let mut extern_prelude: BTreeSet<&str> =
+        BTreeSet::from(["alloc", "core", "proc_macro", "std", "test"]);
+    extern_prelude.extend(workspace.extern_crates_of(current_crate));
+    extern_prelude.extend(types.self_aliases.keys().map(String::as_str));
+    if let Some(root_scope) = types.modules.get(current_crate) {
+        for (name, decl) in &root_scope.type_items {
+            if matches!(
+                decl,
+                TypeItemDecl::Unconditional {
+                    kind: TypeItemKind::ExternCrate { .. },
+                    ..
+                }
+            ) {
+                extern_prelude.insert(name.as_str());
+            }
+        }
+    }
+    let mut pristine = Resolver::new(current_crate, types, workspace, ResolveMode::Trait, false);
+    for name in &newly_exposed_types {
+        if pristine.is_explicitly_bound_in_type_ns(module, name) {
+            continue;
+        }
+        if is_prelude_type(name) || extern_prelude.contains(name.as_str()) || has_foreign_glob {
+            return true;
+        }
+    }
+    for name in &newly_exposed_values {
+        if pristine.is_explicitly_bound_in_value_ns(module, name) {
+            continue;
+        }
+        if is_prelude_value(name) || has_foreign_glob {
+            return true;
+        }
+    }
+    false
 }
 
 trait PipeUnit {
@@ -2202,12 +2556,31 @@ pub(crate) fn resolve_trait_impl(
     if !last.arguments.is_none() {
         return Err("trait generic arguments");
     }
+    if let Some(reason) = module_widened_glob_shadow_refusal(module, types, workspace) {
+        return Err(reason);
+    }
     let current_crate = crate_of(module);
-    let mut trait_resolver = Resolver::new(current_crate, types, workspace, ResolveMode::Trait);
+    let mut trait_resolver =
+        Resolver::new(current_crate, types, workspace, ResolveMode::Trait, false);
     let trait_decl = trait_resolver.resolve_trait(module, trait_path)?;
+    let mut widened_trait_resolver =
+        Resolver::new(current_crate, types, workspace, ResolveMode::Trait, true);
+    match widened_trait_resolver.resolve_trait(module, trait_path) {
+        Ok(widened_decl) if widened_decl == trait_decl => {}
+        Err("ambiguous trait") => return Err("ambiguous trait after staging"),
+        Ok(_) | Err(_) => return Err("trait changes after staging"),
+    }
     let owner_name = source::unraw(&owner.path.segments[0].ident);
-    let mut owner_resolver = Resolver::new(current_crate, types, workspace, ResolveMode::Owner);
+    let mut owner_resolver =
+        Resolver::new(current_crate, types, workspace, ResolveMode::Owner, false);
     let owner_decl = owner_resolver.resolve_owner(module, &owner_name)?;
+    let mut widened_owner_resolver =
+        Resolver::new(current_crate, types, workspace, ResolveMode::Owner, true);
+    match widened_owner_resolver.resolve_owner(module, &owner_name) {
+        Ok(widened_decl) if widened_decl == owner_decl => {}
+        Err(AMBIGUOUS_OWNER) => return Err("ambiguous trait owner after staging"),
+        Ok(_) | Err(_) => return Err("trait owner changes after staging"),
+    }
     Ok(ResolvedTraitImpl {
         owner: owner_decl,
         trait_decl,

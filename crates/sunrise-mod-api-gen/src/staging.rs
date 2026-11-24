@@ -107,14 +107,16 @@ pub fn stage(
         started.elapsed().as_secs_f64()
     );
     functions.retain_slotted(&replace.slots, &generic);
-    for (key, function) in &functions.functions {
+    for (key, function) in &mut functions.functions {
         if let Some(expected) = &function.trait_binding
             && let Some(actual) = replace.trait_slots.get(key)
-            && expected != actual
         {
-            return Err(format!(
-                "trait slot evidence mismatch for {key}: index={expected:?}, staged={actual:?}"
-            ));
+            if !expected.same_binding(actual) {
+                return Err(format!(
+                    "trait slot evidence mismatch for {key}: index={expected:?}, staged={actual:?}"
+                ));
+            }
+            function.trait_binding = Some(actual.clone());
         }
     }
     functions.trait_slots = replace.trait_slots.clone();
@@ -498,6 +500,8 @@ fn main() {{
             },
             installer_module: "sunrise_client::game::server_side::entity".into(),
             installer: "__fnr_as_Entity_bounds".into(),
+            reader: Some("__fnr_read_slot_0".into()),
+            cell: Some(0),
         };
         assert_eq!(
             index
