@@ -6,13 +6,12 @@ use std::{
     io::{self, Read, Write},
     path::{Path, PathBuf},
 };
-use sunrise_jar_fetch::{Http, Modrinth, VersionRef};
+use sunrise_jar_fetch::{Http, Modrinth, VersionRef, hash_reader};
 use sunrise_mod_package::{
     Manifest,
     manifest::{JarRef, MANIFEST, collect_jar_requirements},
     selection::{LaunchArguments, data_dir_with},
 };
-use sunrise_port_pack::fetch::hash_reader;
 
 const USER_AGENT: &str = "cargo-sunrise-mod";
 
@@ -26,20 +25,35 @@ pub(crate) const MODRINTH: Modrinth<'static> = Modrinth {
 pub(crate) struct ProxyHttp;
 
 impl Http for ProxyHttp {
-    fn get(&self, url: &str, limit: u64) -> Result<Option<Vec<u8>>, String> {
-        match sunrise_proxy::get(url, &[("User-Agent", USER_AGENT)], None) {
+    fn get(&self, url: &str) -> Result<Option<Box<dyn Read>>, String> {
+        let requested = url::Url::parse(url).map_err(|e| format!("{url}: {e}"))?;
+        let host = requested
+            .host_str()
+            .ok_or_else(|| format!("{url}: missing host"))?;
+        let check = |hop: &url::Url| {
+            if hop.scheme() != "https"
+                || !hop.host_str().is_some_and(|h| h.eq_ignore_ascii_case(host))
+                || hop.port().is_some()
+                || !hop.username().is_empty()
+                || hop.password().is_some()
+            {
+                return Err(format!("refused redirect outside https://{host}"));
+            }
+            Ok(())
+        };
+        match sunrise_proxy::get(url, &[("User-Agent", USER_AGENT)], Some(&check)) {
             Ok(response) => {
                 if response.status() >= 300 {
                     return Err(format!("{url}: HTTP {}", response.status()));
                 }
-                read_http_body(response.into_reader(), limit, url).map(Some)
+                Ok(Some(response.into_reader()))
             }
             Err(e) if e.status() == Some(404) => Ok(None),
             Err(e) => Err(e.to_string()),
         }
     }
 
-    fn post_json(&self, url: &str, body: &str, limit: u64) -> Result<String, String> {
+    fn post_json(&self, url: &str, body: &str) -> Result<Box<dyn Read>, String> {
         let response = sunrise_proxy::agent("jar-fetch-post", url, |builder| builder.redirects(0))
             .map_err(|e| format!("{url}: {e}"))?
             .post(url)
@@ -50,21 +64,8 @@ impl Http for ProxyHttp {
         if response.status() >= 300 {
             return Err(format!("{url}: HTTP {}", response.status()));
         }
-        let bytes = read_http_body(response.into_reader(), limit, url)?;
-        String::from_utf8(bytes).map_err(|e| format!("{url}: {e}"))
+        Ok(response.into_reader())
     }
-}
-
-fn read_http_body(reader: impl Read, limit: u64, url: &str) -> Result<Vec<u8>, String> {
-    let mut bytes = Vec::new();
-    reader
-        .take(limit.saturating_add(1))
-        .read_to_end(&mut bytes)
-        .map_err(|e| format!("{url}: {e}"))?;
-    if bytes.len() as u64 > limit {
-        return Err(format!("{url}: response exceeds {limit} byte limit"));
-    }
-    Ok(bytes)
 }
 
 /// The store the game would use with neither the tool nor a `--home` argument.

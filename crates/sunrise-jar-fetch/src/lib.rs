@@ -5,11 +5,11 @@
 //! `cargo-sunrise-mod` and `sunrise-launcher` can carry it unchanged.
 
 use serde::Deserialize;
-use sha2::{Digest, Sha512};
+use sha2::{Digest, Sha512, digest::Output};
 use std::{
     collections::BTreeMap,
     fs,
-    io::Write,
+    io::{self, Read, Write},
     path::Path,
     sync::atomic::{AtomicUsize, Ordering},
 };
@@ -41,12 +41,60 @@ pub struct Modrinth<'a> {
 }
 
 /// Minimal HTTP transport supplied by the caller.
+///
+/// An implementation must refuse a redirect to any other host: every hop must be `https`, on
+/// exactly the requested host, with no port and no userinfo (or the implementation must not
+/// follow redirects).
 pub trait Http {
-    /// Fetches `url` up to `limit` bytes. Returns `Ok(None)` on HTTP 404.
-    fn get(&self, url: &str, limit: u64) -> Result<Option<Vec<u8>>, String>;
+    /// Fetches `url` and returns its response body as a reader. Returns `Ok(None)` on HTTP 404.
+    fn get(&self, url: &str) -> Result<Option<Box<dyn Read>>, String>;
 
-    /// Sends a JSON `POST` request to `url` with `body` and reads up to `limit` bytes of UTF-8 text.
-    fn post_json(&self, url: &str, body: &str, limit: u64) -> Result<String, String>;
+    /// Sends a JSON `POST` request to `url` with `body` and returns its response body as a reader.
+    fn post_json(&self, url: &str, body: &str) -> Result<Box<dyn Read>, String>;
+}
+
+/// Hash and copy a jar stream, refusing inputs larger than 512 MiB.
+/// Pass [`io::sink()`] as the writer when only the digest is needed.
+pub fn hash_reader<D: Digest>(
+    mut reader: impl Read,
+    mut writer: impl Write,
+) -> io::Result<Output<D>> {
+    let mut hash = D::new();
+    let mut size = 0u64;
+    let mut buf = [0u8; 65536];
+    loop {
+        let n = match reader.read(&mut buf) {
+            Ok(0) => break,
+            Ok(n) => n,
+            Err(e) if e.kind() == io::ErrorKind::Interrupted => continue,
+            Err(e) => return Err(e),
+        };
+        size += n as u64;
+        if size > MAX_JAR {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "jar exceeds 512 MiB",
+            ));
+        }
+        hash.update(&buf[..n]);
+        writer.write_all(&buf[..n])?;
+    }
+    Ok(hash.finalize())
+}
+
+/// Reads at most [`MAX_API_RESPONSE`] bytes from a Modrinth API response body.
+fn read_api_response(reader: impl Read, url: &str) -> Result<Vec<u8>, String> {
+    let mut bytes = Vec::new();
+    reader
+        .take(MAX_API_RESPONSE.saturating_add(1))
+        .read_to_end(&mut bytes)
+        .map_err(|e| format!("{url}: {e}"))?;
+    if bytes.len() as u64 > MAX_API_RESPONSE {
+        return Err(format!(
+            "{url}: response exceeds {MAX_API_RESPONSE} byte limit"
+        ));
+    }
+    Ok(bytes)
 }
 
 /// One file of a Modrinth version, as returned by [`version_file`].
@@ -175,9 +223,10 @@ pub fn file_urls(
     }
     let url = format!("{}/version_files", modrinth.api.trim_end_matches('/'));
     let body = serde_json::json!({"hashes": sha512s, "algorithm": "sha512"}).to_string();
-    let text = http.post_json(&url, &body, MAX_API_RESPONSE)?;
+    let reader = http.post_json(&url, &body)?;
+    let bytes = read_api_response(reader, &url)?;
     let versions: BTreeMap<String, Version> =
-        serde_json::from_str(&text).map_err(|e| format!("Modrinth version files: {e}"))?;
+        serde_json::from_slice(&bytes).map_err(|e| format!("Modrinth version files: {e}"))?;
     Ok(versions
         .into_iter()
         .filter_map(|(hash, version)| {
@@ -214,12 +263,9 @@ pub fn download(
             modrinth.cdn_host
         ));
     }
-    let bytes = http
-        .get(url, MAX_JAR)?
+    let reader = http
+        .get(url)?
         .ok_or_else(|| format!("{url}: Modrinth jar not found"))?;
-    if bytes.len() as u64 > MAX_JAR {
-        return Err(format!("{url}: jar exceeds 512 MiB"));
-    }
     if let Some(parent) = dest.parent().filter(|p| !p.as_os_str().is_empty()) {
         fs::create_dir_all(parent).map_err(|e| format!("{}: {e}", parent.display()))?;
     }
@@ -235,8 +281,8 @@ pub fn download(
         .open(&part)
         .map_err(|e| format!("{url}: {e}"))?;
     let result = (|| {
-        file.write_all(&bytes).map_err(|e| e.to_string())?;
-        let got = format!("{:x}", Sha512::digest(&bytes));
+        let hash = hash_reader::<Sha512>(reader, &mut file).map_err(|e| e.to_string())?;
+        let got = format!("{hash:x}");
         if !sha512.eq_ignore_ascii_case(&got) {
             return Err(format!("SHA-512 {got}, expected {sha512}"));
         }
@@ -300,9 +346,10 @@ pub fn version_file(
         encode_segment(project),
         encode_segment(version)
     );
-    let bytes = http
-        .get(&url, MAX_API_RESPONSE)?
+    let reader = http
+        .get(&url)?
         .ok_or_else(|| format!("Modrinth version {project} {version} was not found"))?;
+    let bytes = read_api_response(reader, &url)?;
     let parsed: VersionResponse =
         serde_json::from_slice(&bytes).map_err(|e| format!("{url}: {e}"))?;
     let chosen = if let Some(primary) = parsed.files.iter().find(|file| file.primary) {
@@ -373,25 +420,22 @@ mod tests {
     }
 
     impl Http for FakeHttp {
-        fn get(&self, url: &str, limit: u64) -> Result<Option<Vec<u8>>, String> {
+        fn get(&self, url: &str) -> Result<Option<Box<dyn Read>>, String> {
             let Some(entry) = self.gets.get(url) else {
                 return Ok(None);
             };
-            if let Some(bytes) = entry
-                && bytes.len() as u64 > limit
-            {
-                return Err(format!("{url}: exceeds limit {limit}"));
-            }
-            Ok(entry.clone())
+            Ok(entry
+                .as_ref()
+                .map(|bytes| Box::new(io::Cursor::new(bytes.clone())) as Box<dyn Read>))
         }
 
-        fn post_json(&self, url: &str, body: &str, _limit: u64) -> Result<String, String> {
+        fn post_json(&self, url: &str, body: &str) -> Result<Box<dyn Read>, String> {
             self.seen_posts
                 .borrow_mut()
                 .push((url.to_owned(), body.to_owned()));
             self.posts
                 .get(url)
-                .cloned()
+                .map(|text| Box::new(io::Cursor::new(text.as_bytes().to_vec())) as Box<dyn Read>)
                 .ok_or_else(|| format!("unexpected POST {url}"))
         }
     }
@@ -639,5 +683,43 @@ mod tests {
                 "{bad}: {err}"
             );
         }
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn jar_hashing_accepts_512_mib_and_refuses_one_extra_byte() {
+        let limit = 512 * 1024 * 1024;
+        assert!(hash_reader::<Sha512>(io::repeat(0).take(limit), io::sink()).is_ok());
+        let error = hash_reader::<Sha512>(io::repeat(0).take(limit + 1), io::sink()).unwrap_err();
+        assert_eq!(error.kind(), io::ErrorKind::InvalidData);
+    }
+
+    #[test]
+    fn hashing_and_copying_share_the_digest_for_each_algorithm() {
+        let mut copied = Vec::new();
+        let hash = hash_reader::<sha2::Sha256>(&b"abc"[..], &mut copied).unwrap();
+        assert_eq!(
+            format!("{hash:x}"),
+            "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+        );
+        assert_eq!(copied, b"abc");
+        let hash = hash_reader::<Sha512>(&b"abc"[..], io::sink()).unwrap();
+        assert_eq!(
+            format!("{hash:x}"),
+            concat!(
+                "ddaf35a193617abacc417349ae20413112e6fa4e89a97ea20a9eeee64b55d39a",
+                "2192992a274fc1a836ba3c23a3feebbd454d4423643ce80e2a9ac94fa54ca49f"
+            )
+        );
+    }
+
+    #[test]
+    fn read_api_response_refuses_body_over_limit() {
+        let err = read_api_response(
+            io::repeat(b' '),
+            "https://api.modrinth.com/v2/version_files",
+        )
+        .unwrap_err();
+        assert!(err.contains("exceeds"), "{err}");
     }
 }
