@@ -15,6 +15,13 @@ mod water_mirror;
 use super::*;
 use post::{PostPassArgs, PostPassResult};
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum SkyStageOwner {
+    Engine,
+    Inline,
+    ClassicPack,
+}
+
 impl Renderer {
     /// `checks`: the error scopes of a scaled screenshot's frame, checked before its PNG is written.
     /// `output`: what this frame is drawn for, the window's output or a screenshot's.
@@ -23,6 +30,7 @@ impl Renderer {
         frame: &Frame,
         checks: Option<GpuChecks>,
         output: output::EffectiveOutput,
+        mut hooks: Option<&mut dyn world_primitives::FrameHooks>,
     ) -> Result<bool> {
         debug_assert_eq!(output.encoding, self.hdr.as_ref().map(|hdr| hdr.output));
         // Its steps as spans (SUNRISE_SPIKES): each lap names the step that just ended.
@@ -52,6 +60,7 @@ impl Renderer {
         // through a pack dropped (Shader Options) or not loaded yet (`Renderer::new`),
         // so the next world's sections, which the level loading screen uploads, stay.
         if !frame.title {
+            self.follow_arena_layout();
             self.follow_translucent_layout();
             self.follow_packed_layout();
         }
@@ -517,6 +526,8 @@ impl Renderer {
         let leaving = &self.lod_leaving_scratch;
         let mut visible = std::mem::take(&mut self.visible);
         visible.clear();
+        let lend_sections = !frame.title && hooks.is_some();
+        self.visible_renderable_scratch.clear();
         crate::spans::time("visibility", || {
             // GPU culling draws the solid quads of the near whole sections it has records of:
             // within the render distance the walk lists only those with translucent quads,
@@ -532,6 +543,11 @@ impl Renderer {
                 },
                 gpu_frame,
                 &mut visible,
+                lend_sections.then_some(resident::PrimarySelection {
+                    frustum: &view,
+                    detail_columns: &self.detail_columns,
+                    out: &mut self.visible_renderable_scratch,
+                }),
             )
         });
         #[cfg(debug_assertions)]
@@ -539,6 +555,31 @@ impl Renderer {
             !gpu_frame || self.occlusion.generation() == graph_given,
             "the walk reads the graph GPU culling was given"
         );
+        // Lend the primary selection made by the resident walk; submit before the world passes.
+        let hook_oit = !frame.title && self.oit_active_for(self.improved_transparency);
+        if !frame.title
+            && let Some(hooks) = hooks.as_deref_mut()
+        {
+            self.visible_renderable_sections.clear();
+            self.visible_renderable_sections
+                .extend(
+                    self.visible_renderable_scratch
+                        .iter()
+                        .map(|&(_, (x, y, z), slot)| {
+                            let origin = [x * 16, self.sections.min_y() + y * 16, z * 16];
+                            let [x, y, z] = origin.map(f64::from);
+                            mod_api::RenderableSection::new(
+                                origin,
+                                [[x, y, z], [x + 16.0, y + 16.0, z + 16.0]],
+                                slot.is_none_or(|slot| {
+                                    let mesh = self.sections.get(slot);
+                                    mesh.solid == 0 && mesh.translucent == 0
+                                }),
+                            )
+                        }),
+                );
+            hooks.on_custom_geometry(&self.visible_renderable_sections, hook_oit);
+        }
         let now = std::time::Instant::now();
         let mut visible_lods = std::mem::take(&mut self.visible_lods);
         visible_lods.clear();
@@ -984,9 +1025,7 @@ impl Renderer {
         } else {
             &visible_lods
         };
-        let count = visible.len() + far.len();
-        let budget = (count / 8).max(15).min(count);
-        self.translucency_cursor %= count.max(1);
+        let rotation = Rotation::new(visible.len(), far.len(), self.translucency_cursor);
         let eye = camera + rendered_eye.map_or(DVec3::ZERO, |e| e.as_dvec3());
         for (i, v) in visible.iter().enumerate().rev() {
             let s = self.sections.get_mut(v.slot);
@@ -994,7 +1033,7 @@ impl Renderer {
                 let nearby = (v.key.0 - camera_section.0).abs() <= 2
                     && (v.key.1 - camera_section.1).abs() <= 2
                     && (v.key.2 - camera_section.2).abs() <= 2;
-                let scheduled = (i + count - self.translucency_cursor) % count < budget;
+                let scheduled = rotation.near(i);
                 let origin = [
                     v.key.0 * 16,
                     self.layout.min_y() + v.key.1 * 16,
@@ -1041,15 +1080,9 @@ impl Renderer {
         // place in what the CPU draws (`visible_lods`), which the tiles whose
         // solid quads the pass drew whole leave out of.
         let section_translucent = self.translucent_draws.len();
-        let mut listed = 0usize;
-        for (i, v) in far.iter().enumerate() {
-            let scheduled = (i + count - self.translucency_cursor) % count < budget;
-            if visible_lods.get(listed).is_some_and(|l| l.key == v.key) {
-                listed += 1;
-            } else {
-                continue;
-            }
-            let instance = visible.len() + listed - 1;
+        let far_water = FarWater::new(far, &visible_lods, rotation);
+        for (i, instance, scheduled) in far_water.entries() {
+            let v = &far[i];
             let tile = self.lods.get_mut(&v.key).expect("visible resident tile");
             let s = tile.drawn_mut();
             if let Some((index_page, index_start)) = s.sorted_indices {
@@ -1089,18 +1122,9 @@ impl Renderer {
             // front together, a far tile's water under a near chunk's (one fading in, or brought
             // into view by a longer render distance) blended twice and looked opaque. The cost: far
             // water just behind near water shows no surface of its own there.
-            let tier = |instance: usize| match instance.checked_sub(visible.len()) {
-                None => 0,
-                Some(tile) if far[tile].old => 2,
-                Some(_) => 1,
-            };
             self.translucent_draws
                 .sort_unstable_by_key(|&(distance, instance, ..)| {
-                    (
-                        tier(instance),
-                        std::cmp::Reverse(distance),
-                        std::cmp::Reverse(instance),
-                    )
+                    far_water.order(distance, instance)
                 });
         }
         self.translucent_marks.clear();
@@ -1113,7 +1137,7 @@ impl Renderer {
             self.draws.push(draw);
             self.draw_pages.push(pages);
         }
-        self.translucency_cursor += budget;
+        self.translucency_cursor = rotation.next();
         let translucent_draws = self.draws.len() as u32 - solid_draws;
         let section_draws = self.draws.len();
         // The shadow camera's sections after the camera's: quads that can face the light (all of
@@ -1244,19 +1268,7 @@ impl Renderer {
             frame.weather,
             frame.weather_time,
         );
-        // Native mods' world primitives, drawn as the world is: its jittered projection, the
-        // line widths in the frame's pixels as the gizmo lines'.
-        let world_primitives = !frame.title && {
-            let (uploads, encoder) = (&mut self.uploads, &mut encoder);
-            self.world_primitives.prepare(
-                &self.device,
-                &mut |buffer, bytes| uploads.buffer(encoder, buffer, 0, bytes),
-                &frame.world_primitives,
-                jittered,
-                [self.config.width, self.config.height],
-                &self.entity_atlas,
-            )
-        };
+        let live_hooks = !frame.title && hooks.is_some();
         let pack = self.pack_blocks(frame, fog, globals.fog_ends);
         // Vanilla's four blocks as the pack's world text and GPU particles read them (the block
         // outline's layout), made once a frame and only when one of them asks.
@@ -1267,9 +1279,14 @@ impl Renderer {
                 core_lines::uniforms(pack.globals, view, pose, jitter, 1.0, fog_color, pack.fog)
             })
         };
-        // The pack's world text: vanilla's blocks, then its expression uniforms.
+        // The pack's world text: vanilla's blocks, HDR tier windows, then its expression uniforms.
         if let Some(core) = &self.core_text {
-            core.prepare(&mut self.uploads, &mut encoder, &vanilla_blocks());
+            core.prepare(
+                &mut self.uploads,
+                &mut encoder,
+                &vanilla_blocks(),
+                globals.hdr_windows,
+            );
         }
         let outline_edges = frame.outline.len().min(MAX_OUTLINE_EDGES as usize);
         if outline_edges > 0 {
@@ -1342,6 +1359,258 @@ impl Renderer {
             });
             core.prepare(&mut self.uploads, &mut encoder, &sky, stars.as_deref());
         }
+        let view_target = target_texture.create_view(&wgpu::TextureViewDescriptor {
+            format: Some(self.output.frame.format),
+            ..Default::default()
+        });
+        // The world's targets: the screen, or the scaled target of `post`.
+        let pack_post = !frame.title && self.pack_post.as_ref().is_some_and(|p| p.1.is_some());
+        // One of Sunrise's own packs reads the same world target.
+        let native_post = !frame.title && self.native.as_ref().is_some_and(|n| n.post.is_some());
+        let pack_reads_world = pack_post || native_post;
+        let pack_draws_sky = pack_post
+            && self
+                .pack_post
+                .as_ref()
+                .and_then(|p| p.1.as_ref())
+                .is_some_and(|p| p.has_sky());
+        let pack_draws_celestial = pack_post
+            && self
+                .pack_post
+                .as_ref()
+                .and_then(|p| p.1.as_ref())
+                .is_some_and(|p| p.has_celestial());
+        // The pack's `sky`, `stars`, `sun` and `moon`: the parts no pack program draws are the
+        // game's, which leaves the same ones out.
+        let sky_switches = self
+            .pack_post
+            .as_ref()
+            .and_then(|p| p.1.as_ref())
+            .map(|p| p.sky_switches())
+            .unwrap_or_default();
+        let scaled = self.world_post.prepare(
+            &self.device,
+            [self.config.width, self.config.height],
+            pack_reads_world || fg,
+        );
+        let pack_world_runs = pack_post && scaled.is_some();
+        let after_pack_features = live_hooks
+            && pack_world_runs
+            && self
+                .pack_post
+                .as_ref()
+                .and_then(|(_, post)| post.as_ref())
+                .is_some_and(|post| post.owns_feature_stages());
+        // Notification follows the last owner of the logical sky pass, independent of
+        // whether any of that owner's geometry is visible. Drawing flags stay separate:
+        // a celestial-only pack leaves the engine's disc, sunset, and stars intact.
+        let pack_owns_sky_stage = pack_world_runs
+            && (pack_draws_sky || pack_draws_celestial)
+            && (!frame.end_sky || end_fog_sky(frame));
+        let wants_after_sky = live_hooks
+            && hooks
+                .as_deref()
+                .is_some_and(|hooks| hooks.wants_after_sky());
+        let sky_stage = if !wants_after_sky || !frame.sky_pass {
+            None
+        } else if pack_owns_sky_stage {
+            Some(SkyStageOwner::ClassicPack)
+        } else if pack_draws_sky {
+            Some(SkyStageOwner::Inline)
+        } else {
+            Some(SkyStageOwner::Engine)
+        };
+        let pack_sky_clear = pack_draws_sky
+            .then(|| self.pack_post.as_ref().and_then(|p| p.1.as_ref()))
+            .flatten()
+            .and_then(|p| p.sky_clear());
+        let clear = if let Some([r, g, b, a]) = pack_sky_clear {
+            wgpu::Color {
+                r: f64::from(r),
+                g: f64::from(g),
+                b: f64::from(b),
+                a: f64::from(a),
+            }
+        } else if frame.title || (frame.end_sky && !frame.underwater && sky_open(frame)) {
+            wgpu::Color::BLACK
+        } else {
+            wgpu::Color {
+                r: f64::from(fog_color[0]),
+                g: f64::from(fog_color[1]),
+                b: f64::from(fog_color[2]),
+                a: 1.0,
+            }
+        };
+        let clear = linear_blend::stored_clear(clear, self.output.frame.linear_light);
+        let sky_visible = sky_open(frame);
+        if let Some((rotation, brightness)) = frame.stars {
+            self.stars.prepare(
+                &mut self.uploads,
+                &mut encoder,
+                jittered * rotation,
+                brightness,
+                &globals,
+            );
+        }
+        self.custom_sky.prepare(
+            &mut self.uploads,
+            &mut encoder,
+            jittered,
+            &self.custom_sky_draws,
+            &globals,
+        );
+        let celestial_vertices = frame.celestial.len().min(2048 * 4);
+        if frame.end_sky && !frame.title {
+            self.end_sky.prepare(&self.device, frame.end_sky_sprite);
+        }
+        if celestial_vertices > 0 {
+            self.uploads.buffer(
+                &mut encoder,
+                &self.celestial_buffer,
+                0,
+                bytemuck::cast_slice(&frame.celestial[..celestial_vertices]),
+            );
+        }
+        // One of Sunrise's own packs: this frame's inputs; in a timed frame its sky draws in a
+        // pass of its own, so that it has a time of its own.
+        let mut native_sky_pass = false;
+        if !frame.title
+            && let Some(native) = &mut self.native
+        {
+            let size = self
+                .world_post
+                .size()
+                .filter(|_| scaled.is_some())
+                .unwrap_or([self.config.width, self.config.height]);
+            native
+                .frame
+                .write(&self.queue, frame, size, output.display());
+            native.frame.block_light.update(
+                &self.queue,
+                frame.camera,
+                &self.light_blocks,
+                self.light_revision,
+            );
+            if let Some(t) = &mut native.timing {
+                t.begin(
+                    &self.device,
+                    &self.queue,
+                    &self.device_lost,
+                    super::in_flight::poll_live,
+                )?;
+                native_sky_pass =
+                    native.sky.is_some() && t.recording() && sky_visible && frame.skybox;
+            }
+        }
+        // Complete the separate engine sky pass before buffer preparation only when a
+        // listener subscribes to `RenderLevelStage::AfterSky`. The main world pass
+        // loads that colour and starts its own depth as usual. A classic pack's replacement
+        // sky draws and notifies after the engine world import in PackPost instead.
+        let separate_sky =
+            wants_after_sky && sky_visible && (frame.skybox || frame.end_sky) && !pack_draws_sky;
+        if separate_sky {
+            if let Some(timer) = &mut self.gpu_timer {
+                timer.begin(&mut encoder);
+            }
+            let (color, depth) = match &scaled {
+                Some((color, depth)) => (color, depth),
+                None => (&view_target, &self.depth),
+            };
+            if native_sky_pass {
+                Self::draw_timed_native_sky(
+                    &mut self.native,
+                    &self.device,
+                    &self.group,
+                    &mut encoder,
+                    (color, depth, self.output.frame.format),
+                    clear,
+                );
+            }
+            let pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("Sunrise sky"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: color,
+                    resolve_target: None,
+                    depth_slice: None,
+                    ops: wgpu::Operations {
+                        load: if native_sky_pass {
+                            wgpu::LoadOp::Load
+                        } else {
+                            wgpu::LoadOp::Clear(clear)
+                        },
+                        store: wgpu::StoreOp::Store,
+                    },
+                })],
+                depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                    view: depth,
+                    depth_ops: Some(wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(0.0),
+                        store: wgpu::StoreOp::Discard,
+                    }),
+                    stencil_ops: None,
+                }),
+                ..Default::default()
+            });
+            let mut pass = pack_timing::CountedPass::plain(pass);
+            pass.set_bind_group(0, &self.group, &[]);
+            self.draw_sky_pass_content(
+                &mut pass,
+                frame,
+                sky_visible,
+                false,
+                native_sky_pass,
+                celestial_vertices,
+                pack_draws_celestial,
+                sky_switches,
+                hdr_gain,
+            );
+        }
+        self.hook_geometry.entities.clear();
+        self.hook_geometry.entity_spans.clear();
+        self.hook_geometry.see_through.clear();
+        self.hook_geometry.prepared_draws.clear();
+        self.hook_geometry.text_patches.clear();
+        if live_hooks && let Some(hooks) = hooks.as_deref_mut() {
+            if sky_stage == Some(SkyStageOwner::Engine) {
+                hooks.on_after_sky(&self.visible_renderable_sections, hook_oit);
+            }
+            hooks.on_prepare_render_buffers(
+                &self.visible_renderable_sections,
+                hook_oit,
+                &mut self.hook_geometry,
+            );
+            self.prepared_draws
+                .append(&mut self.hook_geometry.prepared_draws);
+        }
+        // Upload both mods' stage batches and deferred geometry through the same path, before
+        // the first consuming pass. Stage listeners may only reference these prepared ranges.
+        let world_primitives = !frame.title && {
+            let batch = hooks
+                .as_deref()
+                .map_or(frame.world_primitives, |hooks| hooks.prepared_primitives());
+            let prepared = self
+                .world_primitives
+                .as_mut()
+                .expect("world primitives")
+                .prepare(
+                    &self.device,
+                    &mut |buffer, bytes| self.uploads.buffer(&mut encoder, buffer, 0, bytes),
+                    &batch,
+                    jittered,
+                    [self.config.width, self.config.height],
+                    &self.entity_atlas,
+                );
+            let bound = self
+                .pack_post
+                .as_ref()
+                .and_then(|(_, post)| post.as_ref())
+                .map_or(&[][..], |post| post.bound_mod_slots());
+            self.world_primitives
+                .as_mut()
+                .expect("world primitives")
+                .set_bound_mod_slots(bound);
+            prepared || live_hooks
+        };
         // Polytone GPU particles with their own shader: the vanilla blocks as the block outline's
         // (a particle's ModelViewMat is the camera's rotation, its positions camera relative).
         self.core_particles
@@ -1359,18 +1628,53 @@ impl Renderer {
                 .is_some_and(|post| post.skins_entities());
         // While a shader pack draws entities, the runs of `entity_spans` its programs draw are
         // left out of Sunrise's own entity draw.
-        let mut entities = frame.entities;
+        let merged_entities: &[Vertex] = if self.hook_geometry.entities.is_empty() {
+            frame.entities
+        } else {
+            self.hook_entities_scratch.clear();
+            self.hook_entities_scratch.extend_from_slice(frame.entities);
+            self.hook_entities_scratch
+                .append(&mut self.hook_geometry.entities);
+            &self.hook_entities_scratch
+        };
+        let merged_see_through: &[Vertex] = if self.hook_geometry.see_through.is_empty() {
+            frame.see_through
+        } else {
+            self.hook_see_through_scratch.clear();
+            self.hook_see_through_scratch
+                .extend_from_slice(frame.see_through);
+            self.hook_see_through_scratch
+                .append(&mut self.hook_geometry.see_through);
+            &self.hook_see_through_scratch
+        };
+        let mut entities = merged_entities;
         let mut pack_entities = false;
         if !frame.title
             && let Some((_, Some(post))) = &mut self.pack_post
             && post.has_entities()
         {
             pack_entities = true;
+            let spans = if self.hook_geometry.entity_spans.is_empty() {
+                frame.entity_spans
+            } else {
+                for span in &mut self.hook_geometry.entity_spans {
+                    span.start += frame.entities.len() as u32;
+                }
+                let before_hooks = frame
+                    .entity_spans
+                    .partition_point(|s| s.start < frame.entities.len() as u32);
+                drop(
+                    self.hook_geometry
+                        .entity_spans
+                        .splice(..0, frame.entity_spans[..before_hooks].iter().copied()),
+                );
+                &self.hook_geometry.entity_spans
+            };
             post.prepare_entities(
                 &self.device,
                 &self.queue,
-                frame.entities,
-                frame.entity_spans,
+                merged_entities,
+                spans,
                 frame.crumbling_sprite,
                 frame.end_portal_sprites[1],
                 &mut self.pack_entity_rest,
@@ -1379,13 +1683,10 @@ impl Renderer {
             );
             entities = &self.pack_entity_rest;
         }
+        self.hook_geometry.entity_spans.clear();
         // GameRenderer.useImprovedTransparency. A shader pack keeps its own
         // path.
-        let oit_on = self.improved_transparency
-            && !frame.title
-            && self.pack_post.as_ref().is_none_or(|p| p.1.is_none())
-            && self.native.is_none()
-            && oit::supported(&self.device);
+        let oit_on = !frame.title && self.oit_active_for(self.improved_transparency);
         let [
             entity_quads,
             text_quads,
@@ -1412,7 +1713,7 @@ impl Renderer {
             entities,
             frame.additive,
             frame.hand,
-            frame.see_through,
+            merged_see_through,
             oit_on,
         );
         self.entity_batch.append_shadow_only(frame.shadow_only);
@@ -1561,7 +1862,7 @@ impl Renderer {
         let all_entities = &self.entity_batch.combined;
         let hand_quads = (frame.hand.len() / 4) as u32;
         let additive_quads = (frame.additive.len() / 4) as u32 - self.entity_batch.moved_additive;
-        let see_through_quads = (frame.see_through.len() / 4) as u32;
+        let see_through_quads = (merged_see_through.len() / 4) as u32;
         let shadow_only_quads = (frame.shadow_only.len() / 4) as u32;
         // Glowing entities' silhouettes posed on the GPU go last, past every
         // material (the outline pass draws them from there).
@@ -1798,34 +2099,6 @@ impl Renderer {
             (outline_base, outlined / 4),
             [self.config.width, self.config.height],
         );
-        if let Some((rotation, brightness)) = frame.stars {
-            self.stars.prepare(
-                &mut self.uploads,
-                &mut encoder,
-                jittered * rotation,
-                brightness,
-                &globals,
-            );
-        }
-        self.custom_sky.prepare(
-            &mut self.uploads,
-            &mut encoder,
-            jittered,
-            &self.custom_sky_draws,
-            &globals,
-        );
-        let celestial_vertices = frame.celestial.len().min(2048 * 4);
-        if frame.end_sky && !frame.title {
-            self.end_sky.prepare(&self.device, frame.end_sky_sprite);
-        }
-        if celestial_vertices > 0 {
-            self.uploads.buffer(
-                &mut encoder,
-                &self.celestial_buffer,
-                0,
-                bytemuck::cast_slice(&frame.celestial[..celestial_vertices]),
-            );
-        }
         let particle_limit = self.device.limits().max_buffer_size;
         let (opaque, translucent) = frame
             .explicit_particles
@@ -1921,6 +2194,14 @@ impl Renderer {
             frame.hud,
             [self.config.width, self.config.height],
         );
+        if !self.hook_geometry.text_patches.is_empty() {
+            self.hud.upload_glyph_patches(
+                &mut self.uploads,
+                &mut encoder,
+                &self.hook_geometry.text_patches,
+            );
+            self.hook_geometry.text_patches.clear();
+        }
         // The translucent terrain pass reads its draws from phase 2's buffer, where the tests of
         // the sections left to phase 2 give them their instance. Where it draws from
         // `self.indirect` (flat draws, improved transparency, a pack's material), or no test
@@ -2047,11 +2328,7 @@ impl Renderer {
                 bytemuck::cast_slice(&self.draws),
             );
         }
-        let view_target = target_texture.create_view(&wgpu::TextureViewDescriptor {
-            format: Some(self.output.frame.format),
-            ..Default::default()
-        });
-        if let Some(timer) = &mut self.gpu_timer {
+        if !separate_sky && let Some(timer) = &mut self.gpu_timer {
             timer.begin(&mut encoder);
         }
         // The frame's statistics (`show_stats`): a CPU frame's at once; a GPU frame's when the
@@ -2075,10 +2352,6 @@ impl Renderer {
             self.sourced
                 .dispatch(&mut encoder, self.own_timing.as_mut());
         }
-        // The world's targets: the screen, or the scaled target of `post`.
-        let pack_post = !frame.title && self.pack_post.as_ref().is_some_and(|p| p.1.is_some());
-        // One of Sunrise's own packs reads the same world target.
-        let native_post = !frame.title && self.native.as_ref().is_some_and(|n| n.post.is_some());
         if let Some(timer) = Self::pass_timer(&mut self.pack_post, &mut self.native)
             && timer.is_some() != self.pass_timing
         {
@@ -2091,7 +2364,6 @@ impl Renderer {
             t.gap = self.pass_timing_gap;
             t.keep_frames(self.keep_timed_frames);
         }
-        let pack_reads_world = pack_post || native_post;
         laps.lap("r_uploads");
         // Phase 2 of occlusion culling draws over the depth, and a shader pack or TAA reads it.
         // Post effects (a resource pack's chains, `use_depth_buffer`) read the world's depth
@@ -2107,26 +2379,6 @@ impl Renderer {
         let pack_draws_terrain = pack_terrain && flat_frame == self.pack_terrain_flat;
         // The shadow camera's lists, drawn by the pack's shadow programs.
         let pack_draws_shadow = shadow_view.is_some() && flat_frame == self.pack_terrain_flat;
-        let pack_draws_sky = pack_post
-            && self
-                .pack_post
-                .as_ref()
-                .and_then(|p| p.1.as_ref())
-                .is_some_and(|p| p.has_sky());
-        let pack_draws_celestial = pack_post
-            && self
-                .pack_post
-                .as_ref()
-                .and_then(|p| p.1.as_ref())
-                .is_some_and(|p| p.has_celestial());
-        // The pack's `sky`, `stars`, `sun` and `moon`: the parts no pack program draws are the
-        // game's, which leaves the same ones out.
-        let sky_switches = self
-            .pack_post
-            .as_ref()
-            .and_then(|p| p.1.as_ref())
-            .map(|p| p.sky_switches())
-            .unwrap_or_default();
         let pack_draws_water = pack_draws_terrain
             && self
                 .pack_post
@@ -2157,11 +2409,14 @@ impl Renderer {
                 .as_ref()
                 .and_then(|p| p.1.as_ref())
                 .is_some_and(|p| p.has_weather());
-        let scaled = self.world_post.prepare(
-            &self.device,
-            [self.config.width, self.config.height],
-            pack_reads_world || fg,
-        );
+        let pack_colortex0_blendable = pack_world_runs
+            && self
+                .pack_post
+                .as_ref()
+                .and_then(|(_, post)| post.as_ref())
+                .is_some_and(|post| post.colortex0_blendable(&self.device));
+        let after_pack_custom_geometry =
+            live_hooks && world_primitives && pack_draws_terrain && pack_colortex0_blendable;
         if oit_on {
             let size = self
                 .world_post
@@ -2181,9 +2436,10 @@ impl Renderer {
                 self.weather.pipeline().get_bind_group_layout(1),
                 self.border_pipeline.get_bind_group_layout(0),
             ];
-            self.oit
-                .get_or_insert_with(|| {
-                    oit::Oit::new(
+            let oit = match &mut self.oit {
+                Some(oit) => oit,
+                None => {
+                    let oit = oit::Oit::new(
                         device,
                         layout,
                         flat.as_ref(),
@@ -2191,18 +2447,24 @@ impl Renderer {
                         [&clouds[0], &clouds[1]],
                         sprites,
                         format,
-                    )
-                })
-                .prepare(
-                    &self.device,
-                    &self.queue,
-                    size,
-                    &views.primary().projection,
-                    [
-                        water_mask_quads > 0,
-                        cloud_quads > 0 || pack_cloud_quads.is_some_and(|q| q > 0),
-                    ],
-                );
+                    );
+                    self.world_primitives
+                        .as_mut()
+                        .expect("world primitives")
+                        .enable_oit(device, oit.stage_layouts());
+                    self.oit.insert(oit)
+                }
+            };
+            oit.prepare(
+                &self.device,
+                &self.queue,
+                size,
+                &views.primary().projection,
+                [
+                    water_mask_quads > 0,
+                    cloud_quads > 0 || pack_cloud_quads.is_some_and(|q| q > 0),
+                ],
+            );
             // A pack's clouds sample the targets just made.
             if let (Some(core), Some(samples)) = (
                 self.core_clouds
@@ -2213,61 +2475,7 @@ impl Renderer {
                 core.bind_oit(&self.device, &samples);
             }
         }
-        let pack_sky_clear = pack_draws_sky
-            .then(|| self.pack_post.as_ref().and_then(|p| p.1.as_ref()))
-            .flatten()
-            .and_then(|p| p.sky_clear());
-        let clear = if let Some([r, g, b, a]) = pack_sky_clear {
-            wgpu::Color {
-                r: f64::from(r),
-                g: f64::from(g),
-                b: f64::from(b),
-                a: f64::from(a),
-            }
-        } else if frame.title || (frame.end_sky && !frame.underwater && sky_open(frame)) {
-            wgpu::Color::BLACK
-        } else {
-            wgpu::Color {
-                r: f64::from(fog_color[0]),
-                g: f64::from(fog_color[1]),
-                b: f64::from(fog_color[2]),
-                a: 1.0,
-            }
-        };
-        let clear = linear_blend::stored_clear(clear, self.output.frame.linear_light);
-        let sky_visible = sky_open(frame);
         laps.lap("r_world_pass");
-        // One of Sunrise's own packs: this frame's inputs; in a timed frame its sky draws in a
-        // pass of its own, so that it has a time of its own.
-        let mut native_sky_pass = false;
-        if !frame.title
-            && let Some(native) = &mut self.native
-        {
-            let size = self
-                .world_post
-                .size()
-                .filter(|_| scaled.is_some())
-                .unwrap_or([self.config.width, self.config.height]);
-            native
-                .frame
-                .write(&self.queue, frame, size, output.display());
-            native.frame.block_light.update(
-                &self.queue,
-                frame.camera,
-                &self.light_blocks,
-                self.light_revision,
-            );
-            if let Some(t) = &mut native.timing {
-                t.begin(
-                    &self.device,
-                    &self.queue,
-                    &self.device_lost,
-                    super::in_flight::poll_live,
-                )?;
-                native_sky_pass =
-                    native.sky.is_some() && t.recording() && sky_visible && frame.skybox;
-            }
-        }
         self.draw_shadow_passes(
             &mut encoder,
             frame,
@@ -2311,39 +2519,17 @@ impl Renderer {
             && self.hdr.is_none()
             // Frame generation draws the hand over the real and the made frame after the world.
             && fg_frames.is_none()
+            && !live_hooks
             && !native_render::world_drawn_hooked();
-        if native_sky_pass
-            && let Some(native) = &mut self.native
-            && let Some(sky) = &native.sky
-        {
-            if let Some(t) = &mut native.timing {
-                let format = self.output.frame.format;
-                t.mark(&self.device, &mut encoder, (world_view, format));
-            }
-            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some(&sky.label),
-                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: world_view,
-                    resolve_target: None,
-                    depth_slice: None,
-                    ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(clear),
-                        store: wgpu::StoreOp::Store,
-                    },
-                })],
-                depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
-                    view: world_depth,
-                    depth_ops: Some(wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(0.0),
-                        store: wgpu::StoreOp::Discard,
-                    }),
-                    stencil_ops: None,
-                }),
-                timestamp_writes: native.timing.as_mut().and_then(|t| t.writes(&sky.label)),
-                ..Default::default()
-            });
-            pass.set_bind_group(0, &self.group, &[]);
-            sky.draw(&mut pass, &native.frame);
+        if native_sky_pass && !separate_sky {
+            Self::draw_timed_native_sky(
+                &mut self.native,
+                &self.device,
+                &self.group,
+                &mut encoder,
+                (world_view, world_depth, self.output.frame.format),
+                clear,
+            );
         }
         if let Some(native) = &mut self.native {
             let reflection =
@@ -2435,7 +2621,7 @@ impl Renderer {
                 resolve_target: None,
                 depth_slice: None,
                 ops: wgpu::Operations {
-                    load: if native_sky_pass {
+                    load: if native_sky_pass || separate_sky {
                         wgpu::LoadOp::Load
                     } else {
                         wgpu::LoadOp::Clear(clear)
@@ -2472,31 +2658,31 @@ impl Renderer {
             );
             pass.set_bind_group(0, &self.group, &[]);
             pack_frame(&mut pass);
-            if frame.title || (sky_visible && (frame.skybox || frame.end_sky)) {
-                pass.stage(self.own_timing.as_mut(), "sky");
+            if !separate_sky {
+                if frame.title || (sky_visible && (frame.skybox || frame.end_sky)) {
+                    pass.stage(self.own_timing.as_mut(), "sky");
+                }
+                self.draw_sky_pass_content(
+                    &mut pass,
+                    frame,
+                    sky_visible,
+                    pack_draws_sky,
+                    native_sky_pass,
+                    celestial_vertices,
+                    pack_draws_celestial,
+                    sky_switches,
+                    hdr_gain,
+                );
+                // The inline sky boundary does not lend the world pass to mods.
+                if sky_stage == Some(SkyStageOwner::Inline)
+                    && let Some(hooks) = hooks.as_deref_mut()
+                {
+                    hooks.on_after_sky(&self.visible_renderable_sections, hook_oit);
+                }
             }
-            self.draw_sky_pass_content(
-                &mut pass,
-                frame,
-                sky_visible,
-                pack_draws_sky,
-                native_sky_pass,
-                celestial_vertices,
-                pack_draws_celestial,
-                sky_switches,
-                hdr_gain,
-            );
-            // The next stage of the mods' primitives to draw (`RenderLevelStage`): a stage this
-            // route does not draw its part of the world at goes with the next one it reaches.
+            // Keep the cursor for engine-supplied test batches. Mod stage callbacks draw only
+            // explicitly selected prepared ranges at their real boundaries.
             let mut primitive_stage = 0;
-            // RenderLevelStageEvent.AfterSky: behind every terrain, once this pass drew the sky.
-            if world_primitives && !pack_draws_sky && !pack_draws_terrain {
-                self.world_primitives
-                    .draw_through(&mut pass, &mut primitive_stage, 0);
-                pass.set_bind_group(0, &self.group, &[]);
-                pack_frame(&mut pass);
-                pass.set_index_buffer(self.indices.slice(..), wgpu::IndexFormat::Uint32);
-            }
             let terrain_pass =
                 |encoder: &mut wgpu::CommandEncoder, surface: &wgpu::TextureView, clear: bool| {
                     // Its lifetime forgotten: a closure cannot tie it to `encoder`'s.
@@ -2832,11 +3018,32 @@ impl Renderer {
             // RenderLevelStageEvent.AfterOpaqueBlocks: after solid and cutout terrain, before
             // entities.
             if world_primitives && !pack_draws_terrain {
-                self.world_primitives
-                    .draw_through(&mut pass, &mut primitive_stage, 1);
-                pass.set_bind_group(0, &self.group, &[]);
-                pack_frame(&mut pass);
-                pass.set_index_buffer(self.indices.slice(..), wgpu::IndexFormat::Uint32);
+                let drew = if let Some(hooks) = hooks.as_deref_mut() {
+                    let data = hooks.on_render_stage(
+                        mod_api::RenderLevelStage::AfterOpaqueBlocks,
+                        &self.visible_renderable_sections,
+                        oit_on,
+                    );
+                    self.world_primitives
+                        .as_ref()
+                        .expect("world primitives")
+                        .draw_prepared(&mut pass, None, data)
+                } else {
+                    self.world_primitives
+                        .as_ref()
+                        .expect("world primitives")
+                        .draw_through(
+                            &mut pass,
+                            &mut primitive_stage,
+                            world_primitives::STAGE_AFTER_OPAQUE_BLOCKS,
+                        );
+                    true
+                };
+                if drew {
+                    pass.set_bind_group(0, &self.group, &[]);
+                    pack_frame(&mut pass);
+                    pass.set_index_buffer(self.indices.slice(..), wgpu::IndexFormat::Uint32);
+                }
             }
             if static_entity_quads > 0 {
                 pass.stage(self.own_timing.as_mut(), "static block entities");
@@ -2923,31 +3130,38 @@ impl Renderer {
                 // Draw glowing outline copies with NORMAL depth before coplanar
                 // POLYGON_OFFSET sign glyph faces and inline sprites.
                 let marked = light_marks(self.output.frame.format, self.hdr.is_some());
-                for (index, (pipeline, count, first)) in [
+                for (mode, pipeline, mark_pipeline, count, first) in [
                     (
+                        core_text::WorldTextMode::Normal,
                         &self.world_text_pipeline,
+                        &self.text_mark_pipelines[0],
                         text_normal_solid_quads,
                         world_quads - text_normal_solid_quads,
                     ),
                     (
+                        core_text::WorldTextMode::PolygonOffset,
                         &self.text_polygon_offset_pipeline,
+                        &self.text_mark_pipelines[1],
                         text_offset_solid_quads,
                         world_quads - text_solid_quads,
                     ),
-                ]
-                .into_iter()
-                .enumerate()
-                {
+                ] {
                     if count == 0 {
                         continue;
                     }
                     pass.set_pipeline(pipeline);
-                    self.bind_world_text(&mut pass, index == 1, false);
+                    let pack_drawn = self.bind_world_text(&mut pass, mode);
                     pass.draw_indexed(0..count * 6, (first * 4) as i32, 0..1);
                     if marked {
-                        pass.set_pipeline(&self.text_mark_pipelines[index]);
-                        pass.set_bind_group(0, &self.entity_group, &[]);
-                        pass.draw_indexed(0..count * 6, (first * 4) as i32, 0..1);
+                        if pack_drawn {
+                            if self.bind_world_text_hdr_mark(&mut pass, mode) {
+                                pass.draw_indexed(0..count * 6, (first * 4) as i32, 0..1);
+                            }
+                        } else {
+                            pass.set_pipeline(mark_pipeline);
+                            pass.set_bind_group(0, &self.entity_group, &[]);
+                            pass.draw_indexed(0..count * 6, (first * 4) as i32, 0..1);
+                        }
                     }
                 }
                 pass.set_bind_group(0, &self.group, &[]);
@@ -2960,53 +3174,6 @@ impl Renderer {
                 if light_marks(self.output.frame.format, self.hdr.is_some()) {
                     pass.set_pipeline(&self.particle_pipelines.mark);
                     self.explicit_opaque_particles.draw(&mut pass);
-                }
-                pass.set_bind_group(0, &self.group, &[]);
-            }
-            if text_quads > 0 && !oit_on {
-                pass.stage(self.own_timing.as_mut(), "entity text");
-                pass.set_pipeline(&self.text_polygon_offset_pipeline);
-                self.bind_world_text(&mut pass, true, false);
-                pass.set_vertex_buffer(0, self.entity_buffer.slice(..));
-                pass.draw_indexed(0..text_quads * 6, (entity_quads * 4) as i32, 0..1);
-                pass.set_bind_group(0, &self.group, &[]);
-            }
-            // FeatureRenderDispatcher.PreparedFrame.executeTranslucent: the shadows
-            // come before the translucent items, which then cover them (#7026).
-            if shadow_quads > 0 && !oit_on {
-                pass.stage(self.own_timing.as_mut(), "shadows");
-                pass.set_pipeline(&self.shadow_blob_pipeline);
-                pass.set_bind_group(0, &self.entity_group, &[]);
-                pass.set_vertex_buffer(0, self.entity_buffer.slice(..));
-                pass.draw_indexed(
-                    0..shadow_quads * 6,
-                    ((base_quads
-                        - translucent_item_quads
-                        - translucent_particle_quads
-                        - shadow_quads)
-                        * 4) as i32,
-                    0..1,
-                );
-                pass.set_bind_group(0, &self.group, &[]);
-            }
-            if translucent_item_quads > 0 && !oit_on {
-                pass.stage(self.own_timing.as_mut(), "translucent items");
-                pass.set_pipeline(&self.translucent_item_pipeline);
-                pass.set_bind_group(0, &self.entity_group, &[]);
-                pass.set_vertex_buffer(0, self.entity_buffer.slice(..));
-                pass.draw_indexed(
-                    0..translucent_item_quads * 6,
-                    ((base_quads - translucent_item_quads) * 4) as i32,
-                    0..1,
-                );
-                if light_marks(self.output.frame.format, self.hdr.is_some()) {
-                    // A glowing item in the world (Item sheet quads), as entities are.
-                    pass.set_pipeline(&self.hdr_mark_pipeline);
-                    pass.draw_indexed(
-                        0..translucent_item_quads * 6,
-                        ((base_quads - translucent_item_quads) * 4) as i32,
-                        0..1,
-                    );
                 }
                 pass.set_bind_group(0, &self.group, &[]);
             }
@@ -3039,6 +3206,84 @@ impl Renderer {
                 first += count;
             }
             pass.set_bind_group(0, &self.group, &[]);
+            // RenderLevelStageEvent.AfterOpaqueFeatures: after the last opaque feature, including
+            // the terrain-material model group. This pass owns those draws even when a pack
+            // owns the blocks.
+            if world_primitives && !after_pack_features {
+                let drew = if let Some(hooks) = hooks.as_deref_mut() {
+                    let data = hooks.on_render_stage(
+                        mod_api::RenderLevelStage::AfterOpaqueFeatures,
+                        &self.visible_renderable_sections,
+                        oit_on,
+                    );
+                    self.world_primitives
+                        .as_ref()
+                        .expect("world primitives")
+                        .draw_prepared(&mut pass, None, data)
+                } else {
+                    self.world_primitives
+                        .as_ref()
+                        .expect("world primitives")
+                        .draw_through(
+                            &mut pass,
+                            &mut primitive_stage,
+                            world_primitives::STAGE_AFTER_OPAQUE_FEATURES,
+                        );
+                    true
+                };
+                if drew {
+                    pass.set_bind_group(0, &self.group, &[]);
+                    pack_frame(&mut pass);
+                    pass.set_index_buffer(self.indices.slice(..), wgpu::IndexFormat::Uint32);
+                }
+            }
+            // FeatureRenderDispatcher.PreparedFrame.executeTranslucent: the shadows
+            // come before the translucent items, which then cover them (#7026).
+            if shadow_quads > 0 && !oit_on {
+                pass.stage(self.own_timing.as_mut(), "shadows");
+                pass.set_pipeline(&self.shadow_blob_pipeline);
+                pass.set_bind_group(0, &self.entity_group, &[]);
+                pass.set_vertex_buffer(0, self.entity_buffer.slice(..));
+                pass.draw_indexed(
+                    0..shadow_quads * 6,
+                    ((base_quads
+                        - translucent_item_quads
+                        - translucent_particle_quads
+                        - shadow_quads)
+                        * 4) as i32,
+                    0..1,
+                );
+                pass.set_bind_group(0, &self.group, &[]);
+            }
+            if text_quads > 0 && !oit_on {
+                pass.stage(self.own_timing.as_mut(), "entity text");
+                pass.set_pipeline(&self.text_polygon_offset_pipeline);
+                self.bind_world_text(&mut pass, core_text::WorldTextMode::PolygonOffset);
+                pass.set_vertex_buffer(0, self.entity_buffer.slice(..));
+                pass.draw_indexed(0..text_quads * 6, (entity_quads * 4) as i32, 0..1);
+                pass.set_bind_group(0, &self.group, &[]);
+            }
+            if translucent_item_quads > 0 && !oit_on {
+                pass.stage(self.own_timing.as_mut(), "translucent items");
+                pass.set_pipeline(&self.translucent_item_pipeline);
+                pass.set_bind_group(0, &self.entity_group, &[]);
+                pass.set_vertex_buffer(0, self.entity_buffer.slice(..));
+                pass.draw_indexed(
+                    0..translucent_item_quads * 6,
+                    ((base_quads - translucent_item_quads) * 4) as i32,
+                    0..1,
+                );
+                if light_marks(self.output.frame.format, self.hdr.is_some()) {
+                    // A glowing item in the world (Item sheet quads), as entities are.
+                    pass.set_pipeline(&self.hdr_mark_pipeline);
+                    pass.draw_indexed(
+                        0..translucent_item_quads * 6,
+                        ((base_quads - translucent_item_quads) * 4) as i32,
+                        0..1,
+                    );
+                }
+                pass.set_bind_group(0, &self.group, &[]);
+            }
             // Translucent moving blocks (`RenderTypes.translucentMovingBlock`): alpha blended,
             // depth written, quads far to near, before terrain transparency like fluids.
             if native_translucent_quads > 0 {
@@ -3206,6 +3451,36 @@ impl Renderer {
                 pass.set_bind_group(0, &self.group, &[]);
                 pack_frame(&mut pass);
             }
+            // RenderLevelStageEvent.AfterTranslucentFeatures: after translucent features, right
+            // before translucent terrain (classic path).
+            if world_primitives && !oit_on && !after_pack_features {
+                let drew = if let Some(hooks) = hooks.as_deref_mut() {
+                    let data = hooks.on_render_stage(
+                        mod_api::RenderLevelStage::AfterTranslucentFeatures,
+                        &self.visible_renderable_sections,
+                        oit_on,
+                    );
+                    self.world_primitives
+                        .as_ref()
+                        .expect("world primitives")
+                        .draw_prepared(&mut pass, None, data)
+                } else {
+                    self.world_primitives
+                        .as_ref()
+                        .expect("world primitives")
+                        .draw_through(
+                            &mut pass,
+                            &mut primitive_stage,
+                            world_primitives::STAGE_AFTER_TRANSLUCENT_FEATURES,
+                        );
+                    true
+                };
+                if drew {
+                    pass.set_bind_group(0, &self.group, &[]);
+                    pack_frame(&mut pass);
+                    pass.set_index_buffer(self.indices.slice(..), wgpu::IndexFormat::Uint32);
+                }
+            }
             match self.flat.as_ref().filter(|_| flat_frame) {
                 // The pack draws translucent terrain after its deferred programs.
                 _ if pack_draws_water => {}
@@ -3239,7 +3514,8 @@ impl Renderer {
                     };
                     // "Features, World Border, Weather": what follows the opaque
                     // world in the classic pass, one stage at a time.
-                    let features = |pass: &mut wgpu::RenderPass<'_>, stage: oit::Stage| {
+                    let wp = self.world_primitives.take().expect("world primitives");
+                    let mut features = |pass: &mut wgpu::RenderPass<'_>, stage: oit::Stage| {
                         let f = oit.features();
                         let s = stage as usize;
                         pass.set_index_buffer(self.indices.slice(..), wgpu::IndexFormat::Uint32);
@@ -3327,6 +3603,23 @@ impl Renderer {
                                 pass.draw_indexed(first..first + 6, 0, 0..1);
                             }
                         }
+                        if world_primitives {
+                            if let Some(hooks) = hooks.as_deref_mut() {
+                                let api_stage = match stage {
+                                    oit::Stage::DepthBounds => mod_api::OitStage::DepthBounds,
+                                    oit::Stage::Transmittance => mod_api::OitStage::Transmittance,
+                                    oit::Stage::Accumulate => mod_api::OitStage::Accumulate,
+                                };
+                                let data = hooks.on_render_stage(
+                                    mod_api::RenderLevelStage::OitTranslucent(api_stage),
+                                    &self.visible_renderable_sections,
+                                    oit_on,
+                                );
+                                wp.draw_prepared(pass, Some(stage), data);
+                            } else {
+                                wp.draw_oit(pass, stage);
+                            }
+                        }
                     };
                     // A pack's `OIT_CLOUDS` in their place.
                     let pack_clouds = (self.core_clouds.as_ref())
@@ -3338,14 +3631,14 @@ impl Renderer {
                             core.draw_oit(pass, stage, !input.fast, indices);
                         }
                     });
-                    let extras = oit::Extras {
+                    let mut extras = oit::Extras {
                         water_mask: (water_mask_quads > 0).then_some(&mask as _),
                         clouds: core_clouds::oit_clouds::<
                             dyn Fn(&mut wgpu::RenderPass<'_>, oit::Stage),
                         >(
                             pack_clouds.as_ref().map(|p| p as _), &clouds, cloud_quads
                         ),
-                        features: Some(&features),
+                        features: Some(&mut features),
                     };
                     // The draw closure below borrows all of `self`, so the timer is taken out.
                     let mut own_timing = self.own_timing.take();
@@ -3379,9 +3672,11 @@ impl Renderer {
                                 translucent_draws,
                             );
                         },
-                        &extras,
+                        &mut extras,
                         own_timing.as_mut(),
                     );
+                    drop(features);
+                    self.world_primitives = Some(wp);
                     self.own_timing = own_timing;
                     pass = world_pass_after_culling(
                         &mut encoder,
@@ -3477,14 +3772,35 @@ impl Renderer {
                     pass.split(self.own_timing.as_mut(), "after translucent");
                 }
             }
-            // RenderLevelStageEvent.AfterTranslucentBlocks: after translucent terrain, here or
-            // OIT's.
-            if world_primitives && !pack_draws_water && !pack_draws_terrain {
-                self.world_primitives
-                    .draw_through(&mut pass, &mut primitive_stage, 2);
-                pass.set_bind_group(0, &self.group, &[]);
-                pack_frame(&mut pass);
-                pass.set_index_buffer(self.indices.slice(..), wgpu::IndexFormat::Uint32);
+            // RenderLevelStageEvent.AfterTranslucentBlocks: after translucent terrain (classic
+            // path).
+            if world_primitives && !pack_draws_water && !pack_draws_terrain && !oit_on {
+                let drew = if let Some(hooks) = hooks.as_deref_mut() {
+                    let data = hooks.on_render_stage(
+                        mod_api::RenderLevelStage::AfterTranslucentBlocks,
+                        &self.visible_renderable_sections,
+                        oit_on,
+                    );
+                    self.world_primitives
+                        .as_ref()
+                        .expect("world primitives")
+                        .draw_prepared(&mut pass, None, data)
+                } else {
+                    self.world_primitives
+                        .as_ref()
+                        .expect("world primitives")
+                        .draw_through(
+                            &mut pass,
+                            &mut primitive_stage,
+                            world_primitives::STAGE_AFTER_TRANSLUCENT_BLOCKS,
+                        );
+                    true
+                };
+                if drew {
+                    pass.set_bind_group(0, &self.group, &[]);
+                    pack_frame(&mut pass);
+                    pass.set_index_buffer(self.indices.slice(..), wgpu::IndexFormat::Uint32);
+                }
             }
             // LevelRenderer.executeTranslucentAfterTerrain: vanilla's
             // translucent particle layer draws after translucent terrain —
@@ -3524,6 +3840,36 @@ impl Renderer {
                     self.explicit_translucent_particles.draw(&mut pass);
                 }
                 pass.set_bind_group(0, &self.group, &[]);
+            }
+            // RenderLevelStageEvent.AfterTranslucentParticles: after translucent particles
+            // (classic path).
+            if world_primitives && !oit_on {
+                let drew = if let Some(hooks) = hooks.as_deref_mut() {
+                    let data = hooks.on_render_stage(
+                        mod_api::RenderLevelStage::AfterTranslucentParticles,
+                        &self.visible_renderable_sections,
+                        oit_on,
+                    );
+                    self.world_primitives
+                        .as_ref()
+                        .expect("world primitives")
+                        .draw_prepared(&mut pass, None, data)
+                } else {
+                    self.world_primitives
+                        .as_ref()
+                        .expect("world primitives")
+                        .draw_through(
+                            &mut pass,
+                            &mut primitive_stage,
+                            world_primitives::STAGE_AFTER_TRANSLUCENT_PARTICLES,
+                        );
+                    true
+                };
+                if drew {
+                    pass.set_bind_group(0, &self.group, &[]);
+                    pack_frame(&mut pass);
+                    pass.set_index_buffer(self.indices.slice(..), wgpu::IndexFormat::Uint32);
+                }
             }
             // Native world text is an ordinary depth-tested overlay, after
             // particles (also after the OIT composite) and before the hand.
@@ -3601,11 +3947,32 @@ impl Renderer {
             }
             // RenderLevelStageEvent.AfterWeather: after the rain and snow this pass drew.
             if world_primitives && !pack_draws_weather && !oit_on {
-                self.world_primitives
-                    .draw_through(&mut pass, &mut primitive_stage, 3);
-                pass.set_bind_group(0, &self.group, &[]);
-                pack_frame(&mut pass);
-                pass.set_index_buffer(self.indices.slice(..), wgpu::IndexFormat::Uint32);
+                let drew = if let Some(hooks) = hooks.as_deref_mut() {
+                    let data = hooks.on_render_stage(
+                        mod_api::RenderLevelStage::AfterWeather,
+                        &self.visible_renderable_sections,
+                        oit_on,
+                    );
+                    self.world_primitives
+                        .as_ref()
+                        .expect("world primitives")
+                        .draw_prepared(&mut pass, None, data)
+                } else {
+                    self.world_primitives
+                        .as_ref()
+                        .expect("world primitives")
+                        .draw_through(
+                            &mut pass,
+                            &mut primitive_stage,
+                            world_primitives::STAGE_AFTER_WEATHER,
+                        );
+                    true
+                };
+                if drew {
+                    pass.set_bind_group(0, &self.group, &[]);
+                    pack_frame(&mut pass);
+                    pass.set_index_buffer(self.indices.slice(..), wgpu::IndexFormat::Uint32);
+                }
             }
             // LevelRenderer: the world border after translucent terrain and weather.
             if let Some(b) = frame.border.as_ref().filter(|_| !frame.title && !oit_on) {
@@ -3624,7 +3991,7 @@ impl Renderer {
             if see_through_quads > 0 {
                 pass.stage(self.own_timing.as_mut(), "see-through");
                 pass.set_pipeline(&self.see_through_pipeline);
-                self.bind_world_text(&mut pass, true, true);
+                self.bind_world_text(&mut pass, core_text::WorldTextMode::SeeThrough);
                 pass.set_vertex_buffer(0, self.entity_buffer.slice(..));
                 pass.draw_indexed(
                     0..see_through_quads * 6,
@@ -3641,16 +4008,23 @@ impl Renderer {
                 pass.set_bind_group(0, &self.group, &[]);
                 pack_frame(&mut pass);
             }
-            // Native mods' primitives: after the entities and the rest of the world, into its
-            // targets (its resolution, reversed depth and TAA), before the hand
-            // (RenderLevelStageEvent.AfterLevel), with any stage not drawn yet.
-            if world_primitives {
+            // Native mods' deferred custom geometry (`submit_custom_geometry` and debug renderers):
+            // drawn at the end of the world pass before the hand, or inside `PackPost` when an
+            // active shader pack owns terrain rendering. Live stage hooks never relocate skipped
+            // stages here.
+            if world_primitives && !after_pack_custom_geometry {
+                if live_hooks {
+                    primitive_stage = world_primitives::STAGE_CUSTOM_GEOMETRY;
+                }
                 pass.stage(self.own_timing.as_mut(), "mod primitives");
-                self.world_primitives.draw_through(
-                    &mut pass,
-                    &mut primitive_stage,
-                    world_primitives::STAGES - 1,
-                );
+                self.world_primitives
+                    .as_ref()
+                    .expect("world primitives")
+                    .draw_through(
+                        &mut pass,
+                        &mut primitive_stage,
+                        world_primitives::STAGE_CUSTOM_GEOMETRY,
+                    );
             }
             if hand_in_world {
                 pass.stage(self.own_timing.as_mut(), "hand");
@@ -3664,6 +4038,14 @@ impl Renderer {
                     world_quads + additive_quads,
                 );
             }
+        }
+        // RenderLevelStageEvent.AfterLevel: after the world finishes and before the engine
+        // hand and overlays. A classic pack finishes its world inside PackPost.
+        if live_hooks
+            && !pack_world_runs
+            && let Some(hooks) = hooks.as_deref_mut()
+        {
+            hooks.on_after_level(&self.visible_renderable_sections, oit_on);
         }
         let lifts_world = output::lifts_world(
             frame.title,
@@ -3689,6 +4071,9 @@ impl Renderer {
                 fg_frames: fg_frames.as_ref(),
                 pack_post,
                 native_post,
+                after_pack_sky: sky_stage == Some(SkyStageOwner::ClassicPack),
+                after_pack_features,
+                after_pack_custom_geometry,
                 pack_draws_weather,
                 pack_draws_terrain,
                 pack_draws_shadow,
@@ -3725,6 +4110,7 @@ impl Renderer {
                 sourced_cpu,
                 lifts_world,
             },
+            if pack_world_runs { hooks } else { None },
         )?;
         laps.lap("r_passes");
         // A loss the passes' waits found (a shader pack's timing, its image dump): no submit.
@@ -3753,8 +4139,7 @@ impl Renderer {
     }
 }
 
-/// Shadow caster walk radius in chunks: uses `shadow_distance` (the loaded streaming radius)
-/// when supplied, staying separate from the effective eye distance (`detail_distance`).
+/// Shadow caster walk radius in chunks, with an optional override of the effective eye distance.
 pub(super) fn shadow_walk_radius(shadow_distance: Option<f32>, detail_distance: f32) -> i32 {
     (shadow_distance.unwrap_or(detail_distance) / 16.0) as i32
 }
@@ -3803,4 +4188,102 @@ pub(super) fn mark_layers(active: &mut [u64], layers: &[u16]) {
 pub(super) fn entity_buffer_vertices(vertices: u64, max_buffer_size: u64) -> u64 {
     let most = max_buffer_size / std::mem::size_of::<Vertex>() as u64;
     vertices.next_power_of_two().min(most).max(vertices)
+}
+
+/// A frame's re-sort rotation over the near sections' and the far tiles' combined translucent
+/// list (`LevelRenderer`: a rotating eighth of it, at least 15, besides the nearby sections). A
+/// far tile's place is past the near sections', at its index in the walk's complete set, so the
+/// window is the same whichever solid draws the GPU owns.
+#[derive(Clone, Copy, Debug)]
+pub(super) struct Rotation {
+    near: usize,
+    count: usize,
+    budget: usize,
+    cursor: usize,
+}
+
+impl Rotation {
+    /// The rotation over `near` sections and `far` tiles, from the last frame's `cursor`.
+    pub(super) fn new(near: usize, far: usize, cursor: usize) -> Self {
+        let count = near + far;
+        Self {
+            near,
+            count,
+            budget: (count / 8).max(15).min(count),
+            cursor: cursor % count.max(1),
+        }
+    }
+
+    /// Whether the near section at `index` of the visible list re-sorts this frame.
+    pub(super) fn near(&self, index: usize) -> bool {
+        self.window(index)
+    }
+
+    /// The cursor the next frame starts from.
+    pub(super) fn next(&self) -> usize {
+        self.cursor + self.budget
+    }
+
+    fn window(&self, combined: usize) -> bool {
+        (combined + self.count - self.cursor) % self.count < self.budget
+    }
+}
+
+/// A frame's far water: the walk's complete set (`far`) and what the CPU draws of it (`listed`,
+/// which keeps the walk's order and leaves out the tiles whose solid quads the pass drew
+/// whole), with the frame's re-sort rotation. The rotation reads a tile's place in `far`, its
+/// instance slot and its blend tier read `listed`.
+pub(super) struct FarWater<'a> {
+    far: &'a [lod::Visible],
+    listed: &'a [lod::Visible],
+    rotation: Rotation,
+}
+
+impl<'a> FarWater<'a> {
+    pub(super) fn new(
+        far: &'a [lod::Visible],
+        listed: &'a [lod::Visible],
+        rotation: Rotation,
+    ) -> Self {
+        Self {
+            far,
+            listed,
+            rotation,
+        }
+    }
+
+    /// Each listed tile, as its index in `far`, its instance slot past the near sections', and
+    /// whether the rotation re-sorts it this frame.
+    pub(super) fn entries(&self) -> impl Iterator<Item = (usize, usize, bool)> + '_ {
+        let mut slot = 0usize;
+        let near = self.rotation.near;
+        self.far.iter().enumerate().filter_map(move |(i, v)| {
+            if self.listed.get(slot).is_some_and(|l| l.key == v.key) {
+                slot += 1;
+                Some((i, near + slot - 1, self.rotation.window(near + i)))
+            } else {
+                None
+            }
+        })
+    }
+
+    /// A translucent draw's place in the one back-to-front order of near and far water: its
+    /// blend tier first (the near sections' water 0, the far tiles' 1, a tile standing in for
+    /// its replacement 2, over them), then the farthest, then the highest instance.
+    pub(super) fn order(
+        &self,
+        distance: u64,
+        instance: usize,
+    ) -> (u32, std::cmp::Reverse<u64>, std::cmp::Reverse<usize>) {
+        let tier = match instance.checked_sub(self.rotation.near) {
+            None => 0,
+            Some(slot) if self.listed[slot].old => 2,
+            Some(_) => 1,
+        };
+        (
+            tier,
+            std::cmp::Reverse(distance),
+            std::cmp::Reverse(instance),
+        )
+    }
 }

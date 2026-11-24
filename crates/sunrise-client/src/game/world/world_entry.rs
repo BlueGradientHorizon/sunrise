@@ -438,11 +438,13 @@ impl Game<'_> {
         }
         let datapack_registries =
             datapack_candidate.map(mod_api::DatapackRegistrySet::from_candidate);
-        let received = sunrise_client::datapack_net::received();
         let datapack_set = if self.is_logical_server() {
             datapack_registries.as_ref()
         } else {
-            received.as_deref()
+            self.remote
+                .as_ref()
+                .and_then(|remote| remote.datapacks.received())
+                .map(Arc::as_ref)
         };
         let registries = native_data_maps::WorldRegistries::new(
             self.ui
@@ -641,6 +643,7 @@ impl Game<'_> {
         self.install_fluid_interactions()?;
         self.install_profession_save_snapshots();
         self.share_mob_maps();
+        self.share_biome_keys();
         sunrise_client::datapack_net::serve(self.mods.datapack_registries.clone());
         Ok(())
     }
@@ -706,6 +709,7 @@ impl Game<'_> {
         }
         self.install_profession_save_snapshots();
         self.share_mob_maps();
+        self.share_biome_keys();
         self.world.pois.clear();
         for world in self.levels.parked_worlds() {
             world.pois.clear();

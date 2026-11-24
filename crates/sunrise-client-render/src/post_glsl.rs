@@ -27,7 +27,7 @@ pub struct Program {
     pub blocks: Vec<(String, u32)>,
     /// Every sampler (`NameSampler`): the texture's binding; the sampler object is the next.
     pub samplers: Vec<(String, u32)>,
-    /// What each stage reads (`core_shader::bindings_read`, from the stages' validation).
+    /// What each stage reads (`sunrise_glsl::bindings_read`, from the stages' validation).
     pub read: Vec<(u32, wgpu::ShaderStages)>,
 }
 
@@ -70,7 +70,7 @@ pub enum Refused {
     /// A stage file missing or that can't be read (naming it).
     Source(String),
     /// A stage's includes (`core_shader::expand_imports`).
-    Imports(String, crate::core_shader::ImportRefusal),
+    Imports(String, sunrise_glsl::ImportRefusal),
     /// The stages declare more uniform blocks or samplers than the device can bind.
     Declares {
         what: &'static str,
@@ -99,11 +99,13 @@ impl std::fmt::Display for Refused {
 }
 
 /// How many uniform blocks and samplers a pass's two stages may declare between them: what the
-/// device binds to both (twice its per-stage limits). Checked before any analysis.
+/// device binds to both (twice its per-stage limits). Checked before any analysis. With the
+/// device's stage interface limits, which the stages' parse refuses past.
 #[derive(Clone, Copy, Debug)]
 pub struct Declarable {
     pub blocks: usize,
     pub samplers: usize,
+    pub interface: naga::front::glsl::InterfaceLimits,
 }
 
 impl Declarable {
@@ -112,6 +114,7 @@ impl Declarable {
         Self {
             blocks: 2 * limits.max_uniform_buffers_per_shader_stage as usize,
             samplers: 2 * limits.max_sampled_textures_per_shader_stage as usize,
+            interface: crate::core_shader::interface_limits(limits),
         }
     }
 }
@@ -264,9 +267,10 @@ fn wrap_main(src: &str) -> Result<String, String> {
 fn parse(
     stage: ShaderStage,
     text: &str,
+    limits: naga::front::glsl::InterfaceLimits,
 ) -> Result<(naga::Module, naga::valid::ModuleInfo), String> {
     let module = Frontend::default()
-        .parse(&crate::core_shader::glsl_options(stage, &[]), text)
+        .parse(&crate::core_shader::glsl_options(stage, &[], limits), text)
         .map_err(|e| {
             e.errors
                 .iter()
@@ -326,11 +330,19 @@ pub fn translate(
     let samplers: Vec<(String, u32)> = names.into_iter().zip((first..).step_by(2)).collect();
     let vs = wrap_main(&rewrite(&vs, &blocks, &samplers)).map_err(Refused::Translator)?;
     let fs = rewrite(&fs, &blocks, &samplers);
-    let vertex_module = parse(ShaderStage::Vertex, &format!("#version 450\n{vs}"))
-        .map_err(|e| Refused::Translator(format!("{vertex}: {e}")))?;
-    let fragment_module = parse(ShaderStage::Fragment, &format!("#version 450\n{fs}"))
-        .map_err(|e| Refused::Translator(format!("{fragment}: {e}")))?;
-    let read = crate::core_shader::bindings_read([
+    let vertex_module = parse(
+        ShaderStage::Vertex,
+        &format!("#version 450\n{vs}"),
+        declarable.interface,
+    )
+    .map_err(|e| Refused::Translator(format!("{vertex}: {e}")))?;
+    let fragment_module = parse(
+        ShaderStage::Fragment,
+        &format!("#version 450\n{fs}"),
+        declarable.interface,
+    )
+    .map_err(|e| Refused::Translator(format!("{fragment}: {e}")))?;
+    let read = sunrise_glsl::bindings_read([
         (&vertex_module.0, &vertex_module.1),
         (&fragment_module.0, &fragment_module.1),
     ]);
@@ -346,13 +358,14 @@ pub fn translate(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core_shader::ImportRefusal;
     use std::path::Path;
+    use sunrise_glsl::ImportRefusal;
 
     /// Room for any test shader's declarations.
     const ANY: Declarable = Declarable {
         blocks: 64,
         samplers: 64,
+        interface: naga::front::glsl::InterfaceLimits::WGPU_DEFAULT,
     };
 
     fn root() -> Option<std::path::PathBuf> {
@@ -378,6 +391,22 @@ mod tests {
             translate(&source, "custom:missing", "custom:post/test", ANY),
             Err(Refused::Source(_))
         ));
+    }
+
+    /// A stage with an array too large to lay out (#4134) is the translator's refusal naming
+    /// that stage, not a panic at the next array.
+    #[test]
+    fn an_array_too_large_to_lay_out_is_refused() {
+        use sunrise_assets::resource_source::Resource;
+        let source = ResourceSource::indexed(std::collections::BTreeMap::from([
+            ("assets/custom/shaders/post/big.vsh".into(), Resource::bytes(b"#version 330\nvoid main() { gl_Position = vec4(0.0, 0.0, 0.0, 1.0); }".to_vec())),
+            ("assets/custom/shaders/post/big.fsh".into(), Resource::bytes(b"#version 330\nfloat big[0x7fffffff];\nfloat after[2];\nlayout(location=0) out vec4 fragColor;\nvoid main() { fragColor = vec4(1.0); }".to_vec())),
+        ]));
+        let refused = translate(&source, "custom:post/big", "custom:post/big", ANY).err();
+        assert!(
+            matches!(&refused, Some(Refused::Translator(why)) if why.starts_with("custom:post/big: ")),
+            "{refused:?}"
+        );
     }
 
     /// `#moj_import`, as Polytone's wiki writes it, and its `polytone_globals.glsl` built in:
@@ -519,6 +548,7 @@ mod tests {
         let declarable = Declarable {
             blocks: 24,
             samplers: 4,
+            interface: naga::front::glsl::InterfaceLimits::WGPU_DEFAULT,
         };
         let translated = |blocks: usize, samplers: usize| {
             let declared: String = (0..blocks)
@@ -648,7 +678,7 @@ mod tests {
         ]));
         let program = translate(&source, "p:post/a", "p:post/a", ANY).unwrap();
         let binding = |name: &str| program.blocks.iter().find(|(n, _)| n == name).unwrap().1;
-        let reading = |name: &str| crate::core_shader::stages_reading(&program.read, binding(name));
+        let reading = |name: &str| sunrise_glsl::stages_reading(&program.read, binding(name));
         assert_eq!(reading("ZeroToOne"), wgpu::ShaderStages::VERTEX_FRAGMENT);
         assert_eq!(reading("MinusOneToOne"), wgpu::ShaderStages::NONE);
     }

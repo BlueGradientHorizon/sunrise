@@ -2,7 +2,7 @@
 //! gateway travel, the obsidian arrival platform, the exit portal and the End
 //! sky. The dragon fight itself lives in game/mobs/dragon.rs: the podium is
 //! inactive until the dragon dies.
-use super::{Dim, Game};
+use super::{Dim, Game, Resources, remote::Remote};
 use sunrise_client::{
     Result,
     containers::BlockEntity,
@@ -321,6 +321,12 @@ pub(in crate::game) struct SummonedEye {
     pub(super) motion: Vec3,
     /// `EyeOfEnder.life`: not saved, so a loaded eye starts again at 0.
     life: u32,
+    /// `Entity.remainingFireTicks`, counted down by `baseTick`.
+    pub(super) fire_ticks: i32,
+    /// `Entity.DATA_SHARED_FLAGS_ID` on-fire bit, set after `baseTick` fire processing.
+    pub(super) synced_fire: bool,
+    /// `Entity.hasVisualFire` (`HasVisualFire` in NBT).
+    pub(super) has_visual_fire: bool,
 }
 impl SummonedEye {
     /// `Entity.load`'s motion and `EyeOfEnder.readAdditionalSaveData`'s
@@ -328,6 +334,8 @@ impl SummonedEye {
     pub(super) fn load(tag: &mut sunrise_core::nbt::Tag) -> Self {
         use sunrise_core::nbt::Tag;
         let motion = sunrise_client::entity_nbt::loaded_motion(tag);
+        let fire_ticks = sunrise_client::entity_nbt::fire_ticks_from_nbt(tag);
+        let has_visual_fire = sunrise_client::entity_nbt::flag(tag, "HasVisualFire");
         if let Tag::Compound(c) = tag {
             let mut item = match c.remove(&"Item".into()) {
                 Some(Tag::Compound(item)) => item,
@@ -348,7 +356,13 @@ impl SummonedEye {
             item.insert("count".into(), Tag::Int(1));
             c.insert("Item".into(), Tag::Compound(item));
         }
-        Self { motion, life: 0 }
+        Self {
+            motion,
+            life: 0,
+            fire_ticks,
+            synced_fire: false,
+            has_visual_fire,
+        }
     }
 }
 
@@ -366,6 +380,11 @@ impl Game<'_> {
             if !ticking(o.position.x.floor() as i32, o.position.z.floor() as i32) {
                 return true;
             }
+            // Entity.baseTick: the eye burns down; its hurt does nothing.
+            if eye.fire_ticks > 0 {
+                eye.fire_ticks -= 1;
+            }
+            eye.synced_fire = eye.fire_ticks > 0 || eye.has_visual_fire;
             let m = eye.motion;
             o.position = Vec3::new(o.position.x + m.x, o.position.y + m.y, o.position.z + m.z);
             eye.life += 1;
@@ -445,15 +464,19 @@ impl Game<'_> {
 
     /// The environment attributes of the current dimension.
     pub(super) fn dim_environment(&self) -> &Environment {
+        Self::level_environment(self.remote.as_ref(), &self.res, &self.dimension_type().id)
+    }
+
+    /// A field-level borrow for the client tick, which also mutably borrows its particles.
+    pub(super) fn level_environment<'a>(
+        remote: Option<&'a Remote>,
+        resources: &'a Resources,
+        dimension_type: &str,
+    ) -> &'a Environment {
         // A client of a server takes the type the server sent, built-in levels included.
-        if let Some(own) = self
-            .remote
-            .as_ref()
+        remote
             .and_then(|r| r.level_environment.as_deref())
-        {
-            return own;
-        }
-        self.res.environment_of(&self.dimension_type().id)
+            .unwrap_or_else(|| resources.environment_of(dimension_type))
     }
 
     /// SkyRenderer.renderEndFlash, drawn after the renderer's resident sky mesh: its quad, if

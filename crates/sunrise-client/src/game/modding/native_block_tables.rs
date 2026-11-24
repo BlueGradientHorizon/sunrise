@@ -50,8 +50,8 @@ impl<'a> BlockTables<'a> {
         })
     }
 
-    /// A registered fluid's type properties: its block's light and name for a world fluid,
-    /// vanilla's `FluidTags.WATER` and `FluidTags.LAVA` behaviours by its family. None for a
+    /// A registered fluid's type properties: its block's name for a world fluid, its
+    /// `FluidType` numbers (a mod's from its fluid file, block or none), vanilla's `FluidTags.WATER` and `FluidTags.LAVA` behaviours by its family. None for a
     /// key the registry doesn't hold.
     pub(in crate::game) fn fluid_type_properties(
         &self,
@@ -74,7 +74,7 @@ impl<'a> BlockTables<'a> {
         let measures = fluid_measures(id, kind);
         Some(FluidTypeProperties {
             description_id,
-            light_level: block.map_or(0, |block| block.emission),
+            light_level: measures.light_level,
             fall_distance_modifier: match (water, lava) {
                 (true, _) => 0.0,
                 (_, true) => 0.5,
@@ -269,10 +269,35 @@ impl<'a> BlockTables<'a> {
         self.pack.assets.registry.state(state)?;
         Some(self.res.facts().get(state).friction)
     }
+    /// `Block.getSpeedFactor()` of the state's block. None for an unknown state.
+    pub(in crate::game) fn block_state_speed_factor(&self, state: BlockStateId) -> Option<f32> {
+        self.pack.assets.registry.state(state)?;
+        let block = self.res.motion().blocks.get(state).ok()?;
+        Some(block.coefficients.speed_factor)
+    }
+    /// `Block.getJumpFactor()` of the state's block. None for an unknown state.
+    pub(in crate::game) fn block_state_jump_factor(&self, state: BlockStateId) -> Option<f32> {
+        self.pack.assets.registry.state(state)?;
+        let block = self.res.motion().blocks.get(state).ok()?;
+        Some(block.coefficients.jump_factor)
+    }
     /// `BlockState.isSolidRender()`. None for an unknown state.
     pub(in crate::game) fn block_state_is_solid_render(&self, state: BlockStateId) -> Option<bool> {
         self.pack.assets.registry.state(state)?;
         Some(self.res.facts().get(state).solid_render)
+    }
+    /// `BlockState.propagatesSkylightDown()`. None for an unknown state.
+    pub(in crate::game) fn block_state_propagates_skylight_down(
+        &self,
+        state: BlockStateId,
+    ) -> Option<bool> {
+        self.pack.assets.registry.state(state)?;
+        Some(self.res.facts().get(state).skylight_down)
+    }
+    /// `BlockState.isAir()`, the exported per-state flag. None for an unknown state.
+    pub(in crate::game) fn block_state_is_air(&self, state: BlockStateId) -> Option<bool> {
+        self.pack.assets.registry.state(state)?;
+        Some(self.res.behaviours().is_air(state))
     }
     /// `BlockState.isRedstoneConductor` for a state alone, not a block in a level.
     pub(in crate::game) fn block_state_is_redstone_conductor(
@@ -301,6 +326,7 @@ impl<'a> BlockTables<'a> {
             BlockClass::IronBars => data.is(Class::IronBars),
             BlockClass::StainedGlassPane => data.is(Class::StainedGlassPane),
             BlockClass::TrapDoor => data.is(Class::TrapDoor),
+            BlockClass::Bonemealable => data.implements(Interface::Bonemealable),
         }))
     }
     /// The immutable local ordinals of `block`, independent of current world ID order.
@@ -414,7 +440,7 @@ impl<'a> BlockTables<'a> {
     }
 }
 
-/// `FluidType.getTemperature`, `getDensity` and `getViscosity` of the registered fluid `id`,
+/// `FluidType.getTemperature`, `getDensity`, `getViscosity` and `getLightLevel` of the registered fluid `id`,
 /// whose world kind is `kind`. NeoForgeMod's EMPTY_TYPE and LAVA_TYPE state their own; water
 /// keeps `FluidType.Properties`' defaults, and a mod's fluid, flowing or not, what its source's
 /// file states.
@@ -424,11 +450,13 @@ fn fluid_measures(id: &str, kind: Option<FluidKind>) -> FluidMeasures {
             temperature: 0,
             density: 0,
             viscosity: 0,
+            light_level: 0,
         },
         Some(kind) if kind.same_family(FluidKind::Lava) => FluidMeasures {
             temperature: 1300,
             density: 3000,
             viscosity: 6000,
+            light_level: 15,
         },
         Some(kind) if kind.same_family(FluidKind::Water) => FluidMeasures::default(),
         _ => {

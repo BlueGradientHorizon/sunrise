@@ -33,6 +33,9 @@ impl Game<'_> {
         let carried = self.with_own_record(gi, |host, _| {
             let conn = host.hub.guests[gi].conn;
             let mut stacks = host.hub.take_closed_menu_cursors(conn).collect::<Vec<_>>();
+            let (to_return, to_drop) = host.hub.take_closed_processing_inputs(conn);
+            stacks.extend(to_return);
+            stacks.extend(to_drop);
             host.hub
                 .guests
                 .update(gi, |g| stacks.extend(g.take_menu_cursors()));
@@ -620,7 +623,7 @@ impl Game<'_> {
                 let sent = self
                     .as_guest_at(gi, conn, |g| {
                         g.remember_player_target(Some(id as u32));
-                        g.pvp_hit_after(on_ground, stops_sprint)
+                        g.pvp_hit_after(id as u32, on_ground, stops_sprint, strike.weapon.as_ref())
                     })
                     .ok()
                     .flatten();

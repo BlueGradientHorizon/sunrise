@@ -15,8 +15,9 @@ use sunrise_client::command::{
 /// The argument kinds a native usage may name, each with a [`parser`]; `resource:<registry>`,
 /// the bounded `integer(min,max)` and `long(min,max)` ([`bounded_parser`]) and `mod_id` come on
 /// top.
-pub(super) const KINDS: [&str; 19] = [
+pub(super) const KINDS: [&str; 21] = [
     "word",
+    "string",
     "text",
     "integer",
     "long",
@@ -144,6 +145,8 @@ pub(super) fn command_word(word: &str, first: bool) -> bool {
 pub(super) fn parser(kind: &str) -> Option<(&'static str, Value, ArgType)> {
     Some(match kind {
         "word" => ("brigadier:string", json!({"type": "word"}), ArgType::Word),
+        // `StringArgumentType.string()`: `StringArgumentSerializer` writes `QUOTABLE_PHRASE`.
+        "string" => ("brigadier:string", json!({"type": "phrase"}), ArgType::Str),
         "text" => (
             "brigadier:string",
             json!({"type": "greedy"}),
@@ -293,6 +296,7 @@ pub(super) fn custom_parser(kind: mod_api::CommandArgumentKind) -> Option<(&'sta
     Some(match kind {
         Kind::Word => ("brigadier:string", json!({"type": "word"})),
         Kind::Greedy => ("brigadier:string", json!({"type": "greedy"})),
+        Kind::Quotable => ("brigadier:string", json!({"type": "phrase"})),
         Kind::Integer { min, max } => (
             "brigadier:integer",
             number_properties(true, min.map(i64::from), max.map(i64::from)),
@@ -496,6 +500,7 @@ pub(super) fn argument_type(node: &Value, arguments: &CommandArguments) -> ArgTy
                 Kind::Long { min, max }
             }
             _ if node["properties"]["type"] == "greedy" => Kind::Greedy,
+            _ if node["properties"]["type"] == "phrase" => Kind::Quotable,
             _ => Kind::Word,
         };
         let custom = sunrise_client::command::CustomArgument::new(

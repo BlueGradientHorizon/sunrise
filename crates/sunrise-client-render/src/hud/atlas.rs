@@ -75,17 +75,17 @@ pub struct HudAtlas {
     pub text_shaders: crate::gfx::core_text::TextShaders,
     /// A resource pack's own `core/rendertype_lines` shader for the block outline, translated;
     /// none draws the outline natively.
-    pub lines_shader: Option<std::sync::Arc<crate::core_shader::CoreProgram>>,
+    pub lines_shader: Option<std::sync::Arc<sunrise_glsl::Translated>>,
     /// Its Polytone expression uniforms (`shader_modifiers`), resolved when it loaded.
     pub lines_expressions: Vec<crate::polytone_post::ExpressionUniform>,
     /// The packs' `core/sky` and `core/stars`, when a pack replaces them.
-    pub sky_shader: Option<std::sync::Arc<crate::core_shader::CoreProgram>>,
-    pub stars_shader: Option<std::sync::Arc<crate::core_shader::CoreProgram>>,
+    pub sky_shader: Option<std::sync::Arc<sunrise_glsl::Translated>>,
+    pub stars_shader: Option<std::sync::Arc<sunrise_glsl::Translated>>,
     /// Their Polytone expression uniforms, resolved when they loaded.
     pub sky_expressions: Vec<crate::polytone_post::ExpressionUniform>,
     pub stars_expressions: Vec<crate::polytone_post::ExpressionUniform>,
     /// The packs' `core/lightmap` (with `core/screenquad`), when a pack replaces either stage.
-    pub lightmap_shader: Option<std::sync::Arc<crate::core_shader::CoreProgram>>,
+    pub lightmap_shader: Option<std::sync::Arc<sunrise_glsl::Translated>>,
     /// Its Polytone expression uniforms (`shader_modifiers`), resolved when it loaded: the
     /// blocks its stages read, with their programs.
     pub lightmap_expressions: Vec<crate::polytone_post::ExpressionUniform>,
@@ -315,7 +315,7 @@ impl HudAtlas {
     /// texture's; else the GUI list's own (a removed or failed entry ends the search); else, where
     /// the list says nothing of the id, a registered atlas's sprite of the name, and last a packed
     /// sprite no model or GUI entry owns.
-    pub(super) fn gui_present(&self, id: &str) -> Option<(&Rect, Option<crate::ui::NineSlice>)> {
+    pub(super) fn gui_present(&self, id: &str) -> Option<(&Rect, Option<crate::ui::Scaling>)> {
         if let Some(rect) = self.live.get(id) {
             return Some((rect, None));
         }

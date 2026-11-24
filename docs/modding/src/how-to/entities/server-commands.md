@@ -74,7 +74,7 @@ executor. Omitted optional arguments are absent, including an omitted optional
 player: they do not silently select the source player. `player` selects exactly one
 online player, `players` one or more online players, `entity` exactly one entity,
 and `entities` one or more entities. Missing or too-large selections produce
-vanilla feedback without calling the executor. Word and greedy text arguments
+vanilla feedback without calling the executor. Word, `string` and greedy text arguments
 are strings, numbers are finite doubles, booleans are typed, and item arguments
 are component-bearing stacks of one item. `mod_id` takes a loaded package id and
 delivers it as a string (NeoForge's `ModIdArgument`). `resource:<registry>`, such as
@@ -137,12 +137,69 @@ host borrow. A [custom test host](../../concepts/testing.md) can lend a profile 
 
 `host.advancement(&id)` returns a loaded
 `AdvancementInfo`: its parent, display (title, description, icon stack with its components, frame and
-flags), criterion names and requirements, from the set the last `/reload` built. Feedback through
-`host.commands().feedback` honours the underlying source's silence and track-output.
+flags), criterion names and requirements, from the set the last `/reload` built.
+
+## Success feedback and the operators
+
+`host.commands().feedback(text, broadcast_to_admins)` is vanilla's
+`CommandSourceStack.sendSuccess(() -> text, broadcast_to_admins)`: Java's
+`source.sendSuccess(() -> msg, true)` is `feedback(msg, true)`. Pass `false` for a query or a
+list, as vanilla does. A silent source (an `execute` fork, a function, a mod's
+`suppress_output` run) gets nothing and tells no one.
+
+| Line | Who gets it | When |
+| --- | --- | --- |
+| `text` | the originating source: a player, the console or RCON, a command block or minecart | a player, and a block or minecart that tracks output, while `sendCommandFeedback` is on; the console and RCON always. Never the `execute as` entity. |
+| `[name: text]` | every operator but the source player (`PlayerList.isOp`: a level-0 operator too, never a non-operator) | `broadcast_to_admins`, the origin informs operators, and `sendCommandFeedback` is on |
+| `[name: text]` | the server's log | `broadcast_to_admins`, the origin informs operators, and `logAdminCommands` is on; never when the console is the source |
+
+The `[name: text]` line is `chat.type.admin`, gray and italic, with the display name of the
+`execute as` entity, else the command block's or minecart's name, `Server` or `Rcon`. A player
+always informs the operators; a command block or minecart does while it tracks output and
+`commandBlockOutput` is on; the console and RCON follow `broadcast-console-to-ops` and
+`broadcast-rcon-to-ops`. The two game rules are independent: with `sendCommandFeedback` off,
+the log still records an operator's command. Sending to no one is still `Ok(())`, and the
+executor's return value alone is the command's result.
+
+```rust,ignore
+host.commands().feedback(Text::translate("mymod.team.disbanded", vec![team_name]), true)?;
+```
+
+### The entity a command executes as
+
+`command.entity` is the `EntityRef` the command executes as (`CommandSourceStack.getEntity`),
+and `command.player()` is that entity when it is a player (`getPlayer`). `command.rotation`
+is the execution rotation in degrees as `[yaw, pitch]`, the order of a `rotation` argument;
+Java's `Vec2` holds pitch first. `execute as` and `on` change only the entity; `at` sets the
+level, position and rotation; `rotated` and `facing` set the rotation. Each fork of an `execute`
+has its own.
+
+| Source | `entity` | `rotation` |
+|---|---|---|
+| A player | the player | theirs |
+| The console | None | zero |
+| A command block | None | the direction it faces (`Direction.toYRot`), pitch zero |
+| A command-block minecart | the minecart | its yaw, pitch zero |
+| A function | its caller's | its caller's |
+
+An entity that no longer resolves when the executor runs, such as one killed earlier in the
+same function, is None, never another player. `source` stays the origin, and
+`host.players().acting_player()` the submitting player. A command that needs a player maps a
+`None` from `command.player()` to its own failure:
+
+```rust,ignore
+Command::new("party leave").executes(|host, _source, command| {
+    let Some(player) = command.player() else {
+        return Err(Text::translate("permissions.requires.player", Vec::new()).into());
+    };
+    leave_party(host, player);
+    Ok(1)
+})
+```
 
 ## Run a command as a player
 
-`player.entity().run_command_with_output(host, line, level)` runs a command as that
+`player.entity().run_command_with_output(host, line, level, suppress_output)` runs a command as that
 player, from their position and rotation, with `@s` selecting them. Pass
 `PermissionLevel::from_level(i32::from(player.permission_level(host)?))` to use
 the player's own permission level. The supplied level is taken as given, so a mod
@@ -150,11 +207,14 @@ can also choose a different level explicitly. A leading slash is allowed.
 
 The returned `CommandResult` has `success` (the same bool as `run_command`) and
 `feedback`: the success and failure lines received by the source, in order, as
-plain text. The player still receives those lines in chat, and operator
-notifications follow the normal rules. Feedback silenced by the source or game
-rules is absent. Other entities use a silent source and return no lines; a stale,
-removed or unavailable entity returns `success: false` and no lines. Teleports to
-another level still happen at the next tick's start. `run_command(host, line, level)` keeps its bool return.
+plain text. Pass `false` for normal player chat and operator notifications, or
+`true` to suppress both and return an empty `feedback` list. Like vanilla's
+`withSuppressedOutput`, this silences command feedback, not the command's effects:
+`/say` still broadcasts its message. Other entities already use a silent source.
+A stale, removed or unavailable entity returns `success: false` and no lines.
+Teleports to another level still happen at the next tick's start.
+`run_command(host, line, level, suppress_output)` takes the same option and
+returns only whether the command succeeded.
 
 ## Entity and player selectors
 
@@ -264,7 +324,7 @@ impl Hooks for MyMod {
                     return Err(Text::translate("example.commands.machine.missing", vec![]).into());
                 };
                 host.commands()
-                    .feedback(Text::literal(value.as_str()))
+                    .feedback(Text::literal(value.as_str()), false)
                     .map_err(|_| Text::translate("example.commands.machine.feedback_failed", vec![]))?;
                 Ok(1)
             },
@@ -353,11 +413,67 @@ declaring one is refused by name.
 
 `CommandArgumentKind::Word` takes one word of ASCII letters, digits and `_ - . +`; the
 word ends at the first other character, a space included, so a value with `:` or `/`
-needs `Greedy`, which takes the rest of the line. `suggest` receives that text as typed so
-far: one word, or the whole tail of the line up to the cursor. Players whose client does not know
-the type parse and complete the command: the server sends the argument as a Brigadier string
-of that shape with `minecraft:ask_server`, and their chat asks the server for the
-suggestions.
+needs `Greedy`, which takes the rest of the line, or `Quotable` with the value in quotes.
+`suggest` receives that text as typed so far: one word, or the whole tail of the line up to the
+cursor. Players whose client does not know the type parse and complete the command: the server
+sends the argument as a Brigadier string of that shape with `minecraft:ask_server`, and their
+chat asks the server for the suggestions.
+
+### Quoted phrases
+
+The `string` kind and `CommandArgumentKind::Quotable` read one value the way Brigadier's
+`StringArgumentType.string()` (`QUOTABLE_PHRASE`) does: one unquoted word of `Word`'s
+characters, or one phrase in `"double"` or `'single'` quotes, empty included. Inside a phrase
+a `\` escapes only the quote that opened it and `\` itself. Unlike `text`, other arguments may
+follow it:
+
+```rust,ignore
+// `/quests open "#main" @a`, `/quests open 1A2B3C4D @a` and `/quests open "Getting Started" @a`
+Command::new("quests open <object:string> <targets:players>")
+```
+
+| Typed | Delivered |
+|---|---|
+| `main` | `main` |
+| `"Getting Started"` | `Getting Started` |
+| `'say "hi"'` | `say "hi"` |
+| `"a \"b\" \\ c"` | `a "b" \ c` |
+| `""` | the empty string |
+
+The value arrives decoded, without its quotes, as `CommandArgumentValue::String` for `string`
+and in `parse`'s `input` for a `Quotable` type. A phrase with no closing quote is refused with
+vanilla's `parsing.quote.expected.end` ("Unclosed quoted string"), and a `\` before any other
+character with `parsing.quote.escape` ("Invalid escape sequence '\x' in quoted string"), at the
+character where the reader stopped, before the executor or the type's `parse` runs. There is no
+length limit beyond the chat line's. Clients receive the argument as `brigadier:string` in its
+quotable mode, so a vanilla client reads the phrase as the server does.
+
+A `Quotable` type's `suggest`, or its provider's `SuggestionRequest::prefix`, gets the text as
+typed, quote included and often unclosed: `"Getting St`. Brigadier gives a suggestion provider
+the same. Its suggestions replace that whole prefix, so a type returns text the player could
+have typed: a candidate that is not one word is quoted, and its quotes and `\` escaped, as
+NeoForge's `EntityCommand` quotes an entity id that needs it. For a declared provider, the
+engine's match compares phrase content, without the quotes and their escapes, on both sides. So
+`Get`, `'Get` and `"Get` all keep `"Getting Started"`, which is inserted as written:
+
+```rust,ignore
+/// Whether `text` can be typed without quotes: one word of `StringReader.isAllowedInUnquotedString`'s
+/// characters. An empty value is not one: it is typed as `""`.
+fn is_word(text: &str) -> bool {
+    !text.is_empty() && text.chars().all(|c| c.is_ascii_alphanumeric() || "_-.+".contains(c))
+}
+
+fn suggest(&self, _: Option<&CommandSender>, prefix: &str) -> Vec<CommandSuggestion> {
+    let typed = prefix.trim_start_matches(['"', '\'']);
+    titles()
+        .filter(|title| title.starts_with(typed))
+        .map(|title| match is_word(title) {
+            true => CommandSuggestion::new(title),
+            false => CommandSuggestion::new(format!("\"{}\"", title.replace('\\', "\\\\").replace('"', "\\\""))),
+        })
+        .collect()
+}
+```
 
 The namespaced id is in the registering mod's namespace; an id registered twice, a
 name in another namespace or an empty name refuses the mods at startup, naming the

@@ -41,11 +41,10 @@ pub trait EntityPositionBackend {
     /// The yaw of the entity's head (`Entity.getYHeadRot`): a mob's or a
     /// player's own, zero for the kinds without a head.
     fn entity_head_yaw(&self, entity: EntityRef) -> Option<f32>;
-    /// Side: server.
-    /// The yaw of the entity's body (`LivingEntity.yBodyRot`) in degrees as
-    /// vanilla keeps it, not normalized: the direction its drawn body faces,
-    /// which its head turns against. Mobs only: None for players and every
-    /// other kind, and for a stale handle.
+    /// Side: both.
+    /// The entity's current body yaw (`LivingEntity.yBodyRot`) in degrees, without wrapping.
+    /// On a server this reads the named living entity. On a client it reads the local player.
+    /// None for a stale handle or an entity with no available living body.
     fn entity_body_yaw(&self, entity: EntityRef) -> Option<f32>;
     /// Side: server.
     /// The horizontal direction the entity faces (`Entity.getDirection`):
@@ -57,6 +56,15 @@ pub trait EntityPositionBackend {
 #[doc(hidden)]
 #[sunrise_mod_api_macros::host_area]
 pub trait EntityPositionBackendMut {
+    /// Side: server.
+    /// Sets the current body yaw in degrees (`LivingEntity.setYBodyRot`). It does not
+    /// wrap the angle, teleport the entity, or force a packet. Silverfish and endermites
+    /// also turn their view; armor stands change their previous body/view yaw and their
+    /// head yaw, leaving their current body yaw alone. False for stale handles or when the
+    /// server keeps no living body for this entity. Returns `Err(LevelWriteError::Unavailable)`
+    /// when the host cannot write living state.
+    fn entity_set_body_yaw(&mut self, entity: EntityRef, yaw: f32)
+    -> Result<bool, LevelWriteError>;
     /// Side: server.
     /// `Entity.setOnGround`: set the live body's ground flag and check supporting
     /// blocks under its current footprint without moving it. False clears retained
@@ -137,7 +145,11 @@ pub trait EntityPositionBackendMut {
     /// tell it, the entity's later moves there are told as any entity's, and this
     /// call adds no report of its own. A player arrives after the current tick,
     /// still (its client holds its motion), and `player_teleported` and
-    /// `player_changed_dimension` report the move. In the entity's own level it
+    /// `player_changed_dimension` report the move. `player_changed_dimension`
+    /// (NeoForge's `PlayerChangedDimensionEvent`) is the point after which the
+    /// player is in the target level, that level in place and the player's state
+    /// in it: a mod's "entered" and "left" go by that hook, not by this call's
+    /// return, when the player is still in the level it left. In the entity's own level it
     /// moves as `entity_teleport_to` does, keeping its motion. False for a stale
     /// handle, what `entity_teleport_to` refuses, a dimension that isn't
     /// registered, a primed TNT a mob rides, and the kinds it cannot move into

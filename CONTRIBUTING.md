@@ -15,7 +15,7 @@ queue (the hub, or `/suggest` on Discord) rather than to issues, which are for b
 
 **Mod-related pull requests come here too.** Sunrise is where the mod API is built: the mod API, native hooks and
 events for mods, native mods, content mods (`.smod`), mixins, `cargo sunrise-mod`, `sunrise-mods`, mod
-builds and the registry, and their docs ([mods](docs/mods.md), [native mods](docs/native-mods.md)). A change to the mod
+builds and the registry, and their docs ([modding book](docs/modding/src/introduction.md), [native mods](docs/modding/src/how-to/native-mods.md)). A change to the mod
 API follows its clean-break rules ([AGENTS.md](AGENTS.md#mod-api-the-clean-break)).
 
 When adding a native hook, keep its declaration under `crates/sunrise-mod-vocab/src/hooks/` and wire the engine
@@ -142,7 +142,8 @@ python3 tools/pr_ready.py --base upstream/main   # or origin/main if you work on
 ```
 
 It looks at what your branch changes and runs what matters: rustfmt, clippy with warnings denied, the tests of the
-crates you touched (and the launcher's), generated files, `Cargo.lock` and the Python tests. It runs the
+crates you touched (and the launcher's), generated files, `Cargo.lock` and the Python tests (one test file per
+worker; `--serial-python` runs them in one process, as CI does). It runs the
 vanilla harnesses locally only when your branch changes a harness, an oracle, a probe or the runner; otherwise it
 lists the ones your change can affect. The daily checks the automatic harnesses after the merge. `--harnesses` runs them on your
 machine anyway, and a change to mod content, assets, blocks or items also runs the `#[ignore]`d content-root tests;

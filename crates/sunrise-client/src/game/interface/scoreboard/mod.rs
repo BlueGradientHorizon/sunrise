@@ -121,6 +121,7 @@ fn gives_uuid(t: Target) -> Option<u32> {
         | Target::Other(id)
         | Target::Fangs(id)
         | Target::Cloud(id)
+        | Target::Bolt(id)
         | Target::General(id)
         | Target::Hook(id)
         | Target::Orb(id) => Some(id),
@@ -309,6 +310,7 @@ impl Game<'_> {
             | Target::Other(id)
             | Target::Fangs(id)
             | Target::Cloud(id)
+            | Target::Bolt(id)
             | Target::Hook(id) => self.persist.raw.get(&id),
             Target::DragonPart(_) => None,
             Target::Player => self.level.player_extra.as_ref(),
@@ -502,16 +504,12 @@ impl Game<'_> {
         let Some(host) = self.lan.as_mut() else {
             return;
         };
-        host.hub.teams.clone_from(&self.score.board.teams);
-        let view = sunrise_client::lan::scoreboard::View::of(&self.score.board);
+        let board = &self.score.board;
+        host.hub.teams.clone_from(&board.teams);
+        let view = sunrise_client::lan::scoreboard::View::of(board);
         host.hub.guests.update_all(|g| {
-            if g.placed && !g.scoreboard_synced {
-                g.send_all(&view.initial());
-                g.scoreboard = view.clone();
-                g.scoreboard_synced = true;
-            } else if g.placed && g.scoreboard != view {
-                g.send_all(&g.scoreboard.changes(&view));
-                g.scoreboard = view.clone();
+            if g.placed {
+                g.sync_scoreboard(&view, board);
             }
         });
     }
@@ -620,6 +618,15 @@ impl Game<'_> {
     fn scoreboard_name(&self, id: u32, uuid: [i32; 4]) -> String {
         self.remote_player_name(id)
             .map_or_else(|| uuid_text(uuid), str::to_owned)
+    }
+    /// `Entity.getTeam`: the team holding this entity's scoreboard name (its UUID).
+    pub(super) fn entity_team(&self, id: u32) -> Option<&sb::Team> {
+        if self.score.board.teams.is_empty() {
+            return None;
+        }
+        let uuid = *self.persist.uuids.get(&id)?;
+        let own = self.scoreboard_name(id, uuid);
+        self.score.board.players_team(&own)
     }
     /// `TamableAnimal.getTeam` of a mob or another player: its own team, else,
     /// when it is a tamed pet, its root owner's.

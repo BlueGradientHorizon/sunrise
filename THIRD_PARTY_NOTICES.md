@@ -102,6 +102,15 @@ The GLSL frontend also resets the common type for each comma-separated declarato
 variable's array specifier does not change later variables.
 It also reads a struct member outside a constant expression through a pointer to the member,
 not out of a loaded copy of the whole struct, so a member an atomic function uses can be read.
+An array, struct or block too large to lay out (past naga's type size limit) is a parse error at its
+declaration, not a panic at the next array. `Options::interface_limits` carries the device's stage
+interface limits (`max_inter_stage_shader_variables`, `max_vertex_attributes`; wgpu's defaults
+when not given): a stage whose location-bound variables of one direction take more is a parse error
+before an entry-point argument is made per element. An interface variable whose elements or
+members would take a location past `u32` (each taking the next after its `layout(location = N)`)
+is a parse error at its declaration, not an overflow.
+An integer literal whose bit pattern does not fit in 32 bits is a parse error at the literal, not
+lowered to its low 32 bits (GLSL 4.60 §4.1.3).
 The HLSL backend writes an ordinary level-zero texture sample as `SampleLevel(..., 0.0)`, while
 comparison textures keep `SampleCmpLevelZero`; HLSL has no ordinary `SampleLevelZero` method.
 The shared interpolation defaults also compile with `glsl-in` alone, without needing the
@@ -148,6 +157,16 @@ sources (#3299); and
 `_mi_arenas_page_free` in `src/arena.c` lowers the `malloc_huge` statistic when a huge page is freed, at
 every `MI_STAT` level as `src/page.c` raises it, instead of `mi_stat_free` (`src/free.c`) and
 `_mi_theap_page_destroy` (`src/theap.c`) lowering it only with detailed statistics (#3299).
+
+## winit
+
+`third_party/winit` is [winit](https://github.com/rust-windowing/winit) 0.30.13 by the winit
+contributors, licensed under Apache-2.0 (`LICENSE` in that folder), without its examples and tests.
+One change: its X11 backend takes raw motion from the enabled slave pointers instead of the master
+pointer's copy, tracking them from each device-hierarchy event in stream order; raw buttons and keys
+still come from the masters. While winit holds its own pointer grab (`CursorGrabMode::Confined`, the
+grab mode winit's X11 backend supports), an X server speaking XInput 2.1 or later sends a client
+each master raw event twice, so mouse look turned twice as far (#3022); each slave's arrives once.
 
 ## Pixelify Sans
 

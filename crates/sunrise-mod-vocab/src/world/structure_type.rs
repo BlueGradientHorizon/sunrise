@@ -13,6 +13,10 @@
 //! game's own: the set's spacing, the structure's biomes and its
 //! `terrain_adaptation`, and the pieces ride the one piece mechanism the game
 //! has, next to a fortress piece's.
+use super::pool_element::{
+    ElementContext, ElementPlacement, JigsawBlock, JigsawSpace, PoolElementRef, PoolPiece,
+    TemplatePool,
+};
 use crate::{BlockKey, BlockMetadata, BlockState, RandomSource};
 use std::sync::Arc;
 pub use sunrise_core::position::ChunkPos;
@@ -42,12 +46,17 @@ impl From<(crate::Identifier, String)> for StructureError {
 /// What [`StructureType::find_generation_point`](StructureType::find_generation_point)
 /// found: the start's position (vanilla's `Structure.findGenerationPoint`
 /// answer) and its pieces (`Structure.generatePieces`). The start holds the
-/// pieces [`GenerationContext::assemble_jigsaw`] laid out first, then these;
-/// it needs at least one piece in all.
+/// pieces [`GenerationContext::assemble_jigsaw`] laid out first, then
+/// `pool_pieces`, then `pieces`; it needs at least one piece in all.
+#[derive(Default)]
 // exhaustive: mods build it themselves as find_generation_point's answer
 pub struct FoundStructure {
     /// Where the start sits, in world blocks.
     pub position: [i32; 3],
+    /// Pool element pieces the type laid out itself, from the pools
+    /// [`GenerationContext::template_pool`] reads. The game keeps, saves and
+    /// places them as it does `assemble_jigsaw`'s pieces.
+    pub pool_pieces: Vec<PoolPiece>,
     /// The type's own pieces, shared with the game, which keeps them in its start.
     pub pieces: Vec<Arc<dyn StructurePiece>>,
 }
@@ -131,7 +140,7 @@ pub struct DimensionPadding {
 }
 
 /// `LiquidSettings`: whether a placed piece's blocks take on the water there.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, sunrise_mod_api_macros::Wire)]
 // exhaustive: vanilla's LiquidSettings has these two values.
 pub enum LiquidSettings {
     /// `apply_waterlogging`: waterloggable blocks placed in water are waterlogged.
@@ -414,6 +423,52 @@ pub trait GenerationContext {
         settings: &JigsawSettings,
         position: [i32; 3],
     ) -> Option<JigsawLayout>;
+    /// The data pack's template pool `name`, as `Registry.get` of
+    /// `TEMPLATE_POOL` finds it: `None` for a pool the data pack lacks or one
+    /// left out because an element failed to decode. Aliases are not applied:
+    /// a type that uses `pool_aliases` looks the aliased name up itself.
+    fn template_pool(&mut self, name: &crate::Identifier) -> Option<TemplatePool>;
+    /// Element reads for laying pieces out by hand, any element's jigsaws and
+    /// box, beside [`random`](Self::random) to draw the jigsaws from, as
+    /// `JigsawPlacement.Placer` shuffles a piece's jigsaws with the random its
+    /// pools and placements draw from.
+    fn elements(&mut self) -> (&dyn ElementContext, &mut dyn RandomSource);
+    /// One candidate tried on one jigsaw of a piece already laid out: the
+    /// inner loops of `JigsawPlacement.Placer.tryPlacingChildren` for one
+    /// target element, drawing from [`random`](Self::random) as vanilla does.
+    ///
+    /// The candidate's rotations are tried in `Rotation.getShuffled` order,
+    /// and in each its jigsaws in shuffled order, against `jigsaw`, a jigsaw of
+    /// `source` ([`JigsawBlock::can_attach`]). A rigid child of a rigid source
+    /// takes its height from the jigsaws; any other child's comes from the
+    /// `WORLD_SURFACE_WG` height under `jigsaw`. With `use_expansion_hack`, a
+    /// box at most 16 high grows by the largest `max_size` of the pools (and
+    /// their fallbacks) its inward-facing jigsaws name, looked up by those
+    /// names without aliases, as [`template_pool`](Self::template_pool) does.
+    /// The first placement whose box [fits](JigsawSpace::fits) `space` wins:
+    /// its box leaves `space`, `source` gets the junction toward it, and the
+    /// child comes back with the junction toward `source` and `source`'s
+    /// liquid settings.
+    ///
+    /// `None`, with no draws, for the empty element, where vanilla's candidate
+    /// loop stops; `None`, after the draws, when no placement fits.
+    ///
+    /// Which candidates a jigsaw tries, in which space, and how deep the
+    /// layout goes are the caller's, as in `tryPlacingChildren`: the pool's
+    /// [`shuffled_templates`](TemplatePool::shuffled_templates) (none at the
+    /// last depth), then its fallback's, up to the first empty element; in a
+    /// new [`JigsawSpace`] over `source`'s box when the attached piece would
+    /// start inside it, otherwise in the space `source` was placed in. A type
+    /// with its own rules, such as a cap on how often a piece appears, skips
+    /// the candidates they refuse.
+    fn attach_jigsaw(
+        &mut self,
+        source: &mut PoolPiece,
+        jigsaw: &JigsawBlock,
+        candidate: &PoolElementRef,
+        space: &mut JigsawSpace,
+        use_expansion_hack: bool,
+    ) -> Option<PoolPiece>;
 }
 
 /// The placement context a piece's
@@ -457,6 +512,30 @@ pub trait PieceContext {
     /// `WorldGenLevel.setBlockEntity` at `pos`: the block entity's saved NBT
     /// (its `id` and fields).
     fn block_entity(&mut self, pos: [i32; 3], nbt: Compound);
+    /// `ConfiguredFeature.place` of the data pack's configured feature
+    /// `feature` at `pos`, drawing from [`random`](Self::random), with no
+    /// placement modifiers (as `/place feature` places one). Whether it placed anything;
+    /// `Ok(false)` also for a feature the data pack lacks. The feature writes
+    /// through the level, so its writes are not clipped to `chunk_box`.
+    fn place_feature(&mut self, feature: &str, pos: [i32; 3]) -> Result<bool, StructureError>;
+    /// `PlacedFeature.place` of the data pack's placed feature
+    /// `placed_feature` at `pos`: its placement modifiers, then its feature,
+    /// drawing from [`random`](Self::random), as a `FeaturePoolElement`
+    /// places its feature. Whether it placed anything;
+    /// `Ok(false)` also for a placed feature the data pack lacks.
+    fn place_placed_feature(
+        &mut self,
+        placed_feature: &str,
+        pos: [i32; 3],
+    ) -> Result<bool, StructureError>;
+    /// `StructurePoolElement.place` of any element, vanilla's or a mod's, in
+    /// this chunk, drawing from [`random`](Self::random). This is how an
+    /// element that wraps another places it. Whether it placed anything.
+    fn place_element(
+        &mut self,
+        element: &PoolElementRef,
+        placement: &ElementPlacement,
+    ) -> Result<bool, StructureError>;
 }
 
 /// A registered API behaviour; the game builds its engine adapter at startup.

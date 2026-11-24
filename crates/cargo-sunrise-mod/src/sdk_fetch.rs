@@ -206,7 +206,8 @@ pub(crate) fn resolve(
                     Some(&signature),
                     release_keys,
                 ),
-            }?;
+            }
+            .map_err(|e| format!("Release {text}: {e}"))?;
             sunrise_release_sign::check(
                 sdk::INDEX,
                 &expected,
