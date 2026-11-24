@@ -2840,10 +2840,7 @@ impl PackPost {
         // (and its opaque-depth snapshot) only when at least one built pass actually samples it.
         let mut mod_depth_used = vec![false; mods.depth_targets.len()];
         let mut mod_opaque_depth_used = vec![false; mods.depth_targets.len()];
-        for p in every_base_pass()
-            .chain(mod_passes.iter().map(|m| &m.pass))
-            .flat_map(|p| std::iter::once(p).chain(&p.compute))
-        {
+        let mut record_mod_depth_samplers = |p: &Pass| {
             for s in &p.samplers {
                 match s.source {
                     Source::ModDepth(idx) => {
@@ -2862,6 +2859,16 @@ impl PackPost {
                     _ => {}
                 }
             }
+        };
+        for p in every_base_pass().flat_map(|p| std::iter::once(p).chain(&p.compute)) {
+            record_mod_depth_samplers(p);
+        }
+        for p in mod_passes
+            .iter()
+            .map(|m| &m.pass)
+            .flat_map(|p| std::iter::once(p).chain(&p.compute))
+        {
+            record_mod_depth_samplers(p);
         }
         for m in &mut mod_passes {
             if let Some(idx) = m.depth_target
