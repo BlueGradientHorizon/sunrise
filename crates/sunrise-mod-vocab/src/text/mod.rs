@@ -242,6 +242,20 @@ impl Text {
             arguments,
         })
     }
+    /// A translatable component with a fallback template (`Component.translatableWithFallback`):
+    /// a language without `key` formats `fallback` with the arguments instead of showing the key.
+    /// The key, fallback and arguments remain unresolved data.
+    pub fn translate_with_fallback(
+        key: impl Into<String>,
+        fallback: impl Into<String>,
+        arguments: Vec<Text>,
+    ) -> Self {
+        Self::new(TextContent::Translatable {
+            key: key.into(),
+            fallback: Some(fallback.into()),
+            arguments,
+        })
+    }
     /// Append a child without flattening its style or translation.
     pub fn append(mut self, child: Text) -> Self {
         self.children.push(child);
