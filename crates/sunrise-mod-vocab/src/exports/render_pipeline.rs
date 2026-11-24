@@ -1,6 +1,8 @@
 pub use client::render_pipeline::{
     PackBinding, PackDepthTarget, PackGlslInput, PackOverrideState, PackPassSlot, PackUniformDecl,
-    PackUniformType, PipelineBlend, PipelineDrawError, PipelineGeometryClass, PipelineQuad,
-    PipelineTexture, PipelineTextureError, PipelineVertexFormat, RenderPipeline,
-    RenderPipelineError, RenderPipelineRef,
+    PackUniformType, PipelineGeometryClass,
+};
+pub use client::render_pipeline::{
+    PipelineBlend, PipelineDrawError, PipelineQuad, PipelineTexture, PipelineTextureError,
+    PipelineVertexFormat, RenderPipeline, RenderPipelineError, RenderPipelineRef,
 };
