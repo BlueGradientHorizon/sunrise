@@ -669,6 +669,31 @@ impl Text {
         self.refresh();
         self
     }
+    /// Replace raw component fields (wrapping a plain literal if needed) and
+    /// regenerate the rendered cache, as `MutableComponent.withStyle(UnaryOperator)`
+    /// does for `Entity.getDisplayName`. Nested components supplied as JSON are always remote.
+    pub fn set_component_fields(mut self, fields: Vec<(String, Value)>) -> Self {
+        let mut c = self.component();
+        if let Value::String(s) = c {
+            c = json!({ "text": s });
+        }
+        if let Value::Object(o) = &mut c {
+            for (k, v) in fields {
+                if k == "hover_event" {
+                    o.remove("hoverEvent");
+                }
+                if k == "click_event" {
+                    o.remove("clickEvent");
+                }
+                o.insert(k, v);
+            }
+        }
+        // Raw JSON fields are decoded input, even when attached to a local root.
+        std::sync::Arc::make_mut(&mut self.origins).remove("");
+        self.replace_component(c);
+        self.refresh();
+        self
+    }
     /// Replace the canonical component with decoded input. Every node is remote;
     /// serialized fields cannot grant provenance.
     pub fn with_component(self, component: Value) -> Self {

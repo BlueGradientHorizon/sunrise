@@ -1027,8 +1027,14 @@ impl Game<'_> {
 
     fn tick_armor_stand_turns(&mut self, joins: impl IntoIterator<Item = JoinSeq>) -> Result<()> {
         let mut dead = Vec::new();
+        let mut drowned = Vec::new();
         // ServerLevel.tick: only entities in entity-ticking chunks tick.
         let ticking = self.entity_ticking_area();
+        let server = self.remote.is_none();
+        let stand_breathes_under_water = self.items().entity_type_tags.has_flag(
+            TYPE_ID,
+            sunrise_client::items::EntityTypeTags::CAN_BREATHE_UNDER_WATER,
+        );
         // EntityGetter.getEntityCollisions: the boxes that stop a stand's move
         // (a living shulker, a boat, a happy ghast held still), gathered when
         // the first stand travels. A server's stand rides nothing (`vehicle`
@@ -1058,6 +1064,17 @@ impl Game<'_> {
             // Entity.baseTick: the saved invulnerability window counts down
             // (#916).
             self.tick_saved_invulnerable_time(self.armor_stands[i].id);
+            // LivingEntity.baseTick -> tickDeath: a stand at 0 health or less
+            // is dead, and goes at a death time of 20 with no drops.
+            let mut died_of_age = false;
+            let a = &mut self.armor_stands[i];
+            if a.health <= 0.0 {
+                a.death_time = a.death_time.wrapping_add(1);
+                if a.death_time >= 20 {
+                    dead.push((a.id, None));
+                    died_of_age = true;
+                }
+            }
             self.armor_stand_location_effects(i, false);
             // ArmorStand.travel: a marker or a NoGravity stand does not move.
             let travels = !self.armor_stands[i].marker && !self.armor_stands[i].no_gravity;
@@ -1077,9 +1094,78 @@ impl Game<'_> {
                 self.dim.id(),
                 &mut a.equipment,
             );
-            let (water_height, lava_height) =
-                a.push_by_fluid(&self.world, &self.res.motion().fluids, &self.loop_context);
+            // Entity.baseTick's updateFluidInteraction; a marker takes none.
+            let (water_height, lava_height, eye_in_water) = if a.marker {
+                (0.0, 0.0, false)
+            } else {
+                let (bounds, at, eye) = (a.bounds(), a.position, a.fluid_eye_y());
+                sunrise_client::entities::update_entity_fluids(
+                    bounds,
+                    at,
+                    eye,
+                    &mut a.velocity,
+                    &self.world,
+                    &self.res.motion().fluids,
+                    &self.loop_context,
+                )
+            };
             let in_water = water_height > 0.0;
+            // LivingEntity.baseTick: shared air logic, then hurt time; aiStep clears fall flying.
+            let stand_air = if server && a.health > 0.0 {
+                let in_bubble_column = eye_in_water && {
+                    let eye = a.fluid_eye_y();
+                    let eye_block = sunrise_core::position::BlockPos::containing(Vec3::new(
+                        a.position.x,
+                        eye,
+                        a.position.z,
+                    ));
+                    &*self
+                        .res
+                        .facts()
+                        .get(self.world.block(eye_block.x, eye_block.y, eye_block.z))
+                        .name
+                        == "minecraft:bubble_column"
+                };
+                let drowns = eye_in_water && !in_bubble_column && !stand_breathes_under_water;
+                let vanilla = sunrise_client::breathing::Breath {
+                    can_breathe: !drowns,
+                    consume: 1,
+                    refill: if drowns { 0 } else { 4 },
+                };
+                Some((
+                    a.id,
+                    sunrise_client::breathing::AirStep::generic(a.air, 300, vanilla),
+                ))
+            } else {
+                None
+            };
+            let i = if let Some((stand_id, step)) = stand_air {
+                let answer = if sunrise_client::breathing::heard() {
+                    self.ask_stand_breath(stand_id, step)
+                } else {
+                    Some(step.vanilla)
+                };
+                let Some(i) = self.armor_stands.locate(join) else {
+                    continue;
+                };
+                let a = &mut self.armor_stands[i];
+                if let Some(breath) = answer
+                    && a.air == step.air
+                    && let Some(drowning) =
+                        step.finish(&self.loop_context, a.id, TYPE_ID, &mut a.air, breath)
+                {
+                    // Stand refuses drown damage; queue entity event 67 / bubble particles.
+                    drowned.push((a.id, drowning.bubbles));
+                }
+                i
+            } else {
+                i
+            };
+            let a = &mut self.armor_stands[i];
+            if a.hurt_time > 0 {
+                a.hurt_time -= 1;
+            }
+            a.fall_flying = false;
             let medium =
                 sunrise_client::entities::StandMedium::from_heights(water_height, lava_height);
             // Entity.collide asks for the entities meeting the box stretched
@@ -1226,8 +1312,9 @@ impl Game<'_> {
                         vanilla,
                     )
                 },
-            ) {
-                dead.push((id, damage_type));
+            ) && !died_of_age
+            {
+                dead.push((id, Some(damage_type)));
             }
             if self.armor_stands[i].fire_ticks > 0
                 && self.armor_stands[i].fire_ticks >= prev_fire
@@ -1237,10 +1324,44 @@ impl Game<'_> {
             }
             let (id, from, to) = section_step;
             self.entity_section_step(id, [from.x, from.y, from.z], [to.x, to.y, to.z]);
+            // The end of LivingEntity.tick.
+            let a = &mut self.armor_stands[i];
+            if a.impulse_grace > 0 {
+                a.impulse_grace -= 1;
+            }
+        }
+        for (id, bubbles) in drowned {
+            let Some((at, v)) = self.armor_stands.iter().find(|a| a.id == id).map(|a| {
+                (
+                    [a.position.x, a.position.y, a.position.z],
+                    [a.velocity.x, a.velocity.y, a.velocity.z],
+                )
+            }) else {
+                continue;
+            };
+            if self.drown_bubbles(at, v, bubbles) {
+                self.lan_entity_event(id as i32, super::combat::DROWN_EVENT, at);
+                self.drown_particles(at, v, 8);
+            }
         }
         for (id, damage_type) in dead.into_iter().rev() {
-            if let Some(i) = self.armor_stands.iter().position(|a| a.id == id) {
-                self.break_armor_stand_by_anything(i, damage_type, 0);
+            match damage_type {
+                Some(damage_type) => {
+                    if let Some(i) = self.armor_stands.iter().position(|a| a.id == id) {
+                        self.break_armor_stand_by_anything(i, damage_type, 0);
+                    }
+                }
+                None => {
+                    // Entity event 60 (the poof), then remove(KILLED).
+                    if let Some(a) = self.armor_stands.iter().find(|a| a.id == id) {
+                        let at = a.position.components();
+                        self.remove_armor_stand_after(id, |game| {
+                            game.lan_entity_event(id as i32, 60, at);
+                            let (x, z) = (at[0].floor() as i32, at[2].floor() as i32);
+                            game.world.modified.insert((x >> 4, z >> 4));
+                        });
+                    }
+                }
             }
         }
         Ok(())

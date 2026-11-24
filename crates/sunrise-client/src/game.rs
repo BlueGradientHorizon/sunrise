@@ -2200,6 +2200,9 @@ mod stand_command_hurt_tests;
 #[path = "game/interface/stand_equipment_change_tests.rs"]
 mod stand_equipment_change_tests;
 #[cfg(test)]
+#[path = "game/entities/stand_low_health_tests.rs"]
+mod stand_low_health_tests;
+#[cfg(test)]
 #[path = "game/modding/start_riding_refusal_tests.rs"]
 mod start_riding_refusal_tests;
 #[cfg(test)]
@@ -3961,7 +3964,7 @@ struct Game<'a> {
     watched_vehicles: Vec<lan_vehicles::WatchedVehicle>,
     /// Songs playing from jukeboxes (tracked sound handles).
     jukebox_sounds: HashMap<(i32, i32, i32), u64>,
-    bolts: Vec<lightning::Bolt>,
+    bolts: sunrise_client::join_seq::ResidentList<lightning::Bolt>,
     maps: maps::Maps,
     /// The ender dragon fight (game/mobs/dragon.rs).
     fight: dragon::Fight,
@@ -14075,7 +14078,7 @@ impl<'a> Game<'a> {
             carts: Default::default(),
             watched_vehicles: Vec::new(),
             jukebox_sounds: HashMap::new(),
-            bolts: Vec::new(),
+            bolts: Default::default(),
             maps: maps::Maps::default(),
             fight: dragon::Fight::default(),
             dragon: Default::default(),
