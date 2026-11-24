@@ -111,6 +111,35 @@ Elements are decoded at load and used on worker threads: keep them immutable. A 
 projection replaces its children's, a mod element's included, as `ListPoolElement` sets it on each
 child; `place` reads the projection in effect from `ElementPlacement::projection`.
 
+## Structure processor types
+
+Register a `StructureProcessorType` with
+`r.register_structure_processor_type("weather", MyWeatherType)` (NeoForge's
+`STRUCTURE_PROCESSOR` registry). A processor list entry with `"processor_type": "mymod:weather"`
+decodes through `StructureProcessorType::decode`, which receives the entry's config as NBT and a
+`ProcessorDecodeContext` for resolving block states and nested processors or processor lists once
+at load. The processor runs inside vanilla and mod structures alike.
+
+| `StructureProcessor` method | Vanilla's `StructureProcessor` |
+|---|---|
+| `process_block` | `process`: inspect or alter one block (return `Ok(None)` to omit it) |
+| `finalize_processing` | `finalizeProcessing`: inspect the piece's processed block list and write neighbouring blocks in the chunk |
+| `evaluates_entire_piece` | `true` when `finalize_processing` needs every block of the template before clipping to the chunk box |
+
+## Placement modifier types
+
+Register a `PlacementModifierType` with
+`r.register_placement_modifier_type("below_sea", MyBelowSeaType)` (NeoForge's
+`PLACEMENT_MODIFIER_TYPE` registry). A placed feature's `"placement"` entry with
+`"type": "mymod:below_sea"` decodes through `PlacementModifierType::decode`, which receives the
+entry's config as NBT and a `PlacementModifierDecodeContext` for resolving block states and nested
+modifiers once at load.
+
+`PlacementModifier::get_positions(&self, context, random, origin)` matches vanilla's
+`PlacementModifier.getPositions`: return zero, one, or many positions for the next modifier in the
+chain. Both structure processors and placement modifiers run on worker threads and must be
+`Send + Sync`, stateless, and deterministic.
+
 ## Placing pieces
 
 Implement `StructurePiece` (`Debug + Send + Sync`) with these methods:
