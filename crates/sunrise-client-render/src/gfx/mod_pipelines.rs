@@ -606,16 +606,17 @@ impl ModPipelines {
             .any(|run| first <= run.stage && run.stage <= last && !bound_slots.contains(&run.slot))
     }
 
-    /// Collect uploaded vertex chunks for prepared runs whose slot is bound to `PackPost`.
-    pub fn pack_bound_chunks(
+    /// Append uploaded vertex chunks for prepared runs whose slot is bound to `PackPost` into
+    /// `out`, reusing `out`'s existing allocation.
+    pub fn pack_bound_chunks_into(
         &self,
         indices: &wgpu::Buffer,
         bound_slots: &[usize],
-    ) -> Vec<super::pack_post::ModDrawChunk> {
+        out: &mut Vec<super::pack_post::ModDrawChunk>,
+    ) {
         if self.runs.is_empty() || bound_slots.is_empty() {
-            return Vec::new();
+            return;
         }
-        let mut out = Vec::new();
         for run in &self.runs {
             if !bound_slots.contains(&run.slot) {
                 continue;
@@ -629,18 +630,19 @@ impl ModPipelines {
                 });
             }
         }
-        out
     }
 
     /// Draws the prepared runs of stages `first..=last` in the order queued, with `indices`
-    /// (6 a quad, `u32`). Leaves the pass with its own pipeline, bind group 0 and buffers, and
+    /// (6 a quad, `u32`), skipping slots in `skip_slots` (e.g. slots bound to a shader pack's
+    /// translated mod pass). Leaves the pass with its own pipeline, bind group 0 and buffers, and
     /// bind group 1 after a textured pipeline.
-    pub fn draw(
+    pub fn draw_excluding(
         &self,
         pass: &mut wgpu::RenderPass<'_>,
         indices: &wgpu::Buffer,
         first: usize,
         last: usize,
+        skip_slots: &[usize],
     ) {
         self.draw_runs(
             pass,
@@ -648,7 +650,9 @@ impl ModPipelines {
             false,
             self.runs
                 .iter()
-                .filter(|run| first <= run.stage && run.stage <= last)
+                .filter(|run| {
+                    first <= run.stage && run.stage <= last && !skip_slots.contains(&run.slot)
+                })
                 .map(|run| (run, run.quads.clone())),
         );
     }

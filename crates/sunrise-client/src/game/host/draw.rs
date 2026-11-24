@@ -523,10 +523,14 @@ impl WorldDrawContext for GameWorldDrawContext<'_, '_> {
             .native_world_draw_model_instances(&mut *self.surface, model, instances)
     }
     fn set_pack_uniform(&mut self, name: &str, value: PackUniformValue) -> bool {
-        if sunrise_client::mod_pipelines::lookup_pack_uniform_type(name) != Some(value.ty()) {
+        let Some((static_name, ty)) = sunrise_client::mod_pipelines::lookup_pack_uniform(name)
+        else {
+            return false;
+        };
+        if ty != value.ty() {
             return false;
         }
-        self.surface.set_pack_uniform(name, value);
+        self.surface.set_pack_uniform(static_name, value);
         true
     }
     fn pack_override_state(

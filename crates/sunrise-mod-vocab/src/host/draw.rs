@@ -616,17 +616,6 @@ pub trait WorldDrawContext {
         let _ = pipeline;
         Ok(PackOverrideState::NoPack)
     }
-    /// Toggle whether `pipeline`'s declared [`PackBinding::defines`] are active for shader-pack
-    /// compilation. Changing the active define set triggers at most one shader-pack reload;
-    /// passing the current state is a no-op.
-    fn set_pack_defines_active(
-        &mut self,
-        pipeline: RenderPipelineRef,
-        active: bool,
-    ) -> Result<(), RenderPipelineError> {
-        let _ = (pipeline, active);
-        Ok(())
-    }
 }
 /// CPU-side submission of batches for the current world view. The renderer uploads them after
 /// this hook, before it opens any pass that may draw them.

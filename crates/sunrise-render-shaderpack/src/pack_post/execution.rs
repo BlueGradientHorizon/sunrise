@@ -172,6 +172,15 @@ impl PackPost {
         self.mod_draws = draws;
     }
 
+    /// Reuses the internal mod-draw buffer to collect uploaded quad chunks for the next frame
+    /// without per-frame `Vec` allocation.
+    pub fn fill_mod_draws(&mut self, fill: impl FnOnce(&[usize], &mut Vec<ModDrawChunk>)) {
+        self.mod_draws.clear();
+        if !self.bound_mod_slots.is_empty() {
+            fill(&self.bound_mod_slots, &mut self.mod_draws);
+        }
+    }
+
     /// Sets the current frame's value for a mod-declared shader-pack uniform.
     /// Returns `true` if `name` matches a declared uniform with compatible type.
     pub fn set_mod_uniform(&mut self, name: &str, value: ModUniformValue) -> bool {
@@ -180,17 +189,17 @@ impl PackPost {
 
     /// Whether mod pipeline `slot` is bound to a compiled shader-pack program in this pack.
     pub fn is_mod_pipeline_bound(&self, slot: usize) -> bool {
-        self.mod_passes.iter().any(|m| m.slot == slot)
+        self.bound_mod_slots.contains(&slot)
     }
 
     /// Whether this pack compiled at least one mod pipeline pass.
     pub fn has_mod_passes(&self) -> bool {
-        !self.mod_passes.is_empty()
+        !self.bound_mod_slots.is_empty()
     }
 
     /// Mod pipeline slots currently bound to compiled shader-pack programs in this pack.
-    pub fn bound_mod_slots(&self) -> impl Iterator<Item = usize> + '_ {
-        self.mod_passes.iter().map(|m| m.slot)
+    pub fn bound_mod_slots(&self) -> &[usize] {
+        &self.bound_mod_slots
     }
 
     /// Counts of currently allocated mod auxiliary `(depth, opaque_depth)` targets.

@@ -610,8 +610,8 @@ pub struct Post {
 
 impl Post {
     /// Every program that loaded: the passes', what draws the game's geometry, the shadow
-    /// pass's and its composites.
-    fn every_program(&self) -> impl Iterator<Item = &PostProgram> {
+    /// pass's and its composites, and bound mod pipeline programs.
+    pub fn every_program(&self) -> impl Iterator<Item = &PostProgram> {
         let draws = [
             &self.terrain,
             &self.terrain_cutout,
@@ -624,12 +624,16 @@ impl Post {
             &self.entities_translucent,
             &self.particles,
             &self.particles_translucent,
+            &self.beacon_beam,
             &self.damaged_block,
             &self.clouds,
+            &self.lines,
             &self.weather,
             &self.hand,
+            &self.hand_water,
             &self.shadow,
             &self.shadow_water,
+            &self.shadow_water_plain,
             &self.shadow_entities,
             &self.shadow_block,
         ];

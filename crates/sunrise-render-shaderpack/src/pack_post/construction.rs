@@ -1939,6 +1939,8 @@ pub struct PackPost {
     pub uniforms: FrameUniforms,
     /// Mod-declared render pipelines bound to translated pack programs.
     pub mod_passes: Vec<ModPackPass>,
+    /// Pipeline slots bound to `mod_passes`, cached once at build time for zero-alloc queries.
+    pub bound_mod_slots: Vec<usize>,
     /// Uploaded quad draw chunks for bound mod pipelines on the current frame.
     pub mod_draws: Vec<ModDrawChunk>,
     /// Mod-declared auxiliary depth targets and lazy usage flags (allocated only when sampled).
@@ -2176,12 +2178,7 @@ impl PackPost {
         let mut pre_mod_depth_sampled = vec![false; mods.depth_targets.len()];
         if !mods.depth_targets.is_empty() {
             let samplers = post
-                .programs
-                .iter()
-                .chain(&post.shadow_comp)
-                .chain(&post.water)
-                .chain(&post.weather)
-                .chain(post.mod_programs.iter().filter_map(|m| m.program.as_ref()))
+                .every_program()
                 .flat_map(|p| {
                     p.program
                         .iter()
@@ -2808,12 +2805,29 @@ impl PackPost {
                 .filter(|p| matches!(p.group, Group::Deferred | Group::Composite | Group::Final))
                 .chain(&water)
                 .chain(weather.iter().take(1).flatten())
+                .chain(
+                    mod_passes
+                        .iter()
+                        .filter(|m| {
+                            matches!(
+                                m.pass_slot,
+                                ModPassSlot::AfterTranslucentGbuffers | ModPassSlot::AfterWeather
+                            ) || m.depth_target.is_some()
+                        })
+                        .map(|m| &m.pass),
+                )
                 .flat_map(|p| std::iter::once(p).chain(&p.compute))
                 .any(|p| p.samplers.iter().any(|s| s.source == source))
         };
         let reads_depth2 = reads_depth(Source::Depth2);
+        let mod_writes_post_opaque_depth0 = mod_passes.iter().any(|m| {
+            matches!(
+                m.pass_slot,
+                ModPassSlot::AfterTranslucentGbuffers | ModPassSlot::AfterWeather
+            ) && m.depth_target.is_none()
+        });
         // Without a shader hand, depth1 also serves depth2: both exclude only translucency.
-        let depth1 = (water.is_some() || hand.is_some())
+        let depth1 = (water.is_some() || hand.is_some() || mod_writes_post_opaque_depth0)
             && (reads_depth(Source::Depth1) || (hand.is_none() && reads_depth2));
         let depth2 = hand.is_some() && reads_depth2;
         let water_mask = (water.iter())
@@ -2874,7 +2888,11 @@ impl PackPost {
             if let Some(idx) = m.depth_target
                 && !mod_depth_used.get(idx).copied().unwrap_or(false)
             {
-                if m.pass.samplers.iter().any(|s| s.source == Source::Depth) {
+                if m.pass
+                    .samplers
+                    .iter()
+                    .any(|s| matches!(s.source, Source::Depth | Source::Depth1 | Source::Depth2))
+                {
                     mod_depth_used[idx] = true;
                 } else {
                     m.depth_target = None;
@@ -3139,6 +3157,7 @@ impl PackPost {
         let jobs = (pack.jobs.as_ref())
             .map(std::cell::RefCell::take)
             .unwrap_or_default();
+        let bound_mod_slots = mod_passes.iter().map(|m| m.slot).collect();
         let built = PackPost {
             notes,
             setup_pending: true,
@@ -3321,6 +3340,7 @@ impl PackPost {
             shadow_writes,
             shadow_buffers,
             mod_passes,
+            bound_mod_slots,
             mod_draws: Vec::new(),
             mod_depth_decls: mods.depth_targets.to_vec(),
             mod_depth_used,
