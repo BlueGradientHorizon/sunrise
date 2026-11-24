@@ -174,11 +174,4 @@ impl Game<'_> {
             }
         }
     }
-
-    #[inline(always)]
-    pub(in crate::game) fn finish_piston_position_changes_renderer_client(&mut self, p: [i32; 3]) {
-        if let Some(renderer) = self.renderer.0.as_mut() {
-            renderer.invalidate_block_entity_position(p);
-        }
-    }
 }

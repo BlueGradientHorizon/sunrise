@@ -659,6 +659,8 @@ pub(in crate::game) mod piglin_admire_tests;
 pub(in crate::game) mod piglin_conversion_tests;
 #[path = "mobs/piglins.rs"]
 pub(in crate::game) mod piglins;
+#[path = "blocks/piston_carry_state.rs"]
+pub(in crate::game) mod piston_carry_state;
 #[cfg(test)]
 #[path = "blocks/place_feature_tests.rs"]
 pub(in crate::game) mod place_feature_tests;
@@ -1014,7 +1016,7 @@ pub(in crate::game) struct ServerState {
     pub(in crate::game::server_side) lead_killers: HashMap<u32, (u128, Dim)>,
     /// Animals a player fed into love (`Animal.loveCause`), with the guest it was by
     /// connection (None: the host). Breeding credits them, wherever they are.
-    pub(in crate::game) love_cause: HashMap<u32, Option<u32>>,
+    pub(in crate::game::server_side) love_cause: HashMap<u32, Option<u32>>,
     /// Mobs whose death (`LivingEntity.die`) has been handled.
     /// Looked up per mob each tick: a fast hasher (never iterated).
     pub(in crate::game::server_side) died: sunrise_client::fast_hash::FxHashSet<u32>,
@@ -1098,7 +1100,7 @@ pub(in crate::game) struct ServerState {
     pub(in crate::game::server_side) creaking: creaking::CreakingState,
     /// Reused candidate buffers for natural spawning.
     pub(in crate::game::server_side) spawn_scratch: natural_spawning::SpawnScratch,
-    pub(in crate::game) hoppers: HashMap<(i32, i32, i32), machines::HopperState>,
+    pub(in crate::game::server_side) hoppers: HashMap<(i32, i32, i32), machines::HopperState>,
     /// The source of the running dispenser behaviour, including across mod callbacks.
     pub(in crate::game::server_side) dispense_source: Option<dispenser::DispenseSource>,
     /// Open mod menus whose `menu_slot_changed` dispatch is currently on the call stack.
@@ -1106,7 +1108,7 @@ pub(in crate::game) struct ServerState {
     /// Backing blocks whose contents notice is on the call stack, innermost last.
     pub(in crate::game) contents_changing: Vec<(mod_api::LevelRef, BlockPos)>,
     /// The players with each mod container open, by level (`tick_mod_container_viewers`).
-    pub(in crate::game) mod_container_viewers:
+    pub(in crate::game::server_side) mod_container_viewers:
         HashMap<(&'static str, (i32, i32, i32)), mod_container_openers::ModContainerOpeners>,
     /// Where item entities are, while the block entities tick (hoppers).
     pub(in crate::game) item_columns: Option<machines::ItemColumns>,

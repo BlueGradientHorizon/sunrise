@@ -34,7 +34,7 @@ TamableAnimal.readAdditionalSaveData	port	crates/sunrise-client/src/entity_nbt/m
 TamableAnimal.handleEntityEvent	port	crates/sunrise-client-render/src/particles.rs::entity_event_burst	event 7 hearts, event 6 smoke, seven particles
 TamableAnimal.isTame	skip:other		a field: Mob.extra.tame
 TamableAnimal.setInSittingPose	skip:other		a field: Mob.extra.sitting, set by the sit goals and interactions
-TamableAnimal.tame	inline	crates/sunrise-client/src/game/mobs/creatures/mod.rs::interact_mob	wolf (bone, 1 in 3), cat and parrot set tame, owner and sitting in their interaction arms, then the tame_animal trigger; mobs/tame.rs::set_tame gives the wolf 40 health
+TamableAnimal.tame	inline	crates/sunrise-client/src/game/mobs/creatures/mod_server.rs::interact_mob	wolf (bone, 1 in 3), cat and parrot set tame, owner and sitting in their interaction arms, then the tame_animal trigger; mobs/tame.rs::set_tame gives the wolf 40 health
 TamableAnimal.getTeam	port	crates/sunrise-client/src/game/interface/scoreboard/mod.rs::mob_team	own team first, else a tamed pet's root owner's (getRootOwner through pet owners); `@e[team=]` (selector_extra_filter) and the teamkill criteria still read the pet's own name only
 TamableAnimal.die	port	crates/sunrise-client/src/game/items/combat.rs::Game::tell_owner_pet_died	ticked in #3514; `TamableAnimal.die` is cited at crates/sunrise-client/src/game/items/combat.rs:506
 TamableAnimal.shouldTryTeleportToOwner	port	crates/sunrise-client/src/mobs/tame.rs::owner_distance_sqr	the >= 144 comparison is made in TamePanic::tick and the follow-owner goal

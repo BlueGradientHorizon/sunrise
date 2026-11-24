@@ -192,7 +192,7 @@ CreativeModeTabs.registerColoredItems	skip:data		creative contents come from the
 CreativeModeTabs.tryRebuildTabContents	port	crates/sunrise-client/src/creative.rs::Creative::items	contents rebuilt on demand
 DebugStickItem	home	crates/sunrise-client/src/game/blocks/debug_stick.rs
 DoubleHighBlockItem.placeBlock	port	crates/sunrise-world/src/level/place.rs::Sim::place	the block above is cleared to air (or water when it was water) before the placed half, as `BlockItem.place` does for a double-high item
-DyeItem.interactLivingEntity	port	crates/sunrise-client/src/game/mobs/creatures/mod.rs::Game::interact_mob	a dye recolours an unsheared sheep's wool and a tamed wolf's or cat's collar, consumed with `item.dye.use`
+DyeItem.interactLivingEntity	port	crates/sunrise-client/src/game/mobs/creatures/mod_server.rs::Game::interact_mob	a dye recolours an unsheared sheep's wool and a tamed wolf's or cat's collar, consumed with `item.dye.use`
 DyeItem.tryApplyToSign	inline	crates/sunrise-client/src/game/interface/sign_edit.rs::Game::use_sign_applicator	dye colours the sign text
 EggItem.asProjectile	port	crates/sunrise-client/src/game/mobs/creatures/mod_server.rs::Game::throw_item	egg kinds in throw_item
 EggItem.use	inline	crates/sunrise-client/src/game/mobs/creatures/mod_server.rs::Game::throw_item	egg throw

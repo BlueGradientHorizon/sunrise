@@ -412,6 +412,8 @@ pub(in crate::game) mod remote_mob_data;
 pub(in crate::game) mod remote_mob_particles;
 #[path = "network/remote_objects.rs"]
 pub(in crate::game) mod remote_objects;
+#[path = "network/remote_projectiles.rs"]
+pub(in crate::game) mod remote_projectiles;
 #[path = "network/remote_removal.rs"]
 pub(in crate::game) mod remote_removal;
 #[cfg(test)]
@@ -545,6 +547,8 @@ pub(in crate::game) mod window_title;
 pub(in crate::game) mod world_name_tag_tests;
 #[path = "world/world_session.rs"]
 pub(in crate::game) mod world_session;
+#[path = "world/world_update.rs"]
+pub(in crate::game) mod world_update;
 #[path = "mobs/zombie_villagers.rs"]
 pub(in crate::game) mod zombie_villagers;
 
@@ -741,8 +745,6 @@ pub(in crate::game) mod projectile_spawned_tests_client;
 pub(in crate::game) mod raids_client;
 #[path = "network/remote/mod_client.rs"]
 pub(in crate::game) mod remote_client;
-#[path = "network/remote_projectiles_client.rs"]
-pub(in crate::game) mod remote_projectiles_client;
 #[path = "blocks/respawn_anchor_client.rs"]
 pub(in crate::game) mod respawn_anchor_client;
 #[path = "world/saving_client.rs"]
@@ -781,8 +783,6 @@ pub(in crate::game) mod villagers_client;
 pub(in crate::game) mod wind_client;
 #[path = "world/world_entry_client.rs"]
 pub(in crate::game) mod world_entry_client;
-#[path = "world/world_update_client.rs"]
-pub(in crate::game) mod world_update_client;
 
 pub(in crate::game) struct ClientState {
     /// `DebugEntryChunkGeneration`'s `lastPos` and `result`: F3's `Density` line is sampled
@@ -819,20 +819,20 @@ pub(in crate::game) struct ClientState {
     pub(in crate::game::client_side) weather_parameters: sunrise_client::weather::ParameterCache,
     pub(in crate::game::client_side) panorama_rotation: sunrise_client::gfx::panorama::Rotation,
     pub(in crate::game::client_side) lod_source_attempted: bool,
-    pub(in crate::game) lod_observe: sunrise_client::fast_hash::FxHashSet<(i32, i32)>,
+    pub(in crate::game::client_side) lod_observe: sunrise_client::fast_hash::FxHashSet<(i32, i32)>,
     /// The server level far terrain keeps the chunks of.
     pub(in crate::game::client_side) lod_level: Option<String>,
     /// The detail revision, centre and radius `Lod::update` last had covered for.
-    pub(in crate::game) lod_covered_at: Option<(u64, (i32, i32), i32)>,
+    pub(in crate::game::client_side) lod_covered_at: Option<(u64, (i32, i32), i32)>,
     /// Whether the view's columns have all arrived, and how new it is: large
     /// translucent pages wait for both before they shrink (`set_terrain_loading`).
-    pub(in crate::game) view_arrival: sunrise_client::streaming::ViewArrival,
+    pub(in crate::game::client_side) view_arrival: sunrise_client::streaming::ViewArrival,
     pub(in crate::game::client_side) drop_spam_throttler: sunrise_client::menu::DropSpamThrottler,
     /// `yRotO` / `xRotO` of the local player: the view at the start of the tick,
     /// moved by `Entity.turn` and a boat's `clampRotation` as the view is
     /// (`LocalPlayer.getRopeHoldPosition` eases the held lead from it).
-    pub(in crate::game) rope_rot_old: (f32, f32),
-    pub(in crate::game) previous_eye: f32,
+    pub(in crate::game::client_side) rope_rot_old: (f32, f32),
+    pub(in crate::game::client_side) previous_eye: f32,
     /// A quick craft drag over inventory slots: (button, game slots so far).
     pub(in crate::game::client_side) inv_drag: Option<(i32, Vec<usize>)>,
     /// The mouse buttons whose press a container hook took: their release is the hooks' too.
@@ -1200,8 +1200,8 @@ pub(in crate::game) struct ClientState {
     pub(in crate::game::client_side) native_mod_screen: Option<String>,
     /// The camera section (column, height) `pending_uploads` is sorted for, farthest first:
     /// while it stays, the list needs only its new meshes merged in, not a sort every frame.
-    pub(in crate::game) pending_uploads_order: Option<((i32, i32), i32)>,
-    pub(in crate::game) upload_pace: upload_pace::UploadPace,
+    pub(in crate::game::client_side) pending_uploads_order: Option<((i32, i32), i32)>,
+    pub(in crate::game::client_side) upload_pace: upload_pace::UploadPace,
     /// This frame's view frustum, for culling entities and block entities.
     pub(in crate::game::client_side) view_frustum: Option<sunrise_client::gfx::JoinedFrusta>,
     /// `SUNRISE_TICK_SCRIPT`'s scenario (game/world/tick_script.rs).
@@ -1282,7 +1282,7 @@ pub(in crate::game) struct ClientState {
     /// The world list's icon in progress (`GameRenderer.tryTakeScreenshotIfNeeded`):
     /// `None` without a local world, or once the save has its icon.png.
     pub(in crate::game::client_side) world_icon: Option<WorldIcon>,
-    pub(in crate::game) client_pick: native_hooks::ClientPick,
+    pub(in crate::game::client_side) client_pick: native_hooks::ClientPick,
     /// `Hud.bossOverlay`: the bars this window is showing.
     pub(in crate::game::client_side) boss_overlay: sunrise_client::boss_overlay::BossOverlay,
     /// `WorldBorderRenderer` and its render state.

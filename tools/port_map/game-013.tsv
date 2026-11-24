@@ -125,7 +125,7 @@ Sheep.aiStep	inline	crates/sunrise-client/src/mobs/ai.rs::species_ai_step	the ea
 Sheep.handleEntityEvent	port	crates/sunrise-client/src/mobs/sync.rs::entity_event	ticked in #3512; `Sheep.handleEntityEvent` is cited at crates/sunrise-client/src/mobs/sync.rs:132 (in a comment, so `where` names the enclosing fn)
 Sheep.getHeadEatPositionScale	inline	crates/sunrise-client/src/mobs/anim.rs::setup	Anim::Sheep arm: head drops by 9 times the scale (halved for a lamb)
 Sheep.getHeadEatAngleScale	inline	crates/sunrise-client/src/mobs/anim.rs::setup	Anim::Sheep arm: head tilt of pi/5 with the nibbling wobble
-Sheep.mobInteract	port	crates/sunrise-client/src/game/mobs/creatures/mod.rs::Game::interact_mob	shears drop the shearing loot and set sheared; a dye recolours an unsheared sheep
+Sheep.mobInteract	port	crates/sunrise-client/src/game/mobs/creatures/mod_server.rs::Game::interact_mob	shears drop the shearing loot and set sheared; a dye recolours an unsheared sheep
 Sheep.setColor	skip:other		stores the 4-bit wool colour in extra.color
 Sheep.get	skip:other		reads the colour as a data component for predicates; Sunrise has no entity component view
 Sheep.applyImplicitComponent	inline	crates/sunrise-client/src/entity_nbt.rs::apply_item_components	the minecraft:sheep/color component, a dye id

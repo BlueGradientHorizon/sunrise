@@ -36,7 +36,7 @@ Wolf.die	port	crates/sunrise-client/src/mobs/tame.rs::die	`drops::die` asks it f
 Wolf.getHeadRollAngle	port	crates/sunrise-client/src/mobs/tame.rs::anim
 Wolf.applyTamingSideEffects	port	crates/sunrise-client/src/mobs/tame.rs::set_tame
 Wolf.hurtArmor	port	crates/sunrise-client/src/mobs.rs::Mob::hurt_wolf_armor
-Wolf.tryToTame	port	crates/sunrise-client/src/game/mobs/creatures/mod.rs::Game::interact_mob	one in three tames; particles 7 or 6, sit, stop nav, clear target
+Wolf.tryToTame	port	crates/sunrise-client/src/game/mobs/creatures/mod_server.rs::Game::interact_mob	one in three tames; particles 7 or 6, sit, stop nav, clear target
 Wolf.handleEntityEvent	inline	crates/sunrise-client/src/mobs/tame.rs::ai_step	entity events 8 and 56 folded into the shake state in ai_step
 Wolf.getLeashOffset	port	crates/sunrise-client/src/mobs/leash.rs::leash_offset	(0, 0.6 times the eye height as a float product, 0.4 times the width)
 Wolf.checkWolfSpawnRules	port	crates/sunrise-client/src/mobs/spawn_rules.rs::check_spawn_rules	S::Wolf arm: wolves_spawnable_on and bright

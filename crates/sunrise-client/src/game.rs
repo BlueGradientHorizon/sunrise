@@ -1920,8 +1920,8 @@ pub(in crate::game) use server_side::piglin_conversion_tests;
 pub(in crate::game) use server_side::piglins;
 #[path = "game/blocks/piston_carry.rs"]
 mod piston_carry;
-#[path = "game/blocks/piston_carry_state.rs"]
-mod piston_carry_state;
+#[allow(unused_imports)]
+pub(in crate::game) use server_side::piston_carry_state;
 #[path = "game/world/piston_nbt.rs"]
 mod piston_nbt;
 #[path = "game/blocks/piston_push.rs"]
@@ -2055,8 +2055,8 @@ mod remote_mob_use;
 mod remote_mob_use_tests;
 #[allow(unused_imports)]
 pub(in crate::game) use client_side::remote_objects;
-#[path = "game/network/remote_projectiles.rs"]
-mod remote_projectiles;
+#[allow(unused_imports)]
+pub(in crate::game) use client_side::remote_projectiles;
 #[allow(unused_imports)]
 pub(in crate::game) use client_side::remote_removal;
 #[cfg(test)]
@@ -2452,11 +2452,11 @@ pub(in crate::game) use server_side::world_loading;
 mod world_rest;
 #[allow(unused_imports)]
 pub(in crate::game) use client_side::world_session;
+#[allow(unused_imports)]
+pub(in crate::game) use client_side::world_update;
 #[cfg(test)]
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::world_test_def_tests;
-#[path = "game/world/world_update.rs"]
-mod world_update;
 #[path = "game/items/worn_boots.rs"]
 mod worn_boots;
 #[path = "game/mobs/xp_orb_targeting.rs"]
@@ -3434,9 +3434,9 @@ struct Game<'a> {
     /// `world_biomes` as the biome files made it, before `native_biome_colors`.
     world_biomes_base: Option<Arc<Biomes>>,
     streaming: Streaming,
-    lod: client_side::ClientShared<Option<sunrise_client::lod::Lod>>,
+    lod: client_side::ClientOnly<Option<sunrise_client::lod::Lod>>,
     /// The server's BlueMap far terrain draws from, when the player named one.
-    lod_blue_map: client_side::ClientShared<Option<Arc<sunrise_client::bluemap::BlueMap>>>,
+    lod_blue_map: client_side::ClientOnly<Option<Arc<sunrise_client::bluemap::BlueMap>>>,
     options: Options,
     player: Option<PlayerMotion>,
     spawn: Option<Vec3>,
@@ -3504,7 +3504,7 @@ struct Game<'a> {
     setting_overrides: std::cell::RefCell<std::collections::BTreeMap<(String, String), String>>,
     /// The native damage hooks every level of this game lends to its hits.
     damage_hooks: sunrise_client::health::DamageHooks,
-    paused_mob_hurt: server_side::ServerShared<Option<Box<sunrise_client::mobs::PausedMobHurt>>>,
+    paused_mob_hurt: server_side::ServerOnly<Option<Box<sunrise_client::mobs::PausedMobHurt>>>,
     dropped: sunrise_client::join_seq::JoinList<ItemEntity>,
     particles: client_side::ClientShared<sunrise_client::particles::ParticleEngine>,
     /// `ItemPickupParticle`s: taken items, orbs and arrows flying to their collector.
@@ -3570,7 +3570,7 @@ struct Game<'a> {
     /// The world is superflat (`ServerLevel.isFlat`, for every dimension).
     world_flat: bool,
     /// A server's levels other than the one in place (game/world/levels.rs).
-    levels: server_side::ServerShared<levels::Levels>,
+    levels: server_side::ServerOnly<levels::Levels>,
     /// Nether portals: the player's, items' and mobs' (game/blocks/nether_portal.rs).
     portals: nether_portal::Portals,
     end: end::EndState,
@@ -3671,13 +3671,13 @@ struct Game<'a> {
     /// Private custom-book connection and placement state.
     native_net: native_net::NativeNet,
     /// Meshed sections waiting for an upload budget (Sunrise settings).
-    pending_uploads: client_side::ClientShared<Vec<sunrise_client::streaming::MeshUpload>>,
+    pending_uploads: client_side::ClientOnly<Vec<sunrise_client::streaming::MeshUpload>>,
     /// Empty between updates. Reuses storage for merging two sorted runs.
-    pending_uploads_merge: client_side::ClientShared<Vec<sunrise_client::streaming::MeshUpload>>,
+    pending_uploads_merge: client_side::ClientOnly<Vec<sunrise_client::streaming::MeshUpload>>,
     occlusion: client_side::ClientOnly<entity_culling::EntityOcclusion>,
     async_particle_culler: client_side::ClientOnly<RefCell<particle_culling::ParticleAsyncState>>,
     /// A scripted flight from the control socket (`fly`).
-    flight: client_side::ClientShared<Option<control::Flight>>,
+    flight: client_side::ClientOnly<Option<control::Flight>>,
     /// The running agent action from the control socket (game/runtime/agent/mod.rs).
     agent: agent::Agent,
     /// Widget commands waiting for the frame after a click (game/runtime/ui_control.rs).
@@ -5840,8 +5840,8 @@ struct WrappedClientInit {
     pending_initial_models:
         client_side::ClientOnly<Option<Box<initial_client_models::PendingClientStart>>>,
     stitching_block_atlas: client_side::ClientOnly<Option<Arc<RenderAssets>>>,
-    lod: client_side::ClientShared<Option<sunrise_client::lod::Lod>>,
-    lod_blue_map: client_side::ClientShared<Option<Arc<sunrise_client::bluemap::BlueMap>>>,
+    lod: client_side::ClientOnly<Option<sunrise_client::lod::Lod>>,
+    lod_blue_map: client_side::ClientOnly<Option<Arc<sunrise_client::bluemap::BlueMap>>>,
     video_modes: client_side::ClientOnly<sunrise_client::window::VideoModeList>,
     screen_state: client_side::ClientOnly<screen_build::ScreenState>,
     window: client_side::ClientShared<Option<Arc<Window>>>,
@@ -5869,14 +5869,14 @@ struct WrappedClientInit {
     pending_render_capture: client_side::ClientOnly<Option<std::sync::mpsc::Sender<String>>>,
     pending_bench:
         client_side::ClientOnly<Option<(Instant, std::sync::mpsc::Sender<String>, bool)>>,
-    flight: client_side::ClientShared<Option<control::Flight>>,
+    flight: client_side::ClientOnly<Option<control::Flight>>,
     ui_wait: client_side::ClientOnly<ui_control::UiWait>,
     input_trace: client_side::ClientOnly<input_trace::InputTrace>,
     repro: client_side::ClientOnly<repro::Repro>,
     occlusion: client_side::ClientOnly<entity_culling::EntityOcclusion>,
     async_particle_culler: client_side::ClientOnly<RefCell<particle_culling::ParticleAsyncState>>,
-    pending_uploads: client_side::ClientShared<Vec<sunrise_client::streaming::MeshUpload>>,
-    pending_uploads_merge: client_side::ClientShared<Vec<sunrise_client::streaming::MeshUpload>>,
+    pending_uploads: client_side::ClientOnly<Vec<sunrise_client::streaming::MeshUpload>>,
+    pending_uploads_merge: client_side::ClientOnly<Vec<sunrise_client::streaming::MeshUpload>>,
     mod_jobs: client_side::ClientOnly<mod_browser::Jobs>,
     client_item_use: client_side::ClientShared<Option<native_claimed_items::ActiveClientItemUse>>,
     client_tasks: client_side::ClientOnly<sunrise_client::net::ClientTasks>,
@@ -5894,11 +5894,11 @@ struct WrappedClientInit {
 struct WrappedServerInit {
     player_autosaves: server_side::ServerOnly<sunrise_client::lan::playerdata::Autosaves>,
     session_lock: server_side::ServerShared<Option<sunrise_client::save::SessionLock>>,
-    paused_mob_hurt: server_side::ServerShared<Option<Box<sunrise_client::mobs::PausedMobHurt>>>,
+    paused_mob_hurt: server_side::ServerOnly<Option<Box<sunrise_client::mobs::PausedMobHurt>>>,
     raiding: server_side::ServerShared<raids::Raiding>,
     world_tables: server_side::ServerShared<Option<WorldTables>>,
     server_loot: server_side::ServerOnly<sunrise_client::structure_blocks::LootSnapshot>,
-    levels: server_side::ServerShared<levels::Levels>,
+    levels: server_side::ServerOnly<levels::Levels>,
     tickets: server_side::ServerShared<sunrise_client::ticket_levels::ChunkTickets>,
     random_tick_sections:
         server_side::ServerOnly<sunrise_client::random_tick_sections::RandomTickSections>,
@@ -6219,8 +6219,8 @@ impl<'a> Game<'a> {
                 dialogs: client_side::ClientOnly::new(Default::default()),
                 pending_initial_models: client_side::ClientOnly::new(None),
                 stitching_block_atlas: client_side::ClientOnly::new(None),
-                lod: client_side::ClientShared::new(None),
-                lod_blue_map: client_side::ClientShared::new(None),
+                lod: client_side::ClientOnly::new(None),
+                lod_blue_map: client_side::ClientOnly::new(None),
                 video_modes: client_side::ClientOnly::new(Default::default()),
                 screen_state: client_side::ClientOnly::new(screen_build::ScreenState::default()),
                 window: client_side::ClientShared::new(None),
@@ -6241,7 +6241,7 @@ impl<'a> Game<'a> {
                 screenshot_sequence: client_side::ClientOnly::new(None),
                 pending_render_capture: client_side::ClientOnly::new(None),
                 pending_bench: client_side::ClientOnly::new(None),
-                flight: client_side::ClientShared::new(None),
+                flight: client_side::ClientOnly::new(None),
                 ui_wait: client_side::ClientOnly::new(Default::default()),
                 input_trace: client_side::ClientOnly::new(Default::default()),
                 repro: client_side::ClientOnly::new(Default::default()),
@@ -6249,8 +6249,8 @@ impl<'a> Game<'a> {
                 async_particle_culler: client_side::ClientOnly::new(RefCell::new(
                     Default::default(),
                 )),
-                pending_uploads: client_side::ClientShared::new(Vec::new()),
-                pending_uploads_merge: client_side::ClientShared::new(Vec::new()),
+                pending_uploads: client_side::ClientOnly::new(Vec::new()),
+                pending_uploads_merge: client_side::ClientOnly::new(Vec::new()),
                 mod_jobs: client_side::ClientOnly::new(Default::default()),
                 client_item_use: client_side::ClientShared::new(None),
                 client_tasks: client_side::ClientOnly::new(Default::default()),
@@ -6290,11 +6290,11 @@ impl<'a> Game<'a> {
             Box::new(WrappedServerInit {
                 player_autosaves: server_side::ServerOnly::new(Default::default()),
                 session_lock: server_side::ServerShared::new(None),
-                paused_mob_hurt: server_side::ServerShared::new(None),
+                paused_mob_hurt: server_side::ServerOnly::new(None),
                 raiding: server_side::ServerShared::new(Default::default()),
                 world_tables: server_side::ServerShared::new(None),
                 server_loot: server_side::ServerOnly::new(Default::default()),
-                levels: server_side::ServerShared::new(Default::default()),
+                levels: server_side::ServerOnly::new(Default::default()),
                 tickets: server_side::ServerShared::new(Default::default()),
                 random_tick_sections: server_side::ServerOnly::new(Default::default()),
                 others: server_side::ServerShared::new(Default::default()),

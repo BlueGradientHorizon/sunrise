@@ -1,15 +1,15 @@
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use super::Game;
 #[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::piston_carry_state::PositionChange;
+pub(in crate::game::client_side) use crate::game::server_side::piston_carry_state::PositionChange;
 #[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::piston_carry_state::PositionState;
+pub(in crate::game::client_side) use crate::game::server_side::piston_carry_state::PositionState;
 #[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::piston_carry_state::land_position_data;
+pub(in crate::game::client_side) use crate::game::server_side::piston_carry_state::land_position_data;
 #[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::piston_carry_state::take_position_data;
+pub(in crate::game::client_side) use crate::game::server_side::piston_carry_state::take_position_data;
 #[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::piston_carry_state::*;
+pub(in crate::game::client_side) use crate::game::server_side::piston_carry_state::*;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use sunrise_client::{
     block_entities::Pos,
@@ -23,5 +23,11 @@ impl Game<'_> {
     #[inline(always)]
     pub(in crate::game) fn finish_piston_position_changes_client(&mut self, at: Pos) {
         self.client.test_highlights.remove(&at);
+    }
+    #[inline(always)]
+    pub(in crate::game) fn finish_piston_position_changes_renderer_client(&mut self, p: [i32; 3]) {
+        if let Some(renderer) = self.renderer.0.as_mut() {
+            renderer.invalidate_block_entity_position(p);
+        }
     }
 }

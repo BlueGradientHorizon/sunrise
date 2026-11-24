@@ -97,7 +97,7 @@ Cat.updateRelaxStateOneAmount	port	crates/sunrise-client/src/mobs/tame.rs::cat_a
 Cat.canMate	inline	crates/sunrise-client/src/mobs/goals.rs::Breed::can_use	both tamed; the seeker's sitting pose does not matter, and only a wolf's partner is refused while it sits
 Cat.removeWhenFarAway	port	crates/sunrise-client/src/mobs/ai.rs::feline_removed_when_far	`!isTame() && tickCount > 2400`, read by check_despawn's removable flag
 Cat.reassessTameGoals	inline	crates/sunrise-client/src/mobs/tame.rs::register_cat	the player avoidance goal is conditioned on being untamed instead of added and removed
-Cat.tryToTame	inline	crates/sunrise-client/src/game/mobs/creatures/mod.rs::Game::interact_mob	one chance in three, then tame, sitting, event 7 or 6 and the advancement trigger
+Cat.tryToTame	inline	crates/sunrise-client/src/game/mobs/creatures/mod_server.rs::Game::interact_mob	one chance in three, then tame, sitting, event 7 or 6 and the advancement trigger
 Cat.CatAvoidEntityGoal.canContinueToUse	port	crates/sunrise-client/src/mobs/tame.rs::CatAvoid::can_continue	the untamed check is repeated on continue
 Cat.CatRelaxOnOwnerGoal.spaceIsOccupied	port	crates/sunrise-client/src/mobs/tame.rs::CatRelaxOnOwner::occupied	another lying or relaxing cat within 2 blocks of the spot
 Cat.CatRelaxOnOwnerGoal.canContinueToUse	port	crates/sunrise-client/src/mobs/tame.rs::CatRelaxOnOwner::can_continue	tame, not sitting, owner still asleep and the spot free
@@ -107,7 +107,7 @@ Ocelot.registerGoals	port	crates/sunrise-client/src/mobs/tame.rs::register_ocelo
 Ocelot.customServerAiStep	port	crates/sunrise-client/src/mobs/tame.rs::cat_anim	crouch and sprint pose from the move speed, shared with cats; nothing sets those speeds for an ocelot yet
 Ocelot.removeWhenFarAway	port	crates/sunrise-client/src/mobs/ai.rs::feline_removed_when_far	`!isTrusting() && tickCount > 2400`, the same rule as the cat's
 Ocelot.createAttributes	skip:data		attributes come from entity-types.json
-Ocelot.mobInteract	inline	crates/sunrise-client/src/game/mobs/creatures/mod.rs::Game::interact_mob
+Ocelot.mobInteract	inline	crates/sunrise-client/src/game/mobs/creatures/mod_server.rs::Game::interact_mob
 Ocelot.handleEntityEvent	port	crates/sunrise-client-render/src/particles.rs::entity_event_burst	events 41 and 40: hearts and smoke; nothing sends them without the trust roll
 Ocelot.reassessTrustingGoals	port	crates/sunrise-client/src/mobs/tame.rs::register_cat	gap: player: the player-avoidance and tempt goals are always registered; trust is not modelled, so a trusting ocelot keeps them
 Ocelot.checkSpawnObstruction	port	crates/sunrise-client/src/mobs/spawn_selection.rs::spawn_obstruction	unobstructed, no liquid, at or above sea level on grass or leaves
@@ -117,7 +117,7 @@ Ocelot.OcelotAvoidEntityGoal.canUse	port	crates/sunrise-client/src/mobs/tame.rs:
 Ocelot.OcelotAvoidEntityGoal.canContinueToUse	port	crates/sunrise-client/src/mobs/tame.rs::OcelotAvoid::can_continue	`!isTrusting() && super`, the same guard as its canUse
 Ocelot.OcelotTemptGoal.canScare	port	crates/sunrise-client/src/mobs/tame.rs::OcelotTempt::scared_unless_trusting	the tempt goal's canScare with a trusting ocelot's scare turned off
 AbstractFish.registerGoals	port	crates/sunrise-client/src/mobs/aquatic.rs::register	panic, player avoidance and random swimming; gap: player: creative players do not scare fish (the avoid goal skips them, vanilla only skips spectators)
-AbstractFish.mobInteract	port	crates/sunrise-client/src/game/mobs/creatures/mod.rs::Game::interact_mob	a water bucket scoops the fish with its bucket data
+AbstractFish.mobInteract	port	crates/sunrise-client/src/game/mobs/creatures/mod_server.rs::Game::interact_mob	a water bucket scoops the fish with its bucket data
 AbstractFish.FishSwimGoal.canUse	inline	crates/sunrise-client/src/mobs/aquatic.rs::register	Stroll::swimming(1.0, 40) is the random swim goal; fish never follow a leader so it always applies
 AbstractSchoolingFish.registerGoals	port	crates/sunrise-client/src/mobs/aquatic.rs::register	FollowFlockLeader is registered for cod, salmon and tropical fish
 AbstractSchoolingFish.isFollower	port	crates/sunrise-client/src/mobs/aquatic.rs::follows	its leader is alive, read by FishSwimGoal and FollowFlockLeader

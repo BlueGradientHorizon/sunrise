@@ -1,13 +1,24 @@
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use super::*;
 #[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::world_update::order_uploads;
+pub(in crate::game::server_side) use crate::game::client_side::world_update::order_uploads;
 #[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::world_update::section_distance_sq;
+pub(in crate::game::server_side) use crate::game::client_side::world_update::section_distance_sq;
 #[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::world_update::*;
+pub(in crate::game::server_side) use crate::game::client_side::world_update::*;
 
 impl Game<'_> {
+    #[inline(always)]
+    pub(in crate::game) fn update_world_save_server(
+        &mut self,
+        modified: &[std::sync::Arc<sunrise_client::chunk::Chunk>],
+    ) -> Result<usize> {
+        sunrise_client::spans::time("save_chunks", || {
+            self.save
+                .0
+                .save_later(modified, self.pack.assets.registry, world_biomes!(self))
+        })
+    }
     #[inline(always)]
     pub(in crate::game) fn update_world_server(&mut self, dim: Dim) {
         // The configuration connection is not a guest and owns no player area.
