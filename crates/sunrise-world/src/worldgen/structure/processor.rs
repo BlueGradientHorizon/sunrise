@@ -100,7 +100,7 @@ impl PosRule {
         *remaining -= 1;
         let kind = p["predicate_type"]
             .as_str()
-            .unwrap_or("minecraft:always_true");
+            .ok_or(DecodeError::Field("predicate_type"))?;
         let canonical = super::super::tags::identifier(kind)?;
         Ok(match canonical.as_str() {
             "minecraft:always_true" => Self::Always,
