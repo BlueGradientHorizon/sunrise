@@ -555,6 +555,7 @@ fn title_init_post_lists_and_removes_the_title_screens_own_widgets() {
     struct RemoveOptionsAndNotice {
         remove: Arc<AtomicBool>,
         seen: Arc<Mutex<Children>>,
+        pressed: Arc<AtomicBool>,
     }
     #[mod_api::__subscriptions]
     impl Hooks for RemoveOptionsAndNotice {
@@ -581,25 +582,40 @@ fn title_init_post_lists_and_removes_the_title_screens_own_widgets() {
                     .map(|child| child.id)
                     .collect();
                 assert_eq!(ids.len(), 2);
+                let rect = widgets
+                    .children()
+                    .iter()
+                    .find(|c| c.id == ids[0])
+                    .unwrap()
+                    .rect;
                 for id in ids {
                     assert!(widgets.remove(id));
                 }
+                // A replacement where Options... was.
+                let pressed = self.pressed.clone();
+                widgets.add_button(Button::new(
+                    rect,
+                    ApiText::literal("Replacement"),
+                    move |_, _| pressed.store(true, Ordering::SeqCst),
+                ));
             }
         }
     }
 
     let remove = Arc::new(AtomicBool::new(true));
     let seen = Arc::new(Mutex::new(Vec::new()));
+    let pressed = Arc::new(AtomicBool::new(false));
     let mods = vec![ModEntry::new(
         "title_children",
         Box::new(RemoveOptionsAndNotice {
             remove: remove.clone(),
             seen: seen.clone(),
+            pressed: pressed.clone(),
         }),
     )];
     with_mods(mods.into(), || {
         with_client_game(|game| {
-            let (_event_loop, _) = attach_offscreen_window(game);
+            let (_event_loop, win_id) = attach_offscreen_window(game);
             let saves = std::env::temp_dir().join("sunrise-title-children-test-no-saves");
             game.title = Some(game.new_title(saves));
             game.observe_screen();
@@ -704,6 +720,19 @@ fn title_init_post_lists_and_removes_the_title_screens_own_widgets() {
             assert!(shown.contains(&label("sunrise.title.not_affiliated")));
             assert_eq!(press(game, "sunrise.title.not_affiliated"), Action::Credits);
             assert_eq!(press(game, "menu.options"), Action::Options);
+
+            // Removed again at a re-init before the next frame: last frame drew Options..., but
+            // a click on its bounds reaches the replacement mounted there.
+            remove.store(true, Ordering::SeqCst);
+            game.commit_screen_transition();
+            let [x, y, w, h] = rect("menu.options");
+            move_mouse(game, win_id, f64::from(x + w / 2.0), f64::from(y + h / 2.0));
+            send_mouse_button(game, win_id, MouseButton::Left, true);
+            send_mouse_button(game, win_id, MouseButton::Left, false);
+            assert!(
+                pressed.load(Ordering::SeqCst),
+                "the replacement took the click"
+            );
         });
     });
 }
