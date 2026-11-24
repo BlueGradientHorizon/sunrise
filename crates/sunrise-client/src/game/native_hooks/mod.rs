@@ -260,6 +260,7 @@ mod data_maps_updated;
 #[cfg(test)]
 mod death_source_tests;
 mod default_components_bound;
+mod destroy_progress;
 mod dispense_method;
 mod draw_measures;
 mod effect_particle_modification;
@@ -558,6 +559,7 @@ mod should_display_fluid_overlay;
 mod should_hide_adjacent_fluid_face;
 mod should_redstone_wire_connect_to;
 mod sound_and_shader_helpers;
+mod sound_type;
 mod spread_players_teleport;
 mod state_at_viewpoint;
 mod stateful_block_entity;
