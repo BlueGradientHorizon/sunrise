@@ -523,18 +523,30 @@ mod tests {
                 region.sync().expect("sync");
             };
 
-            // Missing Status -> Err(Io)
-            write_raw_tag(2, 0, r#"{DataVersion:4775,xPos:2,zPos:0,sections:[]}"#);
+            // Missing Status at current DATA_VERSION (5023) -> Err(Io); older DataVersion without
+            // Status gets upgraded to minecraft:empty -> Ok(None) (not full).
+            write_raw_tag(2, 0, r#"{DataVersion:5023,xPos:2,zPos:0,sections:[]}"#);
             assert!(
                 matches!(reader.read([2, 0]), Err(SavedChunkError::Io(_))),
-                "missing Status must fail cleanly"
+                "missing Status at current DataVersion must fail cleanly"
+            );
+
+            // Non-string Status -> Err(Io)
+            write_raw_tag(
+                2,
+                1,
+                r#"{DataVersion:5023,xPos:2,zPos:1,Status:42,sections:[]}"#,
+            );
+            assert!(
+                matches!(reader.read([2, 1]), Err(SavedChunkError::Io(_))),
+                "non-string Status must fail cleanly"
             );
 
             // Non-full Status -> Ok(None)
             write_raw_tag(
                 3,
                 0,
-                r#"{DataVersion:4775,xPos:3,zPos:0,Status:"minecraft:biomes",sections:[]}"#,
+                r#"{DataVersion:5023,xPos:3,zPos:0,Status:"minecraft:biomes",sections:[]}"#,
             );
             assert!(
                 matches!(reader.read([3, 0]), Ok(None)),
@@ -545,7 +557,7 @@ mod tests {
             write_raw_tag(
                 4,
                 0,
-                r#"{DataVersion:4775,xPos:99,zPos:-99,Status:"minecraft:full",sections:[]}"#,
+                r#"{DataVersion:5023,xPos:99,zPos:-99,Status:"minecraft:full",sections:[]}"#,
             );
             assert!(
                 matches!(reader.read([4, 0]), Err(SavedChunkError::Io(_))),
@@ -557,7 +569,7 @@ mod tests {
             write_raw_tag(
                 5,
                 0,
-                r#"{DataVersion:4775,xPos:5,zPos:0,Status:"minecraft:full",sections:[{Y:2147483647,block_states:{palette:[{Name:"minecraft:netherrack"}]}},{Y:-2147483648,block_states:{palette:[{Name:"minecraft:netherrack"}]}}],block_entities:[{id:"minecraft:chest",x:2147483647,y:0,z:0}]}"#,
+                r#"{DataVersion:5023,xPos:5,zPos:0,Status:"minecraft:full",sections:[{Y:2147483647,block_states:{palette:[{Name:"minecraft:netherrack"}]}},{Y:-2147483648,block_states:{palette:[{Name:"minecraft:netherrack"}]}}],block_entities:[{id:"minecraft:chest",x:2147483647,y:0,z:0}]}"#,
             );
             let safe_snap = reader
                 .read([5, 0])
