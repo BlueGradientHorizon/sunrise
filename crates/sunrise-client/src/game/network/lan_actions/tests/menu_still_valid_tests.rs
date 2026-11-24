@@ -235,6 +235,7 @@ fn a_mod_menu_part_decides_whether_its_menu_stays_open() {
                 opening_item: None,
                 opener_block: None,
                 removed: false,
+                slot_changed_seen: None,
             };
             assert!(menu.asks_still_valid);
             let before = asked();

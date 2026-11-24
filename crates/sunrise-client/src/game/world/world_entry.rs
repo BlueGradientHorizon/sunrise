@@ -785,6 +785,7 @@ impl Game<'_> {
         self.install_fluid_interactions()?;
         self.install_profession_save_snapshots();
         self.share_mob_maps();
+        self.share_biome_keys();
         sunrise_client::datapack_net::serve(self.mods.datapack_registries.clone());
         Ok(())
     }
@@ -850,6 +851,7 @@ impl Game<'_> {
         }
         self.install_profession_save_snapshots();
         self.share_mob_maps();
+        self.share_biome_keys();
         self.world.pois.clear();
         for world in self.levels.parked_worlds() {
             world.pois.clear();

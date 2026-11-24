@@ -239,24 +239,7 @@ impl Game<'_> {
         self.native_client_commands.pending_commands.clear();
         self.native_client_commands.pending_chats.clear();
         let chat_tree = self.chat_tree_for(None);
-        // Minecraft.services() has the keys wherever the game is played, single player's own
-        // server included: its guests' chat keys are checked against them.
-        let services_keys = Arc::new(std::sync::Mutex::new(ServicesKeys::Pending));
-        let slot = services_keys.clone();
-        let _ = std::thread::Builder::new()
-            .name("Services keys".into())
-            .spawn(move || {
-                use sunrise_server_files::profiles;
-                let keys = profiles::fetch_profile_key_keys(&profiles::discovery_url());
-                *slot.lock().unwrap_or_else(|e| e.into_inner()) = match keys {
-                    Ok(keys) if !keys.is_empty() => ServicesKeys::Ready(keys),
-                    Ok(_) => ServicesKeys::Missing,
-                    Err(why) => {
-                        log::error!("Sunrise: {why}");
-                        ServicesKeys::Missing
-                    }
-                };
-            });
+        let services_keys = ServicesKeys::fetching();
         self.ui.registries.selector_tokens.clear();
         self.remote = Some(Remote {
             selector_metadata_supported: true,
@@ -425,6 +408,8 @@ impl Game<'_> {
             overworld_clock: None,
             clock_game_time: 0,
             chunk_center: (0, 0),
+            awaiting_viewed_chunk_center: false,
+            chunk_light: RemoteLight::default(),
             backlog: VecDeque::new(),
             backlog_since: None,
             server_links: Vec::new(),
@@ -440,7 +425,16 @@ impl Game<'_> {
         Ok(())
     }
     /// Prepare a client session and remote state to receive packets from a studio replay.
+    /// A replayed or viewed world checks its players' signed properties as a joined
+    /// client does.
     pub(in crate::game) fn init_remote_for_replay(&mut self) -> Result<()> {
+        // Minecraft builds its `Services` once per client: a replay that opens a new
+        // session on every seek keeps the keys the session it replaces is fetching or
+        // has fetched.
+        let services_keys = match &self.remote {
+            Some(remote) => remote.services_keys.clone(),
+            None => ServicesKeys::fetching(),
+        };
         self.reset_client_item_use();
         self.realm_session = false;
         self.lan_session = false;
@@ -532,7 +526,6 @@ impl Game<'_> {
         self.native_client_commands.pending_commands.clear();
         self.native_client_commands.pending_chats.clear();
         let chat_tree = self.chat_tree_for(None);
-        let services_keys = Arc::new(std::sync::Mutex::new(ServicesKeys::Ready(Vec::new())));
 
         self.ui.registries.selector_tokens.clear();
         self.remote = Some(Remote {
@@ -699,6 +692,8 @@ impl Game<'_> {
             overworld_clock: None,
             clock_game_time: 0,
             chunk_center: (0, 0),
+            awaiting_viewed_chunk_center: false,
+            chunk_light: RemoteLight::default(),
             backlog: VecDeque::new(),
             backlog_since: None,
             server_links: Vec::new(),
@@ -728,6 +723,16 @@ impl Game<'_> {
         if reason.is_none() && self.integrated.as_ref().is_some_and(|s| !s.stopped()) {
             return self.begin_closing_save(false);
         }
+        self.close_server_session(reason, |_| {})
+    }
+
+    /// Close the transport before finishing any pack feedback, but keep the pack manager's
+    /// prompt state until that feedback has been processed.
+    pub(in crate::game) fn close_server_session(
+        &mut self,
+        reason: Option<Text>,
+        before_pack_cleanup: impl FnOnce(&mut crate::game::server_packs::ServerPackState),
+    ) -> Result<()> {
         self.client_logging_out();
         self.finish_leave_server(reason)
     }
@@ -787,6 +792,7 @@ impl Game<'_> {
         self.mod_sounds.clear();
         self.update_window_title();
         self.gui.atlas.clear_object_skins();
+        before_pack_cleanup(&mut self.server_packs);
         self.server_packs_disconnect();
         self.code_of_conduct = None;
         self.reset_tutorial();
@@ -934,6 +940,7 @@ impl Game<'_> {
         r.level = spawn.dimension.clone();
         r.level_key = mod_api::__private::dimension_key(&spawn.dimension);
         if new_logical_player {
+            self.drop_spam_throttler = Default::default();
             r.abilities = sunrise_client::lan::abilities::PlayerAbilities::default();
             r.own_player_info = std::cell::OnceCell::new();
             // The new LocalPlayer, admitted now, counts its ticks from 0.
@@ -1023,6 +1030,7 @@ impl Game<'_> {
                 r.level_player_textures.clear();
                 // A new ClientLevel: a new chunk storage, centred on 0, 0.
                 r.chunk_center = (0, 0);
+                r.awaiting_viewed_chunk_center = false;
             }
             self.clear_lod();
             self.pending_uploads.clear();

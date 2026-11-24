@@ -507,16 +507,14 @@ impl Codec<Tag> for OptionalCompoundTag {
             .expect("OptionalCompoundTag must be validated before write");
     }
 }
-/// Network NBT read with `NbtAccounter.unlimitedHeap()` limits.
+/// Network NBT with `NbtAccounter.unlimitedHeap()` limits.
 pub struct TrustedNbt;
 impl Codec<Tag> for TrustedNbt {
     fn read(r: &mut Reader) -> Result<Tag> {
         r.nbt_within(nbt::Limits::unlimited_heap())
     }
     fn write(v: &Tag, w: &mut Writer) {
-        if w.try_nbt(v, nbt::Limits::unlimited_heap()).is_err() {
-            w.u8(0);
-        }
+        w.nbt_within(v, nbt::Limits::unlimited_heap())
     }
 }
 /// `ByteBufCodecs.TRUSTED_COMPOUND_TAG`: unlimited-heap NBT with a required compound root.

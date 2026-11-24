@@ -243,7 +243,7 @@ impl Game<'_> {
                         let chunk = (x >> 4, z >> 4);
                         if !self.world.shape.contains_y(y) {
                             false
-                        } else if self.load_full_chunk(None, chunk) {
+                        } else if self.load_full_chunk(None, chunk).is_ok() {
                             self.is_anchor(self.world.block(x, y, z))
                         } else {
                             log::error!(
@@ -541,22 +541,11 @@ impl Game<'_> {
             if consumed && catalyst_xp > 0 {
                 self.guest_catalyst_trigger(gi, conn, at);
             }
-            // ServerPlayer.die: the drops, the deathCount objectives, the
-            // experience (`dropAllDeathLoot`), then a kill credit's `killed_by`,
-            // awardKillScore and wither rose, then `deaths` and the two timers.
-            self.with_dying_guest(conn, |game| {
-                if let Some(eyes) = drops {
-                    game.drop_inventory(eyes, &dropping);
-                }
-                game.score_player_died();
-                if let Some(kind) = &killer {
-                    game.award_stat("killed_by", kind, 1);
-                }
-            });
-            // ServerPlayer.die: a spectator never reaches dropAllDeathLoot. The
-            // experience the catalyst took does not drop (`Player.skipDropExperience`),
-            // and `dropAllDeathLoot` drops it before the rose.
-            if drops.is_some() {
+            // ServerPlayer.die: a spectator never reaches dropAllDeathLoot. As
+            // NeoForge's `dropAllDeathLoot`, the mods hear the experience
+            // (`living_experience_drop`) before the item list (`living_drops`);
+            // the orbs still join the level after the items.
+            let orbs = drops.is_some().then(|| {
                 // LivingEntity.dropExperience: Player.isAlwaysExperienceDropper.
                 let now = self.world.game_time;
                 let attacker = if mod_api::__private::mods().is_empty() {
@@ -571,16 +560,28 @@ impl Game<'_> {
                     };
                     credit.and_then(|c| self.resolve_player_credit(c).map(|_| c.0))
                 };
-                if !consumed {
-                    let reward = self.guest_kill_experience(conn, killing_entity, reward as i32);
-                    let reward = self.living_experience_drop(
-                        id as u32,
-                        "minecraft:player",
-                        attacker,
-                        reward,
-                    );
-                    self.spawn_orbs(at, reward as u32);
+                let reward = self.guest_kill_experience(conn, killing_entity, reward as i32);
+                self.living_experience_drop(id as u32, "minecraft:player", attacker, reward)
+            });
+            // ServerPlayer.die: the drops, the deathCount objectives, the
+            // experience (`dropAllDeathLoot`), then a kill credit's `killed_by`,
+            // awardKillScore and wither rose, then `deaths` and the two timers.
+            self.with_dying_guest(conn, |game| {
+                if let Some(eyes) = drops {
+                    game.drop_inventory(eyes, &dropping);
                 }
+                game.score_player_died();
+                if let Some(kind) = &killer {
+                    game.award_stat("killed_by", kind, 1);
+                }
+            });
+            // The experience the catalyst took does not drop
+            // (`Player.skipDropExperience`), and `dropAllDeathLoot` drops it
+            // before the rose.
+            if let Some(reward) = orbs
+                && !consumed
+            {
+                self.spawn_orbs(at, reward as u32);
             }
             self.guest_killed_player_trigger(conn, at, killing);
             self.guest_award_kill_score(conn, at);

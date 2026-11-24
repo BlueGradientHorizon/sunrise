@@ -77,6 +77,7 @@ fn open_mod_menu_named(
             opening_item: None,
             opener_block: None,
             removed: false,
+            slot_changed_seen: None,
         });
         (window, g.menu_generation)
     });

@@ -160,6 +160,7 @@ fn setup(game: &mut Game<'_>) -> &'static ModMenuType {
         opening_item: None,
         opener_block: None,
         removed: false,
+        slot_changed_seen: None,
     });
     game.lan.as_mut().unwrap().hub.guests.push(guest);
     t

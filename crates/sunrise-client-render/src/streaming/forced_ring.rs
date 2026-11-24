@@ -109,7 +109,7 @@ mod tests {
         assert_eq!(ranges(&many).priority(276, 258), 4);
         // The generation plan fetches the 3x3 the chunk ticks with first.
         let world = World::new(sunrise_world::registry::BlockStateId(0), 0);
-        let (generating, finishing, failed) = (
+        let (generating, failed, finishing) = (
             FxHashSet::default(),
             FxHashSet::default(),
             FxHashSet::default(),

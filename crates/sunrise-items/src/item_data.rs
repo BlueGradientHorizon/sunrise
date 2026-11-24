@@ -1129,6 +1129,11 @@ pub fn food_properties(
 }
 
 impl ItemStack {
+    /// `ItemStack.isEmpty`: air and zero-count stacks are both empty.
+    pub fn is_empty(&self) -> bool {
+        self.count == 0 || &*self.item == "minecraft:air"
+    }
+
     pub fn new(item: &str, count: u32) -> Self {
         Self {
             item: Arc::from(item),

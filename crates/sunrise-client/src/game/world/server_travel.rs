@@ -2631,3 +2631,7 @@ mod changed_dimension_tests;
 #[cfg(test)]
 #[path = "server_travel/respawn_tests.rs"]
 mod respawn_tests;
+
+#[cfg(test)]
+#[path = "server_travel/respawn_target_tests.rs"]
+mod respawn_target_tests;

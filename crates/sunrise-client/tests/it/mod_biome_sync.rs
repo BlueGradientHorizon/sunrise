@@ -116,10 +116,24 @@ fn mod_biomes_follow_the_builtin_ones_and_leave_their_ids_alone() {
     assert_eq!(with.id("zinc:foo"), 2);
     assert_eq!(with.id("alpha:zed"), 3);
     assert_eq!(with.get(2).grass, 0x445566);
-    let particles = &with.get(2).ambient_particles;
+    let ambient_attr = sunrise_world::environment_attributes::attribute(
+        sunrise_world::environment_attributes::AMBIENT_PARTICLES,
+    )
+    .unwrap();
+    let Some(sunrise_world::environment_attributes::Entry::Override(
+        sunrise_world::environment_attributes::Value::AmbientParticles(particles),
+    )) = with.get(2).attributes.get(ambient_attr)
+    else {
+        panic!("mod biome zinc:foo must carry visual/ambient_particles");
+    };
     assert_eq!(particles.len(), 1);
-    assert_eq!(particles[0].0.name(), "ash");
-    assert_eq!(particles[0].1, 0.25);
+    assert_eq!(
+        *particles[0].particle,
+        sunrise_world::particle_options::ParticleOptions::Simple(
+            sunrise_world::particle_type::ParticleType::Ash,
+        )
+    );
+    assert_eq!(particles[0].probability, 0.25);
     assert_eq!(with.name(3), "alpha:zed");
     // The tables that read a biome's file see the mod's, and never a built-in's.
     assert!(with.pack_file("zinc:foo").is_some());
@@ -130,7 +144,7 @@ fn mod_biomes_follow_the_builtin_ones_and_leave_their_ids_alone() {
         .with_packs([("pack:late", &pack), ("zinc:foo", &pack)])
         .unwrap();
     assert_eq!(world.id("zinc:foo"), 2);
-    assert!(world.get(2).ambient_particles.is_empty());
+    assert!(world.get(2).attributes.get(ambient_attr).is_none());
     assert_eq!(world.id("pack:late"), 4);
 }
 
@@ -171,9 +185,13 @@ fn a_server_sends_mod_biomes_with_data_to_a_client_that_has_the_vanilla_pack() {
     assert_eq!(table.id("minecraft:plains"), 0);
     assert_eq!(table.id("zinc:foo"), 2);
     assert_eq!(table.get(2).grass, 0x445566);
+    let ambient_attr = sunrise_world::environment_attributes::attribute(
+        sunrise_world::environment_attributes::AMBIENT_PARTICLES,
+    )
+    .unwrap();
     assert_eq!(
-        table.get(2).ambient_particles,
-        load(&server).get(2).ambient_particles
+        table.get(2).attributes.get(ambient_attr),
+        load(&server).get(2).attributes.get(ambient_attr)
     );
     assert_eq!(table.id("alpha:zed"), 3);
 

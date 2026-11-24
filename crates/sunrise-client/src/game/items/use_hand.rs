@@ -805,6 +805,7 @@ impl Game<'_> {
             except: None,
             entity: None,
             inline_range,
+            seed: None,
         })
         .then_some(())
     }

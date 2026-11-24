@@ -13,9 +13,7 @@ fn format(value: &Value) -> String {
         Value::Float(f) => bits(*f),
         Value::Rgb(v) => v.map(bits).join(" "),
         Value::Argb(v) => v.map(bits).join(" "),
-        Value::AmbientParticles(particles) => {
-            serde_json::to_string(particles).expect("decoded ambient particles are JSON values")
-        }
+        Value::AmbientParticles(list) => format!("{list:?}"),
         Value::Other(json) => json.to_string(),
     }
 }

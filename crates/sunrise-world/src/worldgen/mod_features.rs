@@ -18,9 +18,11 @@ use super::{
 };
 use crate::heightmap::HeightmapType;
 use crate::registry::{BlockRegistry, BlockStateId};
+use mod_api::__private::BiomeKeys;
+use mod_api::BiomeKey;
 use std::any::Any;
 use std::collections::BTreeMap;
-use std::sync::{Arc, OnceLock};
+use std::sync::{Arc, OnceLock, RwLock};
 use sunrise_core::nbt::Compound;
 use sunrise_core::random::RandomSource;
 
@@ -61,12 +63,37 @@ pub trait ModFeatureTarget {
     fn set_block(&mut self, position: [i32; 3], state: BlockStateId, flags: i32) -> bool;
     /// Whether the block at `position` is in block tag `tag`.
     fn block_in_tag(&mut self, position: [i32; 3], tag: &str) -> Option<bool>;
+    /// `WorldGenLevel.getBiome`: the key of the biome at `position` in the world's published
+    /// [`ModBiomeKeys`].
+    fn biome(&mut self, position: [i32; 3]) -> Option<BiomeKey>;
     fn min_y(&mut self) -> Option<i32>;
     fn max_y(&mut self) -> Option<i32>;
     fn height(&mut self, kind: HeightmapType, x: i32, z: i32) -> Option<i32>;
     /// Set validated block-entity data for the current block at `position`. A worldgen region
     /// cannot change block entities in a read-only full chunk.
     fn set_block_entity(&mut self, position: [i32; 3], nbt: Compound) -> bool;
+}
+
+/// The biome keys a world's mod features answer [`ModFeatureTarget::biome`] with: the snapshot
+/// of the world's current data load, which the game publishes on every load and reload, so
+/// that a feature's key equals the one `Host::biome_key` gives. Shared by a generator's workers
+/// and by the live level: a decoration takes the snapshot current when its region opens, the live
+/// level reads the current one, and before the game publishes one no biome has a key.
+#[derive(Clone, Default)]
+pub struct ModBiomeKeys(Arc<RwLock<Arc<BiomeKeys>>>);
+impl ModBiomeKeys {
+    pub fn publish(&self, keys: Arc<BiomeKeys>) {
+        *self
+            .0
+            .write()
+            .unwrap_or_else(|poisoned| poisoned.into_inner()) = keys;
+    }
+    pub fn current(&self) -> Arc<BiomeKeys> {
+        self.0
+            .read()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .clone()
+    }
 }
 
 /// The caller's random, object-safe: the same stream the placement chain and the built-in
@@ -139,6 +166,12 @@ impl<W: FeatureWorld + PlacementContext> ModFeatureTarget for PlacingWorld<'_, W
     }
     fn block_in_tag(&mut self, position: [i32; 3], tag: &str) -> Option<bool> {
         self.0.block_matches_tag(position, tag).ok()
+    }
+    fn biome(&mut self, position: [i32; 3]) -> Option<BiomeKey> {
+        if !self.charge() {
+            return None;
+        }
+        self.world.biome_key(position).ok()
     }
     fn min_y(&mut self) -> Option<i32> {
         self.0.min_y().ok()

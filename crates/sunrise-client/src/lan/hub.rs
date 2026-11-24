@@ -2763,6 +2763,16 @@ impl Hub {
             let uuid = g.uuid;
             let generation = g.menu_generation;
             if let Some(menu) = g.menu.as_mut() {
+                let inputs = menu.take_processing_inputs(&mut g.native_menu);
+                if !inputs.is_empty() {
+                    self.native_menu_events.push(
+                        super::menu::NativeMenuEvent::ReturnProcessingInputs {
+                            conn: g.conn,
+                            items: inputs,
+                            drop_instead: true,
+                        },
+                    );
+                }
                 let closed = menu.native_removed(uuid, generation, &mut g.native_menu, false);
                 self.native_menu_events.extend(closed);
             }
@@ -6801,6 +6811,7 @@ mod tests {
                     opening_item: None,
                     opener_block: None,
                     removed: false,
+                    slot_changed_seen: None,
                 });
             });
         };
@@ -8666,6 +8677,7 @@ mod tests {
                 asks_still_valid: false,
                 opener_block: None,
                 removed: false,
+                slot_changed_seen: None,
             });
         });
         let drain_data =

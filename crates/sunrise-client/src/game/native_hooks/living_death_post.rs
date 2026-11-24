@@ -138,7 +138,11 @@ mod tests {
                 mob.ai.last_hurt_by_player = 100;
                 game.mobs.last_mut().unwrap().ai.last_hurt_by_player = 100;
                 game.mob_die(&mob);
-                assert_eq!(*heard.lock().unwrap(), ["death", "loot", "xp", "post"]);
+                assert_eq!(
+                    *heard.lock().unwrap(),
+                    ["death", "xp", "loot", "post"],
+                    "NeoForge's dropAllDeathLoot: the experience, then the drop list"
+                );
                 {
                     let post = post.lock().unwrap();
                     assert_eq!(post.entity, Some(mob.id));
@@ -254,8 +258,8 @@ mod tests {
 
                 assert_eq!(
                     *heard.lock().unwrap(),
-                    ["death", "loot", "xp", "post"],
-                    "the inventory drop, the message and the experience ran before it"
+                    ["death", "xp", "loot", "post"],
+                    "the message, the experience and then the inventory drop ran before it"
                 );
                 let post = post.lock().unwrap();
                 assert_eq!(post.entity, Some(id));

@@ -823,7 +823,7 @@ handle, an entity the client doesn't track and a level it doesn't show:
   and `bounding_box` are its own, `level` is the dragon's, and it is no living entity, mob or dragon handle; it
   stops resolving when its dragon does, and removing one is refused.
 - `entity.nbt(host)` and `merge_nbt(host, compound)` read and change its data as `/data get` and `/data merge entity`
-  do (merging works on mobs, dropped items, armor stands and item frames; never on players, as in vanilla);
+  do (merging reloads mobs, dropped items, armor stands, item frames, arrows, spectral arrows and tridents; never players);
   `tags`, `add_tag`, `remove_tag` work as `/tag` does, and `name` is its name as plain text.
   `set_custom_name(host, Some(text))` names it and `None` takes the name away (`Entity.setCustomName`);
   `custom_name_visible` and `set_custom_name_visible` read and change whether the name shows at any distance. Both
@@ -1360,7 +1360,7 @@ start and again after each resource reload, and a server builds one when it star
 mods and again on each `/reload`, so a reload captures fresh settings. A LAN or dedicated server's hub holds the server's
 current one, so its Tab list and chat names, and the clicks of its players, see it too.
 
-`item_stacked_on_other(host, event, canceled)` is NeoForge's `ItemStackedOnOtherEvent` plus vanilla's `Item.overrideStackedOnOther` / `Item.overrideOtherStackedOnMe` on `ItemPart` (version 7), fired inside a pickup click with the game's `Host` and the cursor and clicked slot lent in `event.click` (`click.direction` distinguishes `Event`, `CarriedOnOther`, and `OtherStackedOnMe` in vanilla `AbstractContainerMenu.tryItemClickBehaviourOverride` order); see its hook documentation. `player_name_format(context, username,
+`item_stacked_on_other(host, event, canceled)` is NeoForge's `ItemStackedOnOtherEvent` plus vanilla's `Item.overrideStackedOnOther` / `Item.overrideOtherStackedOnMe` on `ItemPart` (version 7), fired inside a pickup click with the game's `Host` and the cursor and clicked slot lent in `event.click` (`click.direction` distinguishes `Event`, `CarriedOnOther`, and `OtherStackedOnMe` in vanilla `AbstractContainerMenu.tryItemClickBehaviourOverride` order); see its hook documentation. `item_destroyed(host, stack, item, damage_type, drops)` is `IItemExtension.onDestroyed` (`ItemStack.onDestroyed`) on `ItemPart`, fired on the server inside a transaction with the original intact stack before built-in components are cleared and before the destroyed dropped item entity is discarded, returning validated drop stacks to spawn at the entity's position. `player_name_format(context, username,
 displayname)` and `player_tab_list_name_format(context, player, name, display_name)` format a player's name for chat and
 commands (both sides) and for the Tab list (server). The name hooks are contract version `2`: a mod written for `1` takes the
 context as a new first argument of the `Hooks` method, and reads the side from it instead of `event.side`.
@@ -1442,6 +1442,9 @@ mod mixin or use it replaces in its design or PR."#]
   `move_resources`, so a pipe or machine can move items transactionally.
 
 - `host.set_display_slot(DisplaySlot::Sidebar, Some(objective))` shows an objective from the server scoreboard.
+- What a server mod needs for a public server's screens: `player.set_sidebar(host, sidebar)` shows one
+  player a sidebar of up to 15 lines (a text, and one where the score would be) that only their client holds (the
+  server's scoreboard never sees it; a mod sends it again when they rejoin), or takes it away with `None`;
   `player.tab_list(host, header, footer)` sets the lines over and under their Tab list; `native_tick_stats()` reads the
   server's tick rate and average tick time in ms (`/tick query`'s); and `player.set_sleep_ignored(host, ignored)` leaves a
   player out of `players_sleeping_percentage`'s count until they are in bed (players away from the keyboard). It refuses

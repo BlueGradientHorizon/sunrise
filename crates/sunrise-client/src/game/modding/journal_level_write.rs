@@ -313,8 +313,8 @@ impl LevelWriteHost for JournalLevelWrite<'_, '_> {
         if self.game.lan.is_none() || !super::native_hooks::sound_id(sound) {
             return false;
         }
-        self.game
-            .emit_level_effect(PendingWrite::Sound(NativeSound {
+        self.game.emit_level_effect(PendingWrite::Sound {
+            sound: NativeSound {
                 dimension: self.level.dimension_id(),
                 sound: sound.to_owned(),
                 inline_range: None,
@@ -326,7 +326,9 @@ impl LevelWriteHost for JournalLevelWrite<'_, '_> {
                 except: None,
                 entity: None,
                 skip_hooks: false,
-            }));
+            },
+            seed: None,
+        });
         true
     }
     fn send_particles(
@@ -349,7 +351,7 @@ impl LevelWriteHost for JournalLevelWrite<'_, '_> {
             &options,
             state,
             |id| registry.state(id).is_some(),
-            at,
+            std::slice::from_ref(&at),
             spread,
             speed,
         ) {
@@ -383,7 +385,12 @@ impl LevelWriteHost for JournalLevelWrite<'_, '_> {
 pub(super) enum PendingWrite {
     BlockTick(super::Dim, BlockPos, BlockId, i32),
     FluidTick(super::Dim, BlockPos, FluidKind, i32),
-    Sound(NativeSound),
+    /// A level or entity-bound sound. `seed` is the caller's (`ServerLevel.playSeededSound`), or
+    /// `None` to draw the level's next sound seed when the sound is published (`Level.playSound`).
+    Sound {
+        sound: NativeSound,
+        seed: Option<i64>,
+    },
     Particles(QueuedParticle),
     Event {
         level: super::Dim,
@@ -490,8 +497,11 @@ impl Game<'_> {
     pub(super) fn emit_level_effect(&mut self, write: PendingWrite) {
         if self.has_level_transaction() {
             let write = match write {
-                PendingWrite::Sound(sound) => match self.resolve_native_sound(sound) {
-                    Some(resolved) => PendingWrite::Sound(resolved),
+                PendingWrite::Sound { sound, seed } => match self.resolve_native_sound(sound) {
+                    Some(resolved) => PendingWrite::Sound {
+                        sound: resolved,
+                        seed,
+                    },
                     None => return,
                 },
                 other => other,
@@ -529,10 +539,11 @@ impl Game<'_> {
                         .schedule_fluid(game.world.game_time, pos, fluid, delay);
                 });
             }
-            PendingWrite::Sound(mut sound) => {
-                // The network's sound seed advances only for a published sound.
+            PendingWrite::Sound { mut sound, seed } => {
+                // The network's sound seed advances only for a published sound, and not for one
+                // whose caller gave its seed.
                 if let Some(host) = &self.lan {
-                    sound.seed = host.hub.next_sound_seed();
+                    sound.seed = seed.unwrap_or_else(|| host.hub.next_sound_seed());
                     if deliver_now {
                         self.send_resolved_native_sound(&sound);
                     } else if self.creatures.asking_level_sound {

@@ -103,6 +103,7 @@ impl Game<'_> {
             except,
             entity: None,
             inline_range: None,
+            seed: None,
         })
     }
     /// `Entity.gameEvent(event)`: game event `event` (`minecraft:step`...)

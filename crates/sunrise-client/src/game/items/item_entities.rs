@@ -141,6 +141,7 @@ impl Game<'_> {
                 continue;
             }
             let mut expiry_discarded = false;
+            let mut env_destroyed = None;
             'tick: {
                 if round.halted(items[i].id) {
                     break 'tick;
@@ -190,9 +191,20 @@ impl Game<'_> {
                     self.apply_item_splash(splash);
                 }
                 if discarded {
-                    pass.removed[i] = true;
-                    pass.gone = true;
-                    pass.cells.remove(i, item.previous);
+                    if merging
+                        && item.health <= 0
+                        && mod_api::__private::item_listens(
+                            mod_api::HookId::ItemDestroyed,
+                            &item.stack.item,
+                        )
+                    {
+                        pass.cells.moved(i, item.previous, item.position);
+                        env_destroyed = Some((item.id, item.position, "minecraft:generic"));
+                    } else {
+                        pass.removed[i] = true;
+                        pass.gone = true;
+                        pass.cells.remove(i, item.previous);
+                    }
                     break 'tick;
                 }
                 if merging && !no_physics {
@@ -328,7 +340,7 @@ impl Game<'_> {
                 let registry = self.pack.assets.registry;
                 let block_registries = &self.pack.block_registries;
                 let hooks = &self.damage_hooks;
-                let environment = item.environment_tick_with_hook(
+                let environment = item.environment_tick_with_hook_deferring_spill(
                     &mut self.world,
                     self.res.facts(),
                     self.res.items(),
@@ -380,12 +392,53 @@ impl Game<'_> {
                     );
                 }
                 if !environment.alive {
+                    if merging
+                        && mod_api::__private::item_listens(
+                            mod_api::HookId::ItemDestroyed,
+                            &item.stack.item,
+                        )
+                    {
+                        env_destroyed = Some((
+                            item.id,
+                            item.position,
+                            environment.destroyed_by.unwrap_or("minecraft:generic"),
+                        ));
+                    } else {
+                        let spilled = item.spill_destroyed_contents(self.res.items());
+                        pass.removed[i] = true;
+                        pass.gone = true;
+                        pass.cells.remove(i, item.position);
+                        for stack in spilled {
+                            destroyed.push((stack, item.position));
+                        }
+                    }
+                }
+            }
+            if let Some((id, at, damage_type)) = env_destroyed {
+                let mut drops = Vec::new();
+                let given = self.give_items_back(items, &mut pass, i, round, |game, round| {
+                    drops = if let Some(k) =
+                        native_ticks::place(&game.dropped, i, |item| item.id == id)
+                    {
+                        game.destroy_item_entity_drops(k, damage_type)
+                    } else {
+                        Vec::new()
+                    };
+                    if alone_post && !game.dropped.iter().any(|item| item.id == id) {
+                        game.native_tick_post_one(round, id, native_ticks::ITEM);
+                    }
+                });
+                (items, next) = (given.items, given.next);
+                for stack in drops {
+                    destroyed.push((stack, at));
+                }
+                if let Some(at_idx) = given.at {
+                    i = at_idx;
                     pass.removed[i] = true;
                     pass.gone = true;
-                    pass.cells.remove(i, item.position);
-                    for stack in environment.spilled {
-                        destroyed.push((stack, item.position));
-                    }
+                    pass.cells.remove(i, items[i].position);
+                } else {
+                    continue;
                 }
             }
             // `Entity.discard` calls `ServerLevel.EntityCallbacks.onTrackingEnd` within

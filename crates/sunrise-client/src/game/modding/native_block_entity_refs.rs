@@ -427,7 +427,10 @@ impl Game<'_> {
                 *block_entity.item_slot_mut(index) = stack;
             });
         }
-        self.journal_chunk_save((key.0 >> 4, key.2 >> 4));
+        self.journal_chunk_save(
+            (key.0 >> 4, key.2 >> 4),
+            super::transactions::SaveChunkScope::Level,
+        );
         Ok(true)
     }
 

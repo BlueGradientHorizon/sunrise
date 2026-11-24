@@ -1384,14 +1384,11 @@ impl Game<'_> {
                             destroyed = item.health <= 0;
                             if destroyed {
                                 let at = item.position;
-                                // Health was already reduced above. Run the shared
-                                // onDestroyed path without applying damage twice.
-                                destroyed_contents.extend(
-                                    item.hurt(self.res.items(), 0)
-                                        .unwrap_or_default()
-                                        .into_iter()
-                                        .map(|stack| (stack, at)),
-                                );
+                                // Health was already reduced above. Fire `ItemStack.onDestroyed`
+                                // with the original intact stack before spilling and discarding.
+                                let spilled = self.destroy_item_entity_drops(i, damage_type);
+                                destroyed_contents
+                                    .extend(spilled.into_iter().map(|stack| (stack, at)));
                             }
                         }
                     }

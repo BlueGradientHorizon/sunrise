@@ -128,4 +128,22 @@ impl StructuresRegistrar for PartRegistrar {
             ty,
         });
     }
+    fn add_pool_element_type(&mut self, name: &str, ty: Arc<dyn crate::PoolElementType>) {
+        let id = match self.owned_declaration_id(name) {
+            Ok(id) => id,
+            Err(reason) => {
+                self.refused.push(reason);
+                return;
+            }
+        };
+        if self.pool_element_types.iter().any(|t| *t.id == *id) {
+            self.refused.push(format!(
+                "{} registered pool element type {id} twice",
+                self.mod_id
+            ));
+            return;
+        }
+        self.pool_element_types
+            .push(PoolElementTypeInfo { id: id.into(), ty });
+    }
 }

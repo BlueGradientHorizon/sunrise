@@ -86,6 +86,7 @@ the modifiers before you drew from.
 | `block_entity` | Apply saved NBT to the current block's block entity |
 | `state`, `state_with`, `is_air`, `metadata` | Resolve a registered `BlockKey` to a `BlockState`, and test states |
 | `min_y`, `max_y` | The level's height bounds |
+| `biome` | The biome at a position (`WorldGenLevel.getBiome`), or `None` where the level can't be read |
 
 During FEATURES decoration, `WorldGenRegion.ensureCanWrite` allows the center chunk and its
 adjacent chunks, including diagonals. If the center is upgrading, its generation height also

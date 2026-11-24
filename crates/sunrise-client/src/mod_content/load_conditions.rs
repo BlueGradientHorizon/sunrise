@@ -306,6 +306,12 @@ pub fn build_with_conditions(
                     .map(|(owner, file)| (owner.as_str(), file.as_str())),
             ),
     )?;
+    let builtin_sounds = biomes::load_sound_events(base);
+    let registered_sound = |name: &str| {
+        builtin_sounds
+            .as_ref()
+            .is_some_and(|b| crate::music::registered_sound(b, name))
+    };
     let mut modifiers = Vec::new();
     let mut modifier_sources = Vec::new();
     let mut structure_modifiers = Vec::new();
@@ -318,7 +324,13 @@ pub fn build_with_conditions(
                 &mut warnings,
             )?);
         } else {
-            modifiers.extend(biomes::Modifier::read(owner, &file, &text, &mut warnings)?);
+            modifiers.extend(biomes::Modifier::read(
+                owner,
+                &file,
+                &text,
+                &registered_sound,
+                &mut warnings,
+            )?);
             // No-op and unsupported serializers still occupy their accepted registry keys.
             modifier_sources.push([owner.clone(), file, text]);
         }

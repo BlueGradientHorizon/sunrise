@@ -51,6 +51,7 @@ impl Screen {
             | Self::Friends
             | Self::ServerLinks
             | Self::ConfirmLink
+            | Self::DemoIntro
             | Self::DialogWarning
             | Self::CommandBlock
             | Self::BlockEditor
@@ -78,6 +79,7 @@ impl Screen {
             | Self::Social
             | Self::ServerLinks
             | Self::ConfirmLink
+            | Self::DemoIntro
             | Self::DialogWarning
             | Self::DebugOptions => true,
             Self::Playing
@@ -1083,6 +1085,7 @@ mod tests {
     fn menu_blur_matches_vanilla_screen_backgrounds() {
         for screen in [
             Screen::Options,
+            Screen::DemoIntro,
             Screen::Stats,
             Screen::Advancements,
             Screen::WorldOptions,
@@ -1136,6 +1139,7 @@ mod tests {
             Screen::Friends,
             Screen::ServerLinks,
             Screen::ConfirmLink,
+            Screen::DemoIntro,
             Screen::DialogWarning,
             Screen::CommandBlock,
             Screen::BlockEditor,

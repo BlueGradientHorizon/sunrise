@@ -3318,12 +3318,24 @@ pub fn biome_modifiers_over_packs(
             Err(_) => Ok(BTreeMap::new()),
         }
     };
+    let builtin_sounds = biomes::load_sound_events(root);
+    let registered_sound = |name: &str| {
+        builtin_sounds
+            .as_ref()
+            .is_some_and(|b| crate::music::registered_sound(b, name))
+    };
     let mut warnings = Vec::new();
     let mut modifiers = Vec::new();
     let sources = || saved.modifiers.iter().chain(declared);
     biomes::check_registry(sources().map(|[owner, file, _]| (owner.as_str(), file.as_str())))?;
     for [m, file, text] in sources() {
-        modifiers.extend(biomes::Modifier::read(m, file, text, &mut warnings)?);
+        modifiers.extend(biomes::Modifier::read(
+            m,
+            file,
+            text,
+            &registered_sound,
+            &mut warnings,
+        )?);
     }
     // What the generator reads without the modifiers over the packs.
     let packed = packs.apply("biomes", read(BIOMES)?);

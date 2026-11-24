@@ -39,7 +39,7 @@ impl Game<'_> {
         menu: &str,
         book: &str,
     ) -> bool {
-        self.shown_native_screen().is_some_and(|screen| {
+        self.shown_active_native_screen().is_some_and(|screen| {
             screen.menu.window == window
                 && screen.menu.name == menu
                 && screen.layout_revision == nonce
@@ -75,7 +75,7 @@ impl Game<'_> {
     pub(in crate::game) fn native_book_placement_window(
         &self,
     ) -> Option<sunrise_client::recipe_book::placement_sync::Window> {
-        let screen = self.shown_native_screen()?;
+        let screen = self.shown_active_native_screen()?;
         let menu = screen.menu.name.as_str();
         mod_api::RecipeBookLayout::registered(menu)?;
         Some(sunrise_client::recipe_book::placement_sync::Window {

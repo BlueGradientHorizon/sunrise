@@ -23,6 +23,9 @@ mod registered_commands;
 #[cfg(test)]
 #[path = "native_server/selector_tests.rs"]
 mod selector_tests;
+#[cfg(test)]
+#[path = "native_server/sidebar_tests.rs"]
+mod sidebar_tests;
 
 use super::api_values::{TryIntoApi, TryIntoEngine};
 use super::{Dim, Game, respawn_anchor::RespawnConfig};
@@ -41,7 +44,8 @@ use mod_api::LevelRef;
 use mod_api::{
     ActionOutcome, ActionRefused, EntityRef, ExperienceOrbRef, ExperienceOrbWriteError, FakeEffect,
     GameMode, GlobalPos, Identifier, LevelReadError, PlayerAction, PlayerActionSetup,
-    PlayerDataRefusal, PlayerFood, PlayerRef, PlayerRespawnConfig, ScopedActionResult,
+    PlayerDataRefusal, PlayerFood, PlayerRef, PlayerRespawnConfig, ScopedActionResult, Sidebar,
+    TextFormError, VirtualHost,
 };
 use serde_json::{Map, Value, json};
 use std::sync::{
@@ -52,7 +56,9 @@ use std::{collections::HashMap, path::PathBuf, sync::Arc};
 use sunrise_client::{
     command::{Arg, ArgType, Context, Dispatcher},
     items::ItemStack,
-    lan::{abilities::PlayerAbilities, data::component_nbt, guest::Guest},
+    lan::{
+        abilities::PlayerAbilities, data::component_nbt, guest::Guest, scoreboard::SidebarContents,
+    },
     motion::PlayerMotion,
     text::Text,
 };
@@ -1497,6 +1503,13 @@ impl Game<'_> {
         (self.native_acting_player() == Some(player)).then_some("")
     }
 
+    pub(super) fn player_virtual_host(&self, player: PlayerRef) -> Option<&VirtualHost> {
+        if !self.is_logical_server() {
+            return None;
+        }
+        self.online_player_record(player)?.sender.virtual_host()
+    }
+
     /// The brand the player's client announced when it connected (`ServerPlayer.clientBrand`),
     /// empty when it sent none. Displaced connected players keep theirs; an acting player with
     /// no known connection has an empty one. None for a stale or unavailable player.
@@ -1558,6 +1571,24 @@ impl Game<'_> {
         };
         host.hub.send_to(g.conn, &packet);
         true
+    }
+    /// Resolve the physical recipient before converting any of the supplied text.
+    pub(super) fn player_set_sidebar(
+        &mut self,
+        player: PlayerRef,
+        sidebar: Option<Sidebar>,
+    ) -> Result<bool, TextFormError> {
+        let Some(conn) = self.online_player_record(player).map(|guest| guest.conn) else {
+            return Ok(false);
+        };
+        let contents = sidebar
+            .map(|sidebar| {
+                let items = self.res.item_defaults().entries();
+                SidebarContents::prepare(sidebar, &|item| items.contains_key(item)).map(Box::new)
+            })
+            .transpose()?;
+        self.after_commit(super::transactions::After::PersonalSidebar(conn, contents));
+        Ok(true)
     }
     /// The lines over and under that player's list of players (Tab):
     /// `ClientboundTabListPacket`, an empty text for none. False when they

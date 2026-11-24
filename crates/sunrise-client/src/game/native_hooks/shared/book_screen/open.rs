@@ -120,12 +120,14 @@ impl Game<'_> {
             }
         }
         screen.slots.resize_with(backing_slots, || None);
+        let title = remote.menu_title_snapshot().cloned();
         self.mod_screen = Some(OpenNativeScreen {
             menu: OpenNativeMenu {
                 key,
                 window: *window,
                 generation: remote.menu.generation,
                 name: name.clone(),
+                title,
                 block: block.map(str::to_owned),
                 pos,
                 mod_type,
@@ -138,6 +140,7 @@ impl Game<'_> {
             },
             screen: instance,
             shown: false,
+            detached: false,
         });
         true
     }
