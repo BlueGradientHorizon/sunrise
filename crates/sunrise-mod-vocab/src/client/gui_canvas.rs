@@ -1,7 +1,7 @@
 //! Lexical, transactional GUI drawing.
 
 use crate::{
-    ItemStack, StackWriteError, Text, TextLayoutError, TextLayoutSize, TextLayoutSpec,
+    Identifier, ItemStack, StackWriteError, Text, TextLayoutError, TextLayoutSize, TextLayoutSpec,
     text::TextFormError,
 };
 
@@ -203,6 +203,26 @@ pub trait GuiCanvas {
         region: GuiBlitRegion,
         argb: u32,
         blend: Blend,
+    ) -> Result<(), GuiDrawError>;
+
+    /// `GuiGraphicsExtractor.blit` of a standalone texture, a picture outside the GUI atlas such
+    /// as a guide book's chapter art, at `dst = [x, y, w, h]`, tinted by ARGB `argb`, under the
+    /// current pose and scissor. `id` is the exact resource (`mymod:textures/gui/chapter.png`),
+    /// read from the active resource stack, mod packs included, never rewritten: name the
+    /// `textures/` folder and `.png` yourself. The quad samples `region.uv / region.tex` to
+    /// `(region.uv + region.src) / region.tex` unclamped, as `innerBlit` does (a negative extent
+    /// flips that axis), with the sampler the winning `.png.mcmeta` sets: `blur` filters
+    /// linearly, `clamp` clamps to the edge, else nearest and repeat, no mipmaps. The image loads
+    /// on first use and stays loaded until the next resource reload. A missing or undecodable
+    /// image, or a `.png.mcmeta` vanilla cannot read, draws vanilla's missing texture in its
+    /// place rather than refusing. A non-finite `uv` is refused with
+    /// [`GuiDrawError::NotFinite`] and a zero `tex` side with [`GuiDrawError::BadBlitRegion`].
+    fn texture(
+        &mut self,
+        id: &Identifier,
+        dst: [f32; 4],
+        region: GuiBlitRegion,
+        argb: u32,
     ) -> Result<(), GuiDrawError>;
 
     /// Draw the player `uuid`'s skin head (`PlayerFaceExtractor.extractRenderState`): the face,

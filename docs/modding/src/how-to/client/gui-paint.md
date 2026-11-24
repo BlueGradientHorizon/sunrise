@@ -103,6 +103,10 @@ For replacing or wrapping a HUD status layer, see [HUD drawing](hud-drawing.md).
   extents and texture-axis divisors in pixels. A negative source extent mirrors that axis; a zero
   divisor is refused. `Textured` blends normally, `Vignette` darkens what is under
   it (`dst * (1 - src)`), `Nausea` is additive and `Crosshair` inverts it.
+- `canvas.texture` draws part of a standalone texture by its exact resource `Identifier`
+  (`mymod:textures/book/chapter.png`), any image of the resource stack outside the GUI atlas, with the
+  same `GuiBlitRegion`. A missing image draws the missing texture instead of refusing
+  ([Standalone textures](hud-drawing.md#standalone-textures)).
 
 ## Refusals
 

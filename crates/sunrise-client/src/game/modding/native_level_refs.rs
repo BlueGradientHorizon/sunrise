@@ -270,6 +270,11 @@ impl Game<'_> {
     pub(super) fn level_logical_height(&self, level: LevelRef) -> Option<i32> {
         Some(self.native_level_read_world(level)?.shape.logical_height)
     }
+    /// `LevelData.isHardcore`: the world's flag on a server, the login packet's on a client.
+    pub(super) fn level_is_hardcore(&self, level: LevelRef) -> Option<bool> {
+        self.native_level_read_world(level)?;
+        Some(self.level.hardcore)
+    }
 
     /// `BlockGetter.getBlockFloorHeight` with an empty collision context.
     /// Uses the normal dynamic shapes, querying below only when this shape is empty.

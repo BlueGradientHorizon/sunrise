@@ -439,6 +439,23 @@ impl GuiCanvas for GameGuiCanvas<'_, '_> {
         self.paint(|batch, _| quad.paint_blit(batch, uv, src, tex, blend))
     }
 
+    fn texture(
+        &mut self,
+        id: &mod_api::Identifier,
+        dst: [f32; 4],
+        GuiBlitRegion { uv, src, tex }: GuiBlitRegion,
+        argb: u32,
+    ) -> Result<(), GuiDrawError> {
+        rect_end(dst)?;
+        if !uv.into_iter().all(f32::is_finite) {
+            return Err(GuiDrawError::NotFinite);
+        }
+        if tex.contains(&0) {
+            return Err(GuiDrawError::BadBlitRegion);
+        }
+        self.paint(|batch, atlas| batch.texture(atlas, id, dst, uv, [src, tex], abgr(argb)))
+    }
+
     fn player_face(
         &mut self,
         uuid: u128,

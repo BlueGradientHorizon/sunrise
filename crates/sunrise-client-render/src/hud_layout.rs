@@ -561,6 +561,13 @@ pub struct StatusBarHeights {
     right: StatusColumn,
 }
 
+impl StatusBarHeights {
+    /// The left and right columns' heights (NeoForge's `Hud.leftHeight`, `rightHeight`).
+    pub fn heights(&self) -> [i32; 2] {
+        [self.left.height, self.right.height]
+    }
+}
+
 struct StatusColumn {
     height: i32,
 }

@@ -2826,6 +2826,12 @@ impl Game<'_> {
                     if self.combat.hit_landed
                         && let Some(attacker) = attacker
                     {
+                        let victim = self.consuming_player_entity().id();
+                        self.mob_weapon_post_attack(
+                            attacker,
+                            (victim, "minecraft:player"),
+                            "minecraft:mob_attack",
+                        );
                         self.remember_mob_target(
                             attacker,
                             self.player.as_ref().map(|p| p.entity_id as u32),
@@ -2852,6 +2858,12 @@ impl Game<'_> {
                     self.combat.hit_landed =
                         self.mob_hits_player(amount, from, "minecraft:mob_attack");
                     if self.combat.hit_landed {
+                        let victim = self.consuming_player_entity().id();
+                        self.mob_weapon_post_attack(
+                            attacker,
+                            (victim, "minecraft:player"),
+                            "minecraft:mob_attack",
+                        );
                         self.remember_mob_target(
                             attacker,
                             self.player.as_ref().map(|p| p.entity_id as u32),
@@ -2859,10 +2871,19 @@ impl Game<'_> {
                         self.give_player_effect(effect, ticks, amplifier);
                     }
                 }
-                MobEvent::DamagePlayer { amount, from, kind } => {
+                MobEvent::DamagePlayer {
+                    amount,
+                    from,
+                    kind,
+                    wielder,
+                } => {
                     let hurt = self.mob_hits_player(amount, from, kind);
                     if kind == "minecraft:spear" {
                         self.combat.hit_landed = hurt;
+                    }
+                    if hurt && let Some(wielder) = wielder {
+                        let victim = self.consuming_player_entity().id();
+                        self.mob_weapon_post_attack(wielder, (victim, "minecraft:player"), kind);
                     }
                 }
                 MobEvent::ElderCurse { at, silent } => self.elder_curse(at, silent),
