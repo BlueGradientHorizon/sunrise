@@ -1863,8 +1863,9 @@ fn borrowed_mob_landing_posts_before_the_travel_tail() {
                     Some([0.0, -0.5, 0.0]),
                 ),
                 MobLandingMoment::Post,
-                MobLandingMoment::NextHit,
+                // The pig's EntityTickEvent.Post closes its own turn, before the next mob's.
                 MobLandingMoment::TickFinished(Some(mod_api::Tag::Double(0))),
+                MobLandingMoment::NextHit,
             ]);
             assert_eq!(*trace.lock().unwrap(), expected);
             let pig = &game.mobs[0];
@@ -2400,9 +2401,10 @@ fn arrow_hits_name_the_projectile_on_players_mobs_and_the_dragon() {
 
     for (target, owner, gone, entity, causing) in [
         (Who::Player, Some(Who::Mob(42)), false, 7, 42),
-        (Who::Player, None, false, 7, 0),
+        // AbstractArrow.onHitEntity: an ownerless arrow causes its own hit.
+        (Who::Player, None, false, 7, 912),
         (Who::Mob(43), Some(Who::Player), false, 43, 7),
-        (Who::Mob(43), None, false, 43, 0),
+        (Who::Mob(43), None, false, 43, 912),
         (Who::Mob(SPECIAL), Some(Who::Player), false, 44, 7),
         (Who::Mob(43), Some(Who::Mob(42)), true, 43, 42),
     ] {

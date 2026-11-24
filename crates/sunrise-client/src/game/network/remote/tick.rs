@@ -1549,75 +1549,80 @@ impl Game<'_> {
         self.sync_moving_pistons();
     }
 
-    /// The local player's `LocalPlayer.tick`, once the client has loaded. The
-    /// input `sendChanges` sends after the block entities ticked, if it runs.
+    /// The local player's turn in `ClientLevel.tickEntities`: `EntityTickEvent.Pre` and
+    /// `.Post` around `LocalPlayer.tick`, which runs once the client has loaded. The input
+    /// `sendChanges` sends after the block entities ticked, if it runs.
     pub(super) fn tick_remote_own_player(&mut self) -> Result<Option<u8>> {
+        use crate::game::native_ticks::{PLAYER, TickRound};
         // ClientLevel.tickEntities skips a removed entity. Keep the last player state
         // for LevelExtractor.extractPlayerState, which still sees it on the death screen.
-        let removed = self.local_player_removed_by_death();
-        // ClientLevel.tickNonPassenger's Entity.commonTick, before LocalPlayer.tick: the admitted
-        // player counts this tick whether it has its body yet, has loaded, sleeps or rides.
-        if let Some(r) = self
-            .remote
-            .as_mut()
-            .filter(|r| r.has_logical_player && !removed)
-        {
-            r.own_tick_count = r.own_tick_count.wrapping_add(1);
-        }
-        if self.player.is_none() || removed {
+        if self.local_player_removed_by_death() {
             return Ok(None);
         }
         // LocalPlayer.tick and sendChanges run once the client has loaded (hasClientLoaded),
         // wherever the player is: a chunk that hasn't come yet has no blocks here, as vanilla's
         // empty chunk has none, so the player falls through it until the chunk comes.
-        if !self.remote.as_ref().is_some_and(|r| r.loaded_sent) {
-            return Ok(None);
+        let loaded = self.player.is_some() && self.remote.as_ref().is_some_and(|r| r.loaded_sent);
+        // The entities that tick before the player pushed it before its turn began, so
+        // before its Pre.
+        if loaded {
+            let pushed = self.remote_pushes(true);
+            self.apply_remote_push(pushed);
         }
-        self.drop_spam_throttler.tick();
-        let entity_collisions = self.entity_collisions(Mover::Player);
-        // Those added before it tick before it: their pushes reach this move.
-        let pushed = self.remote_pushes(true);
-        let sprint_window = self.settings.sprint_window;
-        // The hook endpoints bracket Player.tick only, not the level pass before it.
-        let player = (mod_api::__private::listened(mod_api::HookId::PlayerTickPre)
-            || mod_api::__private::listened(mod_api::HookId::PlayerTickPost))
-        .then(|| self.local_player())
-        .flatten();
-        // The entities that tick before the player pushed it before its tick began, so
-        // before Pre.
-        self.apply_remote_push(pushed);
-        // The flag a glide starts from is the one before the hook, so a listener that starts
-        // the glide from `player_tick_pre` is reported as this tick's start.
-        let fall_flying_before_hooks = self.player.as_ref().is_some_and(|p| p.fall_flying);
-        if let Some(player) = player {
-            self.native_player_tick_pre(mod_api::__private::PlayerTickPreCall { player });
-        }
-        // EntityTickEvent.Pre and Post bracket this player's own tick like any other entity's;
-        // a canceled Pre skips the tick (ClientLevel.tickNonPassenger), and then no Post follows.
-        let told = self.native_tick_told();
-        let mut tick_round = crate::game::native_ticks::TickRound::with_told(told);
-        let own = u32::try_from(self.own_entity_id()).ok();
+        // NeoForge's ClientLevel.tickNonPassenger: Pre, then unless it was canceled
+        // Entity.commonTick, LocalPlayer.tick and Post. A passenger's tickPassenger runs
+        // commonTick first and tells Pre inside Entity.rideTick, so it counts whatever Pre
+        // answers. The admitted player is told and counted whether it has its body yet, has
+        // loaded, sleeps or rides.
+        let own = self
+            .remote
+            .as_ref()
+            .filter(|r| r.has_logical_player)
+            .map(|r| r.entity_id as u32);
+        let mut round = TickRound::with_told(self.native_tick_told());
         let ticks = own.is_none_or(|id| {
-            self.native_tick_pre_one(&mut tick_round, id, crate::game::native_ticks::PLAYER)
+            let passenger = self.riding.is_some();
+            if passenger {
+                self.count_own_tick();
+            }
+            let ticks = self.native_tick_pre_one(&mut round, id, PLAYER);
+            if ticks && !passenger {
+                self.count_own_tick();
+            }
+            ticks
         });
-        self.native_local_player_fit_sizes();
-        let result = if ticks {
+        let result = if ticks && loaded {
+            self.drop_spam_throttler.tick();
+            let entity_collisions = self.entity_collisions(Mover::Player);
+            let sprint_window = self.settings.sprint_window;
+            // PlayerTickEvent.Pre and Post bracket Player.tick, inside the entity's turn.
+            let player = (mod_api::__private::listened(mod_api::HookId::PlayerTickPre)
+                || mod_api::__private::listened(mod_api::HookId::PlayerTickPost))
+            .then(|| self.local_player())
+            .flatten();
+            // The flag a glide starts from is the one before the hook, so a listener that
+            // starts the glide from `player_tick_pre` is reported as this tick's start.
+            let fall_flying_before_hooks = self.player.as_ref().is_some_and(|p| p.fall_flying);
+            if let Some(player) = player {
+                self.native_player_tick_pre(mod_api::__private::PlayerTickPreCall { player });
+            }
+            self.native_local_player_fit_sizes();
             let result = self.tick_local_player(
                 entity_collisions,
                 sprint_window,
                 Some(fall_flying_before_hooks),
             );
-            if let Some(id) = own {
-                self.native_tick_post_one(&tick_round, id, crate::game::native_ticks::PLAYER);
+            // `EntityEvent.Size` for the pose the tick set.
+            self.native_local_player_size();
+            if let Some(player) = player {
+                self.native_player_tick_post(mod_api::__private::PlayerTickPostCall { player });
             }
             result
         } else {
             Ok(None)
         };
-        // `EntityEvent.Size` for the pose the tick set.
-        self.native_local_player_size();
-        if let Some(player) = player {
-            self.native_player_tick_post(mod_api::__private::PlayerTickPostCall { player });
+        if ticks && let Some(id) = own {
+            self.native_tick_post_one(&round, id, PLAYER);
         }
         // The entities added after the player tick after it, so after Post: `Entity.push`
         // adds each to the player's deltaMovement during their tick, from where they and
@@ -1625,9 +1630,18 @@ impl Game<'_> {
         // tick replaces that deltaMovement, push included
         // (`ClientPacketListener.handleSetEntityMotion`, `handleMovePlayer`), so the push
         // lands on the velocity now, not on the next move.
-        let after = self.remote_pushes(false);
-        self.apply_remote_push(after);
+        if loaded {
+            let after = self.remote_pushes(false);
+            self.apply_remote_push(after);
+        }
         result
+    }
+
+    /// `Entity.commonTick`'s tickCount for the local player.
+    fn count_own_tick(&mut self) {
+        if let Some(r) = self.remote.as_mut() {
+            r.own_tick_count = r.own_tick_count.wrapping_add(1);
+        }
     }
 
     /// Humanoid held arm poses, once the tick has set equipment and use state.

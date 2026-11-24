@@ -306,6 +306,8 @@ fn player_tick_hooks_observe_advanced_dig_progress_and_skipped_body_still_ticks_
                     .unwrap();
                 let start = 20_000;
                 game.lan.as_mut().unwrap().hub.ticks = start;
+                // MinecraftServer.createLevels opens the Overworld first, so it ticks first.
+                game.native_level_opened(Dim::Overworld);
                 for (dim, conns) in [(Dim::Overworld, [1, 3]), (Dim::Nether, [2, 4])] {
                     game.enter_level(dim).unwrap();
                     game.world

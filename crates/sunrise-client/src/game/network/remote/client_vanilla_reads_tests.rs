@@ -164,10 +164,11 @@ fn a_client_counts_its_copies_ticks_and_a_respawned_player_starts_at_zero() {
 }
 
 /// The count follows the client's entity pass, not the player's motion: an admitted local player
-/// counts before `LocalPlayer.tick`'s loaded-only update and while it sleeps, a frozen level
-/// still ticks the player and the cart carrying it (`TickRateManager.isEntityFrozen`). A root
-/// counts at its own visit, after its `EntityTickEvent.Pre`; `PlayerTickEvent.Pre`, inside the
-/// player's tick, already sees the player's new count.
+/// is told and counts before `LocalPlayer.tick`'s loaded-only update and while it sleeps, a frozen
+/// level still ticks the player and the cart carrying it (`TickRateManager.isEntityFrozen`). A
+/// root counts at its own visit, after its `EntityTickEvent.Pre`; a passenger counts before its
+/// Pre (`tickPassenger`); `PlayerTickEvent.Pre`, inside the player's tick, already sees the
+/// player's new count.
 #[test]
 #[ignore = "daily"]
 fn the_client_count_follows_the_entity_tick_not_the_motion() {
@@ -237,8 +238,9 @@ fn the_client_count_follows_the_entity_tick_not_the_motion() {
                     assert_eq!(counts(game), [Some(3), Some(2), Some(3)]);
 
                     let seen = seen.lock().unwrap();
-                    // The pig's Pre read 0 then 1 (before its visit counts it), the player's
-                    // (once loaded) 2 then 3.
+                    // The pig's Pre read 0 then 1 (before its visit counts it). The player's
+                    // Pre read 0 before loading, 1 asleep, then 3 as the cart's passenger,
+                    // counted first; its PlayerTickEvent.Pre (once loaded) read 2 and 3.
                     let of = |id: u32| {
                         seen.iter()
                             .filter(|(seen, _)| *seen == id)
@@ -246,7 +248,7 @@ fn the_client_count_follows_the_entity_tick_not_the_motion() {
                             .collect::<Vec<_>>()
                     };
                     assert_eq!(of(20), [Some(0), Some(1)]);
-                    assert_eq!(of(PLAYER), [Some(2), Some(3)]);
+                    assert_eq!(of(PLAYER), [Some(0), Some(1), Some(2), Some(3), Some(3)]);
                 });
             });
         },
@@ -315,11 +317,11 @@ fn a_canceled_root_does_not_count_and_a_passenger_does() {
                             .map(|(_, count)| *count)
                             .collect::<Vec<_>>()
                     };
-                    // Told together, the family's Pre runs before any of its visits: each reads
-                    // the count its last tick left.
+                    // A root's Pre reads the count its last tick left; a passenger's, told inside
+                    // its ride visit (`Entity.rideTick`), the count that visit just added.
                     assert_eq!(of(20), [Some(0), Some(0)]);
                     assert_eq!(of(21), [Some(0), Some(1)]);
-                    assert_eq!(of(22), [Some(0), Some(1)]);
+                    assert_eq!(of(22), [Some(1), Some(2)]);
                     assert_eq!(of(23), [Some(0), Some(1)]);
                 });
             });
@@ -350,7 +352,8 @@ fn callbacks_read_other_entities_counts_as_their_visits_left_them() {
                     };
                     let counts =
                         [20, 21, 22].map(|id| host.entity(id).and_then(|e| e.tick_count(host)));
-                    for &id in entities {
+                    // The pigs' own turns only: the local player's is another test's.
+                    for &id in entities.iter().filter(|id| (20..=22).contains(*id)) {
                         self.0.lock().unwrap().push((moment, id, counts));
                     }
                 }
