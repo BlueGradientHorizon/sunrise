@@ -1189,6 +1189,8 @@ mod native_datafix;
 mod native_datafix_tests;
 #[path = "game/modding/native_datapack_refs.rs"]
 mod native_datapack_refs;
+#[path = "game/modding/native_datapack_values.rs"]
+mod native_datapack_values;
 #[path = "game/modding/native_death_weapon.rs"]
 mod native_death_weapon;
 #[path = "game/modding/native_detached_generation.rs"]

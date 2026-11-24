@@ -541,6 +541,9 @@ pub(super) struct Remote {
     /// (`native_client_level_load`), to be told dropped once.
     pub(super) heard_level: Option<String>,
     pub(in crate::game) datapacks: sunrise_client::datapack_net::Receiver,
+    /// Decoded vanilla codec values for [`Self::datapacks`], swapped on join and reload.
+    pub(in crate::game) datapack_vanilla_values:
+        Option<Arc<crate::game::native_datapack_values::DatapackVanillaValues>>,
     /// The constructor's level is visible by name during Load, before Minecraft.setLevel.
     pub(super) constructing_level: Option<ConstructingClientLevel>,
     /// `ClientPacketListener.levelLoadTracker`: the loading screen after a login
@@ -1225,8 +1228,13 @@ impl Game<'_> {
             }
             // The server's next generation of mod registries: all of it or the connection.
             C::CustomPayload(p) if p.channel == sunrise_client::datapack_net::CHANNEL => {
-                if let Some(remote) = &mut self.remote {
-                    remote.datapacks.accept_chunk(&p.data)?;
+                let completed = if let Some(remote) = &mut self.remote {
+                    remote.datapacks.accept_chunk_completed(&p.data)?
+                } else {
+                    false
+                };
+                if completed {
+                    self.bind_client_datapack_values()?;
                 }
             }
             C::CustomPayload(p)

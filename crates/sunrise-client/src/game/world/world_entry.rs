@@ -368,7 +368,9 @@ impl Game<'_> {
             &root.join("data"),
             &overlay,
         ));
-        let datapack_candidate = self.datapack_candidate(stack, &conditions);
+        let biome_tags = sunrise_client::items::load_tags(root, "worldgen/biome", &tag_files)
+            .unwrap_or_default();
+        let datapack_candidate = self.datapack_candidate(stack, &conditions, &items, &biome_tags);
         let install_items_result = match &packed_registry_definitions {
             Ok(packed) => {
                 packed.install_items(&mut items, root, &overlay, self.res.item_defaults())
@@ -433,11 +435,17 @@ impl Game<'_> {
         // authority for the data maps' id checks, as the command ids are for
         // the registries they list.
         let mut datapack_candidate = datapack_candidate?;
-        if let Some(candidate) = &mut datapack_candidate {
-            native_registry_entries::bind_datapack_tags(root, &tag_files, candidate)?;
-        }
-        let datapack_registries =
-            datapack_candidate.map(mod_api::DatapackRegistrySet::from_candidate);
+        let (datapack_registries, datapack_vanilla_values) = match &mut datapack_candidate {
+            Some((candidate, _)) => {
+                native_registry_entries::bind_datapack_tags(root, &tag_files, candidate)?;
+                let (candidate, values) = datapack_candidate.take().unwrap();
+                (
+                    Some(mod_api::DatapackRegistrySet::from_candidate(candidate)),
+                    Some(values),
+                )
+            }
+            None => (None, None),
+        };
         let datapack_set = if self.is_logical_server() {
             datapack_registries.as_ref()
         } else {
@@ -576,6 +584,7 @@ impl Game<'_> {
             advancements,
             health,
             datapack_registries,
+            datapack_vanilla_values,
         })
     }
     /// The entries of the mods' datapack registries in the winning pack files: decoded with
@@ -587,7 +596,14 @@ impl Game<'_> {
         &self,
         stack: &functions::PackStack,
         conditions: &sunrise_world::conditions::LoadConditions,
-    ) -> Result<Option<mod_api::DatapackCandidate>> {
+        items: &Items,
+        biome_tags: &HashMap<String, std::collections::HashSet<String>>,
+    ) -> Result<
+        Option<(
+            mod_api::DatapackCandidate,
+            super::native_datapack_values::DatapackVanillaValues,
+        )>,
+    > {
         let declarations = mod_api::__private::datapack_registry_declarations();
         if declarations.is_empty() {
             return Ok(None);
@@ -614,15 +630,34 @@ impl Game<'_> {
             })?
             .into_iter()
             .collect();
-        mod_api::DatapackCandidate::build(declarations, &files)
-            .map(Some)
-            .map_err(|error| {
-                format!(
-                    "datapack registry {} entry {} (pack {}, file {}): {:?}",
-                    error.registry, error.entry, error.pack, error.file, error.reason
-                )
-                .into()
-            })
+        let live_features = self.res.behaviours().live_features();
+        let catalog = live_features
+            .as_ref()
+            .and_then(|features| features.state_provider_catalog());
+        let biomes = self
+            .world_biomes
+            .as_deref()
+            .unwrap_or_else(|| self.res.biomes());
+        let biome_names = biomes.registry_order();
+        let mut decoder = super::native_datapack_values::VanillaValueTableBuilder::new(
+            self.pack.assets.registry,
+            self.res.behaviours(),
+            &items.block_tags,
+            &items.fluid_tags,
+            &biome_names,
+            biome_tags,
+            catalog,
+        )
+        .map_err(|error| format!("datapack vanilla value decoder: {error}"))?;
+        let candidate =
+            mod_api::DatapackCandidate::build_with_decoder(declarations, &files, &mut decoder)
+                .map_err(|error| {
+                    format!(
+                        "datapack registry {} entry {} (pack {}, file {}): {:?}",
+                        error.registry, error.entry, error.pack, error.file, error.reason
+                    )
+                })?;
+        Ok(Some((candidate, decoder.finish())))
     }
     /// A world open's tables, and the first generation of the registries the mods declared.
     pub(super) fn open_world_tables(
@@ -632,6 +667,7 @@ impl Game<'_> {
         self.world_tables = staged.tables;
         self.health_resources = staged.health;
         self.mods.datapack_registries = staged.datapack_registries.map(Arc::new);
+        self.mods.datapack_vanilla_values = staged.datapack_vanilla_values.map(Arc::new);
         self.adv.tree = staged.advancements;
         self.adv.reset_tree();
         self.load_server_loot();
@@ -676,6 +712,7 @@ impl Game<'_> {
             wire,
             wire_tags,
             datapack_registries,
+            datapack_vanilla_values,
         } = prepared;
         self.close_stonecutters_for_reload();
         lan::sync::forget_server_sources();
@@ -695,6 +732,7 @@ impl Game<'_> {
             );
         }
         self.mods.datapack_registries = datapack_registries.map(Arc::new);
+        self.mods.datapack_vanilla_values = datapack_vanilla_values.map(Arc::new);
         self.health_resources = health;
         self.world_tables = tables;
         // Publish the paired item and world evaluators before any callbacks.
@@ -715,7 +753,6 @@ impl Game<'_> {
             world.pois.clear();
         }
         sunrise_client::datapack_net::serve(self.mods.datapack_registries.clone());
-        self.send_datapack_snapshots();
         self.refresh_recipe_property_context();
         self.structure_spawns = structure_spawns;
         self.refresh_infiniburn();
@@ -740,6 +777,9 @@ impl Game<'_> {
         {
             self.with_advancement_hub(|hub, owners| hub.reload_resources(sync, owners));
         }
+        // Send datapack snapshots after `UpdateTags` so clients re-decoding vanilla values
+        // (`HolderSet` / `BlockPredicate` tags) already hold the reload's tags.
+        self.send_datapack_snapshots();
         self.adv.tree = advancements;
         self.adv.reset_tree();
         self.announce_data_bound(mod_api::TagsUpdateCause::ServerDataLoad { reload: true });
@@ -886,6 +926,7 @@ impl Game<'_> {
             advancements,
             health,
             datapack_registries,
+            datapack_vanilla_values,
             ..
         } = self.stage_world_tables(stack, true, root)?;
         let items = tables
@@ -941,6 +982,7 @@ impl Game<'_> {
             wire,
             wire_tags,
             datapack_registries,
+            datapack_vanilla_values,
         })
     }
 

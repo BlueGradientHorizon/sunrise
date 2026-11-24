@@ -388,8 +388,10 @@ impl Game<'_> {
             } => {
                 if let Some(remote) = &mut self.remote {
                     remote.datapacks = datapacks;
+                    remote.datapack_vanilla_values = None;
                 }
                 self.set_registries(registries);
+                self.bind_client_datapack_values()?;
                 self.connection_joined();
                 self.close_dialogs();
                 if let Some(r) = self.remote.as_mut() {
@@ -452,6 +454,7 @@ impl Game<'_> {
                 // own features again.
                 if let Some(remote) = &mut self.remote {
                     remote.datapacks = Default::default();
+                    remote.datapack_vanilla_values = None;
                     remote.has_logical_player = false;
                     remote.viewed.clear();
                     remote.far_terrain = None;
@@ -500,6 +503,7 @@ impl Game<'_> {
                 self.clear_waypoints();
                 if let Some(r) = self.remote.as_mut() {
                     r.datapacks = datapacks;
+                    r.datapack_vanilla_values = None;
                     r.clear_attachments();
                     r.players.clear();
                     r.tab_players.clear();
@@ -513,6 +517,7 @@ impl Game<'_> {
                 }
                 self.ui.registries.custom_completions.clear();
                 self.set_registries(registries);
+                self.bind_client_datapack_values()?;
             }
             Event::Transfer(task) => {
                 if let Some(packet) = task.into_eligible_packet() {

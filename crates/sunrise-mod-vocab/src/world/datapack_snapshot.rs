@@ -3,7 +3,7 @@
 //! registries a peer gets and carrying the bytes are the game's.
 use super::datapack_registry::{
     DatapackEntry, DatapackField, DatapackRegistryDeclaration, DatapackRegistrySync, DatapackValue,
-    valid_namespaced,
+    VanillaValueDecoder, bind_vanilla_values, unbind_vanilla_values, valid_namespaced,
 };
 use super::datapack_registry_set::{
     DatapackCandidate, DatapackLoadError, DatapackRegistrySet, resolve_references,
@@ -174,7 +174,15 @@ fn snapshot_of(
                     .iter()
                     .map(|(id, entry)| DatapackSnapshotEntry {
                         id: id.clone(),
-                        values: entry.values.iter().map(|(_, v)| v.clone()).collect(),
+                        values: entry
+                            .values
+                            .iter()
+                            .map(|(_, v)| {
+                                let mut wire_value = v.clone();
+                                unbind_vanilla_values(&mut wire_value);
+                                wire_value
+                            })
+                            .collect(),
                     })
                     .collect(),
             })
@@ -251,6 +259,25 @@ impl DatapackSnapshot {
         &self,
         declarations: &[DatapackRegistryDeclaration],
     ) -> Result<DatapackCandidate, DatapackSnapshotError> {
+        self.candidate_inner(declarations, None)
+    }
+
+    /// [`Self::candidate`] with the engine's decoder for vanilla value kinds: re-decodes every
+    /// vanilla value from its JSON into `decoder`'s table and refuses the snapshot if any fails.
+    #[doc(hidden)]
+    pub fn candidate_with_decoder(
+        &self,
+        declarations: &[DatapackRegistryDeclaration],
+        decoder: &mut dyn VanillaValueDecoder,
+    ) -> Result<DatapackCandidate, DatapackSnapshotError> {
+        self.candidate_inner(declarations, Some(decoder))
+    }
+
+    fn candidate_inner(
+        &self,
+        declarations: &[DatapackRegistryDeclaration],
+        mut decoder: Option<&mut dyn VanillaValueDecoder>,
+    ) -> Result<DatapackCandidate, DatapackSnapshotError> {
         if self.registries.len() > MAX_SNAPSHOT_REGISTRIES {
             return Err(DatapackSnapshotError::TooLarge);
         }
@@ -292,12 +319,19 @@ impl DatapackSnapshot {
                 {
                     return Err(invalid());
                 }
-                let values = declaration
+                let mut values: Vec<(String, DatapackValue)> = declaration
                     .fields
                     .iter()
                     .map(|field| field.name.clone())
                     .zip(entry.values.iter().cloned())
                     .collect();
+                for (field, (_, value)) in declaration.fields.iter().zip(values.iter_mut()) {
+                    unbind_vanilla_values(value);
+                    if let Some(decoder) = decoder.as_deref_mut() {
+                        bind_vanilla_values(&field.kind, value, &field.name, decoder)
+                            .map_err(|_| invalid())?;
+                    }
+                }
                 if entries
                     .insert(entry.id.clone(), DatapackEntry { values })
                     .is_some()

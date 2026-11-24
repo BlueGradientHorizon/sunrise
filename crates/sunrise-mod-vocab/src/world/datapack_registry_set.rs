@@ -5,6 +5,7 @@
 //! set when building fails.
 use super::datapack_registry::{
     DatapackDecodeError, DatapackEntry, DatapackRegistryDeclaration, DatapackValue,
+    NoVanillaValueDecoder, VanillaValueDecoder, bind_vanilla_values, schema_has_vanilla_kind,
     valid_namespaced,
 };
 use super::datapack_snapshot::{
@@ -120,6 +121,17 @@ impl DatapackCandidate {
         declarations: &[DatapackRegistryDeclaration],
         files: &[(String, Vec<(String, Vec<u8>)>)],
     ) -> Result<Self, Box<DatapackLoadError>> {
+        Self::build_with_decoder(declarations, files, &mut NoVanillaValueDecoder)
+    }
+
+    /// [`Self::build`] with the engine's decoder for vanilla value kinds (`IntProvider`,
+    /// `BlockStateProvider`, `BlockPredicate`, `HolderSet`).
+    #[doc(hidden)]
+    pub fn build_with_decoder(
+        declarations: &[DatapackRegistryDeclaration],
+        files: &[(String, Vec<(String, Vec<u8>)>)],
+        decoder: &mut dyn VanillaValueDecoder,
+    ) -> Result<Self, Box<DatapackLoadError>> {
         if let Some(over) = declarations.get(MAX_SNAPSHOT_REGISTRIES) {
             return Err(Box::new(DatapackLoadError {
                 registry: over.key.clone(),
@@ -176,7 +188,7 @@ impl DatapackCandidate {
                 // not to the declaring mod's schema. The file is decoded as written, so a
                 // map keeps its file order.
                 let decoded = declaration
-                    .decode_entry_ignoring(text, &["neoforge:conditions"])
+                    .decode_entry_with_decoder(text, &["neoforge:conditions"], decoder)
                     .map_err(|error| fail(DatapackLoadReason::Decode(error)))?;
                 entries.insert(entry, decoded);
             }
@@ -370,6 +382,44 @@ impl DatapackRegistrySet {
         }
     }
 
+    /// Re-decode every vanilla value in this set against `decoder`, binding fresh per-load
+    /// handles into `decoder`'s table. Used on clients after a snapshot arrives once their
+    /// registries and tags are installed.
+    #[doc(hidden)]
+    pub fn rebind_vanilla_values(
+        &self,
+        declarations: &[DatapackRegistryDeclaration],
+        decoder: &mut dyn VanillaValueDecoder,
+    ) -> Result<Self, super::datapack_snapshot::DatapackSnapshotError> {
+        if !declarations
+            .iter()
+            .any(|declaration| schema_has_vanilla_kind(&declaration.fields))
+        {
+            return Ok(self.clone());
+        }
+        let mut registries = self.registries.clone();
+        for declaration in declarations {
+            let Some(entries) = registries.get_mut(&declaration.key) else {
+                continue;
+            };
+            for (id, entry) in entries.iter_mut() {
+                for (field, (_, value)) in declaration.fields.iter().zip(entry.values.iter_mut()) {
+                    bind_vanilla_values(&field.kind, value, &field.name, decoder).map_err(
+                        |_| super::datapack_snapshot::DatapackSnapshotError::InvalidEntry {
+                            registry: declaration.key.clone(),
+                            entry: id.clone(),
+                        },
+                    )?;
+                }
+            }
+        }
+        Ok(Self {
+            registries,
+            tags: self.tags.clone(),
+            received_registries: self.received_registries.clone(),
+        })
+    }
+
     /// Whether generic reads may access this registry. Typed reads retain their existing
     /// empty defaults for omitted declarations; a received empty registry is still available.
     pub fn registry_available(&self, registry: &str) -> bool {
@@ -435,6 +485,18 @@ fn datapack_value_heap_bytes(value: &DatapackValue) -> usize {
         DatapackValue::Map(pairs) | DatapackValue::Record(pairs) => pairs_heap_bytes(pairs),
         DatapackValue::Variant { id, fields } => {
             id.capacity().saturating_add(pairs_heap_bytes(fields))
+        }
+        DatapackValue::Vanilla(vanilla) => {
+            use super::datapack_registry::DatapackVanillaValue;
+            let inner = match vanilla.as_ref() {
+                DatapackVanillaValue::IntProvider { json, .. }
+                | DatapackVanillaValue::BlockStateProvider { json, .. }
+                | DatapackVanillaValue::BlockPredicate { json, .. } => json.capacity(),
+                DatapackVanillaValue::HolderSet { registry, json, .. } => {
+                    registry.capacity().saturating_add(json.capacity())
+                }
+            };
+            size_of::<DatapackVanillaValue>().saturating_add(inner)
         }
     }
 }
