@@ -27,10 +27,12 @@ known state reads as `Ok(None)`; unavailable metadata, invalid states and refuse
 | `light_emission(state) -> Option<u8>` | `BlockState.getLightEmission()`: 0 to 15; a block with `dynamic_light` answers per cell through its parts, which this does not ask |
 | `friction(state) -> Option<f32>` | `BlockBehaviour.getFriction()` of the block: 0.6 usually, 0.98 ice, 0.8 slime |
 | `is_solid_render(state) -> Option<bool>` | `BlockState.isSolidRender()`: a full, occluding cube (stone yes; glass, leaves, slabs no) |
+| `propagates_skylight_down(state) -> Option<bool>` | `BlockState.propagatesSkylightDown()`: sky light passes down unchanged, the block's own answer included (glass and air yes, stone no) |
+| `is_air(state) -> Option<bool>` | `BlockState.isAir()`: air, cave air and void air, by the block's flag rather than the `#minecraft:air` tag |
 | `is_redstone_conductor(state) -> Option<bool>` | `BlockState.isRedstoneConductor` when it depends only on the block state; `None` when a position is needed |
 | `map_color(state) -> Option<u8>` | `BlockState.getMapColor`: the `MapColor.id` a map item colours a column by, 0 for none |
 | `map_color_rgba(packed) -> Option<[u8; 4]>` | `MapColor.getColorFromPackedId`: decode a map pixel to `[red, green, blue, alpha]`; ID 0 and undefined IDs decode to transparent RGBA; `None` means no game backend |
-| `block_class(state, class: BlockClass) -> Result<Option<bool>, LevelReadError>` | Java `instanceof` on the block's vanilla class, subclasses included: `Stair`, `Entity` (`EntityBlock`), `IronBars`, `StainedGlassPane`, `TrapDoor`. See below |
+| `block_class(state, class: BlockClass) -> Result<Option<bool>, LevelReadError>` | Java `instanceof` on the block's vanilla class, subclasses included: `Stair`, `Entity` (`EntityBlock`), `IronBars`, `StainedGlassPane`, `TrapDoor`, `Bonemealable` (`BonemealableBlock`). See below |
 | `piston_push_reaction(state) -> Result<Option<PushReaction>, LevelReadError>` | `BlockState.getPistonPushReaction()`: the resolved reaction used by pistons, including Part answers. See [piston push reactions](piston-push-reactions.md) |
 | `states_of(block) -> Option<BlockStateRange>` | `StateDefinition.getPossibleStates`, as owned values in canonical local-ordinal order |
 | `definition(block) -> Option<StateProperties<'_>>` | Borrowed property names and legal serialized values |
@@ -116,7 +118,7 @@ is also refused, even at another level or position; it can still ask a different
 ## Block classes
 
 `block_class(state, class)` answers what a mod would ask with `instanceof StairBlock`, `EntityBlock`,
-`IronBarsBlock`, `StainedGlassPaneBlock` or `TrapDoorBlock`. It reads the engine's own class of the
+`IronBarsBlock`, `StainedGlassPaneBlock`, `TrapDoorBlock` or `BonemealableBlock`. It reads the engine's own class of the
 block, so a subclass counts (a waxed copper stair is a `Stair`) and a mod block declared on a vanilla
 behaviour template belongs to that template's classes. It never reads tags: a pack that adds a block
 to `minecraft:stairs` does not make it a `Stair`. An unknown state answers `Ok(None)`; a host with no game
