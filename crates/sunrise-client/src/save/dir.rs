@@ -532,7 +532,7 @@ impl SaveDir {
             (*tag).clone()
         } else {
             let Some(root) =
-                read_region_record_readonly(self.region_storage(Folder::Region), x, z)?
+                region::read_region_record_readonly(self.region_storage(Folder::Region), x, z)?
             else {
                 return Ok(None);
             };
@@ -566,7 +566,8 @@ impl SaveDir {
                 }
             }
         }
-        let mut chunks = list_region_chunks_readonly(self.region_storage(Folder::Region), rx, rz)?;
+        let mut chunks =
+            region::list_region_chunks_readonly(self.region_storage(Folder::Region), rx, rz)?;
         if !pending_deleted.is_empty() {
             chunks.retain(|pos| !pending_deleted.contains(pos));
         }
