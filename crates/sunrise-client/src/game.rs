@@ -494,6 +494,9 @@ mod early_game_rules_tests;
 #[cfg(test)]
 #[path = "game/blocks/empty_contents_tests.rs"]
 mod empty_contents_tests;
+#[cfg(test)]
+#[path = "game/items/enchant_effect_dispatch_tests.rs"]
+mod enchant_effect_dispatch_tests;
 #[path = "game/items/enchant_effects.rs"]
 mod enchant_effects;
 #[cfg(test)]
