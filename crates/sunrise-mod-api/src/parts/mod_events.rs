@@ -36,14 +36,14 @@ impl ModEventsRegistrar for PartRegistrar {
                 .iter()
                 .filter(|(other, _)| **other != event)
                 .flat_map(|(_, listeners)| listeners)
-                .find(|other| other.event.0 == id);
+                .find(|other| other.event_id == id);
             if let Some(other) = clash {
                 return Err(DeclarationError::Rejected {
                     id: id.into(),
                     reason: format!(
                         "event {id} is listened to with two types, {} by {} and \
                          {type_name} by {}",
-                        other.event.1,
+                        other.event_type,
                         other.owner.id(),
                         self.mod_id
                     ),
@@ -59,7 +59,8 @@ impl ModEventsRegistrar for PartRegistrar {
                         self.mod_index,
                     ),
                     mod_index: self.mod_index,
-                    event: (id, type_name),
+                    event_id: id,
+                    event_type: type_name,
                     client,
                     priority,
                     receive_cancelled,

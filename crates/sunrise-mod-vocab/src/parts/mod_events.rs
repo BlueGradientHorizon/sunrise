@@ -9,8 +9,10 @@ use std::any::TypeId;
 pub(crate) struct ModEventListener {
     pub(crate) owner: crate::callback_owner::CallbackOwner,
     pub(crate) mod_index: usize,
-    /// The event's id and Rust type name, for the refusal of one id with two types.
-    pub(crate) event: (&'static str, &'static str),
+    /// The event's id.
+    pub(crate) event_id: &'static str,
+    /// The event's Rust type name, for the refusal of one id with two types.
+    pub(crate) event_type: &'static str,
     pub(crate) client: bool,
     pub(crate) priority: i32,
     pub(crate) receive_cancelled: bool,
@@ -30,7 +32,7 @@ impl Installed {
             .values()
             .flatten()
             .find(|listener| listener.client && listener.mod_index == index)
-            .map(|listener| listener.event.0)
+            .map(|listener| listener.event_id)
     }
 }
 
