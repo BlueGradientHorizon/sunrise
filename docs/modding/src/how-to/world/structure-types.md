@@ -247,3 +247,19 @@ metadata snapshot that worker contexts borrow.
 Mod pieces participate in start caching, cross-chunk placement, terrain blending through the
 beardifier, and `/locate structure`. A data pack structure whose `"type"` has no registered
 implementation places nothing.
+
+## Rule tests and position rule tests
+
+Register custom `minecraft:rule` and feature replacement predicates (`RULE_TEST`) and rule
+position predicates (`POS_RULE_TEST`) in `Hooks::register` with
+`r.register_rule_test_type("name", MyRuleTestType)` and
+`r.register_pos_rule_test_type("name", MyPosRuleTestType)`.
+
+- Types register under the mod's own namespace and decode once when a processor list or
+  configured feature loads; bind block IDs, block states, block tags and nested tests through
+  `RuleTestDecodeContext` / `PosRuleTestDecodeContext` at load time so `test` does no
+  per-block lookups or allocations.
+- Returning `Err(StructureError)` during `decode` (or referencing an unknown type, block or
+  tag) leaves that processor list and every template pool naming it out of the load.
+- `RuleTest::test` and `PosRuleTest::test` run concurrently on worldgen worker threads and
+  must not panic; a panic aborts that structure's placement with nothing substituted.

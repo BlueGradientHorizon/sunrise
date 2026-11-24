@@ -103,6 +103,9 @@ pub enum BlockClass {
     StainedGlassPane,
     /// `TrapDoorBlock`.
     TrapDoor,
+    /// `BonemealableBlock`: the blocks that take bone meal (crops, saplings, grass, stems,
+    /// rooted dirt), whether or not they are a valid target at a given place and moment.
+    Bonemealable,
 }
 
 /// An invalid constraint, identifying its index in the supplied list.
@@ -248,7 +251,19 @@ impl BlockStatesBackend for NoBlockTables {
     fn block_state_friction(&self, _: BlockState) -> Option<f32> {
         None
     }
+    fn block_state_speed_factor(&self, _: BlockState) -> Option<f32> {
+        None
+    }
+    fn block_state_jump_factor(&self, _: BlockState) -> Option<f32> {
+        None
+    }
     fn block_state_is_solid_render(&self, _: BlockState) -> Option<bool> {
+        None
+    }
+    fn block_state_propagates_skylight_down(&self, _: BlockState) -> Option<bool> {
+        None
+    }
+    fn block_state_is_air(&self, _: BlockState) -> Option<bool> {
         None
     }
     fn block_state_is_redstone_conductor(&self, _: BlockState) -> Option<bool> {
@@ -429,11 +444,35 @@ impl BlockStates<'_> {
     pub fn friction(&self, state: BlockState) -> Option<f32> {
         self.backend.block_state_friction(state)
     }
+    /// The speed factor of `state`'s block (`Block.getSpeedFactor`): 1.0 for most blocks, 0.4 for
+    /// soul sand and honey. The block's declared value; what its parts answer where an entity
+    /// stands is the `block_speed_factor` hook's. None as for `replaceable`.
+    pub fn speed_factor(&self, state: BlockState) -> Option<f32> {
+        self.backend.block_state_speed_factor(state)
+    }
+    /// The jump factor of `state`'s block (`Block.getJumpFactor`): 1.0 for most blocks, 0.5 for
+    /// honey. The block's declared value; what its parts answer where an entity jumps is the
+    /// `block_jump_factor` hook's. None as for `replaceable`.
+    pub fn jump_factor(&self, state: BlockState) -> Option<f32> {
+        self.backend.block_state_jump_factor(state)
+    }
     /// `BlockState.isSolidRender()`: whether the state is a full, occluding cube for rendering
     /// and light (stone yes; glass, leaves and slabs no). This is not redstone conduction.
     /// None as for `replaceable`.
     pub fn is_solid_render(&self, state: BlockState) -> Option<bool> {
         self.backend.block_state_is_solid_render(state)
+    }
+    /// `BlockState.propagatesSkylightDown()`: whether sky light passes down through `state`
+    /// unchanged, the block's own answer included (glass, barriers and vegetation override what
+    /// the shape would say), as `NetherrackBlock.isValidBonemealTarget` tests the block above.
+    /// None as for `replaceable`.
+    pub fn propagates_skylight_down(&self, state: BlockState) -> Option<bool> {
+        self.backend.block_state_propagates_skylight_down(state)
+    }
+    /// `BlockState.isAir()`: air, cave air and void air (`LevelReader.isEmptyBlock`), by the
+    /// block's own flag, not the `#minecraft:air` tag. None as for `replaceable`.
+    pub fn is_air(&self, state: BlockState) -> Option<bool> {
+        self.backend.block_state_is_air(state)
     }
     /// Whether `state`'s block is of vanilla class `class`, subclasses included (Java's
     /// `instanceof`). It reads the engine's class of the block, never a tag, so it does not move

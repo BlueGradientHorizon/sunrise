@@ -153,37 +153,40 @@ pub(crate) fn carry_all(
     (out, changed)
 }
 
-/// Repurposed Structures' rule tests and the game's types that run them
-/// (`sunrise_world::worldgen`'s `rule_test` and `structure::processor`).
-const RULE_TESTS: [(&str, &str); 1] = [(
-    "repurposed_structures:matter_phase_rule_test",
-    "sunrise:matter_phase",
-)];
-
-/// Renames the rule tests written in Java that the game runs under its own
-/// type ([`RULE_TESTS`]) in a worldgen file's processor lists; each is
-/// counted by type in `carried`. Their fields are the mod's. Whether
-/// anything changed. Without this the game, like vanilla, refuses the list
-/// and every pool naming it: Repurposed's mineshafts and Nether monument.
-pub fn rule_tests(kind: &str, v: &mut Value, carried: &mut BTreeMap<String, usize>) -> bool {
-    fn rename(v: &mut Value, carried: &mut BTreeMap<String, usize>) -> bool {
+/// Records non-`minecraft:` `predicate_type` ids found in a worldgen file's
+/// processor lists under `unsupported`. Custom rule tests and position rule
+/// tests require a mod that registers them via `RULE_TEST` / `POS_RULE_TEST`
+/// (`register_rule_test_type` / `register_pos_rule_test_type`).
+pub fn report_unsupported_rule_tests(
+    kind: &str,
+    v: &mut Value,
+    unsupported: &mut BTreeMap<String, usize>,
+) {
+    fn scan(v: &Value, unsupported: &mut BTreeMap<String, usize>) {
         match v {
             Value::Object(o) => {
-                let mut changed = false;
-                if let Some(Value::String(t)) = o.get_mut("predicate_type")
-                    && let Some((old, new)) = RULE_TESTS.iter().find(|(old, _)| t == old)
+                if let Some(Value::String(t)) = o.get("predicate_type")
+                    && t.contains(':')
+                    && !t.starts_with("minecraft:")
                 {
-                    *carried.entry((*old).to_owned()).or_default() += 1;
-                    *t = (*new).to_owned();
-                    changed = true;
+                    *unsupported.entry(t.clone()).or_default() += 1;
                 }
-                o.values_mut().fold(changed, |c, x| rename(x, carried) | c)
+                for value in o.values() {
+                    scan(value, unsupported);
+                }
             }
-            Value::Array(a) => a.iter_mut().fold(false, |c, x| rename(x, carried) | c),
-            _ => false,
+            Value::Array(a) => {
+                for value in a {
+                    scan(value, unsupported);
+                }
+            }
+            _ => {}
         }
     }
-    each_list(kind, v, &mut |list| rename(list, carried))
+    each_list(kind, v, &mut |list| {
+        scan(list, unsupported);
+        false
+    });
 }
 
 /// The data form of a Java processor: the processors to put in its place
@@ -319,7 +322,7 @@ mod tests {
     }
 
     #[test]
-    fn repurposed_rule_tests_become_the_games() {
+    fn non_vanilla_rule_tests_are_reported_unsupported_and_left_for_their_mod() {
         let rule = |input: Value, position: Value| {
             json!({"input_predicate": input, "location_predicate": {"predicate_type":
                 "repurposed_structures:matter_phase_rule_test", "phase_to_test_for": "AIR"},
@@ -328,7 +331,7 @@ mod tests {
         let mut pool = json!({"elements": [{"weight": 1, "element": {
             "element_type": "minecraft:single_pool_element", "processors": {"processors": [
                 {"processor_type": "minecraft:rule", "rules": [rule(
-                    json!({"predicate_type": "minecraft:always_true"}),
+                    json!({"predicate_type": "always_true"}),
                     json!({"predicate_type": "repurposed_structures:y_value_pos_rule_test",
                         "min_y_value": 0, "max_y_value": 31}))]},
                 {"processor_type": "minecraft:capped", "limit": 2, "delegate": {
@@ -337,39 +340,45 @@ mod tests {
                         json!({"predicate_type":
                             "repurposed_structures:piece_origin_axis_aligned_linear_pos_rule_test",
                             "axis": "y", "min_dist": 0, "max_dist": 1}))]}}]}}}]});
-        let mut carried = BTreeMap::new();
-        assert!(rule_tests("template_pool", &mut pool, &mut carried));
-        let list = &pool["elements"][0]["element"]["processors"]["processors"];
-        let first = &list[0]["rules"][0];
+        let before = pool.clone();
+        let mut unsupported = BTreeMap::new();
+        report_unsupported_rule_tests("template_pool", &mut pool, &mut unsupported);
+        assert_eq!(pool, before, "custom rule tests stay intact for their mod");
         assert_eq!(
-            first["location_predicate"]["predicate_type"],
-            "sunrise:matter_phase"
-        );
-        assert_eq!(first["location_predicate"]["phase_to_test_for"], "AIR");
-        // Mod-defined position rule tests are left untouched (require a mod).
-        assert_eq!(
-            first["position_predicate"]["predicate_type"],
-            "repurposed_structures:y_value_pos_rule_test"
-        );
-        let delegated = &list[1]["delegate"]["rules"][0];
-        assert_eq!(
-            delegated["position_predicate"]["predicate_type"],
-            "repurposed_structures:piece_origin_axis_aligned_linear_pos_rule_test"
+            unsupported.get("repurposed_structures:matter_phase_rule_test"),
+            Some(&2)
         );
         assert_eq!(
-            delegated["input_predicate"]["predicate_type"],
-            "minecraft:block_match"
+            unsupported.get("repurposed_structures:y_value_pos_rule_test"),
+            Some(&1)
         );
-        assert_eq!(carried.values().sum::<usize>(), 2);
-        assert_eq!(carried["repurposed_structures:matter_phase_rule_test"], 2);
-        // A file holding none is left as it is.
-        assert!(!rule_tests("template_pool", &mut pool, &mut carried));
-        assert!(!rule_tests(
+        assert_eq!(
+            unsupported.get("repurposed_structures:piece_origin_axis_aligned_linear_pos_rule_test"),
+            Some(&1)
+        );
+        assert!(!unsupported.contains_key("always_true"));
+        assert!(!unsupported.contains_key("minecraft:block_match"));
+
+        // Removed sunrise: rule tests are also reported unsupported.
+        let mut legacy = json!({"processors": [{"processor_type": "minecraft:rule", "rules": [{
+            "input_predicate": {"predicate_type": "sunrise:matter_phase", "phase_to_test_for": "AIR"},
+            "location_predicate": {"predicate_type": "minecraft:always_true"},
+            "position_predicate": {"predicate_type": "sunrise:y_value"},
+            "output_state": {"id": "minecraft:stone"}
+        }]}]});
+        let mut legacy_unsupported = BTreeMap::new();
+        report_unsupported_rule_tests("processor_list", &mut legacy, &mut legacy_unsupported);
+        assert_eq!(legacy_unsupported.get("sunrise:matter_phase"), Some(&1));
+        assert_eq!(legacy_unsupported.get("sunrise:y_value"), Some(&1));
+
+        // Non-processor files are not scanned.
+        let mut unrelated = BTreeMap::new();
+        report_unsupported_rule_tests(
             "structure",
-            &mut json!({"predicate_type":
-            "repurposed_structures:y_value_pos_rule_test"}),
-            &mut carried
-        ));
+            &mut json!({"predicate_type": "repurposed_structures:y_value_pos_rule_test"}),
+            &mut unrelated,
+        );
+        assert!(unrelated.is_empty());
     }
 
     #[test]

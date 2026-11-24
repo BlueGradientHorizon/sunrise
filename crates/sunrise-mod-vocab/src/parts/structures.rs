@@ -22,6 +22,20 @@ pub(crate) fn installed_structure_processor_type_list()
     })
 }
 
+/// The rule test types registered at startup, for the executable to hand to
+/// the engine's rule test type table.
+pub(crate) fn installed_rule_test_type_list() -> &'static [crate::world::rule_test::RuleTestTypeInfo]
+{
+    installed().map_or(&[], |installed| installed.rule_test_types.as_slice())
+}
+
+/// The position rule test types registered at startup, for the executable to
+/// hand to the engine's position rule test type table.
+pub(crate) fn installed_pos_rule_test_type_list()
+-> &'static [crate::world::rule_test::PosRuleTestTypeInfo] {
+    installed().map_or(&[], |installed| installed.pos_rule_test_types.as_slice())
+}
+
 impl dyn Registrar + '_ {
     /// Register structure type `name` (`tower` or `mymod:tower`), the way
     /// NeoForge's registries `STRUCTURE_TYPE` and `STRUCTURE_PIECE` register
@@ -59,6 +73,28 @@ impl dyn Registrar + '_ {
     ) {
         self.add_structure_processor_type(name, Arc::new(ty));
     }
+    /// Register rule test type `name` (`matter_phase` or
+    /// `mymod:matter_phase`), the way NeoForge's registry `RULE_TEST`
+    /// registers once at startup: a processor rule or ore/replacement target
+    /// entry with `"predicate_type": "modid:matter_phase"` then decodes once
+    /// at load and runs by `ty`'s code beside vanilla's built-in rule tests.
+    /// The id's namespace must be owned by the calling mod's manifest; another
+    /// mod's namespace, an empty name and an id registered twice refuse the
+    /// mods at startup, naming the mod.
+    pub fn register_rule_test_type<T: crate::RuleTestType>(&mut self, name: &str, ty: T) {
+        self.add_rule_test_type(name, Arc::new(ty));
+    }
+    /// Register position rule test type `name` (`y_value` or
+    /// `mymod:y_value`), the way NeoForge's registry `POS_RULE_TEST` registers
+    /// once at startup: a processor rule's `position_predicate` entry with
+    /// `"predicate_type": "modid:y_value"` then decodes once at load and runs
+    /// by `ty`'s code beside vanilla's built-in position rule tests. The id's
+    /// namespace must be owned by the calling mod's manifest; another mod's
+    /// namespace, an empty name and an id registered twice refuse the mods at
+    /// startup, naming the mod.
+    pub fn register_pos_rule_test_type<T: crate::PosRuleTestType>(&mut self, name: &str, ty: T) {
+        self.add_pos_rule_test_type(name, Arc::new(ty));
+    }
 }
 
 /// Registrar operations for structures.
@@ -76,4 +112,10 @@ pub trait StructuresRegistrar {
         name: &str,
         ty: Arc<dyn crate::StructureProcessorType>,
     );
+    /// Register rule test type `name` with `ty`; mods reach it through
+    /// `register_rule_test_type`.
+    fn add_rule_test_type(&mut self, name: &str, ty: Arc<dyn crate::RuleTestType>);
+    /// Register position rule test type `name` with `ty`; mods reach it
+    /// through `register_pos_rule_test_type`.
+    fn add_pos_rule_test_type(&mut self, name: &str, ty: Arc<dyn crate::PosRuleTestType>);
 }
