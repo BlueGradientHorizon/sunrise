@@ -21,12 +21,12 @@ For the modding-book guide, see [Game side modules](https://playsunrise.net/docs
 - **`[[native.mixin]]` targets:** methods, free functions, and trait methods in moved modules or renamed state modules. The rename map emits normalized SDK keys; in manifests that spell lifetimes (`Game<'_>`) or trait-qualified targets (`<Type as Trait>::method`), apply the same `client_side` / `server_side` segment insertion or replacement before `<module>`.
 - **`[[native.bridge]]` targets:** field bridges targeting `ClientState` or `ServerState`, field bridges targeting types declared in any moved module (for example `sunrise_client::game::client_side::native_panel::Panel`), and `INVOKE` bridges naming methods in moved modules.
 - **`[[native.module]]` file paths:** ordinary moved modules keep their source file path; support modules targeting `crates/sunrise-client/src/game/client_state.rs` or `crates/sunrise-client/src/game/server_state.rs` must update `file` to `client_side.rs` or `server_side.rs`.
-- **Explicit `[[internals]]` entries:** declared engine items under moved modules or under `ClientState` / `ServerState` carry the canonical `client_side` / `server_side` path.
+- **Explicit `[[internals]]` entries:** declared engine items under moved modules or under `ClientState` / `ServerState` carry the canonical `client_side` / `server_side` path. Confirm keys against the pinned build's `internals.json` (`.sunrise/cache/<build>/build-data/internals.json`), since an item's canonical path follows the module holding its declaration or `impl` (an `impl` in `game.rs` keeps its `sunrise_client::game::...` path).
 
 ## How to repin a native mod
 
-1. Pin the new game build with `cargo sunrise-mod pin <build>` (`pin` refreshes hashes for declarations that still resolve and leaves missing declarations in place).
-2. Generate the selectable rename map from the prior and target builds' `functions.json` indexes with the script below, then update affected `[[native.mixin]]`, `[[native.bridge]]`, `[[native.module]]` (state files), and explicit `[[internals]]` declarations:
+1. Pin the new game build with `cargo sunrise-mod pin <build>` (`pin` refreshes hashes for declarations that resolve on the new build and reports moved declarations as `missing` with their old hashes untouched).
+2. Generate the selectable rename map from the prior and target builds' `functions.json` indexes with the script below, then update affected `[[native.mixin]]`, `[[native.bridge]]`, `[[native.module]]` (state files), and explicit `[[internals]]` paths:
 
 ```sh
 python3 tools/game_module_sides.py --renames <before-functions.json> <after-functions.json> --out moved-mixin-targets.tsv
@@ -34,5 +34,7 @@ python3 tools/game_module_sides.py --renames <before-functions.json> <after-func
 
 The default `--renames` command emits only rows whose destination is selectable in `<after-functions.json>` and exits `0` (printing refused, missing, and additional-target counts to stderr). Pass `--strict` to validate an exact transition and exit non-zero if any moved target is refused or missing or if `<after-functions.json>` adds unmapped targets.
 
-3. For mods using discovered internals, run `cargo sunrise-mod internals sync`.
-4. Run `cargo sunrise-mod check` and `cargo sunrise-mod build`. If a pinned mixin `fingerprint` fails with `E_FINGERPRINT`, inspect the target function on the new build and update the fingerprint to the reported `got` value once verified.
+3. Regenerate internal hashes for every rewritten path:
+   - For mods using discovered internals, run `cargo sunrise-mod internals sync` to replace `internals` with compiler-discovered paths, kinds, and hashes for the pinned build.
+   - For explicit hashed `[[internals]]` entries (when skipping `internals sync`), editing `path` leaves the old `hash` in place even when the item's catalog hash changed; refresh each moved entry's hash with `cargo sunrise-mod internals add <new-path>…` (pass `--kind <kind>` if a path is ambiguous), or re-run `cargo sunrise-mod pin <build>` after updating the paths (for mods without `[[native.module]]`).
+4. Run `cargo sunrise-mod check` to verify the manifest and refreshed internal hashes, then run `cargo sunrise-mod build` to compile the package and regenerate `uses.json` with the new build's `made_for` id, internal hashes, and split function digests (mods with `[[native.module]]` or `[[native.bridge]]` target one build only and pack no `uses.json`). If a pinned mixin `fingerprint` fails with `E_FINGERPRINT`, inspect the target function on the new build and update the fingerprint to the reported `got` value once verified.
