@@ -26,7 +26,8 @@ pub trait Hooks {
         side = "server",
         contract = "listen",
         neoforge = "EnchantedEntityLootEvent",
-        cancellable = false
+        cancellable = false,
+        version = 2
     )]
     fn enchanted_entity_loot(
         entity: LivingRef,
