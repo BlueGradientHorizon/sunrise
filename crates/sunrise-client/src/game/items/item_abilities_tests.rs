@@ -288,11 +288,14 @@ impl Hooks for Lights {
     }
 }
 
-/// A grounded player with a full charge at (0.5, 64, 0.5).
+/// A grounded player with a full charge at (0.5, 64, 0.5), its speed the base
+/// `movement_speed` its first tick would set, so standing still passes the sweep's speed bound.
 fn grounded(game: &mut Game<'_>) {
     let start = Vec3::new(0.5, 64.0, 0.5);
-    game.player = Some(sunrise_client::motion::PlayerMotion::new(game.motion, start).unwrap());
-    game.player.as_mut().unwrap().ground.on_ground = true;
+    let mut player = sunrise_client::motion::PlayerMotion::new(game.motion, start).unwrap();
+    player.ground.on_ground = true;
+    player.speed = 0.1;
+    game.player = Some(player);
 }
 
 /// A part granting a blaze rod `sword_sweep` and `shears_trim` sweeps and trims with it, one
